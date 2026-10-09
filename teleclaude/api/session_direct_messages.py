@@ -70,13 +70,14 @@ _DIRECT_CONVERSATION_INTRO_RULES: tuple[str, ...] = (
 async def _resolve_direct_caller_session(caller_session_id: str) -> Session:
     """Resolve the caller session for a direct-conversation ignition path.
 
-    Raises ``UnidentifiableCallerError`` when the caller session row is
-    missing, or has no resolvable agent identity to render as the segment
-    author. Ignition rejects an unidentifiable caller rather than proceeding
-    with a defaulted identity.
+    The carried caller session is taken as given (caller verification).
+    Raises ``UnidentifiableCallerError`` when it runs no agent to render as the
+    segment author: ignition rejects such a caller rather than proceeding with
+    a defaulted identity.
     """
     caller_session = await db.get_session(caller_session_id)
-    if caller_session is None or not caller_session.active_agent:
+    assert caller_session is not None
+    if not caller_session.active_agent:
         raise UnidentifiableCallerError(caller_session_id=caller_session_id)
     return caller_session
 

@@ -98,6 +98,7 @@ from teleclaude.core.models import (
     MessageMetadata,
     SessionEntryPoint,
     SessionLaunchIntent,
+    SessionLaunchKind,
     parse_peer_session_snapshots,
 )
 from teleclaude.core.models._adapter import TerminalOriginMetadata
@@ -294,6 +295,8 @@ async def _prepare_create_session(
         validated_request_agent,
         effective_thinking_mode,
     )
+    if launch_intent is not None and launch_intent.kind is SessionLaunchKind.AGENT_THEN_MESSAGE and identity.session_id:
+        launch_intent.caller_header = (await _resolve_caller_event_identity(identity.session_id)).header
     metadata.launch_intent = launch_intent
     return metadata, initiator_session_id, initial_input, launch_intent, direct_caller_session
 
@@ -514,10 +517,7 @@ async def _create_session_response(
                 target_session_id=session_id,
                 caller_session=direct_caller_session,
             )
-            caller_resolution = await _resolve_caller_event_author(identity.session_id)
-            if caller_resolution is None:
-                raise UnidentifiableCallerError(caller_session_id=identity.session_id)
-            caller_author, caller_job_role = caller_resolution
+            caller_author, caller_job_role = await _resolve_caller_event_author(identity.session_id)
             occurred_at = datetime.now(UTC)
             delivered_to = await _deliver_direct_message(
                 client=_STATE.client,
@@ -672,27 +672,19 @@ async def end_session(
         raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e
 
 
-async def _resolve_caller_event_identity(
-    caller_session_id: str | None,
-) -> ResolvedSessionEventIdentity | None:
-    if not caller_session_id:
-        return None
-    ownership = await resolve_session_ownership(caller_session_id, db=db, cache=_STATE.cache)
-    if ownership is None:
-        raise UnidentifiableCallerError(caller_session_id=caller_session_id)
-    if isinstance(ownership, RemoteOwnership):
-        role = ownership.snapshot.system_role
-        agent = ownership.snapshot.active_agent
-        thinking_mode = ownership.snapshot.thinking_mode
-        job_role = ownership.snapshot.job
-        computer = ownership.computer
-    else:
-        caller = ownership.session
-        role = caller.system_role
-        agent = caller.active_agent
-        thinking_mode = caller.thinking_mode
-        job_role = caller.job
-        computer = caller.computer_name
+async def _resolve_caller_event_identity(caller_session_id: str) -> ResolvedSessionEventIdentity:
+    """Compose the identity of the carried caller session from its record on this computer.
+
+    The caller runs on the computer whose request surface it called, and its
+    carried session is taken as given (caller verification).
+    """
+    caller = await db.get_session(caller_session_id)
+    assert caller is not None
+    role = caller.system_role
+    agent = caller.active_agent
+    thinking_mode = caller.thinking_mode
+    job_role = caller.job
+    computer = caller.computer_name
     role_label = _MACHINE_ROLE_LABELS.get((role or "").strip())
     author = resolve_session_event_author(
         session_id=caller_session_id,
@@ -719,22 +711,19 @@ async def _resolve_caller_event_identity(
     return ResolvedSessionEventIdentity(author=author, job_role=job_role, header=header)
 
 
-async def _resolve_caller_event_author(caller_session_id: str | None) -> tuple[MessageAuthor, str | None] | None:
+async def _resolve_caller_event_author(caller_session_id: str) -> tuple[MessageAuthor, str | None]:
     identity = await _resolve_caller_event_identity(caller_session_id)
-    return (identity.author, identity.job_role) if identity is not None else None
+    return identity.author, identity.job_role
 
 
-async def _wrap_message_with_origin(
+def _wrap_message_with_origin(
     message_text: str,
-    caller_session_id: str | None,
-    event_identity: ResolvedSessionEventIdentity | None = None,
+    event_identity: ResolvedSessionEventIdentity | None,
     occurrence_key: str | None = None,
 ) -> tuple[str, int, int]:
-    identity = event_identity or await _resolve_caller_event_identity(caller_session_id)
-    header = identity.header if identity is not None else None
-    if not header:
+    if event_identity is None:
         return message_text, 0, 0
-    return format_identity_conversation(header=header, body=message_text, occurrence_key=occurrence_key)
+    return format_identity_conversation(header=event_identity.header, body=message_text, occurrence_key=occurrence_key)
 
 
 async def _process_api_message(
@@ -820,10 +809,7 @@ async def _handle_direct_message_request(
         return link_result
 
     link_id, member_count = link_result
-    caller_resolution = await _resolve_caller_event_author(identity.session_id)
-    if caller_resolution is None:
-        raise UnidentifiableCallerError(caller_session_id=identity.session_id)
-    caller_author, caller_job_role = caller_resolution
+    caller_author, caller_job_role = await _resolve_caller_event_author(identity.session_id)
     occurred_at = datetime.now(UTC)
     message_text = _format_direct_conversation_intro(
         author=caller_author,
@@ -917,25 +903,23 @@ async def send_message_endpoint(
                     "One-shot listener registration failed: caller=%s target=%s", identity.session_id, session_id
                 )
 
-        event_identity = await _resolve_caller_event_identity(identity.session_id)
-        caller_resolution = (event_identity.author, event_identity.job_role) if event_identity is not None else None
-        if caller_resolution is not None:
-            caller_author, caller_job_role = caller_resolution
+        event_identity = await _resolve_caller_event_identity(identity.session_id) if identity.session_id else None
+        if event_identity is not None:
+            caller_author = event_identity.author
             metadata.caller_session_id = identity.session_id
             metadata.caller_author_kind = caller_author.kind.value
             metadata.caller_author_display = caller_author.display
             metadata.caller_agent_runtime = caller_author.agent_runtime
             metadata.caller_thinking_mode = caller_author.thinking_mode
             metadata.caller_machine_role = caller_author.machine_role
-            metadata.caller_job_role = caller_job_role
-        occurrence_key = uuid4().hex if caller_resolution is not None else None
-        message_text, caller_prefix_len, caller_suffix_len = await _wrap_message_with_origin(
+            metadata.caller_job_role = event_identity.job_role
+        occurrence_key = uuid4().hex if event_identity is not None else None
+        message_text, caller_prefix_len, caller_suffix_len = _wrap_message_with_origin(
             request.message,
-            identity.session_id,
             event_identity,
             occurrence_key,
         )
-        if caller_resolution is not None:
+        if event_identity is not None:
             metadata.caller_origin_prefix_len = caller_prefix_len
             metadata.caller_origin_suffix_len = caller_suffix_len
         await _process_api_message(session_id, message_text, metadata, identity, occurrence_key, computer=computer)

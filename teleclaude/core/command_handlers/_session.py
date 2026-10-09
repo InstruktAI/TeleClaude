@@ -35,6 +35,7 @@ from teleclaude.core.agent_dispatch import (
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_dispatch import forward_command_to_peer
+from teleclaude.core.conversation_messages import format_identity_conversation
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
@@ -211,6 +212,8 @@ async def _resolve_launch_intent(
             if intent.message != raw_startup_message
             else AgentDispatchReason.STARTUP_UNCHANGED_FOR_AGENT
         )
+        if intent.caller_header and intent.message == raw_startup_message:
+            intent.message, _, _ = format_identity_conversation(header=intent.caller_header, body=intent.message)
     else:
         startup_reason = AgentDispatchReason.STARTUP_UNCHANGED_FOR_AGENT
     emit_agent_dispatch_decision(

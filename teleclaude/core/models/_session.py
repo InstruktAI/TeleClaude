@@ -115,6 +115,9 @@ class SessionLaunchIntent:
     candidate_order: tuple[str, ...] | None = None
     decision_basis_digest: str | None = None
     accepted_at_origin: bool = False
+    # The calling session's identity header, composed on the computer that
+    # received the call and applied to a non-command startup message.
+    caller_header: str | None = None
     # Transient launch state, resolved before the session row is created and
     # consumed during bootstrap. It is deliberately excluded from the wire
     # representation: a remote target resolves its own model availability.
@@ -138,6 +141,7 @@ class SessionLaunchIntent:
             "candidate_order": list(self.candidate_order) if self.candidate_order is not None else None,
             "decision_basis_digest": self.decision_basis_digest,
             "accepted_at_origin": self.accepted_at_origin,
+            "caller_header": self.caller_header,
             "command_input_source_text": self.command_input_source_text,
         }
 
@@ -167,6 +171,7 @@ class SessionLaunchIntent:
             ),
             decision_basis_digest=cast(str | None, data.get("decision_basis_digest")),
             accepted_at_origin=bool(data.get("accepted_at_origin", False)),
+            caller_header=cast(str | None, data.get("caller_header")),
             command_input_source_text=cast(str | None, data.get("command_input_source_text")),
         )
 
