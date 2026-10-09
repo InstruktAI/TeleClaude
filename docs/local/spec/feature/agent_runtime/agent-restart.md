@@ -151,7 +151,7 @@ And revival of a closed session is a side effect of restart, not a separate code
 Given the target session row is marked closed
 When the restart runs
 Then it clears the closed marker and re-reads the row before continuing
-And the session reopens directly in the lifecycle status its record supports, written once with no intermediate `headless` or `initializing`: `active` when its runtime start was observed, and `initializing` only for a session whose runtime start was never observed and is still pending
+And the session reopens directly as `active`, written once with no intermediate `headless` or `initializing`
 And revival of a closed session is a side effect of restart, not a separate code path
 ```
 

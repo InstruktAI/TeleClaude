@@ -209,13 +209,12 @@ And the response payload reports a successful create with session id, host-pane 
 #### UC-SR10: A revived agent keeps its status until it acts
 
 ```gherkin
-Given a session whose agent status is <status> with its reason, which closing the session left as it was
+Given a session whose agent status is <status> with its reason and the moment it was entered, which closing the session left as they were
 When the session is revived
-Then its agent status is still <status>, with the same reason, as after a restart
-And revival delivers no input to the agent and starts no turn
-And the session is not marked `stalled` with reason `no_start`, however long the revived agent stays quiet
-And this holds for a session whose status is `unknown` and for a freshly-minted revival row, which has no status before revival: each stays `unknown` until its first normalized agent event
-And otherwise the status moves as for any session: on a normalized agent event, such as the one the first input delivered to the revived agent produces, and, for a kept `active`, by the in-turn silence rule (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle` UC-SL29)
+Then its agent status, reason and entered moment are unchanged, as after a restart
+And revival delivers no input to the agent, starts no turn and starts no `no_start` window
+And a freshly-minted revival row, which has no status before revival, stays `unknown` with no entered moment until its first normalized agent event and is never marked `stalled` with reason `no_start`
+And otherwise the status moves as for a session that was never closed: on a normalized agent event, such as the one the first input delivered to the revived agent produces, and by the liveness rules in `local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`: UC-SL43 for an `unknown` kept from an earlier start that never reported, and UC-SL29 for a kept `active`
 ```
 
 <!-- /planned:revived-agent-keeps-its-status -->
