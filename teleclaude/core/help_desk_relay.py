@@ -6,8 +6,6 @@ conversation with the platform, and falls back to the platform's admins.
 While the relay is active the visitor's input goes to those admins instead of
 the agent; an admin answers by replying to any relay message they received,
 and a reply that tags the agent hands the exchange back to the same session.
-A platform desk's escalation also opens a thread in the shared escalation
-forum, where any post answers.
 
 Adapters only extract an admin's reply (`AdminReply`); the conversation seam
 offers it here before routing, and the session's own message pipeline offers
@@ -64,7 +62,6 @@ from teleclaude.core.person_messaging import (
     resolve_person_channel,
     send_person_message,
 )
-from teleclaude.core.protocols import AdminReflectionAdapter
 from teleclaude.core.reconciliation import HELP_DESK_RELAY_FEATURE_ID
 from teleclaude.core.relay_context import compile_relay_context
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
@@ -89,9 +86,6 @@ ESCALATION_HANDED_BACK_DURING_SETUP = (
 RELAY_ANSWER_AFTER_HAND_BACK = (
     "The conversation was handed back to the agent before your answer arrived; it was not delivered."
 )
-ESCALATION_THREAD_MISSING = (
-    "The shared escalation thread could not be opened; the platform's admins were notified privately"
-)
 OWNER_QUERY_REFUSED = "relay reply ownership is answered only to a peer daemon"
 
 RELAY_REPLY_OWNER_COMMAND = "relay_reply_owner"
@@ -105,11 +99,8 @@ _HASHED_IDENTITY_LENGTH = 16
 _RELAY_OCCURRENCE_TEMPLATE = "relay:{session_id}:{nonce}"
 _ANSWERED_KEY_TEMPLATE = "reply:{channel}:{target}:{message_id}"
 _NO_TEXT = ""
-_RELAY_SYSTEM_LABEL = "TeleClaude"
-_NO_ADMIN_ADAPTER = "no shared escalation forum on this computer"
 
-_PLATFORM_DESK_LABEL = "the platform help desk"
-_TENANT_DESK_LABEL_TEMPLATE = "the {kind}/{slug} help desk"
+_DESK_LABEL_TEMPLATE = "the {kind}/{slug} help desk"
 _UNKNOWN_ORIGIN = "unknown channel"
 _UNKNOWN_IDENTITY = "unknown"
 _VISITOR_LABEL = "Visitor"
@@ -131,7 +122,6 @@ _ESCALATED_EVENT = "session.escalation_started"
 _ESCALATION_ENDED_EVENT = "session.escalation_ended"
 _RECIPIENT_FAILED_EVENT = "help_desk_escalation_recipient_failed"
 _FALLBACK_EVENT = "help_desk_escalation_platform_fallback"
-_THREAD_FAILED_EVENT = "help_desk_escalation_thread_failed"
 _ESCALATED_LOG_EVENT = "help_desk_escalated"
 _FORWARD_FAILED_EVENT = "help_desk_relay_forward_failed"
 _ANSWERED_EVENT = "help_desk_relay_answered"
@@ -149,12 +139,11 @@ _PEER_ERRORS = (TimeoutError, OSError, RedisError, RuntimeError, RemoteDispatchE
 
 
 class EscalationOutcome(TypedDict):
-    """An accepted escalation: how many admins were notified, and the shared thread if one opened."""
+    """An accepted escalation: how many admins were notified."""
 
     status: str
     notified: int
-    thread_id: str | None
-    # Set when the escalation was accepted without an outcome its desk owes, such as the shared thread.
+    # Set when the escalation was accepted without an outcome its desk owes.
     warning: str | None
 
 
@@ -254,7 +243,6 @@ class RelayEnvironment:
     resolve_channel: Callable[[str], ResolvedPersonChannel]
     owning_admins: Callable[[EndpointStamp], list[str]]
     platform_admins: Callable[[], list[str]]
-    admin_adapter: Callable[[], AdminReflectionAdapter | None]
     deliver_to_visitor: Callable[[Session, str], Awaitable[None]]
     observe_fleet: Callable[[], Awaitable[FleetView]]
     ask_peer: AskPeer
@@ -275,8 +263,8 @@ def owning_admins(stamp: EndpointStamp, roots: DeskRoots = LIVE_ROOTS) -> list[s
     """The admins of the home that owns a desk; none when the platform's admins own it.
 
     A company desk's are the company roster's admins; a project desk's are its
-    owning company's admins, else its owning person. The platform desk and an
-    ownerless project have no owning admins of their own.
+    owning company's admins, else its owning person. An ownerless project has
+    no owning admins of its own.
     """
     if stamp.desk_kind is HelpDeskKind.COMPANY and stamp.slug:
         return company_admin_slugs(stamp.slug, roots.companies_root)
@@ -295,13 +283,6 @@ def owning_admins(stamp: EndpointStamp, roots: DeskRoots = LIVE_ROOTS) -> list[s
 def platform_admin_slugs() -> list[str]:
     """The platform's admins, in roster order."""
     return [slug for slug, _person_config in platform_admin_people()]
-
-
-def _local_admin_adapter() -> AdminReflectionAdapter | None:
-    for adapter in get_command_service().client.adapters.values():
-        if isinstance(adapter, AdminReflectionAdapter):
-            return adapter
-    return None
 
 
 async def _send_to_visitor(session: Session, text: str) -> None:
@@ -347,7 +328,6 @@ def default_relay_environment() -> RelayEnvironment:
             resolve_channel=resolve_person_channel,
             owning_admins=owning_admins,
             platform_admins=platform_admin_slugs,
-            admin_adapter=_local_admin_adapter,
             deliver_to_visitor=_send_to_visitor,
             observe_fleet=_observe_live_fleet,
             ask_peer=_ask_peer,
@@ -362,9 +342,8 @@ def default_relay_environment() -> RelayEnvironment:
 
 
 def _desk_label(stamp: EndpointStamp) -> str:
-    if stamp.is_platform_desk or stamp.desk_kind is None:
-        return _PLATFORM_DESK_LABEL
-    return _TENANT_DESK_LABEL_TEMPLATE.format(kind=stamp.desk_kind.value, slug=stamp.slug or _NO_TEXT)
+    kind = stamp.desk_kind.value if stamp.desk_kind is not None else _NO_TEXT
+    return _DESK_LABEL_TEMPLATE.format(kind=kind, slug=stamp.slug or _NO_TEXT)
 
 
 def _visitor_origin(session: Session) -> str:
@@ -433,47 +412,21 @@ async def _notify(
     return reached
 
 
-async def _open_thread(session: Session, request: EscalationRequest, env: RelayEnvironment) -> str | None:
-    adapter = env.admin_adapter()
-    if adapter is None:
-        logger.warning(_THREAD_FAILED_EVENT, session_id=session.session_id, error=_NO_ADMIN_ADAPTER)
-        return None
-    try:
-        thread_id = await adapter.create_escalation_thread(
-            customer_name=request.customer_name,
-            reason=request.reason,
-            context_summary=request.summary,
-            session_id=session.session_id,
-        )
-    except AdapterError as exc:
-        logger.warning(_THREAD_FAILED_EVENT, session_id=session.session_id, error=str(exc))
-        return None
-    return str(thread_id)
-
-
 def _private_targets_allowed(fleet: FleetView) -> bool:
     """Whether every live computer intercepts relay replies, so admins may be addressed privately."""
     return fleet.capability_map().safe_to_require(HELP_DESK_RELAY_FEATURE_ID)
 
 
 async def _reach_admins(
-    session: Session, stamp: EndpointStamp, request: EscalationRequest, private: bool, env: RelayEnvironment
-) -> tuple[int, str | None]:
-    """Notify the owning admins (or the platform's), then open a platform desk's thread; reached count and thread."""
-    reached = 0
-    if private:
-        owners = env.owning_admins(stamp)
-        reached = await _notify(owners or env.platform_admins(), session, stamp, request, env)
-        if reached == 0 and owners:
-            logger.info(_FALLBACK_EVENT, session_id=session.session_id, desk=_desk_label(stamp))
-            reached = await _notify(env.platform_admins(), session, stamp, request, env)
-    thread_id = await _open_thread(session, request, env) if stamp.is_platform_desk else None
-    if thread_id is not None:
-        async with env.lock_for(session.session_id):
-            current = await db.get_session(session.session_id)
-            if current is not None and current.relay_status == RelayStatus.ACTIVE:
-                await db.update_session(session.session_id, relay_channel_id=thread_id)
-    return reached, thread_id
+    session: Session, stamp: EndpointStamp, request: EscalationRequest, env: RelayEnvironment
+) -> int:
+    """Notify the owning admins, or the platform's when none own the desk or none could be reached; how many were."""
+    owners = env.owning_admins(stamp)
+    reached = await _notify(owners or env.platform_admins(), session, stamp, request, env)
+    if reached == 0 and owners:
+        logger.info(_FALLBACK_EVENT, session_id=session.session_id, desk=_desk_label(stamp))
+        reached = await _notify(env.platform_admins(), session, stamp, request, env)
+    return reached
 
 
 async def _open_relay(session_id: str, env: RelayEnvironment) -> None:
@@ -523,8 +476,7 @@ async def escalate(
     to any published escalation is recognised at once. Raises
     ``EscalationRefused`` outside a help desk, for an admin, for a session
     already relaying or not active, and ``EscalationUndelivered`` when nobody
-    could be notified; neither leaves relay state behind. A platform desk
-    escalation accepted without its shared thread says so in its outcome.
+    could be notified; neither leaves relay state behind.
     """
     environment = env if env is not None else default_relay_environment()
     stamp = EndpointStamp.from_session(session)
@@ -537,14 +489,13 @@ async def escalate(
     if session.lifecycle_status != SessionLifecycleStatus.ACTIVE.value:
         raise EscalationRefused(ESCALATION_SESSION_NOT_ACTIVE)
 
-    private = _private_targets_allowed(await environment.observe_fleet())
-    if not private and not stamp.is_platform_desk:
+    if not _private_targets_allowed(await environment.observe_fleet()):
         raise EscalationRefused(ESCALATION_NOT_AVAILABLE)
 
     await _open_relay(session.session_id, environment)
     try:
-        reached, thread_id = await _reach_admins(session, stamp, request, private, environment)
-        if reached == 0 and thread_id is None:
+        reached = await _reach_admins(session, stamp, request, environment)
+        if reached == 0:
             raise EscalationUndelivered(ESCALATION_UNDELIVERED)
     except BaseException:
         logger.info(_ESCALATION_ROLLED_BACK_EVENT, session_id=session.session_id)
@@ -559,13 +510,9 @@ async def escalate(
         desk=_desk_label(stamp),
         notified=reached,
         answerable=answerable,
-        thread=thread_id is not None,
     )
-    thread_missing = private and stamp.is_platform_desk and thread_id is None
     warning = ESCALATION_HANDED_BACK_DURING_SETUP if handed_back else None
-    if warning is None and thread_missing:
-        warning = ESCALATION_THREAD_MISSING
-    return EscalationOutcome(status=_ACCEPTED_STATUS, notified=reached, thread_id=thread_id, warning=warning)
+    return EscalationOutcome(status=_ACCEPTED_STATUS, notified=reached, warning=warning)
 
 
 # --------------------------------------------------------------------------
@@ -583,10 +530,10 @@ def is_visitor_input(session: Session, actor_id: str | None, caller_session_id: 
 async def _forward(
     session: Session, label: str, text: str, env: RelayEnvironment
 ) -> tuple[tuple[RelayTarget, ...], int]:
-    """Forward one visitor message to every relay target and the thread.
+    """Forward one visitor message to every relay target.
 
     Returns the targets with their new message ids recorded, and how many of
-    the targets and thread received it.
+    them received it.
     """
     forwarded = _FORWARD_TEMPLATE.format(name=label, origin=_visitor_origin(session), text=text)
     updated: list[RelayTarget] = []
@@ -602,13 +549,6 @@ async def _forward(
             continue
         delivered += 1
         updated.append(target.with_message(outcome.message_id) if outcome.message_id else target)
-    adapter = env.admin_adapter() if session.relay_channel_id else None
-    if session.relay_channel_id and adapter is not None:
-        try:
-            await adapter.forward_to_escalation_thread(session.relay_channel_id, label, text)
-            delivered += 1
-        except AdapterError as exc:
-            logger.warning(_FORWARD_FAILED_EVENT, session_id=session.session_id, thread=True, error=str(exc))
     return tuple(updated), delivered
 
 
@@ -748,29 +688,6 @@ async def answer_from_admin(reply: AdminReply, text: str, env: RelayEnvironment 
     return False
 
 
-async def answer_in_thread(
-    session: Session, admin_name: str, text: str, hand_back_requested: bool, env: RelayEnvironment | None = None
-) -> None:
-    """Take a post in a platform desk's escalation thread: hand back, or answer the visitor.
-
-    An answer that did not reach the visitor, or reached the relay only after
-    its hand-back, is reported in the thread, as a private answer is reported
-    to its admin.
-    """
-    environment = env if env is not None else default_relay_environment()
-    if hand_back_requested:
-        await hand_back(session, environment)
-        return
-    outcome = await _answer(session.session_id, admin_name, text, environment)
-    notice = _UNANSWERED_NOTICES.get(outcome)
-    adapter = environment.admin_adapter()
-    if notice is not None and adapter is not None and session.relay_channel_id:
-        try:
-            await adapter.forward_to_escalation_thread(session.relay_channel_id, _RELAY_SYSTEM_LABEL, notice)
-        except AdapterError as exc:
-            logger.warning(_UNDELIVERED_NOTICE_FAILED_EVENT, session_id=session.session_id, error=str(exc))
-
-
 async def hand_back(session: Session, env: RelayEnvironment | None = None) -> None:
     """Return the exchange since the relay started to the same session, and end the relay."""
     environment = env if env is not None else default_relay_environment()
@@ -871,7 +788,6 @@ __all__ = [
     "RelayOwnerAnswer",
     "RelayReplyDisposition",
     "answer_from_admin",
-    "answer_in_thread",
     "answer_owner_query",
     "claim_admin_reply",
     "clear_relay",

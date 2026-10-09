@@ -19,8 +19,6 @@ class CompanyRole(StrEnum):
 
     ADMIN = "admin"
     MEMBER = "member"
-    CONTRIBUTOR = "contributor"
-    NEWCOMER = "newcomer"
 
 
 class ProjectOwnerKind(StrEnum):
@@ -66,7 +64,7 @@ class PersonEntry(ClosedModel):
     email: str = Field(min_length=1)
     slug: str | None = None
     username: str | None = None
-    role: Literal["admin", "member", "contributor", "newcomer"] | None = None
+    role: Literal["admin", "member"] | None = None
     preferences: str | None = None
     expertise: dict[str, ProficiencyLevel] | None = None
 

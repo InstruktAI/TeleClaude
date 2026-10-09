@@ -36,7 +36,7 @@ from teleclaude.core.inbound.conversation import ConversationOutcome, handle_con
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import Session, SessionEntryPoint, TelegramAdapterMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.types.commands import InternalCommand, ProcessMessageCommand
+from teleclaude.types.commands import ProcessMessageCommand
 
 from .input_handlers import ConversationInputDecision, ConversationInputReason, ConversationModality
 
@@ -113,11 +113,6 @@ def _creation(user_id: int) -> TurnCreation:
             _CHAT_TYPE_FIELD: _PRIVATE_CHAT_TYPE,
         },
     )
-
-
-def _no_remote_command(_session_id: str) -> InternalCommand | None:
-    """A Telegram conversation's sessions always run on this computer."""
-    return None
 
 
 async def _no_content(_session: Session) -> None:
@@ -198,7 +193,6 @@ class PrivateHandlersMixin:
             deliver=deliver,
             reply=_reply,
             bind_invite=_bind,
-            remote_command=_no_remote_command,
             modality=modality,
             relay_reply=relay_reply,
         )

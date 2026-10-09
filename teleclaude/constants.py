@@ -133,10 +133,8 @@ class DriverLaunchClass(StrEnum):
 # Human identity roles
 HUMAN_ROLE_ADMIN = "admin"
 HUMAN_ROLE_MEMBER = "member"
-HUMAN_ROLE_CONTRIBUTOR = "contributor"
-HUMAN_ROLE_NEWCOMER = "newcomer"
 HUMAN_ROLE_CUSTOMER = "customer"
-HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER)
+HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CUSTOMER)
 
 # The CLI-facing error surface recognizes this login-required detail and names
 # the fix without string-matching arbitrary server text.
@@ -755,7 +753,6 @@ CHECKPOINT_HOME_PUBLICATION_BINDING = CheckpointBinding(
             "people/*/docs/**",
             "companies/*/docs/**",
             "AGENTS.master.md",
-            "help-desk/AGENTS.master.md",
             "people/*/AGENTS.master.md",
             "companies/*/AGENTS.master.md",
             "companies/*/help-desk/AGENTS.master.md",

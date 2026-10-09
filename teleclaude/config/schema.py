@@ -27,7 +27,7 @@ from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import RESERVED_HOME_IDENTITY_PREFIXES
 
-CURRENT_SCHEMA_VERSION = 16
+CURRENT_SCHEMA_VERSION = 18
 _PROBE_REQUIRES_DEFER_ERROR = "owed_probe belongs only to an action whose on_demand is defer"
 _BLANK_INBOUND_SECRET_ERROR = "An inbound source requires a non-blank secret"
 _BLANK_INBOUND_VERIFY_TOKEN_ERROR = "The WhatsApp inbound source requires a non-blank verify_token"
@@ -796,7 +796,6 @@ class GlobalConfig(TierDocument):
     subscriptions: list[SubscriptionEntry] = []
     interests: list[str] = []
     checkout_root: str | None = Field(default=None, json_schema_extra={"tier": Tier.INTERNAL})
-    help_desk: HelpDeskConfig = HelpDeskConfig()
     hooks: GlobalHooksConfig = GlobalHooksConfig()
 
     @field_validator("jobs")

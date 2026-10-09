@@ -36,10 +36,8 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_dispatch import forward_command_to_peer
 from teleclaude.core.db import db
-from teleclaude.core.endpoints import hosted_help_desks
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
-from teleclaude.core.inbound.cutover import routing_announced
 from teleclaude.core.inbound.fleet import local_conversation_adapters
 from teleclaude.core.integration.session_address import SessionAddressResolved, resolve_session_conversation_url
 from teleclaude.core.models import (
@@ -647,9 +645,7 @@ async def get_computer_info() -> ComputerInfo:
         channel=config.deployment.channel,
         capability_set=sorted(DEFAULT_FEATURE_ID_REGISTRY.carried_set()),
         is_master=config.computer.is_master,
-        help_desks=[desk.render() for desk in await asyncio.to_thread(hosted_help_desks)],
         conversation_adapters=sorted(local_conversation_adapters()),
-        conversation_routing=await routing_announced(db),
     )
 
     logger.debug("get_computer_info() returning info: %s", info)

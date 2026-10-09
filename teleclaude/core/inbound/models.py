@@ -16,15 +16,17 @@ from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from teleclaude.core.command_input import CommandInputMode
-from teleclaude.core.models import Session, SessionEntryPoint
+from teleclaude.core.models import ENDPOINT_SECTION, EndpointStampField, Session, SessionEntryPoint
 from teleclaude.core.origins import InputOrigin
 
 if TYPE_CHECKING:
     from teleclaude.core.endpoints import EntryIdentifier
     from teleclaude.core.help_desk_relay import AdminReply
     from teleclaude.core.identity import IdentityContext
-    from teleclaude.types.commands import InternalCommand
 
+# The origin-section fields that key a Discord direct-message and a WhatsApp conversation.
+DISCORD_DM_KEY_FIELD = "channel_id"
+WHATSAPP_KEY_FIELD = "phone_number"
 _CONVERSATION_KEY_TEMPLATE = "{origin}:{key_field}:{key}"
 _HASHED_KEY_LENGTH = 16
 
@@ -96,6 +98,11 @@ class ConversationRef:
         return self.refine is None or self.refine(session)
 
 
+def is_superseded(session: Session) -> bool:
+    """Whether a later entry of the session's conversation took the conversation elsewhere."""
+    return session.get_origin_section(ENDPOINT_SECTION).get(EndpointStampField.SUPERSEDED_AT) is not None
+
+
 class EntryGesture(StrEnum):
     """What a turn carries toward an endpoint."""
 
@@ -139,9 +146,7 @@ class ConversationTurn:
     The adapter carries the identifier and supplies its own delivery, reply
     and invitation binding; it decides nothing. ``relay_reply`` carries what a
     reply to one of the platform's messages answers. ``deliver`` runs the adapter's
-    existing local dispatch of this message into a session on this computer;
-    ``remote_command`` builds the same input as a command for a session that
-    runs on another computer.
+    dispatch of this message into a session on this computer.
     """
 
     conversation: ConversationRef
@@ -152,16 +157,15 @@ class ConversationTurn:
     deliver: Callable[[Session], Awaitable[None]]
     reply: Callable[[str], Awaitable[None]]
     bind_invite: Callable[[str], Awaitable[BindOutcome]]
-    remote_command: Callable[[str], InternalCommand | None]
     identifier: EntryIdentifier | None = None
     modality: TurnModality = TurnModality.TEXT
     # Set when the message replies to one of the platform's own messages: it may answer an escalation relay.
     relay_reply: AdminReply | None = None
-    # How the adapter handles the message on its own while this computer has not reached the master-routing cutover.
-    before_cutover: Callable[[], Awaitable[None]] | None = None
 
 
 __all__ = [
+    "DISCORD_DM_KEY_FIELD",
+    "WHATSAPP_KEY_FIELD",
     "BindOutcome",
     "ConversationRef",
     "ConversationTurn",
@@ -170,4 +174,5 @@ __all__ = [
     "InboundSessionPolicy",
     "TurnCreation",
     "TurnModality",
+    "is_superseded",
 ]

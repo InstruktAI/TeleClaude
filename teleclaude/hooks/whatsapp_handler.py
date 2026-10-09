@@ -18,7 +18,7 @@ from teleclaude.config.machine import config
 from teleclaude.config.schema import MessagingChannel, WhatsAppCreds
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.endpoints import parse_entry_identifier, platform_help_desk_folder
+from teleclaude.core.endpoints import parse_entry_identifier
 from teleclaude.core.help_desk_relay import AdminReply
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.inbound import (
@@ -26,41 +26,24 @@ from teleclaude.core.inbound import (
     ConversationRef,
     ConversationTurn,
     EntryGesture,
-    InboundSessionPolicy,
     TurnCreation,
     TurnModality,
-    resolve_or_create_bound_session,
 )
-from teleclaude.core.inbound.adoption import WHATSAPP_KEY_FIELD
 from teleclaude.core.inbound.conversation import handle_conversation_turn
+from teleclaude.core.inbound.models import WHATSAPP_KEY_FIELD
 from teleclaude.core.inbound_media import download_whatsapp_media, is_voice_event
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
-from teleclaude.core.models import (
-    AgentDispatchMode,
-    MessageMetadata,
-    Session,
-    SessionEntryPoint,
-    SessionLaunchIntent,
-    SessionLaunchKind,
-)
+from teleclaude.core.models import MessageMetadata, Session, SessionEntryPoint
 from teleclaude.core.origins import InputOrigin
 from teleclaude.hooks.normalizers.whatsapp import CONTEXT_MESSAGE_ID_PROPERTY
 from teleclaude.hooks.webhook_models import Contract, HookEvent
 from teleclaude.services.whatsapp import send_whatsapp_message
-from teleclaude.types.commands import (
-    CreateSessionCommand,
-    HandleFileCommand,
-    HandleVoiceCommand,
-    InternalCommand,
-    ProcessMessageCommand,
-)
+from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 from teleclaude.types.media import MediaProvider, MediaRef
 
 logger = get_logger(__name__)
 
 _TEXT_EVENT_TYPE = "message.text"
-# A forwarded media command carries a reference, never a local path.
-_NO_LOCAL_PATH = ""
 _PHONE_NUMBER_PROPERTY = "phone_number"
 _MESSAGE_ID_PROPERTY = "message_id"
 _TEXT_PROPERTY = "text"
@@ -79,9 +62,6 @@ _ACTOR_AVATAR_URL_PAYLOAD_KEY = "actor_avatar_url"
 _MISSING_PHONE_EVENT = "whatsapp_event_missing_phone_number"
 _ADAPTER_DISABLED_EVENT = "whatsapp_event_adapter_disabled"
 _REPLY_FAILED_EVENT = "whatsapp_conversation_reply_failed"
-_BEFORE_CUTOVER_CREATE_REFUSED_EVENT = "whatsapp_before_cutover_create_refused"
-_SESSION_ID_FIELD = "session_id"
-_THINKING_MODE = "slow"
 _REPLY_PURPOSE = "reply"
 _INBOUND_PURPOSE = "inbound"
 _NO_TEXT = ""
@@ -215,31 +195,6 @@ def _media_ref(event: HookEvent, phone_number: str) -> MediaRef | None:
     )
 
 
-def _media_command(
-    session_id: str, phone_number: str, message_id: str, media_ref: MediaRef, timestamp: str
-) -> InternalCommand:
-    """The command that hands referenced media to a session; its host fetches the media itself."""
-    if is_voice_event(media_ref.event_type):
-        return HandleVoiceCommand(
-            session_id=session_id,
-            file_path=_NO_LOCAL_PATH,
-            origin=InputOrigin.WHATSAPP.value,
-            message_id=message_id or None,
-            actor_id=_ACTOR_ID_TEMPLATE.format(phone_number=phone_number),
-            actor_name=phone_number,
-            origin_metadata=_received_metadata(phone_number, message_id, timestamp),
-            media_ref=media_ref,
-        )
-    return HandleFileCommand(
-        session_id=session_id,
-        file_path=_NO_TEXT,
-        filename=_NO_TEXT,
-        media_ref=media_ref,
-        origin=InputOrigin.WHATSAPP.value,
-        actor_id=_ACTOR_ID_TEMPLATE.format(phone_number=phone_number),
-    )
-
-
 async def _deliver_text(session: Session, phone_number: str, message_id: str, text: str, timestamp: str) -> None:
     cmd = _text_command(session.session_id, phone_number, message_id, text, timestamp)
     await _dispatch_whatsapp_command(
@@ -291,44 +246,6 @@ async def _deliver_media(session: Session, phone_number: str, message_id: str, m
         payload=upload.to_payload(),
         handler=lambda: get_command_service().handle_file(upload),
     )
-
-
-async def _resolve_or_create_session_before_cutover(phone_number: str) -> Session | None:
-    """Find or create the number's session as every computer does until shared routing is activated."""
-
-    async def _find() -> Session | None:
-        sessions = await db.get_sessions_by_origin_metadata(
-            InputOrigin.WHATSAPP.value, WHATSAPP_KEY_FIELD, phone_number
-        )
-        return sessions[0] if sessions else None
-
-    async def _create() -> Session | None:
-        cmd = CreateSessionCommand(
-            project_path=str(platform_help_desk_folder()),
-            origin=InputOrigin.WHATSAPP.value,
-            origin_metadata={WHATSAPP_KEY_FIELD: phone_number, _PLATFORM_FIELD: InputOrigin.WHATSAPP.value},
-            launch_intent=SessionLaunchIntent(
-                kind=SessionLaunchKind.AGENT,
-                thinking_mode=_THINKING_MODE,
-                dispatch_mode=AgentDispatchMode.AUTOMATIC,
-            ),
-            entry_point=SessionEntryPoint.WHATSAPP,
-        )
-        try:
-            result = await get_command_service().create_session(cmd)
-        except ValueError as exc:
-            logger.warning(_BEFORE_CUTOVER_CREATE_REFUSED_EVENT, error=str(exc))
-            return None
-        session_id = result.get(_SESSION_ID_FIELD)
-        return await db.get_session(str(session_id)) if session_id else None
-
-    async def _reconcile(session: Session) -> Session:
-        return session
-
-    session, _is_new = await resolve_or_create_bound_session(
-        InboundSessionPolicy(find=_find, create=_create, reconcile=_reconcile)
-    )
-    return session
 
 
 def _bind_whatsapp_invite(person_slug: str, phone_number: str) -> BindOutcome:
@@ -400,21 +317,11 @@ async def handle_whatsapp_event(event: HookEvent, contract: Contract) -> None:
         elif text:
             await _deliver_text(session, phone_number, message_id, text, event.timestamp)
 
-    def _remote(session_id: str) -> InternalCommand | None:
-        if media_ref is not None:
-            return _media_command(session_id, phone_number, message_id, media_ref, event.timestamp)
-        return _text_command(session_id, phone_number, message_id, text, event.timestamp) if text else None
-
     async def _bind(person_slug: str) -> BindOutcome:
         return _bind_whatsapp_invite(person_slug, phone_number)
 
     async def _send_reply(reply_text: str) -> None:
         await _reply(phone_number, reply_text)
-
-    async def _before_cutover() -> None:
-        session = await _resolve_or_create_session_before_cutover(phone_number)
-        if session is not None:
-            await _deliver(session)
 
     await handle_conversation_turn(
         ConversationTurn(
@@ -433,9 +340,7 @@ async def handle_whatsapp_event(event: HookEvent, contract: Contract) -> None:
             deliver=_deliver,
             reply=_send_reply,
             bind_invite=_bind,
-            remote_command=_remote,
             modality=TurnModality.TEXT if is_text else TurnModality.MEDIA,
             relay_reply=_relay_reply(event, phone_number, message_id) if is_text else None,
-            before_cutover=_before_cutover,
         )
     )

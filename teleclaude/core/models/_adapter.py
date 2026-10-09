@@ -67,12 +67,8 @@ class PeerInfo:
     channel: str | None = None
     capability_set: list[str] = field(default_factory=list)
     is_master: bool | None = None
-    # Desk identifiers the peer announces hosting; empty when it announces none.
-    help_desks: list[str] = field(default_factory=list)
     # Conversation adapters the peer runs; ``None`` when it does not announce them.
     conversation_adapters: list[str] | None = None
-    # Whether the peer routes shared-adapter conversations through the mesh master.
-    conversation_routing: bool = False
 
 
 @dataclass(frozen=True)
@@ -242,7 +238,6 @@ class EndpointKind(StrEnum):
 class HelpDeskKind(StrEnum):
     """The kind of home a help desk belongs to."""
 
-    PLATFORM = "platform"
     COMPANY = "company"
     PROJECT = "project"
 
@@ -278,18 +273,8 @@ class EndpointStamp:
 
     @property
     def is_help_desk(self) -> bool:
-        """Whether this stamp names a help desk of any kind."""
+        """Whether this stamp names a help desk."""
         return self.kind is EndpointKind.HELP_DESK
-
-    @property
-    def is_tenant_desk(self) -> bool:
-        """Whether this stamp names a company or project help desk."""
-        return self.is_help_desk and self.desk_kind in (HelpDeskKind.COMPANY, HelpDeskKind.PROJECT)
-
-    @property
-    def is_platform_desk(self) -> bool:
-        """Whether this stamp names the platform help desk."""
-        return self.is_help_desk and self.desk_kind is HelpDeskKind.PLATFORM
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, object]) -> Self | None:

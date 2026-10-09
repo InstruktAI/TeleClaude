@@ -542,7 +542,7 @@ def is_desk_role(system_role: str | None, human_role: str | None) -> bool:
     """Whether a session's persisted roles place it at a help desk under desk confinement.
 
     A session with no system role whose recorded person role is below member
-    (customer, newcomer, contributor) is placed at the help desk and runs
+    (customer) is placed at the help desk and runs
     confined there.
     """
     return system_role is None and human_role is not None and human_role not in (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER)

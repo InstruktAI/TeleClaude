@@ -779,30 +779,14 @@ ON discord_send_intents(status);
 
 -- The mesh master's durable binding of each conversation on adapters whose
 -- inbound messages reach every computer (Discord direct messages, WhatsApp):
--- the session its next message goes to, on that session's host. Written only on
--- the master. `endpoint` holds the endpoint stamp the session was created at.
+-- the session its next message goes to. Written only on the master, whose
+-- sessions they are. `endpoint` holds the endpoint stamp the session was created at.
 CREATE TABLE IF NOT EXISTS conversation_bindings (
     origin TEXT NOT NULL,
     key_field TEXT NOT NULL,
     conversation_key TEXT NOT NULL,
-    host TEXT NOT NULL,
     session_id TEXT NOT NULL,
     endpoint TEXT NOT NULL,
     entered_at TEXT NOT NULL,
     PRIMARY KEY (origin, key_field, conversation_key)
-);
-
--- The computers whose open conversation sessions seed the bindings once; routing
--- on the shared adapters starts only after every one of them has answered.
-CREATE TABLE IF NOT EXISTS conversation_bindings_adoption (
-    computer TEXT PRIMARY KEY,
-    answered_at TEXT
-);
-
--- Sessions a remote create may have made after its answer was lost: never bound,
--- closed by id once their host is live again.
-CREATE TABLE IF NOT EXISTS conversation_binding_orphans (
-    session_id TEXT PRIMARY KEY,
-    host TEXT NOT NULL,
-    recorded_at TEXT NOT NULL
 );

@@ -18,7 +18,6 @@ from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.config import machine as teleclaude_config
 from teleclaude.core.db import db
-from teleclaude.core.endpoints import platform_help_desk_folder
 from teleclaude.core.identity import session_person_role
 from teleclaude.core.integration.discord_admin_state import session_launcher_key
 from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, DiscordMetadataField, EndpointStamp, Session
@@ -196,14 +195,11 @@ class ChannelOperationsMixin:
     def _resolve_target_forum(self, session: Session) -> int | None:
         """Determine which Discord forum this session's thread belongs in.
 
-        The shared guild reflects the platform help desk only: a company or
-        project desk session belongs in no forum, its project's own included.
+        A help desk session belongs in no forum, its project's own included.
         """
         endpoint = EndpointStamp.from_session(session)
-        if endpoint is not None and endpoint.is_tenant_desk:
+        if endpoint is not None and endpoint.is_help_desk:
             return None
-        if endpoint is not None and endpoint.is_platform_desk:
-            return self._help_desk_channel_id
         # Check project-specific forums
         forum_id = self._match_project_forum(session)
         if forum_id is not None:
@@ -255,13 +251,12 @@ class ChannelOperationsMixin:
             parent_id = channel_id
 
         if parent_id is not None and parent_id == self._help_desk_channel_id:
-            # The shared help-desk forum reflects platform-desk sessions; it is no entry point.
+            # The shared help-desk forum is no entry point.
             return _HELP_DESK_FORUM_TYPE, None
 
         if parent_id is not None and parent_id == self._all_sessions_channel_id:
             entries = get_project_catalog_service().list_entries()
-            project_path = str(entries[0].root) if entries else str(platform_help_desk_folder())
-            return "all_sessions", project_path
+            return "all_sessions", str(entries[0].root) if entries else None
 
         for path, forum_id in self._project_forum_map.items():
             if parent_id == forum_id:

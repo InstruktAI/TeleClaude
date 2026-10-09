@@ -21,6 +21,8 @@ from teleclaude.config.migrations import (
     v014_declare_maintenance_on_demand,
     v015_retire_event_domains,
     v016_declare_notification_interests,
+    v017_retire_global_help_desk,
+    v018_retire_contributor_newcomer,
 )
 
 STEPS: Final = (
@@ -40,4 +42,6 @@ STEPS: Final = (
     v014_declare_maintenance_on_demand,
     v015_retire_event_domains,
     v016_declare_notification_interests,
+    v017_retire_global_help_desk,
+    v018_retire_contributor_newcomer,
 )

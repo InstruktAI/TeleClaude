@@ -14,7 +14,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
-from teleclaude.adapters.discord.dm_before_cutover import sender_role_for_session
 from teleclaude.adapters.discord.session_launcher import (
     LauncherComponentGeneration,
     LauncherEvent,
@@ -45,8 +44,8 @@ from teleclaude.core.inbound import (
     TurnModality,
     resolve_binding_key,
 )
-from teleclaude.core.inbound.adoption import DISCORD_DM_KEY_FIELD
 from teleclaude.core.inbound.conversation import handle_conversation_turn
+from teleclaude.core.inbound.models import DISCORD_DM_KEY_FIELD
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import (
     DiscordMetadataField,
@@ -63,6 +62,7 @@ if TYPE_CHECKING:
 import asyncio
 from datetime import datetime
 
+from teleclaude.caller_identity import PersonCliCaller, RoleResolver, SessionOf
 from teleclaude.cli.config_handlers import get_person_config
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
@@ -70,13 +70,14 @@ from teleclaude.core.dates import ensure_utc
 from teleclaude.core.identity import (
     DiscordAvatarBindingOutcome,
     DiscordAvatarBindingReason,
+    IdentityContext,
     get_identity_resolver,
     observe_discord_avatar_binding,
     session_person_role,
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.invite import bind_discord_credentials
-from teleclaude.types.commands import InternalCommand, ProcessMessageCommand
+from teleclaude.types.commands import ProcessMessageCommand
 
 logger = get_logger(__name__)
 
@@ -95,6 +96,20 @@ _ID_ATTR = "id"
 _NO_TEXT = ""
 
 
+def sender_role_for_session(identity: IdentityContext | None, session: Session) -> str | None:
+    """The role a sender holds for a session's project; an unregistered sender is a customer."""
+    if identity is None:
+        return None
+    if not identity.person_slug:
+        return HUMAN_ROLE_CUSTOMER
+    caller = PersonCliCaller(
+        email=identity.person_email,
+        person_slug=identity.person_slug,
+        human_role=identity.person_role,
+    )
+    return RoleResolver().role_for(caller, SessionOf(session.project_path))
+
+
 class GatewayHandlersMixin:
     """Mixin providing Discord gateway event registration and handlers for DiscordAdapter.
 
@@ -108,7 +123,6 @@ class GatewayHandlersMixin:
     - _project_forum_map: dict[str, int]
     - _help_desk_channel_id: int | None
     - _all_sessions_channel_id: int | None
-    - _escalation_channel_id: int | None
     - _team_channel_map: dict[int, str]
     - _multi_agent: bool
     - _require_async_callable(fn, *, label) -> Callable
@@ -119,7 +133,6 @@ class GatewayHandlersMixin:
     - _handle_launcher_click(interaction, agent_name, launcher_forum_id) (async)
     - _register_session_launcher_view(forum_id, message_id) -> bool
     - _handle_discord_dm(message) (async)
-    - _handle_relay_thread_message(message, text) (async)
     - _is_managed_message(message) -> bool
     - _is_help_desk_thread(message) -> bool
     - _is_bot_message(message) -> bool
@@ -151,8 +164,6 @@ class GatewayHandlersMixin:
         _client: object
         _tree: object | None
         _infrastructure_provisioned: bool
-        _escalation_channel_id: int | None
-
         _ready_event: asyncio.Event
         _voice_room: VoiceRoom | None
 
@@ -181,10 +192,6 @@ class GatewayHandlersMixin:
         async def _resolve_launcher_interaction_source(self, interaction: object) -> LauncherInteractionSource: ...
 
         async def _handle_discord_dm(self, message: object) -> None: ...
-
-        async def _handle_discord_dm_before_cutover(self, message: object) -> None: ...
-
-        async def _handle_relay_thread_message(self, message: object, text: str) -> None: ...
 
         def _is_managed_message(self, message: object) -> bool: ...
 
@@ -481,20 +488,12 @@ class GatewayHandlersMixin:
                 lambda: get_command_service().process_message(cmd),
             )
 
-        def _remote(session_id: str) -> InternalCommand | None:
-            # Its host resolves no role against a project path elsewhere: an unregistered
-            # sender is a customer, and anyone else carries no role, so commands are refused.
-            return _command(session_id, None if sender.person_slug else HUMAN_ROLE_CUSTOMER)
-
         async def _reply(reply_text: str) -> None:
             if channel is not None:
                 await channel.send(reply_text)
 
         async def _bind(person_slug: str) -> BindOutcome:
             return self._bind_discord_invite(message, user_id, person_slug)
-
-        async def _before_cutover() -> None:
-            await self._handle_discord_dm_before_cutover(message)
 
         await handle_conversation_turn(
             ConversationTurn(
@@ -521,10 +520,8 @@ class GatewayHandlersMixin:
                 deliver=_deliver,
                 reply=_reply,
                 bind_invite=_bind,
-                remote_command=_remote,
                 modality=TurnModality.TEXT,
                 relay_reply=self._dm_relay_reply(message, user_id, message_id, actor_name),
-                before_cutover=_before_cutover,
             )
         )
 
@@ -582,15 +579,6 @@ class GatewayHandlersMixin:
         # Handle DMs (no guild)
         if getattr(message, "guild", None) is None:
             await self._handle_discord_dm(message)
-            return
-
-        # Check if this message is in a relay thread (escalation forum)
-        channel = getattr(message, "channel", None)
-        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
-        if parent_id and parent_id == self._escalation_channel_id:
-            text = getattr(message, "content", None)
-            if isinstance(text, str) and text.strip():
-                await self._handle_relay_thread_message(message, text)
             return
 
         # Channel gating: only process messages from managed forums
