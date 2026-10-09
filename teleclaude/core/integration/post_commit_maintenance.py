@@ -425,8 +425,6 @@ def _secret_masker(root: Path) -> Callable[[str], str]:
                 secrets = declared_secret_values(root)
             except ConfigLoadError as error:
                 unknown = describe_load_error(error)
-            except FileNotFoundError as error:
-                unknown = str(error)
         if secrets is None:
             return _OUTPUT_WITHHELD.format(reason=unknown)
         return mask_secret_values(output, secrets)

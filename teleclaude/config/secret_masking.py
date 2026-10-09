@@ -15,6 +15,8 @@ from typing import Final
 from pydantic import BaseModel
 
 from teleclaude.closed_model import field_is_sensitive
+from teleclaude.config._environment import CompanyCredentialsError
+from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.loader import (
     list_company_configs,
     load_company_credentials,
@@ -25,13 +27,22 @@ from teleclaude.config.loader import (
 from teleclaude.config.machine import loaded_machine_config
 
 _MASK: Final = "***"
+_SECRETS_UNKNOWN: Final = "The declared secrets cannot be read: {error}"
 
 
 def declared_secret_values(project_root: Path) -> frozenset[str]:
     """Every secret the configuration a command in ``project_root`` runs under declares.
 
-    Raises ``ConfigLoadError`` when a configuration does not load: its secrets are then unknown.
+    Raises ``ConfigLoadError`` whenever the secrets cannot be known: a configuration that does
+    not load, a missing machine configuration, or company credentials that cannot be read safely.
     """
+    try:
+        return _declared_secret_values(project_root)
+    except (CompanyCredentialsError, FileNotFoundError) as error:
+        raise ConfigLoadError(_SECRETS_UNKNOWN.format(error=error)) from error
+
+
+def _declared_secret_values(project_root: Path) -> frozenset[str]:
     global_config = load_global_config()
     models: list[BaseModel] = [loaded_machine_config(), global_config]
     project = load_declared_project_config(project_root)
