@@ -27,6 +27,9 @@ COREPACK_MIN_VERSION="0.34.5"
 # launches pnpm 11+ while its declared Node engine range still includes the
 # Node 22/24 patch releases that later corepack majors drop.
 COREPACK_INSTALL_VERSION="0.34.7"
+# Prettier the quality runner's root formatting legs execute from PATH. Installed
+# once per machine so a gate run never resolves the package against the registry.
+PRETTIER_INSTALL_VERSION="3.9.9"
 
 # Installer output goes to the log file, so a corepack download confirmation
 # would block on input nobody can see.
@@ -535,6 +538,17 @@ setup_corepack() {
     else
         print_warning "Corepack could not install package-manager shims in its default location; see $LOG_FILE for the error"
     fi
+}
+
+# Install the pinned Prettier the quality runner's root formatting legs call.
+setup_prettier() {
+    print_info "Ensuring prettier@$PRETTIER_INSTALL_VERSION..."
+    if ! npm install -g "prettier@$PRETTIER_INSTALL_VERSION" >> "$LOG_FILE" 2>&1; then
+        print_error "Failed to install prettier"
+        exit 1
+    fi
+    hash -r
+    print_success "prettier ready"
 }
 
 # Pinned together from gogcli's release checksums.txt.
@@ -1179,6 +1193,7 @@ install_deps_only() {
 
     check_node
     setup_corepack
+    setup_prettier
     install_voice_bridge
 
     converge_plumbing
@@ -1621,6 +1636,7 @@ main() {
         install_log_runtime
     fi
     setup_corepack
+    setup_prettier
     install_voice_bridge
     # Agent CLI enablement/install resolves from config and can invoke external
     # installers against the host; CI never needs it (this repository has no
