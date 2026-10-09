@@ -59,14 +59,15 @@ if str(_REPO_ROOT) not in sys.path:
 from jobs.base import Job, JobResult, JobRunContext, run_job_cli
 from teleclaude.caller_identity import PersonCliCaller, SystemCliCaller, caller_from_principal
 from teleclaude.channels import publisher as channels_publisher
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.models import Session
 from teleclaude.core.summarizer import _call_summarizer
-from teleclaude.events.envelope import EventHomeMarker, EventHomeOwnerMarker
+from teleclaude.events.envelope import EventHomeMarker
+from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.identity_reach import resolve_reach
 from teleclaude.memory.store import MemoryStore
 from teleclaude.memory.types import ObservationInput, ObservationType
