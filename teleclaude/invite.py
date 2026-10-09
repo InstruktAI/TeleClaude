@@ -22,6 +22,8 @@ from teleclaude.cli.config_handlers import get_global_config, get_person_config,
 from teleclaude.config import config
 from teleclaude.config.declaration import write_declared_config
 from teleclaude.config.invitations import issue_invite_token
+from teleclaude.config.loader import load_global_config
+from teleclaude.config.notification_interests import new_person_document
 from teleclaude.config.schema import ConfigKind, DiscordCreds
 from teleclaude.core.identity import (
     DiscordAvatarBindingOutcome,
@@ -39,7 +41,6 @@ _TELECLAUDE_DIR = TELECLAUDE_HOME
 _PEOPLE_DIR = PEOPLE_DIR
 _PROJECT_ROOT = Path(__file__).parent.parent  # teleclaude package parent
 _TEMPLATES_DIR = _PROJECT_ROOT / "templates" / "emails"
-_PERSON_SLUG_FIELD = "slug"
 _LINK_BOT_UNRESOLVED_EVENT = "help_desk_link_bot_unresolved"
 _TELEGRAM_ADAPTER = "telegram"
 _DISCORD_ADAPTER = "discord"
@@ -149,6 +150,13 @@ async def render_help_desk_links(identifier: str, *, telegram_allowed: bool) -> 
 # --- Workspace Scaffolding ---
 
 
+def _roster_role(person_slug: str) -> str | None:
+    """The role the people roster declares for a slug; none when the slug is not on the roster."""
+    return next(
+        (entry.role for entry in load_global_config().people if (entry.slug or entry.name) == person_slug), None
+    )
+
+
 def scaffold_personal_workspace(person_slug: str, *, people_root: Path = _PEOPLE_DIR) -> Path:
     """Ensure the person's home exists, is declared, and matches the person templates.
 
@@ -164,9 +172,7 @@ def scaffold_personal_workspace(person_slug: str, *, people_root: Path = _PEOPLE
     workspace_config = person_path / ConfigFileName.OVERLAY
     if not workspace_config.exists():
         write_declared_config(
-            workspace_config,
-            ConfigKind.PERSON,
-            {_PERSON_SLUG_FIELD: person_slug},
+            workspace_config, ConfigKind.PERSON, new_person_document(person_slug, _roster_role(person_slug))
         )
         logger.info("Created teleclaude.yml for %s workspace", person_slug)
 

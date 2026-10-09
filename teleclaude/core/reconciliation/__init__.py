@@ -1,6 +1,7 @@
 """Reconciliation bounded-context helpers."""
 
 from teleclaude.core.reconciliation.capability_map import FleetCapabilityEntry, FleetCapabilityMap
+from teleclaude.core.reconciliation.contraction import ContractionAnswer, contraction_answer_from_live_map
 from teleclaude.core.reconciliation.feature_ids import (
     CONVERSATION_ENTRY_FEATURE_ID,
     DEFAULT_FEATURE_ID_REGISTRY,
@@ -8,6 +9,7 @@ from teleclaude.core.reconciliation.feature_ids import (
     FLEET_CROSS_VERSION_INTEROP_FEATURE_ID,
     HANDOFF_AGENT_FEATURE_ID,
     HELP_DESK_RELAY_FEATURE_ID,
+    INCIDENT_ALERTS_FEATURE_ID,
     INTERACTIVE_COMMAND_INPUT_FEATURE_ID,
     WEBHOOK_INGRESS_FEATURE_ID,
     FeatureID,
@@ -34,8 +36,10 @@ __all__ = [
     "FLEET_CROSS_VERSION_INTEROP_FEATURE_ID",
     "HANDOFF_AGENT_FEATURE_ID",
     "HELP_DESK_RELAY_FEATURE_ID",
+    "INCIDENT_ALERTS_FEATURE_ID",
     "INTERACTIVE_COMMAND_INPUT_FEATURE_ID",
     "WEBHOOK_INGRESS_FEATURE_ID",
+    "ContractionAnswer",
     "FeatureID",
     "FeatureIDRegistry",
     "FeatureMark",
@@ -49,6 +53,7 @@ __all__ = [
     "LauncherIdentityFailureCause",
     "LauncherIdentityIntent",
     "LauncherIdentityResult",
+    "contraction_answer_from_live_map",
     "converge_launcher_identity",
     "decode_capability_set",
 ]

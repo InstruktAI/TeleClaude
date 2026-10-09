@@ -19,7 +19,6 @@ API_WS_CONTROL_EVENTS = frozenset(
         "agent_activity",
         "agent_availability",
         "error",
-        "notification",
         "projects_initial",
         "preparation_initial",
         "session_closed",

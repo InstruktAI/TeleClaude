@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
+from redis.exceptions import RedisError
 
 from teleclaude.config import config
 from teleclaude.core.endpoints import hosted_help_desks
@@ -51,6 +52,7 @@ _PEER_IS_MASTER_FIELD = "is_master"
 _PEER_VERSION_FIELD = "version"
 _PEER_CHANNEL_FIELD = "channel"
 _MASTER_CONFLICT_EVENT = "conversation_master_conflict"
+_FLEET_OBSERVATION_FAILED_EVENT = "fleet_observation_failed"
 
 
 @dataclass(frozen=True)
@@ -214,6 +216,16 @@ async def observe_fleet_from_heartbeats() -> FleetView:
     return build_fleet_view(local_fleet_member([desk.render() for desk in desks]), peers)
 
 
+async def contraction_answer_from_heartbeats(feature_id: str) -> bool:
+    """Whether every live computer carries the feature-ID, observed now; an observation that fails is not yet safe."""
+    try:
+        view = await observe_fleet_from_heartbeats()
+    except (RedisError, OSError):
+        logger.warning(_FLEET_OBSERVATION_FAILED_EVENT, feature_id=feature_id, exc_info=True)
+        return False
+    return view.capability_map().safe_to_contract(feature_id)
+
+
 async def observe_fleet(client: AdapterClient) -> FleetView:
     """Observe this computer's hosted desks and every live peer's heartbeat."""
     desks = await asyncio.to_thread(hosted_help_desks)
@@ -225,6 +237,7 @@ __all__ = [
     "FleetMember",
     "FleetView",
     "build_fleet_view",
+    "contraction_answer_from_heartbeats",
     "fleet_member_from_peer",
     "fleet_member_from_peer_info",
     "local_conversation_adapters",

@@ -31,6 +31,7 @@ from teleclaude.config.loader import (
     list_company_config_paths,
     registered_person_slugs,
     resolve_overlay_references,
+    validate_tier_candidate,
     validate_tier_document,
 )
 from teleclaude.config.machine_config_mutation import (
@@ -42,6 +43,7 @@ from teleclaude.config.machine_config_mutation import (
 )
 from teleclaude.config.migrations import upcast
 from teleclaude.config.migrations._runner import upcast_for_read
+from teleclaude.config.notification_interests import new_person_document
 from teleclaude.config.person_registry import without_person
 from teleclaude.config.person_resource import (
     append_person_candidate,
@@ -98,7 +100,7 @@ from teleclaude.config.roster import (
     rosters_without_person,
     validate_roster_candidate,
 )
-from teleclaude.config.schema import CompanyConfig, ConfigKind, GlobalConfig, PersonConfig, ProjectConfig
+from teleclaude.config.schema import CompanyConfig, ConfigKind, GlobalConfig, ProjectConfig
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.file_transaction import file_transaction
@@ -439,7 +441,7 @@ def register_first_person(name: str, email: str, *, request_id: str | None = Non
                             CommitEntry(
                                 person_txn,
                                 person_txn.read_text(),
-                                render_declared_config(ConfigKind.PERSON, {_SLUG_KEY: slug}),
+                                render_declared_config(ConfigKind.PERSON, new_person_document(slug, HUMAN_ROLE_ADMIN)),
                             ),
                         ]
                     )
@@ -680,7 +682,7 @@ def _patch_person(
         except Exception as exc:
             raise InvalidCandidate(str(exc)) from exc
         try:
-            PersonConfig.model_validate({**candidate_settings, _KIND_KEY: ConfigKind.PERSON.value, _SLUG_KEY: slug})
+            validate_tier_candidate(overlay_path, ConfigKind.PERSON, {**candidate_settings, _SLUG_KEY: slug})
         except Exception as exc:
             raise InvalidCandidate(str(exc)) from exc
 
@@ -742,11 +744,11 @@ def _patch_company(
             raise StaleRevision(expected=expected_revision, actual=actual_revision)
         candidate_section = apply_merge_patch(current_section, patch)
         try:
-            committed_model = CompanyConfig.model_validate(
-                {**current_section, _KIND_KEY: ConfigKind.COMPANY.value, _SLUG_KEY: slug}
+            committed_model = cast(
+                CompanyConfig, validate_tier_candidate(path, ConfigKind.COMPANY, {**current_section, _SLUG_KEY: slug})
             )
-            candidate_model = CompanyConfig.model_validate(
-                {**candidate_section, _KIND_KEY: ConfigKind.COMPANY.value, _SLUG_KEY: slug}
+            candidate_model = cast(
+                CompanyConfig, validate_tier_candidate(path, ConfigKind.COMPANY, {**candidate_section, _SLUG_KEY: slug})
             )
         except Exception as exc:
             raise InvalidCandidate(str(exc)) from exc
@@ -773,7 +775,7 @@ def _patch_project(
             raise StaleRevision(expected=expected_revision, actual=actual_revision)
         candidate_section = apply_merge_patch(current_section, patch)
         try:
-            candidate = ProjectConfig.model_validate({**candidate_section, _KIND_KEY: ConfigKind.PROJECT.value})
+            candidate = cast(ProjectConfig, validate_tier_candidate(path, ConfigKind.PROJECT, candidate_section))
             require_home_owner(
                 path.parent,
                 company=candidate.company,
@@ -905,8 +907,9 @@ def _remove_person_subject(slug: str, evidence: OwnEvidence, *, delete_dir: bool
             stored_company_documents[company_slug] = stored_company
             company_ref = SubjectRef(ConfigSubjectKind.COMPANY, company_slug)
             raw = dict(upcast(stored_company, company_ref))
-            committed_companies[company_slug] = CompanyConfig.model_validate(
-                {**raw, _KIND_KEY: ConfigKind.COMPANY.value, _SLUG_KEY: company_slug}
+            committed_companies[company_slug] = cast(
+                CompanyConfig,
+                validate_tier_candidate(txn.path, ConfigKind.COMPANY, {**raw, _SLUG_KEY: company_slug}),
             )
 
         candidate_global_raw = without_person(cast(dict[object, object], global_raw), slug)

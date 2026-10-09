@@ -484,7 +484,6 @@ class MaintenanceService:
                 await db.cleanup_orphan_session_listeners()
                 try:
                     event_db = await get_event_db()
-                    await event_db.cleanup_runtime_events(older_than=now - timedelta(days=7))
                     await event_db.prune_handled_events(older_than=now - HANDLED_RECORD_RETENTION)
                 except Exception:
                     logger.warning("Event DB runtime cleanup skipped", exc_info=True)

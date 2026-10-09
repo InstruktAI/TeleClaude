@@ -41,6 +41,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.inbound.cutover import routing_announced
 from teleclaude.core.inbound.fleet import local_conversation_adapters
+from teleclaude.core.integration.session_address import SessionAddressResolved, resolve_session_conversation_url
 from teleclaude.core.models import (
     CONFINEMENT_PROFILE_KEY,
     CONFINEMENT_SECTION,
@@ -62,7 +63,6 @@ from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
 from teleclaude.core.todos_db import get_todos_db
-from teleclaude.events.delivery.session_address import SessionAddressResolved, resolve_session_conversation_url
 from teleclaude.events.envelope import EventHomeMarker, EventVisibility
 from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.project_root import is_project_checkout

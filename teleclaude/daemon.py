@@ -4,12 +4,11 @@ import asyncio
 import atexit
 import fcntl
 import hashlib
-import inspect
 import os
 import signal
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
@@ -503,14 +502,13 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.hook_outbox_task: asyncio.Task[object] | None = None
         self.agent_status_watchdog_task: asyncio.Task[object] | None = None
         self._event_db: EventDB | None = None
+        self._fleet_capability_map_provider: Callable[[], FleetCapabilityMap] | None = None
         self.mirror_worker_task: asyncio.Task[object] | None = None
-        self._event_processor_task: asyncio.Task[object] | None = None
         self._event_consumers_task: asyncio.Task[object] | None = None
         self._relay_delivery_task: asyncio.Task[object] | None = None
         self._internal_event_bus_task: asyncio.Task[object] | None = None
         self.webhook_delivery_task: asyncio.Task[object] | None = None
         self.channel_subscription_worker_task: asyncio.Task[object] | None = None
-        self._ingest_scheduler_task: asyncio.Task[object] | None = None
         self._task_schedule_clock_task: asyncio.Task[object] | None = None
         self._workflow_bridge_task: asyncio.Task[object] | None = None
         self._workflow_bridge: WorkflowBridge | None = None
@@ -1110,10 +1108,8 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             timeout=5.0,
         )
         await self._await_task_attr("_deployment_fanout_task", "Deployment fanout stopped", timeout=5.0)
-        await self._await_task_attr("_ingest_scheduler_task", "IngestScheduler stopped", timeout=5.0)
         await self._await_task_attr("_task_schedule_clock_task", "Task schedule clock stopped", timeout=5.0)
         await self._await_task_attr("_internal_event_bus_task", "Internal EventBus stopped", timeout=5.0)
-        await self._await_task_attr("_event_processor_task", "EventProcessor stopped", timeout=5.0)
         await self._await_task_attr("_event_consumers_task", "Event consumers stopped", timeout=5.0)
         await self._await_task_attr(_RELAY_DELIVERY_TASK_ATTRIBUTE, _RELAY_DELIVERY_STOPPED, timeout=5.0)
 
@@ -1129,13 +1125,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             ("_contract_sweep_task", "Contract sweep stopped"),
         ):
             await self._cancel_task_attr(attr_name, log_message)
-
-        signal_ai_client = getattr(self, "_signal_ai_client", None)
-        close_signal_ai = getattr(signal_ai_client, "close", None)
-        if callable(close_signal_ai):
-            close_result = close_signal_ai()
-            if inspect.isawaitable(close_result):
-                await close_result
 
         # Close event DB
         if self._event_db:
@@ -1482,6 +1471,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 heartbeat_ttl_seconds=redis_adapter.heartbeat_ttl,
             )
 
+        self._fleet_capability_map_provider = _fleet_capability_map
         publisher = ClusterPublisher(
             origin=config.computer.name,
             redis_provider=_redis_provider,

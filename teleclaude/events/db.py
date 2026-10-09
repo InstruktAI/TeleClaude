@@ -1,143 +1,27 @@
-"""Event DB — SQLite storage for notification projections and signal pipeline data."""
+"""Event DB — SQLite storage for incident records, correlation state, handled-event records and signal pipeline data."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypedDict, cast
+from typing import TYPE_CHECKING
 
 import aiosqlite
 
 from teleclaude.core.db.connection_factory import create_sync_db_engine
-from teleclaude.core.models import JsonDict
+from teleclaude.events.catalog import StateStanding
 from teleclaude.events.db_migrations import HANDLED_EVENTS_TABLE, INHERITED_WINDOW_COLUMN, migrate_forward
-from teleclaude.events.envelope import (
-    home_owner_token,
-    home_token,
-)
-from teleclaude.events.notification_rules import NOTIFICATION_RULES
-from teleclaude.events.wire import PLATFORM_STREAM_VERSION, StreamEvent
-from teleclaude.identity_reach import Reach
 from teleclaude.paths import EVENTS_DB_PATH
 
 if TYPE_CHECKING:
     from teleclaude.events.signal.db import SignalDB
 
-
-class NotificationRow(TypedDict):
-    """Stored notification projection row returned from SQLite."""
-
-    id: int
-    event_type: str
-    version: int
-    source: str
-    level: int
-    domain: str
-    visibility: str
-    entity: str | None
-    description: str
-    payload: str
-    idempotency_key: str | None
-    human_status: str
-    agent_status: str
-    agent_id: str | None
-    resolution: str | None
-    created_at: str
-    updated_at: str
-    seen_at: str | None
-    claimed_at: str | None
-    resolved_at: str | None
-    recipient: str | None
-    family: str | None
-    last_delivered_action_revision: str | None
-    occurred_at: str | None
-    event_id: str | None
-    home: str
-    home_owner: str
-
-
-class QuarantinedEventRow(TypedDict):
-    """Stored quarantined-event row returned from SQLite."""
-
-    id: int
-    event_type: str
-    source: str
-    received_at: str
-    envelope_json: str
-    trust_flags: str
-    reviewed: int
-
-
-class NotificationListFilters(TypedDict, total=False):
-    """Supported notification filters for list queries."""
-
-    level: int | None
-    domain: str | None
-    human_status: str | None
-    agent_status: str | None
-    visibility: str | None
-    since: str | None
-
-
-_NOTIFICATION_LIST_FILTERS: dict[str, str] = {
-    "level": "level >= :level",
-    "domain": "domain = :domain",
-    "human_status": "human_status = :human_status",
-    "agent_status": "agent_status = :agent_status",
-    "visibility": "visibility = :visibility",
-    "since": "created_at >= :since",
-}
-
-
-_CREATE_TABLE = """
-CREATE TABLE IF NOT EXISTS notifications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_type TEXT NOT NULL,
-    version INTEGER NOT NULL DEFAULT 1,
-    source TEXT NOT NULL,
-    level INTEGER NOT NULL,
-    domain TEXT NOT NULL DEFAULT '',
-    visibility TEXT NOT NULL DEFAULT 'local',
-    entity TEXT,
-    description TEXT NOT NULL DEFAULT '',
-    payload TEXT NOT NULL DEFAULT '{}',
-    idempotency_key TEXT,
-    human_status TEXT NOT NULL DEFAULT 'unseen',
-    agent_status TEXT NOT NULL DEFAULT 'none',
-    agent_id TEXT,
-    resolution TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    seen_at TEXT,
-    claimed_at TEXT,
-    resolved_at TEXT,
-    recipient TEXT,
-    family TEXT,
-    last_delivered_action_revision TEXT,
-    occurred_at TEXT,
-    event_id TEXT,
-    home TEXT,
-    home_owner TEXT,
-    UNIQUE(idempotency_key)
-);
-"""
-
-_CREATE_QUARANTINED_TABLE = """
-CREATE TABLE IF NOT EXISTS quarantined_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_type TEXT NOT NULL,
-    source TEXT NOT NULL,
-    received_at TEXT NOT NULL,
-    envelope_json TEXT NOT NULL,
-    trust_flags TEXT NOT NULL DEFAULT '[]',
-    reviewed INTEGER NOT NULL DEFAULT 0
-);
-"""
 
 _CREATE_CORRELATION_TABLE = f"""
 CREATE TABLE IF NOT EXISTS correlation_windows (
@@ -161,6 +45,53 @@ CREATE TABLE IF NOT EXISTS correlation_episodes (
     UNIQUE(detection, subject, home)
 );
 """
+_CREATE_INCIDENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS incidents (
+    family TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    home TEXT NOT NULL,
+    standing TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    broken_since TEXT NOT NULL,
+    PRIMARY KEY (family, subject, home)
+) WITHOUT ROWID;
+"""
+_CREATE_INCIDENT_RECIPIENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS incident_recipients (
+    family TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    home TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    told_standing TEXT,
+    PRIMARY KEY (family, subject, home, recipient)
+) WITHOUT ROWID;
+"""
+_SELECT_INCIDENT_SQL = (
+    "SELECT standing, event_type, occurred_at, broken_since FROM incidents "
+    "WHERE family = ? AND subject = ? AND home = ?"
+)
+_SELECT_INCIDENT_RECIPIENTS_SQL = (
+    "SELECT recipient, told_standing FROM incident_recipients WHERE family = ? AND subject = ? AND home = ?"
+)
+_INSERT_INCIDENT_SQL = (
+    "INSERT OR IGNORE INTO incidents (family, subject, home, standing, event_type, occurred_at, broken_since) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?)"
+)
+_UPDATE_INCIDENT_SQL = (
+    "UPDATE incidents SET standing = ?, event_type = ?, occurred_at = ?, broken_since = ? "
+    "WHERE family = ? AND subject = ? AND home = ?"
+)
+_UPSERT_INCIDENT_RECIPIENT_SQL = (
+    "INSERT INTO incident_recipients (family, subject, home, recipient, told_standing) VALUES (?, ?, ?, ?, ?) "
+    "ON CONFLICT (family, subject, home, recipient) DO UPDATE SET told_standing = excluded.told_standing"
+)
+_INSERT_INCIDENT_RECIPIENT_SQL = (
+    "INSERT OR IGNORE INTO incident_recipients (family, subject, home, recipient, told_standing) "
+    "VALUES (?, ?, ?, ?, NULL)"
+)
+_DELETE_INCIDENT_SQL = "DELETE FROM incidents WHERE family = ? AND subject = ? AND home = ?"
+_DELETE_INCIDENT_RECIPIENTS_SQL = "DELETE FROM incident_recipients WHERE family = ? AND subject = ? AND home = ?"
 _CREATE_HANDLED_EVENTS_TABLE = f"""
 CREATE TABLE IF NOT EXISTS {HANDLED_EVENTS_TABLE} (
     consumer TEXT NOT NULL,
@@ -200,77 +131,11 @@ _SELECT_EPISODE_SQL = (
 _UPDATE_EPISODE_FAILING_TYPES_SQL = "UPDATE correlation_episodes SET failing_types = ? WHERE id = ?"
 _DELETE_EPISODE_SQL = "DELETE FROM correlation_episodes WHERE id = ?"
 
-_RETIRED_DOCS_WATCHER_EVENT_TYPE = "system.docs_watcher.sync_failed"
-_RESOLVED_AGENT_STATUS = "resolved"
-_RECONCILE_RETIRED_DOCS_WATCHER_NOTIFICATIONS = (
-    "UPDATE notifications SET agent_status = ?, resolved_at = ?, updated_at = ? "
-    "WHERE event_type = ? AND (agent_status <> ? OR resolved_at IS NULL)"
-)
-_NOTIFICATION_COLUMNS_SQL = "PRAGMA table_info(notifications)"
-_NOTIFICATION_SELECT_TEMPLATE = (
-    "SELECT * FROM notifications {where_clause} ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
-)
-_NOTIFICATION_HOME_COLUMN_SQL = "notifications.home"
-_NOTIFICATION_HOME_OWNER_COLUMN_SQL = "notifications.home_owner"
-_NOTIFICATION_LIMIT_PARAM = "limit"
-_NOTIFICATION_OFFSET_PARAM = "offset"
-_INSERT_NOTIFICATION_SQL = """
-INSERT INTO notifications
-  (event_type, version, source, level, domain, visibility, entity, description,
-   payload, idempotency_key, human_status, agent_status, created_at, updated_at, recipient, family,
-   occurred_at, event_id, home, home_owner)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unseen', 'none', ?, ?, ?, ?, ?, ?, ?, ?)
-"""
-_UPSERT_NOTIFICATION_FIELDS_SQL = (
-    "UPDATE notifications SET description = ?, payload = ?, home = ?, home_owner = ?, updated_at = ? WHERE id = ?"
-)
-_UPDATE_NOTIFICATION_RESET_HUMAN_STATUS_SQL = (
-    "UPDATE notifications SET description = ?, payload = ?, home = ?, home_owner = ?, "
-    "human_status = 'unseen', updated_at = ? WHERE id = ?"
-)
-_UPDATE_NOTIFICATION_FIELDS_SQL = (
-    "UPDATE notifications SET description = ?, payload = ?, home = ?, home_owner = ?, updated_at = ? WHERE id = ?"
-)
-
-# Forward migration of stored notifications to the renamed `sdlc` domain; the
-# old domain name exists only as this migration's input.
-_RENAMED_DOMAIN_FROM = "software-development"
-_RENAMED_DOMAIN_TO = "sdlc"
-_RENAMED_DOMAIN_COLUMNS = ("event_type", "domain", "entity", "idempotency_key", "description", "payload")
-_RENAME_DOMAIN_SQL_TEMPLATE = "UPDATE notifications SET {column} = replace({column}, ?, ?) WHERE instr({column}, ?) > 0"
 
 _CREATE_INDEXES = [
-    "CREATE INDEX IF NOT EXISTS idx_notifications_event_type ON notifications (event_type);",
-    "CREATE INDEX IF NOT EXISTS idx_notifications_level ON notifications (level);",
-    "CREATE INDEX IF NOT EXISTS idx_notifications_domain ON notifications (domain);",
-    "CREATE INDEX IF NOT EXISTS idx_notifications_human_status ON notifications (human_status);",
-    "CREATE INDEX IF NOT EXISTS idx_notifications_agent_status ON notifications (agent_status);",
-    "CREATE INDEX IF NOT EXISTS idx_notifications_visibility ON notifications (visibility);",
-    "CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications (created_at DESC);",
-    "CREATE INDEX IF NOT EXISTS idx_quarantined_reviewed ON quarantined_events (reviewed, received_at DESC);",
     "CREATE INDEX IF NOT EXISTS idx_correlation_windows_home ON correlation_windows (event_type, home, window_start);",
     "CREATE INDEX IF NOT EXISTS idx_correlation_windows_home_subject ON correlation_windows (event_type, home, subject, window_start);",
 ]
-
-
-def _now_iso() -> str:
-    """Return the current UTC timestamp in ISO-8601 format."""
-    return datetime.now(UTC).isoformat()
-
-
-def _row_to_dict(row: aiosqlite.Row) -> NotificationRow:
-    """Convert an aiosqlite row into the typed notification row mapping."""
-    return dict(row)  # type: ignore[return-value]
-
-
-def _home_token(event: StreamEvent) -> str:
-    """Persist the typed event home without re-deriving it from data."""
-    return home_token(event.home)
-
-
-def _home_owner_token(event: StreamEvent) -> str:
-    """Persist the typed event home owner without re-deriving it from data."""
-    return home_owner_token(event.home_owner)
 
 
 class EpisodeDetection(StrEnum):
@@ -305,6 +170,32 @@ def _episode_from_row(row: aiosqlite.Row) -> CorrelationEpisode:
     )
 
 
+@dataclass(frozen=True)
+class IncidentKey:
+    """The identity of a matter: a lifecycle family's state of one thing, the subject within its origin."""
+
+    family: str
+    subject: str
+    home: str
+
+
+@dataclass(frozen=True)
+class IncidentRecord:
+    """An open matter: its current standing with the type and time of the event that brought it there.
+
+    `broken_since` is when the thing became broken. `told` holds the recipients of the current episode — the
+    administrators selected when the matter opened, failed again or recovered — each with the standing last
+    told, or none while they await their first message.
+    """
+
+    key: IncidentKey
+    standing: StateStanding
+    event_type: str
+    occurred_at: datetime
+    broken_since: datetime
+    told: Mapping[str, StateStanding | None]
+
+
 def _signal_db_class() -> type[SignalDB]:
     """Load the signal DB wrapper lazily to avoid import cycles."""
     cls: type[SignalDB] = import_module("teleclaude.events.signal.db").SignalDB
@@ -312,7 +203,7 @@ def _signal_db_class() -> type[SignalDB]:
 
 
 class EventDB:
-    """SQLite-backed storage for event notifications and correlation state."""
+    """SQLite-backed storage for incident records, correlation state and handled-event records."""
 
     def __init__(self, db_path: str | Path | None = None) -> None:
         # Resolve EVENTS_DB_PATH at call time, not import time, so test fixtures
@@ -328,48 +219,13 @@ class EventDB:
         bootstrap_engine.dispose()
         self._conn = await aiosqlite.connect(str(self._db_path))
         self._conn.row_factory = aiosqlite.Row
-        await self._conn.execute(_CREATE_TABLE)
-        await self._conn.execute(_CREATE_QUARANTINED_TABLE)
         await self._conn.execute(_CREATE_CORRELATION_TABLE)
         await self._conn.execute(_CREATE_EPISODE_TABLE)
-        # Forward migration: a pre-recipient `notifications` table predates this column.
-        table_info_cursor = await self._conn.execute(_NOTIFICATION_COLUMNS_SQL)
-        existing_columns = {row[1] for row in await table_info_cursor.fetchall()}
-        if "recipient" not in existing_columns:
-            await self._conn.execute("ALTER TABLE notifications ADD COLUMN recipient TEXT")
-        for column_name in ("family", "last_delivered_action_revision", "occurred_at", "event_id"):
-            if column_name not in existing_columns:
-                await self._conn.execute(f"ALTER TABLE notifications ADD COLUMN {column_name} TEXT")
-        await self._conn.execute("UPDATE notifications SET occurred_at = created_at WHERE occurred_at IS NULL")
-        for column_name in _RENAMED_DOMAIN_COLUMNS:
-            await self._conn.execute(
-                _RENAME_DOMAIN_SQL_TEMPLATE.format(column=column_name),
-                (_RENAMED_DOMAIN_FROM, _RENAMED_DOMAIN_TO, _RENAMED_DOMAIN_FROM),
-            )
+        await self._conn.execute(_CREATE_INCIDENTS_TABLE)
+        await self._conn.execute(_CREATE_INCIDENT_RECIPIENTS_TABLE)
         await migrate_forward(self._conn)
         await self._conn.execute(_CREATE_HANDLED_EVENTS_TABLE)
         await self._conn.execute(_CREATE_HANDLED_EVENTS_INDEX)
-        # Preserve retired event rows as history while closing their notification projections.
-        resolved_at = _now_iso()
-        await self._conn.execute(
-            _RECONCILE_RETIRED_DOCS_WATCHER_NOTIFICATIONS,
-            (
-                _RESOLVED_AGENT_STATUS,
-                resolved_at,
-                resolved_at,
-                _RETIRED_DOCS_WATCHER_EVENT_TYPE,
-                _RESOLVED_AGENT_STATUS,
-            ),
-        )
-        family_by_event = {
-            event_type: rule.lifecycle.family.value
-            for event_type, rule in NOTIFICATION_RULES.items()
-            if rule.lifecycle and rule.lifecycle.family
-        }
-        for event_type, family in family_by_event.items():
-            await self._conn.execute(
-                "UPDATE notifications SET family = ? WHERE event_type = ? AND family IS NULL", (family, event_type)
-            )
         for idx_sql in _CREATE_INDEXES:
             await self._conn.execute(idx_sql)
         await self._conn.commit()
@@ -402,232 +258,6 @@ class EventDB:
             raise RuntimeError("EventDB not initialized. Call initialize() first.")
         return self._conn
 
-    async def insert_notification(
-        self, event: StreamEvent, recipient: str | None = None, family: str | None = None
-    ) -> int:
-        """Insert a new notification projection row and return its database id."""
-        now = _now_iso()
-        cursor = await self._db().execute(
-            _INSERT_NOTIFICATION_SQL,
-            (
-                event.type,
-                PLATFORM_STREAM_VERSION,
-                event.legacy.producer,
-                int(event.legacy.level),
-                event.legacy.domain,
-                event.legacy.visibility.value,
-                event.legacy.entity,
-                event.legacy.description,
-                json.dumps(event.data),
-                event.legacy.idempotency_key,
-                now,
-                now,
-                recipient,
-                family,
-                event.time.isoformat(),
-                event.id,
-                _home_token(event),
-                _home_owner_token(event),
-            ),
-        )
-        await self._db().commit()
-        return cursor.lastrowid or 0
-
-    async def get_notification(self, notification_id: int) -> NotificationRow | None:
-        """Return a notification row by database id."""
-        cursor = await self._db().execute("SELECT * FROM notifications WHERE id = ?", (notification_id,))
-        row = await cursor.fetchone()
-        return _row_to_dict(row) if row else None
-
-    async def idempotency_key_exists(self, key: str) -> bool:
-        """Return whether the given idempotency key already exists."""
-        cursor = await self._db().execute("SELECT 1 FROM notifications WHERE idempotency_key = ?", (key,))
-        return (await cursor.fetchone()) is not None
-
-    async def list_notifications(
-        self,
-        reach: Reach,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-        **filters: Any,
-    ) -> list[NotificationRow]:
-        """List notification rows matching optional filters.
-
-        Addressed rows (a set ``recipient``) are excluded unconditionally: this
-        is a broadcast-only listing consumed by shared operator surfaces, and an
-        addressed notification is delivered through its principal's own channel
-        instead.
-        """
-        conditions: list[str] = ["recipient IS NULL"]
-        reach_clause, reach_params = reach.sql_predicate(
-            subject_col=_NOTIFICATION_HOME_COLUMN_SQL,
-            owner_col=_NOTIFICATION_HOME_OWNER_COLUMN_SQL,
-            principal_col=None,
-        )
-        conditions.append(reach_clause)
-        params: dict[str, object] = dict(reach_params)  # guard: loose-dict - SQL bind params combine dynamic filters.
-        unexpected_filters = sorted(set(filters) - set(_NOTIFICATION_LIST_FILTERS))
-        if unexpected_filters:
-            unexpected = ", ".join(unexpected_filters)
-            raise TypeError(f"Unsupported notification filters: {unexpected}")
-        for key, sql in _NOTIFICATION_LIST_FILTERS.items():
-            value = filters.get(key)
-            if value is not None:
-                conditions.append(sql)
-                params[key] = value
-
-        where = "WHERE " + " AND ".join(conditions) if conditions else ""
-        params[_NOTIFICATION_LIMIT_PARAM] = limit
-        params[_NOTIFICATION_OFFSET_PARAM] = offset
-        cursor = await self._db().execute(_NOTIFICATION_SELECT_TEMPLATE.format(where_clause=where), params)
-        rows = await cursor.fetchall()
-        return [_row_to_dict(r) for r in rows]
-
-    async def resolve_notification(self, notification_id: int, resolution: JsonDict) -> bool:
-        """Mark a notification as resolved and store its resolution payload."""
-        now = _now_iso()
-        cursor = await self._db().execute(
-            (
-                "UPDATE notifications SET agent_status = 'resolved', resolution = ?, "
-                "resolved_at = ?, updated_at = ? WHERE id = ?"
-            ),
-            (json.dumps(resolution), now, now, notification_id),
-        )
-        await self._db().commit()
-        return cursor.rowcount > 0
-
-    async def upsert_by_idempotency_key(
-        self, event: StreamEvent, recipient: str | None = None, family: str | None = None
-    ) -> tuple[int, bool]:
-        """Insert or update notification. Returns (notification_id, was_created)."""
-        now = _now_iso()
-        if event.legacy.idempotency_key:
-            cursor = await self._db().execute(
-                "SELECT id FROM notifications WHERE idempotency_key = ?",
-                (event.legacy.idempotency_key,),
-            )
-            existing = await cursor.fetchone()
-            if existing:
-                notification_id: int = existing[0]
-                await self._db().execute(
-                    _UPSERT_NOTIFICATION_FIELDS_SQL,
-                    (
-                        event.legacy.description,
-                        json.dumps(event.data),
-                        _home_token(event),
-                        _home_owner_token(event),
-                        now,
-                        notification_id,
-                    ),
-                )
-                await self._db().commit()
-                return notification_id, False
-
-        notification_id = await self.insert_notification(event, recipient, family)
-        return notification_id, True
-
-    async def find_active_incident(
-        self, family: str, group_key_field: str, group_key_value: str, recipient: str | None
-    ) -> NotificationRow | None:
-        """Find the active incident for an explicit family, group value, and audience."""
-        cursor = await self._db().execute(
-            (
-                "SELECT * FROM notifications WHERE family = ? AND json_extract(payload, ?) = ? "
-                "AND recipient IS ? AND resolved_at IS NULL ORDER BY created_at DESC LIMIT 1"
-            ),
-            (family, f"$.{group_key_field}", group_key_value, recipient),
-        )
-        row = await cursor.fetchone()
-        return _row_to_dict(row) if row else None
-
-    async def update_last_delivered_action_revision(self, notification_id: int, revision: str) -> bool:
-        """Persist the action revision before downstream delivery is dispatched."""
-        cursor = await self._db().execute(
-            "UPDATE notifications SET last_delivered_action_revision = ?, updated_at = ? WHERE id = ?",
-            (revision, _now_iso(), notification_id),
-        )
-        await self._db().commit()
-        return cursor.rowcount > 0
-
-    async def update_notification_fields(
-        self,
-        notification_id: int,
-        description: str,
-        payload: JsonDict,
-        home: str,
-        home_owner: str,
-        reset_human_status: bool = False,
-    ) -> bool:
-        """Update the projected description and payload for an existing notification."""
-        now = _now_iso()
-        if reset_human_status:
-            cursor = await self._db().execute(
-                _UPDATE_NOTIFICATION_RESET_HUMAN_STATUS_SQL,
-                (description, json.dumps(payload), home, home_owner, now, notification_id),
-            )
-        else:
-            cursor = await self._db().execute(
-                _UPDATE_NOTIFICATION_FIELDS_SQL,
-                (description, json.dumps(payload), home, home_owner, now, notification_id),
-            )
-        await self._db().commit()
-        return cursor.rowcount > 0
-
-    # --- Quarantine methods ---
-
-    async def quarantine_event(self, event: StreamEvent, flags: list[str]) -> int:
-        """Persist an event in the quarantine table and return its row id."""
-        cursor = await self._db().execute(
-            """
-            INSERT INTO quarantined_events (event_type, source, received_at, envelope_json, trust_flags, reviewed)
-            VALUES (?, ?, ?, ?, ?, 0)
-            """,
-            (
-                event.type,
-                event.legacy.producer,
-                event.time.isoformat(),
-                event.model_dump_json(),
-                json.dumps(flags),
-            ),
-        )
-        await self._db().commit()
-        return cursor.lastrowid or 0
-
-    async def list_quarantined(self, reviewed: bool | None = None, limit: int = 50) -> list[QuarantinedEventRow]:
-        """List quarantined events, optionally filtered by review state."""
-        params: list[Any] = []
-        where = ""
-        if reviewed is not None:
-            where = "WHERE reviewed = ?"
-            params.append(1 if reviewed else 0)
-        params.append(limit)
-        cursor = await self._db().execute(
-            f"SELECT * FROM quarantined_events {where} ORDER BY received_at DESC LIMIT ?",
-            params,
-        )
-        rows = await cursor.fetchall()
-        return [cast(QuarantinedEventRow, dict(r)) for r in rows]
-
-    async def cleanup_runtime_events(self, *, older_than: datetime) -> int:
-        """Delete expired resolved/reviewed runtime event rows."""
-        cutoff = older_than.isoformat()
-        notifications_cursor = await self._db().execute(
-            (
-                "DELETE FROM notifications "
-                "WHERE agent_status = 'resolved' AND resolved_at IS NOT NULL AND resolved_at < ?"
-            ),
-            (cutoff,),
-        )
-        quarantine_cursor = await self._db().execute(
-            "DELETE FROM quarantined_events WHERE reviewed = 1 AND received_at < ?",
-            (cutoff,),
-        )
-        await self._db().commit()
-        notifications_deleted = max(notifications_cursor.rowcount, 0)
-        quarantine_deleted = max(quarantine_cursor.rowcount, 0)
-        return notifications_deleted + quarantine_deleted
-
     # --- Handled-event records ---
 
     async def has_handled_event(self, consumer: str, event_id: str) -> bool:
@@ -645,43 +275,6 @@ class EventDB:
         cursor = await self._db().execute(_DELETE_HANDLED_EVENTS_SQL, (older_than.isoformat(),))
         await self._db().commit()
         return max(cursor.rowcount, 0)
-
-    # --- Enrichment query helpers ---
-
-    async def count_events_by_entity(
-        self,
-        entity: str,
-        event_type: str,
-        since: datetime | None = None,
-        payload_filter: JsonDict | None = None,
-    ) -> int:
-        """Count notification events for an entity, with optional time and payload filters."""
-        params: list[Any] = [entity, event_type]
-        where = "entity = ? AND event_type = ?"
-        if since is not None:
-            where += " AND created_at >= ?"
-            params.append(since.isoformat())
-        if payload_filter:
-            for key, value in payload_filter.items():
-                where += f" AND json_extract(payload, '$.{key}') = ?"
-                params.append(value)
-        cursor = await self._db().execute(
-            f"SELECT COUNT(*) FROM notifications WHERE {where}",
-            params,
-        )
-        row = await cursor.fetchone()
-        return int(row[0]) if row else 0
-
-    async def get_latest_event_payload(self, entity: str, event_type: str) -> JsonDict | None:
-        """Return the latest stored payload for an entity and event type."""
-        cursor = await self._db().execute(
-            "SELECT payload FROM notifications WHERE entity = ? AND event_type = ? ORDER BY created_at DESC LIMIT 1",
-            (entity, event_type),
-        )
-        row = await cursor.fetchone()
-        if row is None:
-            return None
-        return cast(JsonDict, json.loads(row[0]))
 
     # --- Correlation window methods ---
 
@@ -761,6 +354,95 @@ class EventDB:
             "DELETE FROM correlation_windows WHERE window_start < ?",
             (older_than.isoformat(),),
         )
+        await self._db().commit()
+
+    # --- Incident methods ---
+
+    async def get_incident(self, key: IncidentKey) -> IncidentRecord | None:
+        """Return the open matter for a key with the standing each recipient was last told, if one is open."""
+        params = (key.family, key.subject, key.home)
+        cursor = await self._db().execute(_SELECT_INCIDENT_SQL, params)
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        recipients_cursor = await self._db().execute(_SELECT_INCIDENT_RECIPIENTS_SQL, params)
+        told = {
+            recipient: StateStanding(standing) if standing is not None else None
+            for recipient, standing in await recipients_cursor.fetchall()
+        }
+        return IncidentRecord(
+            key=key,
+            standing=StateStanding(row[0]),
+            event_type=row[1],
+            occurred_at=datetime.fromisoformat(row[2]),
+            broken_since=datetime.fromisoformat(row[3]),
+            told=told,
+        )
+
+    async def open_incident(
+        self, key: IncidentKey, event_type: str, occurred_at: datetime, recipients: Sequence[str]
+    ) -> None:
+        """Open the matter as failing, broken since the event that reported it, with the recipients it will tell.
+
+        Opening an open matter changes nothing.
+        """
+        await self._db().execute(
+            _INSERT_INCIDENT_SQL,
+            (
+                key.family,
+                key.subject,
+                key.home,
+                StateStanding.FAILING.value,
+                event_type,
+                occurred_at.isoformat(),
+                occurred_at.isoformat(),
+            ),
+        )
+        await self._register_incident_recipients(key, recipients)
+        await self._db().commit()
+
+    async def set_incident_standing(
+        self,
+        key: IncidentKey,
+        standing: StateStanding,
+        event_type: str,
+        occurred_at: datetime,
+        broken_since: datetime,
+        recipients: Sequence[str] = (),
+    ) -> None:
+        """Record the matter's new standing with the type and time of the event that brought it there.
+
+        A matter that fails again starts a new episode: what recipients were told before it belongs to
+        the earlier episode, so their progress is cleared. The given recipients become recipients of the
+        transition; a recipient already recorded keeps what it was told.
+        """
+        params = (key.family, key.subject, key.home)
+        if standing is StateStanding.FAILING:
+            await self._db().execute(_DELETE_INCIDENT_RECIPIENTS_SQL, params)
+        await self._register_incident_recipients(key, recipients)
+        await self._db().execute(
+            _UPDATE_INCIDENT_SQL,
+            (standing.value, event_type, occurred_at.isoformat(), broken_since.isoformat(), *params),
+        )
+        await self._db().commit()
+
+    async def _register_incident_recipients(self, key: IncidentKey, recipients: Sequence[str]) -> None:
+        """Make the recipients part of the matter's current episode, awaiting its first message."""
+        for recipient in recipients:
+            await self._db().execute(_INSERT_INCIDENT_RECIPIENT_SQL, (key.family, key.subject, key.home, recipient))
+
+    async def mark_incident_recipient_told(self, key: IncidentKey, recipient: str, standing: StateStanding) -> None:
+        """Record the standing a recipient was last told; marking again replaces it."""
+        await self._db().execute(
+            _UPSERT_INCIDENT_RECIPIENT_SQL, (key.family, key.subject, key.home, recipient, standing.value)
+        )
+        await self._db().commit()
+
+    async def delete_incident(self, key: IncidentKey) -> None:
+        """Remove the matter and what each recipient was last told."""
+        params = (key.family, key.subject, key.home)
+        await self._db().execute(_DELETE_INCIDENT_RECIPIENTS_SQL, params)
+        await self._db().execute(_DELETE_INCIDENT_SQL, params)
         await self._db().commit()
 
 

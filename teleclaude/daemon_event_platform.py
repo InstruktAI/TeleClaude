@@ -4,23 +4,25 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from instrukt_ai_logging import get_logger
+from redis.exceptions import ResponseError
 
 from teleclaude.channels.worker import run_subscription_worker
 from teleclaude.config import config
 from teleclaude.config.loader import load_project_config
 from teleclaude.core.db import get_db
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, event_bus
+from teleclaude.core.integration.incident_alerts import build_incident_alerts_consumer
 from teleclaude.core.integration.trigger_consumer import build_integration_trigger_consumer
 from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router_consumer
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
-from teleclaude.core.organization import platform_admin_people
 from teleclaude.core.procedure_routing import build_procedure_activation_consumer
+from teleclaude.core.reconciliation import FleetCapabilityMap, contraction_answer_from_live_map
 from teleclaude.deployment.handler import (
     DEPLOYMENT_FANOUT_CHANNEL,
     configure_deployment_handler,
@@ -29,33 +31,21 @@ from teleclaude.deployment.handler import (
 from teleclaude.events import (
     Consumer,
     ConsumerRuntime,
+    EventCatalog,
     EventDB,
     EventLevel,
     EventProcessor,
     EventProducer,
     EventVisibility,
-    Pipeline,
-    PipelineContext,
     build_default_catalog,
     configure_producer,
     get_event_db,
 )
-from teleclaude.events.cartridges import (
-    ClassificationCartridge,
-    DeduplicationCartridge,
-    EnrichmentCartridge,
-    NotificationProjectorCartridge,
-    TrustCartridge,
-)
-from teleclaude.events.cartridges.notification import PushNotificationChange
-from teleclaude.events.cartridges.trust import TrustConfig
 from teleclaude.events.correlation import CorrelationConfig, build_correlation_consumer
-from teleclaude.events.delivery.debounce import DeliveryChannel, DeliveryDebouncer
-from teleclaude.events.delivery.targeted import build_targeted_push_callback
-from teleclaude.events.delivery.telegram import TelegramDeliveryAdapter
 from teleclaude.events.envelope import EventHomeMarker
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
 from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
+from teleclaude.events.processor import STREAM_NAME as PLATFORM_STREAM_NAME
 from teleclaude.events.references import ComputerRef
 from teleclaude.events.schemas.system import DaemonRestarted, DaemonRestartedData
 from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, LegacyFacts
@@ -67,7 +57,7 @@ from teleclaude.hooks.dispatcher import HookDispatcher
 from teleclaude.hooks.handlers import HandlerRegistry
 from teleclaude.hooks.inbound import install_inbound_routes
 from teleclaude.hooks.registry import ContractRegistry
-from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline, RelayProtocol
+from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
 from teleclaude.paths import ConfigFileName
@@ -75,20 +65,21 @@ from teleclaude.services.project_catalog.ownership import load_project_ownership
 from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
-    from teleclaude.config.schema import PersonConfig
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.lifecycle import DaemonLifecycle
 
 logger = get_logger(__name__)
 _EVENT_DB_REQUIRED_FOR_PIPELINE_CONTEXT = "_build_pipeline_context always runs after _init_event_db_storage"
-_SYSTEM_PIPELINE_PROCESSOR_NAME = "system-pipeline"
 _RELAY_DELIVERY_PROCESSOR_NAME = "relay-delivery"
 _RELAY_DELIVERY_GROUP_PREFIX = "relay-delivery-"
 _RELAY_DELIVERY_CONSUMER_SUFFIX = "-relay-"
 _RELAY_DELIVERY_TASK_NAME = "relay-delivery-processor"
 _RELAY_DELIVERY_LOG_TASK_NAME = "relay_delivery_processor"
 _RELAY_DELIVERY_STARTED_EVENT = "Relay delivery processor started"
+_RETIRED_GROUP_TEMPLATE = "{group}-{computer}"
+_RETIRED_GROUP_DESTROYED_EVENT = "Retired system pipeline consumer group destroyed"
+_RETIRED_GROUP_ABSENT_EVENT = "No stream yet; no retired system pipeline consumer group to destroy"
 _EVENT_CONSUMERS_TASK_NAME = "event-consumers"
 _EVENT_CONSUMERS_LOG_TASK_NAME = "event_consumers"
 _EVENT_CONSUMERS_STARTED_EVENT = "Event consumer runtime started"
@@ -97,10 +88,6 @@ _API_APP_ATTRIBUTE = "app"
 _INBOUND_ROUTES_INSTALLED_EVENT = "Inbound endpoints installed on the ingress computer"
 _INBOUND_ROUTES_UNAVAILABLE_EVENT = "API app or event producer unavailable; inbound endpoints are not installed"
 _RELAY_DELIVERY_NO_REDIS_EVENT = "Event Redis client unavailable; relayed external events are not delivered here"
-
-_KNOWN_EVENT_SOURCES = frozenset({"daemon", "prepare-worker", "review-worker", "correlation"}) | frozenset(
-    RelayProtocol
-)
 
 
 def daemon_project_config_path() -> Path:
@@ -120,51 +107,6 @@ class _EventPlatformStatus:
     pending_recovery_progress: str = "not_started"
 
 
-class _DeliveryAdapter(Protocol):
-    """Structural shape shared by the external channel delivery adapters."""
-
-    def recipient(self) -> str: ...
-
-    async def on_notification(
-        self,
-        change: PushNotificationChange,
-    ) -> None: ...
-
-
-def _wrap_with_debounce(
-    debouncer: DeliveryDebouncer,
-    channel: DeliveryChannel,
-    adapter: _DeliveryAdapter,
-) -> Callable[[PushNotificationChange], Coroutine[Any, Any, None]]:
-    """Wrap an external delivery adapter so eligible sends coalesce through the shared debouncer.
-
-    Skips when the projected change carries an addressed recipient: an
-    addressed notification routes through the targeted delivery callback
-    instead of the pre-registered admin adapter set (see
-    ``teleclaude.events.delivery.targeted``).
-    """
-
-    async def _on_notification(
-        change: PushNotificationChange,
-    ) -> None:
-        if change.recipient is not None:
-            return
-
-        async def _runner() -> None:
-            await adapter.on_notification(change)
-
-        debouncer.schedule(
-            channel=channel,
-            recipient=adapter.recipient(),
-            event_type=change.event_type,
-            group_identity=change.group_identity,
-            debounce_s=change.delivery_debounce_s,
-            runner=_runner,
-        )
-
-    return _on_notification
-
-
 class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
     """Event platform and webhook service methods extracted from TeleClaudeDaemon."""
 
@@ -173,19 +115,16 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         client: AdapterClient
         lifecycle: DaemonLifecycle
         _event_db: EventDB | None
-        _event_pipeline: Pipeline | None
-        _event_pipeline_context: PipelineContext | None
+        _fleet_capability_map_provider: Callable[[], FleetCapabilityMap] | None
+        _event_catalog: EventCatalog | None
         _event_producer: EventProducer | None
         _event_redis_client: object | None
         _event_platform_status: _EventPlatformStatus
-        _signal_ai_client: object | None
         _deployment_fanout_task: asyncio.Task[object] | None
         _contract_sweep_task: asyncio.Task[object] | None
-        _event_processor_task: asyncio.Task[object] | None
         _event_consumers_task: asyncio.Task[object] | None
         _relay_delivery_task: asyncio.Task[object] | None
         _internal_event_bus_task: asyncio.Task[object] | None
-        _ingest_scheduler_task: asyncio.Task[object] | None
         _task_schedule_clock_task: asyncio.Task[object] | None
         webhook_delivery_task: asyncio.Task[object] | None
         channel_subscription_worker_task: asyncio.Task[object] | None
@@ -206,119 +145,23 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             return None
         return await redis_adapter._get_redis()
 
+    def _live_capability_map(self) -> FleetCapabilityMap | None:
+        """The daemon's current fleet capability map; none until the cluster bridge is attached."""
+        provider = self._fleet_capability_map_provider
+        return provider() if provider is not None else None
+
     def _configure_event_producer(self, redis_client: object) -> EventProducer:
         """Build and register the event producer."""
 
         resolver = EnvelopeFactResolver(session_id=lambda: None, ownership_index=load_project_ownership_index)
-        event_producer = EventProducer(redis_client=redis_client, fact_resolver=resolver)
+        event_producer = EventProducer(
+            redis_client=redis_client,
+            fact_resolver=resolver,
+            contraction_answer=contraction_answer_from_live_map(self._live_capability_map),
+        )
         configure_producer(event_producer)
         logger.info("EventProducer configured")
         return event_producer
-
-    def _iter_admin_people_configs(self) -> list[tuple[str, PersonConfig]]:
-        """Load admin person configs from the global people directory."""
-        return platform_admin_people()
-
-    def _build_push_callbacks(self) -> list[Callable[..., object]]:
-        """Build notification push callbacks for event projections."""
-        push_callbacks: list[Callable[..., object]] = []
-        debouncer = DeliveryDebouncer()
-        self._register_api_push_callback(push_callbacks)
-        self._register_telegram_delivery_callbacks(push_callbacks, debouncer)
-        self._register_discord_delivery_callbacks(push_callbacks, debouncer)
-        self._register_whatsapp_delivery_callbacks(push_callbacks, debouncer)
-        push_callbacks.append(build_targeted_push_callback(debouncer))
-        return push_callbacks
-
-    def _register_api_push_callback(self, push_callbacks: list[Callable[..., object]]) -> None:
-        """Register websocket push if the API server is available."""
-        api_server = getattr(self.lifecycle, "api_server", None)
-        if api_server is None:
-            return
-        api_server._event_db = self._event_db
-        push_callbacks.append(api_server._notification_push)
-
-    def _register_telegram_delivery_callbacks(
-        self, push_callbacks: list[Callable[..., object]], debouncer: DeliveryDebouncer
-    ) -> None:
-        """Register Telegram notification delivery for admins."""
-        if not config.telegram:
-            return
-
-        from teleclaude.services.telegram import send_telegram_dm  # startup boundary
-
-        try:
-            for person_slug, person_cfg in self._iter_admin_people_configs():
-                chat_id = person_cfg.creds.telegram.chat_id if person_cfg.creds.telegram else None
-                if not chat_id:
-                    continue
-                adapter = TelegramDeliveryAdapter(
-                    chat_id=chat_id,
-                    send_fn=send_telegram_dm,
-                    shutdown_check=self.shutdown_event.is_set,
-                )
-                push_callbacks.append(_wrap_with_debounce(debouncer, DeliveryChannel.TELEGRAM, adapter))
-                logger.info("TelegramDeliveryAdapter registered for admin %s", person_slug)
-        except Exception:
-            logger.warning("Could not load people config for Telegram delivery adapter")
-
-    def _register_discord_delivery_callbacks(
-        self, push_callbacks: list[Callable[..., object]], debouncer: DeliveryDebouncer
-    ) -> None:
-        """Register Discord notification delivery for admins."""
-        if not config.discord.enabled:
-            return
-
-        from teleclaude.events.delivery.discord import DiscordDeliveryAdapter  # startup boundary
-        from teleclaude.services.discord import send_discord_dm  # startup boundary
-
-        try:
-            for person_slug, person_cfg in self._iter_admin_people_configs():
-                user_id = person_cfg.creds.discord.user_id if person_cfg.creds.discord else None
-                if not user_id:
-                    continue
-                adapter = DiscordDeliveryAdapter(
-                    user_id=user_id,
-                    send_fn=send_discord_dm,
-                    shutdown_check=self.shutdown_event.is_set,
-                )
-                push_callbacks.append(_wrap_with_debounce(debouncer, DeliveryChannel.DISCORD, adapter))
-                logger.info("DiscordDeliveryAdapter registered for admin %s", person_slug)
-        except Exception:
-            logger.warning("Could not load people config for Discord delivery adapter")
-
-    def _register_whatsapp_delivery_callbacks(
-        self, push_callbacks: list[Callable[..., object]], debouncer: DeliveryDebouncer
-    ) -> None:
-        """Register WhatsApp notification delivery for admins."""
-        if not config.whatsapp.enabled:
-            return
-
-        from functools import partial  # startup boundary
-
-        from teleclaude.events.delivery.whatsapp import WhatsAppDeliveryAdapter  # startup boundary
-        from teleclaude.services.whatsapp import send_whatsapp_message  # startup boundary
-
-        try:
-            for person_slug, person_cfg in self._iter_admin_people_configs():
-                phone_number = person_cfg.creds.whatsapp.phone_number if person_cfg.creds.whatsapp else None
-                if not phone_number:
-                    continue
-                bound_send_fn = partial(
-                    send_whatsapp_message,
-                    phone_number_id=config.whatsapp.phone_number_id,
-                    access_token=config.whatsapp.access_token,
-                    api_version=config.whatsapp.api_version,
-                )
-                adapter = WhatsAppDeliveryAdapter(
-                    phone_number=phone_number,
-                    send_fn=bound_send_fn,
-                    shutdown_check=self.shutdown_event.is_set,
-                )
-                push_callbacks.append(_wrap_with_debounce(debouncer, DeliveryChannel.WHATSAPP, adapter))
-                logger.info("WhatsAppDeliveryAdapter registered for admin %s", person_slug)
-        except Exception:
-            logger.warning("Could not load people config for WhatsApp delivery adapter")
 
     def _build_integration_trigger(self) -> Consumer:
         """Create the integration trigger consumer."""
@@ -326,68 +169,29 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
         return build_integration_trigger_consumer(spawn_integrator_session)
 
-    def _build_pipeline_context(
-        self,
-        event_catalog: object,
-        push_callbacks: list[Callable[..., object]],
-        event_producer: EventProducer,
-    ) -> PipelineContext:
-        """Create the shared pipeline context."""
-        assert self._event_db is not None, _EVENT_DB_REQUIRED_FOR_PIPELINE_CONTEXT
-        return PipelineContext(
-            catalog=event_catalog,  # type: ignore[arg-type]
-            db=self._event_db,
-            push_callbacks=push_callbacks,
-            trust_config=TrustConfig(known_sources=_KNOWN_EVENT_SOURCES),
-            producer=event_producer,
-        )
-
-    def _build_pipeline(self, context: PipelineContext) -> Pipeline:
-        """Build the system event pipeline: the notification path, beside the independent event consumers."""
-        return Pipeline(
-            [
-                TrustCartridge(),
-                DeduplicationCartridge(),
-                EnrichmentCartridge(),
-                ClassificationCartridge(),
-                NotificationProjectorCartridge(),
-            ],
-            context,
-        )
-
-    def _start_event_processor(self, redis_client: object, pipeline: Pipeline) -> str:
-        """Start the Redis-backed event processor."""
-        computer_label = config.computer.name
-        reliability = config.event_reliability
-        event_processor = EventProcessor(
-            redis_client=redis_client,
-            pipeline=pipeline,
-            codec=PLATFORM_ENTRY_CODEC,
-            declared_name=_SYSTEM_PIPELINE_PROCESSOR_NAME,
-            group=f"{EVENT_PROCESSOR_GROUP}-{computer_label}",
-            consumer_name=f"{computer_label}-{os.getpid()}",
-            idle_threshold_ms=reliability.idle_threshold_ms,
-            max_attempts=reliability.max_attempts,
-            sweep_interval_ms=reliability.sweep_interval_ms,
-            dlq_destination=reliability.dlq_destination,
-        )
-        self._event_processor_task = asyncio.create_task(
-            event_processor.start(self.shutdown_event), name="event-processor"
-        )
-        self._event_processor_task.add_done_callback(self._log_background_task_exception("event_processor"))
-        logger.info("EventProcessor started")
-        return computer_label
-
     def _event_consumers(self) -> list[Consumer]:
         """The platform's own reactions to events, each an independent consumer on this computer."""
         assert self._event_db is not None  # initialized by _start_event_platform_prepare
         assert self._event_producer is not None  # configured by _start_event_platform_prepare
+        assert self._event_catalog is not None  # built by _start_event_platform_prepare
         return [
             self._build_integration_trigger(),
             build_lifecycle_router_consumer(),
             build_procedure_activation_consumer(),
             build_correlation_consumer(self._event_db, self._event_producer, CorrelationConfig()),
+            build_incident_alerts_consumer(self._event_db, self._event_catalog),
         ]
+
+    async def _destroy_retired_system_group(self, redis_client: object) -> None:
+        """Destroy this computer's consumer group of the retired system pipeline, discarding its pending entries."""
+        group = _RETIRED_GROUP_TEMPLATE.format(group=EVENT_PROCESSOR_GROUP, computer=config.computer.name)
+        try:
+            await cast(Any, redis_client).xgroup_destroy(PLATFORM_STREAM_NAME, group)
+        except ResponseError:
+            # A stream that does not exist yet has no retired group to destroy.
+            logger.info(_RETIRED_GROUP_ABSENT_EVENT, group=group)
+            return
+        logger.info(_RETIRED_GROUP_DESTROYED_EVENT, group=group)
 
     def _start_event_consumers_runtime(self, redis_client: object) -> None:
         """Start the consumer runtime: one ordered reader of the platform stream per declared consumer."""
@@ -474,84 +278,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._task_schedule_clock_task.add_done_callback(self._log_background_task_exception("task_schedule_clock"))
         logger.info("Task schedule minute clock started")
 
-    def _configure_signal_context(
-        self,
-        context: PipelineContext,
-        event_producer: EventProducer,
-        signal_ai: object,
-    ) -> None:
-        """Attach signal AI integrations to the shared pipeline context."""
-        context.ai_client = signal_ai
-        context.emit = event_producer.emit
-
-    def _start_signal_pipeline(
-        self,
-        pipeline: Pipeline,
-        context: PipelineContext,
-        event_producer: EventProducer,
-    ) -> None:
-        """Start the optional signal ingestion pipeline."""
-        signal_cfg = getattr(config, "signal", None)
-        if signal_cfg is None:
-            return
-
-        try:
-            import anthropic  # startup boundary
-
-            from teleclaude.events.cartridges.signal import (  # startup boundary
-                SignalClusterCartridge,
-                SignalIngestCartridge,
-                SignalSynthesizeCartridge,
-            )
-            from teleclaude.events.cartridges.signal.synthesize import SynthesizeConfig  # startup boundary
-            from teleclaude.events.signal.ai import DefaultSignalAIClient  # startup boundary
-            from teleclaude.events.signal.clustering import ClusteringConfig  # startup boundary
-            from teleclaude.events.signal.scheduler import IngestScheduler  # startup boundary
-            from teleclaude.events.signal.sources import SignalSourceConfig  # startup boundary
-
-            raw_ai = anthropic.AsyncAnthropic()
-            signal_ai = DefaultSignalAIClient(raw_ai)
-            self._signal_ai_client = raw_ai
-            signal_db = self._event_db.signal
-            source_config_data = signal_cfg if isinstance(signal_cfg, dict) else {}
-            source_config = SignalSourceConfig(**source_config_data)
-
-            self._configure_signal_context(context, event_producer, signal_ai)
-
-            ingest_cartridge = SignalIngestCartridge(config=source_config, ai=signal_ai, signal_db=signal_db)
-            cluster_cartridge = SignalClusterCartridge(
-                config=ClusteringConfig(),
-                ai=signal_ai,
-                signal_db=signal_db,
-            )
-            synthesize_cartridge = SignalSynthesizeCartridge(
-                config=SynthesizeConfig(),
-                ai=signal_ai,
-                signal_db=signal_db,
-            )
-
-            self._ingest_scheduler_task = asyncio.create_task(
-                IngestScheduler(ingest_cartridge, context, source_config.pull_interval_seconds).run(
-                    self.shutdown_event
-                ),
-                name="ingest-scheduler",
-            )
-            self._ingest_scheduler_task.add_done_callback(self._log_background_task_exception("ingest_scheduler"))
-            pipeline.register(cluster_cartridge)
-            pipeline.register(synthesize_cartridge)
-            logger.info(
-                "Signal pipeline started (%d sources, interval=%ds)",
-                len(source_config.sources),
-                source_config.pull_interval_seconds,
-            )
-        except ImportError:
-            logger.warning(
-                "Signal pipeline failed to start (missing optional dependency); signal ingestion disabled",
-                exc_info=True,
-            )
-        except Exception:
-            logger.error("Signal pipeline failed to start; signal ingestion disabled", exc_info=True)
-
     async def _start_event_platform_prepare(self) -> None:
         """Prepare the event platform's producer side before the API socket binds.
 
@@ -580,24 +306,17 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._event_platform_status.pending_recovery_progress = "processor_starting"
         self._start_internal_event_bus(redis_client)
         event_producer = self._configure_event_producer(redis_client)
-        push_callbacks = self._build_push_callbacks()
-        context = self._build_pipeline_context(event_catalog, push_callbacks, event_producer)
-        pipeline = self._build_pipeline(context)
-        self._event_pipeline = pipeline
-        self._event_pipeline_context = context
+        self._event_catalog = event_catalog
         self._event_producer = event_producer
         self._event_redis_client = redis_client
 
     async def _start_event_consumers(self) -> None:
         """Start the event platform's consumer tasks after the API socket is bound."""
         redis_client = self._event_redis_client
-        pipeline = self._event_pipeline
-        context = self._event_pipeline_context
         event_producer = self._event_producer
-        assert pipeline is not None  # built by _start_event_platform_prepare
-        assert context is not None  # built by _start_event_platform_prepare
         assert event_producer is not None  # built by _start_event_platform_prepare
-        computer_label = self._start_event_processor(redis_client, pipeline)
+        await self._destroy_retired_system_group(redis_client)
+        computer_label = config.computer.name
         self._start_event_consumers_runtime(redis_client)
         self._event_platform_status.pending_recovery_progress = "processor_started"
         logger.info(
@@ -608,7 +327,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         )
         await self._emit_daemon_restarted_event(event_producer, computer_label)
         self._start_task_schedule_clock(event_producer)
-        self._start_signal_pipeline(pipeline, context, event_producer)
 
     async def _init_webhook_service(self) -> None:
         """Initialize the webhook service subsystem (contracts, handlers, dispatcher, bridge, delivery)."""

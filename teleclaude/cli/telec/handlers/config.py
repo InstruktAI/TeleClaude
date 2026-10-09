@@ -95,7 +95,7 @@ def _handle_config(args: list[str]) -> None:
         _handle_config_kind_command(subcommand, args[1:])
     elif subcommand == "tts":
         _handle_config_tts(args[1:])
-    elif subcommand in ("env", "notify", "validate"):
+    elif subcommand in ("env", "validate"):
         _handle_legacy_config_cli(args)
     else:
         print(f"Unknown config subcommand: {subcommand}")

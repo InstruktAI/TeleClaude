@@ -27,7 +27,7 @@ from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import RESERVED_HOME_IDENTITY_PREFIXES
 
-CURRENT_SCHEMA_VERSION = 15
+CURRENT_SCHEMA_VERSION = 16
 _PROBE_REQUIRES_DEFER_ERROR = "owed_probe belongs only to an action whose on_demand is defer"
 _BLANK_INBOUND_SECRET_ERROR = "An inbound source requires a non-blank secret"
 _BLANK_INBOUND_VERIFY_TOKEN_ERROR = "The WhatsApp inbound source requires a non-blank verify_token"
@@ -197,8 +197,13 @@ def is_agent_job(schedule: JobScheduleConfig) -> bool:
 
 
 PUBLISHES_TRIGGER_MAX_LENGTH: Final = 200
+#: The notification category, and publishing slug it reserves, for the platform's own events.
+PLATFORM_EVENT_CATEGORY: Final = "teleclaude"
 _RESERVED_IDENTITY_PREFIX_ERROR: Final = (
     "PublishesEntry.slug {slug!r} is a reserved snippet identity prefix and cannot name a domain"
+)
+_RESERVED_PLATFORM_CATEGORY_ERROR: Final = (
+    "PublishesEntry.slug {slug!r} is reserved for the platform's own events and cannot name a domain"
 )
 
 
@@ -220,6 +225,8 @@ class PublishesEntry(ClosedModel):
         """Reject domain slugs reserved by the snippet identity grammar."""
         if v.strip() in RESERVED_HOME_IDENTITY_PREFIXES:
             raise ValueError(_RESERVED_IDENTITY_PREFIX_ERROR.format(slug=v.strip()))
+        if v.strip() == PLATFORM_EVENT_CATEGORY:
+            raise ValueError(_RESERVED_PLATFORM_CATEGORY_ERROR.format(slug=v.strip()))
         return v
 
     @field_validator("trigger")
@@ -827,6 +834,17 @@ class GlobalConfig(TierDocument):
         return data
 
 
+class NotificationCategory(ClosedModel):
+    """One category of a person's notification interests: a switch and type patterns.
+
+    Patterns stay strings so one unusable entry never fails the person's document;
+    ``teleclaude.config.notification_interests`` owns what a usable pattern is.
+    """
+
+    enabled: bool = True
+    events: list[str] = Field(default_factory=list)
+
+
 class PersonConfig(TierDocument):
     """Per-person configuration."""
 
@@ -839,6 +857,7 @@ class PersonConfig(TierDocument):
     subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     mail_accounts: list[MailAccount] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     interests: list[str] = []
+    notifications: dict[str, NotificationCategory] = Field(default_factory=dict)
     settings: PersonSettings = PersonSettings()
     color: PersonChipColor | None = None
     preferred_channel: MessagingChannel | None = None

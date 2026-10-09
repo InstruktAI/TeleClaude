@@ -1,42 +1,27 @@
 """Forward migrations of the events database: stored event data is brought to the current model on open.
 
-The events database holds data the platform owns: notification rows, quarantined
-events and correlation windows. Each migration here brings an earlier stored shape
-forward so that readers know only the current one. Every step is idempotent.
+The events database holds data the platform owns: incident records, correlation
+windows and handled-event records. Each migration here brings an earlier stored
+shape forward so that readers know only the current one, and drops what the
+platform no longer reads. Every step is idempotent.
 """
 
 from __future__ import annotations
 
-import json
-
 import aiosqlite
-from instrukt_ai_logging import get_logger
 
-from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventHomeMarker
-from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.events.renames import TYPE_RENAMES
-from teleclaude.events.wire import stream_event_from_envelope_dump
-
-logger = get_logger(__name__)
 
 _TABLE_COLUMNS_SQL = "PRAGMA table_info({table})"
 _RENAME_COLUMN_SQL = "ALTER TABLE {table} RENAME COLUMN {earlier} TO {current}"
 _ADD_COLUMN_SQL = "ALTER TABLE {table} ADD COLUMN {column} TEXT"
 _BACKFILL_COLUMN_SQL = "UPDATE {table} SET {column} = ? WHERE {column} IS NULL"
 _RENAME_TYPE_SQL = "UPDATE {table} SET event_type = ? WHERE event_type = ?"
-_SELECT_QUARANTINED_BODIES_SQL = "SELECT id, envelope_json FROM quarantined_events"
-_UPDATE_QUARANTINED_BODY_SQL = "UPDATE quarantined_events SET envelope_json = ? WHERE id = ?"
-_QUARANTINE_BODY_UNREADABLE = "quarantined event body could not be brought forward"
-
-_NOTIFICATIONS = "notifications"
+_DROP_TABLE_SQL = "DROP TABLE IF EXISTS {table}"
+#: Tables of the retired notification path: stored notification rows and quarantined events.
+_RETIRED_TABLES = ("notifications", "quarantined_events")
 _HOME_COLUMN = "home"
-_HOME_OWNER_COLUMN = "home_owner"
-_NOTIFICATION_COLUMN_RENAMES = (("subject", _HOME_COLUMN), ("subject_owner", _HOME_OWNER_COLUMN))
-_NOTIFICATION_COLUMN_BACKFILLS = (
-    (_HOME_COLUMN, EventHomeMarker.UNKNOWN.value),
-    (_HOME_OWNER_COLUMN, EventHomeOwnerMarker.UNRESOLVED.value),
-)
 _CORRELATION_WINDOWS = "correlation_windows"
 #: Marks a window row counted before correlation acted only on its own computer's events.
 INHERITED_WINDOW_COLUMN = "inherited"
@@ -51,10 +36,7 @@ _DROP_COLUMN_SQL = "ALTER TABLE {table} DROP COLUMN {column}"
 _EARLIER_WINDOW_SUBJECT_COLUMN = "subject"
 _EARLIER_WINDOW_ENTITY_COLUMN = "entity"
 _WINDOW_KEY_COLUMN_RENAMES = (("subject", "home"),)
-_TYPED_EVENT_TABLES = ("notifications", "quarantined_events", "correlation_windows")
-#: The key an earlier envelope dump has and a stream-event dump does not.
-_EARLIER_DUMP_MARKER = "event"
-_CURRENT_DUMP_MARKER = "legacy"
+_TYPED_EVENT_TABLES = ("correlation_windows",)
 
 
 async def _columns(conn: aiosqlite.Connection, table: str) -> set[str]:
@@ -62,17 +44,10 @@ async def _columns(conn: aiosqlite.Connection, table: str) -> set[str]:
     return {row[1] for row in await cursor.fetchall()}
 
 
-async def _bring_notification_homes_forward(conn: aiosqlite.Connection) -> None:
-    """Rename the notification subject columns to the home they have always held."""
-    columns = await _columns(conn, _NOTIFICATIONS)
-    for earlier, current in _NOTIFICATION_COLUMN_RENAMES:
-        if earlier in columns and current not in columns:
-            await conn.execute(_RENAME_COLUMN_SQL.format(table=_NOTIFICATIONS, earlier=earlier, current=current))
-    columns = await _columns(conn, _NOTIFICATIONS)
-    for column, backfill in _NOTIFICATION_COLUMN_BACKFILLS:
-        if column not in columns:
-            await conn.execute(_ADD_COLUMN_SQL.format(table=_NOTIFICATIONS, column=column))
-        await conn.execute(_BACKFILL_COLUMN_SQL.format(table=_NOTIFICATIONS, column=column), (backfill,))
+async def _drop_retired_tables(conn: aiosqlite.Connection) -> None:
+    """Drop the tables only the retired notification path read; nothing migrates them forward."""
+    for table in _RETIRED_TABLES:
+        await conn.execute(_DROP_TABLE_SQL.format(table=table))
 
 
 async def _bring_correlation_windows_forward(conn: aiosqlite.Connection) -> None:
@@ -129,25 +104,9 @@ async def _rename_stored_event_types(conn: aiosqlite.Connection) -> None:
         )
 
 
-async def _rewrite_quarantined_bodies(conn: aiosqlite.Connection) -> None:
-    """Rewrite each quarantined body from a dump of the earlier envelope into the stored stream-event shape."""
-    cursor = await conn.execute(_SELECT_QUARANTINED_BODIES_SQL)
-    for row_id, body in await cursor.fetchall():
-        try:
-            dump: JsonDict = json.loads(body)
-            if _CURRENT_DUMP_MARKER in dump or _EARLIER_DUMP_MARKER not in dump:
-                continue
-            rewritten = stream_event_from_envelope_dump(dump).model_dump_json()
-        except (ValueError, KeyError, TypeError):
-            logger.warning(_QUARANTINE_BODY_UNREADABLE, row_id=row_id, exc_info=True)
-            continue
-        await conn.execute(_UPDATE_QUARANTINED_BODY_SQL, (rewritten, row_id))
-
-
 async def migrate_forward(conn: aiosqlite.Connection) -> None:
     """Bring every stored event shape forward to the current model, in dependency order."""
-    await _bring_notification_homes_forward(conn)
+    await _drop_retired_tables(conn)
     await _bring_correlation_windows_forward(conn)
     await _mark_inherited_correlation_windows(conn)
     await _rename_stored_event_types(conn)
-    await _rewrite_quarantined_bodies(conn)
