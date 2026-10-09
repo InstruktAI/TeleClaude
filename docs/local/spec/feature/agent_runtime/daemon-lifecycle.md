@@ -360,6 +360,22 @@ Then completion is accepted only from that same process instance
 And an unsupported capability or replacement process produces a visible refusal before a preparation signal or service-manager replacement
 ```
 
+<!-- planned:cli-accept-or-retry -->
+
+#### UC-DL14: A command refused by a restarting daemon tells its caller to run it again
+
+```gherkin
+Given an agent runs a daemon-backed telec command while the daemon is draining or not reachable
+When the command receives a shutdown refusal or cannot connect to the daemon
+Then it exits non-zero with a message stating that nothing was accepted
+And the message tells the caller to wait a fixed delay that spans a typical daemon restart and run the same command again, repeating while it is still refused
+And the message tells the caller to report a blocker once the daemon has stayed unavailable for several minutes
+And the message names no machine fields from the refusal body
+And a command that fails for any other reason carries no instruction to run it again
+```
+
+<!-- /planned:cli-accept-or-retry -->
+
 ### Graceful admission and settlement
 
 The service owns admission and draining across API, adapter, remote-command and

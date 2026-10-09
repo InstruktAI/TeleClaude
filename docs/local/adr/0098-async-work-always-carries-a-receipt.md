@@ -114,3 +114,9 @@ remote session outcomes to the session that dispatched them.
   Rejected because the authority question is per-operation — what happened to
   this submission — and a consumer reading a shared log needs cursors and
   correlation to answer it, which is machinery this decision does not require.
+
+## Status
+
+Superseded in part by ADR-0119: the command line no longer offers a blocking
+poll helper; the receipt, operation row and caller wake decided here remain
+accepted.

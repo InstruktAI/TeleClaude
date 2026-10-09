@@ -63,9 +63,20 @@ a routing instruction.
 
 ### 1. Enter the state machine
 
+<!-- planned-change:cli-accept-or-retry -->
+
 Call `telec todo work {slug}` for the current slug. Read the returned instruction
 block and execute it. The work orchestrator is scoped to that slug only; it does
 not continue into unrelated work after the slug reaches a terminal handoff.
+
+<!-- change:cli-accept-or-retry -->
+
+Call `telec todo work {slug}` for the current slug. Receive the instruction block
+as `general/procedure/orchestration` (Orchestration Loop, step 2) describes and
+execute it. The work orchestrator is scoped to that slug only; it does not
+continue into unrelated work after the slug reaches a terminal handoff.
+
+<!-- /planned-change:cli-accept-or-retry -->
 
 If the slug resolves to a holder, execute only the direct child commands the
 machine returns. Before dispatching a worker for a child, read that child's

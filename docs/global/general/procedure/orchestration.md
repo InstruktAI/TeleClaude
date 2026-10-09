@@ -41,7 +41,17 @@ actually did the work recorded there.
 ### Orchestration Loop
 
 1. Invoke the state machine (`telec todo work {slug}`, `telec todo prepare [slug]`, or `telec todo design [slug]`) with the current target. Work orchestration is slug-scoped; do not call bare `telec todo work` to pick up unrelated work.
+
+<!-- planned-change:cli-accept-or-retry -->
+
 2. Receive the instruction block.
+
+<!-- change:cli-accept-or-retry -->
+
+2. Receive the instruction block. The call returns an operation receipt and does not wait for the machine. Yield; when the operation's outcome wakes this session, read the instruction block from the operation record with `telec operations get <operation_id>`.
+
+<!-- /planned-change:cli-accept-or-retry -->
+
 3. Execute the machine-owned lifecycle commands in their returned order. Before execution and after each worker observation, reconcile the script with current human input and evidence under `general/procedure/ai-to-ai-operations` and `general/policy/human-contract`; apply the recovery sections below when the observed condition prevents that execution.
 4. When a notification arrives OR `orchestration-watch` fires, assess it under the corresponding section below. Re-enter the state machine when that assessment calls for continuation; attention is not itself a completed worker turn.
 5. Repeat until the state machine emits a terminal handoff or cleanup script. Terminal completion closes the workflow assignment; the session's remaining obligations and departure follow `general/principle/session-lifecycle`.
@@ -106,7 +116,17 @@ Respond by `agent_status`:
 2. Read the notification's reported event and native evidence. Fetch `general/procedure/ai-to-ai-operations` with `telec docs get` when it is not already loaded, then apply its parent-assessment steps. Inspect the live pane when the observation requires it, even if session metadata and transcript are unchanged.
 3. Tail for conversational context as needed (first time: default latest-turn window; subsequent tails: `--since <marker>`). Update the marker only when new timestamped messages appear.
 4. For a reported permission/input wait, failure, or an obstruction established by current evidence, follow When Worker Needs Help and Agent Degradation Handling as applicable. Neither `active` nor an empty tail is a reason to ignore the observation. A reported wait carries the provider's own cause and message text as evidence; assess from that before inspecting the emitting session.
+
+<!-- planned-change:cli-accept-or-retry -->
+
 5. For a completion, assess the produced result under the existing role contract. If continuation is due, invoke the state machine again (`telec todo work`, `telec todo prepare`, or `telec todo design` depending on the loop) and execute its returned script verbatim. A failed or blocked turn is not promoted to successful completion by this step.
+
+<!-- change:cli-accept-or-retry -->
+
+5. For a completion, assess the produced result under the existing role contract. If continuation is due, invoke the state machine again (`telec todo work`, `telec todo prepare`, or `telec todo design` depending on the loop), receive its script as Orchestration Loop step 2 describes, and execute it verbatim. A failed or blocked turn is not promoted to successful completion by this step.
+
+<!-- /planned-change:cli-accept-or-retry -->
+
 6. If assessment establishes valid waiting, maintain the applicable watch under the reminder policy.
 7. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`). Only send `telec sessions send` when the state machine output explicitly instructs it.
 

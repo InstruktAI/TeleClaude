@@ -167,6 +167,20 @@ the dispatcher reads it to decide local execution versus forwarding.
   row and emits its outcome events. Neither the row nor the receipt is replicated; only the
   outcome notification crosses a machine boundary.
 
+<!-- planned:cli-accept-or-retry -->
+
+- **The CLI never waits on a receipt.** A `telec` command backed by a `RECEIPT` command
+  prints the receipt and exits as soon as the daemon answers. Its output names the
+  operation, states that the outcome is delivered to the calling session, and gives
+  `telec operations get <operation_id>` as the way to read it. The wake is the only path an
+  outcome takes back to an agent; a caller-less invocation reads the record with the same
+  command.
+- **A daemon-backed CLI command is accepted or not accepted.** Accepted is a zero exit
+  carrying the `IMMEDIATE` result or the receipt. Not accepted is a non-zero exit carrying
+  an error, and nothing was done. No outcome lies between them.
+
+<!-- /planned:cli-accept-or-retry -->
+
 ## Primary flows
 
 ### 1. IMMEDIATE command
@@ -260,5 +274,6 @@ sequenceDiagram
 ## See Also
 
 - docs/local/adr/0098-async-work-always-carries-a-receipt.md
+- docs/local/adr/0119-the-cli-never-waits-on-a-receipt.md
 - docs/local/design/architecture/operation-receipts.md
 - docs/local/spec/feature/agent_runtime/control-delivery.md
