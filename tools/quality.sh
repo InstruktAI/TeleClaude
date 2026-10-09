@@ -275,12 +275,12 @@ format_python() {
 }
 
 format_root_prettier() {
-    npx --yes prettier --write "$@"
+    prettier --write "$@"
 }
 
 check_root_prettier() {
     local status
-    if npx --yes prettier --check "$@"; then
+    if prettier --check "$@"; then
         return 0
     else
         status=$?
