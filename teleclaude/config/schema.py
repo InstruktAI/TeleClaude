@@ -41,7 +41,7 @@ def normalize_env_allow_list(value: list[str]) -> list[str]:
     for item in value:
         name = item.strip()
         if not valid_name.fullmatch(name):
-            raise ValueError(f"Invalid environment variable name in env_allow_list: {item}")
+            raise ValueError("Invalid environment variable name in env_allow_list")
         if name in seen:
             continue
         seen.add(name)
@@ -70,12 +70,10 @@ class JobWhenConfig(ClosedModel):
             return v
         match = re.match(r"^(\d+)([mhd])$", v)
         if not match:
-            raise ValueError(
-                f"Invalid duration format: {v}. Expected format: <number><m|h|d> (e.g., '10m', '2h', '1d')"
-            )
+            raise ValueError("Invalid duration format. Expected format: <number><m|h|d> (e.g., '10m', '2h', '1d')")
         value_int = int(match.group(1))
         if value_int < 1:
-            raise ValueError(f"Duration must be at least 1 minute, got: {v}")
+            raise ValueError("Duration must be at least 1 minute")
         return v
 
     @field_validator("at")
@@ -88,12 +86,12 @@ class JobWhenConfig(ClosedModel):
         def validate_time(time_str: str) -> None:
             match = re.match(r"^(\d{2}):(\d{2})$", time_str)
             if not match:
-                raise ValueError(f"Invalid time format: {time_str}. Expected format: HH:MM (e.g., '09:00', '14:30')")
+                raise ValueError("Invalid time format. Expected format: HH:MM (e.g., '09:00', '14:30')")
             hour, minute = int(match.group(1)), int(match.group(2))
             if not 0 <= hour <= 23:
-                raise ValueError(f"Invalid hour in {time_str}: must be 00-23")
+                raise ValueError("Invalid hour: must be 00-23")
             if not 0 <= minute <= 59:
-                raise ValueError(f"Invalid minute in {time_str}: must be 00-59")
+                raise ValueError("Invalid minute: must be 00-59")
 
         if isinstance(v, str):
             validate_time(v)

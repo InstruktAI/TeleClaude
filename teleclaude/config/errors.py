@@ -43,7 +43,11 @@ def load_error_findings(error: ConfigLoadError) -> list[str]:
 
 
 def cause_findings(cause: BaseException) -> list[str]:
-    """Where and why one read, parse or validation failure happened, without any input value."""
+    """Where and why one read, parse or validation failure happened, without any input value.
+
+    A validator's own message is passed through, so config validators name fields, keys and
+    variables in their messages and never the value they rejected.
+    """
     if isinstance(cause, ValidationError):
         return [
             _FINDING.format(

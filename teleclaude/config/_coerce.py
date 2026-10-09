@@ -31,7 +31,7 @@ def as_bool(value: object, *, default: bool = False) -> bool:
             return True
         if token in _FALSE_TOKENS:
             return False
-    raise ValueError(f"Invalid boolean config value: {value!r} (expected true/false)")
+    raise ValueError("Invalid boolean config value (expected true/false)")
 
 
 def _require_scalar(value: object) -> object:
