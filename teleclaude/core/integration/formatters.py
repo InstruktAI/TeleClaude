@@ -32,9 +32,8 @@ _QUEUE_EMPTY_PUBLICATION_INSTRUCTION = (
     "failure keeps the commits local until recovery and a new judgment where owed.\n\n"
 )
 _QUEUE_EMPTY_WATCH_INSTRUCTION = (
-    "NEXT: Hold the prescribed recurring queue watcher with "
-    "`telec reminders set integrator-queue-watch` and await the next candidates. "
-    "End only when directed."
+    "NEXT: Keep `integrator-queue-watch` live (`telec reminders set integrator-queue-watch` "
+    "if it is not armed) and await the next candidates. Never cancel it; end only when directed."
 )
 _REPO_ROOT_PATH_LINE_SEPARATOR = "\n"
 _REPO_ROOT_NO_PATHS = "  (none)"
@@ -46,7 +45,8 @@ _REPO_ROOT_DIRTY_PATH_INSTRUCTION = (
     "Load the current integration procedure with `telec docs get "
     "sdlc/procedure/lifecycle/integrate` before following **Resolving a dirty path**. "
     "Run `telec code owners` from `{project_root}` before routing a path; never broadcast "
-    "ownership questions. Keep `integrator-main-clearance` live and resolve each blocking path on its own. "
+    "ownership questions. Keep `integrator-main-clearance` live, and `integrator-queue-watch` live "
+    "without ever cancelling it, and resolve each blocking path on its own. "
     "Run each stranded-path commit with the tool working directory set to `{project_root}` "
     "and the exact-path `--only <path>` selection specified by that procedure; never use "
     "additive workspace-scope `--include`. On each clearance beat, re-enter "

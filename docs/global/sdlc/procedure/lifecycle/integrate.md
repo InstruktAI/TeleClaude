@@ -55,14 +55,17 @@ each decision point until the queue is drained.
 
 ## Steps
 
-1. Call `telec todo integrate [slug]` to enter the state machine.
+1. Set `integrator-queue-watch` first, then call `telec todo integrate [slug]` to
+   enter the state machine. The watch stays live for as long as this session is the
+   integrator; never cancel it. It is the integrator's standing way back to the
+   state machine, and a session that ends removes it.
 2. Read the returned instruction block and execute it verbatim.
 3. After executing, call `telec todo integrate` again to advance.
    3a. After a canonical-main advancement, inspect the maintenance actions recorded
    for that activation. Treat pending actions as pending, judge terminal
    failures and recover within the integration lane, and keep outstanding
    live-runtime judgment with the integrator. Continue observing those actions
-   on the parked queue watch when they outlive this drain.
+   on `integrator-queue-watch` beats when they outlive this drain.
    After each activation, read that delivery's log window with knowledge of
    the change. Investigate anomalies, handle bounded recovery, and route
    remaining breakage for a forward fix through the normal bug process.
@@ -249,8 +252,10 @@ claimed; a set of paths is never treated as one unit.
    dropped. When that history cannot be read, commit and never revert.
 7. **Escalate** to the human, once per path, only when an owner or claimant leaves its
    path uncommitted for three consecutive beats after it was messaged or claimed, or
-   when a path's diff is unintelligible. Leave an escalated path untouched and hold as
-   its blocker beacon.
+   when a path's diff is unintelligible. Report each escalated path once, leave it
+   untouched, and hold as its blocker beacon. `integrator-queue-watch` beats keep
+   re-entering the state machine, and the drain resumes on the first beat after the
+   path is committed.
 
 #### Reminder: integrator-main-clearance
 
@@ -269,7 +274,8 @@ claimed; a set of paths is never treated as one unit.
   reports when its history is split.
 - **Cancellation:** cancel when main clears, the integration session reaches a
   terminal outcome, the human explicitly supersedes the wait, or every remaining
-  dirty path has been escalated.
+  dirty path has been escalated. `integrator-queue-watch` stays live in every case
+  and keeps re-entering the state machine.
 - **Invocation:** `telec reminders set integrator-main-clearance`.
 
 #### Reminder: integrator-queue-watch
@@ -277,13 +283,13 @@ claimed; a set of paths is never treated as one unit.
 - **Owner:** Integration procedure and its queue-empty state-machine formatter.
 - **Parameters:** optional `after` override; the queue and integrator session
   derive from the authenticated caller.
-- **Activation anchor:** immediately after a completed drain finds no eligible
-  candidate and the singleton integrator parks.
+- **Activation anchor:** session entry, before the first state-machine call.
 - **Duration:** 15 minutes by default; an explicit caller interval replaces the
   default without changing this profile's intent.
-- **Recurrence:** recurring while the integrator remains parked on an empty
-  queue.
-- **Arm condition:** set from the queue-empty outcome before yielding.
+- **Recurrence:** recurring for as long as this session is the integrator —
+  through drains, blocks, escalations, and parked queues alike.
+- **Arm condition:** set first, unconditionally. Setting it again replaces it
+  atomically without an unarmed gap.
 - **Intent:** `Recheck the integration queue and outstanding canonical-main maintenance from current source truth. Judge completed maintenance and recover failures within the integration lane; if a candidate is ready, continue the drain, otherwise remain parked.`
 - **Firing behavior:** inspect checkout-scoped integrator judgment markers,
   outstanding maintenance records, and structured terminal outcomes for
@@ -295,13 +301,10 @@ claimed; a set of paths is never treated as one unit.
   marker; an earlier or narrower read does not discharge it. Retain unresolved
   judgment across reminder beats and route terminal failures through bounded
   recovery. Apply the standing post-activation log judgment and direct-main
-  publication in step 3a before invoking the integration state machine once.
-  If it dequeues a candidate,
-  cancel this watcher before continuing; if the queue remains empty, leave it
-  live and execute the returned instruction verbatim.
-- **Cancellation:** cancel when a candidate is dequeued, the integrator cedes
-  its singleton role, the session is directed to end, or the watch is
-  superseded.
+  publication in step 3a before invoking the integration state machine once,
+  then execute the returned instruction verbatim.
+- **Cancellation:** never cancel it. Only the human ends an integrator; the
+  reminder is removed when the session ends.
 - **Invocation:** `telec reminders set integrator-queue-watch`.
 
 #### Reminder: integrator-candidate-settledness
@@ -349,21 +352,24 @@ unrelated uncommitted repo-root paths are not publication gates. A rejected push
 or split history follows REPO ROOT SYNC REQUIRED; only paths that block that
 reconciliation enter its dirty-path procedure.
 
-Park after bookkeeping completes. Hold `integrator-queue-watch` while awaiting
-the next candidates, and end only when directed.
+Park after bookkeeping completes, with `integrator-queue-watch` live, and end only
+when directed.
 
 ### When to end, when to wait, when to beacon
 
-The integrator's terminal behavior has three shapes — do not collapse them:
+The integrator's terminal behavior has three shapes — do not collapse them. In
+every shape `integrator-queue-watch` stays live; never cancel it.
 
-- **Queue drained (INTEGRATION COMPLETE):** park on the prescribed recurring
-  `integrator-queue-watch` and await the next candidates. The integrator is a
+- **Queue drained (INTEGRATION COMPLETE):** park on `integrator-queue-watch` and
+  await the next candidates. The integrator is a
   singleton and is not re-dispatched; end only when directed.
 - **Transient block (dirty main):** do not end and do not idle — keep
   `integrator-main-clearance` live and resolve each dirty path until main clears,
   then continue the drain (see **REPO ROOT SYNC REQUIRED**).
 - **Unrecoverable block (genuine human decision):** stay alive as a beacon, but only
   after recovery and the retry window are exhausted, so the human sees and intervenes.
+  The queue watch keeps re-entering the state machine, so the drain resumes on the
+  first beat after the human acts.
 
 ## Outputs
 
