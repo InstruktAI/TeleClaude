@@ -57,7 +57,8 @@ Then it does not start CLI commands solely to validate their help behavior
 ```gherkin
 Given a quality gate runs the guardrail lane
 When a stage returns or raises an exception
-Then a completion record names the stage, outcome, monotonic elapsed milliseconds, execution root, process id, and lane-run id
+Then a completion record names the stage, outcome, monotonic elapsed milliseconds, opaque execution-root id, process id, and lane-run id
+And no raw execution-root path is written in the stage records
 And successful completion is logged at DEBUG and unsuccessful completion at ERROR
 And stage entry is available at TRACE, including in-process source validation
 And the original return or exception still determines the gate outcome

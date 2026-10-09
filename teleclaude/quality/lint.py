@@ -15,6 +15,7 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 from typing import Protocol
@@ -464,6 +465,7 @@ def run_pipeline(
     )
     run_id = uuid4().hex
     pid = os.getpid()
+    execution_root_id = sha256(os.fsencode(project_root.resolve())).hexdigest()
     for step in pipeline.steps:
         started = perf_counter()
         outcome = _GuardrailStageOutcome.FAILED
@@ -472,7 +474,7 @@ def run_pipeline(
             stage=step.name,
             run_id=run_id,
             pid=pid,
-            execution_root=str(project_root),
+            execution_root_id=execution_root_id,
         )
         try:
             step.run(targets)
@@ -490,7 +492,7 @@ def run_pipeline(
                 duration_ms=round((perf_counter() - started) * 1000),
                 run_id=run_id,
                 pid=pid,
-                execution_root=str(project_root),
+                execution_root_id=execution_root_id,
             )
 
 
