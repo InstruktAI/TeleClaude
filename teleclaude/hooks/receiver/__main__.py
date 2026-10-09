@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import importlib
 import os
 import sys
 from pathlib import Path
@@ -39,8 +38,11 @@ def _print_help_and_exit_if_requested() -> None:
 def _run_receiver_main() -> None:
     """Import and execute the hook receiver entry point."""
     _print_help_and_exit_if_requested()
-    receiver_module = importlib.import_module("teleclaude.hooks.receiver")
-    receiver_module.main()
+    from teleclaude.hooks.receiver.run import (  # noqa: PLC0415 - entry seam: help and the venv re-exec run before the receiver loads
+        main,
+    )
+
+    main()
 
 
 if __name__ == "__main__":

@@ -56,7 +56,7 @@ from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.docs_reconcile import SnippetWriteResult, reconcile_snippets_for_purged_slugs
 from teleclaude.events import get_event_db
 from teleclaude.events.consumers import HANDLED_RECORD_RETENTION
-from teleclaude.hooks.receiver._session import prune_session_map
+from teleclaude.hooks.session_map import prune_session_map
 from teleclaude.project_manifest import load_roots
 from teleclaude.project_root import is_project_checkout
 from teleclaude.resource_validation._todo_status import build_todo_status_map
