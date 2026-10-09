@@ -21,6 +21,7 @@ from enum import StrEnum
 from typing import cast
 
 from teleclaude.core.models import JsonDict, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models._session import FIELD_CALLER_HEADER
 
 STARTUP_RESOLVED_MODEL_FLAGS_FIELD = "resolved_model_flags"
 STARTUP_BOOTSTRAP_TASK_LABEL_TEMPLATE = "session_bootstrap:{session_id}"
@@ -97,9 +98,12 @@ def encode_startup_intent(intent: SessionLaunchIntent) -> str:
 
     The wire form omits the resolved model flags because a remote target resolves
     its own availability; the stored form keeps them so a resumed launch uses the
-    model the acknowledged start was accepted with.
+    model the acknowledged start was accepted with. The stored form omits the
+    caller header, which launch resolution has already applied to the startup
+    message before the handover is recorded.
     """
     payload: JsonDict = {**intent.to_dict(), STARTUP_RESOLVED_MODEL_FLAGS_FIELD: intent.resolved_model_flags}
+    del payload[FIELD_CALLER_HEADER]
     return json.dumps(payload)
 
 
