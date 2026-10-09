@@ -303,8 +303,9 @@ claimed; a set of paths is never treated as one unit.
   recovery. Apply the standing post-activation log judgment and direct-main
   publication in step 3a before invoking the integration state machine once,
   then execute the returned instruction verbatim.
-- **Cancellation:** never cancel it. Only the human ends an integrator; the
-  reminder is removed when the session ends.
+- **Cancellation:** none while this session is the integrator (step 1). The
+  reminder is removed when the session ends, and only the human ends an
+  integrator.
 - **Invocation:** `telec reminders set integrator-queue-watch`.
 
 #### Reminder: integrator-candidate-settledness
@@ -358,7 +359,7 @@ when directed.
 ### When to end, when to wait, when to beacon
 
 The integrator's terminal behavior has three shapes — do not collapse them. In
-every shape `integrator-queue-watch` stays live; never cancel it.
+every shape `integrator-queue-watch` stays live.
 
 - **Queue drained (INTEGRATION COMPLETE):** park on `integrator-queue-watch` and
   await the next candidates. The integrator is a
