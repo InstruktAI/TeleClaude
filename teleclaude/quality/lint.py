@@ -23,6 +23,7 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.loader import load_declared_project_config
 from teleclaude.config.tree_homes import group_paths_by_owning_home
 from teleclaude.git import hook_free_environment
 from teleclaude.git_tree import TreeSource
@@ -53,6 +54,7 @@ __all__ = [
 ]
 
 logger = get_logger(__name__)
+_FRONTEND_ROOT_OPTION = "--frontend-root"
 _GUARDRAIL_STAGE_STARTED_EVENT = "quality_guardrail_stage_started"
 _GUARDRAIL_STAGE_FINISHED_EVENT = "quality_guardrail_stage_finished"
 _CONTENT_ROOT_FLAG = "--content-root"
@@ -381,6 +383,9 @@ class _ForbidTsUnitTestsStep:
         """Run selected-file or repo-wide TypeScript unit-test guard."""
         script = str(REPO_ROOT / "tools" / "lint" / "forbid_ts_unit_tests.py")
         args = ["--all"] if self._run_all else targets
+        declared = load_declared_project_config(self._project_root)
+        if declared is not None and declared.frontend_root:
+            args = [_FRONTEND_ROOT_OPTION, declared.frontend_root, *args]
         _run_tool([_bundled_python(), script, *args], self._project_root, self.name, self._child_env)
 
 

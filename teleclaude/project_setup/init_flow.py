@@ -39,7 +39,7 @@ from teleclaude.project_setup.skeleton import deploy_skeleton
 from teleclaude.quality.scope import get_project_languages
 from teleclaude.runtime.config import get_runtime_config, require_own_checkout
 from teleclaude.services.project_catalog import get_project_catalog_service
-from teleclaude.slug import derive_project_slug, normalize_slug, validate_slug
+from teleclaude.slug import derive_project_slug, validate_slug
 from teleclaude.utils import resolve_project_config_path
 
 logger = get_logger(__name__)
@@ -248,7 +248,7 @@ def _ensure_project_slug(project_root: Path) -> None:
             pass
 
     seed = raw.get("project_name") if isinstance(raw.get("project_name"), str) else None
-    slug = normalize_slug(seed or project_root.name)
+    slug = derive_project_slug(None, seed, project_root)
     if not slug:
         raise RuntimeError(
             f"cannot derive a valid project_slug for {project_root}: "

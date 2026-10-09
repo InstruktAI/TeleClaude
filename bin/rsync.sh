@@ -3,14 +3,14 @@
 # Usage: bin/rsync.sh <computer-name>
 #
 # ALWAYS uses .rsyncignore to protect config.yml, .env, and other local files
-# Computer names must be defined in config.yml under remote_computers
+# Computer names must be declared under remote_computers in the machine configuration
 
 set -e
 
 if [ $# -lt 1 ]; then
     echo "Usage: bin/rsync.sh <computer-name>"
     echo ""
-    echo "Available computers are defined in config.yml under remote_computers"
+    echo "Available computers are declared under remote_computers in the machine configuration"
     exit 1
 fi
 
@@ -21,29 +21,37 @@ shift
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Read computer config from config.yml using grep/awk
-CONFIG_FILE="$PROJECT_ROOT/config.yml"
-
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: config.yml not found at $CONFIG_FILE"
+# Read the named remote computer from the machine configuration through telec.
+if ! REMOTE_JSON="$("$PROJECT_ROOT/bin/telec" config computer get computer.remote_computers --format json 2>/dev/null)"; then
+    echo "Error: no remote computers are configured on this computer"
+    echo "Declare them under remote_computers in the machine configuration (telec config computer get)"
     exit 1
 fi
 
-# Parse YAML to extract computer config
-# Look for the computer section (2-space indent) and extract properties (4-space indent)
-USER=$(awk "/^  $COMPUTER_NAME:/{flag=1; next} flag && /^    user:/{print \$2; exit} flag && /^  [a-z]/{exit}" "$CONFIG_FILE")
-HOST=$(awk "/^  $COMPUTER_NAME:/{flag=1; next} flag && /^    host:/{print \$2; exit} flag && /^  [a-z]/{exit}" "$CONFIG_FILE")
-TPATH=$(awk "/^  $COMPUTER_NAME:/{flag=1; next} flag && /^    teleclaude_path:/{print \$2; exit} flag && /^  [a-z]/{exit}" "$CONFIG_FILE")
-
-if [ -z "$USER" ] || [ -z "$HOST" ] || [ -z "$TPATH" ]; then
-    echo "Error: Computer \"$COMPUTER_NAME\" not found in config.yml or incomplete configuration"
-    echo ""
-    echo "Available computers:"
-    awk '/^remote_computers:/,/^[a-z]/ {if (/^  [a-z0-9]+:/) print "- " substr($1, 3, length($1)-3)}' "$CONFIG_FILE"
+REMOTE_FIELDS="$(python3 -c '
+import json, sys
+name = sys.argv[1]
+computers = json.load(sys.stdin)["computer"]["remote_computers"] or []
+match = next((c for c in computers if c.get("name") == name), None)
+if match is None or not all(match.get(k) for k in ("user", "host", "teleclaude_path")):
+    print("Available computers:", file=sys.stderr)
+    for computer in computers:
+        print("- " + str(computer.get("name")), file=sys.stderr)
+    sys.exit(1)
+print(match["user"])
+print(match["host"])
+print(match["teleclaude_path"])
+' "$COMPUTER_NAME" <<<"$REMOTE_JSON")" || {
+    echo "Error: Computer \"$COMPUTER_NAME\" not found in remote_computers or incomplete configuration"
     exit 1
-fi
+}
+{
+    read -r REMOTE_USER
+    read -r HOST
+    read -r TPATH
+} <<<"$REMOTE_FIELDS"
 
-REMOTE="$USER@$HOST:$TPATH"
+REMOTE="$REMOTE_USER@$HOST:$TPATH"
 
 # Verify .rsyncignore exists
 RSYNCIGNORE="$PROJECT_ROOT/.rsyncignore"

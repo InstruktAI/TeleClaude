@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from instrukt_ai_logging import get_logger
 from pydantic import ValidationError
@@ -20,7 +19,6 @@ from pydantic import ValidationError
 from teleclaude.config._environment import write_environment_value
 from teleclaude.config._machine_build import build_config_from_raw
 from teleclaude.config._models import TeleclaudeConfig
-from teleclaude.config.declaration import write_yaml_document as _atomic_yaml_write
 from teleclaude.config.errors import ConfigLoadError, describe_load_error
 from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import (
@@ -123,16 +121,6 @@ def list_people(config: GlobalConfig | None = None) -> list[PersonEntry]:
 # The global/person config writers and their YAML helpers live in
 # teleclaude.config.loader (the config domain). They are re-exported above so
 # every existing importer of config_handlers is unaffected.
-
-
-def save_raw_machine_config(
-    raw_config: dict[str, Any],  # guard: loose-dict - on-disk YAML config tree
-    path: Path | None = None,
-) -> None:
-    """Atomic write of the raw config.yml tree as-is (sparse; defaults not materialized)."""
-    target = path or config_path
-    _atomic_yaml_write(target, raw_config)
-    logger.info("Saved machine config to %s", target)
 
 
 # --- Validation ---

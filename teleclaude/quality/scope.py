@@ -13,11 +13,10 @@ from dataclasses import dataclass
 from enum import Enum, StrEnum
 from pathlib import Path
 
-import yaml
-
+from teleclaude.config.loader import load_declared_project_config
 from teleclaude.core.reconciliation.home_retained_set import HomeMembership, home_membership
 from teleclaude.git import GitCommandError, Repo, is_linked_worktree
-from teleclaude.paths import ConfigFileName, is_platform_home
+from teleclaude.paths import is_platform_home
 from teleclaude.session_identity import get_session_id  # deferred: heavy transitive imports
 from teleclaude.todo_scaffold import (  # deferred: heavy transitive imports
     collect_declared_paths,
@@ -385,12 +384,8 @@ def get_project_languages(project_root: Path) -> list[str]:
     elif any(project_root.glob("*.py")):
         languages.append("python")
 
-    frontend_root: str | None = None
-    config_path = project_root / ConfigFileName.OVERLAY
-    if config_path.exists():
-        data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            frontend_root = data.get("frontend_root") or None
+    declared = load_declared_project_config(project_root)
+    frontend_root = declared.frontend_root if declared is not None else None
 
     if _detect_typescript(project_root, frontend_root=frontend_root):
         languages.append("typescript")

@@ -21,7 +21,9 @@ from teleclaude.config.migrations.read import upcast_for_read
 from teleclaude.config.revision import StaleRevision, view_revision
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import FileTransaction, file_transaction
+from teleclaude.paths import MACHINE_CONFIG_PATH
 
+_UTF8 = "utf-8"
 _DOCUMENT_MAPPING_ERROR = "Machine configuration must be a YAML mapping."
 _MISSING_CONFIG_ERROR = "Machine configuration does not exist."
 _MISSING_FIELD_ERROR = "Machine configuration field does not exist."
@@ -174,6 +176,20 @@ def _reject_schema_version_write(patch: Mapping[object, object]) -> None:
     """Keep schema version under the migration list's write authority."""
     if _SCHEMA_VERSION in patch:
         raise ReadOnlyDeclaration(_READ_ONLY_SCHEMA_VERSION_ERROR)
+
+
+def stored_machine_document() -> Mapping[str, object] | None:
+    """Read the stored machine document as it is on disk, before migration and without validation.
+
+    Readers of entries still in transit out of the machine document need its stored shape. An empty
+    file is an empty document; a document that is not a mapping is ``None``.
+    """
+    with file_transaction(MACHINE_CONFIG_PATH) as transaction:
+        content = transaction.read_text(encoding=_UTF8)
+    if not content:
+        return {}
+    document: object = round_trip_yaml().load(content)
+    return document if isinstance(document, Mapping) else None
 
 
 def _read_mapping(transaction: FileTransaction) -> dict[object, object]:

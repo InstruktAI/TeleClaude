@@ -8,11 +8,10 @@ from pathlib import Path
 
 import yaml
 
-from teleclaude.config._yaml import round_trip_yaml
+from teleclaude.config.machine_config_mutation import stored_machine_document
 from teleclaude.config.migrations._chain import Destination, in_transit
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import file_transaction
-from teleclaude.paths import MACHINE_CONFIG_PATH
 from teleclaude.project_manifest import (
     _PROJECTS_FIELD,
     MANIFEST_PATH,
@@ -52,7 +51,7 @@ def load_registered_entries(
     entries = _load_manifest_entries(path, strict=strict)
     if not include_in_transit:
         return entries
-    document = _stored_machine_document()
+    document = stored_machine_document()
     if document is None:
         return entries
     known_roots = {entry.path for entry in entries}
@@ -102,16 +101,6 @@ def register_root(*, path: Path | None = None, project_root: Path) -> bool:
         payload = {_PROJECTS_FIELD: [str(root) for root in roots]}
         transaction.replace_text(yaml.safe_dump(payload, sort_keys=False), encoding=_UTF8)
     return True
-
-
-def _stored_machine_document() -> Mapping[str, object] | None:
-    """Read the stored machine document without validating or rewriting it."""
-    with file_transaction(MACHINE_CONFIG_PATH) as transaction:
-        content = transaction.read_text(encoding=_UTF8)
-    if not content:
-        return {}
-    document: object = round_trip_yaml().load(content)
-    return document if isinstance(document, Mapping) else None
 
 
 def _project_registry_transit(document: Mapping[str, object]) -> tuple[object, ...]:

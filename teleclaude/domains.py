@@ -15,9 +15,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.config.context_root import load_raw_declaration
+from teleclaude.config.loader import load_declared_project_config
 from teleclaude.config.schema import BusinessConfig
-from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest import load_roots
 from teleclaude.project_root import declaration_root
 
@@ -51,16 +50,13 @@ def triggers_for_root(root: Path) -> dict[str, str]:
 
 
 def _business_for_root(root: Path) -> BusinessConfig | None:
-    """Read one publisher declaration without triggering config normalization.
+    """Read one publisher's business declaration from its loaded project configuration.
 
     The declaration is read from the checkout that owns ``root``: a linked
     worktree carries a branch copy and is never authoritative for it.
     """
-    config_path = declaration_root(root) / ConfigFileName.OVERLAY
-    if not config_path.is_file():
-        return None
-    payload = load_raw_declaration(config_path, subject="publisher")
-    return BusinessConfig.model_validate(payload.get("business", {}))
+    declared = load_declared_project_config(declaration_root(root))
+    return None if declared is None else declared.business
 
 
 def valid_domains() -> set[str]:

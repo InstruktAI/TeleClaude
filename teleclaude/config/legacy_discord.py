@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.legacy_discord_handoff import (
     LegacyDiscordProviderId,
     LegacyDiscordProviderIds,
@@ -16,10 +15,10 @@ from teleclaude.config.legacy_discord_handoff import (
     read,
     read_project_forum_bindings,
 )
+from teleclaude.config.machine_config_mutation import stored_machine_document
 from teleclaude.config.migrations._chain import Destination, MigrationTrigger, in_transit
 from teleclaude.config.migrations._runner import migrate_document
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import MACHINE_CONFIG_PATH
 
 _COMPUTER_SUBJECT = SubjectRef(ConfigSubjectKind.COMPUTER)
@@ -31,22 +30,12 @@ _PATH_FIELD = "path"
 _UTF8 = "utf-8"
 
 
-def _machine_document() -> Mapping[str, object] | None:
-    """Read the stored machine document without validating or rewriting it."""
-    with file_transaction(MACHINE_CONFIG_PATH) as transaction:
-        content = transaction.read_text(encoding=_UTF8)
-    if not content:
-        return {}
-    document: object = round_trip_yaml().load(content)
-    return document if isinstance(document, Mapping) else None
-
-
 def legacy_discord_provider_ids() -> LegacyDiscordProviderIds:
     """Return conflict-free identifiers from the hand-off and the in-transit machine document."""
     entries_by_key: dict[str, list[LegacyDiscordProviderId]] = {}
     for entry in read().entries:
         entries_by_key.setdefault(entry.logical_key, []).append(entry)
-    document = _machine_document()
+    document = stored_machine_document()
     if document is not None:
         for batch in in_transit(document, _COMPUTER_SUBJECT, _HANDOFF_DESTINATION):
             if isinstance(batch, tuple):
@@ -75,7 +64,7 @@ def legacy_project_forum_bindings() -> LegacyProjectForumBindings:
     entries_by_key: dict[str, list[LegacyProjectForumBinding]] = {}
     for binding in read_project_forum_bindings().entries:
         entries_by_key.setdefault(binding.logical_key, []).append(binding)
-    document = _machine_document()
+    document = stored_machine_document()
     if document is not None:
         batches = in_transit(document, _COMPUTER_SUBJECT, _PROJECT_REGISTRY_DESTINATION)
         for batch in batches:

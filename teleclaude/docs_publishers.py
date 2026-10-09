@@ -10,12 +10,11 @@ from enum import StrEnum
 from pathlib import Path
 from typing import NamedTuple
 
-import yaml
-
+from teleclaude.config.loader import load_declared_project_config
 from teleclaude.domains import publishes_for_root
-from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_ROOTS, PEOPLE_DIR, REPO_ROOT, ConfigFileName
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_ROOTS, PEOPLE_DIR, REPO_ROOT
 from teleclaude.project_manifest import load_roots
-from teleclaude.slug import normalize_slug
+from teleclaude.slug import derive_project_slug, normalize_slug
 from teleclaude.snippet_validation import is_generated_global_doc_artifact, tier_root_kind
 
 _SNIPPETS_DIR = "snippets"
@@ -57,26 +56,14 @@ _RESOLUTION_MODE: ContextVar[DocsResolutionMode] = ContextVar("docs_resolution_m
 
 def declared_project_slug(project_root: Path) -> str | None:
     """Return the project slug ``project_root`` declares in its own configuration, if any."""
-    config_file = project_root / ConfigFileName.OVERLAY
-    if not config_file.is_file():
+    declared = load_declared_project_config(project_root)
+    if declared is None or not (declared.project_slug or declared.project_name):
         return None
-    try:
-        payload = yaml.safe_load(config_file.read_text(encoding="utf-8"))
-    except yaml.YAMLError:
-        return None
-    if not isinstance(payload, dict):
-        return None
-    slug = payload.get("project_slug")
-    if isinstance(slug, str) and slug.strip():
-        return slug.strip()
-    name = payload.get("project_name")
-    if isinstance(name, str) and name.strip():
-        return normalize_slug(name)
-    return None
+    return derive_project_slug(declared.project_slug, declared.project_name, project_root)
 
 
 def project_slug(project_root: Path) -> str:
-    """Read the canonical project slug without importing the full config loader."""
+    """Return the project's declared slug, else its directory name."""
     return declared_project_slug(project_root) or normalize_slug(project_root.name)
 
 

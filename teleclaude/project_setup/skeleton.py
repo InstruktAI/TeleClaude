@@ -12,12 +12,11 @@ import os
 import sys
 from pathlib import Path
 
-import yaml
-
+from teleclaude.config.loader import load_declared_project_config
 from teleclaude.core.reconciliation.template_installation import render_template
-from teleclaude.paths import ConfigFileName
 from teleclaude.quality.scope import get_project_languages
 
+_DEFAULT_FRONTEND_ROOT = "frontend"
 logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "quality"
@@ -58,13 +57,8 @@ def deploy_skeleton(project_root: Path) -> None:
 
     _deploy_files(project_root, _TEMPLATES_DIR, _LIFECYCLE_FILES, project_root)
 
-    config_path = project_root / ConfigFileName.OVERLAY
-    frontend_root = "frontend"
-    if config_path.exists():
-        with open(config_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-        if isinstance(data, dict):
-            frontend_root = str(data.get("frontend_root", "frontend"))
+    declared = load_declared_project_config(project_root)
+    frontend_root = (declared.frontend_root if declared is not None else None) or _DEFAULT_FRONTEND_ROOT
 
     for language in languages:
         if language == "python":

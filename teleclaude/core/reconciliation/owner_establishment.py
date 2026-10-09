@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -15,14 +15,11 @@ from ruamel.yaml.error import YAMLError
 
 from teleclaude.caller_identity import entries_for_email
 from teleclaude.config.identity_schema import PersonEntry
-from teleclaude.config.migrations._chain import upcast
-from teleclaude.config.resource_catalog import load_mapping, raw_people
+from teleclaude.config.loader import load_global_config
 from teleclaude.config.resource_contract import InvalidCandidate, PartialCommitFailure
 from teleclaude.config.resources import register_first_person
-from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.logging_config import setup_logging
-from teleclaude.paths import GLOBAL_CONFIG_PATH
 
 logger = get_logger("teleclaude.core.reconciliation.owner_establishment")
 
@@ -126,23 +123,8 @@ def _read_owner_seed() -> OwnerSeed | None:
 
 
 def _read_people_roster() -> list[PersonEntry]:
-    """Read and validate one atomic people registry snapshot without writing state."""
-    if not GLOBAL_CONFIG_PATH.exists():
-        return []
-    stored_text = GLOBAL_CONFIG_PATH.read_text(encoding=_UTF8)
-    stored = load_mapping(stored_text, GLOBAL_CONFIG_PATH)
-    global_ref = SubjectRef(ConfigSubjectKind.GLOBAL)
-    global_raw = dict(upcast(stored, global_ref))
-    entries = raw_people(global_raw)
-    people: list[PersonEntry] = []
-    for entry in entries:
-        if not isinstance(entry, Mapping):
-            raise ValueError(_INVALID_REGISTRY_ENTRY)
-        try:
-            people.append(PersonEntry.model_validate(entry))
-        except ValidationError as exc:
-            raise ValueError(_INVALID_REGISTRY_ENTRY) from exc
-    return people
+    """Read the people registry from the loaded global configuration, writing no state."""
+    return list(load_global_config().people)
 
 
 def _decision_message(decision: OwnerDecision, seed: OwnerSeed | None, people: Sequence[PersonEntry]) -> str:

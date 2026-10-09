@@ -11,10 +11,10 @@ from typing import Final
 
 import yaml
 
-from teleclaude.config.context_root import load_raw_declaration
+from teleclaude.config.loader import load_declared_project_config
 from teleclaude.constants import TAXONOMY_TYPES
 from teleclaude.domains import publishes_for_root, valid_domains
-from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, PEOPLE_DIR, ConfigFileName
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, PEOPLE_DIR
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_scope import HOME_SCOPES, RESERVED_HOME_IDENTITY_PREFIXES, home_identity_prefix
 from teleclaude.snippet_scope import SnippetScope as SnippetScope
@@ -209,20 +209,16 @@ def read_declared_project_slug(project_root: Path) -> str:
     """Return the slug a project declares, for minting its local snippet identities.
 
     Reads ``project_slug``, else the normalized ``project_name``, from the root's
-    own ``teleclaude.yml`` without normalizing or rewriting the document. Never
-    falls back to the directory name, which is not an identity on a publication
-    snapshot or a clone. Raises :class:`UndeclaredProjectSlugError` when neither
-    is declared.
+    own loaded project configuration. Never falls back to the directory name,
+    which is not an identity on a publication snapshot or a clone. Raises
+    :class:`UndeclaredProjectSlugError` when neither is declared.
     """
-    config_path = project_root / ConfigFileName.OVERLAY
-    if config_path.is_file():
-        payload = load_raw_declaration(config_path, subject=_PROJECT_DECLARATION_SUBJECT)
-        declared_slug = payload.get(_PROJECT_SLUG_KEY)
-        if isinstance(declared_slug, str) and declared_slug.strip():
-            return declared_slug.strip()
-        declared_name = payload.get(_PROJECT_NAME_KEY)
-        if isinstance(declared_name, str) and normalize_slug(declared_name):
-            return normalize_slug(declared_name)
+    declared = load_declared_project_config(project_root)
+    if declared is not None:
+        if declared.project_slug:
+            return declared.project_slug
+        if declared.project_name and normalize_slug(declared.project_name):
+            return normalize_slug(declared.project_name)
     raise UndeclaredProjectSlugError(project_root)
 
 
