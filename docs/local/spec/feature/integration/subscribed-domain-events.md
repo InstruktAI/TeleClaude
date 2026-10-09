@@ -1,5 +1,5 @@
 ---
-description: A person hears every published-domain event their notification interests select and whose audience they are in, as it happens, in one message from the computer where it happened — each event its own fact, with nothing to close and no recovery message.
+description: A person hears every published-domain event their notification interests select and whose origin they can see, as it happens, from the computer where it happened, at least once — each event its own fact, with nothing to close and no recovery message.
 visibility: internal
 delivered_by:
   - domain-notifications
@@ -24,31 +24,34 @@ A domain event is told to a person when both hold:
 - the person's notification interests select it: the category named after the
   event's domain is switched on and one of its patterns matches the event's type
   (`local/projects/teleclaude/spec/feature/config/notification-interests`);
-- the person is in the event's audience: the people on the roster of the
-  company the event's origin belongs to — the company itself or any project it
-  owns — whichever of its projects or computers produced the event, and, for an
-  origin that belongs to no company on a person's roster, whoever the platform's
-  one reach rule admits
-  (`local/projects/teleclaude/spec/feature/identity/data-visibility`).
+- the person is in the event's audience: the person can see the event's origin
+  by the platform's one reach rule, as on every other surface that shows
+  platform data (`local/projects/teleclaude/spec/feature/identity/data-visibility`).
+  A person hears about what they can see, whichever computer produced the event.
 
 Each domain event is a fact of its own: domain events report no state of a thing
 under the platform lifecycle convention (`event-envelope`), so there is nothing
-to open, close or recover. Every event that is told is told once, as it comes,
-in one message, and a second event about the same thing is a second message.
+to open, close or recover. Every event that is told is told as it comes, in one
+message, and a second event about the same thing is a second message.
 Whether an event is told depends only on the person's interests and the
 event's audience; nothing the event or its producer states marks it as worth
 telling.
 
 Only the computer where the event happened tells it — the computer its source
-names — so each person hears each event once across the fleet. Each message
+names — so no other computer in the fleet tells it again. Each message
 takes the form every person-addressed notification takes
 (`local/projects/teleclaude/spec/feature/integration/notification-messages`).
+
+Delivery is at least once. A message is recorded as told once its channel
+accepts it, and a message recorded as told is never sent again. Accepting a
+message and recording it are not one operation, because the channels take no
+delivery identity a repeat could be recognized by, so a message whose recording
+was interrupted is sent again rather than lost.
 
 A message that cannot be delivered to one person does not hold back the others,
 and is not repeated to those already told. It is attempted again a bounded
 number of times; one that still cannot be delivered is parked where it can be
-inspected, never counted as told. A restart neither loses a message nor tells
-again one already recorded as told.
+inspected, never counted as told.
 
 ## Canonical fields
 
@@ -59,7 +62,7 @@ again one already recorded as told.
 ```gherkin
 Scenario Outline: Every published domain's events are told the same way
   Given a person whose "<category>" notification interests are switched on with the pattern "<pattern>"
-  And who is in the event's audience
+  And who can see the event's origin
   When <producer> emits an event of type "<type>"
   Then the person receives one message about it on their own channel
 
@@ -73,7 +76,7 @@ Scenario Outline: Every published domain's events are told the same way
 
 ```gherkin
 Scenario Outline: The interests decide which domain events reach the person
-  Given a person who is in the audience of every event below
+  Given a person who can see the origin of every event below
   And whose notification interests <interests>
   When an event of type "erp.invoice.paid" occurs
   Then the person <outcome>
@@ -87,13 +90,12 @@ Scenario Outline: The interests decide which domain events reach the person
     | hold only the sdlc category, switched on with the pattern "*"   | receives no message  |
 ```
 
-#### UC-SD3: Outside a person's companies, only events their reach admits are told
+#### UC-SD3: Only events whose origin the person can see are told
 
 ```gherkin
 Scenario Outline: Reach bounds what interests can select
   Given a person whose "erp" notification interests are switched on with the pattern "*"
-  And an event whose origin belongs to no company on the person's roster
-  And the person's reach <reach> that origin
+  And the person's reach <reach> the origin of an event
   When an event of type "erp.invoice.paid" with that origin occurs
   Then the person <outcome>
 
@@ -103,25 +105,27 @@ Scenario Outline: Reach bounds what interests can select
     | does not admit | receives no message  |
 ```
 
-#### UC-SD9: A company's people hear its domain events from any of its projects
+#### UC-SD9: A company's people hear about what they can see of it
 
 ```gherkin
-Scenario Outline: The company audience does not depend on the producing project
+Scenario Outline: A company project's events follow who can see the project
   Given a person on a company's roster whose "sdlc" notification interests are switched on with the pattern "*"
+  And who <relationship>
   When an event of type "sdlc.review.approved" happens in <origin>
-  Then the person receives one message about it
+  Then the person <outcome>
 
   Examples:
-    | origin                                                  |
-    | the company itself                                      |
-    | a project the company owns that the person is assigned to |
-    | a project the company owns that the person is not assigned to |
+    | relationship                       | origin                         | outcome              |
+    | is a member                        | the company itself             | receives one message |
+    | is assigned to the project         | a project the company owns     | receives one message |
+    | administers the company            | a project the company owns     | receives one message |
+    | is a member not assigned to it     | a project the company owns     | receives no message  |
 ```
 
 #### UC-SD4: Every domain event is its own message
 
 ```gherkin
-Given a person whose notification interests select an event type and who is in its audience
+Given a person whose notification interests select an event type and who can see its origin
 When two events of that type about the same thing occur
 Then the person receives two messages, one for each event
 And no message tells that anything was resolved, closed or working again
@@ -139,7 +143,7 @@ Then the person receives no domain-event message about it
 
 ```gherkin
 Given a fleet of two computers that both receive every platform event
-And a person whose notification interests select an event type and who is in its audience
+And a person whose notification interests select an event type and who can see its origin
 When an event of that type happens on one of the computers
 Then the person receives exactly one message about it
 And it names the computer where the event happened
@@ -148,7 +152,7 @@ And it names the computer where the event happened
 #### UC-SD7: A person who cannot be reached is not counted as told
 
 ```gherkin
-Given two people whose notification interests select an event type and who are in its audience
+Given two people whose notification interests select an event type and who can see its origin
 And the channel of one of them fails to accept messages
 When an event of that type occurs
 Then the other person receives one message about it
@@ -156,16 +160,27 @@ And the message to the unreachable person is attempted again, without repeating 
 And when it still cannot be delivered, the undelivered message is parked where it can be inspected
 ```
 
-#### UC-SD8: A restart neither loses nor repeats a told event
+#### UC-SD8: A selected event is delivered at least once
 
 ```gherkin
-Given an event that the person's interests select and whose audience the person is in
-When the platform restarts on the computer where it happened while that event is being told
-Then the person receives the message about it after the restart if it was not yet sent
-And receives no second message if it was recorded as told
+Scenario Outline: An interruption never loses a message and repeats only an unrecorded one
+  Given an event that the person's interests select and whose origin the person can see
+  When the event's handling is interrupted, such as by a restart, <when>
+  Then the person <outcome>
+
+  Examples:
+    | when                                                          | outcome                                         |
+    | before the message reached the channel                        | receives the message once it is handled again   |
+    | after the channel accepted the message and it was recorded    | receives no second message                      |
+    | after the channel accepted the message, before it was recorded | receives the message a second time              |
 ```
 
 ## Known caveats
+
+- **A message whose recording was interrupted arrives twice.** The channels
+  take no delivery identity, so accepting a message and recording it as told
+  cannot be one operation; delivery is at least once by choice, because the
+  alternative loses the message.
 
 - **A computer runs this telling only once it is upgraded.** An event that
   happens on a computer whose version predates this behavior is not told,
