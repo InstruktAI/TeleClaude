@@ -98,12 +98,25 @@ Examples:
 
 #### UC-DV3: A platform role below administrator reaches nothing by itself
 
+<!-- planned-change:help-desk-master-routing -->
+
 ```gherkin
 Given a person whose platform role is member, contributor, or newcomer
 And who holds no company membership and no project of their own
 When the person lists sessions, history, or projects
 Then only records about their own person home are shown
 ```
+
+<!-- change:help-desk-master-routing -->
+
+```gherkin
+Given a person whose platform role is member
+And who holds no company membership and no project of their own
+When the person lists sessions, history, or projects
+Then only records about their own person home are shown
+```
+
+<!-- /planned-change:help-desk-master-routing -->
 
 #### UC-DV4: Every data surface applies the same reach
 
