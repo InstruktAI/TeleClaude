@@ -503,7 +503,7 @@ sequenceDiagram
 
 **Idle cycle.** The daemon's idle cycle visits the desk sessions periodically, well within the 30-minute threshold. A desk session whose agent is idle, which has had no input for 30 minutes, which carries no active escalation relay and has no input waiting, goes through:
 
-1. Memory extraction of the conversation since the last extraction by an extraction worker, awaited across passes until its pass is recorded (Post-Session Memory Extraction)
+1. Memory extraction of the conversation since the last extraction (Post-Session Memory Extraction)
 2. Compaction of the agent's context through the agent's own compaction command, once extraction completed, awaited until the agent reports it finished
 3. Closing the session, once compaction completed and no input arrived since the cycle began
 4. None of it is recorded as a message sent into the session — it is invisible to the visitor
@@ -513,15 +513,16 @@ A step that fails or does not finish leaves the session open and is retried on t
 ```mermaid
 sequenceDiagram
     participant Daemon as Idle cycle
-    participant Extract as Extraction worker
+    participant Extract as Memory extraction
     participant Tmux as Agent Session (tmux)
     participant DB as Session DB
 
     Note over Daemon: No input for 30m, agent idle, no relay
-    Daemon->>Extract: Start the extraction worker (pass key = session + marker)
-    Extract->>Extract: Judge, discard what docs cover, record the pass
-    Note over Daemon: Later passes until the receipt exists
-    Daemon->>DB: Advance last_memory_extraction_at to the receipt
+    Daemon->>DB: Read last_memory_extraction_at
+    Daemon->>Extract: The conversation after the marker, the visitor, the desk and its home
+    Extract->>Extract: Model judges; the pass recorded in one transaction
+    Extract->>Daemon: Pass completed
+    Daemon->>DB: Advance last_memory_extraction_at
     Daemon->>Tmux: Agent's compaction command
     Tmux->>Daemon: Compaction finished
     Daemon->>DB: Close the session
@@ -538,7 +539,7 @@ sequenceDiagram
 
 <!-- change:help-desk-idle-memory-cycle -->
 
-**Bookkeeping.** A `last_memory_extraction_at` timestamp on the session record tracks the high-water mark: the moment of the last conversation entry a recorded pass covered. Extraction processes only the conversation after this marker. The marker advances from the pass receipt memory returns, and a pass that was recorded but whose marker was never advanced (an interrupted cycle) is not recorded again: its repetition returns the same receipt.
+**Bookkeeping.** A `last_memory_extraction_at` timestamp on the session record tracks the high-water mark: the moment of the newest conversation entry a completed pass covered. Extraction processes only the conversation after this marker, and the cycle advances it right after memory records the pass, so a failed pass is retried from the same point and a completed one is not extracted again.
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
@@ -715,51 +716,41 @@ jobs:
 
 <!-- change:help-desk-idle-memory-cycle -->
 
-Memory extraction is a step of the idle cycle (Customer Session Lifecycle). The cycle decides when a session's conversation is extracted; the extraction itself is done by an extraction worker — an agent session the daemon starts, with no person anywhere in its lineage, as memory's writer rule requires (`local/projects/teleclaude/adr/0005-scraper-only-memory-writer` — only extraction workers write memory). No separate scheduled job extracts desk sessions.
+Memory extraction is a step of the idle cycle (Customer Session Lifecycle), run in the daemon. The cycle owns the conversation and decides when it is extracted; memory owns the extraction, and a model, briefed by memory's fixed prompts, judges what is worth keeping (`local/projects/teleclaude/spec/feature/memory/conversation-extraction`). No separate scheduled job extracts desk sessions.
 
-Each pass of the idle cycle looks for:
+Each pass of the idle cycle extracts:
 
-- **An open desk session that is due for its idle close.** Its extraction is the first step of that close. Extraction MUST complete BEFORE compaction — compaction destroys the raw conversation the extractor reads.
+- **An open desk session that is due for its idle close**, as the first step of that close. Extraction MUST complete BEFORE compaction — compaction destroys the raw conversation the extractor reads.
 - **A closed desk session whose conversation has entries after its marker** — one closed by a person or by recovery rather than by the idle cycle. It is extracted and stays closed.
 
-The cycle never blocks on a worker; it reads state on every pass. For a session due for extraction, the pass key is the session and its current `last_memory_extraction_at` marker:
-
-- no receipt for the pass key and no worker running for it → start the worker, within a cap on concurrently running extraction workers;
-- a worker still running → leave the session for the next pass;
-- a receipt for the pass key → advance the marker from it and continue with compaction and close.
-
-The worker reads the session's own transcript chain — every transcript the session has carried, so a revived session's earlier transcripts count — after the marker, and judges what is worth remembering through a dual lens. It discards candidates the desk home's documentation already covers (`local/projects/teleclaude/adr/0006-mandatory-dedup-against-doc-snippets` — codified knowledge is not re-encoded as memory) and hands the survivors to memory as one pass, which memory records whole and once with a receipt (`local/projects/teleclaude/spec/feature/memory/conversation-extraction`). The worker follows `local/projects/teleclaude/procedure/desk-memory-extraction`.
+The cycle reads the session's own transcript chain — every transcript the session has carried, so a revived session's earlier transcripts count — after the `last_memory_extraction_at` marker, and hands it to memory together with who the visitor is, the desk, and the home that owns it:
 
 ```mermaid
 sequenceDiagram
     participant Cycle as Idle cycle
     participant DB as Session DB
-    participant Worker as Extraction worker
     participant Transcript as Session transcript chain
-    participant Docs as Desk home docs
-    participant Memory as Memory
+    participant Identity as Identity
+    participant Memory as Memory extraction
+    participant Model as Summarizer model
 
-    Cycle->>DB: Read last_memory_extraction_at (pass key = session + marker)
-    Cycle->>Memory: Receipt for the pass key?
-    Memory->>Cycle: None
-    Cycle->>Worker: Start (session, pass key, visitor, desk, home)
-    Worker->>Transcript: Read the conversation after the marker
-    Worker->>Worker: Judge personal + business memories
-    Worker->>Docs: Discard what documentation already covers
-    Worker->>Memory: Record the pass (pass key, observations)
-    Memory->>Worker: Receipt
-    Note over Cycle: A later pass
-    Cycle->>Memory: Receipt for the pass key?
-    Memory->>Cycle: Receipt (extracted through)
-    Cycle->>DB: Advance last_memory_extraction_at to the receipt
+    Cycle->>DB: Read last_memory_extraction_at
+    Cycle->>Transcript: Read the conversation after the marker
+    Cycle->>Identity: Visitor's identity key and principal
+    Cycle->>Memory: Extract (conversation, visitor, desk, home)
+    Memory->>Model: What is worth keeping, through the two lenses
+    Model->>Memory: Memories about the visitor, business insights
+    Memory->>Memory: Record the pass in one transaction
+    Memory->>Cycle: Pass completed
+    Cycle->>DB: Advance last_memory_extraction_at
 ```
 
-**Dual extraction lens** (the worker's judgment):
+**The two lenses** (the model's judgment, through memory's prompts):
 
-1. **Personal memories** (the desk's namespace, keyed to the visitor) — what to remember about THIS person: preferences, context, communication style, open questions, relationship history
-2. **Business memories** (the namespace of the home that owns the desk, the one the home's own sessions read) — what is interesting for US: feature requests, complaints, confusion patterns, sentiment, competitive mentions
+1. **About the visitor** (the desk's namespace, keyed to the visitor) — what to remember about THIS person: preferences, context, communication style, open questions, relationship history
+2. **Business insights** (the namespace of the home that owns the desk, the one the home's own sessions read) — what is interesting for US: feature requests, complaints, confusion patterns, sentiment, competitive mentions
 
-Namespaces, keys and subjects follow Identity-Scoped Memory. A worker that fails, stops without recording its pass, or runs past its time is ended by the cycle; the pass key has no receipt, so a later pass starts a new worker for the same stretch.
+Neither lens records project knowledge or decisions (`local/projects/teleclaude/spec/domain/memory`). Namespaces, keys and subjects follow Identity-Scoped Memory. A failed pass records nothing and leaves the marker where it was, so a later pass extracts the same stretch again.
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
@@ -858,7 +849,7 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 <!-- change:help-desk-idle-memory-cycle -->
 
-9. **Extraction is idempotent**: Memory extraction can be re-run safely. The `last_memory_extraction_at` marker ensures only new conversation is processed, and each pass, keyed by its session and starting marker, is recorded once (`local/projects/teleclaude/spec/feature/memory/conversation-extraction`). Premature agent death, glitches, daemon restarts or repeated passes never produce duplicate memories. Durable state lives in the database, not in the agent.
+9. **Extraction resumes from its marker**: the `last_memory_extraction_at` marker ensures only new conversation is processed, and a pass is recorded whole or not at all (`local/projects/teleclaude/spec/feature/memory/conversation-extraction`). A failed pass is retried from the same point; only a daemon stop between recording a pass and advancing the marker records that pass twice. Durable state lives in the database, not in the agent.
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
@@ -1040,15 +1031,15 @@ sequenceDiagram
     participant Daemon as Idle cycle
     participant Agent as Desk Session (tmux)
     participant DB as Session DB
-    participant Memory as Extraction worker and memory
+    participant Memory as Memory extraction
 
     Note over Daemon: No input for 30m, agent idle, no relay, no input waiting
     Daemon->>DB: Read last_memory_extraction_at
     Daemon->>Daemon: Read the transcript chain after the marker
-    Daemon->>Memory: Start the extraction worker (pass key, visitor, desk, home)
-    Memory->>Memory: Worker judges; its pass recorded with a receipt
-    Note over Daemon: Later passes until the receipt exists
-    Daemon->>DB: Advance last_memory_extraction_at to the receipt
+    Daemon->>Memory: Extract the conversation after the marker (visitor, desk, home)
+    Memory->>Memory: Model judges; the pass recorded in one transaction
+    Memory->>Daemon: Pass completed
+    Daemon->>DB: Advance last_memory_extraction_at
     Daemon->>Agent: Agent's compaction command
     Agent->>Daemon: Compaction finished
     Daemon->>DB: Close the session (no input since the cycle began)
@@ -1080,6 +1071,8 @@ sequenceDiagram
 
 ## Failure Modes
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 | Scenario                                                                                    | Behavior                                             | Recovery                                                                             |
 | ------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key       | Personal memories not injected; the agent handles without context                    |
@@ -1095,6 +1088,27 @@ sequenceDiagram
 | Intelligence job finds no new data                                                          | Exits cleanly, no digest generated                   | Normal; no action needed                                                             |
 | Session transcript unavailable at job time                                                  | Job skips session, logs warning                      | Sweep re-run on next schedule; transcript may become available                       |
 | Redis unavailable                                                                           | Channels non-functional; memory still works (SQLite) | Local operations and memory continue; channel delivery resumes when Redis reconnects |
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+| Scenario                                                                                    | Behavior                                             | Recovery                                                                                          |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key       | Personal memories not injected; the agent handles without context                                 |
+| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                        | The visitor uses a working desk link                                                              |
+| A desk identifier sent to a computer's own bot when that computer is not the master         | Neutral reply                                        | Desk links are rendered on the master, naming its bot                                             |
+| The entered desk's home is not on the master                                                | Neutral reply, no session                            | Make the desk's home present on the master                                                        |
+| A restricted session names no enabled desk                                                  | Session creation is refused                          | The core resolves an endpoint first or sends the neutral reply                                    |
+| Memory extraction fails                                                                     | Nothing of the pass recorded; marker not advanced    | The session stays open; a later pass of the idle cycle extracts the same stretch again            |
+| Compaction injected before extraction                                                       | Cannot happen — extraction must complete first       | The idle cycle compacts only after the pass completed; if extraction fails, compaction is skipped |
+| Compaction does not finish                                                                  | The session stays open, not compacted                | A later pass retries; the session is never closed uncompacted                                     |
+| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)             | Most recent memories prioritized                                                                  |
+| Channel publish fails (Redis down)                                                          | Agent gets error from publish tool                   | Agent can retry or log locally; sweep job catches missed sessions                                 |
+| Channel consumer dies mid-processing                                                        | Message unacknowledged in consumer group             | Redis redelivers to next available consumer                                                       |
+| Intelligence job finds no new data                                                          | Exits cleanly, no digest generated                   | Normal; no action needed                                                                          |
+| Session transcript unavailable at extraction time                                           | Nothing extracted; marker not advanced               | The session stays open; a later pass retries                                                      |
+| Redis unavailable                                                                           | Channels non-functional; memory still works (SQLite) | Local operations and memory continue; channel delivery resumes when Redis reconnects              |
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 **Escalation failure modes:**
 

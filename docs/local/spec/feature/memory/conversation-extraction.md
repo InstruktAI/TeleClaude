@@ -1,5 +1,5 @@
 ---
-description: Record what an extraction worker took from a stretch of conversation — each pass recorded whole, once, with a receipt, through a surface only sanctioned extraction workers may use.
+description: Extract a stretch of conversation into memories about the person it was with and business insights for the home it belongs to — judged by a model through memory's fixed prompts, recorded as one pass.
 delivered_by:
   - help-desk-idle-memory-cycle
 ---
@@ -12,105 +12,84 @@ delivered_by:
 
 ## What it is
 
-An extraction worker reads a stretch of conversation, judges what is worth
-remembering, and hands memory the result as one **pass**. Memory records the
-pass and answers with a **receipt**. The worker's judgment — which observations
-to keep, and which are already covered by documentation — is the worker's
-(`local/projects/teleclaude/adr/0006-mandatory-dedup-against-doc-snippets` — codified knowledge is not
-re-encoded as memory); memory owns recording what it was handed, and who may
-record it (`local/projects/teleclaude/adr/0005-scraper-only-memory-writer` — only extraction workers write memory).
+The owner of a conversation hands memory a stretch of it, together with who the
+conversation was with and which home it belongs to. Memory asks a model, through
+its own fixed extraction prompts, what is worth keeping, through two lenses:
 
-A pass carries:
+- **About the person** — durable things worth knowing the next time they write:
+  preferences, their situation, how they like to communicate, what they are
+  still waiting on.
+- **Business insights** — what the conversation shows the home: requests for
+  what does not exist, complaints, recurring confusion, sentiment, mentions of
+  alternatives.
 
-- a **pass key** chosen by whoever started the extraction, identifying the
-  stretch of conversation;
-- how far into the conversation the pass reached;
-- **personal observations** about the person the conversation was with, each
-  recorded with the namespace, identity key, subject and principal handed over;
-- **business observations**, each recorded with the namespace and subject handed
-  over and no identity key.
-
-The pass is recorded whole or not at all, and a pass key is recorded once. The
-receipt names the pass key and how far the pass reached; whoever started the
-extraction advances its own bookkeeping from it.
+Neither lens records project knowledge or decisions
+(`local/projects/teleclaude/spec/domain/memory`). Memory records what the model
+returned as one **pass**, in one transaction: memories about the person under
+the namespace, identity key, subject and principal handed over; business
+insights under the home's namespace and subject, with no identity key. The
+caller keeps its own bookkeeping of how far into the conversation it has
+extracted.
 
 ## Canonical fields
 
 ### Use cases
 
-#### UC-CX1: A pass is recorded whole, with its receipt
+#### UC-CX1: A pass is recorded whole
 
 ```gherkin
-Given an extraction worker hands memory a pass under a pass key not recorded before
-When memory records it
-Then every observation of the pass is recorded, together with a receipt for the pass key
-And the receipt names how far into the conversation the pass reached
-And the worker is answered with the receipt
+Given a conversation owner hands memory a stretch of conversation, the person it was with, and the home it belongs to
+When memory extracts it
+Then every memory the model judged worth keeping is recorded, under the names the owner handed over, in one transaction
+And the owner is answered only after the pass was recorded
 ```
 
-#### UC-CX2: A repeated pass records nothing again
+#### UC-CX2: A failed pass leaves nothing behind
 
 ```gherkin
-Given a pass key memory already recorded
-When an extraction worker hands memory a pass under the same pass key
-Then no observation is recorded
-And the worker is answered with the receipt recorded for that pass key
-```
-
-#### UC-CX3: A pass that cannot be recorded leaves nothing behind
-
-```gherkin
-Given a pass that fails while it is being recorded
+Given a pass that fails, whether the model call fails or recording fails
 When the failure occurs
-Then no observation of the pass and no receipt is recorded
-And the worker is told the pass was not recorded
-And the same pass key can be recorded later
+Then no memory of that pass is recorded
+And the owner is told the pass failed, so it can extract the same stretch again later
 ```
 
-#### UC-CX4: A pass with nothing worth remembering still completes
+#### UC-CX3: A conversation with nothing worth remembering records nothing
 
 ```gherkin
-Given an extraction worker found nothing worth remembering in its stretch of conversation
-When it hands memory an empty pass under a pass key
-Then no observation is recorded
-And a receipt for the pass key is recorded and returned
+Given a stretch of conversation in which the model finds nothing worth keeping
+When memory extracts it
+Then no memory is recorded
+And the owner is answered that the pass completed
 ```
 
-#### UC-CX5: Only a sanctioned extraction worker records a pass
+#### UC-CX4: Without a known person, only business insights are recorded
 
 ```gherkin
-Given a caller asks memory to record a pass
-When the caller is not a daemon-started worker session with no person anywhere in its lineage
-Then the pass is refused and nothing is recorded
-And the refusal says that passes are recorded only by sanctioned extraction workers
-```
-
-#### UC-CX6: The receipt is readable by the daemon
-
-```gherkin
-Given a pass key
-When the daemon asks memory for the receipt of that pass key
-Then it receives the receipt when the pass was recorded
-And it learns that no receipt exists when it was not
+Given a stretch of conversation handed over without an identity for the person it was with
+When memory extracts it
+Then no memory about the person is recorded
+And business insights are recorded as for any other pass
 ```
 
 ### Cross-context references
 
-- **agent_runtime** — the desk idle cycle starts the extraction worker, chooses
-  the pass key, and advances its marker from the receipt
+- **agent_runtime** — the desk idle cycle owns the conversation: it reads it from
+  the session's transcript chain, hands it over, and advances its extraction
+  marker after a completed pass
   (`local/projects/teleclaude/spec/feature/agent_runtime/desk-conversation-continuity`).
-- **identity** — resolves the facts memory's writer rule reads: whether the
-  calling session was started by the daemon, carries the worker role, and has a
-  person anywhere in its lineage. It also supplies the visitor's identity key
-  and principal that memory records as handed over
+- **identity** — supplies the person's identity key and principal that memory
+  records as handed over
   (`local/projects/teleclaude/spec/feature/memory/identity-key-ownership`).
 
 ## Known caveats
 
-- **Memory does not judge.** It records the observations a pass carries;
-  what to keep, and documentation overlap, were decided by the worker.
-- **Memory does not read transcripts.** The worker reads the conversation;
-  memory only receives observations.
-- **Saving a single observation is unchanged.** The existing save path and its
-  surfaces keep their behavior; only recording a pass is gated to extraction
-  workers.
+- **The judgment is the model's.** No code grades the conversation or the
+  memories; what is recorded is what the model returned in the requested shape.
+- **Memory does not read transcripts.** The conversation arrives as text from its
+  owner.
+- **A pass needs a configured summarizer provider.** With none available, every
+  pass fails (UC-CX2).
+- **A stop between recording and the owner's bookkeeping repeats a pass.** If the
+  daemon stops after a pass was recorded but before its owner advanced its
+  marker, the same stretch is extracted again and its memories are recorded a
+  second time.

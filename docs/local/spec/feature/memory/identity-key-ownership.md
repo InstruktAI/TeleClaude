@@ -61,8 +61,6 @@ Then the underlying observation query is not identity-scoped
 And the rendered context contains observations from every identity scope for that project
 ```
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
 #### CLI never supplies identity_key
 
 ```
@@ -71,20 +69,6 @@ When any of its verbs builds a request
 Then it does NOT pass identity_key
 And the resulting call is unscoped — saves record no identity scope; queries return observations from every scope
 ```
-
-<!-- change:help-desk-idle-memory-cycle -->
-
-#### CLI never supplies identity_key
-
-```
-Given the CLI memories surface (save, search, list, timeline, delete)
-When any of its verbs builds a request
-Then it does NOT pass identity_key
-And the resulting call is unscoped — saves record no identity scope; queries return observations from every scope
-And the one exception is recording an extraction pass, whose personal observations carry the identity key handed over (`local/projects/teleclaude/spec/feature/memory/conversation-extraction`)
-```
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 ### Cross-context references
 
@@ -97,14 +81,6 @@ And the one exception is recording an extraction pass, whose personal observatio
 - **Inclusion-of-unscoped is intentional asymmetry.** A query scoped to a key sees unscoped observations too; a query with no key sees every observation. Whether to keep this "unscoped-is-public" semantic or replace it with strict per-principal scoping is a memory-domain decision, not a feature-level one.
 - **Identity scope is honored on search and on context injection only.** Bulk-fetch and timeline surfaces do not filter by identity. A caller that knows an observation id can fetch it regardless of how it was tagged at save.
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
 - **CLI is identity-blind.** Every CLI save records no identity scope, and every CLI query returns observations from every scope. Only programmatic callers and the session-start consumer participate in identity scoping.
-
-<!-- change:help-desk-idle-memory-cycle -->
-
-- **CLI is identity-blind outside extraction passes.** Every CLI save records no identity scope, and every CLI query returns observations from every scope. Only programmatic callers, recorded extraction passes and the session-start consumer participate in identity scoping.
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 - **Rotation is not modeled.** If a principal's identity key is rotated, prior observations remain tagged with the old key and are not visible to queries supplying the new key. There is no migration helper.

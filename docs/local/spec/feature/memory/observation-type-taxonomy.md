@@ -1,5 +1,5 @@
 ---
-description: 'The seven-value observation-type taxonomy used as the progressive-disclosure axis at save and query.'
+description: 'The closed observation-type taxonomy used as the progressive-disclosure axis at save and query.'
 visibility: 'public'
 ---
 
@@ -7,7 +7,15 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 Every memory observation carries a `type` tag drawn from a closed seven-value set — `preference`, `decision`, `discovery`, `gotcha`, `pattern`, `friction`, `context` — with `discovery` as the default. The taxonomy is a first-class progressive-disclosure axis: callers can narrow `telec memories list` and `telec memories search` to a single type, and the memory service applies a type filter to its result set when supplied. The taxonomy is enforced both on the memory service surface and in CLI parsing.
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+Every memory observation carries a `type` tag drawn from a closed set. About a person: `preference`, `friction`, `context`. Business insights: `request` (something wanted that does not exist), `complaint`, `sentiment`, `competitor` (a mention of an alternative), with recurring confusion recorded as `friction`. Older observations may also carry `decision`, `discovery`, `gotcha` or `pattern`, which remain valid values; `discovery` stays the default when a save names no type. The taxonomy is a first-class progressive-disclosure axis: callers can narrow `telec memories list` and `telec memories search` to a single type, and the memory service applies a type filter to its result set when supplied. The taxonomy is enforced both on the memory service surface and in CLI parsing.
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 ## Canonical fields
 
@@ -23,6 +31,8 @@ Then the persisted type is the literal string `discovery` (the default)
 
 #### Validated type on save (memory surface)
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 ```
 Given a save request supplies a type value
 When the memory service validates the request
@@ -31,7 +41,21 @@ And any other value is rejected with a validation error
 And on success the observation is persisted with the supplied type
 ```
 
+<!-- change:help-desk-idle-memory-cycle -->
+
+```
+Given a save request supplies a type value
+When the memory service validates the request
+Then the value must be a member of the closed set (preference, decision, discovery, gotcha, pattern, friction, context, request, complaint, sentiment, competitor)
+And any other value is rejected with a validation error
+And on success the observation is persisted with the supplied type
+```
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
+
 #### Validated type on save (CLI)
+
+<!-- planned-change:help-desk-idle-memory-cycle -->
 
 ```
 Given a CLI invocation includes `--type <value>`
@@ -40,6 +64,18 @@ Then <value> is checked against the same seven-value set
 And if absent from the set, the CLI prints `Invalid type '<value>'. Valid types: <sorted list>` and exits 1
 And on success the value is forwarded to the save request
 ```
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+```
+Given a CLI invocation includes `--type <value>`
+When the CLI parses the option
+Then <value> is checked against the same closed set
+And if absent from the set, the CLI prints `Invalid type '<value>'. Valid types: <sorted list>` and exits 1
+And on success the value is forwarded to the save request
+```
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 #### Type as search/list filter
 
