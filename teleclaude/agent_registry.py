@@ -338,7 +338,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                     ),
                 },
                 "mode_chains": {
-                    "fast": [{"model": "sonnet", "flags": "--model 'claude-sonnet-5-5[1m]' --effort medium"}],
+                    "fast": [{"model": "sonnet", "flags": "--model 'claude-haiku-5-5[1m]' --effort medium"}],
                     "med": [{"model": "sonnet", "flags": "--model 'claude-sonnet-5-5[1m]' --effort high"}],
                     "slow": [
                         # disabled as too expensive and reserved for manual invocation:
