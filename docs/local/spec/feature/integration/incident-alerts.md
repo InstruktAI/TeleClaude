@@ -1,8 +1,8 @@
 ---
-description: Platform administrators who are interested in a platform problem hear about it once when a thing breaks and once when it works again, with how long it was broken, from the computer where it happened — and nothing in between.
+description: Platform administrators who are interested in a platform problem hear
+  about it once when a thing breaks and once when it works again, with how long it
+  was broken, from the computer where it happened — and nothing in between.
 visibility: internal
-delivered_by:
-  - platform-alerts
 ---
 
 # Incident Alerts — Spec

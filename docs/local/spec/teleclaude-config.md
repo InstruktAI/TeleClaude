@@ -23,25 +23,12 @@ explicitly rejects keys that belong to other tiers (`people`, `ops`, `creds`,
 `timezone`, `workflow`). See `teleclaude/config/schema.py` for the
 authoritative model definitions.
 
-<!-- planned-change:platform-alerts -->
-
-| File                  | Location                                        | Model           | Owns                                                                                                                            |
-| --------------------- | ----------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| **Global config**     | `~/.teleclaude/teleclaude.yml`                  | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`                                                                       |
-| **Project config**    | `<project-root>/teleclaude.yml`                 | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
-| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml`    | `PersonConfig`  | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `settings`, `hooks`                                       |
-| **Company config**    | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members`, `hooks` (folder-discovered; composed alongside `project`)            |
-
-<!-- change:platform-alerts -->
-
 | File                  | Location                                        | Model           | Owns                                                                                                                            |
 | --------------------- | ----------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | **Global config**     | `~/.teleclaude/teleclaude.yml`                  | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`                                                                       |
 | **Project config**    | `<project-root>/teleclaude.yml`                 | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml`    | `PersonConfig`  | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `notifications`, `settings`, `hooks`                      |
 | **Company config**    | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members`, `hooks` (folder-discovered; composed alongside `project`)            |
-
-<!-- /planned-change:platform-alerts -->
 
 #### Tier declaration and editor schemas
 
@@ -364,8 +351,6 @@ name, and the address itself. The list may be empty, and a person's `email`
 identity is not one of these accounts unless it also appears here. An entry
 naming a connector outside that vocabulary is rejected at load.
 
-<!-- planned:platform-alerts -->
-
 `notifications` is an additional per-person key: the person's notification
 interests, a mapping from a category — `teleclaude`, or the name of a published
 domain — to a switch (`enabled`) and a list of type patterns (`events`)
@@ -375,7 +360,6 @@ never stops the rest of the configuration from loading;
 `telec config validate` reports it instead. What the interests select, their
 starting values per role and their validation are owned by
 `local/projects/teleclaude/spec/feature/config/notification-interests`.
-<!-- /planned:platform-alerts -->
 
 `creds.discord.nick` is optional. When present, it is the Discord-facing display name for
 reflected human input. Personal workspace resolution uses the canonical `people[].slug`;

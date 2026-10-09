@@ -16,18 +16,8 @@ implementation remain the current appliance contract.
 
 - **Current behavior:** `docs/local/spec/feature/integration/`.
 
-<!-- planned-change:platform-alerts -->
-
-- **Implementation roots:** `teleclaude/adapters/`,
-  `teleclaude/core/integration/`, `teleclaude/core/inbound/`, and
-  `teleclaude/events/delivery/`.
-
-<!-- change:platform-alerts -->
-
 - **Implementation roots:** `teleclaude/adapters/`,
   `teleclaude/core/integration/`, and `teleclaude/core/inbound/`.
-
-<!-- /planned-change:platform-alerts -->
 
 - **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. No replacement transport design is
   authored here.
@@ -103,8 +93,6 @@ implementation remain the current appliance contract.
   escalation relay — the core's (`agent_runtime`); whether a home runs a desk
   (`config`); what a desk session may read (`context`).
 
-<!-- planned:platform-alerts -->
-
 - **Owns (telling people about events):** the consumers that tell people —
   incident alerts today — and what each decides: which events it tells, to
   which recipients within their reach, and when an open matter is closed; the
@@ -120,8 +108,6 @@ implementation remain the current appliance contract.
   vocabulary, the type-pattern matcher, or the consumer runtime
   (`event-catalog`); who is a platform administrator or what a principal may
   see (`identity`); what an event means (its producing context).
-
-<!-- /planned:platform-alerts -->
 
 ## See Also
 

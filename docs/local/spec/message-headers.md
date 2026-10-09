@@ -144,23 +144,9 @@ reader only; upgraded writers emit the keyed shape.
 The registry owns one semantic envelope model: kind, label, closure discipline,
 structured header fields, and body. Exactly two codecs render that model:
 
-<!-- planned-change:platform-alerts -->
-
-- The **bracket codec** renders every envelope on a surface a human can read,
-  including peer and caller-identity transcript content and the content-free
-  idle-wake marker visible in the session composer. It also renders the
-  output-only human-action family as `[Action (<topic> · <utc-minute>)]` with
-  the paired close `[/Action]`; that family never enters the native-user-entry
-  classifier and never occupies the reserved `[TeleClaude …]` control
-  namespace.
-
-<!-- change:platform-alerts -->
-
 - The **bracket codec** renders every envelope on a surface a human can read,
   including peer and caller-identity transcript content and the content-free
   idle-wake marker visible in the session composer.
-
-<!-- /planned-change:platform-alerts -->
 
 - The **XML codec** renders control payloads injected through an agent
   runtime's hook boundary. A paired model renders an opening element, body,

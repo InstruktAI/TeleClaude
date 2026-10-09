@@ -179,10 +179,9 @@ the stream on each computer
   is parked as that consumer's dead letter and announced, and the consumer
   continues.
 
-The integration trigger, the lifecycle router, and correlation are consumers
-that act only on events their own computer emitted. The notification path —
-trust, deduplication, enrichment, classification, and the notification
-projector — runs as the system pipeline.
+The integration trigger, the lifecycle router, correlation, and the consumers
+that tell people act only on events their own computer emitted. Every reaction
+to a platform event is a consumer; no other pipeline processes the stream.
 
 ### Ownership boundary
 
@@ -199,8 +198,12 @@ responsibility.
   it, every event also carries the earlier envelope's fields in the shape those
   computers read, under the fleet's interoperability contract
   (`local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`).
-  The notification projector reads those fields and the notification rules
-  kept beside the type declarations; no other consumer reads either.
+  No consumer on a current computer reads them. The human action and routing
+  scope among them are read only by an older computer's notification projector;
+  they are carried until the fleet capability map shows every live computer
+  carries incident alerts
+  (`local/projects/teleclaude/spec/feature/integration/incident-alerts`), and
+  from then on no event carries them.
 - **The origin travels under a field named `home`.** The delivered model, wire
   form and declarations carry the origin's registered project, person, or
   company in a field named `home`. The name states nothing about any consumer's

@@ -63,22 +63,6 @@ contracts and never creates shared ownership.
 - `agent_runtime` publishes transcript and lifecycle facts consumed by
   `session_mirrors`; the mirror context never mutates live session truth.
 
-<!-- planned-change:platform-alerts -->
-
-- `identity` publishes each principal's reach — which records it may see, by
-  each record's subject, the subject's owner, and the principal it is recorded
-  under — built from its own membership facts and `config`'s project ownership.
-  The surfaces that show records to principals consume it: `agent_runtime`
-  (session listings, live session updates, and operation status),
-  `session_mirrors` (history), `memory` (observation reads), `context`
-  (documentation depth), the event platform's notifications, and `config`'s
-  project listing. Each consumer owns which facts
-  its records carry and its own audience facts, such as public and
-  person-local documentation or addressed notifications; none adds, relaxes, or
-  re-derives reach, and `identity` never decides a consumer's audience facts.
-
-<!-- change:platform-alerts -->
-
 - `identity` publishes each principal's reach — which records it may see, by
   each record's subject, the subject's owner, and the principal it is recorded
   under — built from its own membership facts and `config`'s project ownership.
@@ -95,8 +79,6 @@ contracts and never creates shared ownership.
   select an event type, ask `identity` who the platform administrators are, and
   narrow their audience within `identity`'s reach without widening it. They
   send through `integration`'s own person-addressed delivery.
-
-<!-- /planned-change:platform-alerts -->
 
 - The sealed commit surface (`agent_runtime`) reads tier answers from `config`
   at two coordinates — the repository root's declared tier, and the acting

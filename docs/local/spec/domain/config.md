@@ -119,8 +119,6 @@ TeleClaudeNext.
   `local/projects/teleclaude/spec/domain/identity`, or what a session does in a
   home, which belongs to `local/projects/teleclaude/spec/domain/agent_runtime`.
 
-<!-- planned:platform-alerts -->
-
 - **Also owns:** a person's notification interests — their shape, the starting
   interests each role receives when a person is created, their convergence for
   configuration that predates them, their validation, and the published answer
@@ -130,8 +128,6 @@ TeleClaudeNext.
   registered projects' publishing declarations, and `teleclaude` is reserved:
   no project publishes a domain by that name. The consumers that tell people
   read interests through that answer and never parse them.
-
-<!-- /planned:platform-alerts -->
 
 #### Use cases (index of feature specs)
 

@@ -1,8 +1,8 @@
 ---
-description: A message that tells a person about platform events reaches them on their own routed channel as readable markdown stating what happened, to which thing, on which computer and when — for every event type, including types introduced later.
+description: A message that tells a person about platform events reaches them on their
+  own routed channel as readable markdown stating what happened, to which thing, on
+  which computer and when — for every event type, including types introduced later.
 visibility: internal
-delivered_by:
-  - platform-alerts
 ---
 
 # Notification Messages — Spec

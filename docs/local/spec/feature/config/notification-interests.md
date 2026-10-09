@@ -1,8 +1,8 @@
 ---
-description: A person's notification interests — per category, a switch and type patterns relative to the category's namespace — starting from the person's role, changed afterwards only by the person or on their request, and validated without being altered.
+description: A person's notification interests — per category, a switch and type patterns
+  relative to the category's namespace — starting from the person's role, changed
+  afterwards only by the person or on their request, and validated without being altered.
 visibility: internal
-delivered_by:
-  - platform-alerts
 ---
 
 # Notification Interests — Spec
