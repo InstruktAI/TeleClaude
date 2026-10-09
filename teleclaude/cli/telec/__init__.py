@@ -209,7 +209,7 @@ def _handle_cli_command(argv: list[str]) -> None:
             direct_conversation=direct_conversation,
             desk_command=node.desk,
         )
-    except ConfigLoadError as exc:
+    except (ConfigLoadError, FileNotFoundError) as exc:
         print(_CONFIGURATION_UNREADABLE_ERROR.format(error=exc), file=sys.stderr)
         raise SystemExit(1) from exc
 
