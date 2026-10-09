@@ -18,7 +18,7 @@ from teleclaude.api.auth import (
 )
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.api.session_route_helpers import http_exception_for_relay_failure
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core.command_dispatch import RelayFailure, RemoteDispatchReason, relay_caller_read
 from teleclaude.core.models import JsonDict

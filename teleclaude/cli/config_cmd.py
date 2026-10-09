@@ -53,8 +53,8 @@ from teleclaude.cli.telec.surface import (
     CONFIG_PROJECT_LIST,
     CONFIG_PROJECT_PATCH,
 )
-from teleclaude.config import config
 from teleclaude.config._environment import environment_reference_at_path
+from teleclaude.config.machine import config
 from teleclaude.config.person_voice import configure_person_discord_voice_bot
 from teleclaude.config.project_subject_init import adopt_project_subject, create_project_subject
 from teleclaude.config.resource_contract import (

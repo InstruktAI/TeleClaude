@@ -23,7 +23,7 @@ from teleclaude.cli.tui.artifact_panes import doc_pane_key, parse_doc_pane_comma
 from teleclaude.cli.tui.pane_layout import PaneLayoutMixin
 from teleclaude.cli.tui.pane_theming import PaneThemingMixin
 from teleclaude.cli.tui.types import DocPreviewState
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.shell_identity import require_shell_safe_identifier
 
 if TYPE_CHECKING:

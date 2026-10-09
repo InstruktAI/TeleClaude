@@ -59,7 +59,7 @@ from teleclaude.api_models import (
     SessionMessagesDTO,
 )
 from teleclaude.api_session_actions_models import AgentRestartRequest, AgentRestartResponseDTO
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import (
     COMMAND_ROLE_MAP,
     NON_SLUG_BOUND_COMMANDS,

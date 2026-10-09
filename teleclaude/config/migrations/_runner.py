@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import shutil
 import subprocess
 from collections import Counter
-from collections.abc import Callable, Mapping
-from enum import StrEnum
+from collections.abc import Mapping
 from io import StringIO
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import cast
 
 from instrukt_ai_logging import get_logger
 from ruamel.yaml.error import YAMLError
@@ -20,6 +18,7 @@ from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.field_constraints import FieldConstraintRefusal
 from teleclaude.config.migrations import _steps
+from teleclaude.config.migrations._carry import carry_pending
 from teleclaude.config.migrations._chain import (
     CURRENT_VERSION,
     Destination,
@@ -29,7 +28,14 @@ from teleclaude.config.migrations._chain import (
     require_registry_subject,
     upcast,
 )
-from teleclaude.config.migrations._registry import registered_documents, resolve_read_subject
+from teleclaude.config.migrations._records import (
+    MigrationFailureReason,
+    MigrationOutcome,
+    MigrationRecord,
+    document_key,
+    record_migration,
+)
+from teleclaude.config.migrations._registry import registered_documents
 from teleclaude.config.migrations.v003_relocate_person_invite_token import DestinationConflict as InvitationConflict
 from teleclaude.config.migrations.v004_relocate_legacy_discord_provider_ids import HandoffConflict
 from teleclaude.config.migrations.v009_fold_trusted_directories import RegistryConflict
@@ -39,34 +45,7 @@ from teleclaude.file_transaction import file_transaction
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT
 
-_LOG_MIGRATION = "config_migration"
 _LOG_RUN = "config_migration_run"
-_DOCUMENT_KEY_ERROR = "Unable to identify configuration document"
-
-
-class MigrationOutcome(StrEnum):
-    """Closed result vocabulary for one configuration migration."""
-
-    FAILED = "failed"
-    CURRENT = "current"
-    MIGRATED_UNCOMMITTED = "migrated_uncommitted"
-    WRITTEN_UNTRACKED = "written_untracked"
-    RESTORED_AFTER_REFUSED_COMMIT = "restored_after_refused_commit"
-    MIGRATED_COMMITTED = "migrated_committed"
-    UPCAST_IN_MEMORY = "upcast_in_memory"
-
-
-class MigrationFailureReason(StrEnum):
-    """Closed diagnostic vocabulary for a refused migration."""
-
-    NOT_A_MAPPING = "not_a_mapping"
-    NEWER_VERSION = "newer_version"
-    INVALID_VERSION = "invalid_version"
-    PARSE_ERROR = "parse_error"
-    DESTINATION_CONFLICT = "destination_conflict"
-    MIGRATION_ERROR = "migration_error"
-    COMMIT_REFUSED = "commit_refused"
-    FIELD_CONSTRAINT_REFUSED = "field_constraint_refused"
 
 
 _NOT_A_MAPPING = MigrationFailureReason.NOT_A_MAPPING
@@ -98,74 +77,14 @@ _OVERLAY_KINDS = frozenset(
 logger = get_logger(__name__)
 
 
-class MigrationRecord(TypedDict):
-    """Privacy-safe outcome for one configuration document."""
-
-    document_key: str
-    subject_kind: str
-    subject_source: str
-    from_version: int
-    to_version: int
-    trigger: MigrationTrigger
-    outcome: MigrationOutcome
-    reason: MigrationFailureReason | None
-    commit: str | None
-    diagnostic: str | None
-
-
 class MigrationCommitRefused(RuntimeError):
     """The canonical sealed commit command refused or failed to land a migration."""
-
-
-def carry_pending(
-    stored_document: Mapping[str, object], subject: SubjectRef, *, delivered: Callable[[Destination], None]
-) -> None:
-    """Deliver each moved value that remains in a stored document, in step order."""
-    require_registry_subject(subject)
-    version = document_version(stored_document)
-    if version > CURRENT_VERSION:
-        raise DocumentNewerThanInstallation(
-            f"Configuration document version {version} is newer than installation version {CURRENT_VERSION}"
-        )
-    for step in _steps.STEPS[version:]:
-        destination = getattr(step, "MOVES", None)
-        if destination is None or subject.kind not in step.KINDS:
-            continue
-        pending = cast(object | None, step.pending(stored_document, subject))
-        if pending is None:
-            continue
-        step.deliver(pending, subject)
-        delivered(cast(Destination, destination))
-
-
-def upcast_for_read(
-    path: Path,
-    stored_document: Mapping[str, object],
-    *,
-    subject: SubjectRef | None = None,
-) -> Mapping[str, object]:
-    """Resolve a read subject, apply its in-memory steps and report the upcast."""
-    from_version = document_version(stored_document)
-    read_subject = subject if subject is not None else resolve_read_subject(path, stored_document)
-    migrated = upcast(stored_document, read_subject)
-    if from_version < CURRENT_VERSION and read_subject is not None:
-        _record(
-            _document_key(path),
-            read_subject,
-            from_version,
-            CURRENT_VERSION,
-            MigrationTrigger.READ,
-            MigrationOutcome.UPCAST_IN_MEMORY,
-            None,
-            None,
-        )
-    return migrated
 
 
 def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger) -> MigrationRecord:
     """Persist one document's pending migrations and apply the trigger's commit rule."""
     require_registry_subject(subject)
-    key = _document_key(path)
+    key = document_key(path)
     repository, relative_path, tracked = _repository_state(path)
     with file_transaction(path) as transaction:
         original = transaction.read_text(encoding=_UTF8)
@@ -175,9 +94,11 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
         try:
             document = _parse_document(original)
         except YAMLError:
-            return _record(key, subject, 0, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _PARSE_ERROR, None)
+            return record_migration(
+                key, subject, 0, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _PARSE_ERROR, None
+            )
         if not isinstance(document, Mapping) or (subject.kind.value == "computer" and not original.strip()):
-            return _record(
+            return record_migration(
                 key,
                 subject,
                 _version_or_zero(document),
@@ -190,13 +111,15 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
         try:
             from_version = document_version(document)
         except ValueError:
-            return _record(key, subject, 0, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _INVALID_VERSION, None)
+            return record_migration(
+                key, subject, 0, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _INVALID_VERSION, None
+            )
         if from_version > CURRENT_VERSION:
-            return _record(
+            return record_migration(
                 key, subject, from_version, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _NEWER_VERSION, None
             )
         if subject.kind.value == "computer" and not document:
-            return _record(
+            return record_migration(
                 key, subject, from_version, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _NOT_A_MAPPING, None
             )
         delivered: list[Destination] = []
@@ -204,13 +127,13 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
             carry_pending(document, subject, delivered=delivered.append)
             migrated = upcast(document, subject)
             if migrated == document:
-                return _record(
+                return record_migration(
                     key, subject, from_version, CURRENT_VERSION, trigger, MigrationOutcome.CURRENT, None, None
                 )
             text = _render(migrated, subject)
             transaction.replace_text(text)
         except (InvitationConflict, HandoffConflict, RegistryConflict):
-            return _record(
+            return record_migration(
                 key,
                 subject,
                 from_version,
@@ -221,11 +144,11 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 None,
             )
         except DocumentNewerThanInstallation:
-            return _record(
+            return record_migration(
                 key, subject, from_version, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _NEWER_VERSION, None
             )
         except FieldConstraintRefusal as refusal:
-            return _record(
+            return record_migration(
                 key,
                 subject,
                 from_version,
@@ -237,11 +160,11 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 diagnostic=str(refusal),
             )
         except (OSError, ValueError, TypeError):
-            return _record(
+            return record_migration(
                 key, subject, from_version, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _MIGRATION_ERROR, None
             )
         if trigger is MigrationTrigger.WRITER:
-            return _record(
+            return record_migration(
                 key,
                 subject,
                 from_version,
@@ -252,7 +175,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 None,
             )
         if repository is None or not tracked:
-            return _record(
+            return record_migration(
                 key,
                 subject,
                 from_version,
@@ -263,7 +186,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 None,
             )
         if not clean_before:
-            return _record(
+            return record_migration(
                 key,
                 subject,
                 from_version,
@@ -279,7 +202,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
             commit = _commit_migration_document(repository, relative_path, message, migrated)
         except (MigrationCommitRefused, GitCommandError, OSError):
             if transaction.read_text(encoding=_UTF8) != text:
-                return _record(
+                return record_migration(
                     key,
                     subject,
                     from_version,
@@ -290,7 +213,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                     None,
                 )
             transaction.replace_text(_committed_text(repository, relative_path))
-            return _record(
+            return record_migration(
                 key,
                 subject,
                 from_version,
@@ -300,7 +223,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 _COMMIT_REFUSED,
                 None,
             )
-        return _record(
+        return record_migration(
             key,
             subject,
             from_version,
@@ -448,15 +371,6 @@ def _committed_text(repository: Repo, relative_path: str) -> str:
     return cast(str, repository.git.show(f"HEAD:{relative_path}"))
 
 
-def _document_key(path: Path) -> str:
-    """Hash a resolved document path for privacy-safe operational records."""
-    try:
-        resolved = str(path.expanduser().resolve()).encode(_UTF8)
-    except OSError as exc:
-        raise RuntimeError(_DOCUMENT_KEY_ERROR) from exc
-    return hashlib.sha256(resolved).hexdigest()
-
-
 def _version_or_zero(document: object) -> int:
     """Read a valid version where possible for a failed parse record."""
     if not isinstance(document, Mapping):
@@ -465,37 +379,6 @@ def _version_or_zero(document: object) -> int:
         return document_version(document)
     except ValueError:
         return 0
-
-
-def _record(
-    document_key: str,
-    subject: SubjectRef,
-    from_version: int,
-    to_version: int,
-    trigger: MigrationTrigger,
-    outcome: MigrationOutcome,
-    reason: MigrationFailureReason | None,
-    commit: str | None,
-    diagnostic: str | None = None,
-) -> MigrationRecord:
-    """Emit and return the privacy-safe per-document migration record.
-
-    ``diagnostic`` carries a refusal's schema-owned text, never document content.
-    """
-    record: MigrationRecord = {
-        "document_key": document_key,
-        "subject_kind": subject.kind.value,
-        "subject_source": subject.source.value,
-        "from_version": from_version,
-        "to_version": to_version,
-        "trigger": trigger,
-        "outcome": outcome,
-        "reason": reason,
-        "commit": commit,
-        "diagnostic": diagnostic,
-    }
-    logger.info(_LOG_MIGRATION, **record)
-    return record
 
 
 def _run_summary(trigger: MigrationTrigger, records: list[MigrationRecord]) -> None:

@@ -13,11 +13,11 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord._channel_lookup import find_existing_text_channel_id
-from teleclaude.config import config
 from teleclaude.config.legacy_discord import (
     clear_legacy_project_forum_bindings,
     legacy_project_forum_bindings,
 )
+from teleclaude.config.machine import config
 from teleclaude.core.db import db
 from teleclaude.core.integration.discord_admin_state import (
     PROJECT_FORUM_KEY_PREFIX,

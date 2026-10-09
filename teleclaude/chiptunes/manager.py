@@ -24,7 +24,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.chiptunes.provision import ChiptunesProvisionError, provision_hvsc_corpus_async
 from teleclaude.chiptunes.types import ChiptunesState, coerce_chiptunes_state
-from teleclaude.config import ChiptunesConfig, config
+from teleclaude.config._chiptunes import ChiptunesConfig
+from teleclaude.config.machine import config
 from teleclaude.paths import CHIPTUNES_PID_PATH, CHIPTUNES_SOCKET_PATH, CHIPTUNES_WORKER_LOG_PATH
 from teleclaude.services.process_janitor.registry import ProcessSpawnRegistry
 

@@ -17,7 +17,7 @@ from teleclaude.api.auth import (
 from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, resolve_session_ownership
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.api.session_route_helpers import http_exception_for_relay_failure
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import SessionTarget
 from teleclaude.core.command_dispatch import RelayFailure, relay_caller_read
 from teleclaude.core.db import SessionRecordAbsent, SessionRecordFound, SessionRecordOutsideReach, db

@@ -17,8 +17,9 @@ from typing import Any
 from instrukt_ai_logging import get_logger
 from pydantic import ValidationError
 
-import teleclaude.config as _tc_config_module
 from teleclaude.config._environment import write_environment_value
+from teleclaude.config._machine_build import build_config_from_raw
+from teleclaude.config._models import TeleclaudeConfig
 from teleclaude.config.declaration import write_yaml_document as _atomic_yaml_write
 from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import (
@@ -31,6 +32,7 @@ from teleclaude.config.loader import (
 )
 from teleclaude.config.loader import save_global_config as save_global_config
 from teleclaude.config.loader import save_person_config as save_person_config
+from teleclaude.config.machine import config_path
 from teleclaude.config.machine_config_mutation import inspect_machine_config
 from teleclaude.config.notification_interests import interest_faults
 from teleclaude.config.person_secrets import (
@@ -123,7 +125,7 @@ def save_raw_machine_config(
     path: Path | None = None,
 ) -> None:
     """Atomic write of the raw config.yml tree as-is (sparse; defaults not materialized)."""
-    target = path or _tc_config_module.config_path
+    target = path or config_path
     _atomic_yaml_write(target, raw_config)
     logger.info("Saved machine config to %s", target)
 
@@ -152,13 +154,13 @@ def validate_all() -> list[ValidationResult]:
 
     # Validate the current-schema inspection projection without reloading the
     # runtime singleton, so an invalid committed document remains repairable.
-    app_config: _tc_config_module.TeleclaudeConfig | None = None
+    app_config: TeleclaudeConfig | None = None
     try:
         inspection = inspect_machine_config()
-        app_config = _tc_config_module.build_config_from_raw(
+        app_config = build_config_from_raw(
             inspection.raw,
-            _tc_config_module.config_path.parent,
-            config_source=_tc_config_module.config_path,
+            config_path.parent,
+            config_source=config_path,
         )
         results.append(ValidationResult(area=ConfigFileName.MACHINE, passed=True))
     except Exception as e:

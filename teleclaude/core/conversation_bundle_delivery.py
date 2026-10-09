@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.command_dispatch import parse_remote_dispatch_data_diagnosed
 from teleclaude.core.conversation_messages import format_peer_message, resolve_session_event_author

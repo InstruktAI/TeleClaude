@@ -13,7 +13,7 @@ import httpx
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.delivery import Destination
 from teleclaude.core.models import MessageMetadata, WhatsAppAdapterMetadata
 from teleclaude.utils.markdown import (

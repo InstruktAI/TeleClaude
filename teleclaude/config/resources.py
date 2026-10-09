@@ -18,7 +18,6 @@ from contextlib import ExitStack
 from pathlib import Path
 from typing import cast
 
-import teleclaude.config as _tc_config_module
 from teleclaude.company_setup.onboard_flow import scaffold_company
 from teleclaude.config._environment import (
     find_environment_references,
@@ -34,6 +33,7 @@ from teleclaude.config.loader import (
     validate_tier_candidate,
     validate_tier_document,
 )
+from teleclaude.config.machine import config_path
 from teleclaude.config.machine_config_mutation import (
     MachineConfigInspection,
     MachineConfigMutationResult,
@@ -41,8 +41,8 @@ from teleclaude.config.machine_config_mutation import (
     inspect_machine_config,
     patch_machine_config_at,
 )
-from teleclaude.config.migrations import upcast
-from teleclaude.config.migrations._runner import upcast_for_read
+from teleclaude.config.migrations._chain import upcast
+from teleclaude.config.migrations.read import upcast_for_read
 from teleclaude.config.notification_interests import new_person_document
 from teleclaude.config.person_registry import without_person
 from teleclaude.config.person_resource import (
@@ -178,7 +178,7 @@ def _validate_global_candidate(candidate: Mapping[str, object]) -> None:  # guar
 
 
 def _computer_source() -> Path:
-    return _tc_config_module.config_path
+    return config_path
 
 
 def _computer_view_from(raw: Mapping[object, object], revision: str) -> SubjectView:

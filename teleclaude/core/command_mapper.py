@@ -2,7 +2,7 @@
 
 from typing import cast
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import EVENT_NEW_SESSION
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_input import CommandInputMode

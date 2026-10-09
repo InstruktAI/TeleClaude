@@ -17,7 +17,9 @@ from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.invitation_store import delete_invitation as _delete_invitation
 from teleclaude.config.invitation_store import load_invitations, save_invitations
 from teleclaude.config.loader import load_person_config
-from teleclaude.config.migrations import Destination, MigrationOutcome, MigrationTrigger, in_transit, migrate_document
+from teleclaude.config.migrations._chain import Destination, MigrationTrigger, in_transit
+from teleclaude.config.migrations._records import MigrationOutcome
+from teleclaude.config.migrations._runner import migrate_document
 from teleclaude.config.schema import PersonConfig
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.paths import PEOPLE_DIR, ConfigFileName

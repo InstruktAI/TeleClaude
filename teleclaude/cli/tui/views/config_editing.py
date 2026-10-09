@@ -29,9 +29,9 @@ from teleclaude.cli.tui.views._config_constants import (
     observe_config_tui,
 )
 from teleclaude.cli.tui.views.reflection import ReflectedField, deserialize_value
-from teleclaude.config import reload_config
 from teleclaude.config._environment import mutate_environment_value
 from teleclaude.config.identity_schema import PersonEntry
+from teleclaude.config.machine import reload_config
 from teleclaude.config.machine_config_mutation import set_machine_field
 from teleclaude.config.validation import is_unresolved_placeholder
 

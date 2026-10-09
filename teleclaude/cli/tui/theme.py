@@ -27,7 +27,7 @@ from teleclaude.cli.tui.color_utils import (
     letter_color_floor,
     relative_luminance,
 )
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.session_status import AgentStatusValue
 
 # Re-export color utilities that consumers import from theme

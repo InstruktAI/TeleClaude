@@ -19,8 +19,8 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from teleclaude.cli.config_handlers import get_global_config
-from teleclaude.config import config
 from teleclaude.config.invitations import find_person_by_invite_token
+from teleclaude.config.machine import config
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.agent_dispatch import AgentDispatchFailure
 from teleclaude.core.command_dispatch import RemoteDispatchError, dispatch_command, parse_remote_dispatch_data

@@ -30,7 +30,7 @@ from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import discord_policy
 from teleclaude.adapters.ui.threaded_output import OverflowContext
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.db import db

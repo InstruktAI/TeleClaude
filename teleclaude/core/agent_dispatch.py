@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.agent_registry import AGENT_REGISTRY, DeskConfinement, agent_permutation, registry_digest
 from teleclaude.caller_identity import is_desk_role
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import SlashCommand
 from teleclaude.core.agent_availability import (
     AgentAvailabilityStatus,

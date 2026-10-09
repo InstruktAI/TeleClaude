@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.db import Db
 from teleclaude.core.inbound.adoption import run_adoption_pass, run_orphan_pass, seed_bindings
 from teleclaude.core.origins import InputOrigin

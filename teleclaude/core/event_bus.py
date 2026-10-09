@@ -30,7 +30,7 @@ from typing import Any, Literal, Protocol, TypedDict, TypeVar, cast, overload
 from instrukt_ai_logging import get_logger
 from pydantic import JsonValue
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.event_guard import create_event_guard
 from teleclaude.core.events import (
     AgentAvailabilityContext,

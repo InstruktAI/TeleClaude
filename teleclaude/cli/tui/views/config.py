@@ -44,25 +44,25 @@ from teleclaude.cli.tui.views.reflection import (
     reflect_schema,
     resolve_env_placeholders,
 )
-from teleclaude.config import (
-    DEFAULT_CONFIG,
+from teleclaude.config._chiptunes import ChiptunesConfig
+from teleclaude.config._defaults import DEFAULT_CONFIG
+from teleclaude.config._machine_build import deep_merge
+from teleclaude.config._models import (
     BackupConfig,
-    ChiptunesConfig,
     ComputerConfig,
     DaemonConfig,
     DiscordConfig,
     EmailConfig,
     RedisConfig,
     STTConfig,
-    SummarizerConfig,
     TelegramConfig,
     TTSConfig,
     WhatsAppConfig,
-    deep_merge,
-    machine_runtime_environment,
 )
+from teleclaude.config._summarizer import SummarizerConfig
 from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import find_person_config_path
+from teleclaude.config.machine import machine_runtime_environment
 from teleclaude.config.machine_config_mutation import inspect_machine_config
 from teleclaude.config.person_secrets import PersonSecretStorageError
 from teleclaude.config.tiers import Tier

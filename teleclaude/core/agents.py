@@ -17,7 +17,8 @@ from teleclaude.agent_registry import AGENT_REGISTRY as AGENT_REGISTRY
 from teleclaude.agent_registry import AgentName as AgentName
 from teleclaude.agent_registry import AgentStartupSignal as AgentStartupSignal
 from teleclaude.agent_registry import DiscordAuthorPresentation as DiscordAuthorPresentation
-from teleclaude.config import AgentConfig, config
+from teleclaude.config._models import AgentConfig
+from teleclaude.config.machine import config
 
 logger = get_logger(__name__)
 

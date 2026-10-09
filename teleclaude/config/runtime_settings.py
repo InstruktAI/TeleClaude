@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.tts.provision import (
     deprovision_tts_deps_async,
     ensure_tts_provisioned_async,

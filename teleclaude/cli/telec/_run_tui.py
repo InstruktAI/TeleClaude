@@ -14,7 +14,7 @@ from teleclaude.cli.session_auth import TUI_CARRIED_IDENTITY_ENV_KEY, read_curre
 from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME
 from teleclaude.cli.telec.handlers.auth_cmds import _requires_tui_login
 from teleclaude.cli.tui.processes import deregister_tui
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import ENV_ENABLE
 from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.runtime.environment import filter_tui_tmux_environment

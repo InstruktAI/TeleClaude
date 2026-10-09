@@ -14,7 +14,7 @@ from typing import TypedDict
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER, CacheEvent, TodoStatus
 from teleclaude.core import command_handlers
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot

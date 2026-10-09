@@ -15,8 +15,8 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
 from teleclaude.config._models import AgentConfig
+from teleclaude.config.machine import config
 from teleclaude.constants import COMMAND_ROLE_MAP, RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agent_availability import launch_ownership

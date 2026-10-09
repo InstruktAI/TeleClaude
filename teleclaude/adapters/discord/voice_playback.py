@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core import voice_focus
 from teleclaude.core.db import db

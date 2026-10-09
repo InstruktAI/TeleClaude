@@ -6,7 +6,8 @@ import argparse
 import sys
 
 from teleclaude.config.migrations._chain import MigrationTrigger
-from teleclaude.config.migrations._runner import MigrationOutcome, migrate_registered
+from teleclaude.config.migrations._records import MigrationOutcome
+from teleclaude.config.migrations._runner import migrate_registered
 
 _TRIGGERS = (MigrationTrigger.MAINTENANCE.value, MigrationTrigger.INSTALL.value)
 _FAILED_MIGRATION_DIAGNOSTIC = (

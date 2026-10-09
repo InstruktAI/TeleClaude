@@ -12,7 +12,7 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import CONTENT_DUMP
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.content_scaffold import _resolve_author, create_content_inbox_entry
 from teleclaude.events.envelope import EventHomeMarker, EventLevel
 from teleclaude.events.envelope_facts import cli_envelope_fact_resolver, cli_session_home

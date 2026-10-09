@@ -350,7 +350,7 @@ class _TelecConnectionClient:
         }
         ws.send(json.dumps(initial_payload))
 
-        from teleclaude.config import config  # noqa: PLC0415 - deferred command-local dependency.
+        from teleclaude.config.machine import config  # noqa: PLC0415 - deferred command-local dependency.
 
         # Subscribe to each config-defined remote computer
         for rc in config.remote_computers:

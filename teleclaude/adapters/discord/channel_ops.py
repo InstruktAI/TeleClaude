@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude import config as teleclaude_config
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
+from teleclaude.config import machine as teleclaude_config
 from teleclaude.core.db import db
 from teleclaude.core.endpoints import platform_help_desk_folder
 from teleclaude.core.identity import session_person_role

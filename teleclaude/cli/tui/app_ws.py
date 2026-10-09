@@ -31,7 +31,7 @@ from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.tree import _is_local_name
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
-from teleclaude.config import config
+from teleclaude.config.machine import config
 
 logger = get_logger(__name__)
 

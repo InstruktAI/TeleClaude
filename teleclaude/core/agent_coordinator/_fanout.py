@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import LOCAL_COMPUTER, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db

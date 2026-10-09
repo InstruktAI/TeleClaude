@@ -10,11 +10,14 @@ from io import StringIO
 from typing import cast
 
 from teleclaude.agent_registry import AgentName
-from teleclaude.config import DEFAULT_CONFIG, TeleclaudeConfig, build_config_from_raw, config_path
-from teleclaude.config._models import ReleaseChannel
+from teleclaude.config._defaults import DEFAULT_CONFIG
+from teleclaude.config._machine_build import build_config_from_raw
+from teleclaude.config._models import ReleaseChannel, TeleclaudeConfig
 from teleclaude.config._yaml import round_trip_yaml
-from teleclaude.config.migrations import CURRENT_VERSION, Destination, carry_pending, upcast
-from teleclaude.config.migrations._runner import upcast_for_read
+from teleclaude.config.machine import config_path
+from teleclaude.config.migrations._carry import carry_pending
+from teleclaude.config.migrations._chain import CURRENT_VERSION, Destination, upcast
+from teleclaude.config.migrations.read import upcast_for_read
 from teleclaude.config.revision import StaleRevision, view_revision
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import FileTransaction, file_transaction

@@ -11,7 +11,8 @@ from teleclaude.config._environment import read_environment_file
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.loader import resolve_overlay_references, validate_tier_document
-from teleclaude.config.migrations import Destination, carry_pending, upcast
+from teleclaude.config.migrations._carry import carry_pending
+from teleclaude.config.migrations._chain import Destination, upcast
 from teleclaude.config.person_secrets import (
     clear_person_mcp_secret,
     person_secret_store_path,

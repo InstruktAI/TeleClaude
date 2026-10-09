@@ -9,7 +9,7 @@ from typing import TypedDict
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.db import get_db
 from teleclaude.core.models import Session
 from teleclaude.quality.scope import DirtyPath, resolve_dirty_paths

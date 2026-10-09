@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core import polling_coordinator
 from teleclaude.core.activity_contract import serialize_activity_event
 from teleclaude.core.agent_status import (

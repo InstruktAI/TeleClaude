@@ -17,7 +17,7 @@ from teleclaude.api.auth import (
     require_clearance_at_caller_person,
 )
 from teleclaude.api_models import AddProjectRequest, ProjectDTO, TodoDTO
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.config.project_subject_init import adopt_project_subject
 from teleclaude.config_subjects import ConfigSubjectKind
 from teleclaude.core import command_handlers

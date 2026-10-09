@@ -23,7 +23,7 @@ from teleclaude.adapters.discord.voice_bridge_supervisor import VoiceBridgeSuper
 from teleclaude.adapters.discord.voice_playback import VoicePlayback
 from teleclaude.adapters.discord.voice_protocol import VoiceProtocol
 from teleclaude.cli.config_handlers import get_global_config, get_person_config
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core import voice_focus
 from teleclaude.core.command_dispatch import dispatch_command

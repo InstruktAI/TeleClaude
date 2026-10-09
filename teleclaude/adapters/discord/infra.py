@@ -14,11 +14,11 @@ from teleclaude.adapters.discord._runtime import recoverable_operation_errors
 from teleclaude.adapters.discord.channel_ops import fetch_thread_starter_message, gather_forum_threads
 from teleclaude.adapters.discord.provisioning import ProvisioningMixin
 from teleclaude.adapters.discord.team_channels import TeamChannelsMixin
-from teleclaude.config import config
 from teleclaude.config.legacy_discord import (
     clear_legacy_discord_provider_ids,
     legacy_discord_provider_ids,
 )
+from teleclaude.config.machine import config
 from teleclaude.core.integration.discord_admin_state import (
     PROJECT_FORUM_KEY_PREFIX,
     DiscordArtifactKind,

@@ -33,7 +33,7 @@ from teleclaude.api_models import (
     SessionUpdatedEventDTO,
 )
 from teleclaude.caller_identity import CliCaller
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import CacheEvent
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
 from teleclaude.core.session_listing import snapshot_reached_by_reach

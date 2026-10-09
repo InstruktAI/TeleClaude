@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from redis.exceptions import RedisError
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.agent_dispatch import (
     AgentDispatchFailure,
     AgentDispatchOutcome,

@@ -13,7 +13,7 @@ from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import SESSIONS_REVIVE
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import ENV_ENABLE
 from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT
@@ -61,7 +61,7 @@ def _handle_version() -> None:
     """Print runtime version metadata."""
     commit_hash = _git_short_commit_hash()
     try:
-        deployment = importlib.import_module("teleclaude.config").config.deployment
+        deployment = importlib.import_module("teleclaude.config.machine").config.deployment
         channel = deployment.channel
         pinned_minor = deployment.pinned_minor
     except (AttributeError, OSError, TypeError, ValueError):

@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, principal_for_carried_caller
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.command_dispatch import RelayFailure, RemoteDispatchReason, dispatch_command, is_remote_target
 from teleclaude.core.db import db
 from teleclaude.core.models import JsonDict, JsonValue, MessageMetadata

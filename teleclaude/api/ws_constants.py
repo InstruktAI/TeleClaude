@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.models import JsonDict
 
 API_WS_PING_INTERVAL_S = 20.0

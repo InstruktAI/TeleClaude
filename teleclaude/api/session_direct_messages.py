@@ -19,7 +19,7 @@ from teleclaude.api.auth import CallerIdentity
 from teleclaude.api.sessions_responses import active_direct_link_response as _active_direct_link_response
 from teleclaude.api.sessions_responses import exclusive_direct_link_response as _exclusive_direct_link_response
 from teleclaude.api_models import SendMessageResponseDTO
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.conversation_bundle_delivery import direct_ignition_occurrence_key

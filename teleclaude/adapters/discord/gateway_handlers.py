@@ -23,7 +23,7 @@ from teleclaude.adapters.discord.session_launcher import (
     LauncherOwnershipReason,
     parse_launcher_custom_id,
 )
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.config.schema import MessagingChannel
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.db import db

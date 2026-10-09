@@ -63,7 +63,7 @@ from teleclaude.api_models import (
     SendMessageResponseDTO,
     SessionDTO,
 )
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import SlashCommand
 from teleclaude.core.agent_dispatch import AgentDispatchReason
 from teleclaude.core.command_dispatch import RelayFailure, relay_caller_read

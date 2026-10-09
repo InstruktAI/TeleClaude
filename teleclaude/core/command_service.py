@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Concatenate, TypedDict, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import (
     COMMAND_ROLE_MAP,
     ROLE_INTEGRATOR,

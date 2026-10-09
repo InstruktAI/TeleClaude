@@ -11,7 +11,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude import __version__
 from teleclaude.agent_registry import LaunchProfile
 from teleclaude.api_models import TodoDTO
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL, SlashCommand

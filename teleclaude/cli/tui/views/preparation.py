@@ -67,7 +67,7 @@ from teleclaude.cli.tui.widgets.todo_creation_record_row import TodoSessionRow
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import DEPENDENCY_FLASH_CLASS, TodoRow
 from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import TodoStatus
 from teleclaude.core.todo_tree import FlatRow, build_todo_sections, flatten
 from teleclaude.todo_artifacts import artifact_display_filename

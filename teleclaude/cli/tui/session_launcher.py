@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import CreateSessionResponseDTO
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.shell_identity import require_shell_safe_identifier
 
 if TYPE_CHECKING:

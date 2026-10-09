@@ -12,7 +12,7 @@ from teleclaude.agent_registry import AgentName, registry_digest
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.event_serialization import availability_legacy_fields
 from teleclaude.api_models import AgentAvailabilityDTO, AgentStatusRequest, ModelAvailabilityDTO
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.agent_availability import AgentAvailabilityStatus, AvailabilityState
 from teleclaude.core.agents import get_known_agents, normalize_agent_name
 from teleclaude.core.db import db

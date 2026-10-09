@@ -9,7 +9,6 @@ from instrukt_ai_logging import get_logger
 from textual import work
 from textual.css.query import NoMatches
 
-from teleclaude import config as config_mod
 from teleclaude.api_models import ChiptunesStatusDTO, SettingsPatchDTO, TTSSettingsPatchDTO
 from teleclaude.chiptunes.dislikes import is_disliked, remove_dislike, save_dislike
 from teleclaude.chiptunes.favorites import is_favorited, remove_favorite, save_favorite
@@ -23,6 +22,7 @@ from teleclaude.cli.tui.header_frames import build_header_frames
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
+from teleclaude.config import machine as config_mod
 
 logger = get_logger(__name__)
 

@@ -9,7 +9,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api_models import ComputerDTO
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core import command_handlers
 
 if TYPE_CHECKING:

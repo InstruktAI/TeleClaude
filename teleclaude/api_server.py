@@ -73,7 +73,7 @@ from teleclaude.api_models_operations import OperationFailedEventDTO, OperationS
 from teleclaude.caller_identity import CliCaller, PersonCliCaller, Platform, SessionOf, authorizing_role
 from teleclaude.channels.api_routes import router as channels_router
 from teleclaude.checkout_head import read_checkout_head
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.config.person_secrets import resolve_person_mcp_secret_values
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.db import db

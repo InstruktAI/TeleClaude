@@ -18,7 +18,7 @@ from telegram.constants import ChatAction
 
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import telegram_policy
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
 from teleclaude.core.models import MessageMetadata, PeerInfo, Session, TelegramAdapterMetadata
 from teleclaude.utils.markdown import (

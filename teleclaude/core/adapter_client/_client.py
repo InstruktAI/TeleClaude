@@ -13,7 +13,7 @@ from teleclaude.adapters.discord_adapter import DiscordAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.adapters.whatsapp_adapter import WhatsAppAdapter
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.config.validation import missing_required_fields
 from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.models import MessageMetadata

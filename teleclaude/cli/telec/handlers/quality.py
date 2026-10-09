@@ -11,7 +11,7 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._code_invocation import resolve_invocation_state
 from teleclaude.cli.telec.surface import CODE_FORMAT, CODE_LINT, CODE_TEST
-from teleclaude.config.context_root import OwningHome, group_paths_by_owning_home
+from teleclaude.config.tree_homes import OwningHome, group_paths_by_owning_home
 from teleclaude.git import Repo
 from teleclaude.git_tree import TreeSource, list_tree_paths
 from teleclaude.paths import ConfigFileName, is_platform_home

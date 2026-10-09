@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude import config as teleclaude_config
 from teleclaude.adapters.base_adapter import AdapterError, ChannelNotProvisionedError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.adapters.discord.session_launcher import (
@@ -28,6 +27,7 @@ from teleclaude.adapters.discord.session_launcher import (
     LauncherOwnershipReason,
 )
 from teleclaude.caller_identity import PersonCliCaller, RoleResolver, SessionOf
+from teleclaude.config import machine as teleclaude_config
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db

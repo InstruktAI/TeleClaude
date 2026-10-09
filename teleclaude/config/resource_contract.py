@@ -18,8 +18,8 @@ from typing import Final
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.migrations._carry import carry_pending
 from teleclaude.config.migrations._chain import Destination
-from teleclaude.config.migrations._runner import carry_pending
 from teleclaude.config.revision import StaleRevision
 from teleclaude.config.roster import RosterRefused
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef

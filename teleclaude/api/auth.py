@@ -23,7 +23,7 @@ from teleclaude.caller_identity import (
     human_principal_for_email,
 )
 from teleclaude.cli.telec.auth import is_command_allowed
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, LOGIN_REQUIRED_DETAIL, ROLE_SYSTEM, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.conversation_messages import resolve_session_event_author
 from teleclaude.core.daemon_lifecycle_identity import is_daemon_credential

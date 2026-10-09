@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.db import db
 
 if TYPE_CHECKING:

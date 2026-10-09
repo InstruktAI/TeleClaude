@@ -10,7 +10,6 @@ import yaml
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 
-from teleclaude.config import config as machine_config
 from teleclaude.config._environment import (
     company_environment_creation_mode,
     expand_environment_references,
@@ -27,14 +26,11 @@ from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.field_constraints import MACHINE_CONTEXT_KEY, UNRESOLVED_CONTEXT_KEY
 from teleclaude.config.identity_schema import CompanyMember, PersonEntry
 from teleclaude.config.inbound_secret_references import require_inbound_secret_references
-from teleclaude.config.migrations import (
-    Destination,
-    RegistrySubjectRequired,
-    carry_pending,
-    registered_subject,
-    upcast,
-)
-from teleclaude.config.migrations._runner import upcast_for_read
+from teleclaude.config.machine import config as machine_config
+from teleclaude.config.migrations._carry import carry_pending
+from teleclaude.config.migrations._chain import Destination, RegistrySubjectRequired, upcast
+from teleclaude.config.migrations._registry import registered_subject
+from teleclaude.config.migrations.read import upcast_for_read
 from teleclaude.config.project_home import require_home_owner
 from teleclaude.config.schema import (
     TIER_DOCUMENT_MODELS,

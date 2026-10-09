@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from teleclaude.config import DiscordQoSConfig, TelegramQoSConfig, WhatsAppQoSConfig
+    from teleclaude.config._models import DiscordQoSConfig, TelegramQoSConfig, WhatsAppQoSConfig
 
 
 @dataclass(frozen=True, slots=True)

@@ -38,7 +38,7 @@ from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.session_row import SessionRow
-from teleclaude.config import config
+from teleclaude.config.machine import config
 
 if TYPE_CHECKING:
     from textual.timer import Timer

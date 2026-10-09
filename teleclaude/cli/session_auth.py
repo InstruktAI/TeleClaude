@@ -33,8 +33,8 @@ from teleclaude.caller_identity import (
     session_act_exception,
 )
 from teleclaude.cli import CommandScope
-from teleclaude.config import config
 from teleclaude.config.loader import load_global_config
+from teleclaude.config.machine import config
 from teleclaude.constants import (
     HUMAN_ROLE_CUSTOMER,
     LOCAL_COMPUTER,

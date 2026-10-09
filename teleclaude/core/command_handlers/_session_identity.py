@@ -17,7 +17,7 @@ from teleclaude.caller_identity import (
     identity_for_session,
     is_desk_role,
 )
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import (
     HUMAN_ROLE_CUSTOMER,
     HUMAN_ROLES,

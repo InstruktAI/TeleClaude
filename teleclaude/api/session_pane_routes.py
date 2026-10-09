@@ -16,7 +16,7 @@ from teleclaude.api.auth import (
 from teleclaude.api.session_pane_models import SessionPaneDTO
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.api.session_route_helpers import http_exception_for_relay_failure
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.core.command_dispatch import RelayFailure, relay_caller_read
 from teleclaude.core.session_pane import get_session_pane
 

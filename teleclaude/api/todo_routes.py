@@ -41,7 +41,7 @@ from teleclaude.api.todo_update_support import (
 )
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.api_models_operations import OperationStatusDTO
-from teleclaude.config import config
+from teleclaude.config.machine import config
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
     ARTIFACT_DIAGNOSIS,

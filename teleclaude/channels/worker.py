@@ -9,7 +9,7 @@ from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
 from teleclaude.channels.consumer import ConsumerGroupSpec, consume, ensure_consumer_group
-from teleclaude.config import config
+from teleclaude.config.machine import config
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
