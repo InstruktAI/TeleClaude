@@ -71,19 +71,6 @@ focused procedure and advances through the machine-owned transitions.
    reviewer verdict alone. Task-plan authorization follows the separate task
    procedure and is not a PRD approval.
 
-<!-- planned-change:diagnosis-settles-evidenced-cause -->
-
-The bug lane is the one named exception to the first default, and it is narrow: a
-dispatched peer authors the `diagnosis`, investigating and concluding in one act, while
-the driving session triages before that peer is spent, interrogates the written mechanism
-after as a skeptical examiner rather than a second diagnostician, stamps the cause once
-every causal transition is evidenced and the strongest rival is eliminated, and resumes as
-planner from a conclusion it did not write. The driver stays alive while its peer is active and does not poll it;
-normal completion or material communication wakes the next action. See
-`sdlc/procedure/lifecycle/prepare/diagnose`.
-
-<!-- change:diagnosis-settles-evidenced-cause -->
-
 The bug lane is the one named exception to the first default, and it is narrow: a
 dispatched peer authors the `diagnosis`, investigating and concluding in one act, while
 the driving session triages before that peer is spent, interrogates the written mechanism
@@ -94,8 +81,6 @@ normal completion or material communication wakes the next action. When the fili
 carries an independently auditable causal account that triage confirms in full against its
 cited sources, the driver settles that account and dispatches no peer. See
 `sdlc/procedure/lifecycle/prepare/diagnose`.
-
-<!-- /planned-change:diagnosis-settles-evidenced-cause -->
 
 ## Preconditions
 
@@ -269,25 +254,12 @@ Read the todo's recorded kind and enter only the lane it owns. Kind determines
 which preparation artifacts exist; the feature chain is not a universal
 template.
 
-<!-- planned-change:diagnosis-settles-evidenced-cause -->
-
-| Kind      | Entry route                                                                                                | Preparation outputs                                                                                  |
-| --------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `feature` | Intake → PRD review and human approval → optional architecture and review → implementation plan and review | `prd`, behavioral feature-spec reflection, optional `architecture`, `implementation-plan`            |
-| `change`  | Implementation-plan drafting and review                                                                    | `implementation-plan`; no PRD or feature intake                                                      |
-| `bug`     | Independent diagnosis → implementation-plan drafting and review                                            | `diagnosis`, `implementation-plan`; no PRD or feature intake                                         |
-| `task`    | Load `sdlc/procedure/lifecycle/task/prepare-task` and leave this SDLC flow                                 | `task-plan` plus human authorization; no PRD, architecture, implementation plan, or reviewer verdict |
-
-<!-- change:diagnosis-settles-evidenced-cause -->
-
 | Kind      | Entry route                                                                                                                      | Preparation outputs                                                                                  |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `feature` | Intake → PRD review and human approval → optional architecture and review → implementation plan and review                       | `prd`, behavioral feature-spec reflection, optional `architecture`, `implementation-plan`            |
 | `change`  | Implementation-plan drafting and review                                                                                          | `implementation-plan`; no PRD or feature intake                                                      |
 | `bug`     | Diagnosis, by a dispatched peer or settled at triage from a confirmed reporter account → implementation-plan drafting and review | `diagnosis`, `implementation-plan`; no PRD or feature intake                                         |
 | `task`    | Load `sdlc/procedure/lifecycle/task/prepare-task` and leave this SDLC flow                                                       | `task-plan` plus human authorization; no PRD, architecture, implementation plan, or reviewer verdict |
-
-<!-- /planned-change:diagnosis-settles-evidenced-cause -->
 
 If the recorded kind does not match the intent, reclassify it with `telec todo
 update {slug} --kind <feature|change|bug|task>` before deriving artifacts. Never
@@ -301,14 +273,10 @@ filed against the wrong owner is corrected in place under Step 0a. Whether the
 evidence shows the claimed behavior is diagnose triage's judgment
 (`sdlc/procedure/lifecycle/prepare/diagnose`), not this step's.
 
-<!-- planned:diagnosis-settles-evidenced-cause -->
-
 A report whose premise is that nothing followed up is checked first against the platform-gap
 rule in `sdlc/policy/todo-creation-discipline`: an unattempted sanctioned recovery is
 operational work and creates no todo, and a request to change the recovery contract itself is
 a `change`, whatever the failure that prompted it.
-
-<!-- /planned:diagnosis-settles-evidenced-cause -->
 
 When no current contract states the expected behavior, the report is not a bug,
 and is one of two things (`sdlc/policy/todo-creation-discipline`):
@@ -537,18 +505,9 @@ state, not a declaration that the human owns its recovery.
 - Change: reviewer-approved `implementation-plan`, with no PRD or feature
   intake artifacts.
 
-<!-- planned-change:diagnosis-settles-evidenced-cause -->
-
-- Bug: independently authored `diagnosis` followed by a reviewer-approved
-  `implementation-plan`, with no PRD or feature intake artifacts.
-
-<!-- change:diagnosis-settles-evidenced-cause -->
-
 - Bug: a `diagnosis` authored by a dispatched peer, or transcribed from a confirmed
   reporter account, followed by a reviewer-approved `implementation-plan`, with no PRD or
   feature intake artifacts.
-
-<!-- /planned-change:diagnosis-settles-evidenced-cause -->
 
 - Task: a `task-plan` and human authorization request from the task procedure;
   no SDLC prepare-state-machine output.

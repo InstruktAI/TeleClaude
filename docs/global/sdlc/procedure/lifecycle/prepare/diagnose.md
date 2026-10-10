@@ -15,23 +15,12 @@ visibility: public
 
 ## Goal
 
-<!-- planned-change:diagnosis-settles-evidenced-cause -->
-
-For a `bug`, drive an independent diagnosis to a **verified root cause** before any fix is
-planned or written. The driving session triages the todo, dispatches the peer, interrogates
-its artifact, and stamps the outcome; it never authors the diagnosis or investigates in
-parallel.
-
-<!-- change:diagnosis-settles-evidenced-cause -->
-
 For a `bug`, drive the cause to a **verified root cause** before any fix is planned or
 written. The driving session triages the todo and takes one of two routes. When the filing
 already carries an independently auditable causal account that triage confirms in full, it
 settles that account (step 1a). Otherwise it dispatches the peer, interrogates its artifact,
 and stamps the outcome. It never investigates in parallel, and it never settles an account
 it wrote.
-
-<!-- /planned-change:diagnosis-settles-evidenced-cause -->
 
 - **`diagnosis`** — the reproduction, the avenues walked, the observations recorded as
   re-verifiable facts, and the causal mechanism those observations ground: _why_ the code
@@ -118,19 +107,13 @@ judgment is yours to make from the symptoms, not a string match.
   that to the peer. The embedded solution is an unratified suggestion carrying no authority
   into the diagnosis or the plan (`sdlc/policy/process-change-authority`).
 
-<!-- planned:diagnosis-settles-evidenced-cause -->
-
 - **Check whether the filing already settles the cause.** When the `input` carries a
   causal account its reporter established — the chain from trigger to the wrong behavior,
   each transition tied to an observation or source address, the strongest rival checked,
   the unknowns stated — decide under step 1a whether that account can be settled here.
   A confident account with no auditable evidence behind it does not qualify.
 
-<!-- /planned:diagnosis-settles-evidenced-cause -->
-
 Otherwise, proceed to the dispatch.
-
-<!-- planned:diagnosis-settles-evidenced-cause -->
 
 ### 1a. Settle a reporter's evidenced cause — the driving session, instead of a dispatch
 
@@ -168,8 +151,6 @@ none of the five conditions.
 Plan review applies the settlement standard to this `diagnosis` as it does to a peer's
 (`sdlc/procedure/lifecycle/prepare/review-plan`), so the route changes who spends the
 discovery effort and leaves unchanged what stands between a cause and a plan.
-
-<!-- /planned:diagnosis-settles-evidenced-cause -->
 
 ### 2. Dispatch the peer — the driving session
 
@@ -263,18 +244,9 @@ this phase tests the cause while there is still no plan to defend, and plan revi
 catches what the interrogation missed and validates the derivation from cause to fix — which
 does not exist yet here and so cannot be tested here.
 
-<!-- planned-change:diagnosis-settles-evidenced-cause -->
-
-An interrogation that cannot reach those two conditions is not resolved by the driver's
-authority. It is the unresolved outcome in Recovery.
-
-<!-- change:diagnosis-settles-evidenced-cause -->
-
 An interrogation that cannot reach all three settlement conditions is not resolved by the
 driver's authority. It is the unresolved outcome in Recovery. On step 1a's route the
 confirmation record is the evidence the three conditions are read from.
-
-<!-- /planned-change:diagnosis-settles-evidenced-cause -->
 
 ### Pre-completion checklist
 
@@ -299,36 +271,18 @@ confirmation record is the evidence the three conditions are read from.
 - The root cause states its minimal causal set and its counterfactual, and prescribes no fix
   and no verification approach.
 
-<!-- planned-change:diagnosis-settles-evidenced-cause -->
-
-- Every version of the artifact carries the dispatched peer as its principal.
-
-<!-- change:diagnosis-settles-evidenced-cause -->
-
 - Every version of the artifact carries the dispatched peer as its principal; on step 1a's route it carries the driving session as transcriber and names the reporter's account and sources.
-
-<!-- /planned-change:diagnosis-settles-evidenced-cause -->
 
 - The Attack record names the transitions challenged and the evidence that resolved each.
 - Status matches reality, and the settled stamp is current for the artifact's digest.
 
 ## Outputs
 
-<!-- planned-change:diagnosis-settles-evidenced-cause -->
-
-- A `diagnosis` artifact — symptom, evidence as re-verifiable facts, and the causal mechanism
-  they ground — authored by a dispatched peer at every revision, and settled by a stamp the
-  driving session applies once the two align.
-
-<!-- change:diagnosis-settles-evidenced-cause -->
-
 - A `diagnosis` artifact — symptom, evidence as re-verifiable facts, and the causal mechanism
   they ground — authored by a dispatched peer at every revision, or, on step 1a's route,
   transcribed by the driving session from the reporter's account with its confirmation
   record, and settled by a stamp the driving session applies once the three conditions
   are met.
-
-<!-- /planned-change:diagnosis-settles-evidenced-cause -->
 
 - No fix or verification prescription, no code changes, no worktree commits.
 
@@ -340,15 +294,11 @@ view. Independence that waits for the driving session to doubt itself never arri
 confident error does not feel uncertain — which is why authorship moves and the challenge is
 structural rather than triggered by self-assessment.
 
-<!-- planned:diagnosis-settles-evidenced-cause -->
-
 The reporter-account route keeps the separation structural. The causal frame was written
 before the driving session read it, by a session that does not drive this phase, and the
 driver's confirmation is a bounded check against cited sources with an exit to the peer
 whenever it would take an investigation. A driver that settles past those bounds has
 returned to the single-frame failure this phase exists to prevent.
-
-<!-- /planned:diagnosis-settles-evidenced-cause -->
 
 Slides to refuse: (1) accepting a located symptom as a root cause; (2) prescribing a fix or
 verification approach here; (3) asserting a cause the recorded evidence does not carry;
@@ -380,19 +330,9 @@ to look right.
 
 ### No cause grounds, or the disagreement is evidenced and persistent
 
-<!-- planned-change:diagnosis-settles-evidenced-cause -->
-
-Two outcomes take this path: no mechanism grounds for the peer at all, or a mechanism is
-written and the interrogation reaches neither settlement condition. Both end the same way,
-because an unsettled cause and an absent one are equally unsafe to plan against.
-
-<!-- change:diagnosis-settles-evidenced-cause -->
-
 Two outcomes take this path: no mechanism grounds for the peer at all, or a mechanism is
 written and the interrogation does not reach all three settlement conditions. Both end the
 same way, because an unsettled cause and an absent one are equally unsafe to plan against.
-
-<!-- /planned-change:diagnosis-settles-evidenced-cause -->
 
 Persistent disagreement is an outcome, not a deadlock to break. Where both positions rest on
 evidence and neither dislodges the other, the artifact records **both**, with the observation

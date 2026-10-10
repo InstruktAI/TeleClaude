@@ -128,8 +128,6 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   the work it is. A claim that can cite neither stays an observation with the
   session that holds it.
 
-<!-- planned:diagnosis-settles-evidenced-cause -->
-
 - **A bug report keeps what was observed apart from what it concludes.** It
   carries the observations and their addresses first, and any causal account
   apart from them: each transition with its evidence, the alternatives checked,
@@ -137,8 +135,6 @@ The terms below are defined in `sdlc/concept/defect-evidence`.
   Filing does not require a completed diagnosis. An account that is present lets
   preparation confirm it against its sources and spend no peer on what the
   filing already settles (`sdlc/procedure/lifecycle/prepare/diagnose`).
-
-<!-- /planned:diagnosis-settles-evidenced-cause -->
 
 - **What a human asks for in their own words is authorized intent, not a defect
   claim.** It is filed by its content under the rest of this policy, and
