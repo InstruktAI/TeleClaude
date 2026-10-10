@@ -79,22 +79,12 @@ source in the global configuration.
 
 ### Provider requests
 
-<!-- planned-change:github-webhook-form-content-type -->
-
-- A GitHub delivery is verified with GitHub's signature over the raw body under
-  the project's secret. It is relayed as `github.<event>`, where `<event>` is
-  GitHub's event type for the delivery, with the delivery body as its data.
-
-<!-- change:github-webhook-form-content-type -->
-
 - A GitHub delivery is verified with GitHub's signature over the raw body under
   the project's secret. It arrives in either content type GitHub offers: a JSON
   body, or a form-encoded body whose single `payload` field holds the same JSON
   document. It is relayed as `github.<event>`, where `<event>` is GitHub's event
   type for the delivery, with that JSON document as its data, so both content
   types relay the same event.
-
-<!-- /planned-change:github-webhook-form-content-type -->
 
 - A WhatsApp webhook is verified with Meta's signature over the raw body under
   the global WhatsApp secret. Each message it carries is relayed as one event,
@@ -267,8 +257,6 @@ Then the ingress responds with a server error
 And the error record names the project and the unresolved reference, never a secret
 ```
 
-<!-- planned:github-webhook-form-content-type -->
-
 #### UC-IF25: A GitHub delivery is accepted in either content type GitHub offers
 
 ```gherkin
@@ -301,8 +289,6 @@ Scenario Outline: The form body must carry exactly one JSON document
     | with the "payload" field given twice           |
     | whose "payload" field is not a JSON object     |
 ```
-
-<!-- /planned:github-webhook-form-content-type -->
 
 ### Cross-context references
 
