@@ -1,8 +1,9 @@
 ---
-description: A project binds platform events about itself to its own deterministic maintenance actions, which every computer holding the project's canonical checkout performs on that checkout, through the commit-boundary executor, without waking an agent.
+description: A project binds platform events about itself to its own deterministic
+  maintenance actions, which every computer holding the project's canonical checkout
+  performs on that checkout, through the commit-boundary executor, without waking
+  an agent.
 visibility: internal
-delivered_by:
-  - checkpoint-event-bindings
 ---
 
 # Event-Bound Maintenance — Spec

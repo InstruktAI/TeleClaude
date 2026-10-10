@@ -78,24 +78,12 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   reports a registration failure before signing. Unrelated keychain state
   stays outside the operation's scope (`sdlc/policy/security-awareness`).
 
-<!-- planned-change:checkpoint-event-bindings -->
-
-- **Consumers.** The full installer, the manual launcher rebuild, the renewal
-  door and the channel updater's install stage invoke the operation's entry
-  point and act only on its result: a failure fails the invoking step under
-  that step's own failure handling. Post-commit maintenance reaches it through
-  the full installer. No consumer reads the store, the secret or the record.
-
-<!-- change:checkpoint-event-bindings -->
-
 - **Consumers.** The full installer, the manual launcher rebuild and the
   renewal door invoke the operation's entry point and act only on its result: a
   failure fails the invoking step under that step's own failure handling.
   Post-commit maintenance, including the maintenance a channel update's advance
   owes, reaches it through the full installer. No consumer reads the store, the
   secret or the record.
-
-<!-- /planned-change:checkpoint-event-bindings -->
 
 #### Fresh-machine bootstrap
 

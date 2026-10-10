@@ -53,18 +53,6 @@ surface is the ingress alone.
 
 ### Every computer self-updates by its channel
 
-<!-- planned-change:checkpoint-event-bindings -->
-
-Each computer subscribes to the relayed cluster event and reacts according to
-its own configuration. When the event is a release/version signal, the
-computer evaluates it against its channel policy and, on a match, converges to
-that version: it applies the target **exactly once** and returns to a healthy
-running state on the new version. A computer behind a home router stays
-private and still updates, because the signal reaches it over the cluster bus,
-not a public endpoint.
-
-<!-- change:checkpoint-event-bindings -->
-
 TeleClaude's own checkpoint overlay binds the relayed pushes and releases of its
 repository to its `self-update` maintenance action
 (`local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`).
@@ -76,8 +64,6 @@ restarts the computer onto the new version. A computer behind a home router
 stays private and still updates, because the event reaches it over the cluster
 bus, not a public endpoint.
 
-<!-- /planned-change:checkpoint-event-bindings -->
-
 ### Operator setup (ingress only, one-time)
 
 - Flag the ingress computer as the ingress node in its machine configuration.
@@ -87,16 +73,8 @@ bus, not a public endpoint.
   its secret as a reference resolved from that project's `.env`, on the ingress
   computer (`local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`).
 
-<!-- planned-change:checkpoint-event-bindings -->
-
-- Register the project's endpoint URL and the same secret at the provider.
-
-<!-- change:checkpoint-event-bindings -->
-
 - Register the project's endpoint URL and the same secret at the provider, and
   subscribe TeleClaude's repository webhook to its push and release events.
-
-<!-- /planned-change:checkpoint-event-bindings -->
 
 ### Monitoring
 
@@ -112,14 +90,10 @@ checking the daemon version: `telec version`.
 
 ## Recovery
 
-<!-- planned:checkpoint-event-bindings -->
-
 If a computer received the event but did not update, run
 `telec code maintenance status` in its TeleClaude checkout: a failed
 `self-update`, or a failed step of the maintenance its advance owes, is listed
 with the replay that recovers it once its cause is fixed.
-
-<!-- /planned:checkpoint-event-bindings -->
 
 If a computer fails to auto-update, fall back to SSH for that one machine:
 

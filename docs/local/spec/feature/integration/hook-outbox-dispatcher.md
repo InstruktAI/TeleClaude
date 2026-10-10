@@ -202,15 +202,6 @@ And the last-summary timestamp is updated
   items that piled up while the worker was busy. They compose without
   double-counting.
 
-<!-- planned-change:checkpoint-event-bindings -->
-
-- The deployment-fanout cross-host consumer is a separate worker task
-  (see `deployment-version-fanout`); it does NOT consume from the hook
-  outbox.
-
-<!-- change:checkpoint-event-bindings -->
-<!-- /planned-change:checkpoint-event-bindings -->
-
 - Failure of a session-state-mutation handler is retried alongside
   normal dispatch retries; the handler is expected to be idempotent. v1
   handlers use last-wins semantics on the session record, so retries

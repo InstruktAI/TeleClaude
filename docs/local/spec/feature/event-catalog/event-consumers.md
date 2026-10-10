@@ -62,14 +62,10 @@ about events — are consumers. Each acts only on events its own computer emitte
 so a failure is correlated, a degradation announced, and a person told, once, by
 the computer it happened on.
 
-<!-- planned:checkpoint-event-bindings -->
-
 Maintenance a project binds to its own events is a platform reaction that acts
 on every computer, whichever computer emitted the event: each computer holding
 the project's canonical checkout performs the bound actions on its own checkout
 (`local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`).
-
-<!-- /planned:checkpoint-event-bindings -->
 
 ## Canonical fields
 
@@ -219,17 +215,8 @@ And no other computer emits a degradation event for those failures
   contract, and neither consumer decides which todo is dispatched or
   integrated.
 
-<!-- planned-change:checkpoint-event-bindings -->
-
-- **integration** — owns the consumers that tell people and procedure
-  activation, each a consumer under its own contract.
-
-<!-- change:checkpoint-event-bindings -->
-
 - **integration** — owns the consumers that tell people, procedure activation
   and event-bound maintenance, each a consumer under its own contract.
-
-<!-- /planned-change:checkpoint-event-bindings -->
 
 - **context** and **identity** — a context that lets authors select events by
   type pattern owns that declaration and matches it with this matcher.

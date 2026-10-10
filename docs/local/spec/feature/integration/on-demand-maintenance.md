@@ -45,13 +45,9 @@ Publication is one of those steps and keeps its own contract
   failed exits non-zero. The run leaves no queued obligation behind: its caller
   holds the outcome, and running it again is its recovery.
 
-<!-- planned:checkpoint-event-bindings -->
-
 - **Event-only actions.** An action that only event bindings name is not a
   step: a run neither performs nor lists it, because only an event supplies what
   it acts on (`local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`).
-
-<!-- /planned:checkpoint-event-bindings -->
 
 - **Uncommitted edits.** The step set is resolved from the root's committed
   declaration. Publication reads committed state alone, under its own contract.

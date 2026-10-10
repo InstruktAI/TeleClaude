@@ -65,20 +65,6 @@ Then the installation recognizes it is already at the desired version
 And performs no second update
 ```
 
-<!-- planned-change:checkpoint-event-bindings -->
-
-#### UC-CSU-5: Convergence ends healthy or reports failure
-
-```gherkin
-Given an installation begins converging to a target version
-When the convergence steps run in order
-Then the installation is not considered converged until it is running and healthy on the target version
-And if any step fails, convergence halts with a recorded reason
-And the installation does not silently come up in a partial or unhealthy state
-```
-
-<!-- change:checkpoint-event-bindings -->
-
 #### UC-CSU-5: Convergence ends healthy or reports failure
 
 ```gherkin
@@ -89,8 +75,6 @@ And a step that fails is recorded with its reason and leaves convergence incompl
 And the installation does not silently come up in a partial or unhealthy state
 ```
 
-<!-- /planned-change:checkpoint-event-bindings -->
-
 #### UC-CSU-6: No manual operator action
 
 ```gherkin
@@ -99,8 +83,6 @@ When the installation is running normally
 Then convergence happens without any operator command
 And the only operator-visible signal in the normal case is that the installation is now on the new version
 ```
-
-<!-- planned:checkpoint-event-bindings -->
 
 #### UC-CSU-7: Another project's changes never update the platform
 
@@ -111,8 +93,6 @@ When a change lands on that project's main line or that project publishes a rele
 Then the installation does NOT converge
 And only a change or release of the platform's own repository can start convergence
 ```
-
-<!-- /planned:checkpoint-event-bindings -->
 
 ### Cross-context references
 

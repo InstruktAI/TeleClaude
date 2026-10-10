@@ -218,8 +218,6 @@ A commit-boundary activation omits the `--home {home}` pair. The publication
 action publishes a range's owed homes when it receives a range, and rebuilds the
 invocation home and the homes nested beneath it when it receives a home.
 
-<!-- planned:checkpoint-event-bindings -->
-
 ### Invariant 30 — Event bindings
 
 A binding's trigger is either a path `scope` or a list of `events`, never both.
@@ -246,8 +244,6 @@ commit-range placeholders are omitted, each with the flag that precedes it. Tele
 to it; the action converges the installation to its channel
 (`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`)
 from the event file it receives.
-
-<!-- /planned:checkpoint-event-bindings -->
 
 ## Primary flows
 

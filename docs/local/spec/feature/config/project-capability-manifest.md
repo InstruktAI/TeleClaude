@@ -53,20 +53,10 @@ no repo can meaningfully disable it.
 
 Derivation rules:
 
-<!-- planned-change:checkpoint-event-bindings -->
-
-- The checkpoint engine evaluates a turn iff `code ∨ docs ∨ agents` is enabled
-  or the project declares at least one custom binding. Otherwise `agent_stop`
-  passes through with no timeline extraction and no evidence scanning.
-
-<!-- change:checkpoint-event-bindings -->
-
 - The checkpoint engine evaluates a turn iff `code ∨ docs ∨ agents` is enabled
   or the project declares at least one custom path binding; an event binding
   alone does not activate it. Otherwise `agent_stop` passes through with no
   timeline extraction and no evidence scanning.
-
-<!-- /planned-change:checkpoint-event-bindings -->
 
 - The commit obligation is active iff `code ∨ docs` is enabled.
 - `telec code lint` and the commit gate run iff `code ∨ docs` is enabled at a
@@ -219,19 +209,6 @@ And no checkpoint is emitted
 And no commit obligation is raised
 ```
 
-<!-- planned-change:checkpoint-event-bindings -->
-
-#### UC-CFG-CAP-6: A declared binding alone activates the engine
-
-```
-Given a project subscribing none of code, docs, or agents
-And declaring at least one checkpoint binding of its own
-When an agent turn ends
-Then the checkpoint engine evaluates the turn
-```
-
-<!-- change:checkpoint-event-bindings -->
-
 #### UC-CFG-CAP-6: A declared path binding alone activates the engine
 
 ```
@@ -240,8 +217,6 @@ And declaring at least one checkpoint path binding of its own
 When an agent turn ends
 Then the checkpoint engine evaluates the turn
 ```
-
-<!-- /planned-change:checkpoint-event-bindings -->
 
 #### UC-CFG-CAP-7: Base bindings attach per subscribed capability
 
@@ -468,8 +443,6 @@ And this holds for a raw git commit and for telec code commit alike
 And a home subscribing neither code nor docs runs no other check and raises no commit obligation
 ```
 
-<!-- planned:checkpoint-event-bindings -->
-
 #### UC-CFG-CAP-35: An event binding alone leaves the engine silent
 
 ```
@@ -479,8 +452,6 @@ When an agent turn ends
 Then the checkpoint engine evaluates nothing for that turn
 And no checkpoint is emitted
 ```
-
-<!-- /planned:checkpoint-event-bindings -->
 
 ## Known caveats
 

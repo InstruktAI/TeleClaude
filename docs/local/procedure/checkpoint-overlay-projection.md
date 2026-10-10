@@ -73,15 +73,11 @@ project.
    overlay to current truth and surfaces any conflict with a hand-authored
    deviation for human resolution rather than silently overwriting it.
 
-   <!-- planned:checkpoint-event-bindings -->
-
    Event bindings are the reactions a project has chosen to its own events
    (`local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`),
    not something the codebase shows. Assessment infers none, and carries every
    existing event binding and the maintenance actions it names into the
    converged overlay unchanged.
-
-   <!-- /planned:checkpoint-event-bindings -->
 
 ### Step 5 — Capability projection
 
