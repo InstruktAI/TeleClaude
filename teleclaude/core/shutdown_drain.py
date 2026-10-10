@@ -21,6 +21,7 @@ from collections.abc import Coroutine, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TypeVar
 
@@ -34,6 +35,10 @@ CONTINUATION_HEADER = "X-TeleClaude-Continuation"
 PREPARATION_PROTOCOL_VERSION = 1
 PROCESS_INSTANCE_TOKEN = secrets.token_urlsafe(16)
 PREPARATION_OBSERVATION_BUDGET_SECONDS = 90.0
+# How long a drained, prepared instance waits for the host's termination before it completes its own
+# shutdown. It must exceed the host helper's worst-case gap between observing `drained` and delivering
+# SIGTERM (one poll interval plus two health reads).
+PREPARED_TERMINATION_GRACE_SECONDS = 15.0
 REFUSAL_RETRY_AFTER_SECONDS = 5
 _SETTLE_TASK = "shutdown-drain-settle"
 
@@ -125,7 +130,11 @@ def held_unit() -> OwnedUnit | None:
 
 @dataclass(frozen=True)
 class DrainObservation:
-    """What a host caller may know about preparation: support, this process instance, and its phase."""
+    """What a host caller may know about preparation: support, this process instance, and its phase.
+
+    `termination_grace_seconds` is the positive signal that this instance completes its own
+    shutdown once drained; `preparation_started_at` is absent while admission is open.
+    """
 
     protocol: int
     pid: int
@@ -133,6 +142,9 @@ class DrainObservation:
     phase: DrainPhase
     held_units: int
     budget_seconds: float
+    preparation_started_at: datetime | None
+    held_labels: tuple[str, ...]
+    termination_grace_seconds: float
 
 
 class ShutdownDrain:
@@ -143,6 +155,7 @@ class ShutdownDrain:
         self._units: set[OwnedUnit] = set()
         self._budget_seconds = budget_seconds
         self._deadline: float | None = None
+        self._preparation_started_at: datetime | None = None
         self._refusals: Counter[str] = Counter()
         self._settle_task: asyncio.Task[None] | None = None
         self._settled: asyncio.Event | None = None
@@ -164,6 +177,9 @@ class ShutdownDrain:
             phase=self._phase,
             held_units=len(self._units),
             budget_seconds=self._budget_seconds,
+            preparation_started_at=self._preparation_started_at,
+            held_labels=tuple(sorted(unit.label for unit in self._units)),
+            termination_grace_seconds=PREPARED_TERMINATION_GRACE_SECONDS,
         )
 
     def _advance(self, target: DrainPhase) -> None:
@@ -221,6 +237,7 @@ class ShutdownDrain:
         """Close admission to new business work. Idempotent and never reopens."""
         if self._phase is DrainPhase.OPEN:
             self._deadline = time.monotonic() + self._budget_seconds
+            self._preparation_started_at = datetime.now(UTC)
             logger.info("Preparation for shutdown started", reason=reason, held_units=len(self._units))
             self._advance(DrainPhase.PREPARING)
 

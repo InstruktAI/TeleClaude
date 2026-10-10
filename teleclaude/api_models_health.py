@@ -1,5 +1,6 @@
 """Liveness API DTOs with no config or storage dependencies."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -23,6 +24,9 @@ class PreparationObservationDTO(BaseModel):
     phase: DrainPhase
     held_units: int
     budget_seconds: float
+    preparation_started_at: datetime | None
+    held_labels: tuple[str, ...]
+    termination_grace_seconds: float
 
     @classmethod
     def from_observation(cls, observation: DrainObservation) -> "PreparationObservationDTO":
@@ -33,6 +37,9 @@ class PreparationObservationDTO(BaseModel):
             phase=observation.phase,
             held_units=observation.held_units,
             budget_seconds=observation.budget_seconds,
+            preparation_started_at=observation.preparation_started_at,
+            held_labels=observation.held_labels,
+            termination_grace_seconds=observation.termination_grace_seconds,
         )
 
 

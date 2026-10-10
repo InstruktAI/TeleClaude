@@ -50,10 +50,16 @@ STARTUP_STREAM_PID=""
 # (teleclaude.runtime.daemon_shutdown_control owns the observation, signalling and typed outcomes).
 DAEMON_CONTROL_PYTHON="$PROJECT_ROOT/.venv/bin/python"
 PREPARE_UNSUPPORTED_EXIT=10
+PREPARE_DEFERRED_EXIT=15
+ADMISSION_CLOSED_EXIT=16
+# prepare_daemon_for_shutdown return code for a window that expired on a daemon that completes its
+# own shutdown once its accepted work settles (0 prepared, 1 withheld, 2 not running).
+PREPARE_DEFERRED_RETURN=3
 # Set to 1 (make restart LEGACY_ACTIVATION=1) to activate the preparation protocol on a
 # daemon that predates it. It reports observed quiescence only, never atomic draining.
 LEGACY_ACTIVATION="${LEGACY_ACTIVATION:-0}"
 PREPARED_PID=""
+DEFERRED_PID=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -638,16 +644,49 @@ run_shutdown_control() {
         "$verb" --socket "$API_SOCKET" --manager-pid "$pid" --pid-file "$PID_FILE"
 }
 
+# Report the running daemon's admission state for `make status`. Returns 0 while admission
+# is open (or the daemon predates the observation); returns 1, having said why, when
+# admission is closed or the observation cannot be read.
+report_admission_state() {
+    local output
+    local rc=0
+    if [ ! -x "$DAEMON_CONTROL_PYTHON" ]; then
+        log_warn "Admission state: UNKNOWN ($DAEMON_CONTROL_PYTHON is missing; run 'make install')"
+        return 1
+    fi
+    output="$(PYTHONPATH="$PROJECT_ROOT" "$DAEMON_CONTROL_PYTHON" -m teleclaude.runtime.daemon_shutdown_control \
+        status --socket "$API_SOCKET" 2>&1)" || rc=$?
+    case "$rc" in
+        0)
+            log_info "Admission: OK ($output)"
+            ;;
+        "$ADMISSION_CLOSED_EXIT")
+            log_warn "Admission: CLOSED, the daemon is draining ($output)"
+            return 1
+            ;;
+        "$PREPARE_UNSUPPORTED_EXIT")
+            log_info "Admission: not reported (the running daemon predates the preparation protocol)"
+            ;;
+        *)
+            log_warn "Admission: UNREADABLE ($output)"
+            return 1
+            ;;
+    esac
+}
+
 # Prepare the running daemon before any service-manager action.
 # Returns 0 and sets PREPARED_PID when that exact instance reported drained (or, with
 # LEGACY_ACTIVATION=1, when a positively identified legacy runtime is observed quiescent);
-# returns 2 when no daemon is running; returns 1, having reported why, when the
-# service-manager action must be withheld. Nothing is ever forcibly terminated here.
+# returns 2 when no daemon is running; returns PREPARE_DEFERRED_RETURN and sets DEFERRED_PID
+# when the window expired on a daemon that completes its own shutdown once its accepted work
+# settles; returns 1, having reported why, when the service-manager action must be withheld.
+# Nothing is ever forcibly terminated here.
 prepare_daemon_for_shutdown() {
     local pid
     local output
     local rc=0
     PREPARED_PID=""
+    DEFERRED_PID=""
 
     pid="$(manager_daemon_pid)"
     if [ -z "$pid" ] || ! is_pid_alive "$pid"; then
@@ -664,6 +703,11 @@ prepare_daemon_for_shutdown() {
         PREPARED_PID="$output"
         log_info "Daemon instance $PREPARED_PID is drained"
         return 0
+    fi
+
+    if [ "$rc" -eq "$PREPARE_DEFERRED_EXIT" ]; then
+        DEFERRED_PID="$pid"
+        return "$PREPARE_DEFERRED_RETURN"
     fi
 
     if [ "$rc" -ne "$PREPARE_UNSUPPORTED_EXIT" ]; then
@@ -709,6 +753,11 @@ stop_daemon() {
     local prepare_rc=0
 
     prepare_daemon_for_shutdown || prepare_rc=$?
+    if [ "$prepare_rc" -eq "$PREPARE_DEFERRED_RETURN" ]; then
+        log_error "Stop withheld: the daemon (pid $DEFERRED_PID) was left running and draining"
+        log_error "It completes its own shutdown once its accepted work settles and the service manager relaunches it; keeping it down then takes another 'make stop'"
+        return 1
+    fi
     if [ "$prepare_rc" -eq 1 ]; then
         log_error "Stop withheld: the daemon was left running"
         return 1
@@ -845,6 +894,7 @@ PY
             API_HEALTH=$(check_api_endpoint "$API_SOCKET" "/health" || true)
             if [ "$API_HEALTH" = "ok" ]; then
                 log_info "API /health: OK"
+                report_admission_state || overall_ok=1
             else
                 log_warn "API /health: FAIL"
                 overall_ok=1
@@ -884,6 +934,13 @@ restart_daemon() {
 
     local prepare_rc=0
     prepare_daemon_for_shutdown || prepare_rc=$?
+    if [ "$prepare_rc" -eq "$PREPARE_DEFERRED_RETURN" ]; then
+        # No heal step and no service-manager action: those can replace a draining daemon, and the
+        # daemon completes the restart itself once its accepted work settles.
+        log_warn "Preparation did not complete; the restart is deferred to the draining daemon (pid $DEFERRED_PID)"
+        log_warn "It exits once its accepted work settles and the service manager starts it on the installed code"
+        return 0
+    fi
     if [ "$prepare_rc" -eq 1 ]; then
         log_error "Restart withheld: the daemon was left running"
         return 1

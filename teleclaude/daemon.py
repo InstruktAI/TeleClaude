@@ -24,6 +24,12 @@ logger = get_logger("teleclaude.daemon")
 
 _MACHINE_CONFIGURATION = "machine"
 _STOP_REASON = "stop"
+_PREPARED_GRACE_EXIT_REASON = "prepared-grace-exit"
+_PREPARED_EXIT_TASK_NAME = "prepared-instance-exit"
+_PREPARED_EXIT_LABEL = "prepared_instance_exit"
+_PREPARED_EXIT_ATTR = "prepared_exit_task"
+_PREPARED_EXIT_STOPPED = "Prepared-instance exit timer stopped"
+_PREPARED_EXIT_WARNING = "No termination arrived within the grace after drained; completing own shutdown"
 _IDENTITY_DECLARATION_WATCH_TASK_NAME = "identity-declarations-watch"
 _IDENTITY_DECLARATION_WATCH_LABEL = "identity_declarations_watch"
 _IDENTITY_DECLARATION_WATCH_ATTR = "identity_declarations_watch_task"
@@ -190,7 +196,7 @@ from teleclaude.core.reminders.inbound import submit_reminder_entry
 _record_import_timing("teleclaude.core.reminders", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.shutdown_drain import get_shutdown_drain
+from teleclaude.core.shutdown_drain import PREPARED_TERMINATION_GRACE_SECONDS, get_shutdown_drain
 
 _record_import_timing("teleclaude.core.shutdown_drain", _t)
 
@@ -497,6 +503,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.identity_declarations_watch_task: asyncio.Task[object] | None = None
         self._start_time = time.time()
         self._shutdown_reason: str | None = None
+        self.prepared_exit_task: asyncio.Task[object] | None = None
         self.hook_outbox_task: asyncio.Task[object] | None = None
         self.agent_status_watchdog_task: asyncio.Task[object] | None = None
         self._event_db: EventDB | None = None
@@ -1052,6 +1059,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
     async def stop(self) -> None:
         """Stop the daemon: settle accepted work first, then tear down consumers, transports and storage."""
         logger.info("Stopping TeleClaude daemon...")
+        await self._cancel_task_attr(_PREPARED_EXIT_ATTR, _PREPARED_EXIT_STOPPED)
         await self._settle_accepted_work()
         self.drain.begin_stopping()
         self.shutdown_event.set()
@@ -1202,7 +1210,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         loop.call_soon_threadsafe(self._begin_stop, reason)
 
     def request_preparation(self, reason: str) -> None:
-        """Close admission and settle accepted work, then stay alive and closed until told to stop."""
+        """Close admission and settle accepted work, then complete this instance's own shutdown after the grace.
+
+        The host's termination inside the grace yields the ordinary stop; without one the daemon
+        requests its own shutdown, so a prepared instance never stays alive and closed.
+        """
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -1211,7 +1223,28 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
     def _begin_preparation_only(self, reason: str) -> None:
         self.drain.begin_preparation(reason)
-        self.drain.start_settling()
+        settle_task = self.drain.start_settling()
+        if self.prepared_exit_task is not None:
+            return
+        self.prepared_exit_task = asyncio.create_task(
+            self._complete_own_shutdown(settle_task), name=_PREPARED_EXIT_TASK_NAME
+        )
+        self.prepared_exit_task.add_done_callback(self._log_background_task_exception(_PREPARED_EXIT_LABEL))
+
+    async def _complete_own_shutdown(self, settle_task: asyncio.Task[None]) -> None:
+        """Request this instance's shutdown once the grace after `drained` passes without a termination.
+
+        The grace starts only when accepted work has settled, so unsettled work is never forced.
+        """
+        await asyncio.shield(settle_task)
+        await asyncio.sleep(PREPARED_TERMINATION_GRACE_SECONDS)
+        if self.stop_requested.is_set():
+            return
+        logger.warning(
+            _PREPARED_EXIT_WARNING,
+            grace_seconds=PREPARED_TERMINATION_GRACE_SECONDS,
+        )
+        self.request_shutdown(_PREPARED_GRACE_EXIT_REASON)
 
     def _begin_stop(self, reason: str) -> None:
         """Close admission to new business work and wake the main loop into the stop sequence."""
