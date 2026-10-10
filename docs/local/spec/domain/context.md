@@ -31,6 +31,18 @@ replacement architecture is authoritative only in TeleClaudeNext.
 - **Published contracts:** validated snippet and artifact packages, publication
   indexes, and context-selection results.
 
+<!-- planned:blueprint-main-maintenance -->
+
+- **Also owns:** the structural Blueprint supplied as agent context: extraction,
+  graph interpretation, shared-cache generation publication, and freshness-aware
+  consumption under `sdlc/spec/codebase-blueprint`. Workflow owns canonical-main
+  activation obligations and maintenance outcomes, consumed through its published
+  revision and maintenance-observation contracts. Configuration owns the action
+  binding declaration; neither coordination nor declaration transfers graph
+  policy out of context (`sdlc/policy/domain-ownership`).
+
+<!-- /planned:blueprint-main-maintenance -->
+
 - **Also owns:** the resolved read scope — which documentation tiers are
   assembled for a caller, how deeply each is read, and the authorization of the
   selectors that name a tier explicitly. Depth converts `identity`'s visibility

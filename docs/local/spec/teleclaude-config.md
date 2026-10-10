@@ -189,6 +189,18 @@ authored in the delivering branch with the config owner's own rendering and cand
 validation, because the installed writer validates against the installed schema; the
 branch's commit gate validates the result against that branch's schema.
 
+<!-- planned:blueprint-main-maintenance -->
+
+Canonical-main activation bindings are declared through
+`CheckpointBindingConfig` and its closed activation type. Declaration validation
+accepts one trigger per binding and resolves activation-bound actions as
+main-only maintenance. The effective-model selection and capability composition
+are owned by
+`local/projects/teleclaude/design/architecture/checkpoint-system`; configuration
+owns the validated declaration under
+`local/projects/teleclaude/spec/domain/config`.
+<!-- /planned:blueprint-main-maintenance -->
+
 These are project-level capability toggles and are unrelated to the machine
 config's `agents` block, which registers the agent CLIs themselves. They are
 written by config assessment from repo shape, not edited by hand, so they carry
