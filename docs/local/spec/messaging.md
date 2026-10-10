@@ -11,19 +11,9 @@ TeleClaude exposes several messaging tools for agents to deliver content to user
 
 Use this when you need to:
 
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-- Send formatted text or files to a user session.
-- Escalate a help-desk conversation to the admins of the home that owns the desk.
-- Understand which messaging surface to use for a given task.
-
-<!-- change:help-desk-escalation-in-desk -->
-
 - Send formatted text or files to a user session.
 - Escalate a help-desk conversation to everyone in the desk's scope.
 - Understand which messaging surface to use for a given task.
-
-<!-- /planned-change:help-desk-escalation-in-desk -->
 
 ## Canonical fields
 

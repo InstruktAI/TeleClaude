@@ -41,23 +41,12 @@ A desk agent reads documentation at the depth its visitor holds. A customer
 holds no relationship to the home, so the agent reads that desk's public
 documentation and the public help-desk documentation.
 
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-When the agent cannot help, it escalates. The admins of the home that owns the
-desk are notified with the desk and the visitor, and an admin's answers reach
-the visitor on the channel they wrote from until the admin hands the
-conversation back to the agent.
-
-<!-- change:help-desk-escalation-in-desk -->
-
 When the agent cannot help, it escalates. Everyone in the desk's scope is
 notified: the members and admins of the company the desk belongs to, the person
 who owns a person-owned project, and the platform's admins. The escalation
 opens a thread named after the visitor in the desk's own escalations channel,
 and whoever answers there reaches the visitor on the channel they wrote from,
 until they hand the conversation back to the agent.
-
-<!-- /planned-change:help-desk-escalation-in-desk -->
 
 ## Why
 
@@ -79,14 +68,5 @@ until they hand the conversation back to the agent.
 - A reply that is identical for every miss and names no organisation tells a
   stranger nothing about who the platform serves.
 
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-- Escalation reaches the people accountable for the home the visitor came to,
-  not whoever happens to watch a shared channel.
-
-<!-- change:help-desk-escalation-in-desk -->
-
 - Escalation reaches everyone accountable for the desk, in the desk's own
   channel, not whoever happens to watch a shared one.
-
-<!-- /planned-change:help-desk-escalation-in-desk -->

@@ -26,23 +26,11 @@ Every help desk the master hosts has its own category in the guild, named
 `Help Desk - <kind>-<slug>` after the desk's entry identifier, created and
 reconciled by the master alone. It holds three channels:
 
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-| Channel                     | People in the desk's scope                | The bot                                               |
-| --------------------------- | ----------------------------------------- | ----------------------------------------------------- |
-| `customer-sessions` (forum) | read every thread; post nothing           | mirrors each session of that desk into its own thread |
-| `escalations` (forum)       | read threads and reply in them; open none | holds the forum for the desk's escalation threads     |
-| `team-chat` (text channel)  | read and post                             | grants access only; reads and answers nothing         |
-
-<!-- change:help-desk-escalation-in-desk -->
-
 | Channel                     | People in the desk's scope                | The bot                                                                                                           |
 | --------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `customer-sessions` (forum) | read every thread; post nothing           | mirrors each session of that desk into its own thread                                                             |
 | `escalations` (forum)       | read threads and reply in them; open none | carries the desk's escalation relay (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`) |
 | `team-chat` (text channel)  | read and post                             | grants access only; reads and answers nothing                                                                     |
-
-<!-- /planned-change:help-desk-escalation-in-desk -->
 
 A desk's category is visible only to the people in its scope, as identity
 resolves it (`local/projects/teleclaude/spec/domain/identity`), through
@@ -462,13 +450,3 @@ And the customer's conversation continues as before
   Administrator permission, and lets them post there, whatever a desk's
   per-person grants say. A desk's category reaches only its scope while those
   powers rest with platform admins.
-
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-- A desk's escalations forum is provisioned with its grants, but no escalation
-  opens a thread in it and nothing in it is relayed. Escalations reach people as
-  `local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`
-  states.
-
-<!-- change:help-desk-escalation-in-desk -->
-<!-- /planned-change:help-desk-escalation-in-desk -->

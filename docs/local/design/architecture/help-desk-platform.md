@@ -22,31 +22,11 @@ The platform operates on two planes.
 
 **Visitor plane.** A visitor reaches a help desk through a conversation adapter by entering with the desk's entry identifier. Desks run only on the mesh master. The desk's agent answers from the documentation the visitor may read.
 
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-**Operator plane.** Escalations reach the admins of the owning home in their own conversations with the platform, and their replies relay back to the visitor. The shared Discord guild is the platform desk's admin surface only.
-
-<!-- change:help-desk-escalation-in-desk -->
-
 **Operator plane.** Each desk has its own Discord category, visible only to the desk's scope. An escalation notifies everyone in that scope and opens a thread in the desk's escalations forum, where the person who answers talks to the visitor through the relay.
-
-<!-- /planned-change:help-desk-escalation-in-desk -->
 
 ## Inputs/Outputs
 
 **Inputs:**
-
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-- Visitor messages via the conversation adapters that carry desk entry (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`)
-- An entry identifier: a desk's `hd-<kind>-<slug>`, naming the desk by kind and slug
-- Each home's help-desk declaration (`help_desk.enabled`) in its `teleclaude.yml`
-- Identity from the person registry and per-person credential bindings, or the customer fallback for an unregistered sender
-- The desk's `AGENTS.master.md`, its home's own source, compiled into the desk's `AGENTS.md`
-- Documentation via `telec docs index` + `telec docs get`, at the visitor's depth
-- Admin replies to an escalation, in the admin's own conversation (during a relay)
-
-<!-- change:help-desk-escalation-in-desk -->
 
 - Visitor messages via the conversation adapters that carry desk entry (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`)
 - An entry identifier: a desk's `hd-<kind>-<slug>`, naming the desk by kind and slug
@@ -56,27 +36,13 @@ The platform operates on two planes.
 - Documentation via `telec docs index` + `telec docs get`, at the visitor's depth
 - Replies in a desk's escalation thread from people in the desk's scope (during a relay)
 
-<!-- /planned-change:help-desk-escalation-in-desk -->
-
 **Outputs:**
-
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-- AI-handled help-desk conversations with memory continuity
-- Identity-scoped personal memories (per-visitor observation history)
-- The fixed neutral reply for a conversation that reaches no desk
-- Escalation notifications to the admins of the home that owns the desk
-- Relayed admin replies delivered to the visitor on their own adapter
-
-<!-- change:help-desk-escalation-in-desk -->
 
 - AI-handled help-desk conversations with memory continuity
 - Identity-scoped personal memories (per-visitor observation history)
 - The fixed neutral reply for a conversation that reaches no desk
 - Escalation threads in the desk's escalations forum, and notifications linking them to everyone in the desk's scope
 - Relayed replies delivered to the visitor on their own adapter
-
-<!-- /planned-change:help-desk-escalation-in-desk -->
 
 - Business items from desk conversations (requests, complaints, confusion, sentiment, mentions of alternatives), collected as prospects for the home that owns the desk
 
@@ -176,15 +142,7 @@ The command reads the doc-snippet-authoring procedure and snippet-authoring-sche
 
 ### Escalation Tool
 
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-`telec sessions escalate` is how a desk agent asks for a person (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`). It is accepted from a session running in a help desk and refused elsewhere; admins are its target and never escalate.
-
-<!-- change:help-desk-escalation-in-desk -->
-
 `telec sessions escalate` is how a desk agent asks for a person (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`). It is accepted from a session running in a help desk and refused elsewhere.
-
-<!-- /planned-change:help-desk-escalation-in-desk -->
 
 **Parameters:**
 
@@ -194,70 +152,15 @@ The command reads the doc-snippet-authoring procedure and snippet-authoring-sche
 
 **Behavior:**
 
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-1. Resolves the admins of the home that owns the desk: a company desk's company admins; a project desk's owning company admins, or its owning person; the platform's admins for the platform desk, for an ownerless project, or when no owning admin is reachable.
-2. Sends each resolved admin the escalation in their own conversation with the platform, on their preferred channel, naming the desk, the visitor and the channel they wrote from, the reason and the summary.
-3. For the platform desk only, also opens a thread in the shared Discord guild's escalation forum.
-4. Sets the session's relay state.
-5. Returns confirmation to the agent.
-
-<!-- change:help-desk-escalation-in-desk -->
-
 1. Resolves the desk's scope: a company desk's company members and admins; a project desk's owning company members and admins, or its owning person; and the platform's admins for every desk.
 2. Opens a thread named after the visitor in the desk's escalations forum, whose first message is the agent's brief: the desk, the visitor and the channel they wrote from, the reason, the summary, and a link to the visitor's thread in the desk's customer-sessions forum.
 3. Notifies each person in scope on their preferred channel with a link to that thread.
 4. Sets the session's relay state.
 5. Returns confirmation to the agent.
 
-<!-- /planned-change:help-desk-escalation-in-desk -->
-
 The desk agent follows `general/procedure/help-desk/escalation`, which its master requires through `general/procedure/help-desk/overview`.
 
 ### Admin Relay
-
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-When an agent escalates, the core relays between the visitor and the notified admins — bypassing the AI session.
-
-```mermaid
-sequenceDiagram
-    participant Visitor as Visitor (any adapter)
-    participant AI as Desk session
-    participant Core
-    participant Admin as Owning home's admin (own conversation)
-
-    rect rgb(230,245,230)
-        Note over Visitor,AI: Act 1 — the agent handles the visitor
-        Visitor->>AI: Message
-        AI->>Visitor: Response
-    end
-
-    rect rgb(245,230,230)
-        Note over AI,Admin: Act 2 — an admin takes over via relay
-        AI->>Core: telec sessions escalate(customer, reason)
-        Core->>Admin: Escalation in the admin's own conversation
-        Core->>Core: Set relay state on the session
-
-        loop Relay active
-            Admin->>Core: Reply to the escalation
-            Core->>Visitor: Delivered where they wrote from
-            Visitor->>Core: Reply on their adapter
-            Core->>Admin: Forwarded to each notified admin
-        end
-    end
-
-    rect rgb(230,230,245)
-        Note over Admin,AI: Act 3 — Handback
-        Admin->>Core: Hand back to the agent
-        Core->>Core: Collect the relay exchange since the relay started
-        Core->>AI: Inject it into the same desk session
-        Core->>Core: Clear relay state
-        AI->>Visitor: Continues from the admin's exchange
-    end
-```
-
-<!-- change:help-desk-escalation-in-desk -->
 
 When an agent escalates, the core relays between the visitor and the desk's escalation thread — bypassing the AI session.
 
@@ -301,43 +204,15 @@ sequenceDiagram
     end
 ```
 
-<!-- /planned-change:help-desk-escalation-in-desk -->
-
 **Session state fields:**
-
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-- `relay_status` — `NULL` (normal) or `"active"` (relay mode)
-- the relay's admin side — where each notified admin's part of the relay lives
-- `relay_started_at` — timestamp of relay activation (message collection boundary)
-
-<!-- change:help-desk-escalation-in-desk -->
 
 - `relay_status` — `NULL` (normal) or `"active"` (relay mode)
 - the relay's thread — the desk's escalation thread for this relay
 - `relay_started_at` — timestamp of relay activation (message collection boundary)
 
-<!-- /planned-change:help-desk-escalation-in-desk -->
-
 **Discord surface (per desk):** every hosted desk has its own category, `Help Desk - <kind>-<slug>`, with a `customer-sessions` forum mirroring each of its sessions, an `escalations` forum for its escalation threads, and a `team-chat` channel, all visible only to the desk's scope through per-person permission overwrites (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`). No desk session or escalation appears in any other forum of the guild.
 
 **Message routing diversion:**
-
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-The diversion runs in the core inbound path, for every adapter:
-
-1. The visitor sends a message on any adapter
-2. The session is found through the conversation's binding
-3. With the relay active, the core does not deliver the message to the agent
-4. It forwards the message to each notified admin's side of the relay
-5. The agent session is paused for the duration of the relay
-
-An admin answers by replying to any relay message they received; the reply is delivered to the visitor through the visitor's originating adapter and never enters the agent session. An admin whose preferred channel cannot carry a reply, such as email, is notified but cannot answer through the relay.
-
-**Handback:** an admin hands the conversation back by tagging the agent in a reply (or in the platform desk's forum thread). The core collects the exchange since `relay_started_at` (or since the previous handback) into a structured context block naming the admin and the visitor for each message, injects it into the same desk session through the normal message pipeline (`process_message`), which validates session liveness and enqueues durable delivery, and clears the relay state. The visitor's messages resume routing to the agent, and its first response continues from the admin exchange.
-
-<!-- change:help-desk-escalation-in-desk -->
 
 The diversion runs in the core inbound path, for every adapter:
 
@@ -350,8 +225,6 @@ The diversion runs in the core inbound path, for every adapter:
 A person in the desk's scope answers by replying in the thread; the reply is delivered to the visitor through the visitor's originating adapter and never enters the agent session. Only the escalating agent and the people answering speak in the thread.
 
 **Handback:** a person hands the conversation back by tagging the agent in a reply in the thread. The core collects the exchange since `relay_started_at` (or since the previous handback) into a structured context block naming the person and the visitor for each message, injects it into the same desk session through the normal message pipeline (`process_message`), which validates session liveness and enqueues durable delivery, and clears the relay state. The visitor's messages resume routing to the agent, and its first response continues from the exchange.
-
-<!-- /planned-change:help-desk-escalation-in-desk -->
 
 **Relay lifecycle:**
 
@@ -431,19 +304,9 @@ sequenceDiagram
 
 - `last_memory_extraction_at` — timestamp of last successful extraction (high-water mark)
 
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-- `relay_status` — `NULL` or `"active"` (admin relay mode)
-- the relay's admin side — where each notified admin's part of the relay lives
-- `relay_started_at` — timestamp of current relay activation
-
-<!-- change:help-desk-escalation-in-desk -->
-
 - `relay_status` — `NULL` or `"active"` (relay mode)
 - the relay's thread — the desk's escalation thread for this relay
 - `relay_started_at` — timestamp of current relay activation
-
-<!-- /planned-change:help-desk-escalation-in-desk -->
 
 ### Post-Session Memory Extraction
 
@@ -521,35 +384,19 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 11. **Relay is session-scoped**: The admin relay is a state of the session, not a separate entity. When the session dies (7d sweep), the relay state dies with it.
 
-<!-- planned-change:help-desk-escalation-in-desk -->
+12. **Relay diverts, not duplicates**: When relay is active, visitor messages go to the escalation thread ONLY, not to both thread and agent, whichever adapter they use. The agent session is fully paused during relay.
 
-13. **Relay diverts, not duplicates**: When relay is active, visitor messages go to the notified admins ONLY, not to both relay and agent, whichever adapter they use. The agent session is fully paused during relay.
+13. **Handback collects incrementally**: Each handback collects messages since the previous handback (or since relay activation). Multiple escalation/handback cycles within one session each get a clean context window.
 
-<!-- change:help-desk-escalation-in-desk -->
+14. **Escalation is a help-desk act aimed at the desk's scope**: `telec sessions escalate` is accepted only from a session in a help desk; it opens a thread in that desk's escalations forum and notifies everyone in the desk's scope.
 
-13. **Relay diverts, not duplicates**: When relay is active, visitor messages go to the escalation thread ONLY, not to both thread and agent, whichever adapter they use. The agent session is fully paused during relay.
+15. **One binding per conversation**: a conversation reaches its session — on a per-computer adapter found by origin metadata, elsewhere through the mesh master's durable record; an entry makes the person's own session at its endpoint the conversation's session, continuing or reviving it, so the latest entry wins.
 
-<!-- /planned-change:help-desk-escalation-in-desk -->
+16. **One authority per conversation, one host per desk**: a conversation on a per-computer bot is decided by that computer; where every computer receives inbound messages, the mesh master alone decides. Every desk runs on the master. Without the master nothing routes on the shared adapters; the only answer is the temporarily-unavailable reply.
 
-14. **Handback collects incrementally**: Each handback collects messages since the previous handback (or since relay activation). Multiple escalation/handback cycles within one session each get a clean context window.
+17. **Each desk is seen only by its scope**: a desk's sessions and escalations appear only in that desk's own Discord category, visible only to the desk's scope through per-person overwrites; no shared surface carries them.
 
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-15. **Escalation is a help-desk act aimed at the owning home**: `telec sessions escalate` is accepted only from a session in a help desk, and it reaches the admins of the home that owns that desk, falling back to the platform's admins only when none of them is reachable.
-
-<!-- change:help-desk-escalation-in-desk -->
-
-15. **Escalation is a help-desk act aimed at the desk's scope**: `telec sessions escalate` is accepted only from a session in a help desk; it opens a thread in that desk's escalations forum and notifies everyone in the desk's scope.
-
-<!-- /planned-change:help-desk-escalation-in-desk -->
-
-16. **One binding per conversation**: a conversation reaches its session — on a per-computer adapter found by origin metadata, elsewhere through the mesh master's durable record; an entry makes the person's own session at its endpoint the conversation's session, continuing or reviving it, so the latest entry wins.
-
-17. **One authority per conversation, one host per desk**: a conversation on a per-computer bot is decided by that computer; where every computer receives inbound messages, the mesh master alone decides. Every desk runs on the master. Without the master nothing routes on the shared adapters; the only answer is the temporarily-unavailable reply.
-
-18. **Each desk is seen only by its scope**: a desk's sessions and escalations appear only in that desk's own Discord category, visible only to the desk's scope through per-person overwrites; no shared surface carries them.
-
-19. **Customers read public documentation only**: a customer's desk agent reads its desk's reach at public depth, and no desk master inlines its home's internal documentation.
+18. **Customers read public documentation only**: a customer's desk agent reads its desk's reach at public depth, and no desk master inlines its home's internal documentation.
 
 ## Primary Flows
 
@@ -579,38 +426,6 @@ sequenceDiagram
 
 ### Escalation and Admin Relay
 
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-```mermaid
-sequenceDiagram
-    participant Customer as Alice (Telegram)
-    participant AI as Company desk session
-    participant Core
-    participant Admin as Company admin (own conversation)
-
-    Customer->>AI: "I need to dispute this charge"
-    AI->>AI: Needs a person's authority
-    AI->>Core: telec sessions escalate(customer="Alice", reason="Billing dispute")
-    Core->>Core: Resolve the company's admins
-    Core->>Admin: Escalation "company/acme · Alice" in the admin's own conversation
-    Core->>Core: Set relay state on the session
-
-    Note over Customer,Admin: Customer messages now diverted to the admins
-    Customer->>Core: "The charge was $49 but should be $29"
-    Core->>Admin: Forwarded
-    Admin->>Core: Reply: "I see the issue, correcting now"
-    Core->>Customer: "I see the issue, correcting now" (via Telegram)
-
-    Admin->>Core: Reply: "Done, billing corrected" and hand back
-    Core->>Core: Collect relay messages → compile context
-    Core->>AI: Inject relay conversation
-    Core->>Core: Clear relay state
-
-    AI->>Customer: "Your billing has been corrected to $29. Is there anything else?"
-```
-
-<!-- change:help-desk-escalation-in-desk -->
-
 ```mermaid
 sequenceDiagram
     participant Customer as Alice (Telegram)
@@ -639,8 +454,6 @@ sequenceDiagram
 
     AI->>Customer: "Your billing has been corrected to $29. Is there anything else?"
 ```
-
-<!-- /planned-change:help-desk-escalation-in-desk -->
 
 ### Idle Compaction Cycle
 
@@ -733,19 +546,6 @@ sequenceDiagram
 
 **Escalation failure modes:**
 
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-| Scenario                                                 | Behavior                                                                 | Recovery                                                                                |
-| -------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| No admin can be notified                                 | Tool returns error to the agent                                          | The agent tells the visitor the escalation failed and keeps helping                     |
-| No owning admin reachable                                | The platform's admins are notified                                       | The escalation still names the desk it came from                                        |
-| Relay message delivery fails to the visitor's adapter    | The reply is not delivered; the failure is logged, the admin is not told | Operators find the session in the log; the admin can send the reply again               |
-| Handback missed                                          | Relay stays active, agent stays paused                                   | An admin replies again tagging the agent                                                |
-| Multiple admins reply                                    | All replies forwarded to the visitor                                     | A reply is not copied to the other admins' conversations, so admins coordinate directly |
-| Visitor messages during relay when their adapter is down | Messages queued or lost depending on platform                            | The admin sees a gap and can ask the visitor to repeat                                  |
-
-<!-- change:help-desk-escalation-in-desk -->
-
 | Scenario                                                                              | Behavior                                                          | Recovery                                                            |
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
 | No one in the desk's scope can be notified, or the escalation thread cannot be opened | Tool returns error to the agent                                   | The agent tells the visitor the escalation failed and keeps helping |
@@ -753,8 +553,6 @@ sequenceDiagram
 | Handback missed                                                                       | Relay stays active, agent stays paused                            | A person replies again in the thread tagging the agent              |
 | Several people reply in the thread                                                    | All replies reach the visitor                                     | Everyone in scope reads the same thread, so they coordinate there   |
 | Visitor messages during relay when their adapter is down                              | Messages queued or lost depending on platform                     | The person answering sees a gap and can ask the visitor to repeat   |
-
-<!-- /planned-change:help-desk-escalation-in-desk -->
 
 **Discord desk surface failure modes:**
 

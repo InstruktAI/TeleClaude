@@ -23,19 +23,9 @@ The agent answers from the project's public documentation and the public
 help-desk documentation. Nothing internal to the project is available to it on
 a customer's behalf.
 
-<!-- planned-change:help-desk-escalation-in-desk -->
-
-An escalation from this desk reaches the admins of the home that owns the
-project: the owning company's admins, or the owning person for a project a
-person owns. When neither is reachable, the platform's admins receive it.
-
-<!-- change:help-desk-escalation-in-desk -->
-
 An escalation from this desk reaches everyone in its scope: the owning
 company's members and admins, or the owning person for a project a person
 owns, and the platform's admins.
-
-<!-- /planned-change:help-desk-escalation-in-desk -->
 
 ## Why
 
