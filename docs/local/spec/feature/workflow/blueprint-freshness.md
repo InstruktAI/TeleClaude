@@ -7,6 +7,10 @@ delivered_by:
 
 # Blueprint Freshness — Spec
 
+## Required reads
+
+@~/.teleclaude/docs/sdlc/spec/codebase-blueprint.md
+
 ## What it is
 
 Agents receive structural blast-radius answers for committed canonical main
