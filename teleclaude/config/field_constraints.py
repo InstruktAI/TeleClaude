@@ -216,6 +216,14 @@ def refuse_unmet_requirements(model: type[ClosedModel], context: object) -> None
         raise ValidationError.from_exception_data(model.__name__, details)
 
 
+def refuses_only_unmet_requirements(error: ValidationError) -> bool:
+    """Whether a validation failed only on values this computer's role needs, so the document itself is valid.
+
+    Requirements are judged after the document validates, so such a failure carries no other finding.
+    """
+    return all(detail["type"] == _REQUIREMENT_CODE for detail in error.errors(include_input=False))
+
+
 def refuse_document(model: type[ClosedModel], document: Mapping[str, object]) -> None:
     """Raise ``FieldConstraintRefusal`` for the first declaration a document to be persisted breaks."""
     violations = violated_constraints(model, document)

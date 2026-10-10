@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 from instrukt_ai_logging import get_logger
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from teleclaude.config._environment import (
     company_environment_creation_mode,
@@ -22,8 +22,18 @@ from teleclaude.config._unresolved import NO_OVERRIDES, drop_unresolved_fields
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import declared_config_kind, load_declared_config_kind, resolve_context_root
 from teleclaude.config.declaration import render_declared_config
-from teleclaude.config.errors import ConfigLoadError, cause_findings, describe_load_error, load_error_findings
-from teleclaude.config.field_constraints import MACHINE_CONTEXT_KEY, UNRESOLVED_CONTEXT_KEY
+from teleclaude.config.errors import (
+    ConfigLoadError,
+    ConfigNotReadyError,
+    cause_findings,
+    describe_load_error,
+    load_error_findings,
+)
+from teleclaude.config.field_constraints import (
+    MACHINE_CONTEXT_KEY,
+    UNRESOLVED_CONTEXT_KEY,
+    refuses_only_unmet_requirements,
+)
 from teleclaude.config.identity_schema import CompanyMember, PersonEntry
 from teleclaude.config.inbound_secret_references import require_inbound_secret_references
 from teleclaude.config.machine import config as machine_config
@@ -58,6 +68,8 @@ _UNRESOLVED_COMPANY_OWNER = "Project declares unresolved company owner: {owner}"
 _UNRESOLVED_PERSON_OWNER = "Project declares unresolved person owner: {owner}"
 _UTF8 = "utf-8"
 _CONTENT_READ_FAILURE = "Failed to read config content for {path}: {error}"
+_VALIDATION_FAILURE = "Failed to validate config file {path}: {error}"
+_NOT_READY_FAILURE = "Config file {path} is not ready on this computer: {error}"
 _KIND_FIELD = "kind"
 _SCHEMA_VERSION_FIELD = "schema_version"
 _PROJECT_SAVE_REGISTRY_ERROR = "Project configuration saves require a registered project root"
@@ -262,8 +274,12 @@ def _validated_model[T: BaseModel](
         if readiness:
             return validate_tier_readiness(model_class, expanded.value, expanded.unresolved)
         return validate_tier_document(model_class, expanded.value)
+    except ValidationError as exc:
+        if readiness and refuses_only_unmet_requirements(exc):
+            raise ConfigNotReadyError(_NOT_READY_FAILURE.format(path=path, error=exc), document=path) from exc
+        raise ConfigLoadError(_VALIDATION_FAILURE.format(path=path, error=exc), document=path) from exc
     except Exception as exc:
-        raise ConfigLoadError(f"Failed to validate config file {path}: {exc}", document=path) from exc
+        raise ConfigLoadError(_VALIDATION_FAILURE.format(path=path, error=exc), document=path) from exc
 
 
 def validate_declaration_file(path: Path) -> None:

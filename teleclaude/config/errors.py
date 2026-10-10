@@ -15,6 +15,7 @@ _YAML_FINDING = "line {line}, column {column}: {problem}"
 _INVALID_YAML = "invalid YAML"
 _FINDINGS_SEPARATOR = "; "
 _DESCRIPTION = "Configuration {document} does not load: {findings}"
+_NOT_READY_DESCRIPTION = "Configuration {document} is not ready on this computer: {findings}"
 _UNNAMED_DOCUMENT = "document"
 
 
@@ -27,6 +28,10 @@ class ConfigLoadError(ValueError):
     def __init__(self, message: str, *, document: Path | None = None) -> None:
         super().__init__(message)
         self.document = document
+
+
+class ConfigNotReadyError(ConfigLoadError):
+    """A document that loads lacks a value this computer's role needs; it is refused only as this computer's readiness."""
 
 
 class InboundSecretDeclarationError(ValueError):
@@ -71,4 +76,5 @@ def cause_findings(cause: BaseException) -> list[str]:
 def describe_load_error(error: ConfigLoadError) -> str:
     """One line naming the document and where it fails, safe to print or send: it quotes no document content."""
     document = str(error.document) if error.document is not None else _UNNAMED_DOCUMENT
-    return _DESCRIPTION.format(document=document, findings=_FINDINGS_SEPARATOR.join(load_error_findings(error)))
+    description = _NOT_READY_DESCRIPTION if isinstance(error, ConfigNotReadyError) else _DESCRIPTION
+    return description.format(document=document, findings=_FINDINGS_SEPARATOR.join(load_error_findings(error)))
