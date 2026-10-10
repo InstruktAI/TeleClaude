@@ -104,6 +104,27 @@ command or lifecycle intent handoff; routes derive the response from the
 command's declared response mode. The API does not acquire ownership of
 session lifecycle, peer storage, or external adapter delivery.
 
+<!-- planned:stabilize-tui-viewers -->
+
+### Viewer attachment projection
+
+The session DTO projection composes agent runtime's host-access answer with
+integration's destination resolved from the serving computer and its current
+computer registry. HTTP reads, connection snapshots and incremental session
+changes use that same projection. Computer connection-input changes reproject
+affected sessions through the existing authorized session stream and serialized
+sender, independently of resource refresh completion. The behavioral contract
+is `local/projects/teleclaude/spec/feature/integration/viewer-attachment-projection`;
+runtime's access meaning is
+`local/projects/teleclaude/spec/feature/agent_runtime/host-pane-access`.
+
+This composition follows `sdlc/policy/domain-ownership`: the projection consumes
+the runtime answer and registry facts, while the renderer holds local view
+intent and observed panes. Peer session records are projected relative to the
+serving computer. Published attachment inputs are independent of whether the
+consumer has completed a separate computer-resource request.
+<!-- /planned:stabilize-tui-viewers -->
+
 ## Failure modes
 
 - An offline peer or an incomplete peer bootstrap limits the state available
