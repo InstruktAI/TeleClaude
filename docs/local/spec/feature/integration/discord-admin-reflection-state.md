@@ -36,11 +36,11 @@ reconciled by the master alone. It holds three channels:
 
 <!-- change:help-desk-escalation-in-desk -->
 
-| Channel                     | People in the desk's scope                | The bot                                                               |
-| --------------------------- | ----------------------------------------- | --------------------------------------------------------------------- |
-| `customer-sessions` (forum) | read every thread; post nothing           | mirrors each session of that desk into its own thread                 |
-| `escalations` (forum)       | read threads and reply in them; open none | opens one thread per escalation and relays between it and the visitor |
-| `team-chat` (text channel)  | read and post                             | grants access only; reads and answers nothing                         |
+| Channel                     | People in the desk's scope                | The bot                                                                                                           |
+| --------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `customer-sessions` (forum) | read every thread; post nothing           | mirrors each session of that desk into its own thread                                                             |
+| `escalations` (forum)       | read threads and reply in them; open none | carries the desk's escalation relay (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`) |
+| `team-chat` (text channel)  | read and post                             | grants access only; reads and answers nothing                                                                     |
 
 <!-- /planned-change:help-desk-escalation-in-desk -->
 
