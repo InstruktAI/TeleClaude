@@ -134,34 +134,52 @@ checkpoint:
           - teleclaude/**/*.py
       actions:
         - log-check
-          # Daemon code needs a restart. The CLI modules imported during daemon
-          # startup are re-included despite the broad cli/** exclusion.
+    # Every module the daemon process imports owes a restart. Exclusions name
+    # only modules outside the daemon's import closure; CLI modules the daemon
+    # imports are re-included by override despite the broad cli/** exclusion.
     - scope:
         include:
           - teleclaude/**/*.py
         exclude:
-          - teleclaude/hooks/**
+          - teleclaude/hooks/checkpoint/**
+          - teleclaude/hooks/receiver/**
+          - teleclaude/hooks/utils/**
+          - teleclaude/hooks/checkpoint_flags.py
+          - teleclaude/hooks/edit_declarations.py
+          - teleclaude/hooks/integrator_judgment_marker.py
+          - teleclaude/hooks/receiver_args.py
           - teleclaude/cli/**
-          - teleclaude/utils/**
-          - teleclaude/quality/**
-          - teleclaude/session_scoping/**
-          - teleclaude/project_setup/**
+          - teleclaude/quality/toolchain.py
+          - teleclaude/project_setup/launcher_signing.py
+          - teleclaude/project_setup/macos_setup.py
           - teleclaude/codegen/**
-          - teleclaude/resource_validation/**
           - teleclaude/entrypoints/**
           - teleclaude/tagging/**
-          - teleclaude/helpers/**
+          - teleclaude/helpers/agent_cli.py
+          - teleclaude/helpers/agent_cli_command_assembly.py
+          - teleclaude/helpers/youtube/**
         override:
           - teleclaude/cli/__init__.py
+          - teleclaude/cli/api_client.py
+          - teleclaude/cli/api_client_health.py
+          - teleclaude/cli/api_client_identity.py
+          - teleclaude/cli/api_client_request.py
+          - teleclaude/cli/api_client_runtime.py
+          - teleclaude/cli/api_session_args.py
+          - teleclaude/cli/clearance.py
+          - teleclaude/cli/config_handlers.py
+          - teleclaude/cli/models.py
           - teleclaude/cli/telec/__init__.py
           - teleclaude/cli/telec/surface.py
           - teleclaude/cli/telec/surface_types.py
           - teleclaude/cli/telec/auth.py
+          - teleclaude/cli/telec/flags.py
           - teleclaude/cli/telec/help.py
           - teleclaude/cli/telec/_shared.py
           - teleclaude/cli/telec/_run_tui.py
           - teleclaude/cli/tool_client.py
           - teleclaude/cli/session_auth.py
+          - teleclaude/cli/tui_clearance.py
       actions:
         - restart
     - scope:
