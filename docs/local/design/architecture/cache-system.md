@@ -1,182 +1,48 @@
 ---
-description: 'Event-driven read-cache architecture using SQLite snapshots.'
-visibility: 'public'
+description: The boundary among authoritative source owners, daemon cache materialization, and UI state projection.
 ---
 
 # Cache System — Design
 
+## Required reads
+
+@docs/local/adr/0013-unified-cluster-events.md
+
 ## Purpose
 
-Provides sub-millisecond read access to system state (computers, sessions, projects, todos) for TUIs and high-frequency callers.
-
-```mermaid
-flowchart TB
-  TUI["TUI (API + WS)"]
-  API["API<br/>(thin, read-only)"]
-  CACHE["Snapshot Cache<br/>(read-only)"]
-  LOCAL["Local sources<br/>(DB, command handlers)"]
-  EVENTS["Domain events<br/>(from core)"]
-  WS["WS pushes<br/>(from cache updates)"]
-
-  TUI --> API --> CACHE
-  CACHE --> LOCAL
-  EVENTS --> CACHE
-  CACHE --> WS --> TUI
-```
-
-1. **Snapshots**: The cache stores JSON snapshots of domain objects in a dedicated `cache` table.
-2. **Read-Only**: The cache is NOT a source of truth; it is a materialized view of the database and runtime state.
-3. **Event-Driven**: Updates are triggered by domain events (e.g., `SessionCreated`, `ComputerHeartbeat`).
-4. **Warmup**: The cache is fully populated on daemon startup.
-
-- Clients (TUI, API) SHOULD read from the cache and write via commands.
-- Cache handlers MUST NOT perform complex I/O; they merely transform events into snapshots.
+Separate source truth, daemon read state, and UI presentation. Cache ownership
+is `local/projects/teleclaude/design/architecture/cache`; connection projection
+is `local/projects/teleclaude/design/architecture/api-server`; TUI session-view
+behavior is `local/projects/teleclaude/spec/feature/tui/session-visibility`.
 
 ## Inputs/Outputs
 
-**Inputs:**
-
-- Domain events:
-  - Session lifecycle: SESSION_STARTED, SESSION_UPDATED, SESSION_CLOSED
-  - Agent activity: AGENT_ACTIVITY (subtypes: pre_tool_use, agent_stop, user_prompt_submit)
-  - Infrastructure: COMPUTER_UPDATED
-  - Project/todo changes: PROJECTS_UPDATED, TODOS_UPDATED, TODO_CREATED, TODO_UPDATED, TODO_REMOVED
-- Local data sources: SQLite sessions table, command handlers, project registry, computer registry
-- Remote data triggers: Redis heartbeat digests
-
-**Outputs:**
-
-- JSON snapshots in cache table (keyed by data_type:scope)
-- WebSocket push notifications to subscribed clients (see WS event surface below)
-- Cache hit/miss metrics for observability
+Authoritative owners supply records and changes to the daemon. The cache
+materializes those records; the API projects eligible snapshots and changes;
+clients render the delivered state and submit explicit commands for mutations.
 
 ## Invariants
 
-- **Serve Stale Immediately**: API never blocks waiting for refresh; always returns cached value even if TTL expired.
-- **Async Refresh**: Background refresh tasks triggered on TTL expiration; never block API calls.
-- **Single Snapshot Per Scope**: Each cache key (data_type:scope_id) has exactly one snapshot entry.
-- **Event-Driven Sessions**: Session updates bypass TTL; only domain events update session cache.
-- **Digest Invalidation**: Projects and todos use heartbeat digest changes to override TTL and force refresh.
-- **Warmup Completeness**: Cache fully populated during daemon startup before adapters start.
-
-- **Refresh triggers**: allow refresh only on startup warmup, heartbeat digest change, first subscription interest, or TTL expiry on access.
-- **Refresh constraints**: deny refresh requests outside those triggers, coalesce per peer + data type, enforce cooldowns, and never block API responses.
-- **Emergency refresh**: requires explicit operator approval.
+Each boundary retains its owner's responsibility. UI rendering does not become
+peer discovery, cache population does not become authorization, and immediate
+cached reads do not become authoritative writes.
 
 ## Primary flows
 
-### 1. Cache Read (Fast Path)
-
-```mermaid
-sequenceDiagram
-    participant TUI
-    participant API
-    participant Cache
-    participant RefreshTask
-
-    TUI->>API: GET /sessions
-    API->>Cache: get_sessions()
-    Cache->>Cache: Check TTL
-    alt Fresh (TTL valid)
-        Cache->>API: Return snapshot
-    else Stale (TTL expired)
-        Cache->>RefreshTask: Schedule background refresh
-        Cache->>API: Return stale snapshot
-    end
-    API->>TUI: Respond immediately
-
-    RefreshTask->>Cache: Update snapshot
-    Cache->>API: Notify subscribers
-    API->>TUI: WS push update
-```
-
-### 2. Event-Driven Update
-
-```mermaid
-sequenceDiagram
-    participant Core
-    participant EventBus
-    participant CacheHandler
-    participant Cache
-    participant API
-    participant WS
-
-    Core->>EventBus: Emit SESSION_STARTED
-    EventBus->>CacheHandler: Handle event
-    CacheHandler->>Cache: Update session snapshot
-    Cache->>API: Cache updated
-    API->>WS: Push to subscribers
-```
-
-### 3. Digest-Based Invalidation (Projects/Todos)
-
-```mermaid
-sequenceDiagram
-    participant Heartbeat
-    participant Cache
-    participant Redis
-    participant RemoteComputer
-
-    Heartbeat->>Cache: Computer heartbeat (with digest)
-    Cache->>Cache: Compare digest
-    alt Digest changed
-        Cache->>Redis: Request full project list
-        Redis->>RemoteComputer: Fetch projects
-        RemoteComputer->>Redis: Return list
-        Redis->>Cache: Update cache
-        Cache->>API: Notify subscribers
-    else Digest unchanged
-        Cache->>Cache: Keep existing snapshot
-    end
-```
-
-### 4. TTL-Based Refresh Policy
-
-| Resource           | Scope        | TTL | Trigger         |
-| ------------------ | ------------ | --- | --------------- |
-| Computers          | Global       | 60s | TTL + Heartbeat |
-| Projects           | Per-computer | 5m  | TTL + Digest    |
-| Todos              | Per-project  | 5m  | TTL + Digest    |
-| Sessions           | Per-computer | ∞   | Events only     |
-| Agent availability | Global       | 30s | TTL only        |
-
-### 5. WebSocket Event Surface
-
-Cache changes are pushed to WS clients as typed events. The API server normalizes domain events into DTOs before broadcast. Refresh events (computer/project/todo changes) are debounced (250ms coalesce).
-
-| WS Event           | DTO                     | When                                                            |
-| ------------------ | ----------------------- | --------------------------------------------------------------- |
-| `sessions_initial` | SessionsInitialEventDTO | On subscription — full session snapshot                         |
-| `projects_initial` | ProjectsInitialEventDTO | On subscription — full project snapshot                         |
-| `session_started`  | SessionStartedEventDTO  | New session created                                             |
-| `session_updated`  | SessionUpdatedEventDTO  | Session fields changed (status, title, etc.)                    |
-| `session_closed`   | SessionClosedEventDTO   | Session ended                                                   |
-| `agent_activity`   | AgentActivityEventDTO   | Agent hook event (pre_tool_use, agent_stop, user_prompt_submit) |
-| `computer_updated` | RefreshEventDTO         | Computer online/offline/stats change                            |
-| `project_updated`  | RefreshEventDTO         | Single project changed                                          |
-| `projects_updated` | RefreshEventDTO         | Project list changed on a computer                              |
-| `todos_updated`    | RefreshEventDTO         | Todo list changed for a project                                 |
-| `todo_created`     | RefreshEventDTO         | New todo scaffolded                                             |
-| `todo_updated`     | RefreshEventDTO         | Todo state/artifacts changed                                    |
-| `todo_removed`     | RefreshEventDTO         | Todo deleted                                                    |
-| `error`            | ErrorEventDTO           | Error condition (retryable flag, severity)                      |
-
-### 6. TUI Data Consumption
-
-The TUI fetches data at startup and then relies entirely on WS push events:
-
-- **Computers**: fetched once at startup. Updated only on `computer_updated` WS event.
-- **Sessions/Projects/Todos/Availability/Jobs**: fetched at startup, then refreshed on relevant WS events (session start/close, RefreshEvent).
-- **Agent activity**: handled inline per-event (tool highlights, input/output indicators). No full refresh needed.
-- **Session updates**: handled inline per-event (status change). No full refresh needed.
-
-The TUI never polls. All data updates are event-driven.
+Local source changes and remote cluster changes converge in the daemon cache.
+HTTP readers query that view. UI connections receive state through the API's
+projection contract. A UI reconnect establishes a current projection from the
+available daemon state; it does not recover a daemon's missed cluster events.
 
 ## Failure modes
 
-- **Cache Miss on Startup**: Cache not warmed up before API serves requests. Returns empty results until warmup completes. Mitigated by blocking adapter startup until cache ready.
-- **Stale Data Window**: Clients see old data between TTL expiration and refresh completion (typically <1s). Acceptable for TUI; critical updates use event push.
-- **Digest Collision**: Extremely rare. Two different project states hash to same digest. Next heartbeat or TTL refresh corrects it.
-- **Refresh Task Accumulation**: If refresh tasks are slower than TTL, tasks queue up. Monitor task queue depth; indicates resource saturation.
-- **WS Client Offline**: Client misses push notifications. On reconnect, client must refresh from cache. No automatic backfill.
-- **SQLite Write Contention**: Concurrent cache updates block on SQLite write lock. Rare under normal load. High contention indicates too many cache writes.
+A missing source record, an incomplete cache, and a client missing an available
+record are different boundaries. Establish which boundary diverges before
+changing discovery, materialization, or UI delivery. Recovery remains with the
+owner at that boundary.
+
+## See Also
+
+- docs/local/design/architecture/cache.md
+- docs/local/design/architecture/api-server.md
+- docs/local/spec/feature/tui/session-visibility.md

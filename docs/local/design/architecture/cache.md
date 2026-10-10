@@ -1,129 +1,76 @@
 ---
-description: 'DaemonCache snapshot layer for computers, projects, todos, sessions, and agent availability.'
-visibility: 'public'
+description: Daemon-owned in-memory snapshots materialize local source state and remote cluster state for immediate reads and UI projection.
 ---
 
 # Cache — Design
 
+## Required reads
+
+@docs/local/adr/0013-unified-cluster-events.md
+
 ## Purpose
 
-Provide instant, cached reads for API and remote data views.
-
-- Serve cached data immediately; schedule refresh when TTL expires.
-- Use per-computer digest/version fields to trigger refresh for projects and todos.
-- Sessions are updated by events rather than TTL polling.
-- Cache is read-only and not the source of truth.
-- Stale data can be served to keep APIs responsive.
-
-```mermaid
-flowchart TB
-    Events["Domain Events"]
-    Cache["Cache Layer"]
-    DB["SQLite"]
-    API["API Server"]
-    Redis["Redis (optional)"]
-
-    Events -->|update| Cache
-    Cache -->|persist| DB
-    Cache -->|read| DB
-    API -->|query| Cache
-    Redis -->|digest| Cache
-```
+Provide the daemon's consolidated read view of computers, projects, todos,
+sessions, and agent availability. The cache is a materialized view, not the
+authoritative store of the records it projects. Local records belong to their
+database or runtime owners; remote records belong to the peer that supplies them.
 
 ## Inputs/Outputs
 
-**Inputs:**
+Inputs are local domain changes, local startup warmup, peer-presence observations,
+cluster envelopes, and authoritative peer bootstrap snapshots. Autonomous stale
+read refreshes remain owned by the cache and transport refresh path.
 
-- Domain events:
-  - Session lifecycle: SESSION_STARTED, SESSION_UPDATED, SESSION_CLOSED
-  - Agent activity: AGENT_ACTIVITY (pre_tool_use, agent_stop, user_prompt_submit)
-  - Infrastructure: COMPUTER_UPDATED
-  - Project/todo changes: PROJECTS_UPDATED, TODOS_UPDATED, TODO_CREATED, TODO_UPDATED, TODO_REMOVED
-- Heartbeat messages with project/todo digests
-- Local database queries for session state
-- Remote refresh triggers from digest changes
-
-**Outputs:**
-
-- JSON snapshots stored in cache table
-- Notifications to API subscribers
-- Background refresh task scheduling
+Outputs are immediate read snapshots and local cache-change notifications.
+Locally originated writes publish cluster changes; materializing a peer's
+change does not republish it as locally originated work.
 
 ## Invariants
 
-- **Always Serve Immediately**: Never block API calls waiting for refresh; return stale if needed.
-- **Event-Driven Sessions**: Session cache updates only via events, not TTL polling.
-- **Digest Validation**: Projects/todos refresh only when digest changes, not every heartbeat.
-- **Single Snapshot Per Key**: Each cache key has one snapshot; updates replace atomically.
-- **TTL Independence**: TTL controls refresh cadence, but stale data still served until refresh completes.
+- **Source ownership:** a cached record retains its source computer and domain
+  identity; receiving it creates no local write authority over that source.
+- **Immediate reads:** reads return the available snapshot without waiting for
+  a peer request.
+- **Reconciled bootstrap:** an authoritative peer snapshot reconciles that
+  peer's cached set, including entries absent from the snapshot.
+- **Event materialization:** local notifications and cluster changes update
+  snapshots independently of agent activity. Peer discovery bootstraps existing
+  open sessions, including idle and headless sessions.
+- **No publication loop:** applying a cluster event or peer snapshot suppresses
+  cluster re-publication while retaining local cache notifications.
+- **Projection ownership:** the API applies viewer eligibility to cache state;
+  the cache does not inherit a UI viewer's reach as fleet membership.
 
 ## Primary flows
 
-### 1. Event-Driven Cache Update
+### Local state
 
-```mermaid
-sequenceDiagram
-    participant Core
-    participant EventBus
-    participant CacheHandler
-    participant DB
+Startup warmup reads local authoritative sources. Local domain changes update
+their cache snapshots, notify local consumers, and publish the corresponding
+cluster state.
 
-    Core->>EventBus: SESSION_STARTED
-    EventBus->>CacheHandler: Handle event
-    CacheHandler->>DB: Update cache table
-    CacheHandler->>CacheHandler: Notify subscribers
-```
+### Remote state
 
-### 2. TTL-Based Refresh Trigger
+Heartbeat identity establishes peer presence. Cold-start and first-peer bootstrap
+obtain existing state. The cluster bridge materializes subsequent peer changes.
+Applying a snapshot reconciles that peer's set and notifies local consumers.
 
-```mermaid
-sequenceDiagram
-    participant API
-    participant Cache
-    participant RefreshTask
+### UI consumption
 
-    API->>Cache: get_projects("raspi")
-    Cache->>Cache: Check TTL
-    alt TTL expired
-        Cache->>RefreshTask: Schedule refresh
-    end
-    Cache->>API: Return stale data
-    RefreshTask->>Cache: Update snapshot
-```
-
-### 3. Digest-Based Invalidation
-
-```mermaid
-sequenceDiagram
-    participant Heartbeat
-    participant Cache
-    participant Remote
-
-    Heartbeat->>Cache: projects_digest=abc123
-    Cache->>Cache: Compare with stored
-    alt Digest changed
-        Cache->>Remote: Fetch full project list
-        Remote->>Cache: Update cache
-    else Unchanged
-        Cache->>Cache: Skip refresh
-    end
-```
-
-### 4. Cache Policy Table
-
-| Resource    | Scope        | TTL | Update Trigger       |
-| ----------- | ------------ | --- | -------------------- |
-| Computers   | Global       | 60s | TTL + Heartbeat      |
-| Projects    | Per-computer | 5m  | TTL + Digest change  |
-| Todos       | Per-project  | 5m  | TTL + Digest change  |
-| Sessions    | Per-computer | ∞   | Events only (no TTL) |
-| Agent Avail | Global       | 30s | TTL only             |
+The API server reads this consolidated view and projects eligible state under
+`local/projects/teleclaude/design/architecture/api-server`.
 
 ## Failure modes
 
-- **Cache Not Warmed**: API returns empty arrays until warmup completes. Daemon startup blocks adapters until cache ready.
-- **Stale Data Window**: Clients see old data between TTL expiration and refresh (typically <1s). Acceptable for non-critical reads.
-- **Digest Collision**: Two states hash to same value. Next TTL refresh corrects. Extremely rare.
-- **Refresh Task Queue**: Slow refresh accumulates tasks. Monitor queue depth; indicates resource saturation.
-- **Event Loss**: Cache update event lost due to crash. Next TTL refresh corrects. Sessions may show stale status temporarily.
-- **SQLite Lock**: Concurrent cache writes block. Rare under normal load. High frequency indicates too many updates.
+- Peer snapshots arrive asynchronously, so a newly opened read may initially
+  lack a peer's state. Subsequent cache changes notify local consumers.
+- A daemon offline during a cluster publication misses that event until peer
+  bootstrap reconciles the state. Session snapshots have no periodic TTL
+  recovery; reconnecting a UI alone does not recreate missing cluster state.
+- A failed peer bootstrap retains the available cache and remains retryable
+  through the transport's bootstrap lifecycle.
+
+## See Also
+
+- docs/local/adr/0013-unified-cluster-events.md
+- docs/local/design/architecture/api-server.md
