@@ -96,9 +96,7 @@ The authoring rules every migration obeys are
   A document refused because it breaks a declared field relationship fails
   with that reason and carries the relationship's message, which the run's
   failure diagnostic shows. One document's failure never stops the run over
-  the others; a run with any failed document ends failed. A refused migration
-  commit's record carries the tail of the commit command's own output as its
-  diagnostic.
+  the others; a run with any failed document ends failed.
 
 ### Use cases
 
