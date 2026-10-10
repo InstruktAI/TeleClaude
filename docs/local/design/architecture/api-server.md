@@ -1,212 +1,124 @@
 ---
-description: 'Local HTTP and WebSocket API that reads from cache and routes writes through the command pipeline.'
-visibility: 'public'
+description: The shared local HTTP and WebSocket API exposes viewer-authorized daemon state to UI clients and routes mutations through their owning command contracts.
 ---
 
-# Api Server — Design
+# API Server — Design
 
 ## Required reads
 
-- @docs/local/design/architecture/command-classification.md
+@docs/local/adr/0013-unified-cluster-events.md
 
 ## Purpose
 
-Provide a resource-first API for TUI and CLI clients.
+Provide the common daemon boundary for CLI reads, UI state projection, and
+typed command submission. The TUI and other UI clients consume the same
+WebSocket contract; client presentation does not choose fleet membership or
+state-delivery eligibility.
 
-- Read endpoints return cached data immediately (local-only if cache is absent).
-- Write endpoints map to typed command objects via CommandService. Each command declares
-  its `response_mode` (`IMMEDIATE` or `RECEIPT`); routes derive their
-  HTTP status code and response shape from that declaration — never from hardcoded logic.
-- WebSocket subscriptions drive cache interest tracking and refresh pushes.
-- API handlers do not fetch remote data directly; cache owns refresh.
-- Session updates are merged from local DB and cached remote summaries.
-- Memory endpoints (`/api/memory/*`) are mounted in the same FastAPI process for observation save/search flows.
+Session-view behavior is owned by
+`local/projects/teleclaude/spec/feature/tui/session-visibility`. The daemon's
+consolidated cache receives local source changes and remote cluster state under
+`local/projects/teleclaude/design/architecture/cache`. Command response modes
+remain owned by
+`local/projects/teleclaude/design/architecture/command-classification`.
 
-- MCP endpoints (`/mcp/*`) are mounted in the same FastAPI process and route through a daemon-owned lazy MCP runtime.
-
-```mermaid
-flowchart LR
-    TUI["TUI Client"]
-    HTTP["HTTP Endpoints"]
-    WS["WebSocket"]
-    Cache["DaemonCache"]
-    CommandService["Command Service"]
-
-    TUI -->|GET| HTTP
-    TUI -->|subscribe| WS
-    HTTP -->|read| Cache
-    HTTP -->|write| CommandService
-    Cache -->|push| WS
-    WS -->|notify| TUI
-```
+Memory and MCP routes share the API server lifecycle. MCP connections and tool
+execution remain owned by the daemon's lazy MCP runtime.
 
 ## Inputs/Outputs
 
-**Inputs:**
+Inputs are authenticated caller identity, HTTP resource queries, typed mutation
+requests, connection projection options, and daemon cache notifications.
 
-- HTTP GET requests for resources (sessions, computers, projects, todos)
-- HTTP POST requests for commands (create session, send message)
-- HTTP lifecycle requests (for example session close)
-- WebSocket subscription requests
-- Cache update notifications
-- HTTP requests and WebSocket subscriptions
+A connection's projection options name the resource streams it receives —
+sessions, projects with their preparation state, and todos — and whether
+soft-removed todos are included. A client selects only the streams its caller
+holds command clearance to read, so opening a connection never widens what that
+caller can list. An option never names a computer and never widens reach.
 
-- HTTP MCP discovery, tool-catalog, and tool-call requests
+Outputs are resource snapshots, viewer-authorized WebSocket state changes,
+command results or durable receipts, and secret-safe error responses. Existing
+WebSocket event DTOs own their wire shapes. A session snapshot without a computer
+partition denotes the viewer's complete eligible set across the consolidated
+cache.
 
-**Outputs:**
-
-- JSON responses with resource snapshots
-- WebSocket push messages on cache updates
-- HTTP 2xx/4xx/5xx status codes
-- Command execution results
-- Cached resource snapshots and event-driven updates
-
-- Secret-safe MCP server catalogs, tool catalogs, and tool-call results
+HTTP session and bootstrap reads remain available for existing callers. They do
+not control or repair the session collection of a UI consuming the WebSocket
+session stream.
 
 ## Invariants
 
-- **Read-Only Cache Access**: API never writes to cache; only reads snapshots.
-- **Explicit Write Boundaries**: Agent/session mutations either go through CommandService or through a documented lifecycle intent handoff owned by the API.
-- **Immediate Response**: API returns cached data instantly; never blocks on refresh.
-- **Non-Blocking Mutations**: RECEIPT commands return their receipt immediately; the route never awaits async work. Response shape is derived from `command.response_mode`.
-- **Subscription Cleanup**: WebSocket disconnect removes all subscriptions for that client.
-- **No Remote Fetching**: API does not perform remote computer queries; cache owns that responsibility.
-- **Integrated Memory Router**: Memory routes are served by the same API server process and share daemon lifecycle.
-
-- **Integrated MCP Router**: MCP routes are served by the same API server process and share daemon lifecycle.
-- **Daemon-Owned MCP Connections**: API handlers delegate MCP server startup, session leasing, request routing, and idle reaping to the daemon-owned MCP runtime. Agent clients never own stdio pipes or raw remote MCP sessions.
-- **TeleClaude Registry Source**: MCP routes read from the effective TeleClaude MCP registry, assembled from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc`; native agent MCP config files are not the API source of truth.
-- **Secret-Safe MCP Output**: MCP routes resolve placeholder environment variables inside the daemon process and never return resolved secret values to callers.
+- **Daemon-owned fleet:** peer discovery and cache population are independent of
+  whether a UI is connected or requests a particular computer.
+- **Viewer-authorized projection:** snapshot selection, session changes,
+  activity, and project refreshes apply the existing identity reach and audience
+  policies. Computer ownership in a delivered record describes its source; it
+  is not a client delivery subscription.
+- **Connection completeness:** an authenticated UI connection that selects the
+  session stream receives its complete eligible session snapshot before
+  subsequent session changes. Each reconnect establishes that state again from
+  the current cache.
+- **One delivery order:** snapshots and changes use the existing per-connection
+  serialized sender. Deferred cache notifications cannot replay older row state
+  over a newer snapshot or change.
+- **Live eligibility:** declaration changes reconcile the connection's session
+  projection from current reach. Closure cleanup remains available for sessions
+  previously delivered to the connection.
+- **Cache-owned reads:** initial projection does not wait on peer requests.
+  Remote state arriving after connection is projected as the cache changes.
+- **Shared client contract:** the same identity, DTOs, snapshot semantics, and
+  event ordering serve the TUI and future UI consumers.
+- **Safe command boundary:** UI projection changes no mutation authority,
+  command response mode, or durable-operation lifecycle.
 
 ## Primary flows
 
-### 1. Resource Read (Sessions Example)
+### Connection and session state
 
-```mermaid
-sequenceDiagram
-    participant TUI
-    participant API
-    participant Cache
-    participant DB
+The API accepts the connection's existing caller identity, resolves viewer
+eligibility, and creates the existing serialized sender. It captures the
+eligible consolidated session set and queues the complete snapshot before
+enabling session-change delivery. Cache changes thereafter select recipients
+by current reach and audience policy and queue current row state in the same
+sender. Reconnection and reach reconciliation follow the same projection path.
 
-    TUI->>API: GET /sessions
-    API->>Cache: get_sessions()
-    Cache->>DB: Query local sessions
-    Cache->>Cache: Merge with cached remote
-    Cache->>API: Return snapshot
-    API->>TUI: JSON response
-```
+Legacy WebSocket subscription messages are accepted during the local
+client/server transition, without establishing computer membership or gating
+eligible state. Their resource types and removed-entry flag supply the
+connection's projection options; their computer field is ignored. This compatibility
+surface is retained through the next minor release after delivery and assessed
+for retirement once deployed clients no longer send it.
 
-### 2. Command Write (Create Session)
+### Peer discovery and resource changes
 
-```mermaid
-sequenceDiagram
-    participant TUI
-    participant API
-    participant CommandService
-    participant Queue
-    participant Handler
+Heartbeat discovery updates the daemon's computer registry. Peer bootstrap and
+cluster events populate the daemon cache without UI interest registration.
+Computer registry notifications reach connected UI viewers, and session rows
+arriving from a peer follow the ordinary session projection path. Project and
+todo refresh notices retain their current resource and reach semantics.
 
-    TUI->>API: POST /sessions
-    API->>CommandService: CreateSessionCommand
-    CommandService->>Queue: Enqueue
-    Queue->>Handler: Execute
-    Handler->>API: Result
-    API->>TUI: 201 Created + session_id
-```
+### HTTP reads and command submission
 
-### 3. WebSocket Subscription & Push
-
-```mermaid
-sequenceDiagram
-    participant TUI
-    participant WS
-    participant Cache
-    participant EventBus
-
-    TUI->>WS: Connect + subscribe("sessions")
-    WS->>WS: Track subscription
-    EventBus->>Cache: SESSION_UPDATED
-    Cache->>WS: Cache updated
-    WS->>TUI: Push update
-```
-
-### Lazy MCP Tool Call
-
-```mermaid
-sequenceDiagram
-    participant Agent as Agent CLI
-    participant API
-    participant Runtime as MCP Runtime
-    participant Server as MCP Server
-
-    Agent->>API: POST /mcp/servers/{slug}/tools/{tool}/call
-    API->>Runtime: call_tool(slug, tool, arguments)
-    Runtime->>Runtime: Resolve effective TeleClaude MCP registry + env fingerprint
-    Runtime->>Server: Initialize lease when absent or stale
-    Runtime->>Server: tools/call
-    Server->>Runtime: tool result
-    Runtime->>Runtime: Refresh idle deadline
-    Runtime->>API: result
-    API->>Agent: JSON response
-```
-
-### 4. Resource Endpoints
-
-Response mode is declared on the command, not the route. Routes derive HTTP status from it:
-`IMMEDIATE` → 200/201, `RECEIPT` → 202 + `OperationReceipt`. `READ` marks a read endpoint
-and `—` a route that carries no command at all; neither has a response mode to derive from.
-
-| Method | Endpoint                     | Mode      | Action                             |
-| ------ | ---------------------------- | --------- | ---------------------------------- |
-| GET    | /health                      | READ      | Health check                       |
-| GET    | /sessions                    | READ      | List sessions (cache)              |
-| POST   | /sessions                    | IMMEDIATE | Create session → session_id        |
-| POST   | /sessions/{id}/message       | IMMEDIATE | Send message to session            |
-| POST   | /sessions/{id}/keys          | IMMEDIATE | Inject key input                   |
-| POST   | /sessions/self/file          | IMMEDIATE | Deliver file attachment to user    |
-| POST   | /sessions/self/result        | IMMEDIATE | Send formatted result to user      |
-| POST   | /sessions/{id}/agent-restart | RECEIPT   | Restart agent                      |
-| POST   | /sessions/self/escalate      | IMMEDIATE | Escalate a help-desk session       |
-| POST   | /sessions/run                | IMMEDIATE | Create session + run slash command |
-| DELETE | /sessions/{id}               | RECEIPT   | Request async session close        |
-| POST   | /jobs/{name}/run             | —         | Run background job                 |
-| GET    | /tui/bootstrap               | READ      | TUI partial initial state          |
-| GET    | /computers                   | READ      | List computers (cache + remote)    |
-| GET    | /projects                    | READ      | List projects (cache)              |
-| POST   | /todos/work                  | RECEIPT   | Run work state machine             |
-| POST   | /todos/integrate             | RECEIPT   | Run integration state machine      |
-| POST   | /todos/create                | RECEIPT   | Run creative state machine         |
-| POST   | /todos/prepare               | RECEIPT   | Run prepare state machine          |
-| GET    | /operations/{id}             | READ      | Poll operation receipt             |
-| POST   | /api/memory/save             | IMMEDIATE | Save observation                   |
-| GET    | /api/memory/search           | READ      | Search observations                |
-| GET    | /api/memory/timeline         | READ      | Timeline around anchor             |
-
-`/health` reports, beside its status, the commit the daemon's code checkout was
-at when the daemon started, and omits it when that commit could not be read. It
-is how on-demand maintenance tells whether a restart is owed
-(`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`).
-
-MCP endpoints are resource-shaped but may initialize or reuse a daemon-owned MCP lease as part of satisfying the read or call.
-
-| Method | Endpoint                              | Mode      | Action                          |
-| ------ | ------------------------------------- | --------- | ------------------------------- |
-| GET    | /mcp/servers                          | READ      | List configured MCP servers     |
-| GET    | /mcp/servers/{slug}/tools             | READ      | Lazy-load server and list tools |
-| POST   | /mcp/servers/{slug}/tools/{tool}/call | IMMEDIATE | Lazy-load server and call tool  |
+HTTP reads use their existing query owners. Mutations retain their typed
+command or lifecycle intent handoff; routes derive the response from the
+command's declared response mode. The API does not acquire ownership of
+session lifecycle, peer storage, or external adapter delivery.
 
 ## Failure modes
 
-- **Cache Miss**: Returns empty array until cache refresh completes. Client sees "no data" briefly.
-- **Command Execution Failure**: Returns 5xx with error message. Client must retry or investigate.
-- **Close Intent Failure**: Returns 5xx if the API cannot load the session or record `closing` before emitting the lifecycle event.
-- **WebSocket Connection Drop**: Client reconnects, resubscribes. Misses push updates during downtime.
-- **Stale Cache**: Client receives outdated data until TTL refresh. Acceptable for TUI; critical updates use events.
-- **API Server Crash**: All HTTP/WS clients disconnected. Daemon restart restores service. In-flight commands may be lost.
-- **Socket Bind/Startup Failure**: API interface is required; daemon startup fails (fail-fast) instead of continuing in partial mode.
-- **Request Timeout**: No timeout enforced by API; relies on client timeout. Long commands may appear hung.
+- An offline peer or an incomplete peer bootstrap limits the state available
+  in the cache. The UI reflects later cache arrivals through the same stream.
+- A WebSocket disconnect interrupts live delivery. Reconnection replaces the
+  client's session view from the current authorized snapshot.
+- An unresolved viewer reach closes that projection fail-closed under the
+  existing reach-resolution contract.
+- A sender failure closes and cleans up that connection. Existing command and
+  operation records remain independent of UI delivery.
+- Cache, cluster, command, and MCP recovery retain their owning contracts;
+  opening a UI connection adds no recovery authority or peer-polling loop.
 
-- **MCP Startup Failure**: Tool catalog and tool-call requests return a secret-safe error when the server cannot initialize, a placeholder environment variable is missing, or MCP handshake fails.
-- **MCP Tool Timeout**: Tool-call requests fail for the caller whose timeout expires; queued calls remain isolated unless the server lease itself fails.
-- **MCP Lease Reap Failure**: Reaper failure leaves an idle lease warm longer than intended. The runtime retries cleanup and logs the server slug without resolved secrets.
+## See Also
+
+- docs/local/adr/0013-unified-cluster-events.md
+- docs/local/spec/feature/tui/session-visibility.md
+- docs/local/design/architecture/scoped-roles.md
