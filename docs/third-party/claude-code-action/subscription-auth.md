@@ -18,6 +18,12 @@ Automation supplies a prompt and can pass supported Claude CLI arguments through
 JSON Schema. Event support and actor allow-list handling are version-specific;
 this reference contains no live workflow result.
 
+## GitHub credential setup
+
+The Action's automation preparation configures GitHub access and replaces
+checkout credentials with its own token or credential helper. A checkout's
+non-persistence setting does not remove these subsequent Action effects.
+
 ## Limits
 
 Secret presence establishes configuration, not successful authentication or
@@ -29,3 +35,4 @@ GitHub write authority merely because an Action runs them.
 - https://code.claude.com/docs/en/github-actions
 - https://github.com/anthropics/claude-code-action/blob/main/action.yml
 - https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+- https://github.com/anthropics/claude-code-action/blob/1d6de8cb0c237e7c15e9e1bdf973826ebae490cc/src/github/operations/git-config.ts

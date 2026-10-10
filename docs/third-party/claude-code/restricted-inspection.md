@@ -1,6 +1,4 @@
 ---
-id: third-party/claude-code/restricted-inspection
-scope: project
 description: Claude Code native subscription authentication and restricted file-tool inspection, including managed-policy exceptions.
 ---
 
@@ -24,15 +22,9 @@ version-specific availability; the latter has runtime configuration exceptions.
 These are native tool controls, not a process-wide kernel boundary or evidence
 that a particular hosted invocation has been validated.
 
-The maintained GitHub Action supports subscription tokens, but its automation
-setup configures GitHub access and replaces checkout credentials. Checkout
-non-persistence does not remove those later effects. Native CLI inspection of
-prepared local evidence does not require that GitHub integration.
-
 ## Sources
 
 - https://code.claude.com/docs/en/authentication#generate-a-long-lived-token
 - https://code.claude.com/docs/en/cli-reference
 - https://code.claude.com/docs/en/permissions#working-directories
 - https://code.claude.com/docs/en/sandboxing
-- https://github.com/anthropics/claude-code-action/blob/1d6de8cb0c237e7c15e9e1bdf973826ebae490cc/src/github/operations/git-config.ts
