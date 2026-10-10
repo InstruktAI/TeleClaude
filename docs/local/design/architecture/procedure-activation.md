@@ -14,19 +14,6 @@ answers. On the computer that emitted a matching event, the event starts that
 procedure's standing agent for the home its event's origin names, or wakes the one already
 running.
 
-<!-- planned-change:procedure-agent-subject-identity -->
-
-An event states its source computer, its subject — the one thing it is about —
-and its home: a registered company, person, or project, none, or unknown
-(`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`). A home
-of none makes the event a platform event. The home decides which agent answers
-and where it works — the company's home, the person's folder, the project's
-checkout, or, for a platform event, the platform's own checkout. The source
-decides which computer does the work. The subject only describes the event to
-the agent that receives it.
-
-<!-- change:procedure-agent-subject-identity -->
-
 An event states its source computer, its subject — the one thing it is about —
 and its home: a registered company, person, or project, none, or unknown
 (`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`). A home
@@ -37,8 +24,6 @@ decides which computer does the work. The subject describes the event to the
 agent that receives it, and for a procedure that declares subject identity it
 also chooses which of that procedure's agents in the home answers: the one
 bound to that subject.
-
-<!-- /planned-change:procedure-agent-subject-identity -->
 
 This document owns only the relationship among the participating contexts. Each
 rule it relies on is stated by its owner:
@@ -56,19 +41,6 @@ rule it relies on is stated by its owner:
 
 **Inputs:**
 
-<!-- planned-change:procedure-agent-subject-identity -->
-
-- Platform events from the platform event stream, handed to the procedure
-  activation consumer on this computer, each carrying the source, subject, and
-  origin its producer stated.
-- Each published procedure's declared subscriptions as type patterns, the home
-  kind it answers, and its publication tier, from the publication index.
-- Whether the event's company, person, or project is registered on this
-  computer, and its folder here; for a platform event, the platform's own
-  checkout on this computer.
-
-<!-- change:procedure-agent-subject-identity -->
-
 - Platform events from the platform event stream, handed to the procedure
   activation consumer on this computer, each carrying the source, subject, and
   origin its producer stated.
@@ -79,21 +51,7 @@ rule it relies on is stated by its owner:
   computer, and its folder here; for a platform event, the platform's own
   checkout on this computer.
 
-<!-- /planned-change:procedure-agent-subject-identity -->
-
 **Outputs:**
-
-<!-- planned-change:procedure-agent-subject-identity -->
-
-- On the computer that emitted the event only: one durable operation per
-  activation, identified by the event, the procedure, and the home, completing
-  when an agent is started or woken and failing visibly when neither is
-  possible.
-- A standing agent session for the procedure and home, started under the system
-  principal in that home — with the session's company set when the home is a
-  company — or an existing one woken with the event.
-
-<!-- change:procedure-agent-subject-identity -->
 
 - On the computer that emitted the event only: one durable operation per
   activation, identified by the event, the procedure, and the home, completing
@@ -104,8 +62,6 @@ rule it relies on is stated by its owner:
   the event's subject, started under the system principal in that home — with
   the session's company set when the home is a company — or an existing one
   woken with the event, or a closed subject-bound one revived with it.
-
-<!-- /planned-change:procedure-agent-subject-identity -->
 
 ## Invariants
 
@@ -142,18 +98,6 @@ rule it relies on is stated by its owner:
   never holds back another consumer, and no other consumer's failure hides an
   event from it (ADR-0116).
 
-<!-- planned-change:procedure-agent-subject-identity -->
-
-- **Identity is the procedure and the home.** A standing agent is identified by
-  the procedure's canonical ID and the home — its kind and its slug, or the
-  platform. A company, a person, and a project that share a slug are three
-  different homes. The declared patterns are membership only, so overlapping
-  patterns never merge procedures and editing them never forks a second agent.
-  The principal is not an identity dimension: every event-started agent runs
-  under the same system principal.
-
-<!-- change:procedure-agent-subject-identity -->
-
 - **Identity is the procedure and the home, and the subject when the procedure
   declares it.** A standing agent is identified by the procedure's canonical ID
   and the home — its kind and its slug, or the platform. A procedure that
@@ -166,25 +110,12 @@ rule it relies on is stated by its owner:
   an identity dimension: every event-started agent runs under the same system
   principal.
 
-<!-- /planned-change:procedure-agent-subject-identity -->
-
 - **A replayed event is not activated twice.** The consumer runtime hands the
   consumer each event once per event id. An activation's identity is derived
   from the event's id, the procedure, and the home, and both the activation's
   durable operation and its delivery into the agent are keyed by it, so an
   event handed again after interrupted handling submits only the activations
   not yet submitted and delivers nothing twice. Distinct events stay distinct.
-
-<!-- planned-change:procedure-agent-subject-identity -->
-
-- **The runner starts no second agent; nothing else is guarded.** On the
-  emitting computer, the runner's resolve-or-create is serialized per procedure
-  and home. It wakes a session already running the procedure for the home under
-  the system principal when it finds one or more, and starts one only when it
-  finds none; a human-lineage session is never adopted. Starting a
-  company-home agent by hand is never refused.
-
-<!-- change:procedure-agent-subject-identity -->
 
 - **The runner starts no second agent; nothing else is guarded.** On the
   emitting computer, the runner's resolve-or-create is serialized per procedure
@@ -197,8 +128,6 @@ rule it relies on is stated by its owner:
   and can resume its own transcript, and starts a bound one only when neither
   is possible; the same per-procedure-and-home serialization covers every
   subject in the home.
-
-<!-- /planned-change:procedure-agent-subject-identity -->
 
 - **One thin command starts every activated agent.** The generic
   procedure-activation command carries the procedure's identity and the home,
@@ -281,8 +210,6 @@ sequenceDiagram
     AR->>Op: complete, or fail with reason
 ```
 
-<!-- planned:procedure-agent-subject-identity -->
-
 ### Subject-bound resolution
 
 For a procedure that declares subject identity, the resolve step finds the
@@ -299,8 +226,6 @@ flowchart TD
     C -- closed and resumable --> R[Revive it with its own transcript] --> D
     C -- none, or none can resume --> N[Start a session bound to the subject] --> D
 ```
-
-<!-- /planned:procedure-agent-subject-identity -->
 
 ### Company on a human-directed session
 
@@ -380,8 +305,6 @@ work is owned without being offered it.
 - **A requested company does not exist, or the requester is not a member** —
   refused at session creation. No session operates under it.
 
-<!-- planned:procedure-agent-subject-identity -->
-
 - **A subject-identity activation's event names no subject** — the activation's
   operation fails stating that no subject was named; no agent is started or
   woken.
@@ -393,8 +316,6 @@ work is owned without being offered it.
 - **A subject-bound session's record has been purged** — nothing binds the
   subject any more, and the next event about it starts a new bound agent
   without the earlier context.
-
-<!-- /planned:procedure-agent-subject-identity -->
 
 ## See Also
 

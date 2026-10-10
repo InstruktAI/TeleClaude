@@ -100,37 +100,6 @@ TeleClaudeNext repository.
   It reads the corpus `context` publishes and the canonical value the command's
   semantic owner emits, and decides neither reach, layout, nor vocabulary.
 
-<!-- planned-change:procedure-agent-subject-identity -->
-
-- **Owns (procedure activation runner):** on the computer that emitted an
-  event, one standing agent per procedure per activation home — a company, a
-  person, a project, or the platform — as the runner's own behavior. The runner
-  resolves the agent through the inbound resolve-or-create seam, serialized per
-  procedure and home so concurrent activations there cannot both start one.
-  When one or more sessions under the system principal already run the
-  procedure for the home, it wakes one and starts none; a session carrying
-  human lineage is never adopted; when none does, it starts one by dispatching
-  the generic procedure-activation command — carrying the procedure's identity
-  and the home — in that home: the company's home folder, the person's folder,
-  or the project's checkout as `config` answers, or the platform's own checkout
-  for the platform. A named home absent on the computer fails the activation,
-  which is never moved to another home or computer. The session is started
-  under the system principal, with its company set only for a company home. The
-  triggering event reaches a new agent as its first input through the same
-  session-input delivery that wakes an existing one, never as additional
-  startup context, keyed by the activation's identity so that a repeated
-  activation for the same event, procedure, and home reaches the agent once. A
-  company-home standing agent may also be started by hand, and nothing
-  restricts that; a person-, project-, or platform-home one is started only by
-  an activation. Nothing coordinates computers. Each activation is a durable
-  operation of its own kind, keyed by the activation's identity, whose
-  completed and failed outcome events this context owns and registers;
-  completion or failure is recorded once, a failure is never presented as
-  success, and it never moves the responsibility to another agent. The agent's
-  lifecycle and its handling of later events belong to the procedure it loads.
-
-<!-- change:procedure-agent-subject-identity -->
-
 - **Owns (procedure activation runner):** on the computer that emitted an
   event, one standing agent per procedure per activation home — a company, a
   person, a project, or the platform — as the runner's own behavior, unless the
@@ -171,8 +140,6 @@ TeleClaudeNext repository.
   principal, the company of a company home, delivery keyed by the activation,
   and the durable operation — is as for a standing agent.
 
-<!-- /planned-change:procedure-agent-subject-identity -->
-
 - **Owns (session company):** a session has a company only when it is created
   with `--company` or started from a session that has one; the company is
   recorded on the session record and carried to every session it starts
@@ -201,14 +168,10 @@ act concerned:
 - daemon and process-supervision events: the computer whose daemon or process
   they concern, with no origin.
 
-<!-- planned:procedure-agent-subject-identity -->
-
 A session's end is reported once for every session that ends, whatever folder
 it worked in, and the event's type states what kind of session ended: a
 help-desk conversation, a person's own conversation, a session the platform or
 another session started, or a session whose record establishes none of these.
-
-<!-- /planned:procedure-agent-subject-identity -->
 
 ## See Also
 

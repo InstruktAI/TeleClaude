@@ -208,8 +208,6 @@ And a session of any other agent, or without a native session id, removes nothin
 And a close without the delete variant leaves the Claude Code temp directory in place, so a revived session resumes with its scratchpad
 ```
 
-<!-- planned:procedure-agent-subject-identity -->
-
 #### UC-SCR-11: Every session that ends is reported once, typed by the kind of session it was
 
 ```gherkin
@@ -244,8 +242,6 @@ Scenario Outline: An ending is reported once, and a later ending again
     | the closed session's row is purged after the retention window      | no second session-ended event is reported for that ending                  |
     | the session is revived and ends again                              | a new session-ended event is reported for the new ending, with its own id  |
 ```
-
-<!-- /planned:procedure-agent-subject-identity -->
 
 #### emit-recently-closed-session-events — restart-recovery sweep
 
@@ -369,8 +365,6 @@ And when Discord cannot conclusively list the forum's threads, the sweep deletes
 - **The in-flight cleanup set is process-local.** Two service processes claiming the same session (which should not happen — there is one service per machine) would not coordinate through this guard. The guard exists to deduplicate parallel events within a single service, not to provide cross-process exclusion.
 - **The destructive delete variant is, well, destructive.** It removes the row entirely rather than transitioning it to closed. The cleanup paths use this only for stale-session reaping, where the row carries no recoverable signal — preserving a tombstone for a session whose host pane died before the service noticed has no operational value.
 
-<!-- planned:procedure-agent-subject-identity -->
-
 - **The single session-ended type is retired, not renamed.** Endings are
   reported only under the kinded types, so a subscriber selects one kind or
   every ending through the shared prefix. The lifecycle runner's consumer also
@@ -383,5 +377,3 @@ And when Discord cannot conclusively list the forum's threads, the sweep deletes
   upgraded, and events stored under it stay as recorded. Reverting the change
   restores the single type; kinded endings already emitted are ignored by a
   computer that does not know them.
-
-<!-- /planned:procedure-agent-subject-identity -->

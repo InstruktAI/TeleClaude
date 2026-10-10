@@ -7,25 +7,6 @@ visibility: internal
 
 ## What it is
 
-<!-- planned-change:procedure-agent-subject-identity -->
-
-A procedure that declares the events activating it owns one continuing agent per
-activation home. A home is a company, a person, or a project, named by its kind
-and its slug, or the platform itself for events that concern no registered
-home. The agent is identified by two facts: the procedure's existing canonical
-ID and the home whose work it carries. The first activation starts it; every
-later activation is delivered to the agent already standing, whether it is idle
-or in the middle of a turn.
-
-The procedure's ID is the identity. Its declared subscription patterns are its
-event membership and nothing more — there is no separate group identifier and no
-group entity to register or manage. Two consequences follow: procedures whose
-patterns overlap remain distinct responsibilities with distinct agents, and
-editing a procedure's patterns changes what its agent listens to without
-changing which agent it is.
-
-<!-- change:procedure-agent-subject-identity -->
-
 A procedure that declares the events activating it owns one continuing agent per
 activation home, or, when it declares subject identity, one per subject of its
 events within that home. A home is a company, a person, or a project, named by
@@ -47,8 +28,6 @@ patterns overlap remain distinct responsibilities with distinct agents, and
 editing a procedure's patterns changes what its agent listens to without
 changing which agent it is.
 
-<!-- /planned-change:procedure-agent-subject-identity -->
-
 A standing agent works in its home on the computer that emitted the activating
 event: a company's home folder, a person's folder, a project's checkout, or, for
 the platform, the platform's own checkout. A named home that does not exist on
@@ -69,8 +48,6 @@ principal when it finds one or more, and starts one only when it finds none.
 That is the runner's own behavior: nothing restricts starting such an agent by
 hand, and nothing coordinates computers.
 
-<!-- planned:procedure-agent-subject-identity -->
-
 For a procedure that declares subject identity, the runner finds the session it
 started for the procedure, the home and the event's subject on that computer,
 open or closed. It delivers to that session when it is open, revives it when it
@@ -78,8 +55,6 @@ has closed and can resume its own transcript, and starts a new one bound to the
 subject when it finds neither. An activation for such a procedure whose event
 names no subject fails, because no agent can be bound to a subject the event
 does not state.
-
-<!-- /planned:procedure-agent-subject-identity -->
 
 An activation carries the identity of the event that produced it. An activation
 that repeats one already delivered for the same event, procedure, and home
@@ -106,15 +81,11 @@ person's folder carries no human identity and acts as no person.
 **Activation**
 : One delivery of a matched event to a procedure's standing agent — a start when none stands, a wake when one does.
 
-<!-- planned:procedure-agent-subject-identity -->
-
 **Subject identity**
 : A procedure's declaration that each subject of its events within a home has its own agent, instead of one agent for the home.
 
 **Subject-bound agent**
 : The agent a procedure declaring subject identity keeps for one subject in one home — started by the first activation about that subject and reached by every later one, revived when its session has closed.
-
-<!-- /planned:procedure-agent-subject-identity -->
 
 ### Use cases
 
@@ -284,8 +255,6 @@ Then the agent does not receive the event a second time
 And no second agent is started
 ```
 
-<!-- planned:procedure-agent-subject-identity -->
-
 #### UC-PSA16: A procedure declaring subject identity starts one agent per subject
 
 ```gherkin
@@ -359,24 +328,7 @@ Scenario Outline: The default identity is unchanged by events about different su
     | declares the home agent identity   |
 ```
 
-<!-- /planned:procedure-agent-subject-identity -->
-
 ### Cross-context references
-
-<!-- planned-change:procedure-agent-subject-identity -->
-
-- **integration** — hands this context an activation naming the procedure, the
-  home, and the event it came from, only on the computer that emitted the
-  event; it never starts or addresses a session itself.
-- **config** — answers whether a company, person, or project is registered on
-  the computer, and where its folder is.
-- **identity** — owns the system-principal contract a standing agent runs
-  under. This context decides nothing about identity and derives no
-  authorization the identity contract does not publish.
-- **context** — publishes the procedure, the event types it declares, and the
-  home kind it answers.
-
-<!-- change:procedure-agent-subject-identity -->
 
 - **integration** — hands this context an activation naming the procedure, the
   home, the agent identity the procedure declares, and the event it came from,
@@ -390,20 +342,10 @@ Scenario Outline: The default identity is unchanged by events about different su
 - **context** — publishes the procedure, the event types it declares, the
   home kind it answers, and the agent identity it declares.
 
-<!-- /planned-change:procedure-agent-subject-identity -->
-
 ## Known caveats
 
 - Standing is not remembering. A long-lived agent compacts; what it recovers
   afterward rests on durable state its procedure and domain own.
-
-<!-- planned-change:procedure-agent-subject-identity -->
-
-- The standing population is bounded by the published procedures and the
-  homes they serve. Workers a standing agent dispatches are a separate,
-  bounded source of concurrency.
-
-<!-- change:procedure-agent-subject-identity -->
 
 - The population of home-bound agents is bounded by the published procedures
   and the homes they serve. Subject-bound agents number one per subject their
@@ -411,22 +353,16 @@ Scenario Outline: The default identity is unchanged by events about different su
   when a later event about its subject arrives. Workers an agent dispatches are
   a separate, bounded source of concurrency.
 
-<!-- /planned-change:procedure-agent-subject-identity -->
-
 - Starting a standing agent by hand is available for a company home only; a
   person-, project-, or platform-home agent is started by an activation.
 - A repeated activation is recognized only while the platform retains its
   delivery record.
-
-<!-- planned:procedure-agent-subject-identity -->
 
 - A subject-bound agent is started only by an activation; starting one by hand
   is not available.
 - A subject-bound agent is found again only while the platform retains its
   session record. After that record is purged, a later event about the subject
   starts a new agent without the earlier context.
-
-<!-- /planned:procedure-agent-subject-identity -->
 
 ## See Also
 
