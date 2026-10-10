@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import tempfile
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
@@ -14,6 +15,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.agent_artifacts import AGENT_ARTIFACT_ROOT_DIRNAME
 from teleclaude.capabilities import DeclarationUnreadable, resolve_tier_permissions
+from teleclaude.config.loader import validate_staged_declaration
 from teleclaude.git import (
     BadName,
     GitCommandError,
@@ -22,11 +24,12 @@ from teleclaude.git import (
     Repo,
     hook_free_environment,
 )
-from teleclaude.git_tree import TreeSource
+from teleclaude.git_tree import TreeSource, read_tree_path
 from teleclaude.paths import REPO_ROOT
 from teleclaude.quality.checkout_grading import (
     CheckoutGradingDecision,
     resolve_checkout_grading_decision,
+    run_subject_checkout_declarations,
     run_subject_checkout_guardrails,
     subject_checkout_grading_environment,
 )
@@ -280,6 +283,27 @@ def run_home_guardrail_gate(
     )
 
 
+def run_staged_declaration_gate(execution_root: Path, declaration_paths: list[str]) -> int:
+    """Validate staged declarations with the config schema selected for this checkout."""
+    if not declaration_paths:
+        return 0
+    decision = resolve_checkout_grading_decision(execution_root)
+    if decision is CheckoutGradingDecision.SUBJECT_CHECKOUT:
+        with subject_checkout_grading_environment(execution_root) as grading_env:
+            return run_subject_checkout_declarations(execution_root, declaration_paths, grading_env)
+
+    source = TreeSource.active_index(execution_root)
+    findings: list[str] = []
+    for relative_path in declaration_paths:
+        content = read_tree_path(source, relative_path)
+        findings.extend(validate_staged_declaration(execution_root / relative_path, content))
+    if not findings:
+        return 0
+    for finding in findings:
+        print(finding, file=sys.stderr)
+    return _DEFAULT_FAILURE_EXIT_CODE
+
+
 def _home_validation_paths(tree_paths: list[str], home_root: Path) -> set[str]:
     """Select the existing Markdown and agent-artifact candidate set for a home."""
     selected: set[str] = set()
@@ -488,6 +512,7 @@ __all__ = [
     "read_head_sha",
     "run_lint_gate",
     "run_make_target",
+    "run_staged_declaration_gate",
     "select_quality_check_families",
     "select_quality_gate_legs",
 ]

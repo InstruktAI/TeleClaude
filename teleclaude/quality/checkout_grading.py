@@ -31,6 +31,8 @@ _GUARDRAILS_CONTENT_ROOT_FLAG = "--content-root"
 _GUARDRAILS_PLATFORM_HOME_SUBJECT_FLAG = "--platform-home-subject"
 _GUARDRAILS_FAMILY_FLAG = "--family"
 _GUARDRAILS_FULL_RUN_FLAG = "--full-run"
+_ENTRY_OPERATION_FLAG = "--operation"
+_ENTRY_OPTION_TERMINATOR = "--"
 
 _ENV_TELECLAUDE_HOME = "TELECLAUDE_HOME"
 _ENV_TELEC_INVOCATION_CWD = "TELEC_INVOCATION_CWD"
@@ -77,6 +79,13 @@ class CheckoutGradingDecision(StrEnum):
     def reason(self) -> CheckoutGradingReason:
         """Return why this decision selects its runner."""
         return _DECISION_REASONS[self]
+
+
+class CheckoutGradingOperation(StrEnum):
+    """Closed set of operations the installed entry can run under subject code."""
+
+    GUARDRAILS = "guardrails"
+    STAGED_DECLARATIONS = "staged-declarations"
 
 
 _DECISION_REASONS: dict[CheckoutGradingDecision, CheckoutGradingReason] = {
@@ -129,6 +138,40 @@ def run_subject_checkout_guardrails(
 ) -> int:
     """Run the installed entry that verifies and grades the subject checkout."""
     targets = [_ALL_FLAG] if files is None else files
+    arguments: list[str] = []
+    if content_root is not None:
+        arguments.extend([_GUARDRAILS_CONTENT_ROOT_FLAG, str(content_root)])
+    if platform_home_subject:
+        arguments.append(_GUARDRAILS_PLATFORM_HOME_SUBJECT_FLAG)
+    for family in sorted(check_families):
+        arguments.extend([_GUARDRAILS_FAMILY_FLAG, family.value])
+    if full_run:
+        arguments.append(_GUARDRAILS_FULL_RUN_FLAG)
+    arguments.extend(targets)
+    return _run_subject_checkout_entry(execution_root, child_env, arguments)
+
+
+def run_subject_checkout_declarations(
+    execution_root: Path,
+    declaration_paths: list[str],
+    child_env: Mapping[str, str],
+) -> int:
+    """Run staged declaration validation under the subject checkout's schema."""
+    arguments = [
+        _ENTRY_OPERATION_FLAG,
+        CheckoutGradingOperation.STAGED_DECLARATIONS.value,
+        _ENTRY_OPTION_TERMINATOR,
+        *declaration_paths,
+    ]
+    return _run_subject_checkout_entry(execution_root, child_env, arguments)
+
+
+def _run_subject_checkout_entry(
+    execution_root: Path,
+    child_env: Mapping[str, str],
+    arguments: list[str],
+) -> int:
+    """Run the installation-supplied entry under the selected checkout's code."""
     entry_env = tree_read_environment(execution_root, base_environment=child_env)
     entry_env[_ENV_PYTHONPATH] = str(execution_root)
     command = [
@@ -143,23 +186,17 @@ def run_subject_checkout_guardrails(
         _GUARDRAILS_ENTRY_ROOT_FLAG,
         str(execution_root),
     ]
-    if content_root is not None:
-        command.extend([_GUARDRAILS_CONTENT_ROOT_FLAG, str(content_root)])
-    if platform_home_subject:
-        command.append(_GUARDRAILS_PLATFORM_HOME_SUBJECT_FLAG)
-    for family in sorted(check_families):
-        command.extend([_GUARDRAILS_FAMILY_FLAG, family.value])
-    if full_run:
-        command.append(_GUARDRAILS_FULL_RUN_FLAG)
-    command.extend(targets)
+    command.extend(arguments)
     return run_process_group_command(command, execution_root, entry_env).exit_code
 
 
 __all__ = [
     "CheckoutGradingDecision",
+    "CheckoutGradingOperation",
     "CheckoutGradingReason",
     "CheckoutGradingRunner",
     "resolve_checkout_grading_decision",
+    "run_subject_checkout_declarations",
     "run_subject_checkout_guardrails",
     "subject_checkout_grading_environment",
 ]

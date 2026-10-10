@@ -14,7 +14,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.agent_artifacts import AGENT_ARTIFACT_ROOT_DIRNAME
 from teleclaude.cli.telec.handlers._code_git_state import working_tree_snapshot
-from teleclaude.config.loader import validate_staged_declaration
 from teleclaude.git import (
     BadName,
     GitCommandError,
@@ -23,7 +22,7 @@ from teleclaude.git import (
     Repo,
     hook_free_environment,
 )
-from teleclaude.git_tree import TreeSource, list_tree_paths, materialize_tree, read_tree_path
+from teleclaude.git_tree import TreeSource, list_tree_paths, materialize_tree
 from teleclaude.paths import ConfigFileName, is_platform_home
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.gate import (
@@ -31,6 +30,7 @@ from teleclaude.quality.gate import (
     QualityGateLeg,
     run_home_guardrail_gate,
     run_lint_gate,
+    run_staged_declaration_gate,
 )
 from teleclaude.quality.selection import (
     GradingHomeSelection,
@@ -159,11 +159,10 @@ def _run_commit_gate(project_root: Path, decision: GateDecision) -> int:
         raise ValueError(_ROOT_DECLARATION_MISSING)
 
     changes = _read_staged_paths(repo)
-    declaration_findings = _validate_staged_declarations(project_root, tree_source, changes)
-    if declaration_findings:
-        for finding in declaration_findings:
-            print(finding, file=sys.stderr)
-        return 1
+    declaration_paths = _staged_declaration_paths(changes)
+    declaration_exit_code = run_staged_declaration_gate(project_root, declaration_paths)
+    if declaration_exit_code != 0:
+        return declaration_exit_code
     home_selections = select_grading_homes(
         project_root,
         [change.path for change in changes],
@@ -206,19 +205,14 @@ def _run_commit_gate(project_root: Path, decision: GateDecision) -> int:
     return next((failure for failure in failures if failure != 0), 0)
 
 
-def _validate_staged_declarations(
-    project_root: Path,
-    tree_source: TreeSource,
-    changes: list[StagedPath],
-) -> list[str]:
-    """Validate each added or modified declaration from the active index."""
-    findings: list[str] = []
+def _staged_declaration_paths(changes: list[StagedPath]) -> list[str]:
+    """Select each changed staged declaration from the active-index diff."""
+    declaration_paths: list[str] = []
     for change in changes:
         if change.status not in _STAGED_ACMR_STATUSES or Path(change.path).name != _ROOT_CONFIG_PATH:
             continue
-        content = read_tree_path(tree_source, change.path)
-        findings.extend(validate_staged_declaration(project_root / change.path, content))
-    return findings
+        declaration_paths.append(change.path)
+    return declaration_paths
 
 
 def _read_staged_paths(repo: Repo) -> list[StagedPath]:
