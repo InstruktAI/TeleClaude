@@ -230,6 +230,8 @@ Scenario Outline: The session-ended event states what kind of session ended
     | whose record states no principal, no system role, and no starting session         | a folder no registration governs           | an unknown kind of session    |
 ```
 
+#### UC-SCR-12: An ending is reported once, and a later ending again
+
 ```gherkin
 Scenario Outline: An ending is reported once, and a later ending again
   Given a session ended and its session-ended event was emitted
@@ -366,3 +368,17 @@ And when Discord cannot conclusively list the forum's threads, the sweep deletes
 - **Orphan sweeps are time-bound to the maintenance tick (~1 hour).** There is no startup sweep that runs these unconditionally on boot — the first sweep happens immediately on periodic-cleanup entry (the first-run flag skips the initial sleep), but a freshly-rebooted service that crashes again within minutes can carry orphans across two restarts before they are observed.
 - **The in-flight cleanup set is process-local.** Two service processes claiming the same session (which should not happen — there is one service per machine) would not coordinate through this guard. The guard exists to deduplicate parallel events within a single service, not to provide cross-process exclusion.
 - **The destructive delete variant is, well, destructive.** It removes the row entirely rather than transitioning it to closed. The cleanup paths use this only for stale-session reaping, where the row carries no recoverable signal — preserving a tombstone for a session whose host pane died before the service noticed has no operational value.
+
+<!-- planned:procedure-agent-subject-identity -->
+
+- **The single session-ended type is retired, not renamed.** Endings are
+  reported only under the kinded types, so a subscriber selects one kind or
+  every ending through the shared prefix. Nothing that consumes endings is
+  affected across versions: the consumers that react to them act only on
+  endings their own computer emitted. An older computer keeps emitting the
+  earlier single type until it is upgraded; a newer computer still reads that
+  name and no consumer acts on it, and events stored under it stay as recorded.
+  Reverting the change restores the single type; kinded endings already emitted
+  are ignored by a computer that does not know them.
+
+<!-- /planned:procedure-agent-subject-identity -->

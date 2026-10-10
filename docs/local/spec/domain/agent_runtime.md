@@ -205,10 +205,4 @@ another session started, or a session whose record establishes none of these.
 
 - docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject, separately from its origin.
 
-<!-- planned:procedure-agent-subject-identity -->
-
-- docs/local/adr/0120-a-session-ended-event-states-the-kind-of-session-in-its-type.md — why every session's end is reported and its type states the kind of session, read from who started it.
-
-<!-- /planned:procedure-agent-subject-identity -->
-
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md
