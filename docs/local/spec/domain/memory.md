@@ -30,10 +30,12 @@ describes the current appliance only.
 
 <!-- planned:help-desk-idle-memory-cycle -->
 
-- **Holds business insights from help-desk conversations.** What visitors ask
-  for, complain about, or are confused by is recorded for the home that owns the
-  desk, beside the memories about each visitor
-  (`local/projects/teleclaude/spec/feature/agent_runtime/desk-conversation-continuity`).
+- **Keeps memories current, and collects business items as prospects.** A
+  memory about a person is current or retired, kept current by memory agents
+  rather than accumulated (`local/projects/teleclaude/spec/feature/memory/memory-curation`).
+  Business items from help-desk conversations — what visitors ask for, complain
+  about, or are confused by — are collected as prospects for the home that owns
+  the desk; they are raw material, never used as memories.
 
 <!-- /planned:help-desk-idle-memory-cycle -->
 

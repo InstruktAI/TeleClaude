@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## What it is
 
-The save path is how a memory observation enters durable storage. The sanctioned callers are scraper-only worker sessions (the memory miners invoked via `/extract-memory-human` and `/extract-memory-project`) — see ADR-0005. The caller supplies a `text` body plus optional `title`, `type`, `project`, and identity scope. The save path resolves project scoping (falling back to `teleclaude` when none is supplied), derives a title from the text when none is given, ensures a per-project manual session exists, and persists the observation. The persisted observation is identified by an id assigned at save and returned to the caller alongside its resolved title and project. The restriction to scraper-only callers is policy, not enforcement.
+The save path is how a single memory observation enters durable storage, through `telec memories save` or the memory API. The caller supplies a `text` body plus optional `title`, `type`, `project`, and identity scope. The save path resolves project scoping (falling back to `teleclaude` when none is supplied), derives a title from the text when none is given, ensures a per-project manual session exists, and persists the observation. The persisted observation is identified by an id assigned at save and returned to the caller alongside its resolved title and project.
 
 ## Canonical fields
 
@@ -16,7 +16,7 @@ The save path is how a memory observation enters durable storage. The sanctioned
 #### Save via CLI
 
 ```
-Given a sanctioned scraper worker runs `telec memories save "<text>" [--title <t>] [--type <obs_type>] [--project <slug>]`
+Given a caller runs `telec memories save "<text>" [--title <t>] [--type <obs_type>] [--project <slug>]`
 When the CLI builds the request body
 Then it includes text; includes title only if --title was given; includes type only if --type was given; includes project only if --project was given
 And asks the memory service to persist the observation
