@@ -1142,11 +1142,11 @@ wheels = [
 
 [[package]]
 name = "instruktai-python-logger"
-version = "0.6.6"
+version = "0.6.7"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8b/d1/264da463b16d23e7a92301c641fd910b3c2b2c2e7c704dcf804dce454ba4/instruktai_python_logger-0.6.6.tar.gz", hash = "sha256:e20b23ce40c96c781723ff3f45056194fafa8e0255e0c4723ab746b8a91f4ec9", size = 25207, upload-time = "2026-07-17T15:07:46.49Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d1/29/dcba997577464c67c9e16a669d1aed360c6b3172685317a75615c5d6e35c/instruktai_python_logger-0.6.7.tar.gz", hash = "sha256:0baa3f882e32c99da753ec8c2b4e4d2151f20eac9e33725f8da89bbe46e6d29e", size = 26568, upload-time = "2026-10-09T17:30:43.587Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e6/d2/e1454b15ff62f3f50bd0d227b0262e836a5330c650acd19940d5f3235450/instruktai_python_logger-0.6.6-py3-none-any.whl", hash = "sha256:ccd37857677c121951a382e13086f7c4b794b3ced2b100606eb547ebb6c61ba7", size = 17155, upload-time = "2026-07-17T15:07:45.55Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/37/05993af519b3d9e697d54740b045925bcc6d796edfea2eab2d22240d9e2b/instruktai_python_logger-0.6.7-py3-none-any.whl", hash = "sha256:34d563de5071a4130ca9cc4337ed4a617707bf1c21f640ed02df30bf17f153fc", size = 18594, upload-time = "2026-10-09T17:30:42.744Z" },
 ]
 
 [[package]]
@@ -3359,7 +3359,7 @@ requires-dist = [
     { name = "gitpython", specifier = ">=3.1.0" },
     { name = "greenlet", specifier = ">=3.3.0" },
     { name = "httpx", specifier = ">=0.28.0" },
-    { name = "instruktai-python-logger", specifier = ">=0.6.6" },
+    { name = "instruktai-python-logger", specifier = ">=0.6.7" },
     { name = "markdown-it-py", specifier = ">=4.0.0" },
     { name = "misaki", extras = ["en"], marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'tts'" },
     { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", git = "https://github.com/Blaizzy/mlx-audio.git?branch=main" },
