@@ -81,7 +81,8 @@ from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._exceptions import ClaimConflict, OperationErrorPayload, OperationFailure
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.identity_reach import resolve_reach
-from teleclaude.types.commands import CallerProvenance, InternalCommand, command_from_dict
+from teleclaude.types.command_wire import command_from_dict
+from teleclaude.types.commands import CallerProvenance, InternalCommand
 
 logger = get_logger(__name__)
 

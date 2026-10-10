@@ -13,7 +13,7 @@ from teleclaude.core.operations._kinds import (
     OPERATION_KIND_AGENT_RESTART,
     OPERATION_KIND_SESSION_CLOSE,
 )
-from teleclaude.types.commands import command_from_dict
+from teleclaude.types.command_wire import command_from_dict
 
 _SESSION_OPERATION_KINDS = frozenset(
     {OPERATION_KIND_SESSION_CLOSE, OPERATION_KIND_AGENT_RESTART, OPERATION_KIND_AGENT_HANDOFF}

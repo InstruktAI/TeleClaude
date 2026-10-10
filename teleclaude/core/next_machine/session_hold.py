@@ -14,11 +14,10 @@ from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.session_listeners import notify_gate_approved
 from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.events.envelope import EventLevel
-from teleclaude.events.envelope_facts import home_for_project_path, home_for_session_config
+from teleclaude.events.envelope_facts import home_for_project_path
 from teleclaude.events.producer import publish_event
-from teleclaude.events.references import SessionRef, TodoRef
+from teleclaude.events.references import TodoRef
 from teleclaude.events.schemas.sdlc import TodoUpdated, TodoUpdatedData
-from teleclaude.events.schemas.system import SessionEnded, SessionEndedData
 from teleclaude.events.wire import LegacyFacts
 from teleclaude.project_root import is_project_checkout, resolve_project_root
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
@@ -105,24 +104,6 @@ async def emit_todo_updated(*, slug: str, project_root: str, source: str) -> Non
         logger.info("sdlc.todo.updated not emitted: event producer unavailable", slug=slug)
 
 
-async def _emit_session_ended(*, session_id: str, project_path: str, config_subject: str | None) -> None:
-    try:
-        await publish_event(
-            SessionEnded(
-                subject=SessionRef(session_id),
-                home=home_for_session_config(config_subject),
-                data=SessionEndedData(
-                    session_id=session_id,
-                    project_path=project_path,
-                    ended_at=datetime.now(UTC).isoformat(),
-                ),
-            ),
-            LegacyFacts(producer="agent_runtime", level=EventLevel.WORKFLOW, domain="agent_runtime"),
-        )
-    except RuntimeError:
-        logger.info("agent_runtime.session.ended not emitted: event producer unavailable", session_id=session_id)
-
-
 async def _manual_close_driver_correlation(db: Db, session_id: str) -> ManualCloseDriverCorrelation:
     session = await db.get_session(session_id)
     if session is None:
@@ -199,14 +180,11 @@ def _log_manual_close_driver_correlation(*, session_id: str, correlation: Manual
     )
 
 
-async def _project_path_for_session_end(db: Db, session_id: str) -> tuple[str | None, str, str | None]:
+async def _project_path_for_session_end(db: Db, session_id: str) -> tuple[str | None, str]:
     session = await db.get_session(session_id)
     if session is None:
-        return None, "session-not-found", None
-    project_path, reason = _workflow_project_path(session.project_path)
-    if project_path is None:
-        return None, reason, session.config_subject
-    return project_path, "ok", session.config_subject
+        return None, "session-not-found"
+    return _workflow_project_path(session.project_path)
 
 
 async def reconcile_driver_ownership_for_session(todos_db: TodosDb, session_id: str) -> DriverOwnershipReconciliation:
@@ -298,13 +276,7 @@ async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveR
 
 
 async def clear_active_runner_for_session_end(db: Db, session_id: str) -> ActiveRunnerMutationResult:
-    project_path, reason, config_subject = await _project_path_for_session_end(db, session_id)
-    if project_path is not None:
-        await _emit_session_ended(
-            session_id=session_id,
-            project_path=project_path,
-            config_subject=config_subject,
-        )
+    project_path, reason = await _project_path_for_session_end(db, session_id)
     if project_path is None:
         return ActiveRunnerMutationResult(slug=None, project_path=None, mutated=False, reason=reason)
     todos_db = await get_todos_db(project_path)

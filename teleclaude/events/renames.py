@@ -8,10 +8,14 @@ live computer reads the earlier names.
 
 from __future__ import annotations
 
+#: The one session-ended type name that is retired, not renamed: endings are reported under the kinded types
+#: below it, and the earlier name below still decodes to it on events older computers emit.
+RETIRED_SESSION_ENDED_TYPE = "teleclaude.agent_runtime.session.ended"
+
 #: Earlier type name to current type name.
 TYPE_RENAMES: dict[str, str] = {
     "agent_runtime.restart.failed": "teleclaude.agent_runtime.session.restart_failed",
-    "agent_runtime.session.ended": "teleclaude.agent_runtime.session.ended",
+    "agent_runtime.session.ended": RETIRED_SESSION_ENDED_TYPE,
     "config.effective.updated": "teleclaude.config.effective.updated",
     "content.dumped": "teleclaude.content.dumped",
     "content.published": "teleclaude.content.published",

@@ -2,15 +2,15 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
-from enum import Enum
-from inspect import signature
-from typing import Any, Literal, Optional, TypedDict, cast
+from enum import Enum, StrEnum
+from typing import Optional, TypedDict, cast
 from uuid import uuid4
 
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import EndpointStamp, SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._types import JsonDict, JsonValue
+from teleclaude.docs_subscriptions import SubscriptionIdentity
 from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.discord_thread_claims import (
     DiscordThreadClaimAction,
@@ -18,10 +18,6 @@ from teleclaude.types.discord_thread_claims import (
     DiscordThreadClaimLifecycle,
 )
 from teleclaude.types.media import MediaRef
-
-# The nested wire blocks a command carries as typed values.
-_ENDPOINT_FIELD = "endpoint"
-_MEDIA_REF_FIELD = "media_ref"
 
 
 class CommandType(str, Enum):
@@ -108,11 +104,19 @@ class RestartAgentResult(TypedDict):
     selected_agent: str | None
 
 
+class ActivationOutcome(StrEnum):
+    """How an activation reached its agent: started it, woke an open one, or revived a closed one."""
+
+    STARTED = "started"
+    WOKEN = "woken"
+    REVIVED = "revived"
+
+
 class ProcedureActivationResult(TypedDict):
-    """Outcome of waking or starting a procedure's standing agent."""
+    """Outcome of starting, waking or reviving a procedure's agent."""
 
     session_id: str
-    outcome: Literal["started", "woken"]
+    outcome: ActivationOutcome
 
 
 @dataclass(kw_only=True)
@@ -757,11 +761,16 @@ class HandoffAgentCommand(InternalCommand):
 
 @dataclass(kw_only=True)
 class ActivateProcedureCommand(InternalCommand):
-    """Intent to wake or start a procedure's standing agent for the activation home named by a token."""
+    """Intent to wake or start a procedure's agent for the activation home named by a token.
+
+    ``identity`` is which agent answers the event: the home's one agent, or the
+    agent of the event's subject within the home.
+    """
 
     procedure_id: str
     home: str
     event_json: str
+    identity: SubscriptionIdentity
 
     def __init__(
         self,
@@ -769,6 +778,7 @@ class ActivateProcedureCommand(InternalCommand):
         procedure_id: str,
         home: str,
         event_json: str,
+        identity: SubscriptionIdentity = SubscriptionIdentity.HOME,
         request_id: str | None = None,
     ):
         super().__init__(
@@ -781,6 +791,7 @@ class ActivateProcedureCommand(InternalCommand):
         self.procedure_id = procedure_id
         self.home = ActivationHome.from_token(home).to_token()
         self.event_json = event_json
+        self.identity = identity
 
     def to_payload(self) -> dict[str, object]:
         return {"session_id": "", "args": [self.procedure_id, self.home]}
@@ -915,86 +926,3 @@ class SetVoiceFocusCommand(InternalCommand):
 
     def to_payload(self) -> dict[str, object]:
         return {"person_slug": self.person_slug, "session_id": self.session_id}
-
-
-COMMAND_CLASS_BY_TYPE: dict[CommandType, type[InternalCommand]] = {
-    CommandType.CREATE_SESSION: CreateSessionCommand,
-    CommandType.HANDLE_VOICE: HandleVoiceCommand,
-    CommandType.HANDLE_FILE: HandleFileCommand,
-    CommandType.KEYS: KeysCommand,
-    CommandType.START_AGENT: StartAgentCommand,
-    CommandType.RESUME_AGENT: ResumeAgentCommand,
-    CommandType.PROCESS_MESSAGE: ProcessMessageCommand,
-    CommandType.RUN_AGENT_COMMAND: RunAgentCommand,
-    CommandType.RESTART_AGENT: RestartAgentCommand,
-    CommandType.HANDOFF_AGENT: HandoffAgentCommand,
-    CommandType.REVIVE_AGENT: ReviveAgentCommand,
-    CommandType.UNSUBSCRIBE_SESSION: UnsubscribeSessionCommand,
-    CommandType.GET_SESSION_DATA: GetSessionDataCommand,
-    CommandType.CLOSE_SESSION: CloseSessionCommand,
-    CommandType.SYSTEM: SystemCommand,
-    CommandType.SET_VOICE_FOCUS: SetVoiceFocusCommand,
-    CommandType.DISCORD_THREAD_CLAIM: DiscordThreadClaimCommand,
-    CommandType.ACTIVATE_PROCEDURE: ActivateProcedureCommand,
-}
-
-_WIRE_ENUM_FIELDS: Mapping[str, type[Enum]] = {
-    "response_mode": ResponseMode,
-    "entry_point": SessionEntryPoint,
-    "command_input_mode": CommandInputMode,
-    "action": DiscordThreadClaimAction,
-    "kind": DiscordThreadClaimKind,
-    "lifecycle": DiscordThreadClaimLifecycle,
-    "text_kind": TranscriptEntryKind,
-    "source_feature": InjectedTextSourceFeature,
-}
-
-
-def command_from_dict(data: JsonDict) -> InternalCommand:
-    """Rebuild an internal command from its cross-computer wire payload."""
-    raw_command_type = data.get("command_type")
-    if not isinstance(raw_command_type, str):
-        raise ValueError("command_type is required")
-    command_type = CommandType(raw_command_type)
-    command_cls = COMMAND_CLASS_BY_TYPE[command_type]
-
-    constructor_params = signature(command_cls).parameters
-    kwargs: dict[str, object] = {}
-    for name in constructor_params:
-        if name in {"command_type", "computer", "caller"} or name not in data:
-            continue
-        raw_value: object = data[name]
-        value: object = raw_value
-        enum_type = _WIRE_ENUM_FIELDS.get(name)
-        if enum_type is not None and isinstance(raw_value, str):
-            value = enum_type(raw_value)
-        elif name == "launch_intent" and isinstance(raw_value, dict):
-            value = SessionLaunchIntent.from_dict(raw_value)
-        elif name in {"origin_metadata", "data"} and isinstance(raw_value, dict):
-            value = dict(raw_value)
-        elif name == _ENDPOINT_FIELD and isinstance(raw_value, dict):
-            value = EndpointStamp.from_dict(raw_value)
-        elif name == _MEDIA_REF_FIELD and isinstance(raw_value, dict):
-            value = MediaRef.from_dict(raw_value)
-        kwargs[name] = value
-
-    command = cast(InternalCommand, cast(Any, command_cls)(**kwargs))
-    command.computer = cast(str | None, data.get("computer"))
-    raw_response_mode = data.get("response_mode")
-    if isinstance(raw_response_mode, str):
-        command.response_mode = ResponseMode(raw_response_mode)
-    command.success_event = cast(str | None, data.get("success_event"))
-    command.failure_event = cast(str | None, data.get("failure_event"))
-    raw_caller = data.get("caller")
-    command.caller = CallerProvenance.from_dict(raw_caller) if isinstance(raw_caller, dict) else None
-    raw_relayed_principal = data.get("relayed_principal")
-    if raw_relayed_principal is not None and not isinstance(raw_relayed_principal, str):
-        raise ValueError("relayed_principal must be a string when present")
-    command.relayed_principal = raw_relayed_principal
-    # A subclass whose hand-written __init__ hardcodes response_mode/events (or,
-    # like ProcessMessageCommand, derives `caller` from its own flat kwargs) never
-    # installed these post-construction assignments through the biconditional.
-    # Re-running it here closes that gap on every deserialized command, remote or
-    # local, rather than only on the ones whose __init__ happens to accept them.
-    command.__post_init__()
-    return command
