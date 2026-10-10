@@ -362,7 +362,7 @@ lint_full() {
 
     start_leg "ruff check" uv run ruff check .
     start_leg "ruff format check" run_python_format_check .
-    start_leg "pyright" uv run pyright
+    start_leg "pyright" uv run pyright --threads 2
     start_leg "mypy" uv run mypy
 
     for p in teleclaude tools; do
@@ -441,7 +441,7 @@ lint_scoped() {
     if [ "$py_full" -eq 1 ]; then
         start_leg "ruff check" uv run ruff check .
         start_leg "ruff format check" run_python_format_check .
-        start_leg "pyright" uv run pyright
+        start_leg "pyright" uv run pyright --threads 2
         start_leg "mypy" uv run mypy
     elif [ "${#py[@]}" -gt 0 ]; then
         start_leg "ruff check" uv run ruff check "${py[@]}"

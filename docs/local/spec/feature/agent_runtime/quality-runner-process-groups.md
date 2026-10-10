@@ -89,6 +89,16 @@ And changed files are checked by the same formatter and options
 And formatting writes preserve the cache for other unchanged files
 ```
 
+#### UC-CQD7: Full Python analysis uses bounded Pyright workers
+
+```gherkin
+Given the project-native lint recipe selects a full Python analysis
+When Pyright checks the configured sources
+Then it uses two analyzer workers with the existing source selection and diagnostic options
+And a scoped Python file analysis retains its existing invocation
+And the shared command runner owns and reaps the worker processes
+```
+
 ## Known caveats
 
 - Abrupt process termination can prevent a stage's completion record. TRACE
@@ -101,6 +111,8 @@ And formatting writes preserve the cache for other unchanged files
 - Prettier's cache does not fingerprint plugin implementations. This project's
   root formatter currently has no plugins; adopting or updating a plugin
   requires invalidating its formatting cache.
+- Pyright's worker mode is experimental in the pinned tool version. The worker
+  count is bounded to two rather than derived from all available processors.
 
 ## See also
 
