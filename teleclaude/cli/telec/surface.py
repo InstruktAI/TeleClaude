@@ -1843,10 +1843,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "retry": CommandDef(
                         desc="Retry one terminally failed maintenance action",
-                        args="--after-sha <sha> --action <id> ",
+                        args="(--after-sha <sha> | --event-id <id>) --action <id> ",
                         flags=[
                             F.FLAG_HELP,
                             F.FLAG_MAINTENANCE_AFTER_SHA,
+                            F.FLAG_MAINTENANCE_EVENT_ID,
                             F.FLAG_MAINTENANCE_ACTION,
                         ],
                         auth=CommandAuth(system=_INTEGRATOR_RESERVATION, human=frozenset()),

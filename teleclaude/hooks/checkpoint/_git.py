@@ -65,12 +65,14 @@ def _is_checkpoint_project_supported(
     capabilities: Capabilities,
     checkpoint: CheckpointConfig | None,
 ) -> bool:
-    """Return whether an adopted project declares anything to enforce."""
+    """Return whether an adopted project declares anything to enforce; an event binding names no files, so it enforces nothing at agent stop."""
     if not project_path:
         return False
     if not capabilities.is_target:
         return False
-    return capabilities.any_enabled or bool(checkpoint and checkpoint.bindings)
+    return capabilities.any_enabled or bool(
+        checkpoint and any(binding.events is None for binding in checkpoint.bindings)
+    )
 
 
 def _get_uncommitted_files(project_path: str) -> list[str] | None:

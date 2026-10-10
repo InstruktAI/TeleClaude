@@ -1,8 +1,9 @@
 """On-demand maintenance: ``telec sync`` performs a root's maintenance steps now, as the manual fallback.
 
 The steps are every maintenance action the root's committed declaration (platform base merged
-with the project overlay) declares. They run through the commit-boundary executor under its
-lock, one by one with each outcome reported as it completes. Restarts, reloads and service
+with the project overlay) declares, except an action only an event binding names, which has no
+event to act on here. They run through the commit-boundary executor under its lock, one by one
+with each outcome reported as it completes. Restarts, reloads and service
 deployment are never performed; each is named, with the command that performs it, when it is owed.
 """
 
@@ -18,17 +19,27 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.checkpoint_model import ActivationRange, fill_on_demand, load_committed_checkpoint_model
+from teleclaude.checkpoint_model import (
+    ActivationRange,
+    event_only_action_ids,
+    fill_on_demand,
+    load_committed_checkpoint_model,
+)
 from teleclaude.constants import MaintenanceAction, OnDemandDisposition
 from teleclaude.core.dirty_path_owners import DirtyPathOwner, resolve_dirty_path_owners
 from teleclaude.core.integration._maintenance_records import (
+    EventActivation,
     MaintenanceActionRecord,
     MaintenanceRecordState,
     maintenance_drain_lock,
     read_records,
 )
 from teleclaude.core.integration.maintenance_trigger import ON_DEMAND_TRIGGER_ENV, MaintenanceTrigger
-from teleclaude.core.integration.post_commit_maintenance import eligible_main_root, run_maintenance_waves
+from teleclaude.core.integration.post_commit_maintenance import (
+    eligible_main_root,
+    replay_command,
+    run_maintenance_waves,
+)
 from teleclaude.core.project_state import resolve_owning_checkout
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, hook_free_environment
 from teleclaude.paths import ConfigFileName
@@ -71,8 +82,11 @@ _STEP_SUCCEEDED = "{action_id}: succeeded"
 _STEP_FAILED = "{action_id}: failed (exit code {exit_code})"
 _EARLIER_FAILURE = (
     "{action_id} failed in an earlier commit-boundary run ({after_sha}). Replay it for its original range with: "
-    "telec code maintenance retry --after-sha {after_sha_full} --action {action_id}. "
-    "The standing integrator owns that replay."
+    "{command}. The standing integrator owns that replay."
+)
+_EARLIER_EVENT_FAILURE = (
+    "{action_id} failed in an earlier run for the {event_type} event {event_id}. Replay it for that event with: "
+    "{command}. The standing integrator owns that replay."
 )
 _OWED = "{action_id} is owed: {reason}"
 _OWED_RUN = "  Run: {command}"
@@ -248,11 +262,15 @@ def _resolve_target(invocation_directory: Path) -> _Target:
         tip = Repo(str(root)).head.commit.hexsha
     except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError, ValueError) as exc:
         raise _Refused(_NO_PROJECT.format(directory=directory, error=exc)) from exc
+    model = load_committed_checkpoint_model(root, tip)
+    event_only = event_only_action_ids(model)
     return _Target(
         root=root,
         home=home,
         tip=tip,
-        maintenance=load_committed_checkpoint_model(root, tip).maintenance,
+        maintenance={
+            action_id: action for action_id, action in model.maintenance.items() if action_id not in event_only
+        },
     )
 
 
@@ -306,13 +324,25 @@ def _report_earlier_failures(root: Path, emit: Callable[[str], None]) -> None:
         record for record in read_records(root) if record.state is MaintenanceRecordState.FAILED
     )
     for record in failed:
-        emit(
-            _EARLIER_FAILURE.format(
-                action_id=record.action_id,
-                after_sha=record.after_sha[:_SHORT_COMMIT_LENGTH],
-                after_sha_full=record.after_sha,
+        activation = record.activation
+        command = replay_command(activation, record.action_id)
+        if isinstance(activation, EventActivation):
+            emit(
+                _EARLIER_EVENT_FAILURE.format(
+                    action_id=record.action_id,
+                    event_type=activation.event_type,
+                    event_id=activation.event_id,
+                    command=command,
+                )
             )
-        )
+        else:
+            emit(
+                _EARLIER_FAILURE.format(
+                    action_id=record.action_id,
+                    after_sha=activation.after_sha[:_SHORT_COMMIT_LENGTH],
+                    command=command,
+                )
+            )
 
 
 def _report_owed(

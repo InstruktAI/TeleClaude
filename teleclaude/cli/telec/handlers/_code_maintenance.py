@@ -13,17 +13,25 @@ from teleclaude.cli.telec.surface import (
     CODE_MAINTENANCE_RETRY,
     CODE_MAINTENANCE_STATUS,
 )
-from teleclaude.core.integration._maintenance_records import MaintenanceActionRecord, MaintenanceRecordState
+from teleclaude.core.integration._maintenance_records import (
+    EventActivation,
+    MaintenanceActionRecord,
+    MaintenanceRecordState,
+    activation_key,
+    commit_activation_key,
+    event_activation_key,
+)
 from teleclaude.core.integration.post_commit_maintenance import (
     MaintenanceStatus,
     drain_maintenance,
     maintenance_status,
+    replay_command,
     retry_failed_action,
 )
 from teleclaude.project_root import resolve_invocation_roots
 
 _USAGE = "Usage: telec code maintenance {status|drain|retry}"
-_RETRY_USAGE = "Usage: telec code maintenance retry --after-sha <sha> --action <id>"
+_RETRY_USAGE = "Usage: telec code maintenance retry (--after-sha <sha> | --event-id <id>) --action <id>"
 _NO_ACTION_RECORDS = "No outstanding or failed maintenance action records."
 _NO_JUDGMENT_MARKER = "No integrator judgment is pending."
 _MISSING_VALUE = "none"
@@ -33,8 +41,9 @@ _DRAIN_FAILED = "Maintenance drain is ineligible here or a terminal failure rema
 _RETRY_FAILED = "Maintenance action remains failed after retry; inspect telec code maintenance status."
 _RETRY_SUCCEEDED = "Maintenance action retry completed."
 _ACTIVATION_LINE = "Activation {after_sha} (queued {queued_at})"
+_EVENT_ACTIVATION_LINE = "Event activation {event_type} {event_id} (queued {queued_at})"
 _RECORD_LINE = "  {action_id}: {state}; exit_code={exit_code}; finished_at={finished_at}"
-_RECORD_RECOVERY_LINE = "  Recover with: telec code maintenance retry --after-sha {after_sha} --action {action_id}"
+_RECORD_RECOVERY_LINE = "  Recover with: {command}"
 _MARKER_ACTIVATION_LINE = "  {after_sha} activated_at={activated_at}"
 _MARKER_READINESS_LINE = "Integrator judgment ready_at={ready_at}"
 _MARKER_RECOVERY_LINE = "  Resume with: telec code maintenance drain"
@@ -88,19 +97,20 @@ def _retry(args: list[str]) -> None:
     """Validate a failed record, retry it, and report any remaining failure."""
     parsed = parse_command_args(CODE_MAINTENANCE_RETRY, args)
     after_values = parsed.values(F.FLAG_MAINTENANCE_AFTER_SHA)
+    event_values = parsed.values(F.FLAG_MAINTENANCE_EVENT_ID)
     action_values = parsed.values(F.FLAG_MAINTENANCE_ACTION)
-    if parsed.positionals or len(after_values) != 1 or len(action_values) != 1:
+    if parsed.positionals or len(after_values) + len(event_values) != 1 or len(action_values) != 1:
         print(_RETRY_USAGE, file=sys.stderr)
         raise SystemExit(2)
     root = _invocation_root()
-    after_sha = after_values[0]
+    key = commit_activation_key(after_values[0]) if after_values else event_activation_key(event_values[0])
     action_id = action_values[0]
     status = maintenance_status(root)
     failed_record = next(
         (
             record
             for record in status.records
-            if record.after_sha == after_sha
+            if activation_key(record.activation) == key
             and record.action_id == action_id
             and record.state is MaintenanceRecordState.FAILED
         ),
@@ -109,7 +119,7 @@ def _retry(args: list[str]) -> None:
     if failed_record is None:
         print(_RETRY_REQUIRES_FAILED, file=sys.stderr)
         raise SystemExit(1)
-    if not retry_failed_action(root, after_sha, action_id):
+    if not retry_failed_action(root, key, action_id):
         print(_RETRY_FAILED, file=sys.stderr)
         raise SystemExit(1)
     print(_RETRY_SUCCEEDED)
@@ -119,10 +129,10 @@ def _print_status(status: MaintenanceStatus) -> None:
     """Print every action record and the checkout-scoped judgment state."""
     if not status.records:
         print(_NO_ACTION_RECORDS)
-    for after_sha in sorted({record.after_sha for record in status.records}):
-        activation_records = tuple(record for record in status.records if record.after_sha == after_sha)
+    for key in sorted({activation_key(record.activation) for record in status.records}):
+        activation_records = tuple(record for record in status.records if activation_key(record.activation) == key)
         first_record = activation_records[0]
-        print(_ACTIVATION_LINE.format(after_sha=after_sha, queued_at=first_record.queued_at))
+        print(_activation_line(first_record))
         for record in activation_records:
             _print_record(record)
     marker = status.judgment_marker
@@ -137,6 +147,16 @@ def _print_status(status: MaintenanceStatus) -> None:
         print(_MARKER_RECOVERY_LINE)
 
 
+def _activation_line(record: MaintenanceActionRecord) -> str:
+    """Name the activation a record belongs to and when it was queued."""
+    activation = record.activation
+    if isinstance(activation, EventActivation):
+        return _EVENT_ACTIVATION_LINE.format(
+            event_type=activation.event_type, event_id=activation.event_id, queued_at=record.queued_at
+        )
+    return _ACTIVATION_LINE.format(after_sha=activation.after_sha, queued_at=record.queued_at)
+
+
 def _print_record(record: MaintenanceActionRecord) -> None:
     """Print one action state and the exact recovery command for failures."""
     print(
@@ -148,4 +168,4 @@ def _print_record(record: MaintenanceActionRecord) -> None:
         )
     )
     if record.state is MaintenanceRecordState.FAILED:
-        print(_RECORD_RECOVERY_LINE.format(after_sha=record.after_sha, action_id=record.action_id))
+        print(_RECORD_RECOVERY_LINE.format(command=replay_command(record.activation, record.action_id)))

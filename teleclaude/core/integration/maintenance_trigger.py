@@ -12,7 +12,8 @@ ON_DEMAND_TRIGGER_ENV = "TELECLAUDE_MAINTENANCE_TRIGGER"
 
 
 class MaintenanceTrigger(StrEnum):
-    """What started a maintenance run: a commit-boundary drain, or a manual on-demand run."""
+    """What started a maintenance run: a commit-boundary drain, a platform event, or a manual on-demand run."""
 
     COMMIT_BOUNDARY = "commit_boundary"
+    EVENT = "event"
     ON_DEMAND = "on_demand"

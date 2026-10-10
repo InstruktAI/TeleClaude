@@ -23,12 +23,21 @@ from teleclaude.config.field_constraints import (
 from teleclaude.config.identity_schema import CompanyMember, PersonEntry
 from teleclaude.config.tiers import Tier
 from teleclaude.constants import CHECKPOINT_BASE_ACTIONS, CHECKPOINT_BASE_MAINTENANCE, OnDemandDisposition
+from teleclaude.events.type_pattern import TypePattern
 from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import RESERVED_HOME_IDENTITY_PREFIXES
 
 CURRENT_SCHEMA_VERSION = 20
 _PROBE_REQUIRES_DEFER_ERROR = "owed_probe belongs only to an action whose on_demand is defer"
+_EVENT_BINDING_SCOPE_ERROR = "a binding names one trigger kind: events or scope, never both"
+_EVENT_BINDING_EMPTY_ERROR = "a binding that names events must name at least one event type pattern"
+_EVENT_BINDING_JUDGMENT_ACTION_ERROR = (
+    "checkpoint.bindings[{index}] binds events to {actions}; only maintenance actions may be bound to events, "
+    "because an event has no agent to surface a judgment action to"
+)
+_EVENT_BINDING_SCOPE_FIELD = "scope"
+_ACTION_LIST_SEPARATOR = ", "
 _BLANK_INBOUND_SECRET_ERROR = "An inbound source requires a non-blank secret"
 _BLANK_INBOUND_VERIFY_TOKEN_ERROR = "The WhatsApp inbound source requires a non-blank verify_token"
 
@@ -497,10 +506,30 @@ class CheckpointScopeConfig(ClosedModel):
 
 
 class CheckpointBindingConfig(ClosedModel):
-    """Maps a scope to the action ids a matching changed file owes."""
+    """Maps a trigger to the action ids it owes: a scope selects changed files, ``events`` select event types."""
 
     scope: CheckpointScopeConfig = CheckpointScopeConfig()
+    events: list[str] | None = None
     actions: list[str] = []
+
+    @field_validator("events")
+    @classmethod
+    def parse_event_patterns(cls, value: list[str] | None) -> list[str] | None:
+        """Refuse an empty list and any entry that is not a well-formed event type pattern."""
+        if value is None:
+            return value
+        if not value:
+            raise ValueError(_EVENT_BINDING_EMPTY_ERROR)
+        for pattern in value:
+            TypePattern(pattern)
+        return value
+
+    @model_validator(mode="after")
+    def validate_single_trigger_kind(self) -> CheckpointBindingConfig:
+        """A binding names events or a path scope, never both."""
+        if self.events is not None and _EVENT_BINDING_SCOPE_FIELD in self.model_fields_set:
+            raise ValueError(_EVENT_BINDING_SCOPE_ERROR)
+        return self
 
 
 class CheckpointCodeConfig(ClosedModel):
@@ -597,6 +626,14 @@ class CheckpointConfig(ClosedModel):
 
         for index, binding in enumerate(self.bindings):
             _check(binding.actions, f"bindings[{index}].actions")
+            if binding.events is not None:
+                judgment = [action_id for action_id in binding.actions if action_id not in maintenance_ids]
+                if judgment:
+                    raise ValueError(
+                        _EVENT_BINDING_JUDGMENT_ACTION_ERROR.format(
+                            index=index, actions=_ACTION_LIST_SEPARATOR.join(judgment)
+                        )
+                    )
         if self.docs is not None:
             _check(self.docs.actions, "docs.actions")
         if self.agents is not None:

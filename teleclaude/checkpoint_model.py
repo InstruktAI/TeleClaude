@@ -9,6 +9,7 @@ merged declaration only; no consumer recreates path or capability policy.
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -29,12 +30,14 @@ from teleclaude.constants import (
     LOG_CHECK_ACTION_ID,
     CheckpointAction,
     CheckpointBinding,
+    CheckpointEventBinding,
     CheckpointModel,
     CheckpointScope,
     JudgmentOwner,
     MaintenanceAction,
     _compile_glob,
 )
+from teleclaude.events.type_pattern import TypePattern
 from teleclaude.git import GitCommandError
 from teleclaude.git_tree import TreeSource, read_tree_path
 from teleclaude.paths import ConfigFileName, is_platform_home
@@ -48,9 +51,10 @@ _ACTIVATION_BEFORE_PLACEHOLDER = "{before_sha}"
 _ACTIVATION_AFTER_PLACEHOLDER = "{after_sha}"
 _HOME_PLACEHOLDER = "{home}"
 _INTERPRETER_PLACEHOLDER = "{interpreter}"
-_ACTIVATION_BEFORE_FLAG = "--before-sha"
-_HOME_FLAG = "--home"
-_EMPTY_COMMAND_ARGUMENT = ""
+_EVENT_FILE_PLACEHOLDER = "{event_file}"
+_EVENT_TYPE_PLACEHOLDER = "{event_type}"
+_EVENT_ID_PLACEHOLDER = "{event_id}"
+_FLAG_PREFIX = "--"
 _MAINTENANCE_ACTIONS_RESOLVED_EVENT = "checkpoint_maintenance_actions_resolved"
 _COMMITTED_DECLARATION_UNREADABLE_EVENT = "checkpoint_committed_declaration_unreadable"
 
@@ -58,7 +62,9 @@ __all__ = [
     "ActivationRange",
     "base_checkpoint_model",
     "checkpoint_model_from_project_config",
+    "event_only_action_ids",
     "fill_activation_range",
+    "fill_event_activation",
     "fill_on_demand",
     "load_checkpoint_model",
     "load_committed_checkpoint_model",
@@ -79,6 +85,26 @@ class ActivationRange:
     after_sha: str
 
 
+def _fill_placeholders(command: tuple[str, ...], values: Mapping[str, str | None]) -> tuple[str, ...]:
+    """Substitute each placeholder the command names from ``values``.
+
+    A placeholder whose value is ``None`` is omitted together with the flag directly before
+    it, so a command declares ``--before-sha {before_sha}`` once and a run that has no such
+    value passes neither. A placeholder not in ``values`` is left as written.
+    """
+    resolved: list[str] = []
+    for argument in command:
+        if argument not in values:
+            resolved.append(argument)
+            continue
+        value = values[argument]
+        if value is not None:
+            resolved.append(value)
+        elif resolved and resolved[-1].startswith(_FLAG_PREFIX):
+            resolved.pop()
+    return tuple(resolved)
+
+
 def fill_activation_range(
     command: tuple[str, ...],
     activation_range: ActivationRange,
@@ -91,32 +117,43 @@ def fill_activation_range(
     A root commit omits the ``--before-sha`` pair. The ``--home`` pair appears only
     when a ``home`` is given, so a commit-boundary activation, which has none, omits it.
     """
-    resolved: list[str] = []
-    python = interpreter or sys.executable
-    index = 0
-    while index < len(command):
-        argument = command[index]
-        if argument == _INTERPRETER_PLACEHOLDER:
-            resolved.append(python)
-            index += 1
-            continue
-        next_argument = command[index + 1] if index + 1 < len(command) else _EMPTY_COMMAND_ARGUMENT
-        if argument == _ACTIVATION_BEFORE_FLAG and next_argument == _ACTIVATION_BEFORE_PLACEHOLDER:
-            if activation_range.before_sha is not None:
-                resolved.extend((_ACTIVATION_BEFORE_FLAG, activation_range.before_sha))
-            index += 2
-            continue
-        if argument == _HOME_FLAG and next_argument == _HOME_PLACEHOLDER:
-            if home is not None:
-                resolved.extend((_HOME_FLAG, home))
-            index += 2
-            continue
-        if argument == _ACTIVATION_AFTER_PLACEHOLDER:
-            resolved.append(activation_range.after_sha)
-        else:
-            resolved.append(argument)
-        index += 1
-    return tuple(resolved)
+    return _fill_placeholders(
+        command,
+        {
+            _INTERPRETER_PLACEHOLDER: interpreter or sys.executable,
+            _ACTIVATION_BEFORE_PLACEHOLDER: activation_range.before_sha,
+            _ACTIVATION_AFTER_PLACEHOLDER: activation_range.after_sha,
+            _HOME_PLACEHOLDER: home,
+        },
+    )
+
+
+def fill_event_activation(
+    command: tuple[str, ...],
+    *,
+    event_file: str,
+    event_type: str,
+    event_id: str,
+    interpreter: str | None = None,
+) -> tuple[str, ...]:
+    """Substitute the interpreter and the event an activation answers.
+
+    The event itself reaches a command only as the path of the file that holds it. An event
+    activation has no commit range and no home, so each range placeholder is omitted
+    together with the flag before it.
+    """
+    return _fill_placeholders(
+        command,
+        {
+            _INTERPRETER_PLACEHOLDER: interpreter or sys.executable,
+            _EVENT_FILE_PLACEHOLDER: event_file,
+            _EVENT_TYPE_PLACEHOLDER: event_type,
+            _EVENT_ID_PLACEHOLDER: event_id,
+            _ACTIVATION_BEFORE_PLACEHOLDER: None,
+            _ACTIVATION_AFTER_PLACEHOLDER: None,
+            _HOME_PLACEHOLDER: None,
+        },
+    )
 
 
 def fill_on_demand(command: tuple[str, ...], tip: str, home: str, *, interpreter: str | None = None) -> tuple[str, ...]:
@@ -149,6 +186,16 @@ def triggered_action_ids(files: list[str], model: CheckpointModel) -> set[str]:
         if any(scope_matches(path, binding.scope) for path in files):
             owed.update(binding.actions)
     return owed
+
+
+def event_only_action_ids(model: CheckpointModel) -> frozenset[str]:
+    """Return the action ids that an event binding names and no path binding names.
+
+    Such an action reacts to an event, so a run with no event has nothing for it to act on.
+    """
+    path_bound = {action_id for binding in model.bindings for action_id in binding.actions}
+    event_bound = {action_id for binding in model.event_bindings for action_id in binding.actions}
+    return frozenset(event_bound - path_bound)
 
 
 def main_only_maintenance_action_ids_for_files(files: list[str], project_root: Path) -> list[str]:
@@ -268,14 +315,16 @@ def merge_overlay(
     id. Bindings: the
     conventional ``docs`` / ``agents`` extras append to the matching base binding;
     the ``code`` kind adds a binding onto which ``test`` / ``log-check`` attach;
-    generic bindings append their declared scope → action-id lists. ``{slug}`` is
-    filled across every action.
+    generic bindings append their declared scope → action-id lists, and a binding
+    that names ``events`` joins the event bindings instead, so every reader of
+    ``bindings`` sees path bindings only. ``{slug}`` is filled across every action.
     """
     actions = {action_id: _fill_slug(action, project_slug) for action_id, action in base.actions.items()}
     maintenance = {
         action_id: _fill_maintenance_slug(action, project_slug) for action_id, action in base.maintenance.items()
     }
     bindings: list[CheckpointBinding] = list(base.bindings)
+    event_bindings: list[CheckpointEventBinding] = list(base.event_bindings)
 
     if overlay is not None:
         for action_id, action_cfg in (getattr(overlay, "actions", None) or {}).items():
@@ -317,11 +366,21 @@ def merge_overlay(
                 bindings.append(CheckpointBinding(scope=code_scope, actions=("test", LOG_CHECK_ACTION_ID)))
 
         for binding_cfg in getattr(overlay, "bindings", None) or []:
-            bindings.append(
-                CheckpointBinding(scope=_scope_from_cfg(binding_cfg.scope), actions=tuple(binding_cfg.actions))
-            )
+            if binding_cfg.events is not None:
+                event_bindings.append(
+                    CheckpointEventBinding(
+                        patterns=tuple(TypePattern(text) for text in binding_cfg.events),
+                        actions=tuple(binding_cfg.actions),
+                    )
+                )
+            else:
+                bindings.append(
+                    CheckpointBinding(scope=_scope_from_cfg(binding_cfg.scope), actions=tuple(binding_cfg.actions))
+                )
 
-    return CheckpointModel(actions=actions, maintenance=maintenance, bindings=tuple(bindings))
+    return CheckpointModel(
+        actions=actions, maintenance=maintenance, bindings=tuple(bindings), event_bindings=tuple(event_bindings)
+    )
 
 
 def _append_conventional_extras(bindings: list[CheckpointBinding], overlay: object) -> list[CheckpointBinding]:
@@ -414,6 +473,7 @@ def _append_home_publication_binding(model: CheckpointModel) -> CheckpointModel:
         actions=model.actions,
         maintenance=model.maintenance,
         bindings=(*model.bindings, *attached),
+        event_bindings=model.event_bindings,
     )
 
 

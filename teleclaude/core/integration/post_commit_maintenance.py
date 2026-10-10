@@ -1,4 +1,4 @@
-"""Range-based deterministic maintenance at canonical-main boundaries."""
+"""Deterministic maintenance owed by canonical-main commit ranges and by platform events about a project."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.checkpoint_model import (
     ActivationRange,
     fill_activation_range,
+    fill_event_activation,
     load_checkpoint_model,
     main_only_judgment_action_ids_for_files,
     main_only_maintenance_action_ids_for_files,
@@ -23,18 +24,25 @@ from teleclaude.config.errors import ConfigLoadError, describe_load_error
 from teleclaude.config.secret_masking import declared_secret_values, mask_secret_values
 from teleclaude.constants import LOG_CHECK_ACTION_ID, MaintenanceAction
 from teleclaude.core.integration._maintenance_records import (
+    EventActivation,
     MaintenanceActionRecord,
+    MaintenanceActivation,
     MaintenanceRecordState,
     activation_has_records,
+    activation_key,
+    commit_activation_key,
+    event_file_path,
     maintenance_drain_lock,
     read_record,
     read_records,
     record_path,
     remove_record,
+    write_event_file,
     write_record,
 )
 from teleclaude.core.integration.maintenance_trigger import MaintenanceTrigger
 from teleclaude.core.project_state import resolve_project_state_root
+from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, hook_free_environment
 from teleclaude.hooks.integrator_judgment_marker import (
     IntegratorJudgmentMarker,
@@ -74,6 +82,8 @@ _SKIP_GIT_UNAVAILABLE = "git_unavailable"
 _SKIP_INELIGIBLE_LOCATION = "ineligible_location"
 _UNKNOWN_ACTION_EXIT_CODE = 127
 _SUCCESS_OUTCOME = "success"
+_REPLAY_COMMIT_COMMAND = "telec code maintenance retry --after-sha {after_sha} --action {action_id}"
+_REPLAY_EVENT_COMMAND = "telec code maintenance retry --event-id {event_id} --action {action_id}"
 _GIT_FAILURES = (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError, TypeError, ValueError)
 
 
@@ -170,12 +180,11 @@ def record_activation(project_root: Path, activation_range: ActivationRange) -> 
 
     queued_at = datetime.now(UTC).isoformat()
     for action_id in action_ids:
-        path = record_path(root, activation_range.after_sha, action_id)
+        path = record_path(root, commit_activation_key(activation_range.after_sha), action_id)
         if path.exists():
             continue
         record = MaintenanceActionRecord(
-            before_sha=activation_range.before_sha,
-            after_sha=activation_range.after_sha,
+            activation=activation_range,
             action_id=action_id,
             queued_at=queued_at,
             state=MaintenanceRecordState.PENDING,
@@ -196,6 +205,35 @@ def record_activation(project_root: Path, activation_range: ActivationRange) -> 
         after_sha=activation_range.after_sha,
         action_ids=action_ids,
     )
+    return True
+
+
+def record_event_activation(project_root: Path, event: ReceivedEvent, action_ids: tuple[str, ...]) -> bool:
+    """Persist the actions one platform event owes this checkout, and the event they answer, before returning.
+
+    Returns whether the event's activation is recorded in this checkout, now or by an earlier call;
+    an activation whose records already exist is not recorded again. A location that is not the
+    canonical checkout on main records nothing and returns ``False``.
+    """
+    root = eligible_main_root(project_root)
+    if root is None:
+        return False
+    activation = EventActivation(event_id=event.id, event_type=event.type)
+    key = activation_key(activation)
+    owed = tuple(action_id for action_id in action_ids if not record_path(root, key, action_id).exists())
+    if not owed:
+        return True
+    write_event_file(root, event)
+    queued_at = datetime.now(UTC).isoformat()
+    for action_id in owed:
+        record = MaintenanceActionRecord(
+            activation=activation,
+            action_id=action_id,
+            queued_at=queued_at,
+            state=MaintenanceRecordState.PENDING,
+        )
+        write_record(record_path(root, key, action_id), record)
+    logger.info(_MAINTENANCE_RECORDED_EVENT, event_id=event.id, event_type=event.type, action_ids=owed)
     return True
 
 
@@ -240,13 +278,13 @@ def main() -> int:
     return 0 if drain_maintenance(Path.cwd()) else 1
 
 
-def retry_failed_action(project_root: Path, after_sha: str, action_id: str) -> bool:
-    """Reset one terminal failure and drain it under the shared lock."""
+def retry_failed_action(project_root: Path, key: str, action_id: str) -> bool:
+    """Reset one terminal failure of the activation named by ``key`` and drain it under the shared lock."""
     root = eligible_main_root(project_root)
     if root is None:
         return False
     with maintenance_drain_lock(root):
-        path = record_path(root, after_sha, action_id)
+        path = record_path(root, key, action_id)
         if not path.exists():
             return False
         record = read_record(path)
@@ -258,11 +296,18 @@ def retry_failed_action(project_root: Path, after_sha: str, action_id: str) -> b
         )
         logger.info(
             _MAINTENANCE_ACTION_RETRIED_EVENT,
-            after_sha=after_sha,
+            **_activation_log_fields(record.activation),
             action_id=action_id,
         )
         _drain_locked(root)
-    return not record_path(root, after_sha, action_id).exists()
+    return not record_path(root, key, action_id).exists()
+
+
+def replay_command(activation: MaintenanceActivation, action_id: str) -> str:
+    """The command that replays one failed action of an activation with the identity it first ran for."""
+    if isinstance(activation, EventActivation):
+        return _REPLAY_EVENT_COMMAND.format(event_id=activation.event_id, action_id=action_id)
+    return _REPLAY_COMMIT_COMMAND.format(after_sha=activation.after_sha, action_id=action_id)
 
 
 def maintenance_status(project_root: Path) -> MaintenanceStatus:
@@ -297,7 +342,6 @@ def _drain_locked(project_root: Path) -> None:
     root = project_root
     logger.info(_MAINTENANCE_DRAIN_STARTED_EVENT, project_root=str(root))
     repository = Repo(str(root))
-    model = load_checkpoint_model(str(root))
     while True:
         records = read_records(root)
         actionable = tuple(
@@ -307,18 +351,22 @@ def _drain_locked(project_root: Path) -> None:
         )
         if not actionable:
             break
-        activation = min(actionable, key=lambda record: _activation_order(repository, record))
-        activation_records = tuple(record for record in actionable if record.after_sha == activation.after_sha)
+        activation = _next_activation(repository, actionable)
+        activation_records = tuple(record for record in actionable if record.activation == activation)
+        # The model is resolved as each activation is reached: an earlier action may have advanced the checkout.
+        model = load_checkpoint_model(str(root))
         known_records = {
             record.action_id: record for record in activation_records if record.action_id in model.maintenance
         }
         for record in activation_records:
             if record.action_id not in known_records:
                 _finish_unknown_action(root, record)
-        _run_activation(root, _range_for(activation), known_records, model.maintenance)
+        _run_activation(root, activation, known_records, model.maintenance)
 
     ready_at = datetime.now(UTC).isoformat()
-    mark_integrator_judgment_ready(root, lambda after_sha: activation_has_records(root, after_sha), ready_at)
+    mark_integrator_judgment_ready(
+        root, lambda after_sha: activation_has_records(root, commit_activation_key(after_sha)), ready_at
+    )
     remaining = read_records(root)
     logger.info(
         _MAINTENANCE_DRAIN_FINISHED_EVENT,
@@ -330,19 +378,20 @@ def _drain_locked(project_root: Path) -> None:
 
 def _run_activation(
     root: Path,
-    activation_range: ActivationRange,
+    activation: MaintenanceActivation,
     known_records: Mapping[str, MaintenanceActionRecord],
     actions: Mapping[str, MaintenanceAction],
 ) -> None:
     """Run one activation's recorded actions, keeping each action's record current."""
+    key = activation_key(activation)
 
     def start_record(action_id: str) -> None:
-        path = record_path(root, activation_range.after_sha, action_id)
+        path = record_path(root, key, action_id)
         current = read_record(path)
         if current.state is MaintenanceRecordState.RUNNING:
             logger.warning(
                 _MAINTENANCE_ACTION_INTERRUPTED_EVENT,
-                after_sha=current.after_sha,
+                **_activation_log_fields(current.activation),
                 action_id=current.action_id,
             )
         write_record(path, replace(current, state=MaintenanceRecordState.RUNNING))
@@ -351,12 +400,12 @@ def _run_activation(
         _settle_record(root, known_records[action_id], result, finished_at)
 
     def fill(command: tuple[str, ...]) -> tuple[str, ...]:
-        return fill_activation_range(command, activation_range, interpreter=sys.executable)
+        return _fill_for_activation(root, activation, command)
 
     run_maintenance_waves(
         root,
-        activation_range,
-        MaintenanceTrigger.COMMIT_BOUNDARY,
+        activation,
+        _trigger_for(activation),
         tuple(known_records),
         actions,
         fill,
@@ -369,7 +418,7 @@ def _run_activation(
 
 def run_maintenance_waves(
     root: Path,
-    activation_range: ActivationRange,
+    activation: MaintenanceActivation,
     trigger: MaintenanceTrigger,
     action_ids: tuple[str, ...],
     actions: Mapping[str, MaintenanceAction],
@@ -394,8 +443,7 @@ def run_maintenance_waves(
             on_started(action_id)
             logger.info(
                 _MAINTENANCE_ACTION_STARTED_EVENT,
-                before_sha=activation_range.before_sha,
-                after_sha=activation_range.after_sha,
+                **_activation_log_fields(activation),
                 action_id=action_id,
                 trigger=trigger,
             )
@@ -405,7 +453,7 @@ def run_maintenance_waves(
             action_id = wave_ids[index]
             finished_at = datetime.now(UTC).isoformat()
             on_finished(action_id, result, finished_at)
-            _log_action_finished(activation_range, trigger, action_id, result, finished_at)
+            _log_action_finished(activation, trigger, action_id, result, finished_at)
             completed.append((action_id, result))
 
         run_process_group_commands(
@@ -438,22 +486,68 @@ def _secret_masker(root: Path) -> Callable[[str], str]:
     return mask
 
 
-def _activation_order(repository: Repo, record: MaintenanceActionRecord) -> tuple[int, str, str]:
-    """Order activations by reachable ancestry depth, then queue time and id."""
-    count = int(str(repository.git.rev_list(_GIT_COUNT_FLAG, record.after_sha)).strip())
-    return (count, record.queued_at, record.after_sha)
+def _next_activation(repository: Repo, actionable: tuple[MaintenanceActionRecord, ...]) -> MaintenanceActivation:
+    """Pick the activation to run next from the records still owed.
+
+    Commit activations keep their ancestry order among themselves and event activations are
+    taken in the order they were recorded; the next activation is the earlier-queued of those
+    two candidates.
+    """
+    commit_queue = [
+        (record.activation, record.queued_at) for record in actionable if isinstance(record.activation, ActivationRange)
+    ]
+    event_queue = [
+        (record.activation, record.queued_at) for record in actionable if isinstance(record.activation, EventActivation)
+    ]
+    candidates: list[tuple[MaintenanceActivation, str]] = []
+    if commit_queue:
+        candidates.append(min(commit_queue, key=lambda queued: _commit_activation_order(repository, *queued)))
+    if event_queue:
+        candidates.append(min(event_queue, key=lambda queued: (_queued_time(queued[1]), queued[0].event_id)))
+    return min(candidates, key=lambda queued: _queued_time(queued[1]))[0]
 
 
-def _range_for(record: MaintenanceActionRecord) -> ActivationRange:
-    """Reconstruct the immutable range attached to one action record."""
-    return ActivationRange(before_sha=record.before_sha, after_sha=record.after_sha)
+def _commit_activation_order(repository: Repo, activation: ActivationRange, queued_at: str) -> tuple[int, str, str]:
+    """Order commit activations by reachable ancestry depth, then queue time and id."""
+    count = int(str(repository.git.rev_list(_GIT_COUNT_FLAG, activation.after_sha)).strip())
+    return (count, queued_at, activation.after_sha)
+
+
+def _queued_time(queued_at: str) -> datetime:
+    """The instant an activation was queued, from its recorded timestamp."""
+    return datetime.fromisoformat(queued_at)
+
+
+def _trigger_for(activation: MaintenanceActivation) -> MaintenanceTrigger:
+    """What started the run that performs an activation's actions."""
+    if isinstance(activation, EventActivation):
+        return MaintenanceTrigger.EVENT
+    return MaintenanceTrigger.COMMIT_BOUNDARY
+
+
+def _activation_log_fields(activation: MaintenanceActivation) -> dict[str, str | None]:
+    """The structured-record fields that identify an activation: its range, or the event it answers."""
+    return asdict(activation)
+
+
+def _fill_for_activation(root: Path, activation: MaintenanceActivation, command: tuple[str, ...]) -> tuple[str, ...]:
+    """Fill a declared command with the identity of the activation it runs for."""
+    if isinstance(activation, EventActivation):
+        return fill_event_activation(
+            command,
+            event_file=str(event_file_path(root, activation.event_id)),
+            event_type=activation.event_type,
+            event_id=activation.event_id,
+            interpreter=sys.executable,
+        )
+    return fill_activation_range(command, activation, interpreter=sys.executable)
 
 
 def _settle_record(
     project_root: Path, record: MaintenanceActionRecord, result: CommandResult, finished_at: str
 ) -> None:
     """Remove success or retain a terminal failure with its structured outcome."""
-    path = record_path(project_root, record.after_sha, record.action_id)
+    path = record_path(project_root, activation_key(record.activation), record.action_id)
     if result.exit_code == 0:
         remove_record(path)
     else:
@@ -470,7 +564,7 @@ def _settle_record(
 
 
 def _log_action_finished(
-    activation_range: ActivationRange,
+    activation: MaintenanceActivation,
     trigger: MaintenanceTrigger,
     action_id: str,
     result: CommandResult,
@@ -480,8 +574,7 @@ def _log_action_finished(
     if result.exit_code == 0:
         logger.info(
             _MAINTENANCE_ACTION_FINISHED_EVENT,
-            before_sha=activation_range.before_sha,
-            after_sha=activation_range.after_sha,
+            **_activation_log_fields(activation),
             action_id=action_id,
             exit_code=result.exit_code,
             outcome=_SUCCESS_OUTCOME,
@@ -491,8 +584,7 @@ def _log_action_finished(
         return
     logger.error(
         _MAINTENANCE_ACTION_FINISHED_EVENT,
-        before_sha=activation_range.before_sha,
-        after_sha=activation_range.after_sha,
+        **_activation_log_fields(activation),
         action_id=action_id,
         exit_code=result.exit_code,
         outcome=MaintenanceRecordState.FAILED,
@@ -507,7 +599,7 @@ def _finish_unknown_action(project_root: Path, record: MaintenanceActionRecord) 
     result = CommandResult(_UNKNOWN_ACTION_EXIT_CODE)
     finished_at = datetime.now(UTC).isoformat()
     _settle_record(project_root, record, result, finished_at)
-    _log_action_finished(_range_for(record), MaintenanceTrigger.COMMIT_BOUNDARY, record.action_id, result, finished_at)
+    _log_action_finished(record.activation, _trigger_for(record.activation), record.action_id, result, finished_at)
 
 
 def _precedence_waves(
