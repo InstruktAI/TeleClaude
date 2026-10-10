@@ -80,6 +80,16 @@ Then a later read of that session starts after that entry
 And a read point is never moved backwards
 ```
 
+#### UC-MC7: A conversation's business items are collected once
+
+```gherkin
+Given a procedure agent that recorded business items from a desk conversation
+And the conversation's read point was not advanced afterwards
+When a procedure agent reads that stretch again
+Then the scope of that conversation lists the prospects already recorded from it
+And an item already among them is not recorded a second time
+```
+
 #### UC-MC6: Only procedure agents curate
 
 ```gherkin

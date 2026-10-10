@@ -30,9 +30,10 @@ another, and the conversation's read point covers everything the run read.
 2. Load the scope: `telec memories scope --session <session_id>`. It names the
    person and the memory namespace the session's memories belong to, whether the
    session is a help-desk conversation, the session's read point (the session's
-   start when nothing of it has been read), and every
-   current memory about that person in that namespace. Every later command names
-   the same session, so it changes this scope and no other.
+   start when nothing of it has been read), every current memory about that
+   person in that namespace, and for a help-desk conversation the business
+   prospects already recorded from it. Every later command names the same
+   session, so it changes this scope and no other.
 3. Read the conversation after the read point:
    `telec sessions tail <session_id> --since <read point> --full`. It covers every
    transcript the session has carried, entries from before a compaction included.
@@ -60,8 +61,10 @@ another, and the conversation's read point covers everything the run read.
    does not exist, a complaint, confusion, sentiment, a mention of an
    alternative — one prospect per item:
    `telec memories prospect --session <session_id> --type <request|complaint|friction|sentiment|competitor> "<item>"`.
-   Prospects are collected as they are, never compared or merged; their
-   aggregation is separate work.
+   An item the scope already lists as a prospect from this conversation is not
+   recorded again, so a stretch read a second time after an interrupted run
+   adds no duplicate. Prospects are never merged with other conversations'
+   prospects; their aggregation is separate work.
 6. Advance the read point to the newest entry read:
    `telec memories advance --session <session_id> --to <timestamp>`. This is the
    last change of a run: a run that stops earlier is read again from the same
