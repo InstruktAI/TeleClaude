@@ -17,6 +17,7 @@ from uuid import uuid4
 
 import yaml
 from instrukt_ai_logging import configure_logging, get_logger
+from pydantic import JsonValue
 from sqlalchemy import update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm.attributes import QueryableAttribute
@@ -91,6 +92,11 @@ from teleclaude.hooks.session_map import (
 )
 from teleclaude.identity_reach import Reach, resolve_reach
 from teleclaude.memory.curation import MemoryScope, memory_scope
+from teleclaude.runtime.environment import (
+    COMPACTION_LAUNCH_CONTEXT_FIELD,
+    CompactionLaunchContext,
+    read_compaction_launch_context,
+)
 from teleclaude.session_identity import inspect_session_identity_marker
 from teleclaude.session_scoping._extractors._common import CERTAIN_EDIT_TOOLS, _canonical_tool_name
 from teleclaude.utils.transcript import (
@@ -290,6 +296,7 @@ class _ReceiverOutboxContext:
     agent: str
     event_type: str
     outbox_db: str
+    launch_context: CompactionLaunchContext | None = None
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
@@ -866,6 +873,12 @@ def _serialize_outbox_payload(
     return json.dumps(dict(payload))
 
 
+def _attach_compaction_launch_context(payload: JsonDict, context: _ReceiverOutboxContext) -> None:
+    """Carry the typed child launch context beside normalized provider fields."""
+    if context.launch_context is not None:
+        payload[COMPACTION_LAUNCH_CONTEXT_FIELD] = cast(JsonValue, context.launch_context.to_payload())
+
+
 def enqueue_hook_event(
     session_id: str,
     event_type: str,
@@ -1264,6 +1277,7 @@ def _enqueue_native_metadata_update(
         payload["native_session_id"] = raw_native_session_id
     if raw_native_log_file is not None:
         payload["native_log_file"] = raw_native_log_file
+    _attach_compaction_launch_context(payload, context)
     enqueue_hook_event(
         session_id,
         AgentHookEvents.NATIVE_METADATA_UPDATE,
@@ -1279,14 +1293,16 @@ def _enqueue_native_session_refresh(
     native_session_id: str | None,
     context: _ReceiverOutboxContext,
 ) -> None:
+    payload: JsonDict = {
+        "agent": context.agent,
+        "source_event_type": context.event_type,
+        "native_session_id": native_session_id,
+    }
+    _attach_compaction_launch_context(payload, context)
     enqueue_hook_event(
         session_id,
         AgentHookEvents.NATIVE_SESSION_REFRESH,
-        {
-            "agent": context.agent,
-            "source_event_type": context.event_type,
-            "native_session_id": native_session_id,
-        },
+        payload,
         outbox_db=context.outbox_db,
     )
 
@@ -1645,11 +1661,65 @@ def _maybe_emit_boundary_response(
     )
 
 
+def _run_ordinary_hook_effects(
+    *,
+    launch_context: CompactionLaunchContext | None,
+    adapter: HookAdapter,
+    event_type: AgentHookEventType,
+    data: JsonDict,
+    agent: str,
+    session_id: str,
+    raw_native_session_id: str | None,
+    receiver_ingress_id: str,
+    cwd: str | None,
+    outbox_context: _ReceiverOutboxContext,
+    raw_event_type: str,
+) -> tuple[bool, str | None]:
+    """Run prompt, edit and control effects only for ordinary launches."""
+    if launch_context is not None:
+        return False, None
+    if _handle_user_prompt_submit(
+        event_type,
+        data,
+        agent,
+        session_id,
+        raw_native_session_id,
+        receiver_ingress_id,
+    ):
+        return True, None
+    _maybe_declare_certain_edit(
+        session_id=session_id,
+        agent=AgentName.from_str(agent),
+        event_type=event_type,
+        raw_event_type=raw_event_type,
+        data=data,
+    )
+    startup_context = _maybe_emit_additional_context(
+        event_type=event_type,
+        cwd=cwd,
+        session_id=session_id,
+        provider=agent,
+        receiver_ingress_id=receiver_ingress_id,
+    )
+    response_emitted = _maybe_emit_boundary_response(
+        event_type=event_type,
+        adapter=adapter,
+        session_id=session_id,
+        hook_data=data,
+        context=outbox_context,
+        raw_event_type=raw_event_type,
+        receiver_ingress_id=receiver_ingress_id,
+        startup_context=startup_context,
+    )
+    return response_emitted and event_type != AgentHookEvents.AGENT_SESSION_START, startup_context
+
+
 # guard: loose-dict-func - Main path processes raw hook payload boundaries.
 def main() -> None:
     """Parse a hook event and enqueue it for daemon processing."""
     args = _parse_args()
     args.agent = AgentName.from_str(args.agent).value
+    launch_context = read_compaction_launch_context()
 
     logger.debug(
         "Hook receiver start",
@@ -1665,6 +1735,8 @@ def main() -> None:
     raw_input, raw_event_type, raw_data = _parse_receiver_input(args, adapter)
     _log_raw_input(raw_input, log_raw=True)
     data = adapter.normalize_payload(dict(raw_data))
+    if launch_context is not None:
+        data[COMPACTION_LAUNCH_CONTEXT_FIELD] = cast(JsonValue, launch_context.to_payload())
     raw_native_session_id, raw_native_log_file = _extract_native_hook_fields(data)
     receiver_ingress_id = str(uuid4())
     invocation_num = raw_data.get(_INVOCATION_NUM_FIELD)
@@ -1744,7 +1816,12 @@ def main() -> None:
 
     event_type = AgentHookEvents(event_type)
     _attach_blocked_status_reason(data, event_type, normalization.reason)
-    outbox_context = _ReceiverOutboxContext(agent=args.agent, event_type=event_type, outbox_db=_get_default_outbox_db())
+    outbox_context = _ReceiverOutboxContext(
+        agent=args.agent,
+        event_type=event_type,
+        outbox_db=_get_default_outbox_db(),
+        launch_context=launch_context,
+    )
     execution_kind = adapter.classify_execution_kind(data)
 
     # Drop Codex subagent events BEFORE session resolution. Session resolution
@@ -1867,7 +1944,11 @@ def main() -> None:
     data[_EXECUTION_KIND_FIELD] = execution_kind
     _enrich_headless_bootstrap(data, event_type, source_kind)
 
-    if (raw_native_session_id or raw_native_log_file) and source_kind is not HookSourceKind.MANAGED_DESCENDANT:
+    if (
+        launch_context is None
+        and (raw_native_session_id or raw_native_log_file)
+        and source_kind is not HookSourceKind.MANAGED_DESCENDANT
+    ):
         try:
             _persist_native_metadata(
                 session_id=teleclaude_session_id,
@@ -1888,24 +1969,6 @@ def main() -> None:
     if isinstance(cwd, str) and cwd:
         data["cwd"] = cwd
 
-    if _handle_user_prompt_submit(
-        event_type,
-        data,
-        args.agent,
-        teleclaude_session_id,
-        raw_native_session_id,
-        receiver_ingress_id,
-    ):
-        return
-
-    _maybe_declare_certain_edit(
-        session_id=teleclaude_session_id,
-        agent=AgentName.from_str(args.agent),
-        event_type=event_type,
-        raw_event_type=raw_event_type,
-        data=data,
-    )
-
     if event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
         _log_normalization_decision(
             receiver_ingress_id=receiver_ingress_id,
@@ -1917,22 +1980,18 @@ def main() -> None:
             native_session_id=raw_native_session_id,
         )
 
-    startup_context = _maybe_emit_additional_context(
-        event_type=event_type,
-        cwd=args.cwd,
-        session_id=teleclaude_session_id,
-        provider=args.agent,
-        receiver_ingress_id=receiver_ingress_id,
-    )
-    response_emitted = _maybe_emit_boundary_response(
-        event_type=event_type,
+    response_emitted, startup_context = _run_ordinary_hook_effects(
+        launch_context=launch_context,
         adapter=adapter,
+        event_type=event_type,
+        data=data,
+        agent=args.agent,
         session_id=teleclaude_session_id,
-        hook_data=data,
-        context=outbox_context,
-        raw_event_type=raw_event_type,
+        raw_native_session_id=raw_native_session_id,
         receiver_ingress_id=receiver_ingress_id,
-        startup_context=startup_context,
+        cwd=args.cwd,
+        outbox_context=outbox_context,
+        raw_event_type=raw_event_type,
     )
     if response_emitted and event_type != AgentHookEvents.AGENT_SESSION_START:
         return

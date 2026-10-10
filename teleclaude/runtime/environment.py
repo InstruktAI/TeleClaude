@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import os
 import pwd
 import subprocess
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
@@ -73,6 +76,74 @@ _PLATFORM_SESSION_ENV_EXTRA_ALLOWLIST = frozenset(
         "OPENAI_VOICE",
     }
 )
+COMPACTION_LAUNCH_CONTEXT_FIELD = "compaction_launch_context"
+_COMPACTION_LAUNCH_CONTEXT_ENV = "TELECLAUDE_COMPACTION_LAUNCH_CONTEXT"
+_COMPACTION_CONTEXT_JSON_INVALID = "Temporary compaction launch context is invalid JSON"
+_COMPACTION_CONTEXT_SHAPE_INVALID = "Temporary compaction launch context has an invalid shape"
+
+
+class CompactionLaunchContextField(StrEnum):
+    """Typed keys carried from a temporary launch into normalized hook events."""
+
+    ATTEMPT_ID = "attempt_id"
+    NATIVE_SESSION_ID = "native_session_id"
+
+
+class CompactionLaunchContextPayload(TypedDict):
+    """JSON shape inherited by managed hooks from one temporary launch."""
+
+    attempt_id: str
+    native_session_id: str
+
+
+@dataclass(frozen=True)
+class CompactionLaunchContext:
+    """Immutable correlation between a maintenance launch and its transcript."""
+
+    attempt_id: str
+    native_session_id: str
+
+    def to_payload(self) -> CompactionLaunchContextPayload:
+        """Return the structured event-envelope projection of this context."""
+        return {
+            CompactionLaunchContextField.ATTEMPT_ID.value: self.attempt_id,
+            CompactionLaunchContextField.NATIVE_SESSION_ID.value: self.native_session_id,
+        }
+
+
+def compaction_launch_environment(context: CompactionLaunchContext) -> tuple[tuple[str, str], ...]:
+    """Encode one immutable launch context as a child-only environment assignment."""
+    value = json.dumps(context.to_payload())
+    return ((_COMPACTION_LAUNCH_CONTEXT_ENV, value),)
+
+
+def decode_compaction_launch_context(value: object) -> CompactionLaunchContext | None:
+    """Decode the known launch-context wire object or its environment JSON form."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(_COMPACTION_CONTEXT_JSON_INVALID) from exc
+    if not isinstance(value, Mapping):
+        raise ValueError(_COMPACTION_CONTEXT_SHAPE_INVALID)
+    attempt_id = value.get(CompactionLaunchContextField.ATTEMPT_ID.value)
+    native_session_id = value.get(CompactionLaunchContextField.NATIVE_SESSION_ID.value)
+    if (
+        not isinstance(attempt_id, str)
+        or not attempt_id
+        or not isinstance(native_session_id, str)
+        or not native_session_id
+    ):
+        raise ValueError(_COMPACTION_CONTEXT_SHAPE_INVALID)
+    return CompactionLaunchContext(attempt_id=attempt_id, native_session_id=native_session_id)
+
+
+def read_compaction_launch_context(env: Mapping[str, str] | None = None) -> CompactionLaunchContext | None:
+    """Read the declared child launch context once at the runtime environment seam."""
+    source = env if env is not None else os.environ  # fmt: skip  # guard: direct-env-read - allowed: typed child startup context
+    return decode_compaction_launch_context(source.get(_COMPACTION_LAUNCH_CONTEXT_ENV))
 
 
 class RuntimeEnvironment(TypedDict):

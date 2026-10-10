@@ -38,6 +38,7 @@ from teleclaude.core.events import (
     AgentEventPayload,
     AgentHookEventType,
     AgentOutputPayload,
+    AgentReadyContext,
     AgentSessionStartPayload,
     AgentStopActivityEvent,
     AgentStopPayload,
@@ -66,6 +67,10 @@ from teleclaude.core.internal_event_envelope import InternalEventEnvelope
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.events.processor import EventProcessor
 from teleclaude.events.wire import EntryCodec
+from teleclaude.runtime.environment import (
+    COMPACTION_LAUNCH_CONTEXT_FIELD,
+    decode_compaction_launch_context,
+)
 
 logger = get_logger(__name__)
 
@@ -183,6 +188,14 @@ def _build_agent_event_context(payload: Mapping[str, JsonValue]) -> AgentEventCo
         session_id=_required_str(payload, "session_id"),
         data=data,
         event_type=event_type,
+        compaction_launch_context=decode_compaction_launch_context(payload.get(COMPACTION_LAUNCH_CONTEXT_FIELD)),
+    )
+
+
+def _build_agent_ready_context(payload: Mapping[str, JsonValue]) -> AgentReadyContext:
+    return AgentReadyContext(
+        session_id=_required_str(payload, "session_id"),
+        compaction_launch_context=decode_compaction_launch_context(payload.get(COMPACTION_LAUNCH_CONTEXT_FIELD)),
     )
 
 
@@ -264,6 +277,7 @@ def _optional_str(value: JsonValue | None) -> str | None:
 _CONTEXT_BUILDERS: Mapping[str, ContextBuilder] = {
     "AgentAvailabilityContext": lambda payload: _build_dataclass_context(AgentAvailabilityContext, payload),
     "AgentEventContext": _build_agent_event_context,
+    "AgentReadyContext": _build_agent_ready_context,
     "AgentStopActivityEvent": lambda payload: _build_dataclass_context(AgentStopActivityEvent, payload),
     "DeliveryNoComposerContext": lambda payload: _build_dataclass_context(DeliveryNoComposerContext, payload),
     "ErrorEventContext": lambda payload: _build_dataclass_context(ErrorEventContext, payload),

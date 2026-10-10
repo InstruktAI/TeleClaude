@@ -25,7 +25,7 @@ from teleclaude.core.agents import get_agent_command
 from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handoff_control_payload
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.events import AgentReadyContext, TeleClaudeEvents
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.injected_text import (
     EnvelopeName,
@@ -41,6 +41,10 @@ from teleclaude.core.next_machine.delivery import (
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
+from teleclaude.core.session_compaction import (
+    SessionCompactionOwner,
+    session_compaction_owner,
+)
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_launch_profile import resolve_session_launch_profile
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
@@ -441,11 +445,13 @@ class MaintenanceService:
         output_poller: OutputPoller,
         poller_watch_interval_s: float,
         task_registry: TaskRegistry,
+        compaction_owner: SessionCompactionOwner | None = None,
     ) -> None:
         self._client = client
         self._output_poller = output_poller
         self._poller_watch_interval_s = poller_watch_interval_s
         self._task_registry = task_registry
+        self._compaction_owner = compaction_owner or session_compaction_owner
         self._restoring_sessions: set[str] = set()
 
     async def periodic_cleanup(self) -> None:
@@ -521,6 +527,21 @@ class MaintenanceService:
             return
 
         for session in sessions:
+            attempt = self._compaction_owner.active_attempt(session)
+            if attempt is not None:
+                if session.tmux_session_name in active_tmux_sessions:
+                    continue
+                if session.session_id not in self._restoring_sessions:
+                    try:
+                        restore_unit = get_shutdown_drain().begin_work(_TMUX_RESTORE_WORK)
+                    except ShutdownRefusal:
+                        continue
+                    self._restoring_sessions.add(session.session_id)
+                    self._task_registry.spawn(
+                        restore_unit.carry(self._restore_tmux_session(session)),
+                        name=f"restore-tmux-{session.session_id}",
+                    )
+                continue
             if await polling_coordinator.is_polling(session.session_id):
                 continue
 
@@ -652,12 +673,8 @@ class MaintenanceService:
     async def _restore_tmux_session_owned(self, session: Session) -> None:
         """Recreate a missing tmux session and restart the agent. Runs as a background task.
 
-        Critical: only inject the launcher when the tmux session is actually missing.
-        If the tmux session already exists, the foreground is the live agent TUI and
-        any send-keys would land in its input buffer as paste-text rather than
-        starting a fresh shell. The poller_watch can spuriously trigger restoration
-        when ``tmux list-sessions`` is briefly slow, so an early-exit guard here is
-        load-bearing — without it, the launcher command shows up as a user prompt.
+        The owning wrapper checks pane existence and maintenance purpose under the
+        session runtime lease before this body creates a pane or sends a launcher.
         """
         release_guard = True
         resolving_failure = False
@@ -671,14 +688,13 @@ class MaintenanceService:
             release_guard = False
             resolving_failure = True
             await self._resolve_restore_tmux_failure(session, reason, error=error)
+            current = await db.get_session(session.session_id)
+            await self._compaction_owner.settle_restoring_under_owner(current)
             resolving_failure = False
             release_guard = True
 
         try:
             try:
-                if await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False):
-                    return
-
                 working_dir = resolve_working_dir(session.project_path, session.subdir)
                 env_vars = await self._build_tmux_env_vars(session)
                 if not await ensure_tmux_with_identity(session, session.tmux_session_name, working_dir, env_vars):
@@ -716,8 +732,12 @@ class MaintenanceService:
                 loop = asyncio.get_running_loop()
                 ready_future: asyncio.Future[None] = loop.create_future()
 
-                async def _on_ready(_event_type: str, ctx: SessionLifecycleContext) -> None:
-                    if ctx.session_id == session.session_id and not ready_future.done():
+                async def _on_ready(_event_type: str, ctx: AgentReadyContext) -> None:
+                    if (
+                        ctx.session_id == session.session_id
+                        and ctx.compaction_launch_context is None
+                        and not ready_future.done()
+                    ):
                         ready_future.set_result(None)
 
                 ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
@@ -748,6 +768,8 @@ class MaintenanceService:
                     except TimeoutError:
                         await _finish_failed_restore(_RestoreTmuxFailureReason.READY_TIMEOUT)
                         return
+                    current = await db.get_session(session.session_id)
+                    await self._compaction_owner.settle_restoring_under_owner(current)
                 finally:
                     event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
 
@@ -780,7 +802,16 @@ class MaintenanceService:
     async def _restore_tmux_session(self, session: Session) -> None:
         """Serialize restoration with restart, handoff, and terminal input delivery."""
         async with session_runtime_owner(session.session_id):
-            await self._restore_tmux_session_owned(session)
+            current = await db.get_session(session.session_id)
+            # Preserve the restore boundary's pane-existence guard before any
+            # maintenance metadata transition or ordinary launch effect.
+            if current is None or await tmux_bridge.session_exists(current.tmux_session_name, log_missing=False):
+                return
+            attempt = self._compaction_owner.active_attempt(current)
+            if attempt is not None:
+                await self._compaction_owner.begin_return_under_owner(current, attempt.attempt_id)
+                current = await db.get_session(session.session_id) or current
+            await self._restore_tmux_session_owned(current)
 
     async def _resolve_restore_tmux_failure(
         self,

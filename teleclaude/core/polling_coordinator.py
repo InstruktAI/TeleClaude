@@ -27,6 +27,7 @@ from teleclaude.core.models import MessageAuthor, MessageMetadata
 from teleclaude.core.models._adapter import session_is_unattended
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
+from teleclaude.core.session_compaction import active_compaction_attempt
 from teleclaude.core.session_output import assistant_messages_are_bare_noop
 from teleclaude.core.session_title import clear_title_projection_state
 from teleclaude.core.session_transcript import session_transcript
@@ -676,6 +677,8 @@ async def project_session_from_transcript(
         refreshed = await db.get_session(session.session_id)
         if refreshed is None:
             return session
+        if active_compaction_attempt(refreshed) is not None:
+            return refreshed
         return await _project_session_from_transcript_locked(
             refreshed,
             adapter_client,
@@ -701,6 +704,8 @@ async def schedule_session_projection(
             while True:
                 session = await db.get_session(session_id)
                 if not session or (headless_only and session.lifecycle_status != "headless"):
+                    return
+                if active_compaction_attempt(session) is not None:
                     return
 
                 try:
@@ -796,6 +801,8 @@ async def poll_and_send_output(
                         session_id=event.session_id,
                     )
                     return
+                if active_compaction_attempt(session) is not None:
+                    continue
 
                 logger.trace(
                     _OUTPUT_SESSION_FETCHED_EVENT,
@@ -834,6 +841,8 @@ async def poll_and_send_output(
                         session_id=event.session_id,
                     )
                     return
+                if active_compaction_attempt(session) is not None:
+                    continue
 
                 if event.exit_code is not None:
                     tmux_alive = True

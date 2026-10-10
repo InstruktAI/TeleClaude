@@ -14,6 +14,7 @@ from typing import Literal, Union, cast
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.session_status import AgentStatusReason
+from teleclaude.runtime.environment import CompactionLaunchContext
 
 # Event bus carries internal events (not user commands).
 EventType = Literal[
@@ -457,6 +458,14 @@ class SessionLifecycleContext:
 
 
 @dataclass(frozen=True)
+class AgentReadyContext:
+    """Readiness for an ordinary or attempt-scoped temporary launch."""
+
+    session_id: str
+    compaction_launch_context: CompactionLaunchContext | None = None
+
+
+@dataclass(frozen=True)
 class DeliveryNoComposerContext:
     """Context for the fact that input delivery observed a pane with no recognized composer.
 
@@ -553,6 +562,7 @@ class AgentEventContext:
     session_id: str
     data: AgentEventPayload
     event_type: AgentHookEventType
+    compaction_launch_context: CompactionLaunchContext | None = None
 
 
 @dataclass(frozen=True)
@@ -704,6 +714,7 @@ EventContext = (
     AgentActivityEvent
     | AgentAvailabilityContext
     | AgentEventContext
+    | AgentReadyContext
     | DeliveryNoComposerContext
     | ErrorEventContext
     | JobCompletedPayload

@@ -37,9 +37,10 @@ _FLAG_SEPARATOR = " "
 # permission set: don't-ask mode denies every tool call that is not
 # pre-approved here, the read fence keeps the file tools inside the working
 # directories, only managed instructions load at startup, bundled skills are
-# off while built-in commands such as /compact stay available to the idle
-# cycle, and memory and web tools stay off. The allow list and TeleClaude's own hooks are added per
-# launch; no other hook source loads, so no hook can approve a call.
+# off, and memory and web tools stay off. Ordinary desk launches disable native
+# slash commands; maintenance reuses these rendered settings. The allow list and
+# TeleClaude's own hooks are added per launch; no other hook source loads, so no
+# hook can approve a call.
 _CLAUDE_DESK_SETTINGS: dict[str, object] = {  # guard: loose-dict - vendor settings document
     "forceLoginMethod": "claudeai",
     "enabledMcpjsonServers": [],

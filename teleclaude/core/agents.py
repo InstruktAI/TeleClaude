@@ -17,8 +17,12 @@ from teleclaude.agent_registry import AGENT_REGISTRY as AGENT_REGISTRY
 from teleclaude.agent_registry import AgentName as AgentName
 from teleclaude.agent_registry import AgentStartupSignal as AgentStartupSignal
 from teleclaude.agent_registry import DiscordAuthorPresentation as DiscordAuthorPresentation
+from teleclaude.agent_registry import LaunchProfile
 from teleclaude.config._models import AgentConfig
 from teleclaude.config.machine import config
+from teleclaude.core.models import Session
+from teleclaude.core.session_launch_profile import resolve_session_launch_profile
+from teleclaude.runtime.environment import CompactionLaunchContext, compaction_launch_environment
 
 logger = get_logger(__name__)
 
@@ -125,6 +129,9 @@ def render_mode_flags(agent: str, mode: str, model: str | None = None) -> str:
 _COMMAND_PART_SEPARATOR = " "
 _ENVIRONMENT_COMMAND = "env"
 _ENVIRONMENT_ASSIGNMENT_SEPARATOR = "="
+_COMPACTION_NOT_DECLARED_TEMPLATE = "Agent '{agent}' does not declare compaction"
+_DESK_COMPACTION_RECIPE_TEMPLATE = "Agent '{agent}' has no private help-desk compaction recipe"
+_COMPACTION_NATIVE_BINDING_MISMATCH = "Compaction launch native session does not match the recorded session"
 
 
 def get_agent_command(
@@ -174,8 +181,70 @@ def get_agent_command(
         'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\' --resume abc123'
     """
     agent_cfg = _get_agent_config(agent)
-    base_cmd = _COMMAND_PART_SEPARATOR.join((agent_cfg.get_command(profile), launch_flags)).strip()
-    launch_environment = AGENT_REGISTRY[AgentName.from_str(agent)].launch_environment
+    return _render_agent_command(
+        agent=agent,
+        agent_cfg=agent_cfg,
+        base_command=agent_cfg.get_command(profile),
+        thinking_mode=thinking_mode,
+        exec=exec,
+        resume=resume,
+        native_session_id=native_session_id,
+        interactive=interactive,
+        launch_flags=launch_flags,
+        resolved_flags=resolved_flags,
+    )
+
+
+def get_compaction_agent_command(session: Session, agent: str, launch_context: CompactionLaunchContext) -> str:
+    """Render the maintenance launch for a recorded conversation session."""
+    agent_name = AgentName.from_str(agent)
+    definition = AGENT_REGISTRY[agent_name]
+    if definition.compaction_command is None:
+        raise ValueError(_COMPACTION_NOT_DECLARED_TEMPLATE.format(agent=agent_name.value))
+    if session.native_session_id != launch_context.native_session_id:
+        raise ValueError(_COMPACTION_NATIVE_BINDING_MISMATCH)
+
+    launch_profile = resolve_session_launch_profile(session, agent_name.value)
+    agent_cfg = _get_agent_config(agent_name.value)
+    if launch_profile.profile is LaunchProfile.HELP_DESK:
+        if definition.compaction_launch_flags is None:
+            raise ValueError(_DESK_COMPACTION_RECIPE_TEMPLATE.format(agent=agent_name.value))
+        base_command = _COMMAND_PART_SEPARATOR.join((agent_cfg.binary, definition.compaction_launch_flags)).strip()
+    else:
+        base_command = agent_cfg.get_command(launch_profile.profile.value)
+
+    return _render_agent_command(
+        agent=agent_name.value,
+        agent_cfg=agent_cfg,
+        base_command=base_command,
+        thinking_mode=session.thinking_mode,
+        exec=False,
+        resume=False,
+        native_session_id=launch_context.native_session_id,
+        interactive=False,
+        launch_flags=launch_profile.flags,
+        resolved_flags=None,
+        extra_environment=compaction_launch_environment(launch_context),
+    )
+
+
+def _render_agent_command(
+    agent: str,
+    agent_cfg: AgentConfig,
+    base_command: str,
+    thinking_mode: str | None,
+    exec: bool,
+    resume: bool,
+    native_session_id: str | None,
+    interactive: bool,
+    *,
+    launch_flags: str,
+    resolved_flags: str | None,
+    extra_environment: tuple[tuple[str, str], ...] = (),
+) -> str:
+    """Assemble an agent command from an already selected launch profile."""
+    base_cmd = _COMMAND_PART_SEPARATOR.join((base_command, launch_flags)).strip()
+    launch_environment = (*AGENT_REGISTRY[AgentName.from_str(agent)].launch_environment, *extra_environment)
     if launch_environment:
         assignments = (
             name + _ENVIRONMENT_ASSIGNMENT_SEPARATOR + shlex.quote(value) for name, value in launch_environment

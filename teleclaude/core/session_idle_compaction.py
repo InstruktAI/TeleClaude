@@ -1,36 +1,35 @@
-"""What a session's idle-cycle stamps say: whether a compaction was asked for, whether it completed, and the close.
+"""Interpret a conversation's active maintenance attempt and idle-close markers.
 
-A conversation session's idle cycle (``teleclaude.core.idle_close``) stamps the
-moment it asked the agent to compact and the moment it closed the session; the
-agent-idle handler stamps the moment the agent reported that compaction complete.
-They and the inbound delivery read the stamps through this module, so none of them
-can disagree about which request or close is live.
+The attempt identity and start time live in session platform metadata. The
+provider-confirmed completion and real close remain session markers, so the idle
+cycle and inbound delivery use the same definition of which attempt is live.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Final
 
 from teleclaude.core.models import Session
+from teleclaude.core.session_compaction import (
+    CompactionAttempt,
+    CompactionStage,
+    active_compaction_attempt,
+    last_input_at,
+)
 
 CONVERSATION_IDLE_THRESHOLD: Final[timedelta] = timedelta(minutes=30)
 
 
-def last_input_at(session: Session) -> datetime | None:
-    """When the session last received input; a session that never did dates from its creation."""
-    return session.last_message_sent_at or session.created_at
-
-
-def live_compaction_request(session: Session) -> datetime | None:
-    """The moment the cycle asked for a compaction, unless input arrived after it and voided the request."""
-    requested = session.idle_compaction_requested_at
-    if requested is None:
+def live_compaction_attempt(session: Session) -> CompactionAttempt | None:
+    """The current maintenance attempt, unless accepted input superseded it."""
+    attempt = active_compaction_attempt(session)
+    if attempt is None:
         return None
     last_input = last_input_at(session)
-    if last_input is not None and last_input > requested:
+    if last_input is not None and last_input > attempt.attempted_at:
         return None
-    return requested
+    return attempt
 
 
 def live_idle_close(session: Session) -> bool:
@@ -47,7 +46,12 @@ def live_idle_close(session: Session) -> bool:
 
 
 def compaction_completed(session: Session) -> bool:
-    """Whether the live compaction request has a completion stamped after it."""
-    requested = live_compaction_request(session)
+    """Whether the live attempt has a provider completion stamped after it started."""
+    attempt = live_compaction_attempt(session)
     completed = session.idle_compaction_completed_at
-    return requested is not None and completed is not None and completed > requested
+    return (
+        attempt is not None
+        and attempt.stage is not CompactionStage.RESTORING
+        and completed is not None
+        and completed > attempt.attempted_at
+    )

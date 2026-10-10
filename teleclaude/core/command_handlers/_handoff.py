@@ -18,7 +18,7 @@ from teleclaude.core.agent_status import AgentRunStart, transition_agent_status
 from teleclaude.core.agents import _get_agent_config, assert_agent_enabled, get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.events import AgentReadyContext, TeleClaudeEvents
 from teleclaude.core.injected_text import (
     EnvelopeName,
     InjectedInputAuthority,
@@ -112,8 +112,12 @@ async def execute_handoff(
             raise RuntimeError(f"Session {session.session_id} vanished mid-handoff before launch")
         ready_future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
 
-        async def on_ready(_event_type: str, context: SessionLifecycleContext) -> None:
-            if context.session_id == current.session_id and not ready_future.done():
+        async def on_ready(_event_type: str, context: AgentReadyContext) -> None:
+            if (
+                context.session_id == current.session_id
+                and context.compaction_launch_context is None
+                and not ready_future.done()
+            ):
                 ready_future.set_result(None)
 
         handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, on_ready)

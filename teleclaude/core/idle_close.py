@@ -1,13 +1,14 @@
-"""The conversation idle cycle: compact an idle conversation session's agent, then close the session.
+"""The conversation idle cycle: compact an idle conversation session, then close it.
 
 A conversation session (a session at a help desk, or a person's own session in their
 home) is closed only to spare resources while its person is away. After it has had no
-input for the idle threshold, the cycle types the agent's own compaction command, waits
-for the agent to report the compaction complete, and then closes the session. The
-person's next message or re-entry revives the same session.
+input for the idle threshold, the cycle resumes its native transcript in a temporary
+runtime, submits the agent's declared compaction command, and closes only after the
+provider confirms compaction. Returning input abandons maintenance and resumes the same
+session under its ordinary launch profile.
 
 The cycle never touches a session that is not a conversation, and never records the
-compaction as input: the idle clock is the session's last input.
+compaction command as conversation input: the idle clock is the session's last input.
 """
 
 from __future__ import annotations
@@ -18,26 +19,51 @@ from enum import StrEnum
 from typing import Final
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.agent_registry import AgentName
-from teleclaude.core import tmux_io
+from teleclaude.config.machine import config
+from teleclaude.core import tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.agent_readiness import AGENT_START_STABILIZE_QUIET_S
+from teleclaude.core.agent_startup_delivery import (
+    AgentStartupDeliveryMode,
+    deliver_startup_message,
+)
+from teleclaude.core.agents import get_compaction_agent_command
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import AgentReadyContext, TeleClaudeEvents
 from teleclaude.core.injected_text import InjectedInputAuthority
 from teleclaude.core.models import RelayStatus, Session
+from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_cleanup import terminate_session
+from teleclaude.core.session_compaction import (
+    CompactionAttempt,
+    CompactionStage,
+    SessionCompactionOwner,
+    last_input_at,
+    launch_context_for_attempt,
+    session_compaction_owner,
+)
 from teleclaude.core.session_ended import is_conversation_session
+from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_idle_compaction import (
     CONVERSATION_IDLE_THRESHOLD,
     compaction_completed,
-    last_input_at,
-    live_compaction_request,
 )
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_revival import session_is_resumable
-from teleclaude.core.session_runtime_gate import RuntimeMutationInProgress, session_runtime_owner
+from teleclaude.core.session_runtime_gate import (
+    RuntimeMutationInProgress,
+    clear_relaunch_awaiting_readiness,
+    mark_relaunch_awaiting_readiness,
+    session_runtime_owner,
+)
 from teleclaude.core.session_status import AgentStatusValue, SessionLifecycleStatus, is_agent_turn_running
 from teleclaude.core.session_utils import resolve_working_dir
+from teleclaude.core.tmux_io import UserTurnDeliveryOutcome
+from teleclaude.core.voice_assignment import get_voice_env_vars
 
 logger = get_logger(__name__)
 
@@ -49,11 +75,16 @@ _CYCLE_PASS_FAILED_EVENT = "idle_cycle_pass_failed"
 _SESSION_FAILED_EVENT = "idle_cycle_session_failed"
 _SESSION_BUSY_EVENT = "idle_cycle_session_busy"
 _COMPACTION_REQUESTED_EVENT = "idle_cycle_compaction_requested"
-_COMPACTION_NOT_TYPED_EVENT = "idle_cycle_compaction_not_typed"
 _NOT_DUE_EVENT = "idle_cycle_not_due"
 _CLOSED_EVENT = "idle_cycle_closed"
 _CLOSE_CALLED_OFF_EVENT = "idle_cycle_close_called_off"
 _CLOSE_NOT_PERFORMED_EVENT = "idle_cycle_close_not_performed"
+_COMPACTION_LAUNCH_FAILED_EVENT = "idle_cycle_compaction_launch_failed"
+_COMPACTION_LAUNCH_NOT_STARTED = "temporary compaction runtime could not be started"
+_COMPACTION_IDENTITY_MISSING = "conversation session has no recorded agent or native session"
+_COMPACTION_PANE_MISSING = "conversation session has no recorded tmux runtime"
+_COMPACTION_PANE_SHUTDOWN_FAILED = "conversation runtime could not be shut down for compaction"
+_COMPACTION_READY_TIMEOUT_S: Final[float] = config.daemon.agent_prompt_ready_timeout_s
 
 
 class IdleStep(StrEnum):
@@ -117,11 +148,66 @@ async def _not_due_reason(session: Session, now: datetime, *, require_idle_statu
     return None
 
 
+async def _launch_temporary_compaction_runtime(
+    session: Session,
+    agent: str,
+    tmux_session_name: str,
+    attempt: CompactionAttempt,
+    command: str,
+) -> None:
+    """Resume the recorded native transcript and submit its declared command."""
+    launch_context = launch_context_for_attempt(attempt)
+    loop = asyncio.get_running_loop()
+    ready_future: asyncio.Future[None] = loop.create_future()
+
+    async def _on_ready(_event_type: str, context: AgentReadyContext) -> None:
+        if (
+            context.session_id == session.session_id
+            and context.compaction_launch_context == launch_context
+            and not ready_future.done()
+        ):
+            ready_future.set_result(None)
+
+    ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
+    mark_relaunch_awaiting_readiness(session.session_id)
+    try:
+        voice = await db.get_voice(session.session_id)
+        env_vars = build_agent_session_environment(
+            project_path=session.project_path,
+            platform_env=get_voice_env_vars(voice) if voice else {},
+        )
+        working_dir = resolve_working_dir(session.project_path, session.subdir)
+        if await tmux_bridge.session_exists(tmux_session_name, log_missing=False):
+            if not await tmux_bridge.kill_session(tmux_session_name):
+                raise RuntimeError(_COMPACTION_PANE_SHUTDOWN_FAILED)
+        if not await ensure_tmux_with_identity(session, tmux_session_name, working_dir, env_vars):
+            raise RuntimeError(_COMPACTION_LAUNCH_NOT_STARTED)
+        launch_command = get_compaction_agent_command(session, agent, launch_context)
+        if not await tmux_bridge.send_keys_existing_tmux(session_name=tmux_session_name, text=launch_command):
+            raise RuntimeError(_COMPACTION_LAUNCH_NOT_STARTED)
+        delivery = await deliver_startup_message(
+            session=session,
+            agent_name=agent,
+            message=command,
+            authority=InjectedInputAuthority.INTERFACE,
+            ready_future=ready_future,
+            quiet_s=AGENT_START_STABILIZE_QUIET_S,
+            timeout_s=_COMPACTION_READY_TIMEOUT_S,
+            delivery_mode=AgentStartupDeliveryMode.FRESH_START,
+        )
+        if delivery.outcome is not UserTurnDeliveryOutcome.SUBMITTED:
+            raise RuntimeError(_COMPACTION_LAUNCH_NOT_STARTED)
+    finally:
+        event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
+        clear_relaunch_awaiting_readiness(session.session_id)
+
+
 class ConversationIdleCycle:
     """Compacts and closes the conversation sessions that have been idle past the threshold."""
 
-    def __init__(self, client: AdapterClient) -> None:
+    def __init__(self, client: AdapterClient, compaction_owner: SessionCompactionOwner | None = None) -> None:
         self._client = client
+        self._compaction_owner = compaction_owner or session_compaction_owner
 
     async def run(self) -> None:
         """Run the cycle forever."""
@@ -150,43 +236,68 @@ class ConversationIdleCycle:
 
     async def _advance(self, session: Session, command: str) -> None:
         """Take the one step the session's compaction stamps call for."""
-        if compaction_completed(session):
-            await self._close(session)
-            return
-        requested = live_compaction_request(session)
-        if requested is not None and datetime.now(UTC) - requested < CONVERSATION_IDLE_THRESHOLD:
+        if self._compaction_owner.active_attempt(session) is not None:
+            if compaction_completed(session):
+                await self._close(session)
             return
         await self._request_compaction(session, command)
 
     async def _request_compaction(self, session: Session, command: str) -> None:
-        """Type the agent's compaction command, as input that is not recorded as the person's.
-
-        The runtime owner is held from the last check to the stamp, so input being
-        delivered stops the pass. The request is stamped before the command is typed,
-        so a completion can never be observed ahead of its request.
-        """
+        """Replace the ordinary pane temporarily, then submit the declared command."""
         session_id = session.session_id
-        async with session_runtime_owner(session_id):
-            fresh = await db.get_session(session_id)
-            if fresh is None or fresh.lifecycle_status != SessionLifecycleStatus.ACTIVE:
-                return
-            reason = await _not_due_reason(fresh, datetime.now(UTC), require_idle_status=True)
-            if reason is not None:
-                logger.info(_NOT_DUE_EVENT, session_id=session_id, step=IdleStep.COMPACTION, reason=reason.value)
-                return
-            await db.update_session(session_id, idle_compaction_requested_at=datetime.now(UTC).isoformat())
-            typed = await tmux_io.process_text(
-                fresh,
-                command,
-                active_agent=fresh.active_agent,
-                authority=InjectedInputAuthority.INTERFACE,
-                working_dir=resolve_working_dir(fresh.project_path, fresh.subdir),
-            )
-            if not typed:
-                await db.update_session(session_id, idle_compaction_requested_at=None)
-                logger.warning(_COMPACTION_NOT_TYPED_EVENT, session_id=session_id)
-                return
-            logger.info(_COMPACTION_REQUESTED_EVENT, session_id=session_id, agent=fresh.active_agent)
+        attempt: CompactionAttempt | None = None
+        launch_error: Exception | None = None
+        try:
+            async with session_runtime_owner(session_id):
+                fresh = await db.get_session(session_id)
+                if fresh is None or fresh.lifecycle_status != SessionLifecycleStatus.ACTIVE:
+                    return
+                reason = await _not_due_reason(fresh, datetime.now(UTC), require_idle_status=True)
+                if reason is not None:
+                    logger.info(_NOT_DUE_EVENT, session_id=session_id, step=IdleStep.COMPACTION, reason=reason.value)
+                    return
+                active_agent = fresh.active_agent
+                native_session_id = fresh.native_session_id
+                tmux_session_name = fresh.tmux_session_name
+                if not active_agent or not native_session_id:
+                    raise ValueError(_COMPACTION_IDENTITY_MISSING)
+                if not tmux_session_name:
+                    raise ValueError(_COMPACTION_PANE_MISSING)
+
+                attempt = await self._compaction_owner.begin_attempt(fresh, native_session_id)
+                await db.update_session(session_id, idle_compaction_completed_at=None)
+                fresh = await db.get_session(session_id)
+                if fresh is None:
+                    raise RuntimeError(_COMPACTION_LAUNCH_NOT_STARTED)
+                await _launch_temporary_compaction_runtime(
+                    fresh,
+                    active_agent,
+                    tmux_session_name,
+                    attempt,
+                    command,
+                )
+                current = await db.get_session(session_id)
+                if current is not None:
+                    await self._compaction_owner.transition(current, attempt.attempt_id, CompactionStage.RUNNING)
+                logger.info(_COMPACTION_REQUESTED_EVENT, session_id=session_id, agent=active_agent)
+        except RuntimeMutationInProgress:
+            raise
+        except (OSError, RuntimeError, SQLAlchemyError, TimeoutError, ValueError) as exc:
+            launch_error = exc
+
+        if launch_error is None:
+            return
+        if attempt is None:
+            raise launch_error
+
+        restored = await self._compaction_owner.restore_ordinary(session_id, attempt.attempt_id)
+        logger.error(
+            _COMPACTION_LAUNCH_FAILED_EVENT,
+            session_id=session_id,
+            attempt_id=attempt.attempt_id,
+            error=str(launch_error),
+            restored=restored,
+        )
 
     async def _close(self, session: Session) -> None:
         """Close a session whose compaction completed, unless the conversation is going on.
@@ -201,6 +312,9 @@ class ConversationIdleCycle:
         async with session_runtime_owner(session_id):
             fresh = await db.get_session(session_id)
             if fresh is None or fresh.lifecycle_status != SessionLifecycleStatus.ACTIVE:
+                return
+            attempt = self._compaction_owner.active_attempt(fresh)
+            if attempt is None or not compaction_completed(fresh):
                 return
             if await self._due_to_close(fresh) is not None:
                 return
@@ -227,6 +341,8 @@ class ConversationIdleCycle:
             if not terminated:
                 logger.warning(_CLOSE_NOT_PERFORMED_EVENT, session_id=session_id)
                 return
+            await self._compaction_owner.settle(fresh, attempt.attempt_id)
+            await db.update_session(session_id, idle_compaction_completed_at=None)
             logger.info(_CLOSED_EVENT, session_id=session_id, agent=session.active_agent)
 
     async def _due_to_close(self, session: Session) -> NotDueReason | None:

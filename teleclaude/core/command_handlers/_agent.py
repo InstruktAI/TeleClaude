@@ -38,6 +38,7 @@ from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handof
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
+    AgentReadyContext,
     ErrorEventContext,
     SessionLifecycleContext,
     TeleClaudeEvents,
@@ -836,8 +837,12 @@ async def _restart_agent(
         loop = asyncio.get_running_loop()
         ready_future: asyncio.Future[None] = loop.create_future()
 
-        async def _on_ready(_event_type: str, ctx: SessionLifecycleContext) -> None:
-            if ctx.session_id == session.session_id and not ready_future.done():
+        async def _on_ready(_event_type: str, ctx: AgentReadyContext) -> None:
+            if (
+                ctx.session_id == session.session_id
+                and ctx.compaction_launch_context is None
+                and not ready_future.done()
+            ):
                 ready_future.set_result(None)
 
         ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)

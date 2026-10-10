@@ -34,22 +34,21 @@ from teleclaude.core.events import (
     AgentHookEventType,
     AgentIdlePayload,
     AgentOutputPayload,
+    AgentReadyContext,
     AgentSessionStartPayload,
     AgentStopActivityEvent,
     AgentStopPayload,
     DeliveryNoComposerContext,
     ErrorEventContext,
-    SessionLifecycleContext,
     SessionStatusContext,
     TeleClaudeEvents,
     ToolUseActivityEvent,
     UserPromptSubmitActivityEvent,
     UserPromptSubmitPayload,
 )
-from teleclaude.core.models import SessionField
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.reminders.models import ReminderEvent, ReminderEventAnchor
-from teleclaude.core.session_idle_compaction import live_compaction_request
+from teleclaude.core.session_compaction import SessionCompactionOwner, session_compaction_owner
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_listeners import (
     DeliveryBlockEvidence,
@@ -71,6 +70,7 @@ from teleclaude.tts.manager import TTSManager
 from teleclaude.utils import strip_ansi_codes
 from teleclaude.utils.transcript import extract_last_user_message_with_timestamp, transcript_has_stop_response
 
+from ._compaction import handle_compaction_event
 from ._fanout import _FanoutMixin
 from ._helpers import _is_checkpoint_prompt, wait_for_transcript_ready
 from ._slow_work import schedule as schedule_slow_work
@@ -111,10 +111,12 @@ class AgentCoordinator(
         client: AdapterClient,
         tts_manager: TTSManager,
         reminder_service: ReminderService | None = None,
+        compaction_owner: SessionCompactionOwner | None = None,
     ) -> None:
         self.client = client
         self.tts_manager = tts_manager
         self.reminder_service = reminder_service
+        self.compaction_owner = compaction_owner or session_compaction_owner
         self._background_tasks: set[asyncio.Task[object]] = set()
 
     def _queue_background_task(
@@ -343,6 +345,9 @@ class AgentCoordinator(
 
     async def handle_event(self, context: AgentEventContext) -> None:
         """Handle any agent lifecycle event."""
+        if context.compaction_launch_context is not None:
+            await handle_compaction_event(context, self.compaction_owner)
+            return
         if context.event_type == AgentHookEvents.AGENT_SESSION_START:
             logger.info(
                 _AGENT_SESSION_START_OBSERVED_EVENT,
@@ -370,17 +375,10 @@ class AgentCoordinator(
         """Record a provider-confirmed native command completion without finalizing output."""
         payload = cast(AgentIdlePayload, context.data)
         idle_at = datetime.now(UTC)
-        session = await db.get_session(context.session_id)
-        compaction_completion = (
-            {SessionField.IDLE_COMPACTION_COMPLETED_AT.value: idle_at.isoformat()}
-            if session is not None and live_compaction_request(session) is not None
-            else {}
-        )
         await db.update_session(
             context.session_id,
             last_agent_idle_at=idle_at.isoformat(),
             last_activity=idle_at.isoformat(),
-            **compaction_completion,
         )
         await self._apply_agent_status(context, payload)
         logger.info(
@@ -523,6 +521,8 @@ class AgentCoordinator(
             str(native_session_id),
         )
 
+        await self.compaction_owner.settle_restoring(context.session_id)
+
         # A relaunched agent announcing its start is ready for input.
         clear_relaunch_awaiting_readiness(context.session_id)
 
@@ -530,7 +530,7 @@ class AgentCoordinator(
         # native startup authority subscribe to AGENT_READY here.
         event_bus.emit(
             TeleClaudeEvents.AGENT_READY,
-            SessionLifecycleContext(session_id=context.session_id),
+            AgentReadyContext(session_id=context.session_id),
             visibility=EventVisibility.LOCAL,
         )
 

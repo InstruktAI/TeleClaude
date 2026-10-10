@@ -22,7 +22,7 @@ from teleclaude.core.command_input import (
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import FileEventContext, SessionLifecycleContext, TeleClaudeEvents, VoiceEventContext
+from teleclaude.core.events import AgentReadyContext, FileEventContext, TeleClaudeEvents, VoiceEventContext
 from teleclaude.core.file_handler import handle_file as handle_file_upload
 from teleclaude.core.help_desk_relay import (
     RelayDeliveryFailed,
@@ -58,6 +58,7 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_cleanup import is_legacy_restricted_session
+from teleclaude.core.session_compaction import session_compaction_owner
 from teleclaude.core.session_idle_compaction import live_idle_close
 from teleclaude.core.session_revival import revive_session
 from teleclaude.core.session_runtime_gate import (
@@ -549,7 +550,10 @@ async def _wait_for_session_ready(session_id: str) -> Session | None:
     A relaunch's readiness wait ends when this returns, however it ends.
     """
     try:
-        return await _await_startup_readiness(session_id)
+        session = await _await_startup_readiness(session_id)
+        if session is not None:
+            await session_compaction_owner.settle_restoring(session_id)
+        return session
     finally:
         clear_relaunch_awaiting_readiness(session_id)
 
@@ -579,10 +583,10 @@ async def _await_startup_readiness(session_id: str) -> Session | None:
 
         async def _on_ready(
             _event_type: str,
-            context: SessionLifecycleContext,
+            context: AgentReadyContext,
             ready: asyncio.Future[None] = ready_future,
         ) -> None:
-            if context.session_id == session_id and not ready.done():
+            if context.session_id == session_id and context.compaction_launch_context is None and not ready.done():
                 ready.set_result(None)
 
         ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
@@ -627,6 +631,9 @@ async def _hold_for_startup_readiness(session_id: str) -> Session:
 _IDLE_CLOSED_NOT_REVIVED_TEMPLATE = (
     "Idle-closed session {session_id} could not be revived; its input stays queued for retry"
 )
+_MAINTENANCE_RETURN_NOT_STARTED_TEMPLATE = (
+    "Session {session_id} could not leave temporary maintenance; its input stays queued for retry"
+)
 _CLOSED_BEFORE_INJECTION_TEMPLATE = "Session {session_id} closed before its input was injected; delivery is retried"
 
 
@@ -641,6 +648,12 @@ async def _deliverable_session(session_id: str) -> Session:
     session = await db.get_session(session_id)
     if not session:
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.NOT_FOUND)
+    attempt = session_compaction_owner.active_attempt(session)
+    if attempt is not None:
+        if not await session_compaction_owner.restore_ordinary(session_id, attempt.attempt_id):
+            raise RuntimeError(_MAINTENANCE_RETURN_NOT_STARTED_TEMPLATE.format(session_id=session_id))
+        async with session_runtime_owner(session_id, wait=True):
+            session = await db.get_session(session_id) or session
     if not is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
         return session
     if not live_idle_close(session):

@@ -41,10 +41,12 @@ from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import AgentDispatchMode, Session, SessionEntryPoint, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_compaction import is_current_compaction_launch, session_compaction_owner
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.project_manifest_runtime import load_registered_entries
+from teleclaude.runtime.environment import COMPACTION_LAUNCH_CONTEXT_FIELD, decode_compaction_launch_context
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types.commands import CreateSessionCommand
 
@@ -474,8 +476,11 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         """Dispatch a hook event directly global Event Bus."""
         raw_caller_email = data.pop(HeadlessBootstrapField.CALLER_EMAIL, None)
         caller_email = raw_caller_email if isinstance(raw_caller_email, str) else None
+        launch_context = decode_compaction_launch_context(data.pop(COMPACTION_LAUNCH_CONTEXT_FIELD, None))
         session = await db.get_session(session_id)
         if not session:
+            if launch_context is not None:
+                return
             if event_type != AgentHookEvents.AGENT_SESSION_START:
                 logger.debug(
                     "Ignoring hook event for unknown session (not session_start)",
@@ -491,10 +496,17 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 )
                 return
             session = await self._ensure_headless_session(session_id, data, caller_email)
+        if launch_context is not None and not is_current_compaction_launch(session, launch_context):
+            return
+        if launch_context is not None and event_type == AgentHookEvents.AGENT_ERROR:
+            await session_compaction_owner.restore_ordinary(session.session_id, launch_context.attempt_id)
+            return
         # Native metadata arrives through the outbox and can legitimately lag
         # behind session close. Persist those row mutations before the generic
         # closed-session guard so revive retains the last known native binding.
-        if await self._handle_session_state_mutation_event(session_id, event_type, data, session):
+        if launch_context is None and await self._handle_session_state_mutation_event(
+            session_id, event_type, data, session
+        ):
             return
 
         if session.lifecycle_status == "closed":
@@ -538,7 +550,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             return
 
         # Headless sessions have no tmux — skip output polling to avoid spawning one.
-        if session.tmux_session_name:
+        if launch_context is None and session.tmux_session_name:
             await self._ensure_output_polling(session)
 
         if event_type not in ALL_AGENT_HOOK_EVENTS:
@@ -568,6 +580,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 session_id=session_id,
                 event_type=hook_event,
                 data=payload,
+                compaction_launch_context=launch_context,
             )
             # Directly await coordinator — outbox serialization depends on this completing
             # before the item is marked delivered. event_bus.emit would fire-and-forget.

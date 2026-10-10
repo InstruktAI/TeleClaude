@@ -22,6 +22,8 @@ from typing import Final, NotRequired, TypedDict
 
 _TRAILING_CONTINUATION_SPACE: Final[str] = " "
 _COMPACT_COMMAND: Final[str] = "/compact"
+_CLAUDE_HELP_DESK_PROFILE_FLAGS: Final[str] = "--setting-sources '' --strict-mcp-config --tools Bash,Read,Glob,Grep"
+_CLAUDE_RESTRICTED_DESK_PROFILE_FLAGS: Final[str] = f"{_CLAUDE_HELP_DESK_PROFILE_FLAGS} --disable-slash-commands"
 _CLAUDE_DISCORD_AVATAR_URL: Final[str] = "https://avatars.githubusercontent.com/u/81847?v=4"
 _CODEX_DISCORD_AVATAR_URL: Final[str] = "https://avatars.githubusercontent.com/u/267193182?v=4"
 
@@ -266,6 +268,9 @@ class AgentDefinition:
     # manual trigger, normalized to ``agent_idle``. ``None`` means the agent
     # declares no compaction, so its conversation sessions are never idle-closed.
     compaction_command: str | None = None
+    # Private base profile flags used only while the daemon submits the declared
+    # compaction command. This is separate from operator-editable profiles.
+    compaction_launch_flags: str | None = None
 
 
 @dataclass(frozen=True)
@@ -344,7 +349,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                     # launch settings (permission mode, read fence, allow list,
                     # instruction selection, bundled-skill exclusion, hooks) and
                     # the session's own upload root are rendered per launch.
-                    LaunchProfile.HELP_DESK: "--setting-sources '' --strict-mcp-config --tools Bash,Read,Glob,Grep",
+                    LaunchProfile.HELP_DESK: _CLAUDE_RESTRICTED_DESK_PROFILE_FLAGS,
                 },
                 "mode_chains": {
                     "fast": [{"model": "sonnet", "flags": "--model 'claude-haiku-5-5[1m]' --effort medium"}],
@@ -391,6 +396,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             one_shot=OneShotSupport.SUPPORTED,
             desk_confinement=DeskConfinement.VERIFIED,
             compaction_command=_COMPACT_COMMAND,
+            compaction_launch_flags=_CLAUDE_HELP_DESK_PROFILE_FLAGS,
         ),
         AgentName.CODEX: AgentDefinition(
             key=AgentName.CODEX,

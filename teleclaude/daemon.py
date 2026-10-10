@@ -282,6 +282,11 @@ from teleclaude.core.idle_close import ConversationIdleCycle
 _record_import_timing("teleclaude.core.idle_close", _t)
 
 _t = time.perf_counter()
+from teleclaude.core.session_compaction import session_compaction_owner
+
+_record_import_timing("teleclaude.core.session_compaction", _t)
+
+_t = time.perf_counter()
 from teleclaude.services.maintenance_service import MaintenanceService
 
 _record_import_timing("teleclaude.services.maintenance_service", _t)
@@ -449,11 +454,14 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         # forced off (and persisted) before the settings API can report it.
         self.runtime_settings.reconcile_tts_provisioning()
 
+        # Inject the same persisted-attempt owner before lifecycle startup starts
+        # inbound queue workers or the later poller and idle-cycle loops.
         self.maintenance_service = MaintenanceService(
             client=self.client,
             output_poller=self.output_poller,
             poller_watch_interval_s=5.0,
             task_registry=self.task_registry,
+            compaction_owner=session_compaction_owner,
         )
 
         # Initialize AgentCoordinator for agent events and cross-computer orchestration
@@ -461,6 +469,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self.client,
             self.tts_manager,
             reminder_service=self.reminder_service,
+            compaction_owner=session_compaction_owner,
         )
         session_cleanup.configure_reminder_service(self.reminder_service)
         register_default_processors()
@@ -948,7 +957,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             logger.info("Poller watch task started")
 
             self.idle_cycle_task = asyncio.create_task(
-                ConversationIdleCycle(self.client).run(), name="conversation-idle-cycle"
+                ConversationIdleCycle(self.client, session_compaction_owner).run(), name="conversation-idle-cycle"
             )
             self.idle_cycle_task.add_done_callback(self._log_background_task_exception("conversation_idle_cycle"))
             logger.info("Conversation idle cycle started")

@@ -53,6 +53,7 @@ from teleclaude.core.models import (
     SessionLaunchIntent,
     SessionLaunchKind,
 )
+from teleclaude.core.session_compaction import session_compaction_owner
 from teleclaude.core.session_runtime_gate import RuntimeMutationInProgress, session_runtime_owner
 from teleclaude.core.session_status import is_close_started, is_session_terminal
 from teleclaude.core.shutdown_drain import ShutdownRefusal
@@ -431,6 +432,14 @@ async def _reach(turn: ConversationTurn, env: ConversationEnvironment, endpoint:
         session = revived
         _log(ConversationDecision.ENTRY_REVIVED, turn, session_id=session.session_id, endpoint=endpoint.kind.value)
     await _adopt(turn, env, endpoint, session.session_id, was_superseded=is_superseded(existing))
+    if not _carries_content(turn):
+        attempt = session_compaction_owner.active_attempt(session)
+        if attempt is not None and not await session_compaction_owner.restore_ordinary(
+            session.session_id, attempt.attempt_id
+        ):
+            return await _unavailable(turn, env)
+        await env.db.update_session(session.session_id, last_message_sent_at=env.now_iso())
+        session = await env.db.get_session(session.session_id) or session
     await _deliver(turn, session)
     return ConversationOutcome.DELIVERED
 
