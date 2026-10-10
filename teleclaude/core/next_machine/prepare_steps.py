@@ -55,9 +55,13 @@ logger = get_logger(__name__)
 
 _DIAGNOSE_DRIVER_PROCEDURE_ID = "sdlc/procedure/lifecycle/prepare/diagnose"
 _DIAGNOSE_PRE_DISPATCH_TEMPLATE = (
-    "Load the prepare driver's diagnosis procedure with `{command}` and perform its triage step for `{slug}`. "
-    "If triage retires the todo, stop this script without dispatching. Otherwise continue to STEP 1; the "
-    "dispatched worker will load its separate peer procedure."
+    "Load the prepare driver's diagnosis procedure with `{command}` and perform its triage step for `{slug}`, "
+    "including the check whether the filing already settles the cause. "
+    "If triage retires the todo, stop this script without dispatching. "
+    "If step 1a settles the reporter's account (`diagnosis` written and "
+    "`telec todo stamp {slug} --diagnosis-settled` applied), stop this script without dispatching "
+    "and call `telec todo prepare {slug}`. "
+    "Otherwise continue to STEP 1; the dispatched worker will load its separate peer procedure."
 )
 _TELEC_DOCS_GET_TEMPLATE = "telec docs get {procedure_id}"
 _REUSE_FINDINGS_CLAUSE_TEMPLATE = (
@@ -303,7 +307,7 @@ def _diagnose_interrogation_context(slug: str, peer_session_id: str) -> str:
 
 
 def _diagnose_pre_dispatch_instruction(slug: str) -> str:
-    """Tell the prepare driver to triage before spending the diagnosis peer."""
+    """Tell the prepare driver to triage, and settle a reporter's evidenced cause, before spending the peer."""
     command = _TELEC_DOCS_GET_TEMPLATE.format(procedure_id=_DIAGNOSE_DRIVER_PROCEDURE_ID)
     return _DIAGNOSE_PRE_DISPATCH_TEMPLATE.format(command=command, slug=slug)
 
