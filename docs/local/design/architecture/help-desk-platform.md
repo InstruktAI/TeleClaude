@@ -901,33 +901,25 @@ sequenceDiagram
     Note over Master: At startup, on a declaration change, and on a project registry change
     Notice->>Master: A declaration changed
     Master->>Registry: Which desks does this computer host?
-    Registry-->>Master: The hosted desks, and the desk homes it could not read
+    Registry-->>Master: The hosted desks
     loop Each hosted desk
         Master->>Scope: Who is in this desk's scope?
         Scope-->>Master: People, each with any bound Discord account
         Master->>Guild: Verify or create the category and its three channels
         Master->>Guild: Make each channel's per-person grants match the scope
     end
-    Master->>Guild: Remove the categories of desks no longer hosted, never of a home it could not read
+    Master->>Guild: Remove the categories of desks no longer hosted
 ```
 
 Every pass reads the current desks and scopes in full, so changes that arrive
 during a pass are absorbed by one more pass. Overwrites are compared with what
-the scope requires and edited only where they differ.
-
-Grants fail closed: an authorization check that cannot complete denies access
-(`sdlc/policy/security-awareness`). A person holds a grant on a desk only while
-the pass establishes them in its scope through a bound Discord account. A scope,
-a binding or a desk home the pass cannot read establishes no one, so it keeps no
-grant, and a desk that is not hosted, removed or not, holds no person's grant.
-Whether Discord confirms a person's guild membership decides only whether a new
-grant is added: an established person whose membership Discord cannot confirm
-keeps the grant they hold and is given none. A grant leaving the scope is
-withdrawn ahead of, and independently of, any grant joining it, so a refused
-addition never holds a withdrawal back. A pass that ends with a lookup
-inconclusive or a change refused is followed by another after a growing delay,
-until one converges. Inconclusive provider lookups still create and delete no
-artifact
+the scope requires and edited only where they differ. A desk's grants are
+exactly its scope's people who have a bound Discord account and are in the
+guild; every other person's grant is removed. Desk scope, hosting and bindings
+are trusted as their owners answer them, and an error from any of them, or from
+Discord, fails the pass with that error and is not worked around
+(`sdlc/principle/design-fundamentals`, fail fast). The next pass reconciles
+from the state as it then is
 (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`).
 
 <!-- /planned:help-desk-discord-categories -->
@@ -1008,17 +1000,12 @@ sequenceDiagram
 
 **Discord desk surface failure modes:**
 
-| Scenario                                                                | Behavior                                                                                                                                           | Recovery                                                                                            |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Discord refuses a grant change, or the bot lacks permission to make one | The refused change does not land: a grant Discord refuses to withdraw stays until a later withdrawal is accepted. Passes repeat on a growing delay | An operator grants the bot the channel-management permissions; the next pass converges              |
-| Discord cannot list the guild's channels                                | The pass changes nothing and repeats on a growing delay                                                                                            | The next pass that lists them converges                                                             |
-| A desk's scope cannot be read                                           | No person holds a grant on the desk; its base privacy stays                                                                                        | Repairing the declaration publishes a change, and the next pass grants the scope                    |
-| A person's Discord binding cannot be read                               | They hold no grant on any desk                                                                                                                     | Repairing their configuration publishes a change, and the next pass grants them                     |
-| Discord cannot confirm whether a person in scope is in the guild        | They keep a grant they hold and are given none; the pass repeats on a growing delay                                                                | A later pass that confirms them grants them                                                         |
-| A desk's home cannot be read                                            | The desk's category and channels stay, and no person holds a grant on them                                                                         | Repairing the home restores the desk's grants on the next pass                                      |
-| The guild reaches Discord's category limit                              | The new desk's category is not created; its sessions get no thread                                                                                 | An operator frees categories or the per-desk layout is revisited                                    |
-| A person in scope has no bound Discord account, or is not in the guild  | They are given no grant and see no desk                                                                                                            | They bind their account or join the guild; the next pass grants them                                |
-| A desk's customer-sessions forum is not yet provisioned                 | The desk's session gets no thread, and is never placed in another forum                                                                            | The next pass provisions the forum; the session's thread follows when the session is next reflected |
+| Scenario                                                               | Behavior                                                                | Recovery                                                                                            |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| A declaration, a binding or a Discord call fails during a pass         | The pass stops with that error, which is logged                         | The cause is repaired; the next declaration change or restart reconciles                            |
+| The guild reaches Discord's category limit                             | The new desk's category is not created; its sessions get no thread      | An operator frees categories or the per-desk layout is revisited                                    |
+| A person in scope has no bound Discord account, or is not in the guild | They are given no grant and see no desk                                 | They bind their account or join the guild; the next pass grants them                                |
+| A desk's customer-sessions forum is not yet provisioned                | The desk's session gets no thread, and is never placed in another forum | The next pass provisions the forum; the session's thread follows when the session is next reflected |
 
 <!-- /planned:help-desk-discord-categories -->
 

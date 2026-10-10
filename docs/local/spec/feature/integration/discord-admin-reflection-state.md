@@ -51,14 +51,11 @@ the owning company's members and admins, or the person who owns it. Every
 desk's scope includes the platform's admins. A person is in Discord scope only
 through a bound Discord account. The master keeps every overwrite in step with
 the desk's scope, and re-syncs them when a declaration the scope or a Discord
-binding derives from changes. A person holds a grant on a desk only while the
-master establishes them in its scope: a scope, binding or desk home it cannot
-read keeps no one's grant, and a pass that leaves a lookup inconclusive or a
-change refused is repeated until one converges. A desk that stops being hosted
-loses its category. Removal follows only the endpoint registry's hosted-desk
-answer (`local/projects/teleclaude/spec/domain/agent_runtime`): a desk whose
-home that answer reports as unreadable keeps its category, holding no person's
-grant. No session at a
+binding derives from changes: a desk's grants are exactly its scope's people
+who have a bound account and are in the guild, and every other person's grant
+is removed. A desk that stops being hosted loses its category; hosting is the
+endpoint registry's hosted-desk answer
+(`local/projects/teleclaude/spec/domain/agent_runtime`). No session at a
 desk is reflected into any other forum of the guild — not the all-sessions
 forum and not a project's own forum — so no desk's customer conversation is
 visible outside its scope, and the guild holds no shared help-desk category. A
@@ -473,34 +470,6 @@ Then the message reaches no session and no customer
 And the customer's conversation continues as before
 ```
 
-#### UC-DARS-27: A desk whose home fails to load keeps its category
-
-```gherkin
-Given a hosted desk's category is in the guild
-And that desk's home configuration fails to load on the master
-When the master reconciles the guild
-Then the desk's category and its channels remain
-And no person holds a grant on them until the home loads again
-```
-
-#### UC-DARS-28: A grant survives only what the master can establish
-
-```gherkin
-Scenario Outline: <failure>
-  Given a person who held a grant on a desk has left the desk's scope
-  And <failure> during the master's next pass
-  When the pass ends
-  Then <outcome>
-
-  Examples:
-    | failure                                                      | outcome                                                                                                          |
-    | the desk's scope cannot be read                              | no one holds a grant on the desk                                                                                 |
-    | another person's Discord binding cannot be read              | the person who left holds no grant on the desk                                                                   |
-    | Discord cannot confirm another person's guild membership     | the person who left holds no grant on the desk                                                                   |
-    | Discord refuses to add a grant for someone joining the scope | the person who left holds no grant on the desk                                                                   |
-    | Discord refuses to withdraw the grant                        | the person who left keeps the grant until a later pass's withdrawal is accepted, and passes repeat until one is  |
-```
-
 <!-- /planned:help-desk-discord-categories -->
 
 ### Cross-context references
@@ -553,10 +522,6 @@ Scenario Outline: <failure>
   Administrator permission, and lets them post there, whatever a desk's
   per-person grants say. A desk's category reaches only its scope while those
   powers rest with platform admins.
-- A grant Discord refuses to withdraw, such as when the bot lacks
-  channel-management permission, stays in force until a later pass's withdrawal
-  is accepted. The master repeats the pass; it cannot revoke what Discord
-  refuses.
 - A desk's escalations forum is provisioned with its grants, but no escalation
   opens a thread in it and nothing in it is relayed. Escalations reach people as
   `local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`

@@ -51,10 +51,8 @@ TeleClaudeNext repository.
 <!-- planned:help-desk-discord-categories -->
 
 - **Published contract — hosted desks:** the desks this computer hosts, each
-  with its kind, slug and entry identifier, together with the desk homes whose
-  declaration could not be read. A home whose declaration fails to load is
-  reported as unreadable, never as a home without a desk, so a consumer can tell
-  a desk that stopped being hosted from one whose home could not be read. A
+  with its kind, slug and entry identifier. A desk home whose declaration fails
+  to load fails the answer with that error; the answer never omits the desk. A
   non-master computer hosts no desks. Consumers act on the answer as given and
   never re-derive hosting from declarations or folders themselves.
 

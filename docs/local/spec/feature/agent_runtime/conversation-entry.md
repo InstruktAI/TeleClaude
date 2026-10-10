@@ -488,17 +488,12 @@ And no other computer hosts the desk or refuses entry because of another host
 #### UC-CE26: Discord carries no desk entry
 
 ```gherkin
-Scenario Outline: <case>
-  Given a registered member whose Discord direct message reaches their own assistant
-  And <situation>
-  When the member sends <message> as a direct message
-  Then <outcome>
-  And no session is created at any desk
-
-  Examples:
-    | case            | situation                                                | message                         | outcome                                                                        |
-    | desk identifier | a company whose help desk is enabled on the master        | that desk's identifier          | they receive the neutral reply and their next direct message reaches their own assistant |
-    | earlier binding | their direct message was bound to a session at that desk  | a message without an identifier | the message reaches their own assistant and not the desk session              |
+Given a registered member whose Discord direct message reaches their own assistant
+And a company whose help desk is enabled on the master
+When the member sends that desk's identifier as a direct message
+Then they receive the neutral reply
+And no session is created at any desk
+And their next direct message reaches their own assistant
 ```
 
 <!-- /planned:help-desk-discord-categories -->
