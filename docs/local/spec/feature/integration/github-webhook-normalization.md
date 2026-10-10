@@ -64,6 +64,8 @@ When the normalizer runs
 Then a hook event is returned with source="github", type="release", properties={repo, sender, action: "published", ref: None}, payload=<original>
 ```
 
+<!-- planned-change:checkpoint-event-bindings -->
+
 #### UC-GH3: Ping passthrough adds zen + hook_id but has no built-in consumer
 
 ```gherkin
@@ -79,6 +81,25 @@ And the dispatcher returns without delivering the event anywhere
 And the ping is effectively dropped — there is no v1 production handler that confirms registration via the dispatched event
 And operators see the ping only in inbound delivery logs (accepted); there is no dropped-dispatch trace because the dispatcher returns immediately when the contract registry yields no matches
 ```
+
+<!-- change:checkpoint-event-bindings -->
+
+#### UC-GH3: Ping passthrough adds zen + hook_id but has no built-in consumer
+
+```gherkin
+Given X-GitHub-Event "ping" with payload containing zen="Mind your words..." and hook_id=12345
+When the normalizer runs
+Then properties additionally contain zen and hook_id
+And the hook event type is "ping"
+
+When the hook event reaches the dispatcher
+Then no built-in contract matches a GitHub event
+And the dispatcher returns without delivering the event anywhere
+And the ping is effectively dropped — there is no production handler that confirms registration via the dispatched event
+And operators see the ping only in inbound delivery logs (accepted); there is no dropped-dispatch trace because the dispatcher returns immediately when the contract registry yields no matches
+```
+
+<!-- /planned-change:checkpoint-event-bindings -->
 
 #### UC-GH4: Missing or malformed header → type "unknown"
 
