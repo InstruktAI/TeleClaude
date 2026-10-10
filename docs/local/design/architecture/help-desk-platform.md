@@ -574,32 +574,22 @@ Agents need a way to publish structured output without knowing who consumes it. 
 ```mermaid
 flowchart LR
     subgraph Publishers
-        HD[Help Desk Operator]
-        PSJ[Post-Session Job]
-        IJ[Intelligence Job]
+        HD[Desk agent]
     end
 
     subgraph "Redis Streams"
-        CH1["channel:help-desk:session-reviewed"]
         CH2["channel:help-desk:actions"]
-        CH3["channel:help-desk:intelligence"]
     end
 
     subgraph Subscribers
         ENG[Engineering Agent]
         ADMIN[Admin Notification]
-        OP[Operator Inbox]
     end
 
     HD -->|publish| CH2
-    PSJ -->|publish| CH1
-    PSJ -->|publish| CH2
-    IJ -->|publish| CH3
 
-    CH1 -->|consume| OP
     CH2 -->|consume| ENG
     CH2 -->|consume| ADMIN
-    CH3 -->|consume| ADMIN
 ```
 
 **Channel naming:** `channel:{project}:{topic}` — e.g., `channel:help-desk:actions`, `channel:engineering:bug-reports`.
@@ -629,10 +619,6 @@ channels:
       target:
         project: teleclaude
         command: /process-feature-request
-    - channel: 'channel:help-desk:session-reviewed'
-      target:
-        project: help-desk
-        command: /process-session-review
 ```
 
 **Consumer worker:** A daemon background task polls subscribed channels using Redis consumer groups. When a message arrives, it either:
@@ -751,64 +737,9 @@ Neither records project knowledge or decisions (`local/projects/teleclaude/spec/
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
-### Action Taxonomy
+### Business Insights
 
-Actionable items extracted from customer interactions follow a CRM-inspired vocabulary. Each action type maps to a channel topic.
-
-| Action Type       | Description                                                 | Channel Topic                        |
-| ----------------- | ----------------------------------------------------------- | ------------------------------------ |
-| `follow_up`       | Promise or commitment made to customer                      | `channel:help-desk:follow-ups`       |
-| `escalation`      | Needs human judgment or authority                           | `channel:help-desk:escalations`      |
-| `feature_request` | Customer wants functionality that doesn't exist             | `channel:help-desk:feature-requests` |
-| `bug_report`      | Something is broken or behaving unexpectedly                | `channel:help-desk:bug-reports`      |
-| `knowledge_gap`   | Question could not be answered — docs missing               | `channel:help-desk:knowledge-gaps`   |
-| `promise`         | Explicit commitment with deadline                           | `channel:help-desk:promises`         |
-| `churn_signal`    | Customer expressing frustration or considering alternatives | `channel:help-desk:churn-signals`    |
-| `praise`          | Positive feedback or satisfaction signal                    | `channel:help-desk:praise`           |
-
-Actions are simultaneously:
-
-1. **Saved to memory** — so the operator and intelligence job can query them
-2. **Published to channels** — so subscribers process them asynchronously
-
-Action payload published to channels:
-
-```json
-{
-  "action_type": "feature_request",
-  "priority": "medium",
-  "session_id": "abc-123",
-  "identity_key": "discord:999001",
-  "customer_name": "Alice",
-  "title": "Feature request: dark mode",
-  "summary": "Third customer to request dark mode this month",
-  "context": "Customer was asking about UI customization options"
-}
-```
-
-Subscribers decide what to do with each action: notify an admin, create a todo, spawn an agent in another project, or just accumulate for reporting.
-
-### Idle-Time Intelligence Job
-
-A separate scheduled job runs periodically to perform aggregate analysis across all processed sessions:
-
-```yaml
-jobs:
-  help-desk-intelligence:
-    schedule: daily
-    preferred_hour: 6
-    job: help-desk-intelligence
-    agent: claude
-    thinking_mode: med
-```
-
-This job:
-
-1. Queries recent business memories and actions across all customers
-2. Detects patterns: recurring complaints, trending topics, sentiment shifts
-3. Generates a daily intelligence digest
-4. Saves synthesis as project-level memory observations
-5. Publishes significant patterns to `channel:help-desk:intelligence`
+What desk conversations show about the business — requests for what does not exist, complaints, recurring confusion, sentiment, mentions of alternatives — is not published to channels and no scheduled job synthesizes it. Turning collected business items into durable knowledge for the home that owns the desk, and where that knowledge lands, is not designed yet.
 
 ### Desk master (`AGENTS.master.md`)
 
