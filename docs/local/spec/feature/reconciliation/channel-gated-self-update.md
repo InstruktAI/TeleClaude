@@ -85,7 +85,7 @@ And the installation does not silently come up in a partial or unhealthy state
 Given an installation begins converging to a target version
 When the convergence steps run in order
 Then the installation is not considered converged until it is running and healthy on the target version
-And every step that fails is recorded with its reason, where an agent watching the installation finds it and can replay it
+And a step that fails is recorded with its reason and leaves convergence incomplete until an agent replays it
 And the installation does not silently come up in a partial or unhealthy state
 ```
 

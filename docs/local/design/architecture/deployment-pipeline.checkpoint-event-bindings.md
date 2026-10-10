@@ -117,8 +117,9 @@ Channel configuration is the machine configuration's `deployment` block
 - **Exactly-once per target version.** A target the checkout already contains is
   not applied again, and a replayed event performs nothing a second time.
 - **Healthy-or-failed.** A convergence is complete only when the daemon is
-  running and healthy on the target; every failed step is recorded with its
-  reason where the standing integrator finds it, never a silent partial state.
+  running and healthy on the target; a failed step is recorded with its reason
+  where the standing integrator finds it and leaves the convergence incomplete
+  until it is replayed, never a silent partial state.
 
 ## Primary flows
 
