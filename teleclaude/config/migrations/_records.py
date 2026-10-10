@@ -45,7 +45,7 @@ class MigrationFailureReason(StrEnum):
     FIELD_CONSTRAINT_REFUSED = "field_constraint_refused"
 
 
-# A migration that did not land as a committed document is an anomaly, not routine progress.
+# A migration run whose document did not land committed is an anomaly, not routine progress.
 _OUTCOME_LOG_LEVELS: dict[MigrationOutcome, int] = {
     MigrationOutcome.FAILED: logging.ERROR,
     MigrationOutcome.RESTORED_AFTER_REFUSED_COMMIT: logging.WARNING,
@@ -55,6 +55,9 @@ _OUTCOME_LOG_LEVELS: dict[MigrationOutcome, int] = {
     MigrationOutcome.CURRENT: logging.INFO,
     MigrationOutcome.UPCAST_IN_MEMORY: logging.INFO,
 }
+# A writer migrates in place and commits the document with its own change, so leaving it
+# uncommitted is that trigger's expected outcome.
+_EXPECTED_UNCOMMITTED_TRIGGERS = frozenset({MigrationTrigger.WRITER})
 
 
 class MigrationRecord(TypedDict):
@@ -94,7 +97,7 @@ def record_migration(
 ) -> MigrationRecord:
     """Emit and return the privacy-safe per-document migration record.
 
-    ``diagnostic`` carries a refusal's schema-owned text, never document content.
+    ``diagnostic`` carries a refusal's schema-owned text or a refused commit command's output.
     """
     record: MigrationRecord = {
         "document_key": document_key,
@@ -108,5 +111,12 @@ def record_migration(
         "commit": commit,
         "diagnostic": diagnostic,
     }
-    logger.log(_OUTCOME_LOG_LEVELS[outcome], _LOG_MIGRATION, **record)
+    logger.log(_log_level(outcome, trigger), _LOG_MIGRATION, **record)
     return record
+
+
+def _log_level(outcome: MigrationOutcome, trigger: MigrationTrigger) -> int:
+    """Return the level a migration record is logged at for its outcome and trigger."""
+    if outcome is MigrationOutcome.MIGRATED_UNCOMMITTED and trigger in _EXPECTED_UNCOMMITTED_TRIGGERS:
+        return logging.INFO
+    return _OUTCOME_LOG_LEVELS[outcome]
