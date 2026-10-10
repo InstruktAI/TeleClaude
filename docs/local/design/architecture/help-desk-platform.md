@@ -569,16 +569,16 @@ sequenceDiagram
 
 ### Internal Channels (Pub/Sub)
 
-Agents need a way to publish structured output without knowing who consumes it. Internal channels provide this: named Redis Streams where agents publish and subscribers eventually process.
+Agents need a way to publish structured output without knowing who consumes it. Internal channels provide this: named Redis Streams where agents publish and subscribers eventually process. Help desks publish nothing to internal channels: a desk agent at customer depth cannot run the publish command, and no platform job publishes on a desk's behalf.
 
 ```mermaid
 flowchart LR
     subgraph Publishers
-        HD[Desk agent]
+        HD[Agent]
     end
 
     subgraph "Redis Streams"
-        CH2["channel:help-desk:actions"]
+        CH2["channel:engineering:bug-reports"]
     end
 
     subgraph Subscribers
@@ -592,7 +592,7 @@ flowchart LR
     CH2 -->|consume| ADMIN
 ```
 
-**Channel naming:** `channel:{project}:{topic}` — e.g., `channel:help-desk:actions`, `channel:engineering:bug-reports`.
+**Channel naming:** `channel:{project}:{topic}` — e.g., `channel:engineering:bug-reports`.
 
 **Publishing:** Agents publish via a TeleClaude tool (`telec channels publish`) or HTTP API (`POST /api/channels/{name}/publish`). The agent doesn't need to know who subscribes — it folds the mail, puts it in the pipe, and moves on.
 
@@ -602,23 +602,15 @@ flowchart LR
 # In teleclaude.yml
 channels:
   subscriptions:
-    - channel: 'channel:help-desk:actions'
+    - channel: 'channel:engineering:bug-reports'
       filter:
-        action_type: [escalation, churn_signal]
+        severity: [high]
       target:
         notification: admin_telegram
-    - channel: 'channel:help-desk:actions'
-      filter:
-        action_type: [bug_report]
+    - channel: 'channel:engineering:bug-reports'
       target:
         project: teleclaude
         command: /process-bug-report
-    - channel: 'channel:help-desk:actions'
-      filter:
-        action_type: [feature_request]
-      target:
-        project: teleclaude
-        command: /process-feature-request
 ```
 
 **Consumer worker:** A daemon background task polls subscribed channels using Redis consumer groups. When a message arrives, it either:
@@ -633,7 +625,7 @@ channels:
 - Multiple consumers can load-balance within a group
 - Pending message inspection for debugging stuck deliveries
 
-**Cross-computer routing:** Redis Streams are inherently cross-computer. An agent on the raspi publishes to `channel:help-desk:actions`; the macbook's consumer picks it up. No extra plumbing needed beyond the existing Redis connection.
+**Cross-computer routing:** Redis Streams are inherently cross-computer. An agent on one computer publishes to `channel:engineering:bug-reports`; a consumer on another computer picks it up. No extra plumbing needed beyond the existing Redis connection.
 
 **Tool surface:**
 
@@ -648,56 +640,7 @@ The publish tool is available to all agents. Channel creation is implicit — pu
 
 <!-- planned-change:help-desk-idle-memory-cycle -->
 
-A single idempotent job extracts memories from help desk sessions. It is one job with two invocation paths:
-
-**Primary path (idle-triggered):** The daemon detects idle → spawns the extraction job → job processes the session transcript since `last_memory_extraction_at` → updates the marker → daemon injects `/compact`. Memory extraction MUST complete BEFORE compaction — compaction destroys the raw conversation the extractor reads.
-
-**Fallback path (cron sweep):** Runs every 30 minutes. Finds help-desk sessions where either: `lifecycle_status = 'stopped'` and `help_desk_processed_at IS NULL`, or active sessions whose `last_memory_extraction_at` is stale relative to `last_activity_at`. Processes them identically.
-
-The job doesn't know or care which path invoked it. It receives a session_id, reads the transcript from the last extraction marker onward, and extracts through a dual lens:
-
-```mermaid
-sequenceDiagram
-    participant Job as Memory Extraction Job
-    participant DB as Session DB
-    participant Transcript as Session Transcript
-    participant Memory as Memory API
-    participant Channels as Internal Channels
-
-    Job->>DB: Check last_memory_extraction_at
-    Job->>DB: Resolve identity_key from adapter metadata
-    Job->>Transcript: Read transcript since last extraction
-    Job->>Job: Extract with dual lens
-    par Personal memories
-        Job->>Memory: save(identity_key=discord:999001, type=context)
-        Job->>Memory: save(identity_key=discord:999001, type=preference)
-    and Business memories
-        Job->>Memory: save(identity_key=NULL, type=pattern)
-        Job->>Memory: save(identity_key=NULL, type=discovery)
-    and Actionable items
-        Job->>Channels: publish(channel:help-desk:actions, payload)
-    end
-    Job->>DB: Update last_memory_extraction_at + help_desk_processed_at
-```
-
-**Dual extraction lens:**
-
-1. **Personal memories** (identity-scoped) — what to remember about THIS person: preferences, context, communication style, open questions, relationship history
-2. **Business memories** (project-scoped) — what is interesting for US: feature requests, complaints, confusion patterns, sentiment, competitive mentions
-3. **Actionable items** — published to internal channels for routing to subscribers
-
-**Job configuration** (in `teleclaude.yml` jobs section):
-
-```yaml
-jobs:
-  help-desk-session-review:
-    schedule: hourly
-    preferred_hour: 0
-    job: help-desk-session-review
-    agent: claude
-    thinking_mode: fast
-    # Sweep: picks up unprocessed/stale sessions
-```
+Nothing extracts memories from help-desk sessions. A session memory extraction job exists in the repository but is not scheduled, and the daemon's idle sweep only stamps `last_memory_extraction_at` on idle sessions without extracting anything.
 
 <!-- change:help-desk-idle-memory-cycle -->
 
@@ -1019,7 +962,7 @@ sequenceDiagram
 | Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)             | Most recent memories prioritized                                                     |
 | Channel publish fails (Redis down)                                                          | Agent gets error from publish tool                   | Agent can retry or log locally; sweep job catches missed sessions                    |
 | Channel consumer dies mid-processing                                                        | Message unacknowledged in consumer group             | Redis redelivers to next available consumer                                          |
-| Intelligence job finds no new data                                                          | Exits cleanly, no digest generated                   | Normal; no action needed                                                             |
+| Normal; no action needed                                                                    |
 | Session transcript unavailable at job time                                                  | Job skips session, logs warning                      | Sweep re-run on next schedule; transcript may become available                       |
 | Redis unavailable                                                                           | Channels non-functional; memory still works (SQLite) | Local operations and memory continue; channel delivery resumes when Redis reconnects |
 
@@ -1037,7 +980,6 @@ sequenceDiagram
 | Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)                       | Most recent memories prioritized                                                                                                                     |
 | Channel publish fails (Redis down)                                                          | Agent gets error from publish tool                             | Agent can retry or log locally; sweep job catches missed sessions                                                                                    |
 | Channel consumer dies mid-processing                                                        | Message unacknowledged in consumer group                       | Redis redelivers to next available consumer                                                                                                          |
-| Intelligence job finds no new data                                                          | Exits cleanly, no digest generated                             | Normal; no action needed                                                                                                                             |
 | Session transcript unavailable to the memory agent                                          | Nothing read; read point not advanced                          | A later activation for the session retries                                                                                                           |
 | Redis unavailable                                                                           | Channels non-functional; memory still works (SQLite)           | Local operations and memory continue; channel delivery resumes when Redis reconnects                                                                 |
 
