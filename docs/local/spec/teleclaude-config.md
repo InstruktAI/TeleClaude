@@ -199,6 +199,10 @@ action ids are specified in `local/projects/teleclaude/design/architecture/check
 The overlay is written through the config writer rather than by hand: its path bindings by
 config assessment, and its event bindings by whoever declares the reactions the project
 chooses (`local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`).
+A declaration change that a delivery carries together with the schema it needs is
+authored in the delivering branch with the config owner's own rendering and candidate
+validation, because the installed writer validates against the installed schema; the
+branch's commit gate validates the result against that branch's schema.
 
 <!-- /planned-change:checkpoint-event-bindings -->
 
