@@ -47,7 +47,17 @@ flowchart LR
 - **Stable Panes Across Tabs**: Switching tabs must not hide or reflow panes.
 - **No View-Local Pane Calls**: Views post `PreviewChanged` / `StickyChanged` messages only; layout is applied centrally by the pane bridge.
 - **Sticky Is Authoritative**: Sticky panes persist until explicitly removed.
+
+<!-- planned-change:restore-tui-state-projection -->
+
 - **Pane Lifecycle Is Tmux-Anchored**: Preview and sticky panes live and die by tmux liveness plus explicit `SessionClosed` events. Snapshot diffs from the daemon (bootstrap refresh, per-computer initial events on WS reconnect) never destroy pane state — a daemon restart must not kill the user's preview/sticky panes while their underlying agent tmux sessions are alive.
+
+<!-- change:restore-tui-state-projection -->
+
+- **Pane Lifecycle Is Tmux-Anchored**: Preview and sticky panes live and die by tmux liveness plus explicit `SessionClosed` events. Snapshot diffs from the daemon (the complete session snapshot on WebSocket connect, reconnect, or reach reconciliation) never destroy pane state — a daemon restart must not kill the user's preview/sticky panes while their underlying agent tmux sessions are alive.
+
+<!-- /planned-change:restore-tui-state-projection -->
+
 - **Un-Sticky Transitions to Preview**: When a sticky session is removed (double-press), that session becomes the active preview. Any previously active preview is dismissed. This preserves the user's focus on the session they just interacted with and minimizes layout disruption.
 - **Local-Only State**: TUI state is local UI state; core session state remains owned by the daemon.
 - **Shared Human Filter Is Cross-View Single-Owner**: The human filter — narrowing rows to one person's work — is a single app-level setting shared by the Sessions and Preparation views, owned at the app/shared level rather than by either view, and persisted in `tui_state.json` so it survives tab switches and process restarts. It holds exactly one person or none. Both views read the same setting and render their row set against it; a chip click posts a filter message that updates the one setting, never a second per-view copy. The owning human of a row resolves from existing data — a todo's `created_by_principal`, a session's `human_email` — through the identity resolver; rows whose human does not match are hidden, and rows with no resolvable human are hidden while a filter is active.

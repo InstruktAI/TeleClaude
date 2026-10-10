@@ -30,6 +30,12 @@ execution remain owned by the daemon's lazy MCP runtime.
 Inputs are authenticated caller identity, HTTP resource queries, typed mutation
 requests, connection projection options, and daemon cache notifications.
 
+A connection's projection options name the resource streams it receives —
+sessions, projects with their preparation state, and todos — and whether
+soft-removed todos are included. A client selects only the streams its caller
+holds command clearance to read, so opening a connection never widens what that
+caller can list. An option never names a computer and never widens reach.
+
 Outputs are resource snapshots, viewer-authorized WebSocket state changes,
 command results or durable receipts, and secret-safe error responses. Existing
 WebSocket event DTOs own their wire shapes. A session snapshot without a computer
@@ -48,9 +54,10 @@ session stream.
   activity, and project refreshes apply the existing identity reach and audience
   policies. Computer ownership in a delivered record describes its source; it
   is not a client delivery subscription.
-- **Connection completeness:** an authenticated UI connection receives its
-  complete eligible session snapshot before subsequent session changes. Each
-  reconnect establishes that state again from the current cache.
+- **Connection completeness:** an authenticated UI connection that selects the
+  session stream receives its complete eligible session snapshot before
+  subsequent session changes. Each reconnect establishes that state again from
+  the current cache.
 - **One delivery order:** snapshots and changes use the existing per-connection
   serialized sender. Deferred cache notifications cannot replay older row state
   over a newer snapshot or change.
@@ -77,7 +84,8 @@ sender. Reconnection and reach reconciliation follow the same projection path.
 
 Legacy WebSocket subscription messages are accepted during the local
 client/server transition, without establishing computer membership or gating
-eligible state. They preserve existing projection options. This compatibility
+eligible state. Their resource types and removed-entry flag supply the
+connection's projection options; their computer field is ignored. This compatibility
 surface is retained through the next minor release after delivery and assessed
 for retirement once deployed clients no longer send it.
 
