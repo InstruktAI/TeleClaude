@@ -1,7 +1,6 @@
 ---
-description: How delivering a chat-platform message longer than the platform's single-message limit affects the daemon's other work.
-delivered_by:
-  - fix-daemon-event-loop-wedged-170s-splitting
+description: How delivering a chat-platform message longer than the platform's single-message
+  limit affects the daemon's other work.
 ---
 
 # Outbound Message Overflow — Spec
