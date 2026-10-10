@@ -69,7 +69,7 @@ Frontmatter (optional, authored):
 
 <!-- planned:procedure-agent-headless -->
 
-- `subscription_attendance` — optional on a procedure declaring `subscriptions`. Whether people watch the procedure's agent: `attended`, the default when the field is omitted, is an agent shown wherever sessions are shown; `unattended` is an agent no person watches, left out of the places people look at sessions unless they ask for it. Attendance changes nothing about which agent answers an event, where it works, or what it may do. Validation rejects any other value, and the field on any snippet that declares no `subscriptions`.
+- `subscription_attendance` — optional on a procedure declaring `subscriptions`. Whether people watch the procedure's agent: `attended`, the default when the field is omitted, is an agent shown wherever sessions are shown; `unattended` is an agent no person watches, left out of the places people look at sessions unless they ask for it, whose work is a run: once its session has closed it is never brought back, and a later event that would have reached it starts a new agent. Attendance changes nothing else about which agent answers an event, where it works, or what it may do. Validation rejects any other value, and the field on any snippet that declares no `subscriptions`.
 
 <!-- /planned:procedure-agent-headless -->
 

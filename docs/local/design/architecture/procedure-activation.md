@@ -148,10 +148,11 @@ rule it relies on is stated by its owner:
 
 - **Attendance is the session's own audience statement.** A procedure declares
   whether people watch its agent; the activation carries that declaration, and
-  the runner records it in the write that creates the agent's session. The
-  session listing, live session updates, and the Discord adapter read it from
-  the session; nothing else does, and it never enters identity resolution,
-  reach, or delivery.
+  the runner records it in the write that creates the agent's session. An
+  unattended agent's work is a run: resolution never revives a closed
+  unattended session, so a subject whose unattended agent has closed gets a new
+  one. The session listing, live session updates, and the Discord adapter read
+  attendance from the session; it never enters reach or delivery.
 
 <!-- /planned:procedure-agent-headless -->
 

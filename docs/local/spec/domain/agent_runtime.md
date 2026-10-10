@@ -144,14 +144,17 @@ TeleClaudeNext repository.
 
 - **Owns (unattended agents):** a session the activation runner starts for a
   procedure declaring itself unattended records, in the write that creates it,
-  that no person watches it, as a fact of that session's record.
+  that no person watches it, as a fact of that session's record. Its work is a
+  run: the runner never revives a closed unattended session, and for a
+  procedure declaring subject identity a later activation about that subject
+  starts a new bound session instead.
   The fact is the session's own audience statement, beside reach and never
   part of it: the session listing leaves an unattended session out unless the
   caller asks for every session, for the procedure's job, or for the session by
-  id, and live session updates to people's views carry none. Attendance
-  changes nothing about which agent answers an activation, where it works,
-  what it may do, or how its work is recorded. A session started by hand, or
-  by an agent, is attended.
+  id, and live session updates to people's views carry none. Beyond revival,
+  attendance changes nothing about which agent answers an activation, where it
+  works, what it may do, or how its work is recorded. A session started by
+  hand, or by an agent, is attended.
 
 <!-- /planned:procedure-agent-headless -->
 

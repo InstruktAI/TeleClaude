@@ -90,7 +90,7 @@ person's folder carries no human identity and acts as no person.
 <!-- planned:procedure-agent-headless -->
 
 **Unattended agent**
-: The agent of a procedure declaring that no person watches it. It answers, works, and is recorded as any other agent of its procedure; it is left out of the places people look at sessions unless they ask for it.
+: The agent of a procedure declaring that no person watches it. Its work is a run: it answers, works, and is recorded as any other agent of its procedure while its session is open, is never revived once that session has closed, and is left out of the places people look at sessions unless they ask for it.
 
 <!-- /planned:procedure-agent-headless -->
 
@@ -368,13 +368,24 @@ Scenario Outline: Asking for it shows an unattended agent to anyone whose reach 
     | naming the session by its id         |
 ```
 
-#### UC-PSA25: Attendance does not change which agent answers
+#### UC-PSA25: An open unattended agent answers as an attended one would
 
 ```gherkin
 Given a procedure declaring itself unattended keeps a running agent for a home
 When a later activation for that procedure and home arrives
 Then it reaches that same agent, as it would for an attended procedure
 And that agent is still left out of the places people look at sessions
+```
+
+#### UC-PSA27: A closed unattended agent is not brought back
+
+```gherkin
+Given a procedure declaring itself unattended and subject identity started an agent bound to a subject in a home
+And that agent's session has closed
+When an activation arrives for a further event about that subject
+Then the closed session is not revived
+And a new unattended agent bound to that subject is started in that home
+And the activation is delivered to it
 ```
 
 #### UC-PSA26: An agent started by hand is attended
