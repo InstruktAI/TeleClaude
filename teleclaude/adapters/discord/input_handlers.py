@@ -847,7 +847,12 @@ class InputHandlersMixin:
         return None
 
     async def _create_forum_thread(
-        self, forum_channel: object, *, title: str, content: str = "Initializing Help Desk session..."
+        self,
+        forum_channel: object,
+        *,
+        title: str,
+        content: str = "Initializing Help Desk session...",
+        allowed_mentions: object | None = None,
     ) -> tuple[int, str]:
         create_thread_fn = self._async_callable(
             getattr(forum_channel, "create_thread", None),
@@ -857,7 +862,11 @@ class InputHandlersMixin:
         # Discord channel names must be 1-100 characters
         if len(title) > 100:
             title = title[:97] + "..."
-        result = await create_thread_fn(name=title, content=self._fit_message_text(content, context="thread_starter"))
+        result = await create_thread_fn(
+            name=title,
+            content=self._fit_message_text(content, context="thread_starter"),
+            allowed_mentions=allowed_mentions,
+        )
         thread, starter_message = self._extract_forum_thread_result(result)
 
         thread_id = self._parse_optional_int(getattr(thread, "id", None))

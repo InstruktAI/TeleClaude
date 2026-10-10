@@ -113,7 +113,7 @@ FLAG_FILE_CAPTION = Flag("--caption", desc="Optional caption", arity=VALUE)
 
 FLAG_ESCALATE_CUSTOMER = Flag("--customer", desc="Customer name", arity=VALUE)
 FLAG_ESCALATE_REASON = Flag("--reason", desc="Reason for escalation", arity=VALUE)
-FLAG_ESCALATE_SUMMARY = Flag("--summary", desc="Context summary for the admin", arity=VALUE)
+FLAG_ESCALATE_SUMMARY = Flag("--summary", desc="Context summary for the people notified", arity=VALUE)
 
 # =============================================================================
 # reminders

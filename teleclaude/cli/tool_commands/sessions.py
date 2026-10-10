@@ -91,7 +91,7 @@ def handle_sessions(args: list[str]) -> None:
       unsubscribe Stop receiving notifications from a session
       result      Send a formatted result to the user (implicit session)
       file        Send a file to the user (implicit session)
-      escalate    Escalate a help-desk visitor to the desk owner's admins (implicit session)
+      escalate    Escalate a visitor to everyone in the desk's scope in its escalation thread (implicit session)
       coordinate  Adopt this session as the project's single coordinator (human-directed only; refuses if one is live)
     """
     if not args or args[0] in ("-h", "--help"):
@@ -156,7 +156,7 @@ Subcommands:
   unsubscribe  Stop receiving notifications from a session
   result       Send a formatted result to the user (implicit session)
   file         Send a file to the user (implicit session)
-  escalate     Escalate a help-desk visitor to the desk owner's admins (implicit session)
+  escalate     Escalate a visitor to everyone in the desk's scope in its escalation thread (implicit session)
   coordinate   Adopt this session as the project's single coordinator (human-directed only; refuses if one is live)
 
 Run 'telec sessions <subcommand> --help' for subcommand-specific help."""
@@ -801,21 +801,21 @@ def handle_sessions_file(args: list[str]) -> None:
 
 
 def handle_sessions_escalate(args: list[str]) -> None:
-    """Escalate a help-desk visitor to the admins of the home that owns the desk.
+    """Escalate a help-desk visitor to everyone in the desk's scope.
 
     Usage: telec sessions escalate --customer <name> --reason <text>
                                    [--summary <context>]
 
-    Notifies those admins in their own conversations and starts the relay:
-    the visitor's messages go to them, their replies reach the visitor, and a
-    reply that tags the agent hands the conversation back. Accepted only from
-    a help-desk session; the caller's session is resolved automatically from
-    the environment.
+    Opens a thread in the desk's escalations forum and notifies the desk's
+    scope with a link to it. The thread carries the relay: visitor messages
+    appear there, replies reach the visitor, and tagging the agent hands the
+    conversation back. Accepted only from a help-desk session; the caller's
+    session is resolved automatically from the environment.
 
     Options:
       --customer <name>   The visitor's name, as they gave it
       --reason <text>     Reason for escalation (briefly described)
-      --summary <text>    Optional context summary for the admin
+      --summary <text>    Optional context summary for the people notified
 
     Examples:
       telec sessions escalate --customer "John Doe" --reason "billing dispute"

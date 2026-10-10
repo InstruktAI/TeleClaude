@@ -14,6 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
+from teleclaude.adapters.discord.help_desk_categories import DeskForums
 from teleclaude.adapters.discord.session_launcher import (
     LauncherComponentGeneration,
     LauncherEvent,
@@ -23,7 +24,6 @@ from teleclaude.adapters.discord.session_launcher import (
     parse_launcher_custom_id,
 )
 from teleclaude.config.machine import config
-from teleclaude.config.schema import MessagingChannel
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.db import db
 from teleclaude.core.endpoints import parse_entry_identifier
@@ -34,7 +34,7 @@ from teleclaude.core.events import (
     SessionLifecycleContext,
     TeleClaudeEvents,
 )
-from teleclaude.core.help_desk_relay import AdminReply
+from teleclaude.core.help_desk_relay import answer_in_thread
 from teleclaude.core.inbound import (
     BindOutcome,
     ConversationRef,
@@ -86,13 +86,14 @@ _CUSTOM_ID_FIELD = "custom_id"
 _DM_USER_ID_FIELD = "user_id"
 _DM_DISCORD_USER_ID_FIELD = "discord_user_id"
 _DM_PLATFORM_FIELD = "platform"
-_REFERENCE_ATTR = "reference"
-_MESSAGE_ID_ATTR = "message_id"
 _PROCESS_MESSAGE_EVENT = "process_message"
 # The attributes of a discord.py message this module reads.
 _AUTHOR_ATTR = "author"
 _CHANNEL_ATTR = "channel"
+_CONTENT_ATTR = "content"
 _ID_ATTR = "id"
+_MENTIONS_ATTR = "mentions"
+_USER_ATTR = "user"
 _NO_TEXT = ""
 
 
@@ -154,6 +155,7 @@ class GatewayHandlersMixin:
     _project_category_id: int | None
     _registered_launcher_message_ids: set[int]
     _all_sessions_channel_id: int | None
+    _desk_forums: dict[str, DeskForums]
     _team_channel_map: dict[int, str]
 
     if TYPE_CHECKING:
@@ -517,22 +519,7 @@ class GatewayHandlersMixin:
                 reply=_reply,
                 bind_invite=_bind,
                 modality=TurnModality.TEXT,
-                relay_reply=self._dm_relay_reply(message, user_id, message_id, actor_name),
             )
-        )
-
-    @staticmethod
-    def _dm_relay_reply(message: object, user_id: str, message_id: str, actor_name: str) -> AdminReply | None:
-        """What a direct message answers when it replies to an earlier message of the conversation."""
-        replied_id = getattr(getattr(message, _REFERENCE_ATTR, None), _MESSAGE_ID_ATTR, None)
-        if replied_id is None or not message_id:
-            return None
-        return AdminReply(
-            channel=MessagingChannel.DISCORD,
-            target=user_id,
-            replied_message_id=str(replied_id),
-            admin_message_id=message_id,
-            admin_name=actor_name,
         )
 
     def _bind_discord_invite(self, message: object, user_id: str, person_slug: str) -> BindOutcome:
@@ -575,6 +562,14 @@ class GatewayHandlersMixin:
         # Handle DMs (no guild)
         if getattr(message, "guild", None) is None:
             await self._handle_discord_dm(message)
+            return
+
+        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
+        escalation_forums = {
+            forums.escalations for forums in self._desk_forums.values() if forums.escalations is not None
+        }
+        if parent_id is not None and parent_id in escalation_forums:
+            await self._handle_escalation_thread_message(message)
             return
 
         # Channel gating: only process messages from managed forums
@@ -671,6 +666,27 @@ class GatewayHandlersMixin:
             cmd.to_payload(),
             lambda: get_command_service().process_message(cmd),
         )
+
+    async def _handle_escalation_thread_message(self, message: object) -> None:
+        """Pass a text post in a desk escalation thread to the core relay."""
+        channel = getattr(message, _CHANNEL_ATTR, None)
+        thread_id = self._parse_optional_int(getattr(channel, _ID_ATTR, None))
+        author = getattr(message, _AUTHOR_ATTR, None)
+        text = getattr(message, _CONTENT_ATTR, None)
+        if thread_id is None or author is None or not isinstance(text, str) or not text.strip():
+            return
+        raw_author_id = getattr(author, _ID_ATTR, None)
+        author_id = str(raw_author_id) if raw_author_id is not None else _NO_TEXT
+        author_name = self._discord_actor_name(author, author_id)
+        bot = getattr(self._client, _USER_ATTR, None)
+        bot_id = getattr(bot, _ID_ATTR, None)
+        mentions = getattr(message, _MENTIONS_ATTR, None)
+        mentions_agent = (
+            bot_id is not None
+            and isinstance(mentions, list)
+            and any(getattr(mentioned, _ID_ATTR, None) == bot_id for mentioned in mentions)
+        )
+        await answer_in_thread(str(thread_id), author_name, text, mentions_agent)
 
     # =========================================================================
     # Thread lifecycle events

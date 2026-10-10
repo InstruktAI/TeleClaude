@@ -58,7 +58,6 @@ class SessionColumn(StrEnum):
     ADAPTER_METADATA = "adapter_metadata"
     ORIGIN_METADATA = "origin_metadata"
     TURN_NOTIFICATIONS_SENT = "turn_notifications_sent"
-    RELAY_TARGETS = "relay_targets"
     LAST_OUTPUT_RAW = "last_output_raw"
     LAST_MESSAGE_SENT = "last_message_sent"
     RELAY_EXCHANGE = "relay_exchange"
@@ -94,7 +93,6 @@ JSON_ENCODED_COLUMNS: Final[frozenset[SessionColumn]] = frozenset(
         SessionColumn.ORIGIN_METADATA,
         SessionColumn.TURN_NOTIFICATIONS_SENT,
         SessionColumn.OPEN_TOOL_CALLS,
-        SessionColumn.RELAY_TARGETS,
         SessionColumn.TRANSCRIPT_FILES,
     }
 )

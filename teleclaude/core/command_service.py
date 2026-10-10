@@ -333,7 +333,7 @@ class CommandService:
 
     @_admitted
     async def escalate_session(self, cmd: SystemCommand) -> object:
-        """Escalate a help-desk session to the admins of the home that owns its desk."""
+        """Escalate a help-desk session to people in the desk's scope."""
         return await self._dispatch_system_command(cmd)
 
     @_admitted
@@ -421,7 +421,7 @@ class CommandService:
         }
 
     async def _handle_escalate_session(self, cmd: SystemCommand) -> object:
-        """Escalate a help-desk session to the admins of the home that owns its desk.
+        """Escalate a help-desk session to people in the desk's scope.
 
         Refusals and an escalation nobody received surface as ``ValueError``
         messages the caller reports to the agent.

@@ -14,7 +14,6 @@ HANDOFF_AGENT_FEATURE_ID = "project/spec/feature/agent_runtime/agent-handoff"
 SESSION_OBSERVED_STOP_FEATURE_ID = "project/spec/feature/integration/discord-personal-voice-conversation"
 STORED_AGENT_STATUS_FEATURE_ID = "project/spec/feature/agent_runtime/session-lifecycle"
 CONVERSATION_ENTRY_FEATURE_ID = "projects/teleclaude/spec/feature/agent_runtime/conversation-entry"
-HELP_DESK_RELAY_FEATURE_ID = "projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation"
 INCIDENT_ALERTS_FEATURE_ID = "projects/teleclaude/spec/feature/integration/incident-alerts"
 
 
@@ -126,10 +125,6 @@ DEFAULT_FEATURE_ID_REGISTRY = FeatureIDRegistry.from_entries(
         ),
         FeatureID(
             identifier=CONVERSATION_ENTRY_FEATURE_ID,
-            mark=FeatureMark.MUST_NEGOTIATE,
-        ),
-        FeatureID(
-            identifier=HELP_DESK_RELAY_FEATURE_ID,
             mark=FeatureMark.MUST_NEGOTIATE,
         ),
         FeatureID(

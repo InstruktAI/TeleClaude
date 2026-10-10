@@ -33,7 +33,6 @@ from teleclaude.core.events import (
     SystemCommandContext,
     parse_command_string,
 )
-from teleclaude.core.help_desk_relay import RELAY_REPLY_OWNER_COMMAND, answer_owner_query
 from teleclaude.core.models import JsonDict, RedisInboundMessage
 from teleclaude.core.operation_outcome_delivery import deliver_remote_operation_outcome
 from teleclaude.core.relayed_intake import (
@@ -399,18 +398,6 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                         _ERROR_FIELD: {_KIND_FIELD: _REFUSED_BY_TARGET_KIND, _DETAIL_FIELD: str(exc)},
                     }
                 await self.send_response(message_id, json.dumps(response_envelope))
-                return
-
-            if cmd_name == RELAY_REPLY_OWNER_COMMAND:
-                try:
-                    owner_answer = await answer_owner_query(cmd_args, parsed.caller_principal)
-                    owner_envelope: JsonDict = {_STATUS_FIELD: _SUCCESS_STATUS, _DATA_FIELD: owner_answer.value}
-                except PermissionError as exc:
-                    owner_envelope = {
-                        _STATUS_FIELD: _ERROR_STATUS,
-                        _ERROR_FIELD: {_KIND_FIELD: _REFUSED_BY_TARGET_KIND, _DETAIL_FIELD: str(exc)},
-                    }
-                await self.send_response(message_id, json.dumps(owner_envelope))
                 return
 
             if cmd_name in {

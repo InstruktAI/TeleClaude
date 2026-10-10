@@ -1,8 +1,13 @@
-"""Platform-neutral admin-relay text sanitization and context compilation."""
+"""Platform-neutral help-desk relay text sanitization and context compilation."""
 
 from __future__ import annotations
 
 import re
+
+_RELAY_CONTEXT_TITLE = "[Help Desk Escalation]"
+_RELAY_CONTEXT_INTRO = "A person from the desk's scope spoke directly with the customer. Here is the full exchange:"
+_RELAY_CONTEXT_HANDBACK = "A person from the desk's scope has handed the conversation back to you. Continue naturally,"
+_RELAY_CONTEXT_CONTINUATION = "acknowledging what was discussed."
 
 
 def sanitize_relay_text(text: str) -> str:
@@ -17,8 +22,8 @@ def sanitize_relay_text(text: str) -> str:
 def compile_relay_context(messages: list[dict[str, str]]) -> str:
     """Compile relay messages into a context block for AI injection."""
     lines = [
-        "[Admin Relay Conversation]",
-        "The admin spoke directly with the customer. Here is the full exchange:",
+        _RELAY_CONTEXT_TITLE,
+        _RELAY_CONTEXT_INTRO,
         "",
     ]
     for msg in messages:
@@ -28,8 +33,8 @@ def compile_relay_context(messages: list[dict[str, str]]) -> str:
     lines.extend(
         [
             "",
-            "The admin has handed the conversation back to you. Continue naturally,",
-            "acknowledging what was discussed.",
+            _RELAY_CONTEXT_HANDBACK,
+            _RELAY_CONTEXT_CONTINUATION,
         ]
     )
     return "\n".join(lines)

@@ -53,7 +53,6 @@ from ._session import (
     RelayExchangeEntry,
     RelayExchangeRole,
     RelayStatus,
-    RelayTarget,
     Session,
     SessionEntryPoint,
     SessionField,
@@ -61,9 +60,7 @@ from ._session import (
     SessionLaunchKind,
     TranscriptFormat,
     decode_relay_exchange,
-    decode_relay_targets,
     encode_relay_exchange,
-    encode_relay_targets,
 )
 from ._snapshot import (
     AgentResumeArgs,
@@ -145,7 +142,6 @@ __all__ = [
     "RelayExchangeEntry",
     "RelayExchangeRole",
     "RelayStatus",
-    "RelayTarget",
     "RunAgentCommandArgs",
     "Session",
     "SessionAdapterMetadata",
@@ -170,8 +166,6 @@ __all__ = [
     "WhatsAppAdapterMetadata",
     "asdict_exclude_none",
     "decode_relay_exchange",
-    "decode_relay_targets",
     "encode_relay_exchange",
-    "encode_relay_targets",
     "parse_peer_session_snapshots",
 ]
