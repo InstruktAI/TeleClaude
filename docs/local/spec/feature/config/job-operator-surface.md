@@ -141,28 +141,6 @@ Then the job shows as next due the earlier of the two subscribers' next occurren
 And a job with no enabled subscriber shows no next due
 ```
 
-<!-- planned:job-run-state-single-file -->
-
-#### UC-JOS-10: Reporting updates one current job state
-
-```gherkin
-Given an agent job has an open run for project P and job J
-When the agent reports its outcome together with replacement checkpoint state
-Then the current state for P and J reflects that outcome and checkpoint
-And the next report replaces the current state instead of creating another run-history record
-```
-
-#### UC-JOS-11: A late report cannot replace a successor run
-
-```gherkin
-Given an earlier run for project P and job J has stalled and a successor run is open
-When the earlier run reports after the successor has opened
-Then the successor run remains open and its current state is unchanged
-And only a report from the successor run can close it
-```
-
-<!-- /planned:job-run-state-single-file -->
-
 ## Known caveats
 
 - The runtime status the surface shows is always the runner's recorded run state,

@@ -16,9 +16,18 @@ contracts and never creates shared ownership.
 
 ## Canonical fields
 
+<!-- planned-change:job-run-state-single-file -->
+
 - `agent_runtime`: live sessions, supervised agent processes, session-input
   execution, and runtime lifecycle. It does not own provider transport,
   presentation, identity decisions, or workflow state.
+
+<!-- change:job-run-state-single-file -->
+
+- `agent_runtime`: live sessions, supervised agent processes, session-input execution, runtime lifecycle, and the report handoff that correlates a scheduled agent job outcome with its currently open session. Job procedures own the meaning of their optional checkpoint payloads; `agent_runtime` stores them opaquely. It does not own job declarations or schedules, which `config` publishes, nor provider transport, presentation, identity decisions, or workflow state.
+
+<!-- /planned-change:job-run-state-single-file -->
+
 - `context`: documentation, agent assets, deployment, and context selection.
 - `identity`: caller resolution, authentication evidence, and authorization
   identity. It does not own provider parsing or the domain action authorized.
