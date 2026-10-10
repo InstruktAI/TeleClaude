@@ -30,9 +30,8 @@ logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from teleclaude.api_models import ComputerDTO as APIComputerDTO
-    from teleclaude.api_models import SessionDTO, TuiBootstrapPillar
+    from teleclaude.api_models import SessionDTO
 
-_SESSIONS_PILLAR: TuiBootstrapPillar = "sessions"
 PANE_WRITER_ERRORS = (
     AttributeError,
     LookupError,
@@ -277,8 +276,7 @@ class PaneManagerBridge(TelecMixin, Widget):
     def on_data_refreshed(self, message: DataRefreshed) -> None:
         """Update cached data from API refresh."""
         self._computers = {c.name: c for c in message.computers}
-        if _SESSIONS_PILLAR in message.requested_pillars and _SESSIONS_PILLAR not in message.missing_pillars:
-            self.update_sessions(message.sessions)
+        self.update_sessions(message.sessions)
 
     def sync_layout_state(
         self,
