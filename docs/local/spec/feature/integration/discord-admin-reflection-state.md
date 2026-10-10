@@ -22,17 +22,6 @@ that TeleClaude creates or adopts to reflect its operational structure: admin
 categories, shared channels, help-desk forums, per-machine project forums, team
 channels, and session-launcher forum threads/messages.
 
-<!-- planned-change:help-desk-discord-categories -->
-
-The shared guild reflects the platform help desk only. A session at a company's
-or a project's help desk, and its escalation, is reflected into no forum of the
-guild — not the help-desk forum, not the escalation forum, not the all-sessions
-forum, and not the forum of the project that holds the desk — so no tenant's
-customer conversation is visible to another
-(`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
-
-<!-- change:help-desk-discord-categories -->
-
 Every help desk the master hosts has its own category in the guild, named
 `Help Desk - <kind>-<slug>` after the desk's entry identifier, created and
 reconciled by the master alone. It holds three channels:
@@ -67,8 +56,6 @@ reaches its desk through an adapter other than Discord
 (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`), so
 its thread in the desk's customer-sessions forum is the only place Discord shows
 it.
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 The desired operational shape comes from configuration and the project
 registry: machine identity, master/non-master role, enabled agents, every entry
@@ -109,19 +96,9 @@ change stored state.
 - `artifact_kind`: the Discord artifact class in TeleClaude terms, such as
   `category`, `text_channel`, `forum`, `forum_thread`, or `message`.
 
-<!-- planned-change:help-desk-discord-categories -->
-
-- `logical_key`: stable TeleClaude identity for the artifact, such as
-  `operations.category`, `help_desk.customer_sessions`, `project_forum:<project_slug>`,
-  or `session_launcher:<forum_id>`.
-
-<!-- change:help-desk-discord-categories -->
-
 - `logical_key`: stable TeleClaude identity for the artifact, such as
   `operations.category`, `help_desk:<entry_identifier>.customer_sessions`,
   `project_forum:<project_slug>`, or `session_launcher:<forum_id>`.
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 - `scope`: ownership scope, such as `shared`, `machine:<computer_name>`,
   `project:<project_slug>`, or `person:<person_slug>`.
@@ -261,28 +238,6 @@ And any existing launcher in that forum is not treated as a valid project launch
 And a button click without a launch target returns user-safe feedback without creating a session
 ```
 
-<!-- planned-change:help-desk-discord-categories -->
-
-#### UC-DARS-11: Shared containers and their children retain distinct owners
-
-```gherkin
-Given a Discord category, forum, or channel is a singleton shared container across the fleet
-When the fleet reconciles that container
-Then only the master computer may create or adopt it
-And every non-master may verify and use the existing container without creating a duplicate
-And no computer writes its provider identity to configuration
-Given a session or relay thread exists inside a shared forum
-When the fleet accepts or reconciles that child
-Then every computer publishes observational ownership while any retained fleet member has not adopted the child-ownership protocol
-And observational ownership does not change the previously agreed handling
-And after every retained fleet member has adopted the protocol, exactly one computer durably owns each newly bound child independently of the shared container
-And foreign computers do not mutate the claimed child
-And the master treats the child as ownerless only after every retained computer has completed ownership adoption and the same child survives two complete reconciliation epochs without a claim
-And incomplete or mixed-version ownership evidence causes no provider deletion
-```
-
-<!-- change:help-desk-discord-categories -->
-
 #### UC-DARS-11: Shared containers are provisioned by the master alone
 
 ```gherkin
@@ -292,8 +247,6 @@ Then only the master computer may create or adopt it
 And every non-master may verify and use the existing container without creating a duplicate
 And no computer writes its provider identity to configuration
 ```
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 #### UC-DARS-12: Explicit reset is a database operation
 
@@ -372,19 +325,6 @@ When the Discord reconciler runs
 Then an operator reading Discord still sees that folder's forum
 ```
 
-<!-- planned-change:help-desk-discord-categories -->
-
-#### UC-DARS-20: Company and project help-desk sessions stay out of the shared guild
-
-```gherkin
-Given a customer session at a project's help desk and a contributor's session at the platform help desk
-When the Discord adapter reflects sessions and escalations into the shared guild
-Then the platform desk session and its escalation are reflected in the help-desk and escalation forums
-And the project desk session and its escalation appear in no forum of the guild, the project's own forum included
-```
-
-<!-- change:help-desk-discord-categories -->
-
 #### UC-DARS-20: A desk's sessions are reflected only in its own category
 
 ```gherkin
@@ -393,10 +333,6 @@ When the master reflects sessions into the guild
 Then the session has a thread in that desk's customer-sessions forum
 And it appears in no other forum of the guild, the all-sessions forum and the project's own forum included
 ```
-
-<!-- /planned-change:help-desk-discord-categories -->
-
-<!-- planned:help-desk-discord-categories -->
 
 #### UC-DARS-21: Every hosted desk has its own category on the master
 
@@ -470,8 +406,6 @@ Then the message reaches no session and no customer
 And the customer's conversation continues as before
 ```
 
-<!-- /planned:help-desk-discord-categories -->
-
 ### Cross-context references
 
 - The `integration` context owns the Discord provider boundary and the
@@ -484,8 +418,6 @@ And the customer's conversation continues as before
 - `agent_runtime` consumes project/forum routing by receiving explicit
   session-create commands after the Discord adapter has resolved project context.
 
-<!-- planned:help-desk-discord-categories -->
-
 - `identity` owns a desk's scope. The desk surface turns it into per-person
   grants and never re-derives who belongs to a desk.
 - `agent_runtime`'s endpoint registry owns which desks the master hosts, and
@@ -493,8 +425,6 @@ And the customer's conversation continues as before
 - `config` owns whether a home keeps a desk and each person's Discord binding.
   Its declaration-change notice is the signal on which the master re-syncs desk
   grants and categories.
-
-<!-- /planned:help-desk-discord-categories -->
 
 ## Allowed values
 
@@ -516,8 +446,6 @@ And the customer's conversation continues as before
 - A launcher view reattachment is process-local runtime wiring. The durable
   artifact remains the Discord message plus the database reflection record.
 
-<!-- planned:help-desk-discord-categories -->
-
 - Discord shows every channel to the guild owner and to holders of the
   Administrator permission, and lets them post there, whatever a desk's
   per-person grants say. A desk's category reaches only its scope while those
@@ -526,5 +454,3 @@ And the customer's conversation continues as before
   opens a thread in it and nothing in it is relayed. Escalations reach people as
   `local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`
   states.
-
-<!-- /planned:help-desk-discord-categories -->

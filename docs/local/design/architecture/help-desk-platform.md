@@ -16,15 +16,7 @@ visibility: 'public'
 
 ## Purpose
 
-<!-- planned-change:help-desk-discord-categories -->
-
-Let AI agents answer the people a home does not otherwise serve, through the public-facing adapters (Telegram, Discord, WhatsApp), with per-visitor memory continuity, escalation to the people accountable for that home, and extraction of business intelligence from the interactions — all within a help-desk folder of the home that owns it, scaffolded from TeleClaude's help-desk templates.
-
-<!-- change:help-desk-discord-categories -->
-
 Let AI agents answer the people a home does not otherwise serve, through the public-facing adapters (Telegram, WhatsApp), with per-visitor memory continuity, escalation to the people accountable for that home, and extraction of business intelligence from the interactions — all within a help-desk folder of the home that owns it, scaffolded from TeleClaude's help-desk templates. Discord is never a visitor's surface: it serves the operator plane only.
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 The platform operates on two planes.
 
@@ -115,25 +107,12 @@ The help desk is a folder of the home that owns it, never a repository of its ow
 
 Entry is owned by the core, in `local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`. In outline:
 
-<!-- planned-change:help-desk-discord-categories -->
-
-- An **endpoint** is a routable destination: a person's assistant in their home, or a company's or project's help desk. Its **entry identifier** is the member's invitation token or the desk's `hd-<kind>-<slug>`. One core resolver turns an identifier into the endpoint's working folder.
-- A **conversation** is one adapter's private channel with one person. Every session carries the adapter's origin metadata and the endpoint it was created at. On a per-computer adapter (Telegram) that computer decides alone, and a desk identifier reaches a desk only on the master's bot; on adapters whose messages reach every computer (Discord DM, WhatsApp) the mesh master alone decides and keeps each conversation's binding in a durable record, and no other computer handles those messages. Adapters only recognise and carry the identifier; they keep no routing rules.
-- **Routing** is by what the person sent, and nothing else. A desk identifier reaches that person's latest session at the desk — an open one continues, a closed one is revived, none means a new one — and it becomes the conversation's session; an invitation token binds the account and reaches the person's own assistant the same way. A message without an identifier goes to the conversation's session, revived when closed; with no session, a registered person reaches their own assistant. Entering elsewhere leaves the earlier session as it is, and a later entry at its endpoint continues it. No role detour, no last-desk lookup and no default endpoint exist.
-- A **miss** — an identifier that resolves to nothing, or a person who is not registered and has no session — gets one fixed neutral reply and no session, identical in every case, naming no organisation, at most once per conversation per cooldown window.
-- **Unavailability**: with the master down nothing routes on the adapters that reach every computer: every inbound message gets a temporarily-unavailable reply, at most once per conversation within a cooldown window, from the lowest-named live computer running the adapter, and conversations resume from the master's durable record when it returns. A session the master cannot start or revive in time leaves the binding unchanged and gets the neutral reply.
-- The per-adapter entry links come from `telec config company help-desk-links <slug>` and `telec config project help-desk-links <slug>`, run on the master.
-
-<!-- change:help-desk-discord-categories -->
-
 - An **endpoint** is a routable destination: a person's assistant in their home, or a company's or project's help desk. Its **entry identifier** is the member's invitation token or the desk's `hd-<kind>-<slug>`. One core resolver turns an identifier into the endpoint's working folder.
 - A **conversation** is one adapter's private channel with one person. Every session carries the adapter's origin metadata and the endpoint it was created at. On a per-computer adapter (Telegram) that computer decides alone, and a desk identifier reaches a desk only on the master's bot; on adapters whose messages reach every computer (Discord DM, WhatsApp) the mesh master alone decides and keeps each conversation's binding in a durable record, and no other computer handles those messages. Discord carries no desk entry, and a Discord conversation is never bound to a desk session. Adapters only recognise and carry the identifier; they keep no routing rules.
 - **Routing** is by what the person sent, and nothing else. A desk identifier reaches that person's latest session at the desk — an open one continues, a closed one is revived, none means a new one — and it becomes the conversation's session; an invitation token binds the account and reaches the person's own assistant the same way. A message without an identifier goes to the conversation's session, revived when closed; with no session, a registered person reaches their own assistant. Entering elsewhere leaves the earlier session as it is, and a later entry at its endpoint continues it. No role detour, no last-desk lookup and no default endpoint exist.
 - A **miss** — an identifier that resolves to nothing, or a person who is not registered and has no session — gets one fixed neutral reply and no session, identical in every case, naming no organisation, at most once per conversation per cooldown window.
 - **Unavailability**: with the master down nothing routes on the adapters that reach every computer: every inbound message gets a temporarily-unavailable reply, at most once per conversation within a cooldown window, from the lowest-named live computer running the adapter, and conversations resume from the master's durable record when it returns. A session the master cannot start or revive in time leaves the binding unchanged and gets the neutral reply.
 - The per-adapter entry links come from `telec config company help-desk-links <slug>` and `telec config project help-desk-links <slug>`, run on the master, one for each adapter that carries desk entry.
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 ```mermaid
 flowchart TD
@@ -340,20 +319,7 @@ sequenceDiagram
 
 <!-- /planned-change:help-desk-escalation-in-desk -->
 
-<!-- planned-change:help-desk-discord-categories -->
-
-**Discord configuration (platform desk only):**
-
-- `DISCORD_HELP_DESK_CHANNEL_ID` — forum reflecting platform help-desk sessions for platform admins; not an entry point
-- `DISCORD_ESCALATION_CHANNEL_ID` — forum following platform help-desk escalations
-
-Company and project desk sessions and their escalations appear in no forum of the shared guild, the forum of the project that holds a desk included, so no tenant's customer conversation is visible to another.
-
-<!-- change:help-desk-discord-categories -->
-
 **Discord surface (per desk):** every hosted desk has its own category, `Help Desk - <kind>-<slug>`, with a `customer-sessions` forum mirroring each of its sessions, an `escalations` forum for its escalation threads, and a `team-chat` channel, all visible only to the desk's scope through per-person permission overwrites (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`). No desk session or escalation appears in any other forum of the guild.
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 **Message routing diversion:**
 
@@ -457,15 +423,7 @@ sequenceDiagram
     Note over Daemon: No message recorded as sent
 ```
 
-<!-- planned-change:help-desk-discord-categories -->
-
-**Session resumption.** When a visitor returns through the same conversation (the same Telegram chat, Discord direct message or WhatsApp number), or re-enters the desk with its identifier, the conversation's session at that desk continues, revived when it was closed; no new session is created. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` at the visitor's depth.
-
-<!-- change:help-desk-discord-categories -->
-
 **Session resumption.** When a visitor returns through the same conversation (the same Telegram chat or WhatsApp number), or re-enters the desk with its identifier, the conversation's session at that desk continues, revived when it was closed; no new session is created. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` at the visitor's depth.
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 **Bookkeeping.** A `last_memory_extraction_at` timestamp on the session record is the session's read point: the newest conversation entry its memory agent has read. The agent reads only the conversation after it and advances it last, after its memory changes are made, so a session that ends again is read from where its memory agent stopped.
 
@@ -589,15 +547,7 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 17. **One authority per conversation, one host per desk**: a conversation on a per-computer bot is decided by that computer; where every computer receives inbound messages, the mesh master alone decides. Every desk runs on the master. Without the master nothing routes on the shared adapters; the only answer is the temporarily-unavailable reply.
 
-<!-- planned-change:help-desk-discord-categories -->
-
-18. **No cross-tenant surface**: company and project desk sessions and their escalations appear on no shared surface; the shared Discord guild serves the platform desk only.
-
-<!-- change:help-desk-discord-categories -->
-
 18. **Each desk is seen only by its scope**: a desk's sessions and escalations appear only in that desk's own Discord category, visible only to the desk's scope through per-person overwrites; no shared surface carries them.
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 19. **Customers read public documentation only**: a customer's desk agent reads its desk's reach at public depth, and no desk master inlines its home's internal documentation.
 
@@ -715,8 +665,6 @@ sequenceDiagram
     Daemon->>Agent: Revive the same session, the visitor's current memories injected
 ```
 
-<!-- planned:help-desk-discord-categories -->
-
 ### Desk Category Reconciliation
 
 ```mermaid
@@ -750,8 +698,6 @@ Discord, fails the pass with that error and is not worked around
 (`sdlc/principle/design-fundamentals`, fail fast). The next pass reconciles
 from the state as it then is
 (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`).
-
-<!-- /planned:help-desk-discord-categories -->
 
 ### Help Desk Scaffolding
 
@@ -810,8 +756,6 @@ sequenceDiagram
 
 <!-- /planned-change:help-desk-escalation-in-desk -->
 
-<!-- planned:help-desk-discord-categories -->
-
 **Discord desk surface failure modes:**
 
 | Scenario                                                               | Behavior                                                                | Recovery                                                                                            |
@@ -819,8 +763,6 @@ sequenceDiagram
 | A declaration, a binding or a Discord call fails during a pass         | The pass stops with that error, which is logged                         | The cause is repaired; the next declaration change or restart reconciles                            |
 | A person in scope has no bound Discord account, or is not in the guild | They are given no grant and see no desk                                 | They bind their account or join the guild; the next pass grants them                                |
 | A desk's customer-sessions forum is not yet provisioned                | The desk's session gets no thread, and is never placed in another forum | The next pass provisions the forum; the session's thread follows when the session is next reflected |
-
-<!-- /planned:help-desk-discord-categories -->
 
 ## See Also
 

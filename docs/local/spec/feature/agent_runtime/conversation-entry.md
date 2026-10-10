@@ -45,14 +45,10 @@ routing act is to recognise an entry identifier in what the person sent and hand
 it to the core; how the identifier is carried is the adapter's own (see
 Canonical fields). It holds no routing rules of its own.
 
-<!-- planned:help-desk-discord-categories -->
-
 **Discord.** Discord is a members' surface and never a customer's, so it carries
 no desk entry: a desk identifier sent on Discord is a miss, and a Discord
 conversation is never bound to a desk session. Customers reach a desk through
 Telegram and WhatsApp.
-
-<!-- /planned:help-desk-discord-categories -->
 
 **Routing.** What a person sent decides where it goes, and nothing else does:
 
@@ -76,20 +72,6 @@ session is the conversation's session whatever its state while it is open —
 starting, active or escalated. A session that carries no endpoint is never
 treated as a desk session to return to.
 
-<!-- planned-change:help-desk-discord-categories -->
-
-**Misses.** An identifier that resolves to nothing — no such home, a desk that
-is not enabled or whose home is not on the master, a desk identifier sent to a
-computer's own bot when that computer is not the master, anything that is not
-exactly an identifier — and a message without an identifier from a person who is
-not registered and whose conversation has no session, get one **neutral reply**
-and no session. The reply is the same text in every one of those cases, names no
-organisation, and is sent at most once per conversation within a cooldown
-window. An unrecognised invitation token keeps the reply member onboarding gives
-it.
-
-<!-- change:help-desk-discord-categories -->
-
 **Misses.** An identifier that resolves to nothing — no such home, a desk that
 is not enabled or whose home is not on the master, a desk identifier sent to a
 computer's own bot when that computer is not the master, a desk identifier sent
@@ -99,8 +81,6 @@ session, get one **neutral reply** and no session. The reply is the same text in
 every one of those cases, names no organisation, and is sent at most once per
 conversation within a cooldown window. An unrecognised invitation token keeps
 the reply member onboarding gives it.
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 **Unavailability.** When the master cannot start or revive the session in
 time, nothing changes: the person gets the neutral reply and the conversation
@@ -116,29 +96,6 @@ Discord, and who sees them, is owned by
 `local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`.
 
 ## Canonical fields
-
-<!-- planned-change:help-desk-discord-categories -->
-
-- **Entry identifiers** — a member invitation token; `hd-<kind>-<slug>` with
-  `<kind>` ∈ `company`, `project`. Matched exactly.
-- **How each adapter carries the identifier:**
-  - Telegram: the start parameter of the bot link, whose characters and length
-    are Telegram's (`third-party/telegram/deep-linking`); an identifier beyond
-    them has no Telegram link. A start without a parameter is the bare entry
-    gesture.
-  - WhatsApp: the message text, pre-filled by the link and sent by the person.
-  - Discord: a direct message to the bot consisting of the identifier.
-- **Session metadata** — the adapter's origin metadata and the endpoint the
-  session was created at.
-- **Conversation binding** — on adapters that reach every computer, the mesh
-  master's durable record of each conversation's endpoint and session.
-- **Resolution result** — the endpoint's working folder.
-- **Help-desk entry links** — rendered on the master by
-  `telec config company help-desk-links <slug>` and
-  `telec config project help-desk-links <slug>`, one per adapter configured
-  there.
-
-<!-- change:help-desk-discord-categories -->
 
 - **Entry identifiers** — a member invitation token; `hd-<kind>-<slug>` with
   `<kind>` ∈ `company`, `project`. Matched exactly.
@@ -160,32 +117,10 @@ Discord, and who sees them, is owned by
   `telec config project help-desk-links <slug>`, one per adapter configured
   there that carries desk identifiers.
 
-<!-- /planned-change:help-desk-discord-categories -->
-
 ### Use cases
 
 #### UC-CE1: A help-desk identifier opens a session at that desk
 
-<!-- planned-change:help-desk-discord-categories -->
-
-```gherkin
-Scenario Outline: entry on <adapter>
-  Given a project whose help desk is enabled
-  And a person the platform does not know
-  When that person enters with the desk's identifier on <adapter> reaching the master
-  Then a customer session is created in that project's help desk on the master
-  And the session carries the person's origin and the desk as its endpoint
-  And the person's messages are answered there
-
-  Examples:
-    | adapter  |
-    | Telegram |
-    | Discord  |
-    | WhatsApp |
-```
-
-<!-- change:help-desk-discord-categories -->
-
 ```gherkin
 Scenario Outline: entry on <adapter>
   Given a project whose help desk is enabled
@@ -200,8 +135,6 @@ Scenario Outline: entry on <adapter>
     | Telegram |
     | WhatsApp |
 ```
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 #### UC-CE2: A message without an identifier goes to the conversation's session
 
@@ -290,19 +223,6 @@ And a message after the window may receive the neutral reply once more
 
 #### UC-CE10: Where every computer receives, the master decides and hosts
 
-<!-- planned-change:help-desk-discord-categories -->
-
-```gherkin
-Given several computers receive every Discord direct message and every WhatsApp message
-When a person enters with a company desk's identifier
-Then the mesh master records the conversation's binding to that desk
-And the person's session at that desk runs on the master
-And the person's later messages, files and voice reach that session
-And no other computer creates a session or sends a reply
-```
-
-<!-- change:help-desk-discord-categories -->
-
 ```gherkin
 Given several computers receive every WhatsApp message
 When a person enters with a company desk's identifier
@@ -311,8 +231,6 @@ And the person's session at that desk runs on the master
 And the person's later messages, files and voice reach that session
 And no other computer creates a session or sends a reply
 ```
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 #### UC-CE11: A desk identifier on a computer's own bot reaches a desk only on the master
 
@@ -325,18 +243,6 @@ And no session is created on any computer
 
 #### UC-CE12: The links command renders a desk's entry links on the master
 
-<!-- planned-change:help-desk-discord-categories -->
-
-```gherkin
-Given a project whose help desk is enabled
-And Telegram, Discord and WhatsApp are configured on the master
-When an admin of that project runs the help-desk links command for it on the master
-Then one link per configured adapter is returned, each carrying the desk's identifier
-And the Telegram link names the master's bot
-```
-
-<!-- change:help-desk-discord-categories -->
-
 ```gherkin
 Given a project whose help desk is enabled
 And Telegram, Discord and WhatsApp are configured on the master
@@ -345,8 +251,6 @@ Then a Telegram link and a WhatsApp link are returned, each carrying the desk's 
 And the Telegram link names the master's bot
 And no Discord link is returned
 ```
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 #### UC-CE13: The links command refuses a desk it cannot render
 
@@ -483,8 +387,6 @@ Then every session at the desk runs on the master
 And no other computer hosts the desk or refuses entry because of another host
 ```
 
-<!-- planned:help-desk-discord-categories -->
-
 #### UC-CE26: Discord carries no desk entry
 
 ```gherkin
@@ -500,8 +402,6 @@ Scenario Outline: <case>
     | desk identifier | a company whose help desk is enabled on the master        | that desk's identifier          | they receive the neutral reply and their next direct message reaches their own assistant |
     | earlier binding | their direct message was bound to a session at that desk  | a message without an identifier | the message reaches their own assistant and not the desk session              |
 ```
-
-<!-- /planned:help-desk-discord-categories -->
 
 ### Cross-context references
 
@@ -525,23 +425,6 @@ Scenario Outline: <case>
 
 ## Known caveats
 
-<!-- planned-change:help-desk-discord-categories -->
-
-- Discord carries no identifier in a link: the person sends it as a direct
-  message, which needs a Discord account able to open a direct message with the
-  bot. Someone who cannot is not reachable through Discord.
-- WhatsApp pre-fills the identifier but the person must send it unchanged; an
-  edited one gets the neutral reply.
-- A WhatsApp endpoint answers only from a computer holding WhatsApp send
-  credentials, so the master holds them.
-- A desk whose home is not present on the master is not hosted anywhere: its
-  identifier gets the neutral reply until the home is on the master.
-- One WhatsApp business number serves every desk, so a desk link can only
-  pre-fill the identifier for the person to send. A desk with its own channel
-  identity — its own number or bot — is not supported.
-
-<!-- change:help-desk-discord-categories -->
-
 - Discord carries no identifier in a link: a member sends their invitation
   token as a direct message, which needs a Discord account able to open a direct
   message with the bot.
@@ -555,12 +438,6 @@ Scenario Outline: <case>
   pre-fill the identifier for the person to send. A desk with its own channel
   identity — its own number or bot — is not supported.
 
-<!-- /planned-change:help-desk-discord-categories -->
-
-<!-- planned:help-desk-discord-categories -->
-
 ## See Also
 
 - docs/local/adr/0120-discord-is-never-a-customer-surface.md — why Discord carries no desk entry.
-
-<!-- /planned:help-desk-discord-categories -->

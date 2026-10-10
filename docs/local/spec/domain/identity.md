@@ -96,8 +96,6 @@ TeleClaudeNext.
   reach. The behavioral contract is
   `local/projects/teleclaude/spec/feature/identity/data-visibility`.
 
-<!-- planned:help-desk-discord-categories -->
-
 - **Also owns:** a help desk's scope — the people a desk belongs to, who see its
   operator surface. A company desk's scope is that
   company's whole roster, members and admins alike. A company-owned project
@@ -111,8 +109,6 @@ TeleClaudeNext.
   resolved desk scope only until a declaration identity reads changes. Its
   consumer is the help desk's Discord surface
   (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`).
-
-<!-- /planned:help-desk-discord-categories -->
 
 ## See Also
 

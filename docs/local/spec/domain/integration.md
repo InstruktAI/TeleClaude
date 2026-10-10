@@ -121,8 +121,6 @@ implementation remain the current appliance contract.
   (`event-catalog`); who is a platform administrator or what a principal may
   see (`identity`); what an event means (its producing context).
 
-<!-- planned:help-desk-discord-categories -->
-
 - **Owns (help-desk Discord surface):** on the master, each hosted desk's
   Discord category and its three channels. This covers the per-person grants
   that turn the desk's scope into Discord visibility and channel abilities,
@@ -136,8 +134,6 @@ implementation remain the current appliance contract.
   registry); whether a home keeps a desk, or a person's Discord binding
   (`config`); a desk session's lifecycle or its escalation relay
   (`agent_runtime`).
-
-<!-- /planned:help-desk-discord-categories -->
 
 ## See Also
 

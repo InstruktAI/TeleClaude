@@ -285,41 +285,6 @@ And the owner deletes the thread when no open local session row maps to it, unle
 And another computer does not mutate the thread
 ```
 
-<!-- planned-change:help-desk-discord-categories -->
-
-#### UC-SCR-6: Shared Help Desk threads converge through durable child ownership
-
-```
-Given an operator has a Discord thread in the shared Help Desk forum
-When the fleet accepts or reconciles that thread
-Then every computer publishes observational claims and inventories while any retained fleet member has not adopted the ownership protocol
-And observational claims do not change the previously agreed handling or authorize deletion
-And after every retained fleet member has adopted the protocol, exactly one computer must durably claim a new child before binding it to a local session
-And the claiming computer leaves the thread in place while its local session row is open
-And the claiming computer deletes the thread after its local session is no longer open
-And every foreign computer leaves the claimed thread unchanged
-And the master deletes an unclaimed non-launcher only after ownership adoption is complete, every retained fleet member supports the claim protocol, and the same child remains unclaimed through two complete reconciliation epochs
-And incomplete discovery, an incomplete adoption barrier, or mixed-version disagreement leaves the shared forum unchanged
-And no age floor, archived state, or starter-message identity line grants a conclusively ownerless non-launcher preservation
-And when the forum's launcher thread cannot be conclusively resolved, the sweep skips that forum's pass without deleting anything
-```
-
-#### UC-SCR-7: Escalation relay threads reflect active relays
-
-```
-Given an operator has a Discord thread in the shared escalation forum
-When the adapter stale-resource sweep runs
-Then every computer publishes observational claims and inventories while any retained fleet member has not adopted the ownership protocol
-And after every retained fleet member has adopted the protocol, the computer creating a new relay must durably claim the child before activating it
-And that owner leaves the thread in place while its local relay session is active
-And that owner deletes the thread after its local relay is no longer active
-And every foreign computer leaves the claimed relay thread unchanged
-And the master deletes an unclaimed relay thread only after ownership adoption is complete, every retained fleet member supports the claim protocol, and the same child remains unclaimed through two complete reconciliation epochs
-And incomplete ownership evidence produces no provider deletion
-```
-
-<!-- change:help-desk-discord-categories -->
-
 #### UC-SCR-6: A desk's customer-sessions threads reflect its open sessions
 
 ```
@@ -343,8 +308,6 @@ And the master deletes the thread after that relay is no longer active
 And no other computer mutates the thread
 And when Discord cannot conclusively list the forum's threads, the sweep deletes nothing in that pass
 ```
-
-<!-- /planned-change:help-desk-discord-categories -->
 
 ### Cross-context references
 
