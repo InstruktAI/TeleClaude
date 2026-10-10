@@ -88,6 +88,8 @@ TeleClaudeNext repository.
   It reads the corpus `context` publishes and the canonical value the command's
   semantic owner emits, and decides neither reach, layout, nor vocabulary.
 
+<!-- planned-change:procedure-agent-subject-identity -->
+
 - **Owns (procedure activation runner):** on the computer that emitted an
   event, one standing agent per procedure per activation home — a company, a
   person, a project, or the platform — as the runner's own behavior. The runner
@@ -114,6 +116,50 @@ TeleClaudeNext repository.
   completion or failure is recorded once, a failure is never presented as
   success, and it never moves the responsibility to another agent. The agent's
   lifecycle and its handling of later events belong to the procedure it loads.
+
+<!-- change:procedure-agent-subject-identity -->
+
+- **Owns (procedure activation runner):** on the computer that emitted an
+  event, one standing agent per procedure per activation home — a company, a
+  person, a project, or the platform — as the runner's own behavior, unless the
+  procedure declares subject identity (below). The runner
+  resolves the agent through the inbound resolve-or-create seam, serialized per
+  procedure and home so concurrent activations there cannot both start one.
+  When one or more sessions under the system principal already run the
+  procedure for the home, it wakes one and starts none; a session carrying
+  human lineage is never adopted; when none does, it starts one by dispatching
+  the generic procedure-activation command — carrying the procedure's identity
+  and the home — in that home: the company's home folder, the person's folder,
+  or the project's checkout as `config` answers, or the platform's own checkout
+  for the platform. A named home absent on the computer fails the activation,
+  which is never moved to another home or computer. The session is started
+  under the system principal, with its company set only for a company home. The
+  triggering event reaches a new agent as its first input through the same
+  session-input delivery that wakes an existing one, never as additional
+  startup context, keyed by the activation's identity so that a repeated
+  activation for the same event, procedure, and home reaches the agent once. A
+  company-home standing agent may also be started by hand, and nothing
+  restricts that; a person-, project-, or platform-home one is started only by
+  an activation. Nothing coordinates computers. Each activation is a durable
+  operation of its own kind, keyed by the activation's identity, whose
+  completed and failed outcome events this context owns and registers;
+  completion or failure is recorded once, a failure is never presented as
+  success, and it never moves the responsibility to another agent. The agent's
+  lifecycle and its handling of later events belong to the procedure it loads.
+
+- **Owns (subject-bound agents):** for a procedure declaring subject identity,
+  one agent per procedure, activation home, and the subject the activating
+  event names, on the computer that emitted it. The runner records that binding
+  on the session it starts, finds the bound session again open or closed,
+  delivers to it when open, revives it with its own transcript when it has
+  closed, and starts a new bound session in the home when none can continue.
+  Resolution is serialized per procedure and home, so concurrent activations
+  about one subject start one agent. An activation whose event names no subject
+  fails its operation. Everything else — the home folder, the system
+  principal, the company of a company home, delivery keyed by the activation,
+  and the durable operation — is as for a standing agent.
+
+<!-- /planned-change:procedure-agent-subject-identity -->
 
 - **Owns (session company):** a session has a company only when it is created
   with `--company` or started from a session that has one; the company is
@@ -143,11 +189,26 @@ act concerned:
 - daemon and process-supervision events: the computer whose daemon or process
   they concern, with no origin.
 
+<!-- planned:procedure-agent-subject-identity -->
+
+A session's end is reported once for every session that ends, whatever folder
+it worked in, and the event's type states what kind of session ended: a
+help-desk conversation, a person's own conversation, a session the platform or
+another session started, or a session whose record establishes none of these.
+
+<!-- /planned:procedure-agent-subject-identity -->
+
 ## See Also
 
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered project, person, or company its act happened in.
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why no subject claims the event concerns no registered home, and an unknown subject makes no claim.
 
 - docs/local/adr/0114-events-take-the-cloudevents-attribute-model.md — why each event names the thing it is about as its subject, separately from its origin.
+
+<!-- planned:procedure-agent-subject-identity -->
+
+- docs/local/adr/0120-a-session-ended-event-states-the-kind-of-session-in-its-type.md — why every session's end is reported and its type states the kind of session, read from who started it.
+
+<!-- /planned:procedure-agent-subject-identity -->
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

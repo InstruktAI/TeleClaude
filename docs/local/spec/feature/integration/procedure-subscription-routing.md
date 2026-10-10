@@ -53,6 +53,18 @@ within the records the platform retains. When routing cannot submit an
 activation, its handling of the event fails, and the consumer runtime retries
 it and, when it keeps failing, parks and announces it.
 
+<!-- planned:procedure-agent-subject-identity -->
+
+Each activation also carries which agent the procedure declares answers its
+events: one agent for the home, the default, or one agent for each subject of
+the events. Routing reads that declaration from the published subscriptions as
+it reads the patterns and the home kind, and hands it on unchanged; resolving
+the agent it names belongs to the runtime contract that owns standing agents.
+The activation's identity stays the event's id, the procedure, and the home,
+because one event has one subject.
+
+<!-- /planned:procedure-agent-subject-identity -->
+
 ## Canonical fields
 
 ### Use cases
@@ -202,6 +214,26 @@ Scenario Outline: A pattern matches whole name segments
     | erp.invoice.*    | erp.invoices.paid             | no activation                                    |
     | erp.*            | erp.invoice.paid              | one activation naming the procedure and company  |
 ```
+
+<!-- planned:procedure-agent-subject-identity -->
+
+#### UC-PSR17: An activation carries the agent identity its procedure declares
+
+```gherkin
+Scenario Outline: The declared agent identity travels with every activation
+  Given a global-tier procedure answering company events <declaration>
+  When an event of a subscribed type whose origin is a company is emitted on this computer
+  Then an agent inspecting the activation record sees one activation naming the procedure and company
+  And that activation asks for <agent>
+
+  Examples:
+    | declaration                                    | agent                                  |
+    | declares no agent identity                     | the procedure's agent for that company |
+    | declares the home agent identity               | the procedure's agent for that company |
+    | declares the subject agent identity            | the procedure's agent for the event's subject in that company |
+```
+
+<!-- /planned:procedure-agent-subject-identity -->
 
 ### Cross-context references
 

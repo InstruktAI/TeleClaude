@@ -270,6 +270,27 @@ Scenario Outline: Each declared subscription is checked against the type-pattern
     | *.paid           | a subscription finding naming the pattern is reported and the sync exits non-zero       |
 ```
 
+<!-- planned:procedure-agent-subject-identity -->
+
+#### UC-SFV8: A subscribed procedure may declare which agent answers each event
+
+```gherkin
+Scenario Outline: The declared agent identity is validated against the subscription
+  Given a procedure snippet published in the global tier <declaration>
+  When snippet validation runs
+  Then <outcome>
+
+  Examples:
+    | declaration                                                  | outcome                                                                         |
+    | declares its events and no agent identity                    | no agent-identity finding is reported                                           |
+    | declares its events and the home agent identity              | no agent-identity finding is reported                                           |
+    | declares its events and the subject agent identity           | no agent-identity finding is reported                                           |
+    | declares its events and an agent identity outside the two    | an agent-identity finding is reported for that file and the sync exits non-zero |
+    | declares an agent identity and no events                     | an agent-identity finding is reported for that file and the sync exits non-zero |
+```
+
+<!-- /planned:procedure-agent-subject-identity -->
+
 ### Cross-context references
 
 - workflow and integration own lifecycle state transitions and delivery-time

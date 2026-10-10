@@ -208,6 +208,43 @@ And a session of any other agent, or without a native session id, removes nothin
 And a close without the delete variant leaves the Claude Code temp directory in place, so a revived session resumes with its scratchpad
 ```
 
+<!-- planned:procedure-agent-subject-identity -->
+
+#### UC-SCR-11: Every session that ends is reported once, typed by the kind of session it was
+
+```gherkin
+Scenario Outline: The session-ended event states what kind of session ended
+  Given an open session <session> works in <folder>
+  When terminate-session ends it, with or without the delete variant
+  Then an agent consuming platform events receives one session-ended event about that session
+  And the event's origin is the home the session recorded, or none when it recorded no home
+  And the event's type states that <kind> ended
+
+  Examples:
+    | session                                                                          | folder                                     | kind                          |
+    | entered through a help desk, whether or not its visitor is a registered person    | a help desk of a company                   | a help-desk conversation      |
+    | a person started and talks to, with no other session behind it                    | that person's folder                       | a person's own conversation   |
+    | a person started and talks to, with no other session behind it                    | a project checkout                         | a person's own conversation   |
+    | another session started, carrying that person's lineage                           | a project checkout                         | a session the system started  |
+    | the platform started for a procedure, a job, or the lifecycle runner              | any home                                   | a session the system started  |
+    | whose record states no principal, no system role, and no starting session         | a folder no registration governs           | an unknown kind of session    |
+```
+
+```gherkin
+Scenario Outline: An ending is reported once, and a later ending again
+  Given a session ended and its session-ended event was emitted
+  When <later act>
+  Then <outcome>
+
+  Examples:
+    | later act                                                          | outcome                                                                    |
+    | the close is replayed for the already-closed session               | no second session-ended event is reported for that ending                  |
+    | the closed session's row is purged after the retention window      | no second session-ended event is reported for that ending                  |
+    | the session is revived and ends again                              | a new session-ended event is reported for the new ending, with its own id  |
+```
+
+<!-- /planned:procedure-agent-subject-identity -->
+
 #### emit-recently-closed-session-events — restart-recovery sweep
 
 ```

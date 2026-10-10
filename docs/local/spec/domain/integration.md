@@ -50,6 +50,8 @@ implementation remain the current appliance contract.
 - **Published contracts:** normalized inbound commands and events, outbound
   delivery requests and results, and provider-neutral transport types.
 
+<!-- planned-change:procedure-agent-subject-identity -->
+
 - **Owns (procedure subscription routing):** reading each published procedure
   subscription — its type patterns, the home kind it answers, and the tier it is
   published in — from the publication index `context` publishes; and running,
@@ -72,6 +74,35 @@ implementation remain the current appliance contract.
   added, edited, or removed subscription takes effect at the next event without
   a restart or a separate trigger. Editing a procedure's subscriptions changes
   its event membership and never the procedure-and-home identity of its agent.
+
+<!-- change:procedure-agent-subject-identity -->
+
+- **Owns (procedure subscription routing):** reading each published procedure
+  subscription — its type patterns, the home kind it answers, the agent
+  identity it declares, and the tier it is published in — from the publication
+  index `context` publishes; and running,
+  on each computer, one platform event consumer that is handed the events its
+  own computer emitted whose origin is known, and matches each event's type and
+  origin against those subscriptions with `event-catalog`'s type-pattern matcher.
+  A procedure answers only events whose origin is of its declared kind, with a
+  platform procedure answering events whose origin is none, and a tier-published
+  procedure only its own company or person. Each match produces one activation:
+  the procedure, the event's origin, the event, the agent identity the
+  procedure declares, and the platform's system principal as its origin,
+  identified by the event's id, the procedure, and the home so that handling
+  the same event again finds the existing activation.
+  Routing reads the event's source, origin and subject as its producer stated
+  them and never constructs, replaces, or converts any of them; it coordinates
+  no computers. An event another computer emitted and an event whose origin is
+  unknown produce no activation and record no failure. A submission that fails
+  fails the consumer's handling of the event, which the consumer runtime retries
+  and parks. The subscription set is held in memory with the identity of the
+  index it came from and re-read when the published index changes, so an
+  added, edited, or removed subscription takes effect at the next event without
+  a restart or a separate trigger. Editing a procedure's subscriptions changes
+  its event membership and never the identity of its agent.
+
+<!-- /planned-change:procedure-agent-subject-identity -->
 
 - **Also owns (internal handler boundary):** an internal handler receives the
   matched contract alongside the event, so a handler serving several contracts

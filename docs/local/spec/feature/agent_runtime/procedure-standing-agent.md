@@ -7,6 +7,8 @@ visibility: internal
 
 ## What it is
 
+<!-- planned-change:procedure-agent-subject-identity -->
+
 A procedure that declares the events activating it owns one continuing agent per
 activation home. A home is a company, a person, or a project, named by its kind
 and its slug, or the platform itself for events that concern no registered
@@ -21,6 +23,31 @@ group entity to register or manage. Two consequences follow: procedures whose
 patterns overlap remain distinct responsibilities with distinct agents, and
 editing a procedure's patterns changes what its agent listens to without
 changing which agent it is.
+
+<!-- change:procedure-agent-subject-identity -->
+
+A procedure that declares the events activating it owns one continuing agent per
+activation home, or, when it declares subject identity, one per subject of its
+events within that home. A home is a company, a person, or a project, named by
+its kind and its slug, or the platform itself for events that concern no
+registered home. By default the agent is identified by two facts: the
+procedure's existing canonical ID and the home whose work it carries. A
+procedure that declares subject identity adds a third: the subject its
+activating event is about, so each thing its events concern — a session, a
+todo, a job — has an agent of its own and no agent collects every subject in a
+home. The first activation for an identity starts its agent; every later
+activation for the same identity is delivered to that agent, whether it is idle
+or in the middle of a turn. A subject-bound agent whose session has closed is
+revived with its own context before the activation is delivered to it.
+
+The procedure's ID is the procedure's part of that identity. Its declared
+subscription patterns are its event membership and nothing more — there is no separate group identifier and no
+group entity to register or manage. Two consequences follow: procedures whose
+patterns overlap remain distinct responsibilities with distinct agents, and
+editing a procedure's patterns changes what its agent listens to without
+changing which agent it is.
+
+<!-- /planned-change:procedure-agent-subject-identity -->
 
 A standing agent works in its home on the computer that emitted the activating
 event: a company's home folder, a person's folder, a project's checkout, or, for
@@ -41,6 +68,18 @@ wakes a session already running the procedure for that home under the system
 principal when it finds one or more, and starts one only when it finds none.
 That is the runner's own behavior: nothing restricts starting such an agent by
 hand, and nothing coordinates computers.
+
+<!-- planned:procedure-agent-subject-identity -->
+
+For a procedure that declares subject identity, the runner finds the session it
+started for the procedure, the home and the event's subject on that computer,
+open or closed. It delivers to that session when it is open, revives it when it
+has closed and can resume its own transcript, and starts a new one bound to the
+subject when it finds neither. An activation for such a procedure whose event
+names no subject fails, because no agent can be bound to a subject the event
+does not state.
+
+<!-- /planned:procedure-agent-subject-identity -->
 
 An activation carries the identity of the event that produced it. An activation
 that repeats one already delivered for the same event, procedure, and home
@@ -66,6 +105,16 @@ person's folder carries no human identity and acts as no person.
 
 **Activation**
 : One delivery of a matched event to a procedure's standing agent — a start when none stands, a wake when one does.
+
+<!-- planned:procedure-agent-subject-identity -->
+
+**Subject identity**
+: A procedure's declaration that each subject of its events within a home has its own agent, instead of one agent for the home.
+
+**Subject-bound agent**
+: The agent a procedure declaring subject identity keeps for one subject in one home — started by the first activation about that subject and reached by every later one, revived when its session has closed.
+
+<!-- /planned:procedure-agent-subject-identity -->
 
 ### Use cases
 
@@ -235,7 +284,86 @@ Then the agent does not receive the event a second time
 And no second agent is started
 ```
 
+<!-- planned:procedure-agent-subject-identity -->
+
+#### UC-PSA16: A procedure declaring subject identity starts one agent per subject
+
+```gherkin
+Given a procedure declaring subject identity answers events of a home
+And no agent of that procedure is bound to a subject in that home
+When activations arrive there for events about two different subjects
+Then two agents are started in that home under the system principal, one bound to each subject
+And each receives only the activation about its own subject
+```
+
+#### UC-PSA17: A later event about the same subject reaches that subject's open agent
+
+```gherkin
+Given a procedure declaring subject identity keeps an open agent bound to a subject in a home
+When an activation arrives for a further event about that subject
+Then the activation is delivered to that agent
+And no further agent is started
+```
+
+#### UC-PSA18: A later event about a subject revives that subject's closed agent with its own context
+
+```gherkin
+Given a procedure declaring subject identity started an agent bound to a subject in a home
+And that agent's session has closed
+When an activation arrives for a further event about that subject
+Then that same session is revived and resumes its own transcript
+And the activation is delivered to it
+And no further agent is started
+```
+
+#### UC-PSA19: A closed subject-bound session that cannot resume is succeeded by a new agent
+
+```gherkin
+Given a procedure declaring subject identity started a session bound to a subject in a home
+And that session closed without a transcript it could resume
+When an activation arrives for a further event about that subject
+Then a new agent bound to that subject is started in that home
+And the activation is delivered to it
+```
+
+#### UC-PSA20: Concurrent activations about one subject produce one agent
+
+```gherkin
+Given a procedure declaring subject identity keeps no agent bound to a subject in a home
+When two activations about that subject arrive concurrently
+Then exactly one agent bound to that subject continues it afterwards
+And both activations reach that agent
+```
+
+#### UC-PSA21: A subject-identity activation whose event names no subject fails
+
+```gherkin
+Given a procedure declaring subject identity answers events of a home
+When an activation arrives for an event that names no subject
+Then no agent is started or woken
+And an agent inspecting the activation record observes a failure stating that the event names no subject
+```
+
+#### UC-PSA22: A procedure declaring home identity keeps one agent for the home
+
+```gherkin
+Scenario Outline: The default identity is unchanged by events about different subjects
+  Given a procedure that <declaration> keeps a standing agent for a home
+  When activations arrive for events about two different subjects in that home
+  Then both are delivered to that one standing agent
+  And no further agent is started
+
+  Examples:
+    | declaration                        |
+    | declares no agent identity         |
+    | declares the home agent identity   |
+```
+
+<!-- /planned:procedure-agent-subject-identity -->
+
 ### Cross-context references
+
+<!-- planned-change:procedure-agent-subject-identity -->
 
 - **integration** — hands this context an activation naming the procedure, the
   home, and the event it came from, only on the computer that emitted the
@@ -248,17 +376,57 @@ And no second agent is started
 - **context** — publishes the procedure, the event types it declares, and the
   home kind it answers.
 
+<!-- change:procedure-agent-subject-identity -->
+
+- **integration** — hands this context an activation naming the procedure, the
+  home, the agent identity the procedure declares, and the event it came from,
+  only on the computer that emitted the event; it never starts or addresses a
+  session itself.
+- **config** — answers whether a company, person, or project is registered on
+  the computer, and where its folder is.
+- **identity** — owns the system-principal contract a standing agent runs
+  under. This context decides nothing about identity and derives no
+  authorization the identity contract does not publish.
+- **context** — publishes the procedure, the event types it declares, the
+  home kind it answers, and the agent identity it declares.
+
+<!-- /planned-change:procedure-agent-subject-identity -->
+
 ## Known caveats
 
 - Standing is not remembering. A long-lived agent compacts; what it recovers
   afterward rests on durable state its procedure and domain own.
+
+<!-- planned-change:procedure-agent-subject-identity -->
+
 - The standing population is bounded by the published procedures and the
   homes they serve. Workers a standing agent dispatches are a separate,
   bounded source of concurrency.
+
+<!-- change:procedure-agent-subject-identity -->
+
+- The population of home-bound agents is bounded by the published procedures
+  and the homes they serve. Subject-bound agents number one per subject their
+  events concern; each lives as long as its procedure keeps it and returns only
+  when a later event about its subject arrives. Workers an agent dispatches are
+  a separate, bounded source of concurrency.
+
+<!-- /planned-change:procedure-agent-subject-identity -->
+
 - Starting a standing agent by hand is available for a company home only; a
   person-, project-, or platform-home agent is started by an activation.
 - A repeated activation is recognized only while the platform retains its
   delivery record.
+
+<!-- planned:procedure-agent-subject-identity -->
+
+- A subject-bound agent is started only by an activation; starting one by hand
+  is not available.
+- A subject-bound agent is found again only while the platform retains its
+  session record. After that record is purged, a later event about the subject
+  starts a new agent without the earlier context.
+
+<!-- /planned:procedure-agent-subject-identity -->
 
 ## See Also
 
