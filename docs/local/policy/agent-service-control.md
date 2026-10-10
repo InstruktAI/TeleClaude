@@ -39,9 +39,10 @@ visibility: 'public'
   the same process instance before the service-manager action. An observation
   timeout reports incomplete preparation and leaves that service in its explicit
   draining state; once its accepted work settles, the daemon completes the
-  shutdown itself and the service manager relaunches it, so no further call is
-  owed. Forced termination remains an explicitly selected recovery action
-  through `make kill`.
+  shutdown itself and the service manager relaunches it, so a timed-out restart
+  owes no further call. A timed-out stop is relaunched the same way, and
+  keeping the daemon down then takes another `make stop`. Forced termination
+  remains an explicitly selected recovery action through `make kill`.
 
 <!-- /planned-change:restart-never-strands-daemon -->
 
