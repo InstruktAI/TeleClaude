@@ -103,6 +103,11 @@ And only a change or release of the platform's own repository can start converge
 
 ## Known caveats
 
+- The current checkout updater advances by fast-forward and skips a target
+  already contained in the local checkout. An installation enrolled from a
+  newer mainline checkout can therefore remain ahead of its release channel,
+  or report divergence when the selected release is on a different line of
+  ancestry. Changing channels does not itself reconcile that checkout history.
 - **Version-agnostic by construction.** This spec names no transport, language, or build tool. Detection (webhook vs poll), fetch (pull vs download), build, and restart mechanics live in the domain spec and the delivering implementation, not here. The swap test applies: every scenario must hold if the entire implementation is replaced.
 - **Exactly-once is per target version, not per signal.** Duplicate or replayed signals are expected and must be absorbed idempotently.
 - **"Healthy" is observed from the running daemon.** Convergence completes when the supervised daemon is restored and running on the target version; the contract does not pin the specific probe mechanism.
