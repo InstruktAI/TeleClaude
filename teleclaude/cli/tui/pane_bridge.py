@@ -30,9 +30,9 @@ logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from teleclaude.api_models import ComputerDTO as APIComputerDTO
-    from teleclaude.api_models import SessionDTO
+    from teleclaude.api_models import SessionDTO, TuiBootstrapPillar
 
-_SESSIONS_PILLAR = "sessions"
+_SESSIONS_PILLAR: TuiBootstrapPillar = "sessions"
 PANE_WRITER_ERRORS = (
     AttributeError,
     LookupError,
