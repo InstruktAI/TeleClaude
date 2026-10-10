@@ -1,23 +1,36 @@
 ---
-description: Where the working files of design, brainstorming, analysis, investigation, and peer-convergence work live — one indexed, version-control-ignored directory per activity under the project's scratchpad/, never a harness- or session-private directory — and why that material stays non-authoritative, secret-free, and selectively promoted.
+description: "Route regular working material to the agent's own environment, shared exploratory material to indexed project scratchpads, and required workflow deliverables to their canonical artifact store."
 ---
 
 # Scratchpad Workspaces — Spec
 
 ## What it is
 
-A scratchpad workspace is a disposable, project-local directory for related
-working material produced during one exploratory activity. It gives humans and
-agents a predictable place to collaborate without promoting drafts into the
-documentation or artifact layers prematurely.
+A scratchpad workspace is a disposable, project-local directory for working
+material shared in active collaboration or a concrete handoff. It gives the
+participants a predictable place to inspect or resume that material while it
+remains non-authoritative (`general/principle/attunement`).
 
 ## Canonical fields
 
-- Scratchpad workspaces live under `scratchpad/` at the root of the project's
+- **Route by intended reader.** Regular planning, reasoning, notes, experiments
+  and disposable probes stay in the agent's own environment, using its native
+  planning and temporary-file facilities. A project scratchpad holds identified
+  material a human or another session needs as input to active collaboration or
+  a concrete handoff. Task length, complexity, human presence, or having a
+  reviewer alone does not establish that need. For an implementation review,
+  the shared input can be the commit, governing contract and necessary evidence;
+  the agent's working notes remain local.
+- **Required artifacts keep their owner.** Plans, diagnoses, review findings
+  and other deliverables required by a workflow use that workflow's canonical
+  artifact store, including while they are drafts. A shared scratchpad holds
+  exploratory material; it is not a second copy of a required artifact.
+- Shared scratchpad workspaces live under `scratchpad/` at the root of the project's
   canonical checkout, which the adopting project excludes from version control.
-- A harness-provided scratch directory or a session's temporary directory is
-  not a scratchpad workspace, whatever the harness calls it: it is private to
-  its session, invisible to every other session, and removed with the session.
+- Harness-provided planning and temporary directories serve the agent's local
+  work. When particular material becomes shared input, only that material is
+  published to the shared workspace or the required artifact store; the local
+  working directory stays local.
 - Each activity owns one directory named
   `scratchpad/YYYYMMDD-HHMMSS-<topic>/`, using the host's local time and a short
   kebab-case topic.
@@ -44,10 +57,6 @@ documentation or artifact layers prematurely.
 
 ## Known caveats
 
-- A single throwaway file no other session will read — a one-off probe, a
-  scratch render — may sit directly under `scratchpad/`. Material from design,
-  brainstorming, analysis, investigation, or peer convergence, and any file that
-  gains a successor or a second reader, belongs in an activity directory.
 - A human agreement does not itself make scratchpad content current truth.
   Documentation and delivery rules still determine where and when the agreed
   result becomes authoritative.

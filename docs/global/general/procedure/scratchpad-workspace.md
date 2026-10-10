@@ -1,6 +1,6 @@
 ---
-description: Keep the working files of design, brainstorming, analysis, investigation, and peer-convergence work in one shared project scratchpad workspace, indexed so a later agent can resume the reasoning, trace who contributed, and see what was settled.
-activation_trigger: Use before writing the first working file — notes, drafts, findings, evidence, comparisons, briefs — of any design, brainstorming, analysis, investigation, research, or peer-convergence activity, in any domain; and when joining, resuming, or promoting from an existing scratchpad workspace.
+description: 'Maintain indexed project scratchpad workspaces for material shared in active collaboration or a concrete handoff.'
+activation_trigger: 'Use when identified working material must be shared for active collaboration or a concrete handoff; and when joining, resuming, or promoting from an existing shared scratchpad workspace.'
 visibility: public
 ---
 
@@ -12,15 +12,16 @@ visibility: public
 
 ## Goal
 
-Working material outlives the session that wrote it. A cold reader opens one
-directory, reads `index.md`, and knows what the activity is for, who
-contributed, which files are current, what was settled and by whom, what is
-still open, and where agreed material went.
+Shared working material is reachable by the participants who need it. A cold
+reader opens one directory, reads `index.md`, and knows what the activity is
+for, who contributed, which files are current, what was settled and by whom,
+what is still open, and where agreed material went.
 
 ## Preconditions
 
-- The activity writes at least one file another session may read, resume, or
-  build on.
+- A human or another session needs identified working material as input to
+  active collaboration or a concrete handoff, under the routing contract in
+  `general/spec/scratchpad-workspaces`.
 - The project provides a version-control-ignored `scratchpad/` at the root of
   its canonical checkout (`general/spec/scratchpad-workspaces`).
 
@@ -28,9 +29,9 @@ still open, and where agreed material went.
 
 1. **Join before creating.** List `scratchpad/` for a workspace on the same
    topic — a peer's, or an earlier pass. Join it when it exists; one activity has
-   one workspace. Otherwise create the directory the spec names. Never write
-   working files to a harness-provided or session-private directory; no other
-   session can reach it (`general/spec/scratchpad-workspaces`).
+   one shared workspace. Otherwise create the directory the spec names. Publish
+   the material that collaboration or handoff needs; local working material
+   keeps its own environment (`general/spec/scratchpad-workspaces`).
 2. **Write `index.md` first**, before any other file, with these sections:
    - **Status** — one line: `active`, `converged`, `closed`, or `abandoned`.
    - **Purpose** — the question the activity answers and the outcome it serves.
@@ -124,8 +125,9 @@ Status: active
 
 ## Recovery
 
-- **Working files already sit in a session-private directory.** Move them into
-  the workspace and index them.
+- **Needed shared material is still in a local working directory.** Publish
+  the material the collaborator or handoff recipient needs and index it, using
+  the routing contract in `general/spec/scratchpad-workspaces`.
 - **Joining or resuming a workspace with no index.** Write the index from the
   files present. Mark any author, date, or status you cannot establish as
   `unknown`.
@@ -137,7 +139,7 @@ Status: active
 
 ## Discipline
 
-Your failure mode is treating working files as private notes: written where
-only your session can see them, named by version, with nothing saying who wrote
-them or which one counts. The next agent cannot resume what it cannot find or
-read. Write the index before the first file and keep it true.
+Keep shared material reachable and its index true. The participants who need
+to inspect or resume it can identify its authors, current files, settled
+decisions and open work through the workspace. Apply this procedure to that
+shared material under `general/spec/scratchpad-workspaces`.

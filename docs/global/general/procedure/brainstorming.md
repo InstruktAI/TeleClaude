@@ -1,7 +1,7 @@
 ---
 activation_trigger: Use when the human is exploring an idea that has no converged design yet
   and implementation is on the horizon.
-description: Refine an idea into a converged design before implementation — ground first, ask the human only what they own, decide the technical path with its reasoning, and keep the forming work in an indexed scratchpad workspace.
+description: 'Refine an idea into a converged design before implementation, ground the technical path, and route forming material by its intended reader.'
 visibility: public
 ---
 
@@ -28,10 +28,12 @@ human releases it for materialization (`general/principle/attunement`).
 1. **Ground first.** Read the relevant sources and existing patterns, and scan
    prior art for how this class of problem is already solved, before asking
    anything (`general/principle/grounding`).
-2. **Open the workspace.** Forming material goes into a scratchpad workspace
-   with its index (`general/procedure/scratchpad-workspace`). Record step 1's
-   grounding in its Grounding section, and the human's words under Stated by
-   the human as they arrive.
+2. **Route working material by its intended reader.** Apply
+   `general/spec/scratchpad-workspaces`: regular preparation stays in the
+   agent's own environment. When humans or other sessions need particular
+   forming material for collaboration or a concrete handoff, open the shared
+   workspace with its index (`general/procedure/scratchpad-workspace`). Record
+   the shared grounding and the human's words there as they arrive.
 3. **Read the phase.** While the human is still adding material, expand: add
    what is missing, ask what else. Do not converge early
    (`general/principle/attunement`).
@@ -52,11 +54,12 @@ human releases it for materialization (`general/principle/attunement`).
    (`general/policy/leadership`). For each material choice, the design names
    the prior art it follows, or why it departs from it.
 7. **Converge and record.** A design point is settled when every active
-   participant agrees. Log it under Decisions with who agreed, and keep what
-   remains open under Open.
+   participant agrees. Record the settled points and who agreed in the
+   conversation or the owning artifact. When a shared workspace is in use,
+   keep its Decisions and Open sections current.
 8. **Hand off.** The procedure that owns the durable form authors the released
-   design — documentation, a todo, an agent artifact. Record where it landed
-   under Promoted.
+   design — documentation, a todo, an agent artifact. Report where it landed;
+   when a shared workspace is in use, record the destination under Promoted.
 
 Intent questions that sharpen the design:
 
@@ -69,9 +72,9 @@ Intent questions that sharpen the design:
 ## Outputs
 
 - A converged design, released by the human for materialization.
-- A scratchpad workspace whose index holds the human's stated words, the
-  decisions with who agreed, the open questions, and where the design was
-  promoted.
+- When shared working material was needed, an indexed scratchpad workspace
+  holding the human's stated words, decisions with who agreed, open questions,
+  and the destination of promoted material.
 
 ## Recovery
 
@@ -86,11 +89,11 @@ Intent questions that sharpen the design:
 
 Anti-patterns to reject:
 
-| Anti-pattern                          | Risk introduced                         | Correct behavior                                  |
-| ------------------------------------- | --------------------------------------- | ------------------------------------------------- |
-| Jumping into code immediately         | Rework from hidden assumptions          | Converge on the design first                      |
-| Asking many questions at once         | Overload and shallow answers            | One focused question per turn                     |
-| Offering a menu of technical options  | Evaluation handed to the human          | Decide the path; state the reasoning              |
-| Asking the human a technical question | Burden transfer; uninformed choice      | Resolve through evidence and an independent peer  |
-| Treating acknowledgement as sign-off  | Agent-owned choices recorded as human's | Orientation releases execution, nothing more      |
-| Forming work in a private scratch dir | Reasoning lost to every later session   | Indexed workspace under the project `scratchpad/` |
+| Anti-pattern                          | Risk introduced                          | Correct behavior                                     |
+| ------------------------------------- | ---------------------------------------- | ---------------------------------------------------- |
+| Jumping into code immediately         | Rework from hidden assumptions           | Converge on the design first                         |
+| Asking many questions at once         | Overload and shallow answers             | One focused question per turn                        |
+| Offering a menu of technical options  | Evaluation handed to the human           | Decide the path; state the reasoning                 |
+| Asking the human a technical question | Burden transfer; uninformed choice       | Resolve through evidence and an independent peer     |
+| Treating acknowledgement as sign-off  | Agent-owned choices recorded as human's  | Orientation releases execution, nothing more         |
+| Needed shared material remains local  | Participants cannot inspect or resume it | Publish that material to an indexed shared workspace |
