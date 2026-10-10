@@ -134,7 +134,9 @@ Channel provisioning determines whether a UI adapter can receive delivery. It do
 - The Discord admin lane is not eligible for an unattended procedure agent
   (`local/projects/teleclaude/spec/domain/agent_runtime`): it receives no admin
   copy, no reflection, and no final-output obligation, and Discord provisions
-  no thread for it. Attendance is the session's own statement that no person
+  no thread for it. Its reflection is recorded as suppressed, never as a failed
+  delivery; every attended session's reflection, peer segments included, is
+  unchanged. Attendance is the session's own statement that no person
   watches it, not a role, so the rule that a session's role never gates the
   admin copy is unchanged.
 

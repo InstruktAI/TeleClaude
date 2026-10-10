@@ -362,10 +362,10 @@ Scenario Outline: Asking for it shows an unattended agent to anyone whose reach 
   Then the agent's session is shown
 
   Examples:
-    | request                              |
-    | asking for every session             |
-    | asking for the procedure's job       |
-    | naming the session by its id         |
+    | request                                          |
+    | asking for every session                         |
+    | asking for every session of the procedure's job  |
+    | naming the session by its id                     |
 ```
 
 #### UC-PSA25: An open unattended agent answers as an attended one would

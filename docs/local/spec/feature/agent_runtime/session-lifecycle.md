@@ -212,12 +212,13 @@ Scenario Outline: The default listing leaves an unattended procedure agent out
   Then the agent's session is <outcome>
 
   Examples:
-    | request                               | outcome  |
-    | with no all, job, or id selection     | not listed |
-    | with all sessions requested           | listed     |
-    | with the procedure's job requested    | listed     |
-    | with the session's id requested       | listed     |
-    | against another computer, unselected  | not listed |
+    | request                                        | outcome    |
+    | with no all or id selection                    | not listed |
+    | with the procedure's job and no all selection  | not listed |
+    | with all sessions requested                    | listed     |
+    | with all sessions and the procedure's job      | listed     |
+    | with the session's id requested                | listed     |
+    | against another computer, with no selection    | not listed |
 ```
 
 <!-- /planned:procedure-agent-headless -->

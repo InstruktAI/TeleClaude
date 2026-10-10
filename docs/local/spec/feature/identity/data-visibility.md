@@ -77,7 +77,7 @@ system principal, platform administrators included (same contract).
 A third fact beside reach concerns presentation, not readability: a session
 recording that no person watches it, an unattended procedure agent, is left out
 of a principal's default view of sessions — the session listing that asks for
-neither every session, a job, nor ids, and live session updates — while reach
+neither every session nor ids, and live session updates — while reach
 still decides whether a listing that asks for it shows it
 (`local/projects/teleclaude/spec/domain/agent_runtime`).
 

@@ -151,8 +151,11 @@ rule it relies on is stated by its owner:
   the runner records it in the write that creates the agent's session. An
   unattended agent's work is a run: resolution never revives a closed
   unattended session, so a subject whose unattended agent has closed gets a new
-  one. The session listing, live session updates, and the Discord adapter read
-  attendance from the session; it never enters reach or delivery.
+  one. Its other readers are the session listing and live session updates,
+  which leave it out of people's default views, the admin-lane decision, which
+  gives it no Discord copy or reflection, and the Discord adapter, which gives
+  it no thread. It never enters reach, and never changes how an activation's
+  event is delivered to the agent.
 
 <!-- /planned:procedure-agent-headless -->
 
