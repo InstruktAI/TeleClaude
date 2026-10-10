@@ -68,10 +68,26 @@ the recorded digest and candidate, rather than accepted by a matching filename.
 
 The trusted controller owns credentials, persistence, and artifact transport.
 The inspector runs under a separate unprivileged identity with read-only source
-access and a native permission profile. Its tool processes cannot read the
+access and provider-native tool permissions. Its tool processes cannot read the
 authentication cache or controller state, reach control credentials, or write
 the source. The Codex client retains its native authentication and refresh
 capability outside its command sandbox.
+
+Claude uses its native restricted non-interactive mode with only file-read,
+search, and listing tools. The controller supplies complete indexed evidence
+for the fixed source and baseline, including segmented diffs and deleted-file
+content, so inspection needs no shell or GitHub token. Source and evidence are
+controller-owned and immutable to the inspector identity. Source symlinks remain
+data rather than links into the host filesystem.
+
+Claude runtime authentication and private configuration stay outside every
+model-readable working root. Native safe mode and an empty external-tool
+configuration suppress discovered customizations; the effective managed policy
+must also contain no unapproved executable integrations. The controller rejects
+unsupported permissions or unexpected tools instead of widening access. Both
+providers' descendants are settled before result transport or later privileged
+operations. Native tool restrictions are not a claim that the vendor client
+itself cannot use its own authentication.
 
 Codex's managed login belongs to one serialized CI stream. Private Actions
 artifacts retain only age-encrypted state; the stable decryption identity is a
@@ -142,6 +158,9 @@ once enabled, ordinary attempts retain all candidate and proof gates.
 - Runner loss can interrupt the interval between token refresh and durable
   settlement; that uncertainty requires reseeding. Artifact retention and token
   lifetime are independent limits.
+- A provider version or effective managed policy that cannot establish the
+  required tool boundary fails inspection setup; it does not select permissive
+  execution.
 - Public-recipient encryption provides confidentiality and integrity, not producer
   identity or freshness. Those come from workflow provenance and serialization.
 - Main reconciliation preserves ordinary channel ancestry. Exact enrollment from
@@ -153,5 +172,6 @@ once enabled, ordinary attempts retain all candidate and proof gates.
 
 - docs/local/spec/feature/reconciliation/fresh-machine-bootstrap.md
 - docs/third-party/codex-cli/ci-managed-auth.md
+- docs/third-party/claude-code/restricted-inspection.md
 - docs/third-party/git/commit-identity-and-atomic-push.md
 - docs/third-party/uv/project-version-updates.md
