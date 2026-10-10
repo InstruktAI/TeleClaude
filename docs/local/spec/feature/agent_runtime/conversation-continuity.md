@@ -12,8 +12,8 @@ delivered_by:
 
 ## What it is
 
-A conversation session — a session at a help desk, or a person's conversation
-with their assistant in their own home — is closed only to spare resources
+A conversation session — a session at a help desk, or a session in a person's
+own home that is that person's conversation with their assistant — is closed only to spare resources
 while its person is away, never to end the conversation. Once it has had no input
 for 30 minutes, the daemon compacts the agent's context and closes the session.
 The person's next message, or their re-entry at the desk, revives the same
@@ -32,7 +32,9 @@ Memories about a person are kept per desk and per person:
 - Anyone else is remembered at that desk by the platform identity they wrote
   from (their Discord user, Telegram user or WhatsApp number).
 
-Sessions that are not conversation sessions are never closed by the idle cycle.
+Sessions that are not conversation sessions are never compacted or closed by the
+idle cycle; that includes every agent the platform starts for a procedure, the
+memory agents among them, whose lifecycle is their procedure's own.
 
 ## Canonical fields
 
@@ -118,7 +120,7 @@ And it never appears in any session's startup context
 #### UC-CC9: Only conversation sessions are closed for being idle
 
 ```gherkin
-Given a session that is not a conversation session, such as an agent's worker or an orchestrator
+Given a session that is not a conversation session, such as an agent's worker, an orchestrator, or a memory agent
 When it has had no input for 30 minutes or longer
 Then the idle cycle neither compacts nor closes it
 ```
@@ -148,6 +150,8 @@ Then the idle cycle neither compacts nor closes it
   so the revived agent keeps the stretch before its last close, compacted. The
   memories its memory agent keeps from that stretch reach the session's later
   revivals and the person's other sessions.
-- **Compaction is the agent's own.** Only agents that declare a compaction
-  command are compacted; the desk agents are agents with a verified desk
-  confinement.
+- **Only agents with a compaction command are idle-closed.** Compaction is the
+  agent's own command, observed through the agent's own end-of-compaction
+  signal, both declared per agent. A conversation session running an agent
+  without them stays open, as before. Help-desk dispatch offers only agents that
+  declare them.

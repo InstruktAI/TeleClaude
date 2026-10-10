@@ -505,9 +505,9 @@ sequenceDiagram
 
 <!-- change:help-desk-idle-memory-cycle -->
 
-**Idle cycle.** The daemon's idle cycle visits conversation sessions — desk sessions and a person's own assistant sessions — periodically, well within the 30-minute threshold. A session whose agent is idle, which has had no input for 30 minutes, which carries no active escalation relay and has no input waiting, goes through:
+**Idle cycle.** The daemon's idle cycle visits conversation sessions — desk sessions and a person's own assistant sessions, never agents the platform started for a procedure — periodically, well within the 30-minute threshold. A session whose agent is idle, which has had no input for 30 minutes, which carries no active escalation relay and has no input waiting, goes through:
 
-1. Compaction of the agent's context through the agent's own compaction command, awaited until the agent reports it finished
+1. Compaction of the agent's context through the agent's own compaction command, awaited until the agent's own end-of-compaction signal (both declared per agent; a session running an agent that declares neither is not idle-closed)
 2. Closing the session, once compaction completed and no input arrived meanwhile
 3. None of it is recorded as a message sent into the session — it is invisible to the visitor
 
