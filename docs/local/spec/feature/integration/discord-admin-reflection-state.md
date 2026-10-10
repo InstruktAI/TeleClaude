@@ -61,6 +61,12 @@ visible outside its scope, and the guild holds no shared help-desk category. A
 desk's forums are no entry point: a post that Discord lets through into a
 customer-sessions thread reaches no session.
 
+The guild is the members' surface and never a customer's: every desk session
+reaches its desk through an adapter other than Discord
+(`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`), so
+its thread in the desk's customer-sessions forum is the only place Discord shows
+it.
+
 <!-- /planned-change:help-desk-discord-categories -->
 
 The desired operational shape comes from configuration and the project

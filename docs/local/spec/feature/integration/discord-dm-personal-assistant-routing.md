@@ -30,6 +30,8 @@ channel; the guild path is a policy of the shared inbound resolve-or-create seam
 persists the channel binding on the session for outbound delivery — a DM session carries
 the DM channel with its guild id unset.
 
+<!-- planned-change:help-desk-discord-categories -->
+
 A direct message that is exactly an entry identifier is an entry: the core
 resolves it, and the person's session at that endpoint — continued, revived or
 created — becomes the DM channel's session
@@ -37,6 +39,17 @@ created — becomes the DM channel's session
 help desk's identifier therefore moves the DM to the person's session at that
 desk, and the person's own invitation token moves it back to their personal
 assistant.
+
+<!-- change:help-desk-discord-categories -->
+
+A direct message that is exactly the person's invitation token is an entry to
+their personal assistant
+(`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`). A
+DM channel is never bound to a help-desk session: a desk identifier sent as a
+direct message gets the neutral reply and leaves the DM with the personal
+assistant.
+
+<!-- /planned-change:help-desk-discord-categories -->
 
 Every computer receives each direct message, and the mesh master alone decides
 where it goes; no other computer handles it.
@@ -74,6 +87,8 @@ Then the output destination resolves to the originating DM channel
 And no guild forum thread is created for the session
 ```
 
+<!-- planned-change:help-desk-discord-categories -->
+
 #### UC-DM-HELP-DESK-ENTRY: An entry identifier sent as a DM moves the DM channel to that endpoint
 
 ```
@@ -83,3 +98,16 @@ Then their session at that desk becomes the DM channel's session, created when t
 When the person later sends their own invitation token as a direct message
 Then their personal-assistant session becomes the DM channel's session again and their next direct messages reach it
 ```
+
+<!-- change:help-desk-discord-categories -->
+
+#### UC-DM-HELP-DESK-ENTRY: A help desk's identifier sent as a DM enters no desk
+
+```
+Given a person bound to a Discord account whose DM channel reaches their personal assistant
+When the person sends a help desk's entry identifier as a direct message
+Then they receive the neutral reply and no desk session is created
+And their next direct message reaches their personal-assistant session
+```
+
+<!-- /planned-change:help-desk-discord-categories -->

@@ -16,7 +16,15 @@ visibility: 'public'
 
 ## Purpose
 
+<!-- planned-change:help-desk-discord-categories -->
+
 Let AI agents answer the people a home does not otherwise serve, through the public-facing adapters (Telegram, Discord, WhatsApp), with per-visitor memory continuity, escalation to the people accountable for that home, and extraction of business intelligence from the interactions — all within a help-desk folder of the home that owns it, scaffolded from TeleClaude's help-desk templates.
+
+<!-- change:help-desk-discord-categories -->
+
+Let AI agents answer the people a home does not otherwise serve, through the public-facing adapters (Telegram, WhatsApp), with per-visitor memory continuity, escalation to the people accountable for that home, and extraction of business intelligence from the interactions — all within a help-desk folder of the home that owns it, scaffolded from TeleClaude's help-desk templates. Discord is never a visitor's surface: it serves the operator plane only.
+
+<!-- /planned-change:help-desk-discord-categories -->
 
 The platform operates on two planes.
 
@@ -38,7 +46,7 @@ The platform operates on two planes.
 
 <!-- planned-change:help-desk-escalation-in-desk -->
 
-- Visitor messages via conversation adapters (Telegram private chats, Discord direct messages, WhatsApp)
+- Visitor messages via the conversation adapters that carry desk entry (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`)
 - An entry identifier: a desk's `hd-<kind>-<slug>`, naming the desk by kind and slug
 - Each home's help-desk declaration (`help_desk.enabled`) in its `teleclaude.yml`
 - Identity from the person registry and per-person credential bindings, or the customer fallback for an unregistered sender
@@ -48,7 +56,7 @@ The platform operates on two planes.
 
 <!-- change:help-desk-escalation-in-desk -->
 
-- Visitor messages via conversation adapters (Telegram private chats, Discord direct messages, WhatsApp)
+- Visitor messages via the conversation adapters that carry desk entry (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`)
 - An entry identifier: a desk's `hd-<kind>-<slug>`, naming the desk by kind and slug
 - Each home's help-desk declaration (`help_desk.enabled`) in its `teleclaude.yml`
 - Identity from the person registry and per-person credential bindings, or the customer fallback for an unregistered sender
@@ -111,12 +119,25 @@ The help desk is a folder of the home that owns it, never a repository of its ow
 
 Entry is owned by the core, in `local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`. In outline:
 
+<!-- planned-change:help-desk-discord-categories -->
+
 - An **endpoint** is a routable destination: a person's assistant in their home, or a company's or project's help desk. Its **entry identifier** is the member's invitation token or the desk's `hd-<kind>-<slug>`. One core resolver turns an identifier into the endpoint's working folder.
 - A **conversation** is one adapter's private channel with one person. Every session carries the adapter's origin metadata and the endpoint it was created at. On a per-computer adapter (Telegram) that computer decides alone, and a desk identifier reaches a desk only on the master's bot; on adapters whose messages reach every computer (Discord DM, WhatsApp) the mesh master alone decides and keeps each conversation's binding in a durable record, and no other computer handles those messages. Adapters only recognise and carry the identifier; they keep no routing rules.
 - **Routing** is by what the person sent, and nothing else. A desk identifier reaches that person's latest session at the desk — an open one continues, a closed one is revived, none means a new one — and it becomes the conversation's session; an invitation token binds the account and reaches the person's own assistant the same way. A message without an identifier goes to the conversation's session, revived when closed; with no session, a registered person reaches their own assistant. Entering elsewhere leaves the earlier session as it is, and a later entry at its endpoint continues it. No role detour, no last-desk lookup and no default endpoint exist.
 - A **miss** — an identifier that resolves to nothing, or a person who is not registered and has no session — gets one fixed neutral reply and no session, identical in every case, naming no organisation, at most once per conversation per cooldown window.
 - **Unavailability**: with the master down nothing routes on the adapters that reach every computer: every inbound message gets a temporarily-unavailable reply, at most once per conversation within a cooldown window, from the lowest-named live computer running the adapter, and conversations resume from the master's durable record when it returns. A session the master cannot start or revive in time leaves the binding unchanged and gets the neutral reply.
 - The per-adapter entry links come from `telec config company help-desk-links <slug>` and `telec config project help-desk-links <slug>`, run on the master.
+
+<!-- change:help-desk-discord-categories -->
+
+- An **endpoint** is a routable destination: a person's assistant in their home, or a company's or project's help desk. Its **entry identifier** is the member's invitation token or the desk's `hd-<kind>-<slug>`. One core resolver turns an identifier into the endpoint's working folder.
+- A **conversation** is one adapter's private channel with one person. Every session carries the adapter's origin metadata and the endpoint it was created at. On a per-computer adapter (Telegram) that computer decides alone, and a desk identifier reaches a desk only on the master's bot; on adapters whose messages reach every computer (Discord DM, WhatsApp) the mesh master alone decides and keeps each conversation's binding in a durable record, and no other computer handles those messages. Discord carries no desk entry, and a Discord conversation is never bound to a desk session. Adapters only recognise and carry the identifier; they keep no routing rules.
+- **Routing** is by what the person sent, and nothing else. A desk identifier reaches that person's latest session at the desk — an open one continues, a closed one is revived, none means a new one — and it becomes the conversation's session; an invitation token binds the account and reaches the person's own assistant the same way. A message without an identifier goes to the conversation's session, revived when closed; with no session, a registered person reaches their own assistant. Entering elsewhere leaves the earlier session as it is, and a later entry at its endpoint continues it. No role detour, no last-desk lookup and no default endpoint exist.
+- A **miss** — an identifier that resolves to nothing, or a person who is not registered and has no session — gets one fixed neutral reply and no session, identical in every case, naming no organisation, at most once per conversation per cooldown window.
+- **Unavailability**: with the master down nothing routes on the adapters that reach every computer: every inbound message gets a temporarily-unavailable reply, at most once per conversation within a cooldown window, from the lowest-named live computer running the adapter, and conversations resume from the master's durable record when it returns. A session the master cannot start or revive in time leaves the binding unchanged and gets the neutral reply.
+- The per-adapter entry links come from `telec config company help-desk-links <slug>` and `telec config project help-desk-links <slug>`, run on the master, one for each adapter that carries desk entry.
+
+<!-- /planned-change:help-desk-discord-categories -->
 
 ```mermaid
 flowchart TD
@@ -530,7 +551,15 @@ sequenceDiagram
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
+<!-- planned-change:help-desk-discord-categories -->
+
 **Session resumption.** When a visitor returns through the same conversation (the same Telegram chat, Discord direct message or WhatsApp number), or re-enters the desk with its identifier, the conversation's session at that desk continues, revived when it was closed; no new session is created. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` at the visitor's depth.
+
+<!-- change:help-desk-discord-categories -->
+
+**Session resumption.** When a visitor returns through the same conversation (the same Telegram chat or WhatsApp number), or re-enters the desk with its identifier, the conversation's session at that desk continues, revived when it was closed; no new session is created. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` at the visitor's depth.
+
+<!-- /planned-change:help-desk-discord-categories -->
 
 <!-- planned-change:help-desk-idle-memory-cycle -->
 
