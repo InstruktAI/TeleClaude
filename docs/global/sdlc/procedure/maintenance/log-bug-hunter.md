@@ -33,7 +33,7 @@ whose records support a failure in the scanned project's own handling through
 
 <!-- change:job-run-state-single-file -->
 
-- The latest per-job JSON file at `STATE_DIR/runs/<project_slug>/<job_name>.json` carries only the scan cursor and unresolved signals needed by the next run. Read it directly when resuming; submit its replacement state with the outcome through one `telec jobs report` invocation. Do not create a separate report or history file.
+- The latest per-job JSON file at `STATE_DIR/runs/<project_slug>/<job_name>.json` carries the generic outcome envelope and this procedure's checkpoint in its `state` object. Read that object when resuming. This procedure owns the checkpoint schema under Outputs; the reporting command treats it as opaque JSON. Submit the outcome and complete replacement object through one `telec jobs report` invocation.
 
 <!-- /planned-change:job-run-state-single-file -->
 
@@ -47,8 +47,8 @@ whose records support a failure in the scanned project's own handling through
      declaration. Record the actual start and end timestamps.
 
    <!-- change:job-run-state-single-file -->
-   - Read the current per-job state file when present. Start at its last completed scan end; if it records an incomplete scan, resume from that scan's start.
-   - With no state file, cover one schedule interval from the job's declaration. Keep the actual start and end timestamps in the replacement state, and advance the cursor only after a complete scan.
+   - Read the saved envelope's `state` object using the schema under Outputs. A missing file or absent checkpoint uses the first-run defaults. A present checkpoint that cannot be read or does not match this procedure's schema follows Recovery.
+   - If `incomplete_scan` is present, retry its recorded start/end window. Otherwise, fix the end at the current UTC time and start at `completed_until`; with no completed cursor, start one declared schedule interval before that end. Process records in the half-open interval `[start, end)`. A completed window advances the next start to its end.
 
    <!-- /planned-change:job-run-state-single-file -->
    - Collect that window with
@@ -131,7 +131,7 @@ whose records support a failure in the scanned project's own handling through
      `sdlc/policy/todo-creation-discipline`.
 
    <!-- change:job-run-state-single-file -->
-   - Read outstanding signals from the current job state and re-evaluate them against current logs, suppressions, work, and code history. The state holds unresolved work from the latest run; completed dispositions are not retained as history.
+   - Read `outstanding_signals` from the checkpoint and re-evaluate them against current logs, suppressions, work, and code history. Retain only signals that still require a retry or the next window's recurrence check. A completed window with no recurrence after the recorded repair removes that signal from the checkpoint.
    - New evidence for an already tracked failure updates its outstanding state when it remains unresolved; it does not create a second bug for the same failure. Route amendments per `sdlc/policy/todo-creation-discipline`.
 
    <!-- /planned-change:job-run-state-single-file -->
@@ -184,7 +184,10 @@ whose records support a failure in the scanned project's own handling through
 
 <!-- change:job-run-state-single-file -->
 
-5. Prepare the replacement job state. Store the last completed scan end, an incomplete scan start when work must resume, and only signals that remain outstanding. Mark the scan complete only after collection, causal classification, and deduplication succeed and each eligible signal is filed, excluded, or matched to suppression, existing work, or in-flight work. A signal whose failure has not recurred after a repair, or whose expected outcome has no current contract, leaves no history entry once the scan cursor advances. An outstanding filing keeps the scan incomplete. Return the outcome and replacement state together through one `telec jobs report <name> --success <true|false> --message '<summary>' --state-json '<object>'` invocation.
+5. Prepare and submit the complete replacement checkpoint using the schema under Outputs.
+   - A complete scan has successful collection, causal classification, and deduplication, with every eligible signal filed, excluded, matched to suppression or existing work, or carried solely for the recurrence check in Step 3. Set `completed_until` to the window's end and `incomplete_scan` to `null`. Keep only the signals that still require that recurrence check.
+   - A collection, lookup, classification, or filing failure keeps the prior `completed_until`, sets `incomplete_scan` to the attempted window's start/end, and retains the affected signals with their retry evidence. An outstanding filing keeps the scan incomplete.
+   - Submit once through `telec jobs report <name> --success <true|false> --message '<summary>' --state-json '<replacement-state-object>'`. Use `true` for a complete scan and `false` for an incomplete scan. An empty successful collection is a complete scan. The JSON argument contains all checkpoint fields, including explicit `null` values and an empty signal array when applicable.
 
 <!-- /planned-change:job-run-state-single-file -->
 
@@ -215,10 +218,48 @@ The report is the scan history consumed by the next run. The structured outcome
 submitted by the job brief records whether this run completed successfully.
 <!-- change:job-run-state-single-file -->
 
-- One latest state object at `STATE_DIR/runs/<project_slug>/<job_name>.json`. It includes the last completed scan end, the start of an incomplete scan when present, and unresolved signals with the evidence needed to resume. The path is stable for the project and job; each run replaces the same file.
-- The scan state is not an audit report. Completed dispositions are not accumulated; session transcripts remain the history. The structured `JobResult` and replacement state are submitted together through one `telec jobs report` call, which writes the file atomically.
+- One latest outcome and checkpoint envelope at `STATE_DIR/runs/<project_slug>/<job_name>.json`, written by `telec jobs report`. The checkpoint occupies its `state` object and uses the schema below.
+- Only the cursor, incomplete window, and unresolved retry evidence persist between runs. Resolved signals leave the checkpoint; session transcripts carry the completed dispositions (`sdlc/policy/todo-creation-discipline`).
 
 <!-- /planned-change:job-run-state-single-file -->
+
+<!-- planned:job-run-state-single-file -->
+
+### Checkpoint schema
+
+The following schema belongs to this procedure. `telec jobs report` stores the
+supplied object without interpreting these fields.
+
+| Field                 | Shape                                                            | Meaning                                                                          |
+| --------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `completed_until`     | UTC RFC 3339 timestamp or `null`                                 | Exclusive end of the last completely processed scan window.                      |
+| `incomplete_scan`     | Object with UTC RFC 3339 `start` and `end` timestamps, or `null` | Fixed window to retry when the previous scan was incomplete.                     |
+| `outstanding_signals` | Array of signal objects                                          | Only unresolved retries or post-repair recurrence checks needed by the next run. |
+
+Each outstanding signal has these fields:
+
+| Field          | Shape                  | Meaning                                                                                            |
+| -------------- | ---------------------- | -------------------------------------------------------------------------------------------------- |
+| `summary`      | String                 | Observed operation and failure requiring re-evaluation.                                            |
+| `last_seen_at` | UTC RFC 3339 timestamp | Latest occurrence supported by the saved evidence.                                                 |
+| `evidence`     | String                 | Addressable log evidence and representative excerpt, with the established contract when available. |
+| `retry_reason` | String                 | Failed lookup or filing, or the pending post-repair recurrence check.                              |
+
+First-run defaults are:
+
+```json
+{
+  "completed_until": null,
+  "incomplete_scan": null,
+  "outstanding_signals": []
+}
+```
+
+Each submission replaces the whole checkpoint. Outcome summaries are supplied
+through `--success` and `--message`. The scheduled job's declaration supplies its
+name and project context.
+
+<!-- /planned:job-run-state-single-file -->
 
 ## Recovery
 
@@ -229,7 +270,7 @@ submitted by the job brief records whether this run completed successfully.
 
 <!-- change:job-run-state-single-file -->
 
-- If logs cannot be collected, keep the prior completed cursor, store the incomplete scan start and outstanding signals in the replacement state, and report failure. Do not describe unavailable logs as a clean run.
+- If logs cannot be collected, keep the saved `completed_until`, record the attempted window in `incomplete_scan`, retain unresolved evidence, and submit that replacement checkpoint with `--success false`.
 
 <!-- /planned-change:job-run-state-single-file -->
 
@@ -250,7 +291,9 @@ submitted by the job brief records whether this run completed successfully.
 
 <!-- change:job-run-state-single-file -->
 
-- A missing state file is a first scan, not a failed lookup; use the declared schedule interval and current suppression and work records. A failed filing does not block attempts for other signals. Carry its evidence in the outstanding state so the next run can retry after deduplication.
+- A missing file or absent checkpoint uses the first-run defaults and declared schedule interval. A failed filing leaves the remaining signals eligible for processing; retain its evidence in `outstanding_signals` for re-evaluation before retrying.
+- If a present checkpoint cannot be read or does not match the schema, stop the scan and report failure without `--state-json`. That outcome-only submission leaves the saved checkpoint unchanged. Record the checkpoint problem in the session transcript rather than guessing a cursor.
+- If `telec jobs report` fails, record its failure in the session transcript and close the run as failed. The reporting command owns durable writes; the procedure creates no substitute state or report file.
 
 <!-- /planned-change:job-run-state-single-file -->
 
