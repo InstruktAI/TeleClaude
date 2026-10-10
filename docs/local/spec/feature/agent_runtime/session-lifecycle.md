@@ -76,6 +76,8 @@ Then the request is refused and creates no session
 And no default folder is chosen for it
 ```
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 #### UC-SL48: A help-desk session below member is confined to its desk
 
 ```gherkin
@@ -88,6 +90,23 @@ And its startup context holds only its desk's own instructions, none from enclos
 And its agent is the first available one in the dispatch order for desk sessions (`local/projects/teleclaude/design/architecture/agent-dispatch`), which holds only agents that carry a desk confinement profile
 And when no agent in that order is available no session is created
 ```
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+#### UC-SL48: A help-desk session below member is confined to its desk
+
+```gherkin
+Given a session at a help desk whose recorded human_role is below member
+When its agent runs
+Then it reads files only inside its desk folder and its own session's uploads, and never another session's uploads
+And it runs only the desk commands its recorded role admits, which for a customer are version, docs index, docs get, auth whoami and sessions escalate
+And no documentation corpus is mounted for it, so it reads documentation only through telec docs at its own depth and through its desk master
+And its startup context holds only its desk's own instructions, none from enclosing folders or the user's own instruction files
+And its agent is the first available one in the dispatch order for desk sessions (`local/projects/teleclaude/design/architecture/agent-dispatch`), which holds only agents that carry a desk confinement profile and declare a compaction command
+And when no agent in that order is available no session is created
+```
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 #### Computer routing
 

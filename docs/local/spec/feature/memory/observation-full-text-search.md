@@ -9,6 +9,12 @@ visibility: 'public'
 
 Memory observations are retrievable by free-text query. The search path always tries the structured full-text index first; when the index cannot answer (malformed query, empty query, missing index module, etc.) the path falls through to a substring search against the live text fields. Both branches apply the same optional filters (project, observation type, identity scope) and return results ordered newest-first within a caller-supplied limit. Callers reach this surface via `telec memories search`, via the memory service's programmatic search entry, or — for "list" semantics — by passing an empty query (see `observation-recent-list`).
 
+<!-- planned:help-desk-idle-memory-cycle -->
+
+Only current memories are returned: a retired memory or a business prospect is never a result of this surface (`local/projects/teleclaude/spec/feature/memory/memory-curation` UC-MC3).
+
+<!-- /planned:help-desk-idle-memory-cycle -->
+
 ## Canonical fields
 
 ### Use cases

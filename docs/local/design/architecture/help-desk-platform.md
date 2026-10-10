@@ -170,10 +170,21 @@ A session whose role is below member and that carries no system role runs only i
 
 A help-desk session below admin is confined to its desk: below member by its recorded role (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle` UC-SL48), and a member who entered the desk by the endpoint it was created at (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry` UC-CE22):
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 - It reads files only inside its desk folder and its own session's uploads, never another session's uploads.
 - It runs only the desk commands its recorded role admits, which the CLI surface declares (`local/projects/teleclaude/design/cli-authorization-matrix`): for a customer `telec version`, `telec docs index`, `telec docs get`, `telec auth whoami` and `telec sessions escalate`.
 - No documentation corpus is mounted for it; it reads documentation only through `telec docs` at its own depth and through its desk master.
 - Its agent is chosen by availability from the dispatch order for desk sessions (`local/projects/teleclaude/design/architecture/agent-dispatch`), like every other session kind; that order holds only agents that carry a desk confinement profile. When no agent in it is available, no session is created and the visitor receives the neutral reply.
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+- It reads files only inside its desk folder and its own session's uploads, never another session's uploads.
+- It runs only the desk commands its recorded role admits, which the CLI surface declares (`local/projects/teleclaude/design/cli-authorization-matrix`): for a customer `telec version`, `telec docs index`, `telec docs get`, `telec auth whoami` and `telec sessions escalate`.
+- No documentation corpus is mounted for it; it reads documentation only through `telec docs` at its own depth and through its desk master.
+- Its agent is chosen by availability from the dispatch order for desk sessions (`local/projects/teleclaude/design/architecture/agent-dispatch`), like every other session kind; that order holds only agents that carry a desk confinement profile and declare a compaction command. When no agent in it is available, no session is created and the visitor receives the neutral reply.
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 #### Documentation reach
 
@@ -580,6 +591,7 @@ sequenceDiagram
 - `help_desk_processed_at` — timestamp of final post-mortem processing
 
 <!-- change:help-desk-idle-memory-cycle -->
+
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
 <!-- planned-change:help-desk-escalation-in-desk -->

@@ -9,6 +9,12 @@ visibility: 'public'
 
 `telec memories list` returns the N most recent observations for the caller, optionally narrowed by observation type or project. There is no dedicated list verb on the memory service; the CLI implements list by asking the search surface with an empty query string. The search path's primary structured-index attempt rejects the empty query, the substring fallback then matches every live observation, and the response is returned ordered newest-first within the requested limit. The quirk is intentional: it gives "list" semantics without a second backend surface.
 
+<!-- planned:help-desk-idle-memory-cycle -->
+
+Only current memories are returned: a retired memory or a business prospect is never a result of this surface (`local/projects/teleclaude/spec/feature/memory/memory-curation` UC-MC3).
+
+<!-- /planned:help-desk-idle-memory-cycle -->
+
 ## Canonical fields
 
 ### Use cases

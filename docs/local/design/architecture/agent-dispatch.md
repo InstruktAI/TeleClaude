@@ -84,6 +84,8 @@ configuration and availability never travel to a caller for speculative selectio
 
 ### Deterministic automatic preference
 
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 - Automatic selection begins from the role row, or the global order when role context
   is absent or unmapped.
 - Unconfigured, disabled, degraded, and unavailable agents are removed. Only operator
@@ -102,6 +104,29 @@ configuration and availability never travel to a caller for speculative selectio
   selection alike; each agent skipped for lacking it is recorded on the decision
   record (`UC-SL48`).
 - An empty eligible set refuses creation instead of choosing outside the contract.
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+- Automatic selection begins from the role row, or the global order when role context
+  is absent or unmapped.
+- Unconfigured, disabled, degraded, and unavailable agents are removed. Only operator
+  status `available` is eligible.
+- A missing operator-availability row normalizes to available. Unexpired degraded and
+  unavailable rows are ineligible; expired rows normalize to available through the
+  existing database expiry semantics. A storage read failure remains a typed dispatch
+  failure and is never treated as a missing row.
+- Reviewer selection uses the same eligible ordered candidates as every other automatic
+  fresh-session role. The initiating or producing session's agent does not narrow or
+  reorder the candidate set.
+- Matrix order is stable. Configuration iteration order never becomes policy.
+- A session placed at a help desk takes its order from the help-desk session-kind row,
+  never from the command in its first message. Only agents whose registry declares a
+  verified desk confinement and a compaction command are eligible there, for
+  automatic, manual and fixed selection alike; each agent skipped for lacking either
+  is recorded on the decision record (`UC-SL48`).
+- An empty eligible set refuses creation instead of choosing outside the contract.
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 ### Manual preference and fixed continuation
 

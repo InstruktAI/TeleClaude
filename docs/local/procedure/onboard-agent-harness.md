@@ -127,10 +127,23 @@ defect discovered live.
     the harness's own plugin location is installed from there, so the repository
     carries only the installer wiring, never a vendored copy.
 
+<!-- planned:help-desk-idle-memory-cycle -->
+
+Also establish compaction: the command that compacts the agent's context when
+typed into its composer, and the native hook event, with its discriminating
+payload, that reports that a compaction it was asked for completed. A harness
+offering both declares compaction in its registry entry; one lacking either
+declares none, and its conversation sessions are not idle-closed
+(`local/projects/teleclaude/spec/feature/agent_runtime/conversation-continuity`).
+
+<!-- /planned:help-desk-idle-memory-cycle -->
+
 Record the answers. They are the input to every step below, and they are what
 the next onboarding will want to diff against.
 
 ### 2. Registry and identity
+
+<!-- planned-change:help-desk-idle-memory-cycle -->
 
 1. Add one complete entry to the canonical leaf agent registry. The entry owns
    the agent key, execution contract, attribution, readiness, composer control
@@ -146,6 +159,25 @@ the next onboarding will want to diff against.
 4. Keep operational surfaces that cannot import the runtime registry derived
    from its generated outputs. A new runtime is not onboarded while installer,
    runner, launcher, or configuration templates can omit it silently.
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+1. Add one complete entry to the canonical leaf agent registry. The entry owns
+   the agent key, execution contract, attribution, readiness, composer control
+   contract (Phase 0 question 9a), compaction (Phase 0), presentation, dispatch
+   position, and launcher metadata.
+2. Consume the registry's typed projections for backend validation, receiver
+   arguments, history search, configuration inventory, and agent-specific
+   runtime decisions. Do not introduce another enum, tuple, set, or map whose
+   keys redefine the supported-agent vocabulary.
+3. Regenerate the published API and frontend vocabulary from the canonical
+   entry. A frontend declaration that shadows generated agent types, names, or
+   palette data is a second registry and is removed.
+4. Keep operational surfaces that cannot import the runtime registry derived
+   from its generated outputs. A new runtime is not onboarded while installer,
+   runner, launcher, or configuration templates can omit it silently.
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 ### 3. Launch path
 

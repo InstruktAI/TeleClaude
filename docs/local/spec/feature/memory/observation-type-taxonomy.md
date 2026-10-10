@@ -93,6 +93,16 @@ Then only observations whose type matches the filter are returned (across both t
 
 - **Taxonomy divergence vs. the memory domain spec.** The memory domain spec lists `{gotcha, decision, pattern, preference, relationship, fact}` — five values overlap, three are unique to this taxonomy (`discovery`, `friction`, `context`), and two are unique to the domain spec (`relationship`, `fact`). The default `discovery` does not exist in the domain-spec set. Whether to carry the extra values, retire them, or migrate existing observations to domain-spec equivalents is a memory-domain cutover decision.
 - **The set is closed, not extensible.** The memory domain spec describes free-form extensibility per project conventions; this taxonomy is the opposite — callers cannot introduce a new type without a code change.
+
+<!-- planned-change:help-desk-idle-memory-cycle -->
+
 - **No type history.** Once persisted, an observation's type is immutable (there is no update path; see `observation-save`). Re-classifying an observation requires deleting and re-saving.
 - **CLI validation set is duplicated from the service-side enum.** The two validation surfaces are hand-maintained mirrors; drift between them is a real risk if either is edited without the other.
+
+<!-- change:help-desk-idle-memory-cycle -->
+
+- **No type history.** Once persisted, an observation's type is immutable: curation changes a memory's statement, never its type (`local/projects/teleclaude/spec/feature/memory/memory-curation`). Re-classifying an observation requires retiring it and adding a new one.
+
+<!-- /planned-change:help-desk-idle-memory-cycle -->
+
 - **The renderer displays type verbatim.** The context-injection table prints the raw type string; future renaming may require a presentation-layer mapping during cutover.
