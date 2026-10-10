@@ -26,15 +26,31 @@ whose records support a failure in the scanned project's own handling through
 - `instrukt-ai-logs`, `telec bugs suppressions`, `telec bugs list`,
   `telec todo list`, `telec todo artifacts read`, `telec docs index`, `git`,
   and `telec bugs report` are available.
-- The run history is the Markdown reports in the directory named under Outputs.
+
+<!-- planned-change:job-run-state-single-file -->
+
+- The run state is the latest per-job JSON file at `STATE_DIR/runs/<project_slug>/<job_name>.json`; read it to resume progress and update it only through `telec jobs report`.
+
+<!-- change:job-run-state-single-file -->
+
+- The latest per-job JSON file at `STATE_DIR/runs/<project_slug>/<job_name>.json` carries only the scan cursor and unresolved signals needed by the next run. Read it directly when resuming; submit its replacement state with the outcome through one `telec jobs report` invocation. Do not create a separate report or history file.
+
+<!-- /planned-change:job-run-state-single-file -->
 
 ## Steps
 
 1. Establish the scan window for this project.
+   <!-- planned-change:job-run-state-single-file -->
    - Read the latest report belonging to this project. Start at its completed
      scan's end; if it records an incomplete scan, resume from that scan's start.
    - With no usable prior report, cover one schedule interval from the job's
      declaration. Record the actual start and end timestamps.
+
+   <!-- change:job-run-state-single-file -->
+   - Read the current per-job state file when present. Start at its last completed scan end; if it records an incomplete scan, resume from that scan's start.
+   - With no state file, cover one schedule interval from the job's declaration. Keep the actual start and end timestamps in the replacement state, and advance the cursor only after a complete scan.
+
+   <!-- /planned-change:job-run-state-single-file -->
    - Collect that window with
      `instrukt-ai-logs {project_slug} --since <window> --exclude 'logger=git-wrapper'`.
      A successful empty result is a clean scan. A failed collection is an
@@ -60,9 +76,16 @@ whose records support a failure in the scanned project's own handling through
      restart evidence, resource-pressure or backlog evidence, and subsequent recovery. The
      filing burden is positive: absence of evidence for congestion or restart is not evidence
      against them.
+
+   <!-- planned-change:job-run-state-single-file -->
    - When congestion or a computer restart explains the error, exclude it. When the available
      observations cannot rule out either cause, exclude it as causally inconclusive. Record the
      exclusion in the run report; never create a bug to obtain the missing causal evidence.
+
+   <!-- change:job-run-state-single-file -->
+   - When congestion or a computer restart explains the error, exclude it. When the available observations cannot rule out either cause, exclude it as causally inconclusive. Do not create a bug to obtain the missing causal evidence.
+
+   <!-- /planned-change:job-run-state-single-file -->
 
 3. Deduplicate each error signal that passed the eligibility and causal gates.
    - Read `telec bugs suppressions` for the project. Match only active entries,
@@ -97,6 +120,8 @@ whose records support a failure in the scanned project's own handling through
      of truth for that question (`general/principle/grounding`); a record of
      completed work is neither, and its size grows without bound while its
      bearing on a current signal does not.
+
+   <!-- planned-change:job-run-state-single-file -->
    - Read the latest three reports for this project for prior dispositions and
      context. A previous failed filing or an unresolved signal remains outstanding;
      merely mentioning a signal in a report does not make it handled.
@@ -104,6 +129,12 @@ whose records support a failure in the scanned project's own handling through
      this run's report; it does not create a second bug for the same failure.
      Route it per the amendment rules in
      `sdlc/policy/todo-creation-discipline`.
+
+   <!-- change:job-run-state-single-file -->
+   - Read outstanding signals from the current job state and re-evaluate them against current logs, suppressions, work, and code history. The state holds unresolved work from the latest run; completed dispositions are not retained as history.
+   - New evidence for an already tracked failure updates its outstanding state when it remains unresolved; it does not create a second bug for the same failure. Route amendments per `sdlc/policy/todo-creation-discipline`.
+
+   <!-- /planned-change:job-run-state-single-file -->
 
 4. File every remaining error signal through the bug front door.
    - State the operation and the observed consequence the records support,
@@ -123,8 +154,13 @@ whose records support a failure in the scanned project's own handling through
      stated in the report with how the operation breaks it. Preserve an unknown operation or outcome
      explicitly; never infer one from an error signature. A signal whose
      expected outcome no current contract states is not a bug
-     (`sdlc/policy/todo-creation-discipline`): carry it in the
-     run report with the operation and consequence its records show. A
+     (`sdlc/policy/todo-creation-discipline`):
+     <!-- planned-change:job-run-state-single-file -->
+     carry it in the run report with the operation and consequence its records show.
+     <!-- change:job-run-state-single-file -->
+     do not file it or retain it in runner state; the session transcript remains the record of the observed operation and consequence.
+     <!-- /planned-change:job-run-state-single-file -->
+     A
      reporting defect is stated as the discrepancy in reporting, without
      asserting that the underlying operation failed.
    - Submit the observed error summary and a representative log excerpt through
@@ -137,6 +173,8 @@ whose records support a failure in the scanned project's own handling through
    - If filing fails, record the signal and error as outstanding, then continue
      with the remaining signals.
 
+<!-- planned-change:job-run-state-single-file -->
+
 5. Write the run report under Outputs, including a clean or failed scan.
    Mark the scan complete only after log collection, causal classification, and
    deduplication succeeded and every eligible error signal has been filed, excluded,
@@ -144,10 +182,19 @@ whose records support a failure in the scanned project's own handling through
    in-flight work. An outstanding filing keeps the scan incomplete.
    Return the outcome to the job brief's structured close-out step.
 
+<!-- change:job-run-state-single-file -->
+
+5. Prepare the replacement job state. Store the last completed scan end, an incomplete scan start when work must resume, and only signals that remain outstanding. Mark the scan complete only after collection, causal classification, and deduplication succeed and each eligible signal is filed, excluded, or matched to suppression, existing work, or in-flight work. A signal whose failure has not recurred after a repair, or whose expected outcome has no current contract, leaves no history entry once the scan cursor advances. An outstanding filing keeps the scan incomplete. Return the outcome and replacement state together through one `telec jobs report <name> --success <true|false> --message '<summary>' --state-json '<object>'` invocation.
+
+<!-- /planned-change:job-run-state-single-file -->
+
 ## Outputs
 
 - A bug filed for each observed error that passes the causal gate and is neither suppressed
   nor already tracked.
+
+<!-- planned-change:job-run-state-single-file -->
+
 - A Markdown report named by the run timestamp in the job's run directory under
   `JOBS_DIR`, keyed by the runner's project-qualified `<project>:<name>` identity.
   Use the same run directory that `telec jobs report <name>` writes to.
@@ -166,11 +213,26 @@ Create the directory when needed. Each report carries:
 
 The report is the scan history consumed by the next run. The structured outcome
 submitted by the job brief records whether this run completed successfully.
+<!-- change:job-run-state-single-file -->
+
+- One latest state object at `STATE_DIR/runs/<project_slug>/<job_name>.json`. It includes the last completed scan end, the start of an incomplete scan when present, and unresolved signals with the evidence needed to resume. The path is stable for the project and job; each run replaces the same file.
+- The scan state is not an audit report. Completed dispositions are not accumulated; session transcripts remain the history. The structured `JobResult` and replacement state are submitted together through one `telec jobs report` call, which writes the file atomically.
+
+<!-- /planned-change:job-run-state-single-file -->
 
 ## Recovery
 
+<!-- planned-change:job-run-state-single-file -->
+
 - If logs cannot be collected, record the failed collection and an incomplete
   scan. Report failure; do not describe unavailable logs as a clean run.
+
+<!-- change:job-run-state-single-file -->
+
+- If logs cannot be collected, keep the prior completed cursor, store the incomplete scan start and outstanding signals in the replacement state, and report failure. Do not describe unavailable logs as a clean run.
+
+<!-- /planned-change:job-run-state-single-file -->
+
 - If suppression, active-work, or repository-history lookup fails, preserve the
   affected signals as outstanding and report failure. Resume deduplication on the
   next run. An unavailable history query never promotes a signal to filing: an
@@ -178,10 +240,20 @@ submitted by the job brief records whether this run completed successfully.
 - If the available observations cannot falsify congestion or a computer restart for an error,
   record the causal-evidence gap and exclude that error from filing. Uncertainty never promotes
   an operationally explainable error into a bug report.
+
+<!-- planned-change:job-run-state-single-file -->
+
 - A missing report history is a first scan, not a failed lookup; use the declared
   schedule interval and current suppression and work records.
 - A failed filing does not block attempts for other signals. Carry its evidence
   in the report so the next run can retry after deduplication.
+
+<!-- change:job-run-state-single-file -->
+
+- A missing state file is a first scan, not a failed lookup; use the declared schedule interval and current suppression and work records. A failed filing does not block attempts for other signals. Carry its evidence in the outstanding state so the next run can retry after deduplication.
+
+<!-- /planned-change:job-run-state-single-file -->
+
 - Tool failures do not authorize repairing scripts, editing code, or bypassing
   permissions. Record them and close the run as failed.
 

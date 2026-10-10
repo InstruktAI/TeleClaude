@@ -88,16 +88,35 @@ spawned and no stdout is parsed.
 
 **Agent jobs** (`script` absent, `job` required) — The runner opens a run and creates an
 agent session (fire-and-forget) for the job's declared name; the session executes the
-procedure snippet ID in `job`. The name is the job's identity everywhere: the dispatch
-argument, the run state key, the run directory, and the report key. The agent loads the
-procedure with its required-read closure, executes its task, produces its declared
+procedure snippet ID in `job`.
+<!-- planned-change:job-run-state-single-file -->
+
+The name is the job's identity everywhere: the dispatch argument, the run state key, the run directory, and the report key.
+
+<!-- change:job-run-state-single-file -->
+
+The name is the job's identity everywhere: the dispatch argument, the run state key, the per-job state file path, and the report key.
+<!-- /planned-change:job-run-state-single-file -->
+<!-- planned-change:job-run-state-single-file -->
+
+The agent loads the procedure with its required-read closure, executes its task, produces its declared
 artifacts, and reports a structured outcome via `telec jobs report <name>`. The runner's
 sweep on a later tick reads that outcome and closes the run; a run never reported within
 its window is stalled.
+<!-- change:job-run-state-single-file -->
+
+The agent loads the procedure with its required-read closure and executes its task. When it needs prior job-owned state, it reads the latest file at `STATE_DIR/runs/<project_slug>/<job_name>.json`. It reports its structured outcome and replacement state object together through one `telec jobs report <name> ... --state-json '<object>'` call; the report command writes the file. The runner reads the same file and closes only the open run whose session identity matches the report. A late report cannot close or replace a successor's result; a run with no matching report within its window is stalled.
+<!-- /planned-change:job-run-state-single-file -->
+
+<!-- planned-change:job-run-state-single-file -->
 
 Agent jobs are daemon-independent for outcome reporting: the structured outcome is written
 to the job's run directory on the local filesystem, so a run still closes when the daemon
 is down.
+<!-- change:job-run-state-single-file -->
+
+Agent jobs are daemon-independent for outcome reporting: `telec jobs report` writes the latest outcome and job-owned state to the local filesystem, so a run still closes when the daemon is down.
+<!-- /planned-change:job-run-state-single-file -->
 
 #### Outcome reporting and notification
 
@@ -145,7 +164,17 @@ and the walk continues.
 - Job execution (side effects defined by each job)
 - A `JobResult` outcome for every run, script and agent alike
 - Job-run outcome events on close/stall, projected to a human when actionable
+
+<!-- planned-change:job-run-state-single-file -->
+
 - Run reports under `JOBS_DIR`, keyed by project and declared job name (human-readable audit)
+
+<!-- change:job-run-state-single-file -->
+
+- The latest per-job state at `STATE_DIR/runs/<project_slug>/<job_name>.json`; each report atomically replaces the prior state, so no per-run report history accumulates. The JSON contains the structured `JobResult` fields and an optional job-owned state object.
+
+<!-- /planned-change:job-run-state-single-file -->
+
 - Updated run lifecycle in `~/.teleclaude/state/cron_state.json`, per project and job
 
 - Structured logs to `~/.local/state/instrukt-ai/teleclaude/cron.log`
@@ -159,8 +188,18 @@ and the walk continues.
 - A job with an open run is not re-dispatched until its run closes or stalls.
 - Both job classes produce the same `JobResult` outcome and job-run outcome event shape.
 - A clean run is silent; an actionable outcome (failure or stall) notifies a human.
+
+<!-- planned-change:job-run-state-single-file -->
+
 - Agent jobs produce a run report and a structured outcome every run, even with nothing to process.
 - A job has one identity, the `name` its declaration carries. Dispatch, run state, the run directory, the report key, the runner's job filter, and the jobs API all use that name, and nothing derives another identity from the execution pointer.
+
+<!-- change:job-run-state-single-file -->
+
+- Agent jobs report one structured outcome every run, including an empty successful run. The latest outcome and optional job-owned state replace the same per-project, per-job JSON file; historical run reports are not kept.
+- A job has one identity, the `name` its declaration carries. Dispatch, run state, the per-job state path, the report key, the runner's job filter, and the jobs API all use that name, and nothing derives another identity from the execution pointer.
+
+<!-- /planned-change:job-run-state-single-file -->
 
 ### Configuration surface
 
@@ -264,9 +303,17 @@ class JobResult:
 The runner dispatches `/run-job <name>` through the canonical command-session contract,
 rooted at the project the run belongs to, and opens a run keyed by that project and name. The
 run boundary gives the session both the job's name and the procedure its declaration points
-at. The agent loads the procedure with its required-read closure, does its work, writes a run
+at.
+<!-- planned-change:job-run-state-single-file -->
+
+The agent loads the procedure with its required-read closure, does its work, writes a run
 report under its project's run directory, reports its outcome via `telec jobs report <name>`,
 and stops.
+<!-- change:job-run-state-single-file -->
+
+The agent loads the procedure with its required-read closure, does its work, reads the latest job-owned state file when needed, and submits the structured outcome plus replacement state through one `telec jobs report <name> ... --state-json '<object>'` call. The CLI writes the state file at `STATE_DIR/runs/<project_slug>/<job_name>.json`; the agent does not write it directly. It then stops.
+<!-- /planned-change:job-run-state-single-file -->
+
 An agent outcome carries the reporting session's identity as well as the project
 and job. The sweep closes only the run opened for that session; a late outcome
 from an earlier run cannot close its successor.
