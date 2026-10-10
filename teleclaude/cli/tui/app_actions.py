@@ -16,7 +16,6 @@ from teleclaude.cli.tui.messages import (
     HandoffSessionRequest,
     HandoffSessionsRequest,
     KillSessionRequest,
-    PreviewChanged,
     RestartSessionRequest,
     RestartSessionsRequest,
     ReviveSessionRequest,
@@ -26,6 +25,7 @@ from teleclaude.cli.tui.messages import (
 )
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.theme import get_pane_theming_mode_level
+from teleclaude.cli.tui.types import ArtifactPreviewIntent
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
@@ -64,23 +64,6 @@ class TelecAppActionsMixin:
         logger.error(_APP_ACTION_FAILURE_EVENT, action=action, error=repr(error), exc_info=True, **context)
 
     @staticmethod
-    def _bridge_has_doc_preview(pane_bridge: object) -> bool:
-        has_doc_preview = getattr(pane_bridge, "has_doc_preview", None)
-        if callable(has_doc_preview):
-            return bool(has_doc_preview())
-        return getattr(pane_bridge, "_active_doc_preview", None) is not None
-
-    @staticmethod
-    def _clear_bridge_preview(pane_bridge: object) -> None:
-        clear_preview = getattr(pane_bridge, "clear_preview", None)
-        if callable(clear_preview):
-            clear_preview(focus=False)
-            return
-        set_preview = getattr(pane_bridge, "_set_preview", None)
-        if callable(set_preview):
-            set_preview(focus=False)
-
-    @staticmethod
     def _session_widgets(sessions_view: object) -> list[object]:
         query = getattr(sessions_view, "query", None)
         if callable(query):
@@ -102,15 +85,12 @@ class TelecAppActionsMixin:
     def action_clear_layout(self) -> None:
         """Global ESC: tear down all preview, sticky, and doc panes."""
         sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
-        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)  # type: ignore[attr-defined]
-        had_preview = sessions_view.preview_session_id is not None
+        had_preview = sessions_view.preview_intent is not None
         had_sticky = bool(getattr(sessions_view, "_sticky_session_ids", []))
-        had_doc = self._bridge_has_doc_preview(pane_bridge)
-        if not had_preview and not had_sticky and not had_doc:
+        if not had_preview and not had_sticky:
             return
         if had_preview:
-            sessions_view.preview_session_id = None
-            self.post_message(PreviewChanged(None, request_focus=False))  # type: ignore[attr-defined]
+            sessions_view.set_session_preview(None, request_focus=False)
         if had_sticky:
             sticky_ids = getattr(sessions_view, "_sticky_session_ids", None)
             if isinstance(sticky_ids, list):
@@ -119,8 +99,6 @@ class TelecAppActionsMixin:
                 if hasattr(widget, "is_sticky"):
                     widget.is_sticky = False  # type: ignore[attr-defined]
             self.post_message(StickyChanged([]))  # type: ignore[attr-defined]
-        if had_doc:
-            self._clear_bridge_preview(pane_bridge)
         self._notify_sessions_state_changed(sessions_view)
 
     @work(exclusive=True, group="session-action")
@@ -360,9 +338,10 @@ class TelecAppActionsMixin:
             # Kill doc preview pane when leaving the preparation tab
             if old_tab == "preparation":
                 try:
-                    pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)  # type: ignore[attr-defined]
-                    if self._bridge_has_doc_preview(pane_bridge):
-                        self._clear_bridge_preview(pane_bridge)
+                    sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
+                    if isinstance(sessions_view.preview_intent, ArtifactPreviewIntent):
+                        sessions_view.set_session_preview(None, request_focus=False)
+                        sessions_view._notify_state_changed()
                 except APP_QUERY_ERRORS:
                     pass
             self.post_message(StateChanged())  # type: ignore[attr-defined]

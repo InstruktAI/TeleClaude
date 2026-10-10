@@ -54,11 +54,52 @@ _LEGACY_RESTRICTED_SESSION_REASON = "legacy_restricted_session"
 # TeleClaude tmux session prefix - used to identify owned sessions
 TMUX_SESSION_PREFIX = "tc_"
 TMUX_TUI_SESSION_NAME = "tc_tui"
+TMUX_SESSION_NAME_UNBOUND = ""
+_HOST_RELEASE_OBSERVATION_FAILED_EVENT = "session_host_release_observation_failed"
+_HOST_BINDING_RELEASE_FAILED_EVENT = "session_host_binding_release_failed"
+_HOST_BINDING_RELEASE_ROW_MISSING_REASON = "session row missing during host binding release"
 
 
 def host_pane_name(session_id: str) -> str:
     """Return the TeleClaude-prefixed tmux host-pane name for a session id."""
     return f"{TMUX_SESSION_PREFIX}{session_id}"
+
+
+async def _publish_host_release(session: Session, *, kill_succeeded: bool) -> None:
+    """Publish host release only after successful termination or strict absence."""
+    if not kill_succeeded:
+        try:
+            snapshot = await tmux_bridge.collect_pane_snapshot(session.tmux_session_name, capture_lines=1)
+        except Exception as exc:
+            logger.error(
+                _HOST_RELEASE_OBSERVATION_FAILED_EVENT,
+                session_id=session.session_id,
+                tmux_session_name=session.tmux_session_name,
+                error=str(exc),
+                exc_info=True,
+            )
+            return
+        if snapshot.session_exists:
+            return
+
+    try:
+        updated = await db.update_session(session.session_id, tmux_session_name=TMUX_SESSION_NAME_UNBOUND)
+    except Exception as exc:
+        logger.error(
+            _HOST_BINDING_RELEASE_FAILED_EVENT,
+            session_id=session.session_id,
+            tmux_session_name=session.tmux_session_name,
+            error=str(exc),
+            exc_info=True,
+        )
+        return
+    if updated is None:
+        logger.error(
+            _HOST_BINDING_RELEASE_FAILED_EVENT,
+            session_id=session.session_id,
+            tmux_session_name=session.tmux_session_name,
+            reason=_HOST_BINDING_RELEASE_ROW_MISSING_REASON,
+        )
 
 
 # Lookback window for replaying cleanup for closed sessions from an earlier process instance.
@@ -418,6 +459,7 @@ async def _terminate_session_inner(
             # destroyed tmux session, so the process set must be known first.
             process_tree = await tmux_bridge.get_pane_process_tree(session.tmux_session_name)
 
+            killed = False
             try:
                 killed = await tmux_bridge.kill_session(session.tmux_session_name)
                 if killed:
@@ -426,6 +468,8 @@ async def _terminate_session_inner(
                     logger.warning("Failed to kill tmux session %s", session.tmux_session_name)
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning("Failed to kill tmux session %s: %s", session.tmux_session_name, exc)
+
+            await _publish_host_release(session, kill_succeeded=killed)
 
             if process_tree is None:
                 logger.warning(
@@ -441,6 +485,8 @@ async def _terminate_session_inner(
                         SESSION_PROCESS_REAP_TIMEOUT,
                         [proc.pid for proc in surviving],
                     )
+        elif session.tmux_session_name and not already_closed and not delete_db:
+            await _publish_host_release(session, kill_succeeded=False)
 
         try:
             await cleanup_session_resources(session, adapter_client, delete_channel=delete_channel)

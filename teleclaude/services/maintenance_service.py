@@ -41,6 +41,7 @@ from teleclaude.core.next_machine.delivery import (
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
+from teleclaude.core.session_cleanup import TMUX_SESSION_NAME_UNBOUND
 from teleclaude.core.session_compaction import (
     SessionCompactionOwner,
     session_compaction_owner,
@@ -53,7 +54,6 @@ from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.shutdown_drain import ShutdownRefusal, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
-from teleclaude.core.tmux_io import TMUX_SESSION_NAME_UNBOUND
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S

@@ -5,7 +5,8 @@ from __future__ import annotations
 import time
 
 from teleclaude.api_models import SessionDTO
-from teleclaude.cli.tui.messages import PreviewChanged, StickyChanged
+from teleclaude.cli.tui.messages import StickyChanged
+from teleclaude.cli.tui.types import PreviewIntent, SessionPreviewIntent
 from teleclaude.cli.tui.widgets.session_row import SessionRow
 from teleclaude.core.session_status import SessionLifecycleStatus
 
@@ -17,9 +18,12 @@ HIDDEN_SESSION_STATUSES = frozenset({SessionLifecycleStatus.CLOSED})
 class SessionsViewHighlightsMixin:
     """Highlight management, reactive watchers, and state-export for SessionsView."""
 
-    preview_session_id: str | None
+    @property
+    def preview_session_id(self) -> str | None:
+        """Return the session preview id from the Sessions-view owner."""
+        raise NotImplementedError
 
-    def watch_preview_session_id(self, old_session_id: str | None, new_session_id: str | None) -> None:
+    def watch_preview_intent(self, old_intent: PreviewIntent, new_intent: PreviewIntent) -> None:
         """When preview changes, update row visual highlights.
 
         Cancels any pending auto-clear timer for the old preview session
@@ -28,6 +32,8 @@ class SessionsViewHighlightsMixin:
         Does NOT post PreviewChanged — that's done explicitly by action
         handlers with the correct request_focus flag.
         """
+        old_session_id = old_intent.session_id if isinstance(old_intent, SessionPreviewIntent) else None
+        new_session_id = new_intent.session_id if isinstance(new_intent, SessionPreviewIntent) else None
         if old_session_id:
             self._cancel_highlight_timer(old_session_id)  # type: ignore[attr-defined]
         for widget in self._nav_items:  # type: ignore[attr-defined]
@@ -126,8 +132,7 @@ class SessionsViewHighlightsMixin:
             self._sticky_session_ids.remove(session_id)  # type: ignore[attr-defined]
             self.post_message(StickyChanged(list(self._sticky_session_ids)))  # type: ignore[attr-defined]
         if self.preview_session_id == session_id:  # type: ignore[attr-defined]
-            self.preview_session_id = None  # type: ignore[attr-defined]
-            self.post_message(PreviewChanged(None, request_focus=False))  # type: ignore[attr-defined]
+            self.set_session_preview(None, request_focus=False)  # type: ignore[attr-defined]
         self._notify_state_changed()  # type: ignore[attr-defined]
 
     def update_session(self, session: SessionDTO) -> None:

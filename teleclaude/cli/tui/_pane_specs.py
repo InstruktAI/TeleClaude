@@ -5,27 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-
-@dataclass
-class ComputerInfo:
-    """SSH connection info for a computer."""
-
-    name: str
-    is_local: bool
-    user: str | None = None
-    host: str | None = None
-
-    @property
-    def is_remote(self) -> bool:
-        """Check if this is a remote computer requiring SSH."""
-        return not self.is_local
-
-    @property
-    def ssh_target(self) -> str | None:
-        """Get user@host for SSH, or None if local."""
-        if self.is_remote:
-            return f"{self.user}@{self.host}"
-        return None
+from teleclaude.api_session_attachment import SessionAttachmentDestinationDTO
+from teleclaude.cli.tui.types import DocPreviewState
 
 
 @dataclass
@@ -47,10 +28,37 @@ class SessionPaneSpec:
 
     session_id: str
     tmux_session_name: str | None
-    computer_info: ComputerInfo | None
+    attachment_destination: SessionAttachmentDestinationDTO | None
     is_sticky: bool
     active_agent: str = ""
     command: str | None = None
+
+
+@dataclass(frozen=True)
+class PaneGeometry:
+    """Position and dimensions reported for one tmux pane."""
+
+    left: int
+    top: int
+    width: int
+    height: int
+
+
+@dataclass(frozen=True)
+class ObservedSessionPane:
+    """Reload observation for a session pane, including its original target."""
+
+    pane_id: str
+    attachment_destination: SessionAttachmentDestinationDTO | None
+    geometry: PaneGeometry | None
+
+
+@dataclass(frozen=True)
+class ObservedDocumentPane:
+    """Reload observation for an artifact pane and its placement."""
+
+    preview: DocPreviewState
+    geometry: PaneGeometry | None
 
 
 LayoutCell = Literal["T"] | int | None

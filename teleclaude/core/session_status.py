@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from teleclaude.core.models import SessionSnapshot
 
 
 class SessionLifecycleStatus(StrEnum):
@@ -23,6 +28,59 @@ class SessionLifecycleStatus(StrEnum):
     ESCALATED = "escalated"
     CLOSING = "closing"
     CLOSED = "closed"
+
+
+class HostPaneViewerAdmission(StrEnum):
+    """Whether a session currently admits a newly-created host viewer."""
+
+    ADMITTED = "admitted"
+    UNAVAILABLE = "unavailable"
+
+
+class SessionSelectionDisposition(StrEnum):
+    """Runtime-owned action available to an ordinary session-row selection."""
+
+    PREVIEW = "preview"
+    ADOPT_HEADLESS = "adopt_headless"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class HostPaneAccessProjection:
+    """Current fresh-viewer admission and normal row-selection disposition."""
+
+    viewer_admission: HostPaneViewerAdmission
+    selection: SessionSelectionDisposition
+
+
+def project_host_pane_access(session: SessionSnapshot) -> HostPaneAccessProjection:
+    """Project fresh attachment and row-selection access from session-owned facts."""
+    status = session.status
+    has_open_row = session.closed_at is None and status != SessionLifecycleStatus.CLOSED
+    has_bound_host = bool(session.tmux_session_name)
+
+    if not has_open_row:
+        return HostPaneAccessProjection(
+            viewer_admission=HostPaneViewerAdmission.UNAVAILABLE,
+            selection=SessionSelectionDisposition.UNAVAILABLE,
+        )
+
+    if status == SessionLifecycleStatus.HEADLESS and not has_bound_host:
+        return HostPaneAccessProjection(
+            viewer_admission=HostPaneViewerAdmission.UNAVAILABLE,
+            selection=SessionSelectionDisposition.ADOPT_HEADLESS,
+        )
+
+    if status != SessionLifecycleStatus.HEADLESS and has_bound_host:
+        return HostPaneAccessProjection(
+            viewer_admission=HostPaneViewerAdmission.ADMITTED,
+            selection=SessionSelectionDisposition.PREVIEW,
+        )
+
+    return HostPaneAccessProjection(
+        viewer_admission=HostPaneViewerAdmission.UNAVAILABLE,
+        selection=SessionSelectionDisposition.UNAVAILABLE,
+    )
 
 
 TERMINAL_LIFECYCLE_STATUSES = frozenset({SessionLifecycleStatus.CLOSING, SessionLifecycleStatus.CLOSED})

@@ -26,6 +26,7 @@ from teleclaude.cli.tui.tree import (
     parse_collapsed_projects,
     project_collapse_key,
 )
+from teleclaude.cli.tui.types import ArtifactPreviewIntent, DocPreviewState, PreviewIntent, SessionPreviewIntent
 from teleclaude.cli.tui.views.interaction import TreeInteractionState
 from teleclaude.cli.tui.views.sessions_actions import DOUBLE_PRESS_THRESHOLD, SessionsViewActionsMixin
 from teleclaude.cli.tui.views.sessions_highlights import (
@@ -106,7 +107,7 @@ class SessionsView(
         Binding("O", "handoff_session_select", "Handoff As"),
     ]
 
-    preview_session_id = reactive[str | None](None)
+    preview_intent = reactive[PreviewIntent](None)
     cursor_index = reactive(0)
     persistence_key = "sessions"
 
@@ -117,6 +118,7 @@ class SessionsView(
         self._sessions: list[SessionDTO] = []
         self._availability: dict[str, AgentAvailabilityDTO] = {}
         self._sticky_session_ids: list[str] = []
+        self._preview_revision = 0
         self._input_highlights: set[str] = set()
         self._output_highlights: set[str] = set()
         # session_id → {"text": str, "ts": float (monotonic)}
@@ -310,15 +312,61 @@ class SessionsView(
         if isinstance(preview_data, dict):
             preview_id = preview_data.get("session_id")
             if isinstance(preview_id, str) and preview_id:
-                self.preview_session_id = preview_id
+                self.set_preview_intent(SessionPreviewIntent(preview_id), explicit=False)
 
         # Self-heal a corrupt persisted snapshot where the preview is also a
         # sticky (invariant I1): drop the preview so it is never a duplicate.
-        self.preview_session_id = enforce_i1(self._sticky_session_ids, self.preview_session_id)
+        preview_id = enforce_i1(self._sticky_session_ids, self.preview_session_id)
+        if preview_id != self.preview_session_id:
+            self.set_preview_intent(None, explicit=False)
 
         highlighted = data.get("highlighted_session_id")
         if isinstance(highlighted, str) and highlighted:
             self._highlighted_session_id = highlighted
+
+    @property
+    def preview_session_id(self) -> str | None:
+        """Return the session id only when session owns the preview intent."""
+        intent = self.preview_intent
+        return intent.session_id if isinstance(intent, SessionPreviewIntent) else None
+
+    @property
+    def preview_revision(self) -> int:
+        """Return the revision of explicit operator routing in this process."""
+        return self._preview_revision
+
+    def set_preview_intent(self, intent: PreviewIntent, *, explicit: bool) -> None:
+        """Update the local preview owner and optionally record operator routing."""
+        if explicit:
+            self._preview_revision += 1
+        self.preview_intent = intent
+
+    def set_session_preview(self, session_id: str | None, *, request_focus: bool, explicit: bool = True) -> None:
+        """Set a session preview and send its layout request to the bridge."""
+        intent = SessionPreviewIntent(session_id) if session_id is not None else None
+        self.set_preview_intent(intent, explicit=explicit)
+        self.post_message(
+            PreviewChanged(
+                session_id,
+                request_focus=request_focus,
+                revision=self._preview_revision,
+            )
+        )
+
+    def set_artifact_preview(self, preview: DocPreviewState) -> None:
+        """Set an artifact preview from a Preparation-view request."""
+        self.set_preview_intent(ArtifactPreviewIntent(preview), explicit=True)
+        self._notify_state_changed()
+
+    def adopt_reloaded_artifact(self, preview: DocPreviewState, *, expected_revision: int) -> bool:
+        """Adopt a surviving artifact only while no newer routing action exists."""
+        if expected_revision != self._preview_revision:
+            return False
+        intent = ArtifactPreviewIntent(preview)
+        if self.preview_intent != intent:
+            self.set_preview_intent(intent, explicit=False)
+            self._notify_state_changed()
+        return True
 
     def request_select_session(self, session_id: str, *, request_focus: bool = False) -> None:
         """Request auto-selection of a session once it appears in the tree.
@@ -327,6 +375,7 @@ class SessionsView(
         the tree or may not yet have a tmux pane. The pending state is applied
         after the next tree rebuild.
         """
+        self._preview_revision += 1
         self._pending_select = _PendingSelect(session_id, request_focus)
 
     def _apply_pending_selection(self) -> None:
@@ -348,9 +397,8 @@ class SessionsView(
                 self.cursor_index = i
                 self._update_cursor_highlight()
                 self._scroll_to_cursor()
-                self.preview_session_id = target_id
+                self.set_session_preview(target_id, request_focus=focus, explicit=False)
                 self._clear_session_highlights(target_id)
-                self.post_message(PreviewChanged(target_id, request_focus=focus))
                 self._notify_state_changed()
                 return
 
@@ -559,8 +607,7 @@ class SessionsView(
                 self.cursor_index = i
                 self._update_cursor_highlight()
                 self._scroll_to_cursor()
-                self.preview_session_id = session_id
-                self.post_message(PreviewChanged(session_id, request_focus=request_focus))
+                self.set_session_preview(session_id, request_focus=request_focus)
                 return
         self.request_select_session(session_id, request_focus=request_focus)
 
@@ -623,11 +670,11 @@ class SessionsView(
 
     def _is_headless(self, row: SessionRow) -> bool:
         """Check if a session row is headless (no tmux pane)."""
-        return is_headless_session(status=row.status, tmux_session_name=row.session.tmux_session_name)
+        return is_headless_session(row.session)
 
     def _is_attachable(self, row: SessionRow) -> bool:
         """Return whether a session row may open or focus a tmux pane."""
-        return is_attachable_session(status=row.status, tmux_session_name=row.session.tmux_session_name)
+        return is_attachable_session(row.session)
 
     def _revive_headless(self, row: SessionRow, *, request_focus: bool = False) -> None:
         """Request revive for a headless session."""
@@ -728,14 +775,12 @@ class SessionsView(
         self._clear_session_highlights(session_id)
         if session_id in self._sticky_session_ids:
             if self.preview_session_id is not None:
-                self.preview_session_id = None
-                self.post_message(PreviewChanged(None, request_focus=False))
+                self.set_session_preview(None, request_focus=False)
             if request_focus:
                 self.post_message(FocusPaneRequest(session_id))
             self._notify_state_changed()
             return
-        self.preview_session_id = session_id
-        self.post_message(PreviewChanged(session_id, request_focus=request_focus))
+        self.set_session_preview(session_id, request_focus=request_focus)
         self._notify_state_changed()
 
     # --- Mouse click handling (widget-level Pressed messages) ---

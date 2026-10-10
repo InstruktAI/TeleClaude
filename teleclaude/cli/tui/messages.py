@@ -16,6 +16,7 @@ from teleclaude.api_models import (
     TuiBootstrapPillar,
 )
 from teleclaude.cli.tui.creator_session import SessionLookup
+from teleclaude.cli.tui.types import DocPreviewState
 
 # --- Data refresh messages ---
 
@@ -197,10 +198,17 @@ class PreviewChanged(Message):
                    Enter/click set True (preview AND focus the pane).
     """
 
-    def __init__(self, session_id: str | None, *, request_focus: bool = False) -> None:
+    def __init__(
+        self,
+        session_id: str | None,
+        *,
+        request_focus: bool = False,
+        revision: int | None = None,
+    ) -> None:
         super().__init__()
         self.session_id = session_id
         self.request_focus = request_focus
+        self.revision = revision
 
 
 class StickyChanged(Message):
@@ -498,6 +506,15 @@ class DocEditRequest(Message):
         self.doc_id = doc_id
         self.command = command
         self.title = title
+
+
+class DocPreviewRestored(Message):
+    """A surviving document viewer was found during layout reload."""
+
+    def __init__(self, preview: DocPreviewState, revision: int) -> None:
+        super().__init__()
+        self.preview = preview
+        self.revision = revision
 
 
 # --- Settings messages ---

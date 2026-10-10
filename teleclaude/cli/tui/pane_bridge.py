@@ -10,26 +10,24 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from textual.message import Message
 from textual.widget import Widget
 
 from teleclaude.cli.tui.artifact_panes import doc_pane_key
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import (
-    DataRefreshed,
     DocEditRequest,
     DocPreviewRequest,
+    DocPreviewRestored,
     FocusPaneRequest,
     PreviewChanged,
     StickyChanged,
 )
-from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
-from teleclaude.cli.tui.types import DocPreviewState
+from teleclaude.cli.tui.pane_manager import TmuxPaneManager
+from teleclaude.cli.tui.types import ArtifactPreviewIntent, DocPreviewState, PreviewIntent, SessionPreviewIntent
 
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from teleclaude.api_models import ComputerDTO as APIComputerDTO
     from teleclaude.api_models import SessionDTO
 
 PANE_WRITER_ERRORS = (
@@ -47,15 +45,6 @@ PANE_WRITER_ERRORS = (
 class _PaneOperation:
     run: Callable[[], None] | None
     coalesce: bool = False
-
-
-class _DocPreviewRestored(Message):
-    """Return a discovered viewer to its UI owner without blocking the writer."""
-
-    def __init__(self, preview: DocPreviewState, revision: int) -> None:
-        super().__init__()
-        self.preview = preview
-        self.revision = revision
 
 
 class PaneWriter:
@@ -144,26 +133,13 @@ class PaneManagerBridge(TelecMixin, Widget):
         super().__init__(**kwargs)
         self.pane_manager = TmuxPaneManager(is_reload=is_reload)
         self._writer = PaneWriter(self.pane_manager)
-        self._computers: dict[str, APIComputerDTO] = {}
         self._sessions: list[SessionDTO] = []
-        self._preview_session_id: str | None = None
+        self._preview_intent: PreviewIntent = None
         self._sticky_session_ids: list[str] = []
-        self._active_doc_preview: DocPreviewState | None = None
         self._layout_dirty: bool = False
         self._pending_focus: bool = False
         self._preview_revision = 0
-
-    def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
-        """Convert API ComputerDTO to pane_manager ComputerDTO."""
-        api_info = self._computers.get(computer_name)
-        if not api_info:
-            return None
-        return ComputerInfo(
-            name=api_info.name,
-            is_local=api_info.is_local,
-            user=api_info.user,
-            host=api_info.host,
-        )
+        self._session_snapshot_ready = not is_reload
 
     def _mark_layout_dirty(self, *, focus: bool = False) -> None:
         """Mark layout as needing recalculation.
@@ -195,54 +171,56 @@ class PaneManagerBridge(TelecMixin, Widget):
         PaneWriter thread.  If multiple _apply calls fire before the
         writer processes one, only the latest snapshot is executed.
         """
+        if not self._session_snapshot_ready:
+            return
         # Snapshot mutable state for the writer thread
         sessions = self._sessions
-        preview_id = self._preview_session_id
+        preview_intent = self._preview_intent
         sticky_ids = list(self._sticky_session_ids)
-        doc_preview = self._active_doc_preview
         preview_revision = self._preview_revision
-        computers = dict(self._computers)
-
-        def get_computer_info(computer_name: str) -> ComputerInfo | None:
-            info = computers.get(computer_name)
-            if info is None:
-                return None
-            return ComputerInfo(name=info.name, is_local=info.is_local, user=info.user, host=info.host)
 
         def _do_layout() -> None:
             self.pane_manager.update_session_catalog(sessions)
             if self.pane_manager.has_reload_panes():
                 self.pane_manager.seed_for_reload(
-                    active_session_id=preview_id,
-                    sticky_session_ids=sticky_ids,
-                    get_computer_info=get_computer_info,
+                    active_doc_preview=self._artifact_preview(preview_intent),
+                    adopt_discovered_artifact=(
+                        preview_revision == 0 and not isinstance(preview_intent, ArtifactPreviewIntent)
+                    ),
                 )
             restored_doc = self.pane_manager.adopted_doc_preview()
-            effective_doc = doc_preview
-            if restored_doc is not None and preview_id is None and doc_preview is None and preview_revision == 0:
-                effective_doc = restored_doc
-                self.post_message(_DocPreviewRestored(restored_doc, preview_revision))
+            effective_intent = preview_intent
+            if (
+                restored_doc is not None
+                and preview_revision == 0
+                and not isinstance(preview_intent, ArtifactPreviewIntent)
+            ):
+                effective_intent = ArtifactPreviewIntent(restored_doc)
+                self.post_message(DocPreviewRestored(restored_doc, preview_revision))
             self.pane_manager.apply_layout(
-                active_session_id=preview_id,
+                active_session_id=self._session_preview_id(effective_intent),
                 sticky_session_ids=sticky_ids,
-                get_computer_info=get_computer_info,
-                active_doc_preview=effective_doc,
+                active_doc_preview=self._artifact_preview(effective_intent),
                 focus=False,
             )
 
         self._writer.schedule(_do_layout, coalesce=True)
-        focus_id = preview_id or (doc_pane_key(doc_preview.doc_id) if doc_preview is not None else None)
+        doc_preview = self._artifact_preview(preview_intent)
+        focus_id = self._session_preview_id(preview_intent) or (
+            doc_pane_key(doc_preview.doc_id) if doc_preview is not None else None
+        )
         if focus and focus_id is not None:
             self._writer.schedule(lambda: self.pane_manager.focus_pane_for_session(focus_id))
 
-    def on__doc_preview_restored(self, message: _DocPreviewRestored) -> None:
-        """Receive a restored viewer on the UI thread while its intent is current."""
-        if (
-            message.revision == self._preview_revision
-            and self._preview_session_id is None
-            and self._active_doc_preview is None
-        ):
-            self._active_doc_preview = message.preview
+    @staticmethod
+    def _session_preview_id(intent: PreviewIntent) -> str | None:
+        """Return the session id carried by a session preview intent."""
+        return intent.session_id if isinstance(intent, SessionPreviewIntent) else None
+
+    @staticmethod
+    def _artifact_preview(intent: PreviewIntent) -> DocPreviewState | None:
+        """Return the artifact carried by an artifact preview intent."""
+        return intent.preview if isinstance(intent, ArtifactPreviewIntent) else None
 
     def update_single_session(self, session: SessionDTO) -> None:
         """Update or add a single session in the bridge's session list and catalog.
@@ -275,55 +253,36 @@ class PaneManagerBridge(TelecMixin, Widget):
         sticky stays in the catalog, so its pane lives and dies by tmux liveness
         and the explicit closure that calls ``remove_session``.
         """
+        self._session_snapshot_ready = True
         present = {session.session_id for session in sessions}
-        claimed = {*self._sticky_session_ids, self._preview_session_id}
+        claimed = {*self._sticky_session_ids, self._session_preview_id(self._preview_intent)}
         retained = [s for s in self._sessions if s.session_id in claimed and s.session_id not in present]
         self._sessions = [*sessions, *retained]
         self._mark_layout_dirty()
 
-    def on_data_refreshed(self, message: DataRefreshed) -> None:
-        """Update computer metadata from an API refresh; the session catalog follows the socket stream only.
-
-        Changed metadata re-applies the current layout intent, because the catalog
-        can arrive before the computers a remote pane attaches through.
-        """
-        computers = {c.name: c for c in message.computers}
-        if computers != self._computers:
-            self._computers = computers
-            self._mark_layout_dirty()
-
     def sync_layout_state(
         self,
         *,
-        preview_session_id: str | None,
+        preview_intent: PreviewIntent,
         sticky_session_ids: list[str],
+        preview_revision: int,
     ) -> None:
-        """Sync preview and sticky ids without scheduling a layout update."""
-        self._preview_session_id = preview_session_id
+        """Mirror the Sessions-view intent and stickies without scheduling layout."""
+        self._preview_intent = preview_intent
         self._sticky_session_ids = list(sticky_session_ids)
+        self._preview_revision = preview_revision
 
-    def _set_preview(
-        self,
-        *,
-        session_id: str | None = None,
-        doc: DocPreviewState | None = None,
-        focus: bool = True,
-    ) -> None:
-        """Set the single preview slot and mark layout dirty.
-
-        Session preview and doc preview are mutually exclusive — setting one
-        always clears the other.  All preview handlers funnel through here.
-        Layout is deferred until all pending messages in the current event
-        loop iteration are processed.
-        """
-        self._preview_session_id = session_id
-        self._active_doc_preview = doc
-        self._preview_revision += 1
+    def apply_preview_intent(self, intent: PreviewIntent, *, focus: bool) -> None:
+        """Apply a complete preview intent snapshot from its local owner."""
+        self._preview_intent = intent
         self._mark_layout_dirty(focus=focus)
 
     def on_preview_changed(self, message: PreviewChanged) -> None:
         """Handle preview session change — update active pane."""
-        self._set_preview(session_id=message.session_id, focus=message.request_focus)
+        if message.revision is not None:
+            self._preview_revision = message.revision
+        intent = SessionPreviewIntent(message.session_id) if message.session_id is not None else None
+        self.apply_preview_intent(intent, focus=message.request_focus)
 
     def on_sticky_changed(self, message: StickyChanged) -> None:
         """Handle sticky sessions change — mark layout dirty without stealing focus."""
@@ -337,37 +296,21 @@ class PaneManagerBridge(TelecMixin, Widget):
 
     def on_doc_preview_request(self, message: DocPreviewRequest) -> None:
         """Handle doc preview request — view mode without focus."""
-        self._set_preview(
-            doc=DocPreviewState(
-                doc_id=message.doc_id,
-                command=message.command,
-                title=message.title,
-            ),
+        self.apply_preview_intent(
+            ArtifactPreviewIntent(DocPreviewState(doc_id=message.doc_id, command=message.command, title=message.title)),
             focus=False,
         )
 
     def on_doc_edit_request(self, message: DocEditRequest) -> None:
         """Handle doc edit request — edit mode with focus."""
-        self._set_preview(
-            doc=DocPreviewState(
-                doc_id=message.doc_id,
-                command=message.command,
-                title=message.title,
-            ),
+        self.apply_preview_intent(
+            ArtifactPreviewIntent(DocPreviewState(doc_id=message.doc_id, command=message.command, title=message.title)),
             focus=True,
         )
 
     def reapply_colors(self) -> None:
         """Re-apply agent colors after theme change (non-blocking)."""
         self._writer.schedule(self.pane_manager.reapply_agent_colors)
-
-    def has_doc_preview(self) -> bool:
-        """Return whether a document preview is currently active."""
-        return self._active_doc_preview is not None
-
-    def clear_preview(self, *, focus: bool = False) -> None:
-        """Clear the current preview using the shared preview setter."""
-        self._set_preview(focus=focus)
 
     def cleanup(self) -> None:
         """Clean up all panes on exit."""

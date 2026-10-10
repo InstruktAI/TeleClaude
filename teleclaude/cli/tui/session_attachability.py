@@ -1,21 +1,16 @@
-"""Session attachability helpers for TUI pane actions."""
+"""Read the session-selection disposition published by agent runtime."""
 
 from __future__ import annotations
 
-from teleclaude.core.session_status import SessionLifecycleStatus
+from teleclaude.api_models import SessionDTO
+from teleclaude.core.session_status import SessionSelectionDisposition
 
 
-def is_headless_session(*, status: str, tmux_session_name: str | None) -> bool:
-    """Distinguish an adoptable session from one still creating its first pane."""
-    return status.startswith(SessionLifecycleStatus.HEADLESS) or (
-        not tmux_session_name and status != SessionLifecycleStatus.INITIALIZING
-    )
+def is_headless_session(session: SessionDTO) -> bool:
+    """Whether runtime explicitly permits the sanctioned headless adoption gesture."""
+    return session.selection_disposition == SessionSelectionDisposition.ADOPT_HEADLESS
 
 
-def is_attachable_session(*, status: str, tmux_session_name: str | None) -> bool:
-    """Expose a bound pane independently of runtime startup and input readiness."""
-    return (
-        bool(tmux_session_name)
-        and not status.startswith(SessionLifecycleStatus.HEADLESS)
-        and status != SessionLifecycleStatus.CLOSED
-    )
+def is_attachable_session(session: SessionDTO) -> bool:
+    """Whether runtime permits ordinary preview selection for this session."""
+    return session.selection_disposition == SessionSelectionDisposition.PREVIEW

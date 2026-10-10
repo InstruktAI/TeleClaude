@@ -72,6 +72,14 @@ class TodoCacheEntry:
     todos: list[TodoDTO]
 
 
+@dataclass(frozen=True)
+class ComputerUpdatedNotification:
+    """Computer cache change plus whether viewer connection inputs changed."""
+
+    computer_name: str
+    attachment_inputs_changed: bool
+
+
 class TodoCacheNotificationPayload(TypedDict, total=False):
     """Payload emitted when cached todos change."""
 
@@ -477,6 +485,9 @@ class DaemonCache:
         name = computer.name
         digest = self._computer_fingerprint(computer)
         existing = self._computers.get(name)
+        attachment_inputs_changed = existing is None or (
+            existing.data.user != computer.user or existing.data.host != computer.host
+        )
         if existing and self._computers_digest.get(name) == digest:
             # Refresh timestamp without spamming change notifications.
             existing.data = computer
@@ -486,7 +497,13 @@ class DaemonCache:
         self._computers[name] = CachedItem(computer)
         self._computers_digest[name] = digest
         logger.debug("Updated computer cache: %s", name)
-        self._notify("computer_updated", computer)
+        self._notify(
+            CacheEvent.COMPUTER_UPDATED.value,
+            ComputerUpdatedNotification(
+                computer_name=name,
+                attachment_inputs_changed=attachment_inputs_changed,
+            ),
+        )
 
     def update_session(
         self,

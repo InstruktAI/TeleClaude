@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api_session_attachment import SshSessionAttachmentDTO
 from teleclaude.cli.tui import theme
 from teleclaude.cli.tui._pane_specs import SessionPaneSpec
 from teleclaude.cli.tui.color_utils import hex_to_nearest_xterm256
@@ -195,12 +196,15 @@ class PaneThemingMixin:
 
     def _spec_is_remote(self, spec: SessionPaneSpec) -> bool:
         """Whether a spec's session is owned by a remote tmux server."""
-        return bool(spec.computer_info and spec.computer_info.is_remote)
+        return isinstance(spec.attachment_destination, SshSessionAttachmentDTO)
 
-    def _computer_is_remote(self, computer: str | None) -> bool:
-        """Resolve a catalog session's computer name to remoteness."""
-        info = self._computer_info_resolver(computer or "local")  # type: ignore[attr-defined]
-        return bool(info and info.is_remote)
+    def _session_is_remote(self, session_id: str) -> bool:
+        """Use the observed attachment when present, otherwise the projected target."""
+        observed = self._observed_session_spec(session_id)  # type: ignore[attr-defined]
+        if observed is not None:
+            return self._spec_is_remote(observed)
+        session = self._session_catalog.get(session_id)  # type: ignore[attr-defined]
+        return bool(session and isinstance(session.attachment_destination, SshSessionAttachmentDTO))
 
     def _reapply_spec_pane(self, spec: SessionPaneSpec, reapplied_panes: set[str]) -> None:
         """Re-apply colors for a sticky or active session spec."""
@@ -236,7 +240,7 @@ class PaneThemingMixin:
             session.tmux_session_name,
             session.active_agent or "",
             is_tree_selected=self._is_tree_selected_session(session_id),  # type: ignore[attr-defined]
-            is_remote=self._computer_is_remote(session.computer),
+            is_remote=self._session_is_remote(session_id),
         )
 
     def reapply_agent_colors(self) -> None:

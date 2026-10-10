@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -15,14 +14,18 @@ from teleclaude.cli.tui import theme
 from teleclaude.cli.tui._pane_specs import LAYOUT_SPECS, LayoutCell, SessionPaneSpec
 from teleclaude.cli.tui.artifact_panes import DOC_PANE_PREFIX, doc_pane_key
 from teleclaude.cli.tui.layout_model import CellOp, desired, diff_cells, orphan_panes
+from teleclaude.core.session_status import HostPaneViewerAdmission
 
 if TYPE_CHECKING:
-    from teleclaude.cli.tui._pane_specs import ComputerInfo, LayoutSpec
+    from teleclaude.api_models import SessionDTO
+    from teleclaude.cli.tui._pane_specs import LayoutSpec, PaneGeometry
     from teleclaude.cli.tui.types import DocPreviewState
 
 logger = get_logger(__name__)
 _PANE_ID_FORMAT = "#{pane_id}"
 _PANE_PERCENT_SIZE = "{size}%"
+_CELL_FINGERPRINT_SEPARATOR = "\x00"
+_UNRESOLVED_ATTACHMENT_FINGERPRINT = "unresolved"
 
 
 class _PaneCommand(StrEnum):
@@ -51,7 +54,6 @@ class LayoutRequest:
 
     active_session_id: str | None
     sticky_session_ids: list[str]
-    get_computer_info: Callable[[str], ComputerInfo | None]
     active_doc_preview: DocPreviewState | None = None
     selected_session_id: str | None = None
     tree_node_has_focus: bool = False
@@ -74,7 +76,6 @@ class PaneLayoutMixin:
         if request is None:
             request = LayoutRequest(**legacy_kwargs)
 
-        self._computer_info_resolver = request.get_computer_info  # type: ignore[attr-defined]
         self._reconcile()  # type: ignore[attr-defined]
         self._reap_orphans()
         logger.debug(
@@ -93,7 +94,6 @@ class PaneLayoutMixin:
         active_spec = self._build_active_spec(request)
         self._sticky_specs = self._build_sticky_specs(  # type: ignore[attr-defined]
             request.sticky_session_ids,
-            request.get_computer_info,
         )
         self._active_spec = active_spec  # type: ignore[attr-defined]
 
@@ -133,26 +133,85 @@ class PaneLayoutMixin:
         """Reconcile resolved survivors absent from the observed cell assignment."""
         previous = list(self._layout_state.cell_specs or [])  # type: ignore[attr-defined]
         previous_ids = {spec.session_id for spec in previous}
+        previous_by_id = {spec.session_id: spec for spec in previous}
         desired_by_id = {spec.session_id: spec for spec in desired_specs}
         recovered = False
+        geometry_changed = False
         for session_id, pane in list(self.state.session_to_pane.items()):  # type: ignore[attr-defined]
             if session_id in previous_ids:
                 continue
-            self._layout_state.geometry_dirty = True  # type: ignore[attr-defined]
             spec = desired_by_id.get(session_id)
             if spec is not None:
-                observed_doc = self.adopted_doc_preview()  # type: ignore[attr-defined]
-                if observed_doc is not None and doc_pane_key(observed_doc.doc_id) == session_id:
-                    spec = replace(spec, command=observed_doc.command)
-                previous.append(spec)
+                previous_by_id[session_id] = self._layout_state.observed_specs.get(session_id, spec)  # type: ignore[attr-defined]
                 recovered = True
             else:
                 self._run_tmux(_PaneCommand.KILL, _PaneFlag.TARGET, pane)  # type: ignore[attr-defined]
                 self.state.session_to_pane.pop(session_id)  # type: ignore[attr-defined]
+                self._layout_state.observed_specs.pop(session_id, None)  # type: ignore[attr-defined]
+                self._layout_state.observed_geometry.pop(pane, None)  # type: ignore[attr-defined]
                 self._layout_state.detached_panes.discard(pane)  # type: ignore[attr-defined]
+                recovered = True
+                geometry_changed = True
         if recovered:
-            self._layout_state.cell_specs = previous  # type: ignore[attr-defined]
+            self._layout_state.cell_specs = [  # type: ignore[attr-defined]
+                previous_by_id[spec.session_id]
+                for spec in desired_specs
+                if spec.session_id in previous_by_id and spec.session_id in self.state.session_to_pane  # type: ignore[attr-defined]
+            ]
+        if self._layout_state.reload_observation_pending:  # type: ignore[attr-defined]
+            if geometry_changed:
+                self._layout_state.observed_geometry = self._capture_pane_geometries()  # type: ignore[attr-defined]
+            geometry_matches = self._observed_grid_matches(desired_specs)
+            self._layout_state.geometry_dirty = geometry_matches is False  # type: ignore[attr-defined]
+            self._layout_state.reload_observation_pending = False  # type: ignore[attr-defined]
+        elif recovered:
+            self._layout_state.geometry_dirty = True  # type: ignore[attr-defined]
         return recovered
+
+    def _observed_grid_matches(self, specs: list[SessionPaneSpec]) -> bool | None:
+        """Compare mapped pane positions with the declared cell topology."""
+        layout = LAYOUT_SPECS.get(1 + len(specs))
+        if layout is None:
+            return False
+        geometry_by_pane = self._layout_state.observed_geometry  # type: ignore[attr-defined]
+        tui_pane = self._tui_pane_id  # type: ignore[attr-defined]
+        tui_geometry = geometry_by_pane.get(tui_pane) if tui_pane is not None else None
+        if tui_geometry is None:
+            return False
+
+        observed_cells: list[tuple[int, int, PaneGeometry]] = [(0, 0, tui_geometry)]
+        missing = False
+        for row_index, row in enumerate(layout.grid):
+            for column_index, cell in enumerate(row):
+                if not isinstance(cell, int):
+                    continue
+                spec = specs[cell - 1]
+                pane_id = self.state.session_to_pane.get(spec.session_id)  # type: ignore[attr-defined]
+                if pane_id is None:
+                    missing = True
+                    continue
+                geometry = geometry_by_pane.get(pane_id)
+                if geometry is None:
+                    return False
+                observed_cells.append((row_index, column_index, geometry))
+
+        left_positions = sorted({geometry.left for geometry in geometry_by_pane.values()})
+        top_positions = sorted({geometry.top for geometry in geometry_by_pane.values()})
+        for row_index, column_index, geometry in observed_cells:
+            if left_positions.index(geometry.left) != column_index or top_positions.index(geometry.top) != row_index:
+                return False
+
+        repeated_tui = sum(cell == "T" for row in layout.grid for cell in row) > 1
+        dimension_cells = observed_cells[1:] if repeated_tui else observed_cells
+        for row_index in range(layout.rows):
+            row_cells = [geometry for row, _column, geometry in dimension_cells if row == row_index]
+            if row_cells and any(geometry.height != row_cells[0].height for geometry in row_cells[1:]):
+                return False
+        for column_index in range(layout.cols):
+            column_cells = [geometry for _row, column, geometry in dimension_cells if column == column_index]
+            if column_cells and any(geometry.width != column_cells[0].width for geometry in column_cells[1:]):
+                return False
+        return None if missing else True
 
     def _restore_layout_geometry(self, specs: list[SessionPaneSpec]) -> None:
         """Place known surviving viewers in the declared grid without respawning."""
@@ -222,8 +281,13 @@ class PaneLayoutMixin:
             logger.debug("_reap_orphans: killed untracked pane %s", pane)
 
     def _cell_fingerprint(self, spec: SessionPaneSpec) -> str:
-        """Identity of a cell's content: session plus any doc command."""
-        return f"{spec.session_id}\x00{spec.command or ''}"
+        """Identity of a cell's content: owner, command, and observed target."""
+        destination = (
+            spec.attachment_destination.model_dump_json(exclude_none=True)
+            if spec.attachment_destination is not None
+            else _UNRESOLVED_ATTACHMENT_FINGERPRINT
+        )
+        return _CELL_FINGERPRINT_SEPARATOR.join((spec.session_id, spec.command or "", destination))
 
     def _swap_changed_cells(
         self,
@@ -288,7 +352,9 @@ class PaneLayoutMixin:
         attach_cmd = self._build_pane_command(new_spec)
         self._run_tmux("respawn-pane", "-k", "-t", pane, attach_cmd)  # type: ignore[attr-defined]
         self.state.session_to_pane.pop(prev_spec.session_id, None)  # type: ignore[attr-defined]
+        self._layout_state.observed_specs.pop(prev_spec.session_id, None)  # type: ignore[attr-defined]
         self.state.session_to_pane[new_spec.session_id] = pane  # type: ignore[attr-defined]
+        self._layout_state.observed_specs[new_spec.session_id] = new_spec  # type: ignore[attr-defined]
 
     def _theme_swapped_pane(self, pane: str, new_spec: SessionPaneSpec) -> None:
         """Apply pane theming for a cell swapped in place, after the commit."""
@@ -306,48 +372,65 @@ class PaneLayoutMixin:
     def _build_sticky_specs(
         self,
         sticky_session_ids: list[str],
-        get_computer_info: Callable[[str], ComputerInfo | None],
     ) -> list[SessionPaneSpec]:
         sticky_specs: list[SessionPaneSpec] = []
         for session_id in sticky_session_ids:
             session = self._session_catalog.get(session_id)  # type: ignore[attr-defined]
             if not session:
                 continue
-            tmux_session = session.tmux_session_name or ""
-            if not tmux_session:
-                continue
-            sticky_specs.append(
-                SessionPaneSpec(
-                    session_id=session.session_id,
-                    tmux_session_name=tmux_session,
-                    computer_info=get_computer_info(session.computer or "local"),
-                    is_sticky=True,
-                    active_agent=session.active_agent or "",
-                )
-            )
+            spec = self._session_pane_spec(session, is_sticky=True)
+            if spec is not None:
+                sticky_specs.append(spec)
         return sticky_specs
 
     def _build_active_spec(self, request: LayoutRequest) -> SessionPaneSpec | None:
         if request.active_session_id:
             session = self._session_catalog.get(request.active_session_id)  # type: ignore[attr-defined]
-            if session and session.tmux_session_name:
-                return SessionPaneSpec(
-                    session_id=session.session_id,
-                    tmux_session_name=session.tmux_session_name,
-                    computer_info=request.get_computer_info(session.computer or "local"),
-                    is_sticky=False,
-                    active_agent=session.active_agent or "",
-                )
+            if session:
+                return self._session_pane_spec(session, is_sticky=False)
         elif request.active_doc_preview:
             return SessionPaneSpec(
                 session_id=doc_pane_key(request.active_doc_preview.doc_id),
                 tmux_session_name=None,
-                computer_info=None,
+                attachment_destination=None,
                 is_sticky=False,
                 active_agent="",
                 command=request.active_doc_preview.command,
             )
         return None
+
+    def _session_pane_spec(self, session: SessionDTO, *, is_sticky: bool) -> SessionPaneSpec | None:
+        """Materialize an admitted attachment or retain its observed target."""
+        observed = self._observed_session_spec(session.session_id)
+        if (
+            session.host_viewer_admission != HostPaneViewerAdmission.ADMITTED
+            or session.attachment_destination is None
+            or not session.tmux_session_name
+        ):
+            if observed is None:
+                return None
+            return replace(observed, is_sticky=is_sticky, active_agent=session.active_agent or "")
+
+        return SessionPaneSpec(
+            session_id=session.session_id,
+            tmux_session_name=session.tmux_session_name,
+            attachment_destination=session.attachment_destination,
+            is_sticky=is_sticky,
+            active_agent=session.active_agent or "",
+        )
+
+    def _observed_session_spec(self, session_id: str) -> SessionPaneSpec | None:
+        """Return the prior target only while the pane map still owns a viewer."""
+        if session_id not in self.state.session_to_pane:  # type: ignore[attr-defined]
+            return None
+        observed = self._layout_state.observed_specs.get(session_id)  # type: ignore[attr-defined]
+        if observed is not None:
+            return observed
+        candidates = list(self._layout_state.cell_specs or [])  # type: ignore[attr-defined]
+        if self._layout_state.active_spec is not None:  # type: ignore[attr-defined]
+            candidates.append(self._layout_state.active_spec)  # type: ignore[attr-defined]
+        candidates.extend(self._layout_state.sticky_specs)  # type: ignore[attr-defined]
+        return next((spec for spec in candidates if spec.session_id == session_id), None)
 
     def _refresh_backgrounds_if_needed(self) -> None:
         """Refresh pane backgrounds only when selection or agent state changed."""
@@ -384,7 +467,7 @@ class PaneLayoutMixin:
         layout = LAYOUT_SPECS.get(total_panes)
         if not layout:
             return None
-        structural_keys = tuple((spec.session_id, spec.command) for spec in session_specs)
+        structural_keys = tuple(self._cell_fingerprint(spec) for spec in session_specs)
         return (
             layout.rows,
             layout.cols,
@@ -437,7 +520,7 @@ class PaneLayoutMixin:
                 session.tmux_session_name,
                 session.active_agent or "",
                 is_tree_selected=self._is_tree_selected_session(session_id),
-                is_remote=self._computer_is_remote(session.computer),  # type: ignore[attr-defined]
+                is_remote=self._session_is_remote(session.session_id),  # type: ignore[attr-defined]
             )
 
     def _layout_is_unchanged(self) -> bool:
@@ -619,6 +702,9 @@ class PaneLayoutMixin:
             if spec.session_id in desired_ids:
                 continue
             pane = self.state.session_to_pane.pop(spec.session_id, None)  # type: ignore[attr-defined]
+            self._layout_state.observed_specs.pop(spec.session_id, None)  # type: ignore[attr-defined]
+            if pane is not None:
+                self._layout_state.observed_geometry.pop(pane, None)  # type: ignore[attr-defined]
             if pane and self._get_pane_exists(pane):  # type: ignore[attr-defined]
                 self._run_tmux("kill-pane", "-t", pane)  # type: ignore[attr-defined]
 
@@ -825,6 +911,7 @@ class PaneLayoutMixin:
             spec.tmux_session_name,
         )
         self.state.session_to_pane[spec.session_id] = pane_id  # type: ignore[attr-defined]
+        self._layout_state.observed_specs[spec.session_id] = spec  # type: ignore[attr-defined]
 
         if spec.tmux_session_name:
             self._set_pane_background(  # type: ignore[attr-defined]
@@ -854,5 +941,5 @@ class PaneLayoutMixin:
             return spec.command
         return self._build_attach_cmd(  # type: ignore[attr-defined]
             spec.tmux_session_name or "",
-            spec.computer_info,
+            spec.attachment_destination,
         )

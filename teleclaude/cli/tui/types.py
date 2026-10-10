@@ -64,4 +64,21 @@ class DocPreviewState:
     title: str
 
 
+@dataclass(frozen=True)
+class SessionPreviewIntent:
+    """The session currently selected for the local preview pane."""
+
+    session_id: str
+
+
+@dataclass(frozen=True)
+class ArtifactPreviewIntent:
+    """The artifact currently selected for the local preview pane."""
+
+    preview: DocPreviewState
+
+
+type PreviewIntent = SessionPreviewIntent | ArtifactPreviewIntent | None
+
+
 type CursesWindow = curses.window

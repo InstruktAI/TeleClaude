@@ -11,7 +11,6 @@ from teleclaude.cli.tui.messages import (
     HandoffSessionRequest,
     HandoffSessionsRequest,
     KillSessionRequest,
-    PreviewChanged,
     RestartSessionRequest,
     RestartSessionsRequest,
     StickyChanged,
@@ -106,8 +105,7 @@ class SessionsViewActionsMixin:
                 # Already previewed — toggle OFF. Clear highlights: the user
                 # was viewing this session, so its output has been seen.
                 self._clear_session_highlights(session_id)  # type: ignore[attr-defined]
-                self.preview_session_id = None  # type: ignore[attr-defined]
-                self.post_message(PreviewChanged(None, request_focus=False))  # type: ignore[attr-defined]
+                self.set_session_preview(None, request_focus=False)  # type: ignore[attr-defined]
                 self._notify_state_changed()  # type: ignore[attr-defined]
             else:
                 self._apply_preview_selection(session_id, request_focus=False)  # type: ignore[attr-defined]
@@ -116,15 +114,13 @@ class SessionsViewActionsMixin:
             self._toggle_sticky(session_id)
             if decision.clear_preview:
                 # Double-space on sticky removes sticky and promotes it to preview.
-                self.preview_session_id = session_id  # type: ignore[attr-defined]
-                self.post_message(PreviewChanged(session_id, request_focus=False))  # type: ignore[attr-defined]
+                self.set_session_preview(session_id, request_focus=False)  # type: ignore[attr-defined]
                 self._notify_state_changed()  # type: ignore[attr-defined]
             self._interaction.mark_double_press_guard(session_id, now)  # type: ignore[attr-defined]
 
         elif decision.action == TreeInteractionAction.CLEAR_STICKY_PREVIEW:
-            self.preview_session_id = None  # type: ignore[attr-defined]
+            self.set_session_preview(None, request_focus=False)  # type: ignore[attr-defined]
             self._clear_session_highlights(session_id)  # type: ignore[attr-defined]
-            self.post_message(PreviewChanged(None, request_focus=False))  # type: ignore[attr-defined]
             self._notify_state_changed()  # type: ignore[attr-defined]
 
     def _toggle_sticky(self, session_id: str) -> None:
@@ -150,8 +146,7 @@ class SessionsViewActionsMixin:
         next_preview = enforce_i1(self._sticky_session_ids, self.preview_session_id)  # type: ignore[attr-defined]
         if next_preview == self.preview_session_id:  # type: ignore[attr-defined]
             return
-        self.preview_session_id = next_preview  # type: ignore[attr-defined]
-        self.post_message(PreviewChanged(next_preview, request_focus=False))  # type: ignore[attr-defined]
+        self.set_session_preview(next_preview, request_focus=False)  # type: ignore[attr-defined]
 
     def action_focus_pane(self) -> None:
         """Enter: on a session — preview AND focus the tmux pane.
@@ -524,8 +519,7 @@ class SessionsViewActionsMixin:
             if not self._sticky_session_ids and self.preview_session_id is None:  # type: ignore[attr-defined]
                 return
             if self.preview_session_id is not None:  # type: ignore[attr-defined]
-                self.preview_session_id = None  # type: ignore[attr-defined]
-                self.post_message(PreviewChanged(None, request_focus=False))  # type: ignore[attr-defined]
+                self.set_session_preview(None, request_focus=False)  # type: ignore[attr-defined]
             if not self._sticky_session_ids:  # type: ignore[attr-defined]
                 return
             scope_ids = set(self._sticky_session_ids)  # type: ignore[attr-defined]
@@ -537,17 +531,13 @@ class SessionsViewActionsMixin:
             # Always clear preview — any active preview may belong to a pane that is
             # about to be torn down, and leaving it set causes ghost previews.
             if self.preview_session_id is not None:  # type: ignore[attr-defined]
-                self.preview_session_id = None  # type: ignore[attr-defined]
-                self.post_message(PreviewChanged(None, request_focus=False))  # type: ignore[attr-defined]
+                self.set_session_preview(None, request_focus=False)  # type: ignore[attr-defined]
             for sid in sticky_in_scope:
                 self._sticky_session_ids.remove(sid)  # type: ignore[attr-defined]
         else:
             # Toggle ON: make first available eligible sessions in scope sticky
             scope_sessions = [  # type: ignore[attr-defined]
-                s
-                for s in self._sessions
-                if s.session_id in scope_ids
-                and is_attachable_session(status=s.status, tmux_session_name=s.tmux_session_name)
+                s for s in self._sessions if s.session_id in scope_ids and is_attachable_session(s)
             ]
             if not scope_sessions:
                 self.app.notify(

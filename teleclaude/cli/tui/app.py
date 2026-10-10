@@ -53,6 +53,7 @@ from teleclaude.cli.tui.messages import (
     DataRefreshed,
     DocEditRequest,
     DocPreviewRequest,
+    DocPreviewRestored,
     FocusPaneRequest,
     PreviewChanged,
     StateChanged,
@@ -87,6 +88,7 @@ from teleclaude.cli.tui.theme import (
     get_tui_inactive_background,
     is_dark_mode,
 )
+from teleclaude.cli.tui.types import DocPreviewState
 from teleclaude.cli.tui.views.config import ConfigContent, ConfigView
 from teleclaude.cli.tui.views.jobs import JobsView
 from teleclaude.cli.tui.views.preparation import PreparationView
@@ -590,6 +592,13 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         _m0 = _t.monotonic()
         logger.trace("[PERF] on_mount START t=%.3f", _m0)
         status_bar = self._restore_persisted_state()
+        sessions_view = self.query_one("#sessions-view", SessionsView)
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge.sync_layout_state(
+            preview_intent=sessions_view.preview_intent,
+            sticky_session_ids=list(sessions_view._sticky_session_ids),
+            preview_revision=sessions_view.preview_revision,
+        )
         self._hide_textual_tab_bar()
         self._wire_animation_widgets()
         self._media_state.animation_requested_mode = status_bar.animation_mode
@@ -1075,28 +1084,25 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
 
         logger.trace("[PERF] on_data_refreshed views updated dt=%.3f", _t.monotonic() - _d0)
 
-        # Forward to pane bridge (sibling — messages don't reach it via bubbling).
-        # Re-sync the bridge's preview/sticky mirror from the canonical Sessions
-        # view state on every refresh. sync_layout_state only updates the mirror
-        # (no layout/focus side effects), so it cannot steal focus; it just keeps
-        # the bridge from drifting and lets seed_for_reload() see correct ids.
+        # Forward the complete local intent snapshot to the pane bridge. Resource
+        # refreshes mirror state only; the session stream owns the pane catalog.
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
         pane_bridge.sync_layout_state(
-            preview_session_id=sessions_view.preview_session_id,
+            preview_intent=sessions_view.preview_intent,
             sticky_session_ids=list(getattr(sessions_view, "_sticky_session_ids", [])),
+            preview_revision=sessions_view.preview_revision,
         )
-        pane_bridge.on_data_refreshed(message)
 
         # On first data load, apply layout with persisted preview/sticky state.
         # After that, layout changes are driven only by user actions
         # (PreviewChanged/StickyChanged messages) to prevent focus hijacking.
-        # On reload, _initial_layout_applied is already True — panes survive
-        # via seed_for_reload() called from bridge.on_data_refreshed().
+        # On reload, _initial_layout_applied is already True — the complete
+        # session-stream snapshot drives pane adoption and reconciliation.
         if not self._initial_layout_applied:
             self._init_state.initial_layout_applied = True
             sticky_session_ids = list(getattr(sessions_view, "_sticky_session_ids", []))
-            if sessions_view.preview_session_id or sticky_session_ids:
-                pane_bridge.on_preview_changed(PreviewChanged(sessions_view.preview_session_id))
+            if sessions_view.preview_intent is not None or sticky_session_ids:
+                pane_bridge.apply_preview_intent(sessions_view.preview_intent, focus=False)
                 if sticky_session_ids:
                     pane_bridge.on_sticky_changed(StickyChanged(sticky_session_ids))
             self._update_banner_compactness(len(sticky_session_ids))
@@ -1354,14 +1360,44 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         pane_bridge.on_focus_pane_request(message)
 
     def on_doc_preview_request(self, message: DocPreviewRequest) -> None:
-        """Forward document preview requests to the bridge."""
+        """Update the local preview owner before applying an artifact layout."""
+        sessions_view = self.query_one("#sessions-view", SessionsView)
+        sessions_view.set_artifact_preview(
+            DocPreviewState(doc_id=message.doc_id, command=message.command, title=message.title)
+        )
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge.sync_layout_state(
+            preview_intent=sessions_view.preview_intent,
+            sticky_session_ids=list(sessions_view._sticky_session_ids),
+            preview_revision=sessions_view.preview_revision,
+        )
         pane_bridge.on_doc_preview_request(message)
 
     def on_doc_edit_request(self, message: DocEditRequest) -> None:
-        """Forward document edit requests to the bridge."""
+        """Update the local preview owner before applying an artifact edit."""
+        sessions_view = self.query_one("#sessions-view", SessionsView)
+        sessions_view.set_artifact_preview(
+            DocPreviewState(doc_id=message.doc_id, command=message.command, title=message.title)
+        )
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge.sync_layout_state(
+            preview_intent=sessions_view.preview_intent,
+            sticky_session_ids=list(sessions_view._sticky_session_ids),
+            preview_revision=sessions_view.preview_revision,
+        )
         pane_bridge.on_doc_edit_request(message)
+
+    def on_doc_preview_restored(self, message: DocPreviewRestored) -> None:
+        """Adopt a surviving artifact only while explicit routing is unchanged."""
+        sessions_view = self.query_one("#sessions-view", SessionsView)
+        if not sessions_view.adopt_reloaded_artifact(message.preview, expected_revision=message.revision):
+            return
+        pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)
+        pane_bridge.sync_layout_state(
+            preview_intent=sessions_view.preview_intent,
+            sticky_session_ids=list(sessions_view._sticky_session_ids),
+            preview_revision=sessions_view.preview_revision,
+        )
 
     def _handle_exception(self, error: Exception) -> None:
         """Log unhandled exceptions BEFORE Rich's traceback renderer can crash on them."""

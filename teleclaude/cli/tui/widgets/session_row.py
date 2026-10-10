@@ -109,7 +109,7 @@ class SessionRow(TelecMixin, Widget):
 
     @property
     def _is_headless(self) -> bool:
-        return is_headless_session(status=self.status, tmux_session_name=self.session.tmux_session_name)
+        return is_headless_session(self.session)
 
     @property
     def _content_width(self) -> int:

@@ -5,12 +5,18 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from teleclaude.agent_registry import AgentName
+from teleclaude.api_session_attachment import SessionAttachmentDestinationDTO
 from teleclaude.api_session_readiness import SessionReadinessDTOFields
 from teleclaude.config.job_scope import JobScope
 from teleclaude.config.schema import JobType, MessagingChannel
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.command_input import CommandInputMode
-from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
+from teleclaude.core.session_status import (
+    AgentStatusReason,
+    AgentStatusValue,
+    HostPaneViewerAdmission,
+    SessionSelectionDisposition,
+)
 from teleclaude.cron_status import JobRunStatus
 from teleclaude.session_fields import SESSION_PRINCIPAL_FIELD, SessionDTOIdentityFields, SessionDTOTimestampFields
 from teleclaude.types.todo_kind import TODO_KIND_USAGE, TodoKind
@@ -200,6 +206,9 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
     agent_status: AgentStatusValue | None = None
     agent_status_reason: AgentStatusReason | None = None
     agent_status_since: str | None = None
+    host_viewer_admission: HostPaneViewerAdmission | None = None
+    selection_disposition: SessionSelectionDisposition | None = None
+    attachment_destination: SessionAttachmentDestinationDTO | None = None
     next_reminder_slug: str | None = None
     next_reminder_at: str | None = None
     conversation_url: str | None = None

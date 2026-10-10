@@ -5,22 +5,33 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api_session_attachment import (
+    LocalSessionAttachmentDTO,
+    SessionAttachmentDestinationDTO,
+    SshSessionAttachmentDTO,
+)
 from teleclaude.cli.tui._pane_specs import (
     LAYOUT_SPECS,
-    ComputerInfo,
     LayoutCell,
     LayoutSpec,
+    ObservedDocumentPane,
+    ObservedSessionPane,
+    PaneGeometry,
     PaneState,
     SessionPaneSpec,
 )
 from teleclaude.cli.tui.artifact_panes import doc_pane_key, parse_doc_pane_command
-from teleclaude.cli.tui.pane_layout import _PANE_ID_FORMAT, PaneLayoutMixin, _PaneCommand, _PaneFlag
+from teleclaude.cli.tui.pane_layout import (
+    _PANE_ID_FORMAT,
+    PaneLayoutMixin,
+    _PaneCommand,
+    _PaneFlag,
+)
 from teleclaude.cli.tui.pane_theming import PaneThemingMixin
 from teleclaude.cli.tui.types import DocPreviewState
 from teleclaude.config.machine import config
@@ -30,6 +41,63 @@ if TYPE_CHECKING:
     from teleclaude.api_models import SessionDTO
 
 logger = get_logger(__name__)
+_ATTACHMENT_DESTINATION_UNAVAILABLE_DETAIL = "session attachment destination is unresolved"
+_PEER_USER_IDENTIFIER = "peer user"
+_PEER_HOST_IDENTIFIER = "peer host"
+_TOGGLE_SESSION_LOG = "toggle_session: %s (agent=%s, remote=%s, sticky_count=%d)"
+_RELOAD_PANE_FORMAT = "#{pane_id}\t#{pane_start_command}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}"
+_RELOAD_GEOMETRY_FORMAT = "#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}"
+_PANE_FIELD_SEPARATOR = "\t"
+_RELOAD_PANE_FIELD_COUNT = 6
+_RELOAD_GEOMETRY_FIELD_COUNT = 5
+_RELOAD_SESSION_NAME_PATTERN = re.compile(r"attach-session -t (\S+)")
+_RELOAD_SSH_TARGET_PATTERN = re.compile(r"^ssh -t -A (\S+)")
+_RELOAD_LOCAL_ATTACH_PREFIX = "env -u TMUX TERM=tmux-256color"
+_TMUX_SESSION_NAME_IDENTIFIER = "tmux_session_name"
+_REMOTE_TARGET_SEPARATOR = "@"
+_COMMAND_SURROUNDING_QUOTES = "\"'"
+_RELOAD_DOC_ADOPTED_LOG = "seed_for_reload: adopted viewer pane %s for %s"
+_RELOAD_DOC_UNWANTED_RELEASE_LOG = "seed_for_reload: released unwanted artifact pane %s"
+_RELOAD_COMMAND_PROTECTED_LOG = "seed_for_reload: protected unidentified pane %s"
+
+
+def _parse_pane_geometry(values: list[str]) -> PaneGeometry | None:
+    """Parse tmux pane position and size fields."""
+    if len(values) != _RELOAD_GEOMETRY_FIELD_COUNT:
+        return None
+    try:
+        return PaneGeometry(left=int(values[1]), top=int(values[2]), width=int(values[3]), height=int(values[4]))
+    except ValueError:
+        return None
+
+
+def _parse_session_pane_identity(command: str) -> tuple[str, SessionAttachmentDestinationDTO | None] | None:
+    """Read a TeleClaude session target and any known destination from its start command."""
+    session_match = _RELOAD_SESSION_NAME_PATTERN.search(command)
+    if session_match is None:
+        return None
+    raw_session_name = session_match.group(1).rstrip(_COMMAND_SURROUNDING_QUOTES)
+    try:
+        session_name = require_shell_safe_identifier(raw_session_name, _TMUX_SESSION_NAME_IDENTIFIER)
+    except ValueError:
+        return None
+
+    remote_match = _RELOAD_SSH_TARGET_PATTERN.match(command)
+    if remote_match is not None:
+        raw_target = remote_match.group(1)
+        user, separator, host = raw_target.partition(_REMOTE_TARGET_SEPARATOR)
+        if separator and user and host:
+            try:
+                safe_user = require_shell_safe_identifier(user, _PEER_USER_IDENTIFIER)
+                safe_host = require_shell_safe_identifier(host, _PEER_HOST_IDENTIFIER)
+            except ValueError:
+                return session_name, None
+            return session_name, SshSessionAttachmentDTO(user=safe_user, host=safe_host)
+        return session_name, None
+
+    if command.startswith(_RELOAD_LOCAL_ATTACH_PREFIX):
+        return session_name, LocalSessionAttachmentDTO()
+    return session_name, None
 
 
 @dataclass
@@ -45,6 +113,9 @@ class _PaneLayoutState:
     # Ordered cell assignment from the last applied layout. Diffing the new
     # desired assignment against this drives same-tier in-place swaps.
     cell_specs: list[SessionPaneSpec] | None = None
+    observed_specs: dict[str, SessionPaneSpec] = field(default_factory=dict)
+    observed_geometry: dict[str, PaneGeometry] = field(default_factory=dict)
+    reload_observation_pending: bool = False
     geometry_dirty: bool = False
     detached_panes: set[str] = field(default_factory=set)
     recovery_focus: str | None = None
@@ -54,14 +125,13 @@ class _PaneLayoutState:
 class _ReloadPaneState:
     """Pane ids discovered during a tmux reload."""
 
-    session_panes: dict[str, str] = field(default_factory=dict)
-    command_panes: list[str] = field(default_factory=list)
-    doc_panes: dict[str, DocPreviewState] = field(default_factory=dict)
+    session_panes: dict[str, ObservedSessionPane] = field(default_factory=dict)
+    command_panes: dict[str, PaneGeometry | None] = field(default_factory=dict)
+    doc_panes: dict[str, ObservedDocumentPane] = field(default_factory=dict)
 
 
 __all__ = [
     "LAYOUT_SPECS",
-    "ComputerInfo",
     "LayoutCell",
     "LayoutSpec",
     "PaneState",
@@ -96,12 +166,10 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         self._layout_state = _PaneLayoutState()
         self._session_catalog: dict[str, SessionDTO] = {}
         self._reload_state = _ReloadPaneState()
+        self._reload_pending = is_reload
         self._adopted_doc_preview: DocPreviewState | None = None
-        self._unresolved_panes: dict[str, str] = {}
-        # Resolves a session's computer name to its ComputerInfo so catalog-based
-        # theming can tell remote panes from local ones. Refreshed on every
-        # apply_layout / seed_for_reload; defaults to local-only.
-        self._computer_info_resolver: Callable[[str], ComputerInfo | None] = lambda _: None
+        self._unresolved_panes: dict[str, ObservedSessionPane] = {}
+        self._unidentified_panes: set[str] = set()
         # Store our own pane ID for reference
         self._tui_pane_id: str | None = None
         if self._in_tmux:
@@ -166,20 +234,22 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         self._layout_state.bg_signature = value
 
     @property
-    def _reload_session_panes(self) -> dict[str, str]:
+    def _reload_session_panes(self) -> dict[str, ObservedSessionPane]:
         return self._reload_state.session_panes
 
     @property
-    def _reload_command_panes(self) -> list[str]:
+    def _reload_command_panes(self) -> dict[str, PaneGeometry | None]:
         return self._reload_state.command_panes
 
     @property
-    def _reload_doc_panes(self) -> dict[str, DocPreviewState]:
+    def _reload_doc_panes(self) -> dict[str, ObservedDocumentPane]:
         return self._reload_state.doc_panes
 
     def has_reload_panes(self) -> bool:
         """Return whether reload-discovered panes are waiting to be adopted."""
-        return bool(self._reload_session_panes or self._reload_command_panes or self._reload_doc_panes)
+        return self._reload_pending or bool(
+            self._reload_session_panes or self._reload_command_panes or self._reload_doc_panes
+        )
 
     def adopted_doc_preview(self) -> DocPreviewState | None:
         """Return the viewer this reload adopted, so its owner can resume showing it."""
@@ -214,9 +284,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         """
         if not self._tui_pane_id:
             return
-        if is_reload:
-            self._adopt_for_reload()
-        else:
+        if not is_reload:
             self._kill_orphaned_panes()
 
     def _kill_orphaned_panes(self) -> None:
@@ -232,37 +300,55 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             logger.debug("Cold start: killed %d orphaned panes", killed)
 
     def _adopt_for_reload(self) -> None:
-        """Discover existing non-TUI panes and identify their tmux sessions.
+        """Discover pane owners, attachment inputs, and placement from tmux.
 
         On SIGUSR2 reload, panes from the previous process survive in tmux.
-        This method discovers them and extracts which tmux session each pane
-        is attached to (from pane_start_command).  The resulting mapping is
-        stored in _reload_session_panes for seed_for_reload() to use.
+        Start-command identity and pane geometry are captured for the first
+        complete session-owner pass to reconcile.
         """
-        output = self._run_tmux("list-panes", "-F", "#{pane_id}\t#{pane_start_command}")
+        tui_pane_id = self._tui_pane_id
+        if tui_pane_id is None:
+            return
+        output = self._run_tmux(
+            _PaneCommand.LIST,
+            _PaneFlag.TARGET,
+            tui_pane_id,
+            _PaneFlag.FORMAT,
+            _RELOAD_PANE_FORMAT,
+        )
         for line in output.split("\n"):
-            line = line.strip()
             if not line:
                 continue
-            parts = line.split("\t", 1)
+            parts = line.split(_PANE_FIELD_SEPARATOR, _RELOAD_PANE_FIELD_COUNT - 1)
             pane_id = parts[0].strip()
-            if pane_id == self._tui_pane_id:
+            if len(parts) != _RELOAD_PANE_FIELD_COUNT:
+                if pane_id and pane_id != self._tui_pane_id:
+                    self._reload_command_panes[pane_id] = None
+                continue
+            _pane_id, start_command, *geometry_values = parts
+            geometry = _parse_pane_geometry([_pane_id, *geometry_values])
+            if pane_id == tui_pane_id:
                 continue
 
             # A pane names what it is in the command it was started with: a
             # session pane its attach target, a viewer pane its artifact.
-            if len(parts) > 1:
-                match = re.search(r"attach-session -t (\S+)", parts[1])
-                doc_preview = None if match else parse_doc_pane_command(parts[1])
-                if match:
-                    tmux_name = match.group(1).rstrip("'\"")
-                    self._reload_session_panes[tmux_name] = pane_id
-                elif doc_preview is not None:
-                    self._reload_doc_panes[pane_id] = doc_preview
-                else:
-                    self._reload_command_panes.append(pane_id)
+            session_identity = _parse_session_pane_identity(start_command)
+            if session_identity is not None:
+                tmux_name, destination = session_identity
+                self._reload_session_panes[tmux_name] = ObservedSessionPane(
+                    pane_id=pane_id,
+                    attachment_destination=destination,
+                    geometry=geometry,
+                )
             else:
-                self._reload_command_panes.append(pane_id)
+                doc_preview = parse_doc_pane_command(start_command)
+                if doc_preview is not None:
+                    self._reload_doc_panes[pane_id] = ObservedDocumentPane(
+                        preview=doc_preview,
+                        geometry=geometry,
+                    )
+                else:
+                    self._reload_command_panes[pane_id] = geometry
 
         logger.debug(
             "Reload: mapped %d session panes, %d command panes: %s",
@@ -273,11 +359,13 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
 
     @property
     def _protected_panes(self) -> set[str]:
-        """Panes held out of the orphan sweep because their owner is unknown."""
+        """Panes held until their owner is resolved or the pane disappears."""
         return (
-            set(self._unresolved_panes.values())
-            | set(self._reload_session_panes.values())
+            {pane.pane_id for pane in self._unresolved_panes.values()}
+            | {pane.pane_id for pane in self._reload_session_panes.values()}
             | set(self._reload_doc_panes)
+            | set(self._reload_command_panes)
+            | self._unidentified_panes
         )
 
     def _resolve_unresolved_panes(self) -> None:
@@ -292,21 +380,35 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         if not self._unresolved_panes:
             return
         by_tmux_name = {
-            session.tmux_session_name: session.session_id
+            session.tmux_session_name: session
             for session in self._session_catalog.values()
             if session.tmux_session_name
         }
-        for tmux_name, pane_id in list(self._unresolved_panes.items()):
-            if not self._get_pane_exists(pane_id):
+        resolved_any = False
+        for tmux_name, observation in list(self._unresolved_panes.items()):
+            if not self._get_pane_exists(observation.pane_id):
                 del self._unresolved_panes[tmux_name]
-                self._layout_state.geometry_dirty = True
+                self._layout_state.observed_geometry.pop(observation.pane_id, None)
                 continue
-            session_id = by_tmux_name.get(tmux_name)
-            if session_id is None:
+            session = by_tmux_name.get(tmux_name)
+            if session is None:
                 continue
-            self.state.session_to_pane[session_id] = pane_id
+            self.state.session_to_pane[session.session_id] = observation.pane_id
+            self._layout_state.observed_specs[session.session_id] = SessionPaneSpec(
+                session_id=session.session_id,
+                tmux_session_name=tmux_name,
+                attachment_destination=observation.attachment_destination,
+                is_sticky=False,
+                active_agent=session.active_agent or "",
+            )
+            if observation.geometry is not None:
+                self._layout_state.observed_geometry[observation.pane_id] = observation.geometry
             del self._unresolved_panes[tmux_name]
-            logger.debug("resolved protected pane %s to session %s", pane_id, session_id)
+            self._layout_state.reload_observation_pending = True
+            resolved_any = True
+            logger.debug("resolved protected pane %s to session %s", observation.pane_id, session.session_id)
+        if resolved_any:
+            self._layout_state.observed_geometry = self._capture_pane_geometries()
 
     def _reconcile(self) -> None:
         """Prune state entries referencing dead tmux panes.
@@ -322,10 +424,13 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         output = self._run_tmux("list-panes", "-F", "#{pane_id}")
         live_panes = {p.strip() for p in output.split("\n") if p.strip()}
         live_panes.update(pane for pane in self._layout_state.detached_panes if self._get_pane_exists(pane))
+        self._unidentified_panes.intersection_update(live_panes)
 
         dead_sessions = [sid for sid, pid in self.state.session_to_pane.items() if pid not in live_panes]
         for sid in dead_sessions:
-            del self.state.session_to_pane[sid]
+            pane_id = self.state.session_to_pane.pop(sid)
+            self._layout_state.observed_specs.pop(sid, None)
+            self._layout_state.observed_geometry.pop(pane_id, None)
 
         if self.state.active_session_id and self.state.active_session_id in dead_sessions:
             self.state.active_session_id = None
@@ -355,118 +460,93 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             self.state.active_session_id = None
         self._resolve_unresolved_panes()
 
-    def _adopt_reload_doc_pane(self) -> None:
-        """Keep the viewer a reload found, and let go of any beyond the first.
-
-        The layout carries one viewer at a time, so the first surviving viewer
-        pane is adopted into the pane map under its document id and the rest are
-        released to the ordinary command-pane path.
-        """
-        for pane_id, doc_preview in self._reload_doc_panes.items():
+    def _adopt_reload_doc_pane(self, desired_doc_id: str | None) -> list[str]:
+        """Register the wanted artifact viewer and return resolved unwanted panes."""
+        unwanted_panes: list[str] = []
+        for pane_id, observation in self._reload_doc_panes.items():
             if not self._get_pane_exists(pane_id):
                 continue
+            doc_preview = observation.preview
+            if desired_doc_id is None or doc_preview.doc_id != desired_doc_id or self._adopted_doc_preview is not None:
+                unwanted_panes.append(pane_id)
+                continue
+            session_id = doc_pane_key(doc_preview.doc_id)
+            self.state.session_to_pane[session_id] = pane_id
+            self._layout_state.observed_specs[session_id] = SessionPaneSpec(
+                session_id=session_id,
+                tmux_session_name=None,
+                attachment_destination=None,
+                is_sticky=False,
+                active_agent="",
+                command=doc_preview.command,
+            )
+            if observation.geometry is not None:
+                self._layout_state.observed_geometry[pane_id] = observation.geometry
             if self._adopted_doc_preview is None:
                 self._adopted_doc_preview = doc_preview
-                self.state.session_to_pane[doc_pane_key(doc_preview.doc_id)] = pane_id
-                logger.debug("seed_for_reload: adopted viewer pane %s for %s", pane_id, doc_preview.doc_id)
-                continue
-            self._reload_command_panes.append(pane_id)
+                logger.debug(_RELOAD_DOC_ADOPTED_LOG, pane_id, doc_preview.doc_id)
         self._reload_doc_panes.clear()
+        return unwanted_panes
 
     def seed_for_reload(
         self,
         *,
-        active_session_id: str | None,
-        sticky_session_ids: list[str],
-        get_computer_info: Callable[[str], ComputerInfo | None],
+        active_doc_preview: DocPreviewState | None = None,
+        adopt_discovered_artifact: bool = False,
     ) -> None:
-        """Map discovered reload panes to session state and set layout signature.
+        """Resolve discovered panes against the complete owner snapshot.
 
-        Called once after the first data refresh on SIGUSR2 reload.  Maps the
-        tmux_session_name → pane_id entries from _adopt_for_reload() to
-        session_to_pane via the session catalog, builds active/sticky specs,
-        and pre-sets the layout signature so the first user-driven
-        apply_layout() takes the lightweight _update_active_pane path.
+        Observed targets and pane positions seed the current attachment map.
+        Known but unwanted viewers remain available for the ordinary diff to
+        release; unresolved owners stay protected.
         """
-        self._computer_info_resolver = get_computer_info
         if not self.has_reload_panes():
             return
-
-        self._adopt_reload_doc_pane()
-
-        # A command pane that names nothing placeable is killed: there is no
-        # handle to map it back to.
-        for pane_id in self._reload_command_panes:
-            if self._get_pane_exists(pane_id):
-                self._run_tmux("kill-pane", "-t", pane_id)
-                logger.debug("seed_for_reload: killed orphan command pane %s", pane_id)
-        self._reload_command_panes.clear()
-
-        if not self._reload_session_panes:
+        if not self._tui_pane_id:
+            self._reload_pending = False
             return
+        if self._reload_pending:
+            self._adopt_for_reload()
+            self._reload_pending = False
 
-        reload_map = self._reload_session_panes
-
-        sticky_specs = []
-        for session_id in sticky_session_ids:
-            session = self._session_catalog.get(session_id)
-            if not session or not session.tmux_session_name:
+        self._adopted_doc_preview = None
+        if adopt_discovered_artifact and active_doc_preview is None and self._reload_doc_panes:
+            active_doc_preview = next(iter(self._reload_doc_panes.values())).preview
+        desired_doc_id = active_doc_preview.doc_id if active_doc_preview is not None else None
+        unwanted_doc_panes = self._adopt_reload_doc_pane(desired_doc_id)
+        for pane_id in unwanted_doc_panes:
+            self._run_tmux(_PaneCommand.KILL, _PaneFlag.TARGET, pane_id)
+            logger.debug(_RELOAD_DOC_UNWANTED_RELEASE_LOG, pane_id)
+        self._unidentified_panes.update(self._reload_command_panes)
+        for pane_id in self._reload_command_panes:
+            logger.debug(_RELOAD_COMMAND_PROTECTED_LOG, pane_id)
+        self._reload_command_panes.clear()
+        by_tmux_name = {
+            session.tmux_session_name: session
+            for session in self._session_catalog.values()
+            if session.tmux_session_name
+        }
+        for tmux_name, observation in self._reload_session_panes.items():
+            session = by_tmux_name.get(tmux_name)
+            if session is None:
+                self._unresolved_panes[tmux_name] = observation
                 continue
-            sticky_specs.append(
-                SessionPaneSpec(
-                    session_id=session.session_id,
-                    tmux_session_name=session.tmux_session_name,
-                    computer_info=get_computer_info(session.computer or "local"),
-                    is_sticky=True,
-                    active_agent=session.active_agent or "",
-                )
+            self.state.session_to_pane[session.session_id] = observation.pane_id
+            self._layout_state.observed_specs[session.session_id] = SessionPaneSpec(
+                session_id=session.session_id,
+                tmux_session_name=tmux_name,
+                attachment_destination=observation.attachment_destination,
+                is_sticky=False,
+                active_agent=session.active_agent or "",
             )
-            pane_id = reload_map.get(session.tmux_session_name)
-            if pane_id:
-                self.state.session_to_pane[session_id] = pane_id
-        self._layout_state.sticky_specs = sticky_specs
-
-        if active_session_id:
-            session = self._session_catalog.get(active_session_id)
-            if session and session.tmux_session_name:
-                self._layout_state.active_spec = SessionPaneSpec(
-                    session_id=session.session_id,
-                    tmux_session_name=session.tmux_session_name,
-                    computer_info=get_computer_info(session.computer or "local"),
-                    is_sticky=False,
-                    active_agent=session.active_agent or "",
-                )
-                self.state.active_session_id = session.session_id
-                pane_id = reload_map.get(session.tmux_session_name)
-                if pane_id:
-                    self.state.session_to_pane[session.session_id] = pane_id
-
-        # A pane that survived the reload but resolved to no owner is protected,
-        # never killed. Failing to resolve one is absence of information — a
-        # session row can come back without its tmux name right after a daemon
-        # restart — while the pane itself may be attached to a session someone
-        # is working in, and a wrong kill takes their work with it. Protection
-        # is recomputed from scratch on each reload, so it cannot accumulate,
-        # and a pane that resolves later stops being protected because it is
-        # tracked by then.
-        mapped_panes = set(self.state.session_to_pane.values())
-        self._unresolved_panes.clear()
-        for tmux_name, pane_id in reload_map.items():
-            if pane_id in mapped_panes or not self._get_pane_exists(pane_id):
-                continue
-            self._unresolved_panes[tmux_name] = pane_id
-            logger.debug(
-                "seed_for_reload: protected unresolved pane %s (tmux=%s)",
-                pane_id,
-                tmux_name,
-            )
-
-        self._layout_state.layout_signature = self._compute_layout_signature()
-        # Seed the cell assignment so the first post-reload apply_layout takes
-        # the same-tier in-place path instead of rebuilding (which would kill
-        # the panes just adopted from the previous process).
-        self._layout_state.cell_specs = self._build_session_specs()
         self._reload_session_panes.clear()
+
+        self._layout_state.observed_geometry = self._capture_pane_geometries()
+        self._layout_state.active_spec = None
+        self._layout_state.sticky_specs = []
+        self._layout_state.cell_specs = []
+        self._layout_state.layout_signature = None
+        self._layout_state.reload_observation_pending = True
 
     def _run_tmux(self, *args: str) -> str:
         """Run a tmux command and return output.
@@ -557,6 +637,29 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         output = self._run_tmux(*args)
         return pane_id in output.split("\n")
 
+    def _capture_pane_geometries(self) -> dict[str, PaneGeometry]:
+        """Read current pane positions and dimensions from tmux."""
+        tui_pane_id = self._tui_pane_id
+        if tui_pane_id is None:
+            return {}
+        output = self._run_tmux(
+            _PaneCommand.LIST,
+            _PaneFlag.TARGET,
+            tui_pane_id,
+            _PaneFlag.FORMAT,
+            _RELOAD_GEOMETRY_FORMAT,
+        )
+        geometries: dict[str, PaneGeometry] = {}
+        for line in output.split("\n"):
+            parts = line.split(_PANE_FIELD_SEPARATOR, _RELOAD_GEOMETRY_FIELD_COUNT - 1)
+            if len(parts) != _RELOAD_GEOMETRY_FIELD_COUNT:
+                continue
+            pane_id = parts[0].strip()
+            geometry = _parse_pane_geometry(parts)
+            if pane_id and geometry is not None:
+                geometries[pane_id] = geometry
+        return geometries
+
     def _get_appearance_env(self) -> dict[str, str]:
         """Get current appearance settings from the host.
 
@@ -605,7 +708,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
     def _build_attach_cmd(
         self,
         tmux_session_name: str,
-        computer_info: ComputerInfo | None = None,
+        destination: SessionAttachmentDestinationDTO | None,
     ) -> str:
         """Build the command to attach to a tmux session.
 
@@ -614,7 +717,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
 
         Args:
             tmux_session_name: The tmux session name to attach to
-            computer_info: Computer info for SSH (None = local)
+            destination: Resolved connection inputs published by the daemon
 
         Returns:
             Command string to execute
@@ -622,12 +725,12 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         safe_tmux_session_name = require_shell_safe_identifier(tmux_session_name, "tmux_session_name")
         attach_cmd = self._build_tmux_attach_command(safe_tmux_session_name)
 
-        if computer_info and computer_info.is_remote:
+        if isinstance(destination, SshSessionAttachmentDTO):
             # Remote: SSH to the computer and attach there
             # Use -t for pseudo-terminal allocation (required for tmux)
             # Use -A for SSH agent forwarding
-            user = require_shell_safe_identifier(computer_info.user, "peer user")
-            host = require_shell_safe_identifier(computer_info.host, "peer host")
+            user = require_shell_safe_identifier(destination.user, _PEER_USER_IDENTIFIER)
+            host = require_shell_safe_identifier(destination.host, _PEER_HOST_IDENTIFIER)
             ssh_target = f"{user}@{host}"
 
             # Get appearance settings from host to pass to remote
@@ -639,6 +742,9 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             cmd = f"ssh -t -A {ssh_target} '{env_str}TERM=tmux-256color tmux -u {attach_cmd}'"
             logger.debug("Remote attach cmd for %s via %s: %s", tmux_session_name, ssh_target, cmd)
             return cmd
+
+        if not isinstance(destination, LocalSessionAttachmentDTO):
+            raise ValueError(_ATTACHMENT_DESTINATION_UNAVAILABLE_DETAIL)
 
         # Local: use configured tmux binary with nested attach
         tmux = config.computer.tmux_binary
@@ -664,7 +770,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         self,
         tmux_session_name: str,
         active_agent: str,
-        computer_info: ComputerInfo | None = None,
+        attachment_destination: SessionAttachmentDestinationDTO | None,
         session_id: str | None = None,
     ) -> None:
         """Show a session in the active/preview pane.
@@ -675,7 +781,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         Args:
             tmux_session_name: The session's tmux session name
             active_agent: Agent name for color styling
-            computer_info: Computer info for SSH (None = local)
+            attachment_destination: Resolved connection inputs published by the daemon
         """
         if not self._in_tmux:
             logger.debug("show_session: not in tmux, skipping")
@@ -685,7 +791,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             "show_session: %s (agent=%s, remote=%s, sticky_count=%d)",
             tmux_session_name,
             active_agent,
-            computer_info.is_remote if computer_info else False,
+            isinstance(attachment_destination, SshSessionAttachmentDTO),
             len(self._sticky_specs),
         )
 
@@ -693,7 +799,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         self._layout_state.active_spec = SessionPaneSpec(
             session_id=spec_session_id,
             tmux_session_name=tmux_session_name,
-            computer_info=computer_info,
+            attachment_destination=attachment_destination,
             is_sticky=False,
             active_agent=active_agent,
         )
@@ -713,7 +819,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         self,
         tmux_session_name: str,
         active_agent: str,
-        computer_info: ComputerInfo | None = None,
+        attachment_destination: SessionAttachmentDestinationDTO | None,
         session_id: str | None = None,
     ) -> bool:
         """Toggle active/preview session pane visibility.
@@ -724,7 +830,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         Args:
             tmux_session_name: The session's tmux session name
             active_agent: Agent name for color styling
-            computer_info: Computer info for SSH (None = local)
+            attachment_destination: Resolved connection inputs published by the daemon
 
         Returns:
             True if now showing, False if now hidden
@@ -734,10 +840,10 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             return False
 
         logger.debug(
-            "toggle_session: %s (agent=%s, computer=%s, sticky_count=%d)",
+            _TOGGLE_SESSION_LOG,
             tmux_session_name,
             active_agent,
-            computer_info.name if computer_info else "local",
+            isinstance(attachment_destination, SshSessionAttachmentDTO),
             len(self._sticky_specs),
         )
 
@@ -752,7 +858,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         self.show_session(
             tmux_session_name,
             active_agent,
-            computer_info,
+            attachment_destination,
             session_id=session_id,
         )
         return True
@@ -783,13 +889,11 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
     def show_sticky_sessions(
         self,
         sticky_sessions: list[SessionDTO],
-        get_computer_info: Callable[[str], ComputerInfo | None],
     ) -> None:
         """Show 1-5 sticky sessions using tmux's fixed layouts.
 
         Args:
             sticky_sessions: List of SessionDTO objects
-            get_computer_info: Function to get ComputerInfo for a computer name
         """
         if not self._in_tmux:
             logger.debug("show_sticky_sessions: not in tmux, skipping")
@@ -799,18 +903,9 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
 
         sticky_specs: list[SessionPaneSpec] = []
         for session_info in sticky_sessions:
-            tmux_session = session_info.tmux_session_name or ""
-            if not tmux_session:
-                continue
-            sticky_specs.append(
-                SessionPaneSpec(
-                    session_id=session_info.session_id,
-                    tmux_session_name=tmux_session,
-                    computer_info=get_computer_info(session_info.computer or "local"),
-                    is_sticky=True,
-                    active_agent=session_info.active_agent,
-                )
-            )
+            spec = self._session_pane_spec(session_info, is_sticky=True)
+            if spec is not None:
+                sticky_specs.append(spec)
 
         self._layout_state.sticky_specs = sticky_specs
         if self._layout_is_unchanged():

@@ -36,7 +36,7 @@ from teleclaude.core.injected_text import (
 )
 from teleclaude.core.models import Session
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
-from teleclaude.core.session_cleanup import host_pane_name
+from teleclaude.core.session_cleanup import TMUX_SESSION_NAME_UNBOUND, host_pane_name
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_launch_profile import resolve_session_launch_profile
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
@@ -60,8 +60,6 @@ ADOPTION_READINESS_TIMEOUT_EVENT = "adoption_readiness_timeout"
 ADOPTION_TEARDOWN_PANE_SURVIVED_EVENT = "adoption_teardown_pane_survived"
 ADOPTION_HELD_ON_SCREEN_EVENT = "adoption_held_on_screen_without_composer"
 
-# Sentinel for an unbound tmux pane, named so callers never inline the literal.
-TMUX_SESSION_NAME_UNBOUND = ""
 CONVERSATION_REQUIRES_ACTIVE_AGENT_ERROR = "Conversation input requires an active agent"
 
 

@@ -54,7 +54,7 @@ from teleclaude.api.session_route_helpers import build_metadata as _build_metada
 from teleclaude.api.session_route_helpers import close_accepted as _close_accepted
 from teleclaude.api.session_route_helpers import dispatch_caller_command, http_exception_for_relay_failure
 from teleclaude.api.session_route_helpers import resolve_created_session_transport as _resolve_created_session_transport
-from teleclaude.api.session_view_models import enrich_human_names
+from teleclaude.api.session_view_models import project_session_dtos
 from teleclaude.api.sessions_actions_routes import guard_generic_create_session
 from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api_models import (
@@ -394,9 +394,14 @@ async def list_sessions(
             )
             if query.job:
                 remote_sessions = [session for session in remote_sessions if session.job == query.job]
-            dtos = [SessionDTO.from_core(session, computer=session.computer) for session in remote_sessions]
+            computer_registry = _STATE.cache.get_computers() if _STATE.cache is not None else []
+            dtos = project_session_dtos(
+                remote_sessions,
+                serving_computer=config.computer.name,
+                computer_registry=computer_registry,
+            )
             observe_session_reminder_summaries(dtos)
-            return enrich_human_names(dtos)
+            return dtos
 
         caller_session_id = request.headers.get("x-caller-session-id")
         merged, local_session_ids = await build_local_session_listing(
@@ -406,14 +411,19 @@ async def list_sessions(
             cache=_STATE.cache,
         )
 
-        dtos = [SessionDTO.from_core(s, computer=s.computer) for s in merged]
+        computer_registry = _STATE.cache.get_computers() if _STATE.cache is not None else []
+        dtos = project_session_dtos(
+            merged,
+            serving_computer=config.computer.name,
+            computer_registry=computer_registry,
+        )
         dtos = await attach_next_reminders(
             dtos,
             local_session_ids,
             _STATE.reminder_service,
         )
         observe_session_reminder_summaries(dtos)
-        return enrich_human_names(dtos)
+        return dtos
     except HTTPException:
         raise
     except Exception as e:

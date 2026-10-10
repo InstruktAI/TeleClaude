@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from fastapi import WebSocket, WebSocketDisconnect
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.session_view_models import enrich_human_names
+from teleclaude.api.session_view_models import project_session_dtos
 from teleclaude.api.ws_constants import (
     API_WS_CONTROL_EVENTS,
     API_WS_CONTROL_SEND_TIMEOUT_S,
@@ -29,7 +29,6 @@ from teleclaude.api_models import (
     RefreshEventDTO,
     SessionClosedDataDTO,
     SessionClosedEventDTO,
-    SessionDTO,
     SessionsInitialDataDTO,
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
@@ -38,6 +37,7 @@ from teleclaude.api_models import (
 from teleclaude.caller_identity import CliCaller
 from teleclaude.config.machine import config
 from teleclaude.constants import CacheEvent
+from teleclaude.core.cache import ComputerUpdatedNotification
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
 from teleclaude.core.models._adapter import session_is_unattended
 from teleclaude.core.session_listing import listed_by_default, snapshot_reached_by_reach
@@ -278,7 +278,11 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             if self._viewer_can_read_session(reach, session)
         ]
         self._ws_sent_session_ids.setdefault(websocket, set()).update(session.session_id for session in visible)
-        sessions = enrich_human_names([SessionDTO.from_core(session, computer=session.computer) for session in visible])
+        sessions = project_session_dtos(
+            visible,
+            serving_computer=config.computer.name,
+            computer_registry=cache.get_computers(),
+        )
         event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions))
         self._enqueue_ws_payload(websocket, event.event, event.model_dump(exclude_none=True))
 
@@ -454,6 +458,10 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                 self._broadcast_payload(event, self._build_session_closed_payload(event, data), targets=targets)
             return
 
+        if event == CacheEvent.COMPUTER_UPDATED.value and isinstance(data, ComputerUpdatedNotification):
+            if data.attachment_inputs_changed:
+                self._reproject_computer_sessions(data.computer_name)
+
         refresh_payload = self._build_refresh_payload(event, data)
         if refresh_payload is not None:
             targets = self._refresh_targets(event, data)
@@ -482,9 +490,24 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         if targets:
             self._broadcast_payload(event, self._build_session_cache_payload(event, session), targets=targets)
 
+    def _reproject_computer_sessions(self, computer_name: str) -> None:
+        """Send current attachment projections for sessions owned by one peer."""
+        cache = self.cache
+        if cache is None:
+            return
+        for session in cache.get_sessions():
+            if session.computer == computer_name:
+                self._deliver_session_change(CacheEvent.SESSION_UPDATED.value, session)
+
     def _build_session_cache_payload(self, event: str, session: SessionSnapshot) -> JsonDict:
         """Build the DTO-backed payload for a session started or updated event."""
-        dto = enrich_human_names([SessionDTO.from_core(session, computer=session.computer)])[0]
+        cache = self.cache
+        computer_registry = cache.get_computers() if cache is not None else []
+        dto = project_session_dtos(
+            [session],
+            serving_computer=config.computer.name,
+            computer_registry=computer_registry,
+        )[0]
         if event == CacheEvent.SESSION_STARTED.value:
             return SessionStartedEventDTO(event=event, data=dto).model_dump(exclude_none=True)
         return SessionUpdatedEventDTO(event=event, data=dto).model_dump(exclude_none=True)
@@ -564,6 +587,8 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
 
     def _extract_refresh_targets(self, event: str, data: object) -> tuple[str | None, str | None]:
         """Resolve the affected computer/project identifiers for refresh events."""
+        if isinstance(data, ComputerUpdatedNotification):
+            return data.computer_name, None
         if isinstance(data, dict):
             computer = data.get("computer")
             project_path = data.get("project_path")
