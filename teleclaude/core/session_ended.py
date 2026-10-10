@@ -15,7 +15,7 @@ from teleclaude.caller_identity import (
 )
 from teleclaude.core.agent_dispatch import desk_session_kind
 from teleclaude.core.models import EndpointStamp, Session
-from teleclaude.events.envelope import EventLevel, occurrence_id
+from teleclaude.events.envelope import EventHomeKind, EventHomeRef, EventLevel, occurrence_id
 from teleclaude.events.envelope_facts import home_for_session_config
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import SessionRef
@@ -71,6 +71,24 @@ def session_ended_kind(session: Session) -> SessionEndedKind:
     if principal is not None and principal.startswith(HUMAN_PRINCIPAL_PREFIX):
         return SessionEndedKind.PERSON
     return SessionEndedKind.UNKNOWN
+
+
+def is_conversation_session(session: Session) -> bool:
+    """Whether the session is a person's conversation: a session at a desk, or a person's own session in their home.
+
+    A system-started session (a procedure agent, a worker, an orchestrator) and a human
+    session in a project or company home are not conversations.
+    """
+    kind = session_ended_kind(session)
+    if kind is SessionEndedKind.HELP_DESK:
+        return True
+    if kind is not SessionEndedKind.PERSON:
+        return False
+    try:
+        home = home_for_session_config(session.config_subject)
+    except ValueError:
+        return False
+    return isinstance(home, EventHomeRef) and home.kind is EventHomeKind.PERSON
 
 
 async def report_session_ended(session: Session) -> None:

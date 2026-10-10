@@ -83,6 +83,7 @@ class AgentDispatchReason(StrEnum):
     JOB_DECLARATION = "job_declaration"
     SESSION_KIND_POLICY = "session_kind_policy"
     DESK_CONFINEMENT_UNVERIFIED = "desk_confinement_unverified"
+    DESK_COMPACTION_UNDECLARED = "desk_compaction_undeclared"
 
 
 class AgentDispatchStage(StrEnum):
@@ -240,12 +241,15 @@ _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.ACTIVATE_PROCEDURE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
 }
 # Desk sessions take their order from the session kind, never from the
-# visitor's first message; only agents with a verified desk confinement are
-# eligible (see ``_desk_confined``).
+# visitor's first message; only agents with a verified desk confinement and a
+# declared compaction command are eligible (see ``_desk_ineligibility``).
 _SESSION_KIND_POLICIES: dict[DispatchSessionKind, CommandDispatchPolicy] = {
     DispatchSessionKind.HELP_DESK: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
 }
-_DESK_CONFINEMENT_UNVERIFIED_MESSAGE = "Agent '{agent}' has no verified desk confinement"
+_DESK_INELIGIBILITY_MESSAGES: dict[AgentDispatchReason, str] = {
+    AgentDispatchReason.DESK_CONFINEMENT_UNVERIFIED: "Agent '{agent}' has no verified desk confinement",
+    AgentDispatchReason.DESK_COMPACTION_UNDECLARED: "Agent '{agent}' declares no compaction command",
+}
 _THINKING_MODE_REQUIRED_MESSAGE = "Assess the work and retry with an explicit thinking mode: fast, med, or slow"
 _MODEL_SKIP_REASON_PREFIX = "model_"
 _COMMAND_PREFIX = "/"
@@ -288,16 +292,26 @@ def desk_session_kind(
     return DispatchSessionKind.HELP_DESK if at_desk else None
 
 
-def _desk_confined(agent: str) -> bool:
-    return AGENT_REGISTRY[AgentName.from_str(agent)].desk_confinement is DeskConfinement.VERIFIED
+def _desk_ineligibility(agent: str) -> AgentDispatchReason | None:
+    """Return why an agent cannot run a desk session, or ``None`` when it can.
+
+    A desk session needs a verified desk confinement, and a declared compaction
+    command so the idle cycle can always compact it before closing.
+    """
+    definition = AGENT_REGISTRY[AgentName.from_str(agent)]
+    if definition.desk_confinement is not DeskConfinement.VERIFIED:
+        return AgentDispatchReason.DESK_CONFINEMENT_UNVERIFIED
+    if definition.compaction_command is None:
+        return AgentDispatchReason.DESK_COMPACTION_UNDECLARED
+    return None
 
 
-def _require_desk_confined(agent: str, session_kind: DispatchSessionKind | None) -> None:
-    if session_kind is DispatchSessionKind.HELP_DESK and not _desk_confined(agent):
-        raise AgentDispatchFailure(
-            AgentDispatchReason.DESK_CONFINEMENT_UNVERIFIED,
-            _DESK_CONFINEMENT_UNVERIFIED_MESSAGE.format(agent=agent),
-        )
+def _require_desk_eligible(agent: str, session_kind: DispatchSessionKind | None) -> None:
+    if session_kind is not DispatchSessionKind.HELP_DESK:
+        return
+    ineligibility = _desk_ineligibility(agent)
+    if ineligibility is not None:
+        raise AgentDispatchFailure(ineligibility, _DESK_INELIGIBILITY_MESSAGES[ineligibility].format(agent=agent))
 
 
 def _order_with_preference(order: tuple[str, ...], preferred_agent: str | None) -> tuple[str, ...]:
@@ -463,7 +477,8 @@ async def resolve_agent_dispatch(
 
     A ``session_kind`` takes the order from that kind's row instead of the
     command; for a help-desk session every candidate must carry a verified
-    desk confinement, and each one skipped for lacking it is logged.
+    desk confinement and a declared compaction command, and each one skipped
+    for lacking either is logged with its own reason.
     """
     ownership = LaunchOwnership.HUMAN if mode is AgentDispatchMode.MANUAL_PREFERENCE else LaunchOwnership.JOB_ROLE
 
@@ -473,7 +488,7 @@ async def resolve_agent_dispatch(
                 AgentDispatchReason.FIXED_AGENT_REQUIRED, "Fixed launch intent requires an agent"
             )
         _known_enabled(fixed_agent)
-        _require_desk_confined(fixed_agent, session_kind)
+        _require_desk_eligible(fixed_agent, session_kind)
         if not is_launchable(await _availability_facts(fixed_agent), ownership):
             raise AgentDispatchFailure(
                 AgentDispatchReason.FIXED_AGENT_UNAVAILABLE,
@@ -487,7 +502,7 @@ async def resolve_agent_dispatch(
                 AgentDispatchReason.PREFERRED_AGENT_REQUIRED, "Manual launch intent requires an agent"
             )
         _known_enabled(preferred_agent)
-        _require_desk_confined(preferred_agent, session_kind)
+        _require_desk_eligible(preferred_agent, session_kind)
         status = await _availability_facts(preferred_agent)
         if not is_launchable(status, ownership):
             raise AgentDispatchFailure(
@@ -512,15 +527,16 @@ async def resolve_agent_dispatch(
     else:
         policy_order, reason, order_branch = _order_for(command)
     order = _order_with_preference(policy_order, preferred_agent)
-    desk_skipped: list[str] = []
+    desk_skipped: dict[str, AgentDispatchReason] = {}
     eligible: list[str] = []
     for agent in order:
-        if session_kind is DispatchSessionKind.HELP_DESK and not _desk_confined(agent):
-            desk_skipped.append(agent)
+        ineligibility = _desk_ineligibility(agent) if session_kind is DispatchSessionKind.HELP_DESK else None
+        if ineligibility is not None:
+            desk_skipped[agent] = ineligibility
             emit_agent_dispatch_decision(
                 stage=AgentDispatchStage.RESOLVED,
                 outcome=AgentDispatchOutcome.REFUSED,
-                reason=AgentDispatchReason.DESK_CONFINEMENT_UNVERIFIED,
+                reason=ineligibility,
                 selected_agent=agent,
                 entry_point=entry_point,
                 candidate_order=policy_order,
@@ -537,11 +553,7 @@ async def resolve_agent_dispatch(
 
     fallback = None
     if eligible[0] != order[0]:
-        fallback = (
-            AgentDispatchReason.DESK_CONFINEMENT_UNVERIFIED
-            if order[0] in desk_skipped
-            else AgentDispatchReason.DETERMINISTIC_INELIGIBILITY
-        )
+        fallback = desk_skipped.get(order[0], AgentDispatchReason.DETERMINISTIC_INELIGIBILITY)
     return AgentDispatchDecision(
         agent=eligible[0],
         reason=reason,

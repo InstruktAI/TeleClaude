@@ -7,7 +7,7 @@ about the user-agent partnership. NOT for tracking code changes or routine work.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 
 
 class ObservationType(str, Enum):
@@ -20,6 +20,23 @@ class ObservationType(str, Enum):
     PATTERN = "pattern"  # Recurring approaches that work well
     FRICTION = "friction"  # What causes slowdowns, miscommunication, or frustration
     CONTEXT = "context"  # Project/team/domain background knowledge
+    REQUEST = "request"  # Something a person asked the business for
+    COMPLAINT = "complaint"  # Something a person was unhappy with
+    SENTIMENT = "sentiment"  # How a person feels about the business or its offer
+    COMPETITOR = "competitor"  # An alternative a person mentioned
+
+
+class MemoryState(StrEnum):
+    """Where a stored observation stands: kept current, retired from use, or collected as a prospect."""
+
+    CURRENT = "current"  # A memory in use: rendered as context, searched and listed
+    RETIRED = "retired"  # A memory that no longer holds: recorded, never used
+    PROSPECT = "prospect"  # A business item collected for a home: raw material, never used as a memory
+
+
+# The one predicate every use of memories reads through, so no read path can admit a retired
+# memory or a prospect. Columns are qualified so it composes with joins and subselects.
+CURRENT_MEMORY_PREDICATE = f"memory_observations.state = '{MemoryState.CURRENT.value}'"
 
 
 class ObservationConcept(str, Enum):
@@ -47,6 +64,8 @@ class ObservationInput:
     subject: str | None = None
     subject_owner: str | None = None
     principal: str | None = None
+    state: MemoryState = MemoryState.CURRENT
+    source_session_id: str | None = None
 
 
 @dataclass

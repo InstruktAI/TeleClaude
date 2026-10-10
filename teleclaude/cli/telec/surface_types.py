@@ -220,6 +220,7 @@ def strip_hidden_flag_tokens(args: str, flags: list[Flag]) -> str:
 # Role reach groups — used in CLI_SURFACE auth fields
 # =============================================================================
 _WORKER_REACH = frozenset({ROLE_WORKER})
+_TASKER_REACH = frozenset({ROLE_TASKER})
 _AGENT_REACH = frozenset({ROLE_ORCHESTRATOR, ROLE_INTEGRATOR, SystemRole.COORDINATOR, ROLE_TASKER, ROLE_JOB_RUNNER})
 _ORCHESTRATOR_RESERVATION = frozenset({ROLE_ORCHESTRATOR})
 _INTEGRATOR_RESERVATION = frozenset({ROLE_INTEGRATOR})

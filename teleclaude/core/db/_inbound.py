@@ -25,6 +25,8 @@ logger = get_logger(__name__)
 _MISSING_PLATFORM_SOURCE_ERROR = "Platform-originated text requires a source occurrence key"
 _DELIVERED_STATUS = "delivered"
 _FAILED_STATUS = "failed"
+_PENDING_STATUS = "pending"
+_PROCESSING_STATUS = "processing"
 
 
 def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
@@ -635,6 +637,18 @@ class DbInboundMixin:
             result = await db_session.exec(stmt)
             await db_session.commit()
             return result.rowcount or 0
+
+    async def has_queued_inbound(self, session_id: str) -> bool:
+        """Whether any inbound row for the session still waits: pending, retrying or held, or mid-delivery."""
+        stmt = (
+            select(db_models.InboundQueue.id)
+            .where(db_models.InboundQueue.session_id == session_id)
+            .where(db_models.InboundQueue.status.in_([_PENDING_STATUS, _FAILED_STATUS, _PROCESSING_STATUS]))
+            .limit(1)
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            return result.first() is not None
 
     async def fetch_sessions_with_pending_inbound(self) -> list[str]:
         """Return sessions with retryable inbound rows or pending hold notices."""

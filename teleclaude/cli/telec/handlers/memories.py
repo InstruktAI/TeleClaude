@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable, Sequence
 from typing import NoReturn
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient
@@ -10,25 +11,69 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import (
+    MEMORIES_ADD,
+    MEMORIES_ADVANCE,
     MEMORIES_DELETE,
     MEMORIES_LIST,
+    MEMORIES_PROSPECT,
+    MEMORIES_RETIRE,
     MEMORIES_SAVE,
+    MEMORIES_SCOPE,
     MEMORIES_SEARCH,
     MEMORIES_TIMELINE,
+    MEMORIES_UPDATE,
 )
+from teleclaude.memory.types import ObservationType
 
 __all__ = [
-    "_VALID_OBS_TYPES",
     "_handle_memories",
+    "_handle_memories_add",
+    "_handle_memories_advance",
     "_handle_memories_delete",
     "_handle_memories_list",
+    "_handle_memories_prospect",
+    "_handle_memories_retire",
     "_handle_memories_save",
+    "_handle_memories_scope",
     "_handle_memories_search",
     "_handle_memories_timeline",
+    "_handle_memories_update",
 ]
 
 _REQUEST_FAILURE_TEMPLATE = "Error: {detail}"
-_VALID_OBS_TYPES = {"preference", "decision", "discovery", "gotcha", "pattern", "friction", "context"}
+_SESSION_REQUIRED = "--session is required."
+_TYPE_REQUIRED = "--type is required."
+_TEXT_REQUIRED = "Text is required."
+_MEMORY_ID_REQUIRED = "Memory ID is required."
+_TO_REQUIRED = "--to is required."
+_SCOPE_SESSION_TEMPLATE = "Session: {session_id}"
+_SCOPE_PERSON_TEMPLATE = "Person: {person} (registered: {registered})"
+_SCOPE_NAMESPACE_TEMPLATE = "Namespace: {namespace}"
+_SCOPE_DESK_TEMPLATE = "Help-desk conversation: {desk} (home: {home})"
+_SCOPE_READ_POINT_TEMPLATE = "Read point: {read_point}"
+_SCOPE_HEADING_TEMPLATE = "{heading} ({count}):"
+_SCOPE_ENTRY_TEMPLATE = "  #{id} [{type}] {text}"
+_SCOPE_MEMORIES_HEADING = "Current memories"
+_SCOPE_PROSPECTS_HEADING = "Prospects recorded from this session"
+_ADDED_TEMPLATE = "Added memory #{id} — {title} (namespace: {namespace})"
+_UPDATED_TEMPLATE = "Updated memory #{id}"
+_RETIRED_TEMPLATE = "Retired memory #{id}"
+_PROSPECT_TEMPLATE = "Recorded prospect #{id} for {namespace}"
+_READ_POINT_TEMPLATE = "Read point: {read_point}"
+_SCOPE_SESSION_KEY = "session_id"
+_SCOPE_PERSON_KEY = "person"
+_SCOPE_REGISTERED_KEY = "registered"
+_SCOPE_NAMESPACE_KEY = "namespace"
+_SCOPE_DESK_KEY = "desk"
+_SCOPE_HOME_KEY = "home"
+_SCOPE_READ_POINT_KEY = "read_point"
+_SCOPE_MEMORIES_KEY = "memories"
+_SCOPE_PROSPECTS_KEY = "prospects"
+_ROW_ID_KEY = "id"
+_ROW_TYPE_KEY = "type"
+_ROW_TEXT_KEY = "text"
+_RESULT_TITLE_KEY = "title"
+_RESULT_PROJECT_KEY = "project"
 
 
 def _fail_memories_request(exc: APIError) -> NoReturn:
@@ -47,8 +92,9 @@ def _memories_usage_error(subcommand: str, message: str) -> NoReturn:
 
 def _parse_observation_type(obs_type: str, subcommand: str) -> str:
     """Validate observation type values accepted by the memories API."""
-    if obs_type not in _VALID_OBS_TYPES:
-        valid_types = ", ".join(sorted(_VALID_OBS_TYPES))
+    valid_types_set = {member.value for member in ObservationType}
+    if obs_type not in valid_types_set:
+        valid_types = ", ".join(sorted(valid_types_set))
         _memories_usage_error(subcommand, f"Invalid type '{obs_type}'. Valid types: {valid_types}")
     return obs_type
 
@@ -232,6 +278,18 @@ def _handle_memories(args: list[str]) -> None:
         _handle_memories_delete(args[1:])
     elif subcommand == "timeline":
         _handle_memories_timeline(args[1:])
+    elif subcommand == "scope":
+        _handle_memories_scope(args[1:])
+    elif subcommand == "add":
+        _handle_memories_add(args[1:])
+    elif subcommand == "update":
+        _handle_memories_update(args[1:])
+    elif subcommand == "retire":
+        _handle_memories_retire(args[1:])
+    elif subcommand == "prospect":
+        _handle_memories_prospect(args[1:])
+    elif subcommand == "advance":
+        _handle_memories_advance(args[1:])
     else:
         print(f"Unknown memories subcommand: {subcommand}")
         print(_usage("memories"))
@@ -312,3 +370,135 @@ def _handle_memories_timeline(args: list[str]) -> None:
         f"\nTimeline around observation #{numeric_anchor}:\n",
         anchor_id=numeric_anchor,
     )
+
+
+def _curation_session(parsed_session: str | None, subcommand: str) -> str:
+    """The conversation session a curation verb names."""
+    if not parsed_session:
+        _memories_usage_error(subcommand, _SESSION_REQUIRED)
+    return parsed_session
+
+
+def _curation_text(positionals: Sequence[str], subcommand: str) -> str:
+    """The statement a curation verb carries."""
+    text = " ".join(positionals)
+    if not text:
+        _memories_usage_error(subcommand, _TEXT_REQUIRED)
+    return text
+
+
+def _curation_type(parsed_type: str | None, subcommand: str) -> str:
+    """The observation type a curation verb records."""
+    if not parsed_type:
+        _memories_usage_error(subcommand, _TYPE_REQUIRED)
+    return _parse_observation_type(parsed_type, subcommand)
+
+
+async def _curation_request(
+    call: Callable[[TelecAPIClient], Awaitable[dict[str, object]]],  # guard: loose-dict - JSON API response
+) -> dict[str, object]:  # guard: loose-dict - JSON API response
+    """Run one curation request against the daemon."""
+    api = TelecAPIClient()
+    await api.connect()
+    try:
+        return await call(api)
+    finally:
+        await api.close()
+
+
+def _run_curation(
+    call: Callable[[TelecAPIClient], Awaitable[dict[str, object]]],  # guard: loose-dict - JSON API response
+) -> dict[str, object]:  # guard: loose-dict - JSON API response
+    """Run a curation request, exiting non-zero on a refusal."""
+    try:
+        return asyncio.run(_curation_request(call))
+    except APIError as exc:
+        _fail_memories_request(exc)
+
+
+def _print_scope_entries(heading: str, entries: object) -> None:
+    """Print a scope's memories or prospects, one per line."""
+    rows = entries if isinstance(entries, list) else []
+    print(_SCOPE_HEADING_TEMPLATE.format(heading=heading, count=len(rows)))
+    for row in rows:
+        if isinstance(row, dict):
+            print(
+                _SCOPE_ENTRY_TEMPLATE.format(
+                    id=row.get(_ROW_ID_KEY), type=row.get(_ROW_TYPE_KEY), text=row.get(_ROW_TEXT_KEY)
+                )
+            )
+
+
+def _handle_memories_scope(args: list[str]) -> None:
+    """Handle telec memories scope."""
+    parsed = parse_command_args(MEMORIES_SCOPE, args)
+    session_id = _curation_session(parsed.value(F.FLAG_MEMORIES_CURATION_SESSION), "scope")
+    scope = _run_curation(lambda api: api.memory_curation_scope(session_id))
+    print(_SCOPE_SESSION_TEMPLATE.format(session_id=scope.get(_SCOPE_SESSION_KEY)))
+    print(
+        _SCOPE_PERSON_TEMPLATE.format(person=scope.get(_SCOPE_PERSON_KEY), registered=scope.get(_SCOPE_REGISTERED_KEY))
+    )
+    print(_SCOPE_NAMESPACE_TEMPLATE.format(namespace=scope.get(_SCOPE_NAMESPACE_KEY)))
+    print(_SCOPE_DESK_TEMPLATE.format(desk=scope.get(_SCOPE_DESK_KEY), home=scope.get(_SCOPE_HOME_KEY)))
+    print(_SCOPE_READ_POINT_TEMPLATE.format(read_point=scope.get(_SCOPE_READ_POINT_KEY)))
+    _print_scope_entries(_SCOPE_MEMORIES_HEADING, scope.get(_SCOPE_MEMORIES_KEY))
+    if scope.get(_SCOPE_DESK_KEY):
+        _print_scope_entries(_SCOPE_PROSPECTS_HEADING, scope.get(_SCOPE_PROSPECTS_KEY))
+
+
+def _handle_memories_add(args: list[str]) -> None:
+    """Handle telec memories add."""
+    parsed = parse_command_args(MEMORIES_ADD, args)
+    session_id = _curation_session(parsed.value(F.FLAG_MEMORIES_CURATION_SESSION), "add")
+    obs_type = _curation_type(parsed.value(F.FLAG_MEMORIES_CURATION_TYPE), "add")
+    text = _curation_text(parsed.positionals, "add")
+    result = _run_curation(lambda api: api.memory_curation_add(session_id, obs_type, text))
+    print(
+        _ADDED_TEMPLATE.format(
+            id=result.get(_ROW_ID_KEY), title=result.get(_RESULT_TITLE_KEY), namespace=result.get(_RESULT_PROJECT_KEY)
+        )
+    )
+
+
+def _handle_memories_update(args: list[str]) -> None:
+    """Handle telec memories update."""
+    parsed = parse_command_args(MEMORIES_UPDATE, args)
+    session_id = _curation_session(parsed.value(F.FLAG_MEMORIES_CURATION_SESSION), "update")
+    if not parsed.positionals:
+        _memories_usage_error("update", _MEMORY_ID_REQUIRED)
+    observation_id = _parse_numeric_id(parsed.positionals[0], "update")
+    text = _curation_text(parsed.positionals[1:], "update")
+    _run_curation(lambda api: api.memory_curation_update(session_id, observation_id, text))
+    print(_UPDATED_TEMPLATE.format(id=observation_id))
+
+
+def _handle_memories_retire(args: list[str]) -> None:
+    """Handle telec memories retire."""
+    parsed = parse_command_args(MEMORIES_RETIRE, args)
+    session_id = _curation_session(parsed.value(F.FLAG_MEMORIES_CURATION_SESSION), "retire")
+    if len(parsed.positionals) != 1:
+        _memories_usage_error("retire", _MEMORY_ID_REQUIRED)
+    observation_id = _parse_numeric_id(parsed.positionals[0], "retire")
+    _run_curation(lambda api: api.memory_curation_retire(session_id, observation_id))
+    print(_RETIRED_TEMPLATE.format(id=observation_id))
+
+
+def _handle_memories_prospect(args: list[str]) -> None:
+    """Handle telec memories prospect."""
+    parsed = parse_command_args(MEMORIES_PROSPECT, args)
+    session_id = _curation_session(parsed.value(F.FLAG_MEMORIES_CURATION_SESSION), "prospect")
+    obs_type = _curation_type(parsed.value(F.FLAG_MEMORIES_CURATION_TYPE), "prospect")
+    text = _curation_text(parsed.positionals, "prospect")
+    result = _run_curation(lambda api: api.memory_curation_prospect(session_id, obs_type, text))
+    print(_PROSPECT_TEMPLATE.format(id=result.get(_ROW_ID_KEY), namespace=result.get(_RESULT_PROJECT_KEY)))
+
+
+def _handle_memories_advance(args: list[str]) -> None:
+    """Handle telec memories advance."""
+    parsed = parse_command_args(MEMORIES_ADVANCE, args)
+    session_id = _curation_session(parsed.value(F.FLAG_MEMORIES_CURATION_SESSION), "advance")
+    newest_entry_read = parsed.value(F.FLAG_MEMORIES_ADVANCE_TO)
+    if not newest_entry_read:
+        _memories_usage_error("advance", _TO_REQUIRED)
+    result = _run_curation(lambda api: api.memory_curation_advance(session_id, newest_entry_read))
+    print(_READ_POINT_TEMPLATE.format(read_point=result.get(_SCOPE_READ_POINT_KEY)))

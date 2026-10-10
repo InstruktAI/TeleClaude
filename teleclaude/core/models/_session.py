@@ -279,6 +279,9 @@ class SessionField(Enum):
     TURN_ANCHOR_SHA = "turn_anchor_sha"
     RELAY_TARGETS = "relay_targets"
     RELAY_EXCHANGE = "relay_exchange"
+    IDLE_COMPACTION_REQUESTED_AT = "idle_compaction_requested_at"
+    IDLE_COMPACTION_COMPLETED_AT = "idle_compaction_completed_at"
+    IDLE_CLOSED_AT = "idle_closed_at"
 
 
 class TranscriptFormat(str, Enum):
@@ -488,6 +491,9 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     lifecycle_transition_reason: str | None = None
     last_memory_extraction_at: datetime | None = None
     help_desk_processed_at: datetime | None = None
+    idle_compaction_requested_at: datetime | None = None
+    idle_compaction_completed_at: datetime | None = None
+    idle_closed_at: datetime | None = None
     relay_status: str | None = None
     relay_channel_id: str | None = None
     relay_started_at: datetime | None = None
@@ -509,6 +515,15 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
         """The launch profile this session was confined to when it was created, if any."""
         profile = self.get_origin_section(CONFINEMENT_SECTION).get(CONFINEMENT_PROFILE_KEY)
         return profile if isinstance(profile, str) else None
+
+    def _idle_compaction_stamps(self) -> JsonDict:
+        """The idle cycle's compaction stamps as ISO strings, for the stamps that are set."""
+        stamps = {
+            SessionField.IDLE_COMPACTION_REQUESTED_AT.value: self.idle_compaction_requested_at,
+            SessionField.IDLE_COMPACTION_COMPLETED_AT.value: self.idle_compaction_completed_at,
+            SessionField.IDLE_CLOSED_AT.value: self.idle_closed_at,
+        }
+        return {name: stamp.isoformat() for name, stamp in stamps.items() if stamp}
 
     def to_dict(self) -> JsonDict:
         """Convert session to dictionary for JSON serialization."""
@@ -558,6 +573,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             data["last_memory_extraction_at"] = self.last_memory_extraction_at.isoformat()
         if self.help_desk_processed_at:
             data["help_desk_processed_at"] = self.help_desk_processed_at.isoformat()
+        data.update(self._idle_compaction_stamps())
         if self.relay_started_at:
             data["relay_started_at"] = self.relay_started_at.isoformat()
         data[SessionField.RELAY_TARGETS.value] = to_json_value([target.to_dict() for target in self.relay_targets])
@@ -745,6 +761,15 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             else None,
             help_desk_processed_at=parse_iso_datetime(data.get("help_desk_processed_at"))
             if isinstance(data.get("help_desk_processed_at"), str)
+            else None,
+            idle_compaction_requested_at=parse_iso_datetime(data[SessionField.IDLE_COMPACTION_REQUESTED_AT.value])
+            if isinstance(data.get(SessionField.IDLE_COMPACTION_REQUESTED_AT.value), str)
+            else None,
+            idle_compaction_completed_at=parse_iso_datetime(data[SessionField.IDLE_COMPACTION_COMPLETED_AT.value])
+            if isinstance(data.get(SessionField.IDLE_COMPACTION_COMPLETED_AT.value), str)
+            else None,
+            idle_closed_at=parse_iso_datetime(data[SessionField.IDLE_CLOSED_AT.value])
+            if isinstance(data.get(SessionField.IDLE_CLOSED_AT.value), str)
             else None,
             relay_status=_get_optional_str("relay_status"),
             relay_channel_id=_get_optional_str("relay_channel_id"),

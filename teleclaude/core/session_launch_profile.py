@@ -36,13 +36,15 @@ _FLAG_SEPARATOR = " "
 # project or local settings source, so these are the session's whole
 # permission set: don't-ask mode denies every tool call that is not
 # pre-approved here, the read fence keeps the file tools inside the working
-# directories, only managed instructions load at startup, and memory and web
-# tools stay off. The allow list and TeleClaude's own hooks are added per
+# directories, only managed instructions load at startup, bundled skills are
+# off while built-in commands such as /compact stay available to the idle
+# cycle, and memory and web tools stay off. The allow list and TeleClaude's own hooks are added per
 # launch; no other hook source loads, so no hook can approve a call.
 _CLAUDE_DESK_SETTINGS: dict[str, object] = {  # guard: loose-dict - vendor settings document
     "forceLoginMethod": "claudeai",
     "enabledMcpjsonServers": [],
     "autoMemoryEnabled": False,
+    "disableBundledSkills": True,
     "pluginConfigs": {"agents-md@builtin": {"options": {"instructionFiles": "managed-only"}}},
 }
 _CLAUDE_DESK_PERMISSIONS: dict[str, object] = {  # guard: loose-dict - vendor settings document

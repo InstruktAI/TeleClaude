@@ -14,6 +14,7 @@ from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.inbound_types import InboundMessageType
 from teleclaude.core.injected_text import TranscriptEntryKind
 from teleclaude.core.origins import InputOrigin
+from teleclaude.memory.types import MemoryState
 from teleclaude.session_fields import SessionRecentOutputColumns, SessionRecentToolColumns
 
 
@@ -68,6 +69,9 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     principal: str | None = None
     last_memory_extraction_at: str | None = None
     help_desk_processed_at: str | None = None
+    idle_compaction_requested_at: str | None = None
+    idle_compaction_completed_at: str | None = None
+    idle_closed_at: str | None = None
     relay_status: str | None = None
     relay_channel_id: str | None = None
     relay_started_at: str | None = None
@@ -612,6 +616,9 @@ class MemoryObservation(SQLModel, table=True):
     subject: str | None = None
     subject_owner: str | None = None
     principal: str | None = None
+    state: str = MemoryState.CURRENT.value
+    retired_at: str | None = None
+    source_session_id: str | None = None
 
 
 class MemorySummary(SQLModel, table=True):

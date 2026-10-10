@@ -28,6 +28,7 @@ CODEX_TRUST_LABEL_BY_HOOK_NAME: dict[str, str] = {
     "PreToolUse": "pre_tool_use",
     "PostToolUse": "post_tool_use",
     "PermissionRequest": "permission_request",
+    "PostCompact": "post_compact",
     "Stop": "stop",
 }
 

@@ -58,6 +58,8 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_cleanup import is_legacy_restricted_session
+from teleclaude.core.session_idle_compaction import live_idle_close
+from teleclaude.core.session_revival import revive_session
 from teleclaude.core.session_runtime_gate import (
     clear_relaunch_awaiting_readiness,
     relaunch_awaiting_readiness,
@@ -622,6 +624,36 @@ async def _hold_for_startup_readiness(session_id: str) -> Session:
     return session
 
 
+_IDLE_CLOSED_NOT_REVIVED_TEMPLATE = (
+    "Idle-closed session {session_id} could not be revived; its input stays queued for retry"
+)
+_CLOSED_BEFORE_INJECTION_TEMPLATE = "Session {session_id} closed before its input was injected; delivery is retried"
+
+
+async def _deliverable_session(session_id: str) -> Session:
+    """The session a queued row is delivered to; an idle-closed conversation is resumed, never rejected.
+
+    The idle cycle closes a conversation session only to spare resources while its person is
+    away. Input accepted for it across that close continues the conversation: delivery waits
+    for a close in flight to end, then revives the same session. A session closed any other
+    way rejects the row.
+    """
+    session = await db.get_session(session_id)
+    if not session:
+        raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.NOT_FOUND)
+    if not is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
+        return session
+    if not live_idle_close(session):
+        raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.CLOSED)
+    async with session_runtime_owner(session_id, wait=True):
+        session = await db.get_session(session_id) or session
+    if not is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
+        return session
+    if not await revive_session(session_id):
+        raise RuntimeError(_IDLE_CLOSED_NOT_REVIVED_TEMPLATE.format(session_id=session_id))
+    return await db.get_session(session_id) or session
+
+
 async def deliver_inbound(
     row: InboundQueueRow,
     client: "AdapterClient",
@@ -637,11 +669,7 @@ async def deliver_inbound(
     origin_metadata, command_input = _decode_inbound_origin_metadata(row), _decode_inbound_command_input(row)
     authority = authority_for_source_feature(InjectedTextSourceFeature(row["source_feature"]))
 
-    session = await db.get_session(session_id)
-    if not session:
-        raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.NOT_FOUND)
-    if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
-        raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.CLOSED)
+    session = await _deliverable_session(session_id)
 
     if _startup_pending(session):
         session = await _hold_for_startup_readiness(session_id)
@@ -686,6 +714,13 @@ async def deliver_inbound(
     delivery_session = session
     while results is None:
         async with session_runtime_owner(session_id, wait=True):
+            # A close can end the session between the checks above and ownership; the row is
+            # then delivered again, through the resume of an idle-closed conversation.
+            current = await db.get_session(session_id)
+            if current is None or is_session_terminal(
+                lifecycle_status=current.lifecycle_status, closed_at=current.closed_at
+            ):
+                raise RuntimeError(_CLOSED_BEFORE_INJECTION_TEMPLATE.format(session_id=session_id))
             # A relaunch can be marked between the readiness check above and
             # ownership; the mark is read again now that no relaunch is mid-flight.
             if not relaunch_awaiting_readiness(session_id):

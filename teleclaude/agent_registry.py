@@ -21,6 +21,7 @@ from hashlib import sha256
 from typing import Final, NotRequired, TypedDict
 
 _TRAILING_CONTINUATION_SPACE: Final[str] = " "
+_COMPACT_COMMAND: Final[str] = "/compact"
 _CLAUDE_DISCORD_AVATAR_URL: Final[str] = "https://avatars.githubusercontent.com/u/81847?v=4"
 _CODEX_DISCORD_AVATAR_URL: Final[str] = "https://avatars.githubusercontent.com/u/267193182?v=4"
 
@@ -65,6 +66,11 @@ class AgentName(StrEnum):
     def composer_control(self) -> ComposerControl:
         """Return the runtime's composer control and neutralization contract."""
         return AGENT_REGISTRY[self].composer_control
+
+    @property
+    def compaction_command(self) -> str | None:
+        """Return the command typed into the composer to compact context, or ``None`` if undeclared."""
+        return AGENT_REGISTRY[self].compaction_command
 
     @property
     def discord_presentation(self) -> DiscordAuthorPresentation:
@@ -255,6 +261,11 @@ class AgentDefinition:
     one_shot: OneShotSupport
     desk_confinement: DeskConfinement
     launch_environment: tuple[tuple[str, str], ...] = ()
+    # The command typed into the composer to compact the agent's context.
+    # Completion is observed through the agent's ``PostCompact`` hook with a
+    # manual trigger, normalized to ``agent_idle``. ``None`` means the agent
+    # declares no compaction, so its conversation sessions are never idle-closed.
+    compaction_command: str | None = None
 
 
 @dataclass(frozen=True)
@@ -329,13 +340,11 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                         f" {claude_mount}"
                     ),
                     # Static half of the desk confinement: no user, project or
-                    # local settings source, no MCP, skills or extra tools. The
+                    # local settings source, no MCP and no extra tools. The
                     # launch settings (permission mode, read fence, allow list,
-                    # instruction selection, hooks) and the session's own upload
-                    # root are rendered per launch.
-                    LaunchProfile.HELP_DESK: (
-                        "--setting-sources '' --strict-mcp-config --disable-slash-commands --tools Bash,Read,Glob,Grep"
-                    ),
+                    # instruction selection, bundled-skill exclusion, hooks) and
+                    # the session's own upload root are rendered per launch.
+                    LaunchProfile.HELP_DESK: "--setting-sources '' --strict-mcp-config --tools Bash,Read,Glob,Grep",
                 },
                 "mode_chains": {
                     "fast": [{"model": "sonnet", "flags": "--model 'claude-haiku-5-5[1m]' --effort medium"}],
@@ -381,6 +390,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             ),
             one_shot=OneShotSupport.SUPPORTED,
             desk_confinement=DeskConfinement.VERIFIED,
+            compaction_command=_COMPACT_COMMAND,
         ),
         AgentName.CODEX: AgentDefinition(
             key=AgentName.CODEX,
@@ -476,6 +486,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
             ),
             one_shot=OneShotSupport.SUPPORTED,
             desk_confinement=DeskConfinement.NONE,
+            compaction_command=_COMPACT_COMMAND,
         ),
         AgentName.GEMINI: AgentDefinition(
             key=AgentName.GEMINI,
