@@ -1,0 +1,86 @@
+---
+description: Structured assessment returned by the selected release inspector, including explicit assessment completeness.
+visibility: internal
+---
+
+# Release Report Schema — Spec
+
+## What it is
+
+The shared structured assessment returned by whichever provider completes release
+inspection. This schema describes the inspector's judgment; execution failures
+and provider availability are recorded by the invoking workflow separately.
+Publication consumes only a valid, complete assessment under
+`local/projects/teleclaude/spec/feature/release/publication`.
+
+## Canonical fields
+
+### JSON Schema
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["classification", "rationale", "contract_changes", "release_notes", "assessment_complete"],
+  "properties": {
+    "classification": {
+      "type": "string",
+      "enum": ["patch", "minor", "none"],
+      "description": "The semver classification of the changes."
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Detailed reasoning for the classification."
+    },
+    "contract_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["surface", "item", "change_type", "details"],
+        "properties": {
+          "surface": {
+            "type": "string",
+            "enum": ["cli", "events", "config"],
+            "description": "Which public surface was affected."
+          },
+          "item": {
+            "type": "string",
+            "description": "The name of the affected command, tool, event, or key."
+          },
+          "change_type": {
+            "type": "string",
+            "enum": ["added", "modified", "removed"],
+            "description": "Nature of the change."
+          },
+          "details": {
+            "type": "string",
+            "description": "Brief description of the change."
+          }
+        }
+      }
+    },
+    "release_notes": {
+      "type": "string",
+      "description": "Draft release notes for human and AI consumption."
+    },
+    "assessment_complete": {
+      "type": "boolean",
+      "description": "Whether the inspector completed the assessment of the supplied change interval."
+    }
+  }
+}
+```
+
+### Consumption
+
+Validation checks the report's declared structure. Meaning and classification
+belong to the inspector (`general/principle/intelligence-boundaries`). An
+incomplete assessment explains its gap in the rationale and supplies no
+publication authority. A successful fallback report remains associated with the
+prior provider's failure evidence; the report does not replace that evidence.
+
+## See Also
+
+- docs/local/spec/release-inspector-prompt.md
