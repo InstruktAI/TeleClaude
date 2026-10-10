@@ -667,18 +667,33 @@ class CheckpointEventBinding:
         return any(pattern.matches(event_type) for pattern in self.patterns)
 
 
+class CheckpointActivation(StrEnum):
+    """Closed activation events that can select main-only maintenance."""
+
+    CANONICAL_MAIN = "canonical_main"
+
+
+@dataclass(frozen=True)
+class CheckpointActivationBinding:
+    """Maps one canonical-main activation to the maintenance action ids it owes."""
+
+    activation: CheckpointActivation
+    actions: tuple[str, ...]
+
+
 @dataclass(frozen=True)
 class CheckpointModel:
     """The effective checkpoint and maintenance registries plus shared bindings.
 
-    ``bindings`` are selected by changed paths; ``event_bindings`` only by an event's type.
-    The two kinds never mix, so a consumer of one cannot select the other.
+    ``bindings`` are selected by changed paths, ``event_bindings`` by event type, and
+    ``activation_bindings`` by a canonical-main activation.
     """
 
     actions: dict[str, CheckpointAction]
     maintenance: dict[str, MaintenanceAction]
     bindings: tuple[CheckpointBinding, ...]
     event_bindings: tuple[CheckpointEventBinding, ...] = ()
+    activation_bindings: tuple[CheckpointActivationBinding, ...] = ()
 
 
 CHECKPOINT_COMMIT_EVIDENCE = ["telec code commit"]
@@ -723,6 +738,9 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
 }
 
 
+BLUEPRINT_MAINTENANCE_ACTION_ID: Final[str] = "blueprint"
+
+
 CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
     "install": MaintenanceAction(
         id="install",
@@ -751,6 +769,18 @@ CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
         ),
         main_only=True,
         precedence=55,
+    ),
+    BLUEPRINT_MAINTENANCE_ACTION_ID: MaintenanceAction(
+        id=BLUEPRINT_MAINTENANCE_ACTION_ID,
+        command=(
+            "{interpreter}",
+            "-m",
+            "teleclaude.core.blueprint.maintenance",
+            "--trigger-revision",
+            "{after_sha}",
+        ),
+        main_only=True,
+        precedence=50,
     ),
 }
 
@@ -799,6 +829,10 @@ CHECKPOINT_BASE_AGENTS_BINDING = CheckpointBinding(
 CHECKPOINT_BASE_CODE_BINDING = CheckpointBinding(
     scope=CheckpointScope(include=("Makefile", ".pre-commit-config.yaml", ".gitattributes", ".husky/pre-commit")),
     actions=("install",),
+)
+CHECKPOINT_BASE_BLUEPRINT_ACTIVATION_BINDING = CheckpointActivationBinding(
+    activation=CheckpointActivation.CANONICAL_MAIN,
+    actions=(BLUEPRINT_MAINTENANCE_ACTION_ID,),
 )
 # Misc markers / defaults
 RELATIVE_CURRENT = "."

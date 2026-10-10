@@ -1,45 +1,76 @@
-"""Blueprint generation — re-extract the codebase graph and refresh the cache.
-
-Generation is automation-only: the integrator is the single writer of the
-context-owned Blueprint cache. This runs the pinned no-LLM ``graphify update`` and
-relocates the resulting ``graph.json`` to ``.teleclaude/blueprint/``. It is
-best-effort by contract — a failure records a non-``ok`` manifest and never raises,
-so a delivery is never blocked by the Blueprint.
-"""
+"""Extract and atomically publish immutable Blueprint generations."""
 
 from __future__ import annotations
 
 import fcntl
+import os
 import shutil
 import subprocess
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.blueprint._paths import (
     GRAPH_FILENAME,
+    MANIFEST_FILENAME,
     blueprint_dir,
+    current_generation_pointer,
+    generations_dir,
     graph_path,
+    graphify_graph_path,
     manifest_path,
+    pin_current_generation,
     refresh_lock_path,
 )
 from teleclaude.core.blueprint.affected import load_graph
-from teleclaude.core.blueprint.manifest import BlueprintManifest, BlueprintStatus, write_manifest
+from teleclaude.core.blueprint.manifest import (
+    BlueprintManifest,
+    BlueprintStatus,
+    read_manifest,
+    read_published_generation,
+    write_manifest,
+)
+from teleclaude.git_tree import TreeSource, materialize_tree
 
 logger = get_logger(__name__)
 
 _GRAPHIFY_OUT_DIRNAME = "graphify-out"
+_GRAPHIFY_COMMAND = "graphify"
+_GRAPHIFY_UPDATE_SUBCOMMAND = "update"
+_GRAPHIFY_FORCE_OPTION = "--force"
+_GRAPH_NODES_FIELD = "nodes"
+_SOURCE_FILE_FIELD = "source_file"
+_PARENT_PATH_COMPONENT = ".."
+_WINDOWS_PATH_SEPARATOR = "\\"
+_GENERATION_FAILED_ERROR_TEMPLATE = "Blueprint generation failed for {baseline_sha}: {reason}"
+_GRAPHIFY_FAILED_ERROR_TEMPLATE = "graphify update exited {returncode}: {detail}"
+_GRAPHIFY_OUTPUT_MISSING_ERROR = "graphify update did not produce graph.json in the committed snapshot"
+_GRAPHIFY_OUTPUT_MALFORMED_ERROR = "graphify produced a malformed graph.json"
+_GRAPHIFY_SOURCE_FILE_TYPE_ERROR = "graphify produced a non-string source_file"
+_GRAPHIFY_SOURCE_FILE_PATH_ERROR = "graphify produced a non-repository-relative source_file"
+_BLUEPRINT_ALIAS_DIRECTORY_ERROR_TEMPLATE = "Blueprint alias path is a directory: {link_path}"
+_GENERATION_NAME_TEMPLATE = "{revision}-{nonce}"
+_STAGING_NAME_TEMPLATE = ".staging-{nonce}"
+_CURRENT_GRAPH_ALIAS_TEMPLATE = "current/{filename}"
+_CURRENT_MANIFEST_ALIAS_TEMPLATE = "current/{filename}"
+_GRAPHIFY_GRAPH_ALIAS_TEMPLATE = "../.teleclaude/blueprint/current/{filename}"
+_TEMP_SYMLINK_NAME_TEMPLATE = ".{name}.{nonce}"
 _LOCK_MODE = "a+"
 _LOCK_OPEN_FLAGS = fcntl.LOCK_EX
 _LOCK_NONBLOCKING_FLAG = fcntl.LOCK_NB
 
 
+class BlueprintGenerationError(RuntimeError):
+    """A committed tree could not be extracted and published as a complete generation."""
+
+
 @contextmanager
 def blueprint_generation_lock(repo_root: str | Path, *, wait: bool) -> Iterator[bool]:
-    """Serialize every graph and manifest writer through the shared lock."""
+    """Serialize every graph and manifest writer through the stable cache lock."""
     lock_path = refresh_lock_path(repo_root)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open(_LOCK_MODE) as handle:
@@ -57,78 +88,151 @@ def blueprint_generation_lock(repo_root: str | Path, *, wait: bool) -> Iterator[
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def _graph_node_count(path: Path) -> int | None:
-    graph = load_graph(path)
-    if graph is None:
-        return None
-    nodes = graph.get("nodes")
-    return len(nodes) if isinstance(nodes, list) else None
+def migrate_legacy_generation(repo_root: str | Path) -> None:
+    """Move a valid legacy graph/manifest pair into immutable generation storage."""
+    root = Path(repo_root).expanduser().resolve()
+    if current_generation_pointer(root).is_symlink():
+        return
+    legacy_manifest = read_manifest(manifest_path(root))
+    legacy_graph = graph_path(root)
+    if legacy_manifest is None or legacy_manifest.status is not BlueprintStatus.OK or load_graph(legacy_graph) is None:
+        return
+    try:
+        _validate_graph(legacy_graph)
+    except BlueprintGenerationError:
+        return
+    _stage_and_activate_generation(root, legacy_graph, legacy_manifest)
 
 
-def _previous_graph_node_count(repo_root: Path, source_graph: Path) -> int | None:
-    source_count = _graph_node_count(source_graph)
-    if source_count is not None:
-        return source_count
-    return _graph_node_count(graph_path(repo_root))
+def generate_committed_blueprint(repo_root: str | Path, *, baseline_sha: str) -> BlueprintManifest:
+    """Extract one recorded commit tree and publish its complete graph generation.
 
-
-def _run_graphify_update(repo_root: Path) -> int:
-    """Run ``graphify update`` over the repo, returning its exit code.
-
-    graphify is an off-the-shelf AST engine adopted behind the graph.json seam
-    (local/projects/teleclaude/adr/0016); it has no Python binding, so a subprocess call is the
-    sanctioned escape hatch from the no-shell-out policy. graphify honors
-    ``.gitignore``, so worktrees, ``.venv`` and ``node_modules`` are skipped.
+    The caller owns ``blueprint_generation_lock``. The source is always an isolated
+    linked worktree for ``baseline_sha``; neither the canonical working tree nor a
+    branch worktree supplies graph input.
     """
-    source_graph = repo_root / _GRAPHIFY_OUT_DIRNAME / GRAPH_FILENAME
-    previous_node_count = _previous_graph_node_count(repo_root, source_graph)
-    proc = subprocess.run(
-        # The integrator always performs a complete deterministic re-extraction;
-        # force bypasses graphify's node-count guard so code-deleting refactors
-        # can replace the cache instead of pinning the Blueprint in error.
-        ["graphify", "update", str(repo_root), "--force"],
+    try:
+        root = Path(repo_root).expanduser().resolve()
+        migrate_legacy_generation(root)
+        current = read_published_generation(root)
+        if current is not None and current[1].baseline_sha == baseline_sha:
+            return current[1]
+        source = TreeSource.recorded_commit(root, baseline_sha)
+        with materialize_tree(source) as snapshot_root:
+            source_graph = _run_graphify_update(snapshot_root)
+            _validate_graph(source_graph)
+            manifest = BlueprintManifest(
+                baseline_sha=baseline_sha,
+                generated_at=datetime.now(UTC).isoformat(),
+                status=BlueprintStatus.OK,
+            )
+            _stage_and_activate_generation(root, source_graph, manifest)
+    except BlueprintGenerationError:
+        raise
+    except Exception as exc:
+        raise BlueprintGenerationError(
+            _GENERATION_FAILED_ERROR_TEMPLATE.format(baseline_sha=baseline_sha, reason=exc)
+        ) from exc
+    return manifest
+
+
+def _run_graphify_update(snapshot_root: Path) -> Path:
+    """Run the pinned Graphify extractor against an isolated committed snapshot."""
+    # Graphify's supported code-refresh surface is its update command. Its
+    # Python package exposes no public update API, so use the pinned executable
+    # to retain Graphify's own ignore, manifest, and output orchestration.
+    result = subprocess.run(
+        [_GRAPHIFY_COMMAND, _GRAPHIFY_UPDATE_SUBCOMMAND, str(snapshot_root), _GRAPHIFY_FORCE_OPTION],
         capture_output=True,
         text=True,
-        cwd=str(repo_root),
+        cwd=str(snapshot_root),
         check=False,
     )
-    if proc.returncode != 0:
-        logger.warning("graphify update failed rc=%s stderr=%s", proc.returncode, proc.stderr.strip())
-    current_node_count = _graph_node_count(source_graph)
-    if previous_node_count is not None and current_node_count is not None and current_node_count < previous_node_count:
-        logger.info(
-            "graphify update produced fewer nodes previous=%s current=%s",
-            previous_node_count,
-            current_node_count,
+    source_graph = snapshot_root / _GRAPHIFY_OUT_DIRNAME / GRAPH_FILENAME
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise BlueprintGenerationError(
+            _GRAPHIFY_FAILED_ERROR_TEMPLATE.format(returncode=result.returncode, detail=detail)
         )
-    return proc.returncode
+    if not source_graph.is_file():
+        raise BlueprintGenerationError(_GRAPHIFY_OUTPUT_MISSING_ERROR)
+    return source_graph
 
 
-def regenerate_blueprint(repo_root: str | Path, *, baseline_sha: str) -> BlueprintManifest:
-    """Regenerate the Blueprint while the caller holds ``blueprint_generation_lock``.
+def _validate_graph(path: Path) -> None:
+    """Require Graphify's node/link seam and repository-relative source paths."""
+    graph = load_graph(path)
+    if graph is None:
+        raise BlueprintGenerationError(_GRAPHIFY_OUTPUT_MALFORMED_ERROR)
+    nodes = graph[_GRAPH_NODES_FIELD]
+    assert isinstance(nodes, list)
+    for node in nodes:
+        if not isinstance(node, dict) or _SOURCE_FILE_FIELD not in node:
+            continue
+        source_file = node[_SOURCE_FILE_FIELD]
+        if not isinstance(source_file, str):
+            raise BlueprintGenerationError(_GRAPHIFY_SOURCE_FILE_TYPE_ERROR)
+        source_path = PurePosixPath(source_file)
+        if (
+            source_path.is_absolute()
+            or _PARENT_PATH_COMPONENT in source_path.parts
+            or _WINDOWS_PATH_SEPARATOR in source_file
+        ):
+            raise BlueprintGenerationError(_GRAPHIFY_SOURCE_FILE_PATH_ERROR)
 
-    Best-effort: never raises. On success the graph is copied to
-    ``.teleclaude/blueprint/graph.json`` and the manifest records ``ok`` with
-    ``baseline_sha``; on any failure the manifest records ``error`` and the prior
-    graph (if any) is left untouched.
-    """
-    root = Path(repo_root)
-    generated_at = datetime.now(UTC).isoformat()
-    status = BlueprintStatus.ERROR
+
+def _stage_and_activate_generation(root: Path, source_graph: Path, manifest: BlueprintManifest) -> None:
+    """Stage both generation files on the cache filesystem, then switch one pointer."""
+    generations = generations_dir(root)
+    generations.mkdir(parents=True, exist_ok=True)
+    generation_name = _GENERATION_NAME_TEMPLATE.format(revision=manifest.baseline_sha[:12], nonce=uuid.uuid4().hex)
+    staging = generations / _STAGING_NAME_TEMPLATE.format(nonce=uuid.uuid4().hex)
+    final = generations / generation_name
+    staging.mkdir()
     try:
-        rc = _run_graphify_update(root)
-        source_graph = root / _GRAPHIFY_OUT_DIRNAME / GRAPH_FILENAME
-        if rc == 0 and source_graph.is_file():
-            blueprint_dir(root).mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source_graph, graph_path(root))
-            status = BlueprintStatus.OK
-    except OSError as exc:
-        logger.warning("Blueprint regeneration failed: %s", exc)
+        shutil.copyfile(source_graph, staging / GRAPH_FILENAME)
+        write_manifest(staging / MANIFEST_FILENAME, manifest)
+        _validate_graph(staging / GRAPH_FILENAME)
+        os.replace(staging, final)
+        _install_published_aliases(root)
+        _switch_current_generation(root, final)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        if final.exists() and pin_current_generation(root) is None:
+            shutil.rmtree(final, ignore_errors=True)
+        raise
 
-    manifest = BlueprintManifest(baseline_sha=baseline_sha, generated_at=generated_at, status=status)
+
+def _install_published_aliases(root: Path) -> None:
+    """Keep legacy stable paths and Graphify's default output on the shared pointer."""
+    _replace_with_symlink(graph_path(root), _CURRENT_GRAPH_ALIAS_TEMPLATE.format(filename=GRAPH_FILENAME))
+    _replace_with_symlink(manifest_path(root), _CURRENT_MANIFEST_ALIAS_TEMPLATE.format(filename=MANIFEST_FILENAME))
+    _replace_with_symlink(
+        graphify_graph_path(root),
+        _GRAPHIFY_GRAPH_ALIAS_TEMPLATE.format(filename=GRAPH_FILENAME),
+    )
+
+
+def _replace_with_symlink(link_path: Path, target: str) -> None:
+    """Replace a stable file path with a relative symlink using one same-filesystem rename."""
+    link_path.parent.mkdir(parents=True, exist_ok=True)
+    if link_path.is_dir() and not link_path.is_symlink():
+        raise BlueprintGenerationError(_BLUEPRINT_ALIAS_DIRECTORY_ERROR_TEMPLATE.format(link_path=link_path))
+    temporary = link_path.with_name(_TEMP_SYMLINK_NAME_TEMPLATE.format(name=link_path.name, nonce=uuid.uuid4().hex))
     try:
-        write_manifest(manifest_path(root), manifest)
-    except OSError as exc:
-        logger.warning("Failed to write blueprint manifest: %s", exc)
-        return BlueprintManifest(baseline_sha=baseline_sha, generated_at=generated_at, status=BlueprintStatus.ERROR)
-    return manifest
+        temporary.symlink_to(target)
+        os.replace(temporary, link_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _switch_current_generation(root: Path, generation: Path) -> None:
+    """Atomically point readers at one complete immutable generation directory."""
+    pointer = current_generation_pointer(root)
+    temporary = pointer.with_name(_TEMP_SYMLINK_NAME_TEMPLATE.format(name=pointer.name, nonce=uuid.uuid4().hex))
+    relative_target = generation.relative_to(blueprint_dir(root))
+    try:
+        temporary.symlink_to(relative_target)
+        os.replace(temporary, pointer)
+    finally:
+        temporary.unlink(missing_ok=True)

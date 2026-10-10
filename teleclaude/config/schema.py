@@ -22,13 +22,18 @@ from teleclaude.config.field_constraints import (
 )
 from teleclaude.config.identity_schema import CompanyMember, PersonEntry
 from teleclaude.config.tiers import Tier
-from teleclaude.constants import CHECKPOINT_BASE_ACTIONS, CHECKPOINT_BASE_MAINTENANCE, OnDemandDisposition
+from teleclaude.constants import (
+    CHECKPOINT_BASE_ACTIONS,
+    CHECKPOINT_BASE_MAINTENANCE,
+    CheckpointActivation,
+    OnDemandDisposition,
+)
 from teleclaude.events.type_pattern import TypePattern
 from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import RESERVED_HOME_IDENTITY_PREFIXES
 
-CURRENT_SCHEMA_VERSION = 20
+CURRENT_SCHEMA_VERSION = 21
 _PROBE_REQUIRES_DEFER_ERROR = "owed_probe belongs only to an action whose on_demand is defer"
 _EVENT_BINDING_SCOPE_ERROR = "a binding names one trigger kind: events or scope, never both"
 _EVENT_BINDING_EMPTY_ERROR = "a binding that names events must name at least one event type pattern"
@@ -38,6 +43,8 @@ _EVENT_BINDING_JUDGMENT_ACTION_ERROR = (
 )
 _EVENT_BINDING_SCOPE_FIELD = "scope"
 _ACTION_LIST_SEPARATOR = ", "
+_ACTIVATION_TRIGGER_KIND_ERROR = "a binding names one trigger kind: activation, events, or scope"
+_ACTIVATION_MAIN_ONLY_ACTION_ERROR_TEMPLATE = "activation binding {index} requires main-only maintenance: {actions}"
 _BLANK_INBOUND_SECRET_ERROR = "An inbound source requires a non-blank secret"
 _BLANK_INBOUND_VERIFY_TOKEN_ERROR = "The WhatsApp inbound source requires a non-blank verify_token"
 
@@ -506,10 +513,11 @@ class CheckpointScopeConfig(ClosedModel):
 
 
 class CheckpointBindingConfig(ClosedModel):
-    """Maps a trigger to the action ids it owes: a scope selects changed files, ``events`` select event types."""
+    """Maps exactly one path, event, or canonical-main trigger to action ids."""
 
     scope: CheckpointScopeConfig = CheckpointScopeConfig()
     events: list[str] | None = None
+    activation: CheckpointActivation | None = None
     actions: list[str] = []
 
     @field_validator("events")
@@ -526,8 +534,11 @@ class CheckpointBindingConfig(ClosedModel):
 
     @model_validator(mode="after")
     def validate_single_trigger_kind(self) -> CheckpointBindingConfig:
-        """A binding names events or a path scope, never both."""
-        if self.events is not None and _EVENT_BINDING_SCOPE_FIELD in self.model_fields_set:
+        """A binding names exactly one of paths, events, or canonical-main activation."""
+        has_scope = _EVENT_BINDING_SCOPE_FIELD in self.model_fields_set
+        if self.activation is not None and (self.events is not None or has_scope):
+            raise ValueError(_ACTIVATION_TRIGGER_KIND_ERROR)
+        if self.events is not None and has_scope:
             raise ValueError(_EVENT_BINDING_SCOPE_ERROR)
         return self
 
@@ -632,6 +643,31 @@ class CheckpointConfig(ClosedModel):
                     raise ValueError(
                         _EVENT_BINDING_JUDGMENT_ACTION_ERROR.format(
                             index=index, actions=_ACTION_LIST_SEPARATOR.join(judgment)
+                        )
+                    )
+            if binding.activation is not None:
+                non_maintenance = [action_id for action_id in binding.actions if action_id not in maintenance_ids]
+                if non_maintenance:
+                    raise ValueError(
+                        _ACTIVATION_MAIN_ONLY_ACTION_ERROR_TEMPLATE.format(
+                            index=index, actions=_ACTION_LIST_SEPARATOR.join(non_maintenance)
+                        )
+                    )
+                main_only_maintenance_ids = {
+                    action_id for action_id, action in CHECKPOINT_BASE_MAINTENANCE.items() if action.main_only
+                }
+                for action_id, action in self.maintenance.items():
+                    if action.main_only:
+                        main_only_maintenance_ids.add(action_id)
+                    else:
+                        main_only_maintenance_ids.discard(action_id)
+                not_main_only = [
+                    action_id for action_id in binding.actions if action_id not in main_only_maintenance_ids
+                ]
+                if not_main_only:
+                    raise ValueError(
+                        _ACTIVATION_MAIN_ONLY_ACTION_ERROR_TEMPLATE.format(
+                            index=index, actions=_ACTION_LIST_SEPARATOR.join(not_main_only)
                         )
                     )
         if self.docs is not None:

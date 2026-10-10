@@ -20,10 +20,6 @@ from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_REQUIREMENTS,
 )
-from teleclaude.core.blueprint import BlueprintStatus, regenerate_blueprint
-from teleclaude.core.blueprint._paths import manifest_path
-from teleclaude.core.blueprint.generate import blueprint_generation_lock
-from teleclaude.core.blueprint.manifest import read_manifest
 from teleclaude.core.integration.candidate_scan import (
     CandidateKey,
     CandidateStateReadError,
@@ -94,11 +90,6 @@ _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 _GIT_DIFF_UNMERGED_ARGS = ("diff", "--name-only", "--diff-filter=U")
 _GIT_DIFF_STAGED_QUIET_ARGS = ("diff", "--cached", "--quiet")
-_REPO_ROOT_SYNC_SOURCE = "repo_root"
-_BLUEPRINT_REGENERATED_LOG = "integration.blueprint.regenerated"
-_BLUEPRINT_REGENERATED_AT_LOG = "Blueprint regenerated at baseline %s"
-_ORIGIN_MAIN_REVISION_ARGUMENTS = ("rev-parse", "origin/main")
-_BLUEPRINT_BASELINE_RESOLUTION_FAILURE = "Blueprint baseline could not be resolved from origin/main."
 _FINAL_CONTENT_GATE_FINISHED_EVENT = "integration.final_content_gate.finished"
 _QUALITY_ENV_REMOVED_KEYS = frozenset({"VIRTUAL_ENV", "PYTHONPATH", "PYTEST_ADDOPTS"})
 _VALIDATION_CHECKOUT_RESET_ARGS = ("reset", "--hard")
@@ -611,35 +602,6 @@ def _step_delivery_bookkeeping(
         return False, _format_push_rejected(rejection, key.slug, wt)
 
 
-def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str, source: str) -> str | None:
-    """Refresh the Blueprint after confirmed delivery without rolling it back on failure."""
-    with blueprint_generation_lock(cwd, wait=True):
-        rc, stdout, _stderr = _run_git(list(_ORIGIN_MAIN_REVISION_ARGUMENTS), cwd=cwd)
-        resolved_baseline = stdout.strip() if rc == 0 else ""
-        if not resolved_baseline:
-            logger.warning(_BLUEPRINT_BASELINE_RESOLUTION_FAILURE, extra={"final_sha": baseline_sha})
-            return _BLUEPRINT_BASELINE_RESOLUTION_FAILURE
-        manifest = read_manifest(manifest_path(cwd))
-        if manifest is None or manifest.status is not BlueprintStatus.OK or manifest.baseline_sha != resolved_baseline:
-            manifest = regenerate_blueprint(cwd, baseline_sha=resolved_baseline)
-    logger.info(
-        _BLUEPRINT_REGENERATED_LOG,
-        extra={
-            "source": source,
-            "baseline_sha": resolved_baseline,
-            "final_sha": baseline_sha,
-            "status": manifest.status.value,
-        },
-    )
-    if manifest.status is not BlueprintStatus.OK:
-        return (
-            f"Blueprint regeneration did not complete (status={manifest.status.value}); "
-            "blast-radius falls back to manual exploration until the next integrate."
-        )
-    logger.info(_BLUEPRINT_REGENERATED_AT_LOG, resolved_baseline)
-    return None
-
-
 def _step_push_succeeded(
     *,
     checkpoint: IntegrationCheckpoint,
@@ -720,19 +682,6 @@ def _step_push_succeeded(
         conn.commit()
     finally:
         conn.close()
-    warnings = checkpoint.warnings if checkpoint.warnings is not None else []
-    checkpoint.warnings = warnings
-
-    blueprint_warning = _regenerate_blueprint_after_delivery(
-        cwd=cwd,
-        baseline_sha=final_sha,
-        source=_REPO_ROOT_SYNC_SOURCE,
-    )
-    if blueprint_warning:
-        logger.warning(blueprint_warning)
-        warnings.append(blueprint_warning)
-        checkpoint.warnings = warnings
-
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)
     cleanup_continues, cleanup_instruction = _do_cleanup(

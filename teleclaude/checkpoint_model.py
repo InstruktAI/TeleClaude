@@ -15,12 +15,20 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.capabilities import ALL_CAPABILITIES, Capabilities, capabilities_from_project_config
+from teleclaude.capabilities import (
+    ALL_CAPABILITIES,
+    NOT_A_TARGET,
+    Capabilities,
+    capabilities_from_project_config,
+    resolve_capabilities,
+)
 from teleclaude.config.loader import load_declared_project_config, load_declared_project_config_from_content
 from teleclaude.config.schema import ProjectConfig
 from teleclaude.constants import (
+    BLUEPRINT_MAINTENANCE_ACTION_ID,
     CHECKPOINT_BASE_ACTIONS,
     CHECKPOINT_BASE_AGENTS_BINDING,
+    CHECKPOINT_BASE_BLUEPRINT_ACTIVATION_BINDING,
     CHECKPOINT_BASE_CODE_BINDING,
     CHECKPOINT_BASE_DOCS_BINDING,
     CHECKPOINT_BASE_MAINTENANCE,
@@ -29,6 +37,8 @@ from teleclaude.constants import (
     CHECKPOINT_PROJECT_DESK_BINDING,
     LOG_CHECK_ACTION_ID,
     CheckpointAction,
+    CheckpointActivation,
+    CheckpointActivationBinding,
     CheckpointBinding,
     CheckpointEventBinding,
     CheckpointModel,
@@ -60,6 +70,7 @@ _COMMITTED_DECLARATION_UNREADABLE_EVENT = "checkpoint_committed_declaration_unre
 
 __all__ = [
     "ActivationRange",
+    "activation_action_ids",
     "base_checkpoint_model",
     "checkpoint_model_from_project_config",
     "event_only_action_ids",
@@ -70,6 +81,7 @@ __all__ = [
     "load_committed_checkpoint_model",
     "main_only_judgment_action_ids_for_files",
     "main_only_maintenance_action_ids_for_files",
+    "main_only_maintenance_action_ids_for_files_and_activation",
     "merge_overlay",
     "scope_matches",
     "scopes_for_action",
@@ -194,8 +206,19 @@ def event_only_action_ids(model: CheckpointModel) -> frozenset[str]:
     Such an action reacts to an event, so a run with no event has nothing for it to act on.
     """
     path_bound = {action_id for binding in model.bindings for action_id in binding.actions}
+    activation_bound = {action_id for binding in model.activation_bindings for action_id in binding.actions}
     event_bound = {action_id for binding in model.event_bindings for action_id in binding.actions}
-    return frozenset(event_bound - path_bound)
+    return frozenset(event_bound - path_bound - activation_bound)
+
+
+def activation_action_ids(model: CheckpointModel, activation: CheckpointActivation) -> frozenset[str]:
+    """Return the action ids selected by one activation binding."""
+    return frozenset(
+        action_id
+        for binding in model.activation_bindings
+        if binding.activation is activation
+        for action_id in binding.actions
+    )
 
 
 def main_only_maintenance_action_ids_for_files(files: list[str], project_root: Path) -> list[str]:
@@ -214,6 +237,22 @@ def main_only_maintenance_action_ids_for_files(files: list[str], project_root: P
         main_only_action_ids=ordered_main_only,
     )
     return ordered_main_only
+
+
+def main_only_maintenance_action_ids_for_files_and_activation(
+    files: list[str], activation: CheckpointActivation, project_root: Path
+) -> list[str]:
+    """Return ordered main-only maintenance ids selected by paths or activation."""
+    model = load_checkpoint_model(str(project_root))
+    selected = triggered_action_ids(files, model) | activation_action_ids(model, activation)
+    return sorted(
+        (
+            action_id
+            for action_id in selected
+            if action_id in model.maintenance and model.maintenance[action_id].main_only
+        ),
+        key=lambda action_id: (model.maintenance[action_id].precedence, action_id),
+    )
 
 
 def main_only_judgment_action_ids_for_files(files: list[str], project_root: Path) -> list[str]:
@@ -280,6 +319,7 @@ def base_checkpoint_model(
     maintenance = {
         action_id: _fill_maintenance_slug(action, project_slug)
         for action_id, action in CHECKPOINT_BASE_MAINTENANCE.items()
+        if action_id != BLUEPRINT_MAINTENANCE_ACTION_ID or capabilities.code
     }
     enabled_bindings = (
         binding
@@ -291,7 +331,13 @@ def base_checkpoint_model(
         )
         if enabled
     )
-    return CheckpointModel(actions=actions, maintenance=maintenance, bindings=tuple(enabled_bindings))
+    activation_bindings = (CHECKPOINT_BASE_BLUEPRINT_ACTIVATION_BINDING,) if capabilities.code else ()
+    return CheckpointModel(
+        actions=actions,
+        maintenance=maintenance,
+        bindings=tuple(enabled_bindings),
+        activation_bindings=activation_bindings,
+    )
 
 
 def _scope_from_cfg(scope_cfg: object) -> CheckpointScope:
@@ -325,6 +371,7 @@ def merge_overlay(
     }
     bindings: list[CheckpointBinding] = list(base.bindings)
     event_bindings: list[CheckpointEventBinding] = list(base.event_bindings)
+    activation_bindings: list[CheckpointActivationBinding] = list(base.activation_bindings)
 
     if overlay is not None:
         for action_id, action_cfg in (getattr(overlay, "actions", None) or {}).items():
@@ -366,7 +413,14 @@ def merge_overlay(
                 bindings.append(CheckpointBinding(scope=code_scope, actions=("test", LOG_CHECK_ACTION_ID)))
 
         for binding_cfg in getattr(overlay, "bindings", None) or []:
-            if binding_cfg.events is not None:
+            if binding_cfg.activation is not None:
+                activation_bindings.append(
+                    CheckpointActivationBinding(
+                        activation=binding_cfg.activation,
+                        actions=tuple(binding_cfg.actions),
+                    )
+                )
+            elif binding_cfg.events is not None:
                 event_bindings.append(
                     CheckpointEventBinding(
                         patterns=tuple(TypePattern(text) for text in binding_cfg.events),
@@ -378,8 +432,42 @@ def merge_overlay(
                     CheckpointBinding(scope=_scope_from_cfg(binding_cfg.scope), actions=tuple(binding_cfg.actions))
                 )
 
+    if not capabilities.code:
+        maintenance.pop(BLUEPRINT_MAINTENANCE_ACTION_ID, None)
+        bindings = [
+            CheckpointBinding(binding.scope, retained_actions)
+            for binding in bindings
+            if (
+                retained_actions := tuple(
+                    action for action in binding.actions if action != BLUEPRINT_MAINTENANCE_ACTION_ID
+                )
+            )
+        ]
+        event_bindings = [
+            CheckpointEventBinding(binding.patterns, retained_actions)
+            for binding in event_bindings
+            if (
+                retained_actions := tuple(
+                    action for action in binding.actions if action != BLUEPRINT_MAINTENANCE_ACTION_ID
+                )
+            )
+        ]
+        activation_bindings = [
+            CheckpointActivationBinding(binding.activation, retained_actions)
+            for binding in activation_bindings
+            if (
+                retained_actions := tuple(
+                    action for action in binding.actions if action != BLUEPRINT_MAINTENANCE_ACTION_ID
+                )
+            )
+        ]
+
     return CheckpointModel(
-        actions=actions, maintenance=maintenance, bindings=tuple(bindings), event_bindings=tuple(event_bindings)
+        actions=actions,
+        maintenance=maintenance,
+        bindings=tuple(bindings),
+        event_bindings=tuple(event_bindings),
+        activation_bindings=tuple(activation_bindings),
     )
 
 
@@ -422,7 +510,8 @@ def load_checkpoint_model(project_path: str) -> CheckpointModel:
             exc_info=True,
         )
         config = None
-    return _model_for_declaration(root, project_path, config)
+    capabilities_if_missing = resolve_capabilities(root) if config is None else NOT_A_TARGET
+    return _model_for_declaration(root, project_path, config, capabilities_if_missing)
 
 
 def load_committed_checkpoint_model(repository_root: Path, tip: str) -> CheckpointModel:
@@ -446,13 +535,18 @@ def load_committed_checkpoint_model(repository_root: Path, tip: str) -> Checkpoi
             exc_info=True,
         )
         config = None
-    return _model_for_declaration(root, str(root), config)
+    return _model_for_declaration(root, str(root), config, NOT_A_TARGET)
 
 
-def _model_for_declaration(root: Path, project_path: str, config: ProjectConfig | None) -> CheckpointModel:
+def _model_for_declaration(
+    root: Path,
+    project_path: str,
+    config: ProjectConfig | None,
+    capabilities_if_missing: Capabilities,
+) -> CheckpointModel:
     """Build the effective model for a root from its resolved declaration, if any."""
     if config is None:
-        model = base_checkpoint_model(root.name or _DEFAULT_PROJECT_SLUG)
+        model = base_checkpoint_model(root.name or _DEFAULT_PROJECT_SLUG, capabilities_if_missing)
     else:
         model = checkpoint_model_from_project_config(project_path, config, capabilities_from_project_config(config))
     if is_platform_home(root):
@@ -474,6 +568,7 @@ def _append_home_publication_binding(model: CheckpointModel) -> CheckpointModel:
         maintenance=model.maintenance,
         bindings=(*model.bindings, *attached),
         event_bindings=model.event_bindings,
+        activation_bindings=model.activation_bindings,
     )
 
 

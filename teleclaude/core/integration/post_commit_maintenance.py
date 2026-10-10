@@ -8,6 +8,7 @@ import sys
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -18,11 +19,11 @@ from teleclaude.checkpoint_model import (
     fill_event_activation,
     load_checkpoint_model,
     main_only_judgment_action_ids_for_files,
-    main_only_maintenance_action_ids_for_files,
+    main_only_maintenance_action_ids_for_files_and_activation,
 )
 from teleclaude.config.errors import ConfigLoadError, describe_load_error
 from teleclaude.config.secret_masking import declared_secret_values, mask_secret_values
-from teleclaude.constants import LOG_CHECK_ACTION_ID, MaintenanceAction
+from teleclaude.constants import LOG_CHECK_ACTION_ID, CheckpointActivation, MaintenanceAction
 from teleclaude.core.integration._maintenance_records import (
     EventActivation,
     MaintenanceActionRecord,
@@ -32,6 +33,7 @@ from teleclaude.core.integration._maintenance_records import (
     activation_key,
     commit_activation_key,
     event_file_path,
+    maintenance_drain_is_running,
     maintenance_drain_lock,
     read_record,
     read_records,
@@ -61,6 +63,7 @@ _GIT_DIFF_TREE_ARGUMENTS = ("--root", "--no-commit-id", _GIT_NAME_ONLY_ARGUMENT,
 _SYNC_ACTION_ID = "sync"
 _FULL_COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
 _MAIN_BRANCH_NAME = "main"
+_CANONICAL_MAIN_REFERENCE = "refs/heads/main"
 _GIT_HEAD_REFERENCE = "HEAD"
 _GIT_ORIGINAL_HEAD_REFERENCE = "ORIG_HEAD"
 _GIT_COUNT_FLAG = "--count"
@@ -84,6 +87,7 @@ _UNKNOWN_ACTION_EXIT_CODE = 127
 _SUCCESS_OUTCOME = "success"
 _REPLAY_COMMIT_COMMAND = "telec code maintenance retry --after-sha {after_sha} --action {action_id}"
 _REPLAY_EVENT_COMMAND = "telec code maintenance retry --event-id {event_id} --action {action_id}"
+ON_DEMAND_MAINTENANCE_COMMAND = "telec sync"
 _GIT_FAILURES = (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError, TypeError, ValueError)
 
 
@@ -93,6 +97,23 @@ class MaintenanceStatus:
 
     records: tuple[MaintenanceActionRecord, ...]
     judgment_marker: IntegratorJudgmentMarker | None
+
+
+class MaintenanceObservationState(StrEnum):
+    """Read-only observation of one action's outstanding maintenance state."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    FAILED = "failed"
+    ABSENT = "absent"
+
+
+@dataclass(frozen=True)
+class MaintenanceActionObservation:
+    """Published action state and its sanctioned recovery reference, when one applies."""
+
+    state: MaintenanceObservationState
+    recovery_reference: str | None = None
 
 
 def resolve_activation_range(project_root: Path, before_ref: str | None, after_ref: str) -> ActivationRange:
@@ -120,6 +141,12 @@ def resolve_post_merge_activation_range(project_root: Path) -> ActivationRange:
     )
 
 
+def current_canonical_main_revision(project_root: Path) -> str:
+    """Resolve the committed main tip from the owning checkout, including worktree callers."""
+    root = resolve_project_state_root(project_root)
+    return Repo(str(root)).commit(_CANONICAL_MAIN_REFERENCE).hexsha
+
+
 def activation_range_action_paths(
     project_root: Path,
     activation_range: ActivationRange,
@@ -136,7 +163,9 @@ def activation_range_action_paths(
         if not _is_literal_range(repository, activation_range):
             return None
         changed_files = _changed_files(repository, activation_range)
-        action_ids = main_only_maintenance_action_ids_for_files(list(changed_files), root)
+        action_ids = main_only_maintenance_action_ids_for_files_and_activation(
+            list(changed_files), CheckpointActivation.CANONICAL_MAIN, root
+        )
     except _GIT_FAILURES:
         return None
     return changed_files if action_id in action_ids else None
@@ -167,7 +196,11 @@ def record_activation(project_root: Path, activation_range: ActivationRange) -> 
         )
         return False
 
-    action_ids = tuple(main_only_maintenance_action_ids_for_files(list(changed_files), root))
+    action_ids = tuple(
+        main_only_maintenance_action_ids_for_files_and_activation(
+            list(changed_files), CheckpointActivation.CANONICAL_MAIN, root
+        )
+    )
     logger.info(
         _MAINTENANCE_RESOLVED_EVENT,
         before_sha=activation_range.before_sha,
@@ -317,6 +350,33 @@ def maintenance_status(project_root: Path) -> MaintenanceStatus:
         records=read_records(root),
         judgment_marker=read_integrator_judgment_marker(root),
     )
+
+
+def observe_maintenance_action(project_root: Path, action_id: str) -> MaintenanceActionObservation:
+    """Observe one canonical-main action without acquiring or advancing its drain."""
+    root = resolve_project_state_root(project_root)
+    records = tuple(
+        record
+        for record in maintenance_status(root).records
+        if record.action_id == action_id and isinstance(record.activation, ActivationRange)
+    )
+    active_records = tuple(
+        record for record in records if record.state in (MaintenanceRecordState.PENDING, MaintenanceRecordState.RUNNING)
+    )
+    if any(record.state is MaintenanceRecordState.RUNNING for record in active_records):
+        return MaintenanceActionObservation(MaintenanceObservationState.RUNNING)
+    if active_records:
+        return MaintenanceActionObservation(MaintenanceObservationState.PENDING)
+    if maintenance_drain_is_running(root):
+        return MaintenanceActionObservation(MaintenanceObservationState.RUNNING)
+    failures = tuple(record for record in records if record.state is MaintenanceRecordState.FAILED)
+    if failures:
+        latest_failure = max(failures, key=lambda record: record.queued_at)
+        return MaintenanceActionObservation(
+            MaintenanceObservationState.FAILED,
+            replay_command(latest_failure.activation, latest_failure.action_id),
+        )
+    return MaintenanceActionObservation(MaintenanceObservationState.ABSENT, ON_DEMAND_MAINTENANCE_COMMAND)
 
 
 def eligible_main_root(project_root: Path) -> Path | None:

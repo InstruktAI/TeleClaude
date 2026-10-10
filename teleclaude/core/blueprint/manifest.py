@@ -1,9 +1,8 @@
-"""The Blueprint freshness manifest — the signal consumers use to detect staleness.
+"""Read and validate the freshness manifest inside one published Blueprint generation.
 
-The manifest sits beside ``graph.json`` and records the ``origin/main`` commit the
-graph was built from, when it was generated, and whether generation succeeded. A
-consumer compares ``baseline_sha`` to the current main commit and treats a mismatch,
-a missing manifest, or a non-``ok`` status as stale.
+The manifest records the committed canonical-main revision the graph describes. A
+consumer pins the current-generation pointer once, then reads both files from that
+immutable directory so a pointer switch cannot pair generations.
 """
 
 from __future__ import annotations
@@ -12,6 +11,9 @@ import json
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+
+from teleclaude.core.blueprint._paths import PinnedBlueprintGeneration, pin_current_generation
+from teleclaude.core.blueprint.affected import load_graph
 
 
 class BlueprintStatus(StrEnum):
@@ -26,9 +28,8 @@ class FreshnessState(StrEnum):
 
     ``BEHIND`` means the graph was generated successfully from a known baseline
     that is not the current main, so the gap between the two is a nameable
-    commit range. ``UNESTABLISHED`` means that range cannot be named: no
-    manifest, a failed generation (whose manifest records the attempted
-    baseline, not the graph's), or a main commit that cannot be resolved.
+    commit range. ``UNESTABLISHED`` means that a usable generation cannot be
+    named: no complete manifest, an unsuccessful status, or an unresolved main.
     """
 
     FRESH = "fresh"
@@ -36,7 +37,7 @@ class FreshnessState(StrEnum):
     UNESTABLISHED = "unestablished"
 
 
-_REASON_MANIFEST_MISSING = "blueprint manifest missing — generate it via a successful integrate"
+_REASON_MANIFEST_MISSING = "no complete Blueprint generation is published"
 _REASON_GENERATION_STATUS = "blueprint generation status is '{status}'"
 _REASON_MAIN_UNRESOLVED = "current main commit could not be resolved"
 _REASON_BEHIND = "blueprint baseline {baseline} is behind main {main}"
@@ -91,6 +92,22 @@ def read_manifest(path: Path) -> BlueprintManifest | None:
     except ValueError:
         return None
     return BlueprintManifest(baseline_sha=baseline, generated_at=generated, status=status)
+
+
+def read_pinned_manifest(generation: PinnedBlueprintGeneration) -> BlueprintManifest | None:
+    """Read the manifest under the same generation pointer a consumer already pinned."""
+    return read_manifest(generation.manifest)
+
+
+def read_published_generation(start: str | Path) -> tuple[PinnedBlueprintGeneration, BlueprintManifest] | None:
+    """Pin and validate one complete published graph/manifest pair."""
+    generation = pin_current_generation(start)
+    if generation is None:
+        return None
+    manifest = read_pinned_manifest(generation)
+    if manifest is None or manifest.status is not BlueprintStatus.OK or load_graph(generation.graph) is None:
+        return None
+    return generation, manifest
 
 
 def evaluate_freshness(manifest: BlueprintManifest | None, *, current_main_sha: str | None) -> Freshness:

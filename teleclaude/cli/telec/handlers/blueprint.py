@@ -4,18 +4,9 @@ from __future__ import annotations
 
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.surface import CODE_BLUEPRINT_AFFECTED
-from teleclaude.core.blueprint import (
-    FreshnessState,
-    compute_affected,
-    dispatch_refresh,
-    evaluate_freshness,
-    graph_path,
-    load_graph,
-    manifest_path,
-    read_manifest,
-)
-from teleclaude.core.blueprint.affected import AffectedResult
-from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from teleclaude.core.blueprint.affected import AffectedResult, compute_affected, load_graph
+from teleclaude.core.blueprint.query import BlueprintQueryState, query_current_blueprint
+from teleclaude.core.integration.post_commit_maintenance import ON_DEMAND_MAINTENANCE_COMMAND
 from teleclaude.project_root import resolve_invocation_roots
 
 __all__ = ["handle_code_blueprint"]
@@ -23,8 +14,8 @@ __all__ = ["handle_code_blueprint"]
 _BLUEPRINT_USAGE = "Usage: telec code blueprint affected <changed-files>"
 _AFFECTED_USAGE = "Usage: telec code blueprint affected <changed-files>"
 _FALLBACK_PREFIX = "blueprint unavailable — fall back to manual exploration"
-_STALE_HEADER = "blueprint stale — answering from the existing graph: {reason}"
-_FALLBACK_WITH_REASON = _FALLBACK_PREFIX + ": {reason}"
+_RECOVERY_LINE = "Recover with: {reference}"
+_UNAVAILABLE_RESULT_TEMPLATE = "{prefix}: {reason}"
 
 
 def handle_code_blueprint(args: list[str]) -> None:
@@ -37,21 +28,6 @@ def handle_code_blueprint(args: list[str]) -> None:
         print(_BLUEPRINT_USAGE)
         raise SystemExit(1)
     _handle_blueprint_affected(args[1:])
-
-
-def _resolve_main_sha(state_root: str) -> str | None:
-    # Resolve origin/main, the ref class the integrator stamps the Blueprint
-    # baseline_sha from (see local/projects/teleclaude/spec/codebase-blueprint). Comparing against
-    # local main instead would report a current Blueprint as stale whenever local
-    # main is ahead — the steady state, since doc-only commits land on local main
-    # but are not pushed synchronously. When origin/main cannot be resolved (fresh
-    # clone before fetch, or no remote), return None so the caller surfaces the
-    # manual-exploration fallback and preserves the agent workflow rather than
-    # crashing.
-    try:
-        return Repo(state_root).commit("origin/main").hexsha
-    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, BadName, ValueError):
-        return None
 
 
 def _format_result(result: AffectedResult, *, changed_count: int) -> str:
@@ -80,27 +56,17 @@ def _handle_blueprint_affected(args: list[str]) -> None:
         raise SystemExit(1)
 
     state_root = resolve_invocation_roots().require_project_root()
-    manifest = read_manifest(manifest_path(state_root))
-    main_sha = _resolve_main_sha(str(state_root))
-    freshness = evaluate_freshness(manifest, current_main_sha=main_sha)
-    if freshness.state is not FreshnessState.FRESH:
-        # A resolvable-but-stale baseline dispatches its own detached refresh —
-        # see sdlc/spec/codebase-blueprint#UC-BP1. An unresolved
-        # origin/main carries no main commit, so the dispatch declines it.
-        dispatch_refresh(state_root, main_sha=main_sha)
-    if freshness.state is FreshnessState.UNESTABLISHED:
-        # No nameable commit range separates the graph from main, so its
-        # dependents cannot be bounded: surface the manual-exploration fallback.
-        print(_FALLBACK_WITH_REASON.format(reason=freshness.reason))
+    query = query_current_blueprint(state_root)
+    if query.state is not BlueprintQueryState.FRESH or query.generation is None:
+        print(_UNAVAILABLE_RESULT_TEMPLATE.format(prefix=_FALLBACK_PREFIX, reason=query.reason))
+        if query.recovery_reference:
+            print(_RECOVERY_LINE.format(reference=query.recovery_reference))
         return
-    if freshness.state is FreshnessState.BEHIND:
-        # A stale graph still answers, headed by the baseline and main commits so
-        # the caller can diff the range when its own files may fall inside it.
-        print(_STALE_HEADER.format(reason=freshness.reason))
 
-    graph = load_graph(graph_path(state_root))
+    graph = load_graph(query.generation.graph)
     if graph is None:
         print(f"{_FALLBACK_PREFIX}: blueprint graph could not be read")
+        print(_RECOVERY_LINE.format(reference=ON_DEMAND_MAINTENANCE_COMMAND))
         return
 
     result = compute_affected(graph, changed_files, repo_root=state_root)

@@ -272,6 +272,22 @@ def remove_record(path: Path) -> None:
             directory.rmdir()
 
 
+def maintenance_drain_is_running(project_root: str | Path) -> bool:
+    """Observe the stable drain lock without waiting or creating a lock file."""
+    lock_path = maintenance_directory(project_root) / _DRAIN_LOCK_FILENAME
+    if not lock_path.exists():
+        return False
+    with lock_path.open(_LOCK_MODE, encoding=_TEXT_ENCODING) as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        try:
+            return False
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 @contextmanager
 def maintenance_drain_lock(project_root: str | Path, on_contention: Callable[[], None] | None = None) -> Iterator[None]:
     """Hold the stable OS lock that serializes all drain state transitions.

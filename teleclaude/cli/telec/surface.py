@@ -1694,9 +1694,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "Maps each changed file to its symbols, runs a transitive reverse "
                             "dependency traversal over the Blueprint, and prints the union of "
                             "dependents with file:line.",
-                            "When the Blueprint is missing or stale (manifest baseline != current "
-                            "main), prints a fallback notice and exits 0 — fall back to manual "
-                            "exploration; blast-radius is never silently skipped.",
+                            "Waits briefly for recorded Blueprint maintenance when committed main "
+                            "has advanced. If no complete generation matching committed main can "
+                            "be established, prints unavailability and its recovery command; it "
+                            "never returns stale dependents as a current answer.",
                         ],
                         examples=[
                             "telec code blueprint affected teleclaude/core/foo.py teleclaude/api/bar.py",
