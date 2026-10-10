@@ -374,8 +374,9 @@ And when Discord cannot conclusively list the forum's threads, the sweep deletes
 - **The single session-ended type is retired, not renamed.** Endings are
   reported only under the kinded types, so a subscriber selects one kind or
   every ending through the shared prefix. The lifecycle runner's consumer also
-  accepts the retired name for as long as a computer can still have emitted it,
-  so an ending reported under it just before an upgrade still wakes the runner.
+  accepts the retired name until no computer emits it and no entry under it
+  remains in the platform event stream, so an ending reported under it before
+  an upgrade still wakes the runner whenever the consumer reads it.
   No other consumer is affected across versions: procedure activation acts only
   on endings its own computer emitted, and no published procedure subscribes to
   the retired name. An older computer keeps emitting that name until it is
