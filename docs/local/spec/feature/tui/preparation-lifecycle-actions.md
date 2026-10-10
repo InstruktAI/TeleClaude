@@ -47,11 +47,22 @@ the claim, terminates the operation _successfully_ and carries the refusal in
 the operation's result. So does every other lifecycle operation that declines
 the work it was handed.
 
+<!-- planned-change:quiet-technical-faults -->
+
 The view therefore follows every operation it submits to its terminal state and
 reports what it finds. Any terminal refusal or failure — a non-successful
 terminal state, a reported error, or a successful termination whose result
 records a refusal — reaches the operator at error severity carrying the outcome
 the operation reported, never as a success message.
+<!-- change:quiet-technical-faults -->
+
+The view follows every operation it submits to its terminal state. A deliberately
+published work refusal reaches the operator at error severity with its work
+explanation, whether the operation declined successfully or ended in failure.
+Technical faults and observation failures retain their diagnostics and recorded
+outcomes under the work-feedback boundary
+(`local/projects/teleclaude/spec/feature/presentation/work-feedback`).
+<!-- /planned-change:quiet-technical-faults -->
 
 **The view decides nothing about the lifecycle.** A keypress is a request to
 the workflow, never a verdict. Whether a todo may be prepared or start work, and
@@ -62,6 +73,8 @@ read back as state, per `sdlc/principle/architecture-boundary-purity`.
 ## Canonical fields
 
 ### Use cases
+
+<!-- planned-change:quiet-technical-faults -->
 
 #### UC-PLA-1: Start-work targets the cursor's project and reports the operation's real outcome
 
@@ -75,6 +88,22 @@ When any lifecycle operation the view submitted reaches a terminal state reporti
 Then the operator is notified at error severity
 And the notification carries the outcome the operation reported
 ```
+
+<!-- change:quiet-technical-faults -->
+
+#### UC-PLA-1: Start-work targets the cursor's project and reports its declared work refusal
+
+```gherkin
+Given a human operator at the TUI sees two projects with todos that share a slug
+And the todo outside the cursor's project is soft-removed
+And the cursor sits on the live todo under its own project header
+When the operator starts work on the cursor's row
+Then the lifecycle operation is submitted against the cursor's project
+When an operation the view submitted terminates with a deliberately published work refusal
+Then the operator is notified at error severity with that work explanation
+```
+
+<!-- /planned-change:quiet-technical-faults -->
 
 #### UC-PLA-3: Opening a trashed todo's artifact shows that removed todo's own content, read-only
 
