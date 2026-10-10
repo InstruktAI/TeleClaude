@@ -59,7 +59,17 @@ stateDiagram-v2
 
 - **Shutdown Ownership**: One daemon-owned admission and drain boundary implements accepted-work settlement (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`). Finite accepted work retains its task, terminal and storage ownership through durable settlement, preserving the no-interference invariant (`general/principle/trust-and-guardrails`).
 - **Continuation Ownership**: Accepted operation continuations carry their existing ownership through in-process dispatch and self-HTTP. A completion is matched to its existing operation, bootstrap or input-delivery owner; ambient daemon credentials do not establish prior admission.
+
+<!-- planned-change:restart-never-strands-daemon -->
+
 - **Prepared Instance**: A process remains alive and closed to new business work after preparation completes. The health observation identifies protocol support, that process instance and its preparation phase; liveness alone is not preparation evidence.
+
+<!-- change:restart-never-strands-daemon -->
+
+- **Prepared Instance**: A process stays closed to new business work after preparation completes and exits within a bounded termination grace, terminated by its lifecycle caller or, absent that, by its own ordinary shutdown. The health observation identifies protocol support, that process instance and its preparation phase; liveness alone is not preparation evidence.
+
+<!-- /planned-change:restart-never-strands-daemon -->
+
 - **Existing Durability Owners**: Operation receipts, startup handovers and inbound-delivery records remain the durable authorities. The drain owner tracks their live execution without creating a second durable operation ledger.
 
 ## Primary flows
@@ -167,6 +177,8 @@ continue. The task registry and session bootstrap's background-task set particip
 in the same drain; neither set's membership alone classifies all of its tasks as
 finite business work.
 
+<!-- planned-change:restart-never-strands-daemon -->
+
 The preparation signal is installed before support is advertised. The host helper
 reads the current process instance before signaling and immediately before the
 service-manager action. Its bounded observation uses one shared runtime budget;
@@ -174,6 +186,24 @@ expiration leaves the process draining and reports incomplete preparation. A new
 instance, missing capability or unreadable observation fails preparation. An
 external crash between the final observation and a manager's label-addressed action
 remains an abrupt-loss case.
+
+<!-- change:restart-never-strands-daemon -->
+
+The preparation signal is installed before support is advertised. The host helper
+reads the current process instance before signaling and immediately before the
+service-manager action. Its bounded observation uses one shared runtime budget;
+expiration leaves the process draining and reports incomplete preparation. A new
+instance, missing capability or unreadable observation fails preparation. An
+external crash between the final observation and a manager's label-addressed action
+remains an abrupt-loss case.
+
+The daemon does not depend on the host helper to finish what preparation started.
+Once drained, it holds a bounded termination grace for the helper's termination;
+when none arrives — the helper's observation expired, the helper crashed, or it was
+never coming back — the daemon runs its ordinary shutdown and exits, and the
+service manager's relaunch policy brings the service back on its installed code.
+
+<!-- /planned-change:restart-never-strands-daemon -->
 
 The terminal effect unit starts before its pre-effect durability mark and retains
 ownership through paste, submission and durable outcome recording. Its current

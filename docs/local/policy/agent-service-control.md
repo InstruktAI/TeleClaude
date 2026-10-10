@@ -19,6 +19,8 @@ visibility: 'public'
 
 ### Graceful lifecycle operations
 
+<!-- planned-change:restart-never-strands-daemon -->
+
 - **Ordinary stop and restart prepare the observed daemon before replacing it.**
   The lifecycle targets implement the accepted-work settlement contract
   (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`). They
@@ -27,6 +29,22 @@ visibility: 'public'
   timeout reports incomplete preparation and leaves that service in its explicit
   draining state; another call can finish the operation. Forced termination
   remains an explicitly selected recovery action through `make kill`.
+
+<!-- change:restart-never-strands-daemon -->
+
+- **Ordinary stop and restart prepare the observed daemon before replacing it.**
+  The lifecycle targets implement the accepted-work settlement contract
+  (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`). They
+  require positive preparation support and a drained acknowledgment belonging to
+  the same process instance before the service-manager action. An observation
+  timeout reports incomplete preparation and leaves that service in its explicit
+  draining state; once its accepted work settles, the daemon completes the
+  shutdown itself and the service manager relaunches it, so no further call is
+  owed. Forced termination remains an explicitly selected recovery action
+  through `make kill`.
+
+<!-- /planned-change:restart-never-strands-daemon -->
+
 - **Initial activation of a legacy runtime is explicit.** A daemon without the
   preparation protocol is reported as unsupported by ordinary stop/restart.
   The initial protocol activation uses an explicitly selected legacy activation

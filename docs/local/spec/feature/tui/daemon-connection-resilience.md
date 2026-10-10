@@ -32,3 +32,17 @@ When the daemon closes the connection before sending a response
 Then the request failure surfaces as the client's documented API error
 And the TUI keeps running and retries the refresh
 ```
+
+<!-- planned:restart-never-strands-daemon -->
+
+#### UC-TDR2: A restarting daemon's refusal reads as a restart, not a failed action
+
+```gherkin
+Given the TUI has issued a state-changing request such as closing a session
+When the daemon answers with a retryable shutdown refusal
+Then the operator is told the daemon is restarting and that the action was not performed
+And the refusal's machine fields are not shown to the operator
+And the TUI stays alive and the operator can repeat the action once the daemon accepts work
+```
+
+<!-- /planned:restart-never-strands-daemon -->

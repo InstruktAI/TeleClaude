@@ -339,6 +339,8 @@ And its durable outcome is settled before its storage, locks or completion depen
 And shutdown does not cancel an active external effect and leave it running after its owner exits
 ```
 
+<!-- planned-change:restart-never-strands-daemon -->
+
 #### UC-DL12: A preparation timeout preserves unfinished work
 
 ```gherkin
@@ -350,6 +352,22 @@ And the running daemon retains its draining state and the unfinished work's requ
 And the host service is neither forcibly terminated nor replaced by that request
 And retrying preparation observes the same process until it settles or is lost externally
 ```
+
+<!-- change:restart-never-strands-daemon -->
+
+#### UC-DL12: A preparation timeout preserves unfinished work and the shutdown still completes
+
+```gherkin
+Given an operator or commit-boundary maintenance requests ordinary stop or restart
+And acknowledged work has not settled within the preparation observation window
+When that window expires
+Then the request reports that preparation did not complete
+And the running daemon retains its draining state and the unfinished work's required resources
+And the host service is neither forcibly terminated nor replaced by that request
+And once that work settles the prepared daemon completes its own shutdown as UC-DL16 states
+```
+
+<!-- /planned-change:restart-never-strands-daemon -->
 
 #### UC-DL13: Preparation belongs to the observed process
 
@@ -373,6 +391,30 @@ And the message names no machine fields from the refusal body
 And a command that fails for any other reason carries no instruction to run it again
 ```
 
+<!-- planned:restart-never-strands-daemon -->
+
+#### UC-DL15: A draining daemon is reported as draining
+
+```gherkin
+Given the running daemon has closed admission for preparation
+When an agent or operator checks daemon health
+Then the health report names the preparation phase, when preparation began, and the accepted work the daemon still holds
+And a daemon whose admission is closed is reported degraded, never healthy
+```
+
+#### UC-DL16: A prepared daemon completes its own shutdown
+
+```gherkin
+Given the running daemon has reached the drained phase
+When no termination from its lifecycle caller arrives within the bounded termination grace
+Then the daemon completes its ordinary shutdown and exits on its own
+And the service manager relaunches the service on its installed code
+And admission never reopens in the prepared process before it exits
+And a caller that terminates the daemon within the grace sees the ordinary stop or restart
+```
+
+<!-- /planned:restart-never-strands-daemon -->
+
 ### Graceful admission and settlement
 
 The service owns admission and draining across API, adapter, remote-command and
@@ -382,12 +424,27 @@ Completion ingress is admitted only for work that already holds that ownership;
 daemon credentials alone confer no exemption. A refusal leaves an unaccepted
 command either unconsumed or explicitly answered as refused.
 
+<!-- planned-change:restart-never-strands-daemon -->
+
 The preparation observation window bounds the host caller's wait. Its expiry
 neither releases a mutating worker's ownership nor turns an unfinished action into
 success. The running service remains draining until acknowledged work reaches a
 settled boundary. Existing restart recovery remains authoritative for a forced
 termination or abrupt loss; an unfinished operation is not described as resumable
 merely because it has a durable receipt.
+
+<!-- change:restart-never-strands-daemon -->
+
+The preparation observation window bounds the host caller's wait. Its expiry
+neither releases a mutating worker's ownership nor turns an unfinished action into
+success. The running service remains draining until acknowledged work reaches a
+settled boundary, and the drained process then completes its shutdown whether or
+not its caller is still observing it: a prepared process never stays alive closed
+to business work. Existing restart recovery remains authoritative for a forced
+termination or abrupt loss; an unfinished operation is not described as resumable
+merely because it has a durable receipt.
+
+<!-- /planned-change:restart-never-strands-daemon -->
 
 This ownership boundary preserves the no-interference invariant
 (`general/principle/trust-and-guardrails`); recorded outcomes retain their
@@ -410,4 +467,11 @@ evidence requirement (`general/principle/grounding`).
 - **Slow startup is a warning, not a failure.** Startup elapsed time at or beyond the slow-startup threshold (30s) emits a warning; the warm cache also emits a per-stage breakdown when warm takes 5s or more. Neither aborts the boot.
 - **Background workers are started outside the lifecycle.** Lifecycle startup does NOT launch periodic cleanup, poller watch, the hook-outbox worker, the mirror worker, or the v2 bridges — those are launched by the service's start sequence after lifecycle startup returns. The split is deliberate: lifecycle owns the deterministic boot prefix; the service owns the steady-state worker set.
 - **Chiptunes worker survives service restart, within bounds.** Disconnecting from the chiptunes manager on shutdown does NOT stop the worker process; on next boot the service reattaches when the worker's control socket is reachable, treats an alive-but-unreachable worker as an orphan and terminates it, and a worker with no daemon client past the idle-lease window exits on its own. Music continuity is decoupled from service lifecycle, bounded by control-socket reachability and the idle lease.
+
+<!-- planned:restart-never-strands-daemon -->
+
+- **A timed-out stop ends in a relaunched daemon.** The service manager relaunches a daemon that completes its own shutdown, and the prepared process carries no record of whether its caller asked for a stop or a restart. Keeping the daemon down after a stop whose preparation timed out takes another `make stop` once it is back.
+
+<!-- /planned:restart-never-strands-daemon -->
+
 - **Shutdown is best-effort throughout.** Every shutdown step is wrapped so a single failure (e.g., an adapter stop that raises) does not prevent later steps (e.g., storage close) from running. The single-instance lock is released last regardless of upstream errors.
