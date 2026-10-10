@@ -48,6 +48,18 @@ TeleClaudeNext repository.
   Adapters carry identifiers, and per-computer adapters look up sessions by
   origin metadata; they hold no routing rules.
 
+<!-- planned:help-desk-discord-categories -->
+
+- **Published contract — hosted desks:** the desks this computer hosts, each
+  with its kind, slug and entry identifier, together with the desk homes whose
+  declaration could not be read. A home whose declaration fails to load is
+  reported as unreadable, never as a home without a desk, so a consumer can tell
+  a desk that stopped being hosted from one whose home could not be read. A
+  non-master computer hosts no desks. Consumers act on the answer as given and
+  never re-derive hosting from declarations or folders themselves.
+
+<!-- /planned:help-desk-discord-categories -->
+
 - **Does not own:** provider transport or presentation, caller-identity policy,
   todo workflow, or durable historical projections.
 - **Owns (voice focus):** the association between one identified human and the

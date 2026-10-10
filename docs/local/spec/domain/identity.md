@@ -99,7 +99,7 @@ TeleClaudeNext.
 <!-- planned:help-desk-discord-categories -->
 
 - **Also owns:** a help desk's scope — the people a desk belongs to, who see its
-  operator surface and receive its escalations. A company desk's scope is that
+  operator surface. A company desk's scope is that
   company's whole roster, members and admins alike. A company-owned project
   desk's scope is the owning company's whole roster. A person-owned project
   desk's scope is the owning person. Every desk's scope also includes the
@@ -108,10 +108,9 @@ TeleClaudeNext.
   them. Desk scope is a separate answer from reach: for a company-owned project
   desk it admits company members that project reach does not. Because identity
   owns both answers, no consumer relaxes reach. A long-lived consumer holds a
-  resolved desk scope only until a declaration identity reads changes. The
-  consumers are the help desk's Discord surface
-  (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`)
-  and its escalation.
+  resolved desk scope only until a declaration identity reads changes. Its
+  consumer is the help desk's Discord surface
+  (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`).
 
 <!-- /planned:help-desk-discord-categories -->
 

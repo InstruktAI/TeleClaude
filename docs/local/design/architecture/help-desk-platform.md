@@ -342,7 +342,7 @@ Company and project desk sessions and their escalations appear in no forum of th
 
 <!-- change:help-desk-discord-categories -->
 
-**Discord surface (per desk):** every hosted desk has its own category, `Help Desk - <kind>-<slug>`, with a `customer-sessions` forum mirroring each of its sessions, an `escalations` forum holding its escalation threads, and a `team-chat` channel, all visible only to the desk's scope through per-person permission overwrites (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`). No desk session or escalation appears in any other forum of the guild.
+**Discord surface (per desk):** every hosted desk has its own category, `Help Desk - <kind>-<slug>`, with a `customer-sessions` forum mirroring each of its sessions, an `escalations` forum for its escalation threads, and a `team-chat` channel, all visible only to the desk's scope through per-person permission overwrites (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`). No desk session or escalation appears in any other forum of the guild.
 
 <!-- /planned-change:help-desk-discord-categories -->
 
@@ -880,14 +880,14 @@ sequenceDiagram
     Note over Master: At startup, on a declaration change, and on a project registry change
     Notice->>Master: A declaration changed
     Master->>Registry: Which desks does this computer host?
-    Registry-->>Master: The hosted desks, or an inconclusive reading
+    Registry-->>Master: The hosted desks, and the desk homes it could not read
     loop Each hosted desk
         Master->>Scope: Who is in this desk's scope?
         Scope-->>Master: People, each with any bound Discord account
         Master->>Guild: Verify or create the category and its three channels
         Master->>Guild: Make each channel's per-person grants match the scope
     end
-    Master->>Guild: Remove the categories of desks no longer hosted, only after a conclusive reading
+    Master->>Guild: Remove the categories of desks no longer hosted, never of a home it could not read
 ```
 
 Every pass reads the current desks and scopes in full, so changes that arrive

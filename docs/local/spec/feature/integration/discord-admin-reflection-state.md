@@ -40,7 +40,7 @@ reconciled by the master alone. It holds three channels:
 | Channel                     | People in the desk's scope                | The bot                                               |
 | --------------------------- | ----------------------------------------- | ----------------------------------------------------- |
 | `customer-sessions` (forum) | read every thread; post nothing           | mirrors each session of that desk into its own thread |
-| `escalations` (forum)       | read threads and reply in them; open none | opens the threads the desk's escalations need         |
+| `escalations` (forum)       | read threads and reply in them; open none | holds the forum for the desk's escalation threads     |
 | `team-chat` (text channel)  | read and post                             | grants access only; reads and answers nothing         |
 
 A desk's category is visible only to the people in its scope, as identity
@@ -52,8 +52,9 @@ desk's scope includes the platform's admins. A person is in Discord scope only
 through a bound Discord account. The master keeps every overwrite in step with
 the desk's scope, and re-syncs them when a declaration the scope or a Discord
 binding derives from changes. A desk that stops being hosted loses its
-category. Removal follows only a conclusive reading of the hosted desks: a desk
-whose home's configuration fails to load keeps its category. No session at a
+category. Removal follows only the endpoint registry's hosted-desk answer
+(`local/projects/teleclaude/spec/domain/agent_runtime`): a desk whose home that
+answer reports as unreadable keeps its category. No session at a
 desk is reflected into any other forum of the guild — not the all-sessions
 forum and not a project's own forum — so no desk's customer conversation is
 visible outside its scope, and the guild holds no shared help-desk category. A
@@ -523,5 +524,9 @@ Then the desk's category and its channels remain
   Administrator permission, and lets them post there, whatever a desk's
   per-person grants say. A desk's category reaches only its scope while those
   powers rest with platform admins.
+- A desk's escalations forum is provisioned with its grants, but no escalation
+  opens a thread in it and nothing in it is relayed. Escalations reach people as
+  `local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`
+  states.
 
 <!-- /planned:help-desk-discord-categories -->

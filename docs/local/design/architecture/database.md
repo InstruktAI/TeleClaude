@@ -176,6 +176,8 @@ conclusive provider not-found clears or replaces a record, and an inconclusive
 lookup leaves the record untouched. The contract the table serves is
 `local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`.
 
+<!-- planned-change:help-desk-discord-categories -->
+
 ### Shared Discord child ownership
 
 ```mermaid
@@ -277,6 +279,10 @@ inventory, capability disagreement, or repository failure resets or freezes the
 candidate without provider mutation. The master may delete the child only after
 the same candidate survives two consecutive complete epochs; restart and
 concurrent passes therefore cannot erase or fabricate the proof.
+
+<!-- change:help-desk-discord-categories -->
+
+<!-- /planned-change:help-desk-discord-categories -->
 
 The daemon owns `voice_transcriptions`; it is the single source of truth for
 the durability requirement in `@prd#scope` (a transcription in progress at
