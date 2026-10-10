@@ -218,6 +218,34 @@ A commit-boundary activation omits the `--home {home}` pair. The publication
 action publishes a range's owed homes when it receives a range, and rebuilds the
 invocation home and the homes nested beneath it when it receives a home.
 
+<!-- planned:checkpoint-event-bindings -->
+
+### Invariant 30 — Event bindings
+
+A binding's trigger is either a path `scope` or a list of `events`, never both.
+An event binding names exact event types or group patterns resolved by the
+platform's shared event-type matcher, and owes only maintenance-registry
+actions: a checkpoint-registry id in an event binding is rejected when the
+project's configuration is validated, because no agent is present to judge it.
+
+Event bindings are consumed by one more automated consumer beside the commit
+boundary (`local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`).
+It selects the bindings of the project that is an event's home, on every
+computer holding that project's canonical checkout, from the same merged
+`(registry, bindings)` model as every other consumer (Invariant 25), and hands
+the owed actions to the commit-boundary executor as an event activation. The
+agent-stop engine, the commit boundary and on-demand runs never select an event
+binding, and the event consumer never selects a path binding.
+
+An event activation fills `{event_file}`, `{event_type}` and `{event_id}`; the
+commit-range placeholders are omitted. TeleClaude's overlay declares the
+`self-update` maintenance action and binds `github.push` and `github.release`
+to it; the action converges the installation to its channel
+(`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`)
+from the event file it receives.
+
+<!-- /planned:checkpoint-event-bindings -->
+
 ## Primary flows
 
 ### 0. Context-aware checkpoint builder

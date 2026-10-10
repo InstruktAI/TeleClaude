@@ -23,11 +23,23 @@ The ingress reads the event type from a verified delivery and relays it to
 the cluster as the platform event `github.<event>`, whose origin is that
 project, whose subject is the project's GitHub source, and whose data is the
 JSON document the delivery carries, in whichever content type GitHub sent it.
+<!-- planned-change:checkpoint-event-bindings -->
+
 Each computer turns the relayed event back into the hook event above, stamped with the relayed
 event's timestamp, and delivers it to its own hook dispatcher. The
 downstream consumer there is the deployment-update handler (matched via a
 programmatic contract for events `push` / `release`), which uses the
 normalized event to trigger version-fanout logic.
+<!-- change:checkpoint-event-bindings -->
+
+Each computer turns the relayed event back into the hook event above, stamped with the relayed
+event's timestamp, and delivers it to its own hook dispatcher. A project
+that reacts to its own GitHub events deterministically binds their types to
+its maintenance actions
+(`local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`);
+the platform keeps itself current through TeleClaude's own binding of
+`github.push` and `github.release`.
+<!-- /planned-change:checkpoint-event-bindings -->
 
 ## Canonical fields
 
@@ -97,6 +109,8 @@ And properties.repo is null
 Similarly for sender.login when sender is not an object
 ```
 
+<!-- planned-change:checkpoint-event-bindings -->
+
 #### UC-GH7: Production routing via deployment-github contract
 
 ```gherkin
@@ -106,6 +120,19 @@ Then the matcher selects the deployment-github contract
 And the deployment-event handler is invoked
 And the deployment update flow runs (see deployment-version-fanout)
 ```
+
+<!-- change:checkpoint-event-bindings -->
+
+#### UC-GH7: Only the platform's own pushes and releases keep installations current
+
+```gherkin
+Given the platform's own repository binds its pushes and releases to the action that keeps an installation current
+When a push to the platform's repository is relayed to the cluster
+Then every computer holding the platform's checkout performs that action
+And a push to any other project's repository does not perform it
+```
+
+<!-- /planned-change:checkpoint-event-bindings -->
 
 #### UC-GH8: A verified delivery is relayed as a GitHub platform event about its project
 
@@ -126,6 +153,9 @@ And every computer's hook dispatcher receives the normalized push event once
   `inbound-webhook-endpoint-framework`.
 - Relay and per-computer delivery are owned by
   `single-ingress-webhook-termination`.
+
+<!-- planned-change:checkpoint-event-bindings -->
+
 - Downstream deployment-update handler lives in the deployment
   subsystem, a separate component that `integration` calls via the
   contract dispatcher.
@@ -134,6 +164,13 @@ And every computer's hook dispatcher receives the normalized push event once
   source="deployment" / type="version_available" (a different event
   family, produced by the deployment-event handler and re-published on
   the cross-host channel).
+
+<!-- change:checkpoint-event-bindings -->
+
+- Deterministic reactions to GitHub events are a project's own event
+  bindings, performed by `event-bound-maintenance`.
+
+<!-- /planned-change:checkpoint-event-bindings -->
 
 ## Known caveats
 
@@ -148,10 +185,17 @@ And every computer's hook dispatcher receives the normalized push event once
   says `push` but body has no `ref`) is preserved as-is in the emitted
   event.
 - A GitHub endpoint exists only for a project that declares a GitHub
-  source; this repository declares none.
+  source.
+
+<!-- planned-change:checkpoint-event-bindings -->
+
 - The `deployment-github` contract matches every relayed GitHub push or
   release, whichever project declared the source. Declaring a GitHub
   source for any project therefore reaches the deployment handler.
+
+<!-- change:checkpoint-event-bindings -->
+<!-- /planned-change:checkpoint-event-bindings -->
+
 - The hook event rebuilt on each computer names the repository, not the
   project that declared the source, so no contract can select GitHub
   events by project.

@@ -84,6 +84,20 @@ Then convergence happens without any operator command
 And the only operator-visible signal in the normal case is that the installation is now on the new version
 ```
 
+<!-- planned:checkpoint-event-bindings -->
+
+#### UC-CSU-7: Another project's changes never update the platform
+
+```gherkin
+Given another project relays the changes and releases of its own repository to the platform
+And an installation is enrolled on any channel
+When a change lands on that project's main line or that project publishes a release
+Then the installation does NOT converge
+And only a change or release of the platform's own repository can start convergence
+```
+
+<!-- /planned:checkpoint-event-bindings -->
+
 ### Cross-context references
 
 - Owned by `reconciliation` (`@docs/local/spec/domain/reconciliation.md`); the version-convergence concern of that context.
