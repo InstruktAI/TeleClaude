@@ -10,13 +10,20 @@ description: Durable per-session control-payload delivery into running agent tur
 
 The control-delivery surface carries platform-authored control payloads —
 reminder firings and other non-conversational control traffic — into an agent
-session. A payload for a session with a running turn is delivered inside that
-turn at the next natural boundary of the agent's work, with no terminal write.
-A session with no running turn is woken so that a boundary exists, and delivery
-then happens through that boundary like any other; only that minimal wake
-trigger reaches the terminal, never the control payload itself. Handing a
-payload to this surface is delivery from the producer's perspective: the
-producer neither tracks nor retries beyond the handoff.
+session. A payload reaches the agent at the first moment the session offers:
+the next natural boundary of the agent's work while one is certain to follow,
+otherwise a wake that produces one. A pending payload never waits on input
+that is not certain to arrive.
+
+Inside a running turn the payload is delivered at that turn's next boundary,
+with no terminal write. When the platform holds a pending payload and knows no
+boundary is coming — the producer observes no running turn, or the platform
+records the end of a turn while a payload is still pending — the session is
+woken so that a boundary exists, and delivery then happens through that
+boundary like any other; only that minimal wake trigger reaches the terminal,
+never the control payload itself. Handing a payload to this surface is delivery
+from the producer's perspective: the producer neither tracks nor retries beyond
+the handoff.
 
 Delivery boundaries for one session are ordered by the agent runtime, and this
 surface relies on that contract rather than arbitrating between simultaneous
@@ -70,8 +77,8 @@ And the handoff completes before the session goes idle
 #### UC-CDL3: An idle session is woken so a delivery boundary exists
 
 ```gherkin
-Given a control payload is pending for a session with no running turn
-When the platform detects that no delivery boundary is coming
+Given a control payload is handed to this surface for a session with no running turn
+When the payload is recorded pending
 Then the session is woken by a minimal trigger typed through the existing session-input surface
 And that trigger is the only content reaching the terminal, never the control payload
 And the payload is delivered at the boundary that waking produces
@@ -157,6 +164,19 @@ And the newer payload remains pending in its own enqueue position
 And a producer that declares no supersession keeps every payload pending
 ```
 
+#### UC-CDL11: A payload that lands while a turn is ending is woken in at the turn's end
+
+```gherkin
+Given a session whose turn has passed its last delivery boundary
+And the platform has not yet recorded that the turn ended
+When a control payload is handed to this surface for that session
+And the platform then records the end of the turn
+Then the session is woken by the minimal trigger as soon as the turn end is recorded
+And the payload is delivered at the boundary that waking produces
+And no input from a human or another session is needed for it to arrive
+And a payload still pending when a turn ends in a provider failure or a native idle is woken in the same way
+```
+
 ## Known caveats
 
 - This surface's contract ends at its own boundary: a semantic payload rendered
@@ -176,6 +196,14 @@ And a producer that declares no supersession keeps every payload pending
   session interrupt, not a control delivery.
 - Waking into an occupied composer is governed by the session-input surface's
   occupancy contract, not by this surface.
+- The platform's view of whether a turn is running trails the runtime: a turn
+  end reaches the platform only after the runtime's last boundary has already
+  run. A payload handed off in that interval sees a running turn and is not
+  woken by its producer; the wake at the recorded turn end delivers it. Each
+  side reads the other's write after making its own, so one of them always
+  wakes the session. Both may wake it for the same payload; the wake carries
+  that payload's occurrence identity, so the session-input surface accepts it
+  once.
 - Ordered delivery boundaries are a contract of the agent runtimes, relied on
   rather than enforced here. This surface's once-only property holds only while
   that contract holds.

@@ -20,6 +20,7 @@ from teleclaude.core.agent_status import (
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.control_delivery import TurnEndBoundary, wake_if_pending
 from teleclaude.core.conversation_delivery import schedule_debounced_delivery
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
@@ -380,6 +381,7 @@ class AgentCoordinator(
             reason=_AGENT_IDLE_MANUAL_NATIVE_COMMAND_REASON,
             native_session_id=payload.session_id,
         )
+        await wake_if_pending(session_id=context.session_id, boundary=TurnEndBoundary.AGENT_IDLE)
 
     async def handle_agent_distress(self, context: AgentEventContext, notification_kind: NotificationKind) -> None:
         """Notify watchers when a provider reports a blocked or failed turn.
@@ -408,6 +410,7 @@ class AgentCoordinator(
                 outcome=_AGENT_TURN_FAILED_OBSERVED_OUTCOME,
                 reason=_AGENT_TURN_FAILED_BOUNDARY_REASON,
             )
+            await wake_if_pending(session_id=context.session_id, boundary=TurnEndBoundary.AGENT_TURN_FAILED)
         if transition is None or transition.entered not in {AgentStatusValue.BLOCKED, AgentStatusValue.STALLED}:
             return
         await self._notify_session_distress(
@@ -692,6 +695,7 @@ class AgentCoordinator(
                     anchor=ReminderEventAnchor.AGENT_STOP,
                 )
             )
+        await wake_if_pending(session_id=session_id, boundary=TurnEndBoundary.AGENT_STOP)
 
         # Activity event without summary; the slow runner re-emits with the
         # computed summary once it lands.

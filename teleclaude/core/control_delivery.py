@@ -10,6 +10,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.injected_text import (
     EnvelopeField,
     EnvelopeName,
@@ -28,6 +29,10 @@ logger = get_logger(__name__)
 IDLE_WAKE_TEXT = render_bracket_envelope(semantic_envelope(EnvelopeName.WAKE))
 
 _CONTROL_DELIVERY_PAYLOAD_SUPERSEDED_EVENT = "control_delivery_payload_superseded"
+_CONTROL_DELIVERY_TURN_END_WAKE_EVENT = "control_delivery_turn_end_wake"
+_CONTROL_DELIVERY_TURN_END_WAKE_REJECTED_EVENT = "control_delivery_turn_end_wake_rejected"
+_WAKE_OCCURRENCE_KEY_TEMPLATE = "control-delivery:{row_id}"
+_WAKE_ACTOR_NAME = "system"
 
 
 class ControlDeliveryWakeDecision(StrEnum):
@@ -35,6 +40,14 @@ class ControlDeliveryWakeDecision(StrEnum):
 
     TIMESTAMP_DERIVED = "timestamp_derived"
     OBSERVED_IDLE = "observed_idle"
+
+
+class TurnEndBoundary(StrEnum):
+    """The recorded idle boundary after which pending control payloads are woken in."""
+
+    AGENT_STOP = "agent_stop"
+    AGENT_IDLE = "agent_idle"
+    AGENT_TURN_FAILED = "agent_turn_failed"
 
 
 @dataclass(frozen=True)
@@ -111,17 +124,61 @@ async def handoff_control_payload(
     ):
         return row_id
 
-    wake_key = f"control-delivery:{row_id}"
+    await _wake_for_payload(session_id=session_id, row_id=row_id, source_feature=wake_source_feature)
+    return row_id
+
+
+async def wake_if_pending(*, session_id: str, boundary: TurnEndBoundary) -> None:
+    """Wake a session whose recorded turn end left a control payload pending.
+
+    The platform records a turn end only after the runtime's last delivery
+    boundary has run, so a payload handed off in between saw a running turn
+    and was not woken by its producer. Called after every idle-boundary write,
+    this closes that interval: the producer writes its payload then reads the
+    turn state, and the turn-end recorder writes the boundary then reads the
+    pending payloads, so one of the two always wakes the session.
+    """
+    pending = await db.get_pending_control_payloads(session_id=session_id)
+    if not pending:
+        return
+    newest_row_id = pending[-1].id
+    logger.info(
+        _CONTROL_DELIVERY_TURN_END_WAKE_EVENT,
+        session_id=session_id,
+        boundary=boundary.value,
+        pending_count=len(pending),
+        wake_row_id=newest_row_id,
+    )
+    try:
+        await _wake_for_payload(
+            session_id=session_id,
+            row_id=newest_row_id,
+            source_feature=InjectedTextSourceFeature.LISTENER,
+        )
+    except SessionMessageRejectedError as exc:
+        # A session that no longer accepts input is closing; its pending payloads go with it.
+        # The turn-end recorder that called this still owes the rest of its transition.
+        logger.info(
+            _CONTROL_DELIVERY_TURN_END_WAKE_REJECTED_EVENT,
+            session_id=session_id,
+            boundary=boundary.value,
+            wake_row_id=newest_row_id,
+            reason=exc.reason.value,
+        )
+
+
+async def _wake_for_payload(*, session_id: str, row_id: int, source_feature: InjectedTextSourceFeature) -> None:
+    """Type the content-free wake, keyed by the payload it serves so a repeat is accepted once."""
+    wake_key = _WAKE_OCCURRENCE_KEY_TEMPLATE.format(row_id=row_id)
     await get_command_service().process_message(
         ProcessMessageCommand(
             session_id=session_id,
             text=IDLE_WAKE_TEXT,
             origin=InputOrigin.TERMINAL.value,
             text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
-            source_feature=wake_source_feature,
+            source_feature=source_feature,
             occurrence_key=wake_key,
             source_message_id=wake_key,
-            actor_name="system",
+            actor_name=_WAKE_ACTOR_NAME,
         )
     )
-    return row_id
