@@ -61,8 +61,6 @@ status_path, poll_after_ms, computer, success_event, failure_event, recovery_com
 
 ## Invariants
 
-<!-- planned:quiet-technical-faults -->
-
 ### Published work feedback
 
 An operation retains its semantic owner's optional work-feedback declaration
@@ -82,8 +80,6 @@ migration. A wire payload without the optional declaration supplies no work
 feedback; a consumer does not reconstruct one from its diagnostic fields.
 External shape evolution preserves independent consumers
 (`sdlc/policy/backward-compatibility-hygiene`).
-
-<!-- /planned:quiet-technical-faults -->
 
 - **Persist before execute.** The operation row is written to DB before the background
   task is scheduled. The receipt is always valid even if the daemon crashes immediately

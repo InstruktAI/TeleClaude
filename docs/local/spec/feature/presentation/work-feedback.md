@@ -1,8 +1,7 @@
 ---
-description: Deliberate work feedback in the TUI, with technical faults retained as ERROR diagnostics and operation outcomes remaining independently inspectable.
+description: Deliberate work feedback in the TUI, with technical faults retained as
+  ERROR diagnostics and operation outcomes remaining independently inspectable.
 visibility: internal
-delivered_by:
-  - quiet-technical-faults
 ---
 
 # Work Feedback — Spec
