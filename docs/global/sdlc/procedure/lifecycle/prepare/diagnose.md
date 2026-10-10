@@ -188,13 +188,6 @@ carrying a suspected mechanism has already decided what the peer will find. Cand
 commits fall under the same prohibition: hand over the symptom and the evidence, and leave
 the history unframed.
 
-<!-- planned:diagnosis-settles-evidenced-cause -->
-
-After a step 1a fallback the brief carries the symptom and the evidence only. The
-reporter's causal account stays out of it, as any suspected mechanism does.
-
-<!-- /planned:diagnosis-settles-evidenced-cause -->
-
 ### 3. The interrogation — the driving session tests the written mechanism
 
 A written `diagnosis` is not yet settled. The burden of proof is the peer's: it must convince
@@ -352,10 +345,8 @@ structural rather than triggered by self-assessment.
 The reporter-account route keeps the separation structural. The causal frame was written
 before the driving session read it, by a session that does not drive this phase, and the
 driver's confirmation is a bounded check against cited sources with an exit to the peer
-whenever it would take an investigation. Two slides to refuse on that route: settling an
-account on its confidence or its proposed fix instead of the sources it cites, and settling
-an account the driving session wrote. Either returns to the single-frame failure this phase
-exists to prevent.
+whenever it would take an investigation. A driver that settles past those bounds has
+returned to the single-frame failure this phase exists to prevent.
 
 <!-- /planned:diagnosis-settles-evidenced-cause -->
 
