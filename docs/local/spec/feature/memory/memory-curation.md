@@ -24,8 +24,9 @@ one memory namespace (a desk's, or the person's own home's). A memory is
 but stay recorded. Nothing is deleted by curation.
 
 Business items a conversation showed are collected as **prospects** for the home
-that owns the desk. A prospect is raw material: it is never rendered as startup
-context, returned by search, or listed with memories.
+that owns the desk. A prospect is a record in the memory store but not a memory:
+it is raw material, never rendered as startup context, returned by search, or
+listed with memories.
 
 The agent also advances the conversation session's **read point** — how far its
 conversation has been read — once its changes are made.

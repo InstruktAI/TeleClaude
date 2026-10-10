@@ -64,8 +64,6 @@ The platform operates on two planes.
 
 - AI-handled help-desk conversations with memory continuity
 - Identity-scoped personal memories (per-visitor observation history)
-- Project-scoped business memories (aggregate patterns, complaints, insights)
-- Actionable items published to internal channels (follow-ups, escalations, feature requests)
 - The fixed neutral reply for a conversation that reaches no desk
 - Escalation notifications to the admins of the home that owns the desk
 - Relayed admin replies delivered to the visitor on their own adapter
@@ -74,13 +72,17 @@ The platform operates on two planes.
 
 - AI-handled help-desk conversations with memory continuity
 - Identity-scoped personal memories (per-visitor observation history)
-- Project-scoped business memories (aggregate patterns, complaints, insights)
-- Actionable items published to internal channels (follow-ups, escalations, feature requests)
 - The fixed neutral reply for a conversation that reaches no desk
 - Escalation threads in the desk's escalations forum, and notifications linking them to everyone in the desk's scope
 - Relayed replies delivered to the visitor on their own adapter
 
 <!-- /planned-change:help-desk-escalation-in-desk -->
+
+<!-- planned:help-desk-idle-memory-cycle -->
+
+- Business items from desk conversations (requests, complaints, confusion, sentiment, mentions of alternatives), collected as prospects for the home that owns the desk
+
+<!-- /planned:help-desk-idle-memory-cycle -->
 
 ### Architecture
 

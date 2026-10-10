@@ -142,9 +142,12 @@ Then the idle cycle neither compacts nor closes it
 - **A session whose agent never returns to idle is never closed by this
   cycle.** The cycle compacts only an idle agent and closes only a compacted
   session.
-- **Memories follow the close, not the revival.** A person who writes again
-  before the memory agent finished reading the last close starts without what
-  that close added.
+- **A revived session continues its own conversation.** Revival resumes the
+  session from its own transcript
+  (`local/projects/teleclaude/spec/feature/agent_runtime/session-revival` UC-SR9),
+  so the revived agent keeps the stretch before its last close, compacted. The
+  memories its memory agent keeps from that stretch reach the session's later
+  revivals and the person's other sessions.
 - **Compaction is the agent's own.** Only agents that declare a compaction
   command are compacted; the desk agents are agents with a verified desk
   confinement.
