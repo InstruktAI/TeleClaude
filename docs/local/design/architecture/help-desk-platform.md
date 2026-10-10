@@ -1,5 +1,5 @@
 ---
-description: "Help desks: entry identifiers resolved by the core, the session as the conversation's binding, public-depth documentation, identity-scoped memory, escalation to the owning home's admins, admin relay, and internal channels."
+description: "Help desks: entry identifiers resolved by the core, the session as the conversation's binding, public-depth documentation, identity-scoped memory, escalation to the owning home's admins, and admin relay."
 visibility: 'public'
 ---
 
@@ -567,75 +567,6 @@ sequenceDiagram
 
 <!-- /planned-change:help-desk-escalation-in-desk -->
 
-### Internal Channels (Pub/Sub)
-
-Agents need a way to publish structured output without knowing who consumes it. Internal channels provide this: named Redis Streams where agents publish and subscribers eventually process. Help desks publish nothing to internal channels: a desk agent at customer depth cannot run the publish command, and no platform job publishes on a desk's behalf.
-
-```mermaid
-flowchart LR
-    subgraph Publishers
-        HD[Agent]
-    end
-
-    subgraph "Redis Streams"
-        CH2["channel:engineering:bug-reports"]
-    end
-
-    subgraph Subscribers
-        ENG[Engineering Agent]
-        ADMIN[Admin Notification]
-    end
-
-    HD -->|publish| CH2
-
-    CH2 -->|consume| ENG
-    CH2 -->|consume| ADMIN
-```
-
-**Channel naming:** `channel:{project}:{topic}` — e.g., `channel:engineering:bug-reports`.
-
-**Publishing:** Agents publish via a TeleClaude tool (`telec channels publish`) or HTTP API (`POST /api/channels/{name}/publish`). The agent doesn't need to know who subscribes — it folds the mail, puts it in the pipe, and moves on.
-
-**Subscribing:** Configured per-project in `teleclaude.yml`. Each subscription maps a channel pattern to an agent command that processes incoming messages:
-
-```yaml
-# In teleclaude.yml
-channels:
-  subscriptions:
-    - channel: 'channel:engineering:bug-reports'
-      filter:
-        severity: [high]
-      target:
-        notification: admin_telegram
-    - channel: 'channel:engineering:bug-reports'
-      target:
-        project: teleclaude
-        command: /process-bug-report
-```
-
-**Consumer worker:** A daemon background task polls subscribed channels using Redis consumer groups. When a message arrives, it either:
-
-1. Routes to a notification channel (existing notification infrastructure)
-2. Spawns an agent in the target project with the message as input
-
-**Redis consumer groups** give us:
-
-- Exactly-once processing across multiple computers subscribing to the same channel
-- Unacknowledged messages get redelivered (durability on agent death)
-- Multiple consumers can load-balance within a group
-- Pending message inspection for debugging stuck deliveries
-
-**Cross-computer routing:** Redis Streams are inherently cross-computer. An agent on one computer publishes to `channel:engineering:bug-reports`; a consumer on another computer picks it up. No extra plumbing needed beyond the existing Redis connection.
-
-**Tool surface:**
-
-```
-telec channels publish(channel, payload)    # Publish a message to a channel
-telec channels list()              # List available channels and their subscribers
-```
-
-The publish tool is available to all agents. Channel creation is implicit — publishing to a non-existent channel creates it.
-
 ### Post-Session Memory Extraction
 
 <!-- planned-change:help-desk-idle-memory-cycle -->
@@ -716,7 +647,7 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
-6. **Channels are durable**: Internal channels use Redis Streams with consumer groups. Messages survive consumer downtime and agent death. Unacknowledged messages are redelivered.
+6. **No internal channels**: help desks publish nothing to internal channels.
 
 7. **Help desks are folders of their homes**: A help desk is never a repository of its own. Scaffolding is idempotent: the operator brain is seeded only while absent, the ignore declaration converges to its kind's template, and nothing the template does not carry is touched.
 
@@ -950,21 +881,18 @@ sequenceDiagram
 
 <!-- planned-change:help-desk-idle-memory-cycle -->
 
-| Scenario                                                                                    | Behavior                                             | Recovery                                                                             |
-| ------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key       | Personal memories not injected; the agent handles without context                    |
-| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                        | The visitor uses a working desk link                                                 |
-| A desk identifier sent to a computer's own bot when that computer is not the master         | Neutral reply                                        | Desk links are rendered on the master, naming its bot                                |
-| The entered desk's home is not on the master                                                | Neutral reply, no session                            | Make the desk's home present on the master                                           |
-| A restricted session names no enabled desk                                                  | Session creation is refused                          | The core resolves an endpoint first or sends the neutral reply                       |
-| Memory extraction dies mid-processing                                                       | Partial extraction; marker not updated               | Next idle trigger or cron sweep reprocesses from last marker                         |
-| Compaction injected before extraction                                                       | Cannot happen — extraction must complete first       | Daemon enforces sequencing; if extraction fails, compaction is skipped               |
-| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)             | Most recent memories prioritized                                                     |
-| Channel publish fails (Redis down)                                                          | Agent gets error from publish tool                   | Agent can retry or log locally; sweep job catches missed sessions                    |
-| Channel consumer dies mid-processing                                                        | Message unacknowledged in consumer group             | Redis redelivers to next available consumer                                          |
+| Scenario                                                                                    | Behavior                                       | Recovery                                                               |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
+| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key | Personal memories not injected; the agent handles without context      |
+| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                  | The visitor uses a working desk link                                   |
+| A desk identifier sent to a computer's own bot when that computer is not the master         | Neutral reply                                  | Desk links are rendered on the master, naming its bot                  |
+| The entered desk's home is not on the master                                                | Neutral reply, no session                      | Make the desk's home present on the master                             |
+| A restricted session names no enabled desk                                                  | Session creation is refused                    | The core resolves an endpoint first or sends the neutral reply         |
+| Memory extraction dies mid-processing                                                       | Partial extraction; marker not updated         | Next idle trigger or cron sweep reprocesses from last marker           |
+| Compaction injected before extraction                                                       | Cannot happen — extraction must complete first | Daemon enforces sequencing; if extraction fails, compaction is skipped |
+| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)       | Most recent memories prioritized                                       |
 | Normal; no action needed                                                                    |
-| Session transcript unavailable at job time                                                  | Job skips session, logs warning                      | Sweep re-run on next schedule; transcript may become available                       |
-| Redis unavailable                                                                           | Channels non-functional; memory still works (SQLite) | Local operations and memory continue; channel delivery resumes when Redis reconnects |
+| Session transcript unavailable at job time                                                  | Job skips session, logs warning                | Sweep re-run on next schedule; transcript may become available         |
 
 <!-- change:help-desk-idle-memory-cycle -->
 
@@ -978,10 +906,7 @@ sequenceDiagram
 | A memory agent fails or stops                                                               | Its memory changes so far stay; the read point is not advanced | The session's next end, or a later activation for it, reads from the same point; the agent compares with current memories, so nothing is added twice |
 | Compaction does not finish                                                                  | The session stays open, not compacted                          | A later pass retries; the session is never closed uncompacted                                                                                        |
 | Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)                       | Most recent memories prioritized                                                                                                                     |
-| Channel publish fails (Redis down)                                                          | Agent gets error from publish tool                             | Agent can retry or log locally; sweep job catches missed sessions                                                                                    |
-| Channel consumer dies mid-processing                                                        | Message unacknowledged in consumer group                       | Redis redelivers to next available consumer                                                                                                          |
 | Session transcript unavailable to the memory agent                                          | Nothing read; read point not advanced                          | A later activation for the session retries                                                                                                           |
-| Redis unavailable                                                                           | Channels non-functional; memory still works (SQLite)           | Local operations and memory continue; channel delivery resumes when Redis reconnects                                                                 |
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
