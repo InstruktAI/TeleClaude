@@ -86,9 +86,10 @@ And the checkpoint follows the same replacement contract as an agent procedure r
 #### UC-AJR-5: A script receives its prior checkpoint
 
 ```gherkin
-Given a scheduled script job has a saved checkpoint for its project and declared identity
+Given an agent inspecting the execution of a scheduled script job
+And that job has a saved checkpoint for its project and declared identity
 When the runner starts that script job
-Then the script receives that checkpoint as part of its execution context
+Then the agent observes that job's checkpoint in the supplied execution context
 And a checkpoint from another project or job is not supplied
 ```
 
