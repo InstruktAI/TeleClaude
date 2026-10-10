@@ -176,5 +176,3 @@ And a person in the desk's scope can reply in it but cannot open a new thread in
   back to the visitor's adapter rather than dropped or handed to the agent; an
   answer that could not reach the visitor, or that arrived after the
   conversation was handed back, is reported in the thread.
-- A visitor whose session has no thread in the desk's `customer-sessions` forum
-  is escalated with a brief that carries no link to it.
