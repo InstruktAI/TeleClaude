@@ -47,11 +47,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.reminders.models import ReminderEvent, ReminderEventAnchor
-from teleclaude.core.session_lifecycle import (
-    LifecycleTransition,
-    LifecycleTransitionReason,
-    transition_session,
-)
+from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_listeners import (
     DeliveryBlockEvidence,
     NotificationKind,
@@ -633,10 +629,9 @@ class AgentCoordinator(
             await polling_coordinator.schedule_session_projection(session_id, self.client, headless_only=True)
         else:
             await polling_coordinator.schedule_session_projection(session_id, self.client)
-        logger.debug(
-            "Recorded user input via hook for session %s: %s...",
+        logger.trace(
+            "Recorded user input via hook for session %s",
             session_id,
-            prompt_text[:50],
         )
 
         # Emit activity event for all sessions
