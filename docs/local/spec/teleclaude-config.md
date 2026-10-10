@@ -23,12 +23,25 @@ explicitly rejects keys that belong to other tiers (`people`, `ops`, `creds`,
 `timezone`, `workflow`). See `teleclaude/config/schema.py` for the
 authoritative model definitions.
 
+<!-- planned-change:retire-internal-channels -->
+
 | File                  | Location                                        | Model           | Owns                                                                                                                            |
 | --------------------- | ----------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | **Global config**     | `~/.teleclaude/teleclaude.yml`                  | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`                                                                       |
 | **Project config**    | `<project-root>/teleclaude.yml`                 | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml`    | `PersonConfig`  | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `notifications`, `settings`, `hooks`                      |
 | **Company config**    | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members`, `hooks` (folder-discovered; composed alongside `project`)            |
+
+<!-- change:retire-internal-channels -->
+
+| File                  | Location                                        | Model           | Owns                                                                                                                 |
+| --------------------- | ----------------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **Global config**     | `~/.teleclaude/teleclaude.yml`                  | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`                                                            |
+| **Project config**    | `<project-root>/teleclaude.yml`                 | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `code`, `docs`, `agents`               |
+| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml`    | `PersonConfig`  | `slug`, `name`, `description`, `creds`, `subscriptions`, `interests`, `notifications`, `settings`, `hooks`           |
+| **Company config**    | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members`, `hooks` (folder-discovered; composed alongside `project`) |
+
+<!-- /planned-change:retire-internal-channels -->
 
 #### Tier declaration and editor schemas
 
@@ -132,6 +145,8 @@ symlink. Replacing it with a symlink to the global config breaks validation beca
 
 Valid in both project and global configs.
 
+<!-- planned-change:retire-internal-channels -->
+
 ```yaml
 project_slug: string # canonical machine identity; required in project configs
 project_name: string # human-readable display name
@@ -151,6 +166,29 @@ hooks:
       secret: string # declared as a ${NAME} reference resolved from this project's .env
 channel_subscriptions: list[ChannelSubscription]
 ```
+
+<!-- change:retire-internal-channels -->
+
+```yaml
+project_slug: string # canonical machine identity; required in project configs
+project_name: string # human-readable display name
+env_allow_list: list[string] # ambient env vars explicitly allowed into agent tmux sessions for this project
+frontend_root: string # optional layout override: directory containing TypeScript/frontend project, relative to project root (e.g. frontend)
+description: string
+business:
+  publishes: # domains this project owns and contributes global docs for; the union across all registered projects is the set of valid domains, and each domain has exactly one owning publisher — a second project publishing the same domain is a sync-blocking split
+    - slug: string # required: the published domain
+      trigger: string # required: the domain's activation trigger, rendered enriched on its Published Domains line in agent outputs; nonblank, single-line, bounded length, validated at config load — a publishes entry without a nonblank trigger fails config load, so a domain cannot be delivered undiscoverable
+jobs: list[JobScheduleConfig] # local job declarations and subscriptions to published global jobs, each identified by its required kebab-case `name`; a subscription overrides any setting it carries except the execution pointer (local/projects/teleclaude/spec/feature/config/job-declaration-model)
+hooks:
+  inbound: # this project's own inbound sources, at most one per protocol
+    native:
+      secret: string # declared as a ${NAME} reference resolved from this project's .env
+    github:
+      secret: string # declared as a ${NAME} reference resolved from this project's .env
+```
+
+<!-- /planned-change:retire-internal-channels -->
 
 Every home declares the inbound sources that open endpoints in its own name
 under `hooks.inbound`, keyed by protocol, and each tier admits only its own

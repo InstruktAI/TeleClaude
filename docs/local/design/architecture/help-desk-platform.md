@@ -647,7 +647,13 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
+<!-- planned-change:retire-internal-channels -->
+
 6. **No internal channels**: help desks publish nothing to internal channels.
+
+<!-- change:retire-internal-channels -->
+
+<!-- /planned-change:retire-internal-channels -->
 
 7. **Help desks are folders of their homes**: A help desk is never a repository of its own. Scaffolding is idempotent: the operator brain is seeded only while absent, the ignore declaration converges to its kind's template, and nothing the template does not carry is touched.
 
