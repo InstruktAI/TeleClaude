@@ -38,7 +38,7 @@ TeleClaudeNext repository.
 
 <!-- change:job-run-state-single-file -->
 
-- **Owns:** live-session acceptance and input execution, supervised agent processes, runtime status, and session lifecycle transitions. For scheduled agent jobs, it also owns the structured outcome-report handoff and the report record correlated to the currently open run. The job procedure owns the meaning of its optional checkpoint payload; agent_runtime stores and returns that payload without interpreting it.
+- **Owns:** live-session acceptance and input execution, supervised agent processes, runtime status, and session lifecycle transitions. For scheduled jobs, it also owns the shared outcome/checkpoint handoff and current-record persistence for agent procedures and script results, including agent-report correlation to the currently open run. Each job's procedure or script owns the meaning of its optional checkpoint payload; agent_runtime stores and returns that payload without interpreting it.
 
 <!-- /planned-change:job-run-state-single-file -->
 

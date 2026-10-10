@@ -24,7 +24,7 @@ contracts and never creates shared ownership.
 
 <!-- change:job-run-state-single-file -->
 
-- `agent_runtime`: live sessions, supervised agent processes, session-input execution, runtime lifecycle, and the report handoff that correlates a scheduled agent job outcome with its currently open session. Job procedures own the meaning of their optional checkpoint payloads; `agent_runtime` stores them opaquely. It does not own job declarations or schedules, which `config` publishes, nor provider transport, presentation, identity decisions, or workflow state.
+- `agent_runtime`: live sessions, supervised agent processes, session-input execution, runtime lifecycle, and the shared outcome/checkpoint handoff and persistence for scheduled agent procedures and script jobs. Agent reports are correlated with the currently open session. Each job's procedure or script owns the meaning of its optional checkpoint; `agent_runtime` stores it opaquely. It does not own job declarations or schedules, which `config` publishes, nor provider transport, presentation, identity decisions, or workflow state.
 
 <!-- /planned-change:job-run-state-single-file -->
 

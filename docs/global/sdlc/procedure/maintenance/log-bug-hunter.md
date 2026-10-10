@@ -185,7 +185,7 @@ whose records support a failure in the scanned project's own handling through
 <!-- change:job-run-state-single-file -->
 
 5. Prepare and submit the complete replacement checkpoint using the schema under Outputs.
-   - A complete scan has successful collection, causal classification, and deduplication, with every eligible signal filed, excluded, matched to suppression or existing work, or carried solely for the recurrence check in Step 3. Set `completed_until` to the window's end and `incomplete_scan` to `null`. Keep only the signals that still require that recurrence check.
+   - A complete scan has successful collection, causal classification, and deduplication, with every eligible signal filed, excluded, matched to suppression, existing work, or in-flight work, or carried solely for the recurrence check in Step 3. Set `completed_until` to the window's end and `incomplete_scan` to `null`. Keep only the signals that still require that recurrence check.
    - A collection, lookup, classification, or filing failure keeps the prior `completed_until`, sets `incomplete_scan` to the attempted window's start/end, and retains the affected signals with their retry evidence. An outstanding filing keeps the scan incomplete.
    - Submit once through `telec jobs report <name> --success <true|false> --message '<summary>' --state-json '<replacement-state-object>'`. Use `true` for a complete scan and `false` for an incomplete scan. An empty successful collection is a complete scan. The JSON argument contains all checkpoint fields, including explicit `null` values and an empty signal array when applicable.
 
@@ -293,7 +293,7 @@ name and project context.
 
 - A missing file or absent checkpoint uses the first-run defaults and declared schedule interval. A failed filing leaves the remaining signals eligible for processing; retain its evidence in `outstanding_signals` for re-evaluation before retrying.
 - If a present checkpoint cannot be read or does not match the schema, stop the scan and report failure without `--state-json`. That outcome-only submission leaves the saved checkpoint unchanged. Record the checkpoint problem in the session transcript rather than guessing a cursor.
-- If `telec jobs report` fails, record its failure in the session transcript and close the run as failed. The reporting command owns durable writes; the procedure creates no substitute state or report file.
+- If `telec jobs report` fails, record its failure in the session transcript and stop procedure execution. Without an accepted report, the run remains open until the runner marks it stalled after its reporting window. The reporting command owns durable writes; the procedure creates no substitute state or report file.
 
 <!-- /planned-change:job-run-state-single-file -->
 
