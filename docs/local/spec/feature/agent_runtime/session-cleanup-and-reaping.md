@@ -373,12 +373,14 @@ And when Discord cannot conclusively list the forum's threads, the sweep deletes
 
 - **The single session-ended type is retired, not renamed.** Endings are
   reported only under the kinded types, so a subscriber selects one kind or
-  every ending through the shared prefix. Nothing that consumes endings is
-  affected across versions: the consumers that react to them act only on
-  endings their own computer emitted. An older computer keeps emitting the
-  earlier single type until it is upgraded; a newer computer still reads that
-  name and no consumer acts on it, and events stored under it stay as recorded.
-  Reverting the change restores the single type; kinded endings already emitted
-  are ignored by a computer that does not know them.
+  every ending through the shared prefix. The lifecycle runner's consumer also
+  accepts the retired name for as long as a computer can still have emitted it,
+  so an ending reported under it just before an upgrade still wakes the runner.
+  No other consumer is affected across versions: procedure activation acts only
+  on endings its own computer emitted, and no published procedure subscribes to
+  the retired name. An older computer keeps emitting that name until it is
+  upgraded, and events stored under it stay as recorded. Reverting the change
+  restores the single type; kinded endings already emitted are ignored by a
+  computer that does not know them.
 
 <!-- /planned:procedure-agent-subject-identity -->
