@@ -65,6 +65,8 @@ Then the installation recognizes it is already at the desired version
 And performs no second update
 ```
 
+<!-- planned-change:checkpoint-event-bindings -->
+
 #### UC-CSU-5: Convergence ends healthy or reports failure
 
 ```gherkin
@@ -74,6 +76,20 @@ Then the installation is not considered converged until it is running and health
 And if any step fails, convergence halts with a recorded reason
 And the installation does not silently come up in a partial or unhealthy state
 ```
+
+<!-- change:checkpoint-event-bindings -->
+
+#### UC-CSU-5: Convergence ends healthy or reports failure
+
+```gherkin
+Given an installation begins converging to a target version
+When the convergence steps run in order
+Then the installation is not considered converged until it is running and healthy on the target version
+And every step that fails is recorded with its reason, where an agent watching the installation finds it and can replay it
+And the installation does not silently come up in a partial or unhealthy state
+```
+
+<!-- /planned-change:checkpoint-event-bindings -->
 
 #### UC-CSU-6: No manual operator action
 

@@ -53,9 +53,21 @@ no repo can meaningfully disable it.
 
 Derivation rules:
 
+<!-- planned-change:checkpoint-event-bindings -->
+
 - The checkpoint engine evaluates a turn iff `code ∨ docs ∨ agents` is enabled
   or the project declares at least one custom binding. Otherwise `agent_stop`
   passes through with no timeline extraction and no evidence scanning.
+
+<!-- change:checkpoint-event-bindings -->
+
+- The checkpoint engine evaluates a turn iff `code ∨ docs ∨ agents` is enabled
+  or the project declares at least one custom path binding; an event binding
+  alone does not activate it. Otherwise `agent_stop` passes through with no
+  timeline extraction and no evidence scanning.
+
+<!-- /planned-change:checkpoint-event-bindings -->
+
 - The commit obligation is active iff `code ∨ docs` is enabled.
 - `telec code lint` and the commit gate run iff `code ∨ docs` is enabled at a
   file's owning home, over that home's changed files: staged files at the

@@ -235,10 +235,13 @@ computer holding that project's canonical checkout, from the same merged
 `(registry, bindings)` model as every other consumer (Invariant 25), and hands
 the owed actions to the commit-boundary executor as an event activation. The
 agent-stop engine, the commit boundary and on-demand runs never select an event
-binding, and the event consumer never selects a path binding.
+binding, and the event consumer never selects a path binding. An event binding
+alone does not activate the agent-stop engine (Invariant 26). An action that
+only event bindings name is not a step of an on-demand run (Invariant 29): it
+is owed by an event alone.
 
 An event activation fills `{event_file}`, `{event_type}` and `{event_id}`; the
-commit-range placeholders are omitted. TeleClaude's overlay declares the
+commit-range placeholders are omitted, each with the flag that precedes it. TeleClaude's overlay declares the
 `self-update` maintenance action and binds `github.push` and `github.release`
 to it; the action converges the installation to its channel
 (`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`)

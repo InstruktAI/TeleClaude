@@ -44,6 +44,8 @@ publishes its committed state at any time; neither deploys the working tree.
 
 ### 2. macOS launcher build (`make launchers`) and installation (`make install`)
 
+<!-- planned-change:checkpoint-event-bindings -->
+
 A dedicated `make launchers` target compiles the `.app` bundles from one parameterized
 wrapper source and signs them into `bin/`. The bundles are gitignored build outputs, so
 a fresh checkout has none. `make install`, including the install post-commit
@@ -51,6 +53,18 @@ maintenance runs, and the channel updater's install stage reach the same builder
 rebuilds only when the launcher code identity contract calls for it and otherwise
 leaves `~/Applications/` untouched. Every route compiles and signs through that one
 builder:
+
+<!-- change:checkpoint-event-bindings -->
+
+A dedicated `make launchers` target compiles the `.app` bundles from one parameterized
+wrapper source and signs them into `bin/`. The bundles are gitignored build outputs, so
+a fresh checkout has none. `make install`, including the install post-commit
+maintenance runs after a channel update or any other advance of main, reaches the same
+builder, which rebuilds only when the launcher code identity contract calls for it and
+otherwise leaves `~/Applications/` untouched. Every route compiles and signs through
+that one builder:
+
+<!-- /planned-change:checkpoint-event-bindings -->
 
 - `TmuxLauncher.app` — wrapper that gives tmux sessions macOS permission inheritance
 - `ClaudeLauncher.app`, `CodexLauncher.app`, `GeminiLauncher.app` — per-agent launchers

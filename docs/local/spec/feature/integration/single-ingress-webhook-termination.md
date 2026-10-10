@@ -194,6 +194,9 @@ And each computer delivers the first as a GitHub delivery and the second as a na
 
 - Owned by `integration` (`@docs/local/spec/domain/integration.md`); the
   inbound-boundary concern.
+
+<!-- planned-change:checkpoint-event-bindings -->
+
 - The relay target is the platform event stream, whose
   envelope is owned by the event catalog
   (`@docs/local/spec/feature/event-catalog/event-envelope.md`). The reaction is
@@ -204,6 +207,18 @@ And each computer delivers the first as a GitHub delivery and the second as a na
 - Supersedes the v1 expression in
   `@docs/local/spec/feature/integration/deployment-version-fanout.md` (a bespoke
   deployment-only fan-out that relayed only when the receiver itself updated).
+
+<!-- change:checkpoint-event-bindings -->
+
+- The relay target is the platform event stream, whose
+  envelope is owned by the event catalog
+  (`@docs/local/spec/feature/event-catalog/event-envelope.md`). The reaction is
+  owned by its consumers: procedures, a project's event-bound maintenance
+  (`@docs/local/spec/feature/integration/event-bound-maintenance.md`) and
+  WhatsApp conversation routing
+  (`@docs/local/spec/feature/integration/whatsapp-inbound-conversation-routing.md`).
+
+<!-- /planned-change:checkpoint-event-bindings -->
 
 ## Known caveats
 

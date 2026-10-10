@@ -86,10 +86,22 @@ And validation passes (alpha + empty pin is valid)
   misplacement and relocates the deployment block to the runtime
   configuration aggregate. The current contract is "deployment is
   per-project" until that move lands.
+
+<!-- planned-change:checkpoint-event-bindings -->
+
 - Consumed by the runtime auto-update path (release-channel routing in
   the deployment bounded context). The deployment executor reads
   `deployment.channel` and `deployment.pinned_minor` from the project
   config to decide which release to pull.
+
+<!-- change:checkpoint-event-bindings -->
+
+- Consumed by the runtime auto-update path: the platform's `self-update`
+  maintenance action reads `deployment.channel` and `deployment.pinned_minor`
+  to decide which target to converge to
+  (`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`).
+
+<!-- /planned-change:checkpoint-event-bindings -->
 
 ## Allowed values
 

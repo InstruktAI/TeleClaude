@@ -122,6 +122,24 @@ contract governs only what happens when maintenance runs.
   failed action is replayed with `telec code maintenance retry`, which re-runs
   the recorded action through this executor.
 
+<!-- planned:checkpoint-event-bindings -->
+
+- **Event activations.** The executor also performs the actions a project's
+  event bindings owe for one event
+  (`local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`).
+  An event activation is identified by its event and the project, carries no
+  activation range, and keeps the event it reacts to for as long as any of its
+  action records remains. Its records sit beside the commit activations' records
+  under the same drain lock, a drain takes event activations in the order they
+  were recorded, and its attempts and outcomes are marked as event activations
+  in the structured records. A failed event action is replayed with
+  `telec code maintenance retry` for its original event activation, and
+  `telec code maintenance status` names each event activation with that replay.
+  An event activation records no integrator judgment: the maintenance an advance
+  of canonical main owes is that advance's own activation.
+
+<!-- /planned:checkpoint-event-bindings -->
+
 <!-- planned:restart-never-strands-daemon -->
 
 - **Restart admission.** The restart action begins the daemon's preparation
