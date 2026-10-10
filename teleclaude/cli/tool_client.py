@@ -56,6 +56,7 @@ _NOT_ACCEPTED_CAUSE_TEXT: Final[dict[NotAcceptedCause, str]] = {
     NotAcceptedCause.UNREACHABLE: "the daemon is not reachable",
 }
 _NOT_ACCEPTED_HEADLINE_TEMPLATE: Final = "Error: nothing was accepted — {cause}."
+_SHUTDOWN_REFUSAL_TEMPLATE: Final = "The action was not performed — {cause}."
 _RUN_AGAIN_INSTRUCTION: Final = (
     "Wait {delay} seconds, then run the same command again, and repeat while it is still refused. "
     "Do not set a reminder for the retry: setting one is a request to the same daemon. "
@@ -67,6 +68,11 @@ _RUN_AGAIN_INSTRUCTION: Final = (
 def not_accepted_cause_text(cause: NotAcceptedCause) -> str:
     """The cause of a non-acceptance in words, naming nothing from the refusal body."""
     return _NOT_ACCEPTED_CAUSE_TEXT[cause]
+
+
+def shutdown_refusal_message() -> str:
+    """The failure wording for a draining daemon's refusal: the daemon is restarting and nothing was performed."""
+    return _SHUTDOWN_REFUSAL_TEMPLATE.format(cause=not_accepted_cause_text(NotAcceptedCause.DRAINING))
 
 
 def run_again_instruction() -> str:
@@ -244,10 +250,11 @@ def tool_api_request(
         raise ToolAPIError(f"permission denied — {detail}", status_code=403)
     if resp.status_code >= 400:
         detail_value = _detail_value(resp)
+        refused = is_shutdown_refusal(resp.status_code, detail_value)
         raise ToolAPIError(
-            f"{resp.status_code} — {detail_value}",
+            shutdown_refusal_message() if refused else f"{resp.status_code} — {detail_value}",
             status_code=resp.status_code,
-            is_shutdown_refusal=is_shutdown_refusal(resp.status_code, detail_value),
+            is_shutdown_refusal=refused,
         )
 
     try:

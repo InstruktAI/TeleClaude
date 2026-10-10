@@ -4,7 +4,11 @@
 daemon on its local API socket, proves the observed process is the one the service
 manager runs, asks it to prepare (SIGUSR1) and waits for that same instance to report
 drained. It performs no service-manager action and never terminates anything: the
-caller acts only on a successful outcome.
+caller acts only on a successful outcome. A window that expires on an instance that
+completes its own shutdown is a deferral, not a failure: the draining daemon finishes
+the restart once its accepted work settles.
+
+The read-only `status` verb reports the same observation for `make status`.
 
 The explicit legacy activation path serves the one daemon that predates the
 preparation protocol. It identifies that runtime positively, inspects its unfinished
@@ -26,6 +30,7 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from enum import IntEnum, StrEnum
 from pathlib import Path
 
@@ -41,6 +46,15 @@ _HEALTH_STATUS_OK = "ok"
 _START_COMMIT_FIELD = "start_commit"
 _STATUS_FIELD = "status"
 _PREPARATION_FIELD = "preparation"
+_STARTED_AT_FIELD = "preparation_started_at"
+_HELD_LABELS_FIELD = "held_labels"
+_GRACE_FIELD = "termination_grace_seconds"
+_MANAGER_PID_REQUIRED = "--manager-pid is required for {verb}"
+_HELD_LABEL_SEPARATOR = ", "
+_ADMISSION_OPEN_LINE = "admission open"
+_ADMISSION_CLOSED_LINE = "phase {phase}, preparation began {started_at}, holding {held_units} unit(s): {held}"
+_UNKNOWN_START = "at an unreported time"
+_NO_HELD_WORK = "none"
 _LEGACY_HEALTH_FIELDS = frozenset({_STATUS_FIELD, _START_COMMIT_FIELD})
 _PREPARED_PHASES = frozenset({DrainPhase.DRAINED, DrainPhase.STOPPING})
 _STATE_PLACEHOLDER = ",".join("?" for _ in UNFINISHED_STARTUP_STATES)
@@ -55,6 +69,8 @@ class ControlOutcome(IntEnum):
     IDENTITY_MISMATCH = 12
     TIMEOUT = 13
     INSTANCE_REPLACED = 14
+    DEFERRED = 15
+    ADMISSION_CLOSED = 16
     LEGACY_NOT_IDENTIFIED = 20
     LEGACY_SUPPORTS_PREPARATION = 21
     LEGACY_RESIDUAL_WORK = 22
@@ -72,6 +88,11 @@ _OUTCOME_MESSAGES: dict[ControlOutcome, str] = {
         "preparation did not complete within its observation window; the daemon is left running and draining: {detail}"
     ),
     ControlOutcome.INSTANCE_REPLACED: "the daemon process changed during preparation: {detail}",
+    ControlOutcome.DEFERRED: (
+        "preparation did not complete within its observation window; the draining daemon completes the restart"
+        " once its accepted work settles: {detail}"
+    ),
+    ControlOutcome.ADMISSION_CLOSED: "the daemon is not accepting new work: {detail}",
     ControlOutcome.LEGACY_NOT_IDENTIFIED: "the running daemon is not positively identified as the legacy runtime: {detail}",
     ControlOutcome.LEGACY_SUPPORTS_PREPARATION: "the running daemon supports preparation; legacy activation is refused",
     ControlOutcome.LEGACY_RESIDUAL_WORK: "unfinished durable work remains: {detail}",
@@ -95,7 +116,11 @@ class PreparationObservation:
     pid: int
     token: str
     phase: DrainPhase
+    held_units: int
     budget_seconds: float
+    preparation_started_at: datetime | None = None
+    held_labels: tuple[str, ...] = ()
+    termination_grace_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -149,13 +174,19 @@ def read_health(socket_path: str) -> HealthObservation:
 def _parse_preparation(raw: object) -> PreparationObservation:
     if not isinstance(raw, dict):
         raise ControlRefusal(ControlOutcome.UNREADABLE, "preparation observation is malformed")
+    started_at = raw.get(_STARTED_AT_FIELD)
+    grace = raw.get(_GRACE_FIELD)
     try:
         return PreparationObservation(
             protocol=int(raw["protocol"]),
             pid=int(raw["pid"]),
             token=str(raw["token"]),
             phase=DrainPhase(raw["phase"]),
+            held_units=int(raw["held_units"]),
             budget_seconds=float(raw["budget_seconds"]),
+            preparation_started_at=None if started_at is None else datetime.fromisoformat(str(started_at)),
+            held_labels=tuple(str(label) for label in raw.get(_HELD_LABELS_FIELD) or ()),
+            termination_grace_seconds=None if grace is None else float(grace),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ControlRefusal(ControlOutcome.UNREADABLE, "preparation observation is malformed") from exc
@@ -186,7 +217,8 @@ def prepare(
         if current.phase in _PREPARED_PHASES:
             break
         if clock() >= deadline:
-            raise ControlRefusal(ControlOutcome.TIMEOUT, f"phase {current.phase}")
+            outcome = ControlOutcome.TIMEOUT if current.termination_grace_seconds is None else ControlOutcome.DEFERRED
+            raise ControlRefusal(outcome, f"phase {current.phase}")
         sleep(_POLL_INTERVAL_S)
     return _same_instance(socket_path, first).pid
 
@@ -196,6 +228,30 @@ def _same_instance(socket_path: str, expected: PreparationObservation) -> Prepar
     if observed is None or observed.pid != expected.pid or observed.token != expected.token:
         raise ControlRefusal(ControlOutcome.INSTANCE_REPLACED, "a different process instance answered")
     return observed
+
+
+def describe_admission(preparation: PreparationObservation) -> str:
+    """One line naming the phase, when preparation began, and the work the daemon still holds."""
+    if preparation.phase is DrainPhase.OPEN:
+        return _ADMISSION_OPEN_LINE
+    started_at = preparation.preparation_started_at
+    return _ADMISSION_CLOSED_LINE.format(
+        phase=preparation.phase,
+        started_at=_UNKNOWN_START if started_at is None else started_at.isoformat(),
+        held_units=preparation.held_units,
+        held=_HELD_LABEL_SEPARATOR.join(preparation.held_labels) or _NO_HELD_WORK,
+    )
+
+
+def report_admission(socket_path: str) -> int:
+    """Print the daemon's admission state; exit OK only while admission is open. Sends no signal."""
+    preparation = read_health(socket_path).preparation
+    if preparation is None:
+        raise ControlRefusal(ControlOutcome.UNSUPPORTED)
+    print(describe_admission(preparation))
+    if preparation.phase is DrainPhase.OPEN:
+        return int(ControlOutcome.OK)
+    return int(ControlOutcome.ADMISSION_CLOSED)
 
 
 def quiesce_legacy(socket_path: str, manager_pid: int, pid_file: str | None) -> int:
@@ -260,6 +316,7 @@ def _residual_work(db_path: Path) -> list[tuple[str, int]]:
 class _Verb(StrEnum):
     PREPARE = "prepare"
     LEGACY = "legacy"
+    STATUS = "status"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -267,10 +324,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("verb", choices=[verb.value for verb in _Verb])
     parser.add_argument("--socket", required=True)
-    parser.add_argument("--manager-pid", required=True, type=int)
+    parser.add_argument("--manager-pid", type=int)
     parser.add_argument("--pid-file")
     args = parser.parse_args(argv)
+    if args.verb != _Verb.STATUS and args.manager_pid is None:
+        parser.error(_MANAGER_PID_REQUIRED.format(verb=args.verb))
     try:
+        if args.verb == _Verb.STATUS:
+            return report_admission(args.socket)
         if args.verb == _Verb.PREPARE:
             pid = prepare(args.socket, args.manager_pid)
         else:

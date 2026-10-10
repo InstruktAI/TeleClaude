@@ -39,7 +39,12 @@ from teleclaude.cli.api_session_args import CreateSessionArgs, RunSessionArgs
 from teleclaude.cli.clearance import ClearanceScope, clearance_scope_refusal, refresh_cli_identity_role
 from teleclaude.cli.models import SubscribeData, SubscribeRequest, UnsubscribeData, UnsubscribeRequest, WsEvent
 from teleclaude.cli.session_auth import ResolvedCliIdentity
-from teleclaude.cli.tool_client import NotAcceptedCause, exit_not_accepted, is_shutdown_refusal
+from teleclaude.cli.tool_client import (
+    NotAcceptedCause,
+    exit_not_accepted,
+    is_shutdown_refusal,
+    shutdown_refusal_message,
+)
 from teleclaude.cli.tui_clearance import clear_tui_bootstrap_pillars
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.command_input import CommandInputMode
@@ -493,11 +498,18 @@ class _TelecConnectionClient:
                 detail = body.get("detail")
             except (json.JSONDecodeError, ValueError):
                 detail = error.response.text
+            if is_shutdown_refusal(status_code, detail):
+                refusal_message = shutdown_refusal_message()
+                raise APIError(
+                    refusal_message,
+                    status_code=status_code,
+                    detail=refusal_message,
+                    not_accepted_cause=NotAcceptedCause.DRAINING,
+                ) from error
             raise APIError(
                 f"API request failed: {status_code} {detail or error.response.text}",
                 status_code=status_code,
                 detail=detail,
-                not_accepted_cause=NotAcceptedCause.DRAINING if is_shutdown_refusal(status_code, detail) else None,
             ) from error
         except httpx.TimeoutException as error:
             raise APIError("API request timed out. Server may be blocked or overloaded.") from error

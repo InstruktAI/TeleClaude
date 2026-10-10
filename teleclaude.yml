@@ -46,8 +46,9 @@ checkpoint:
         - --tip
         - '{after_sha}'
       command:
-        - make
-        - restart
+        - '{interpreter}'
+        - -m
+        - teleclaude.core.integration.restart_admission
     # Deploying the service definitions installation renders is deferred on
     # demand, so a manual run reports it instead; no scope binds it, so the
     # commit boundary never runs it.
