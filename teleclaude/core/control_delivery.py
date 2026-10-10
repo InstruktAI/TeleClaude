@@ -156,7 +156,9 @@ async def wake_if_pending(*, session_id: str, boundary: TurnEndBoundary) -> None
             source_feature=InjectedTextSourceFeature.LISTENER,
         )
     except SessionMessageRejectedError as exc:
-        # A session that no longer accepts input is closing; its pending payloads go with it.
+        # The payload stays pending. A closed or vanished session discards it at close; an active
+        # session whose pane is missing is restored by maintenance, and the restore's continuation
+        # always wakes the session, draining every pending payload at that boundary.
         # The turn-end recorder that called this still owes the rest of its transition.
         logger.info(
             _CONTROL_DELIVERY_TURN_END_WAKE_REJECTED_EVENT,
