@@ -92,12 +92,8 @@ concerned:
 
 ## See Also
 
-<!-- planned:blueprint-main-maintenance -->
-
 - docs/local/spec/feature/workflow/blueprint-freshness.md —
   canonical-main maintenance coordination for the shared Blueprint baseline.
-
-<!-- /planned:blueprint-main-maintenance -->
 
 - docs/local/adr/0105-event-access-follows-the-subject-its-producer-states.md — why each event states the registered project, person, or company its act happened in.
 - docs/local/adr/0109-an-event-that-cannot-establish-its-subject-says-so.md — why no subject claims the event concerns no registered home, and an unknown subject makes no claim.

@@ -1,8 +1,7 @@
 ---
-description: Automatic canonical-main Blueprint maintenance and transparent current-baseline queries through the shared maintenance executor.
+description: Automatic canonical-main Blueprint maintenance and transparent current-baseline
+  queries through the shared maintenance executor.
 visibility: internal
-delivered_by:
-  - blueprint-main-maintenance
 ---
 
 # Blueprint Freshness — Spec

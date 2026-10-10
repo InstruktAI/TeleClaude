@@ -34,16 +34,6 @@ Graphify CLI, adopted as-is behind the `graph.json` data-contract seam.
 
 ### Artifact & freshness manifest
 
-<!-- planned-change:blueprint-main-maintenance -->
-
-`.teleclaude/blueprint/graph.json` plus a sidecar `.teleclaude/blueprint/manifest.json`
-carrying `baseline_sha` (the `origin/main` commit the graph was built from),
-`generated_at`, and `status`. Both live at the project root, gitignored, shared
-across worktrees (like `.teleclaude/todos.db`). The manifest is the freshness
-signal: a consumer compares `baseline_sha` to the current `origin/main`
-baseline and treats a mismatch / missing manifest / non-`ok` `status` as stale.
-<!-- change:blueprint-main-maintenance -->
-
 The graph and freshness manifest form one committed generation at the owning
 project root, gitignored and shared across worktrees. The manifest identifies
 the exact committed canonical-main revision extracted, its generation time,
@@ -56,7 +46,6 @@ consumer pins one generation while reading it; an unsuccessful or interrupted
 extraction does not activate an incomplete generation. These invariants follow
 the explicit state and concurrency ownership in
 `sdlc/policy/code-quality-practices`.
-<!-- /planned-change:blueprint-main-maintenance -->
 
 ### Languages
 
@@ -72,40 +61,6 @@ see the dependents," never as "there are none," and fall back to manual
 exploration.
 
 ### Generation (automation, never agents)
-
-<!-- planned-change:blueprint-main-maintenance -->
-
-Blueprint regeneration runs automatically — never by agents — from three
-disjoint triggers:
-
-- A **`post-merge` git hook** on the repo root dispatches the pinned no-LLM
-  refresh for the activated commit and returns without waiting for extraction.
-  `git pull` is fetch+merge, so a manual pull also triggers the refresh. The
-  hook resolves the repo root from `GRAPHIFY_REPO_ROOT`. The integrator's own git
-  operations set a suppression signal the hook honors, so this trigger remains
-  for external pulls. The manifest, rather than Git command completion, reports
-  whether the activated commit has been extracted.
-- The **integrator regenerates directly after a confirmed delivery** — from the
-  repo root when its post-delivery pull synced to `origin/main`, and from the
-  integration worktree, which holds the delivered commit, when that pull diverged.
-- The **command surface dispatches a detached refresh when it observes a stale
-  baseline from the canonical checkout** and answers the current call from the
-  existing graph. Regeneration runs in a separate process group so the command returns
-  immediately, and a non-blocking lock makes it single-flight: an observation
-  made while a refresh is already running dispatches nothing. An observation made
-  from a todo worktree answers from the existing graph and dispatches nothing, so a slug
-  checkout never drives the shared cache. This trigger covers every path by which
-  `origin/main` advances without a merge or a delivery — most commonly a commit
-  authored on main at the repo root and pushed, for which git offers no hook —
-  so the baseline converges without an agent ever invoking generation.
-
-The `--force` override lets a code-deleting refactor's smaller re-extraction
-overwrite the cache instead of persisting a `status=error`. Every trigger writes
-`graph.json` + `manifest.json` at the project root. This spec owns the contract
-(location, manifest schema, languages, the command surface); the write is a
-generated cache, not authoritative state — a deliberate divergence from the
-single-owner default. Pinned and installed via `make install`.
-<!-- change:blueprint-main-maintenance -->
 
 Blueprint generation is deterministic canonical-main maintenance in projects
 that enable the code capability. Every canonical-main commit or merge
@@ -133,7 +88,6 @@ the project's toolchain. A smaller valid extraction can replace a larger graph.
 One maintenance owner and reuse of the existing executor follow
 `sdlc/principle/design-fundamentals`; publication and failure outcomes follow
 `sdlc/policy/code-quality-practices`.
-<!-- /planned-change:blueprint-main-maintenance -->
 
 ### Command surface
 
@@ -180,22 +134,6 @@ that no implementation exists.
 
 ### Fallback
 
-<!-- planned-change:blueprint-main-maintenance -->
-
-A stale baseline — a graph generated successfully from a known commit that is
-not the current `origin/main` — still answers from the graph on disk. The answer
-is headed by a line naming that baseline commit and the current `origin/main`
-commit, so a caller whose changed files may fall inside that range can diff it
-and read those files directly.
-
-The command reports the Blueprint unavailable when no such range can be named —
-no manifest, a failed generation (whose manifest records the attempted baseline
-rather than the graph's), or an `origin/main` that cannot be resolved — or when
-the graph cannot be read. Then, and whenever the area is unsupported or a Blind
-spot applies, the agent states the gap and falls back to manual exploration —
-blast-radius is never silently skipped.
-<!-- change:blueprint-main-maintenance -->
-
 A successful blast-radius query uses a complete generation matching committed
 canonical main at the query's freshness observation. A fresh query answers
 immediately. A query encountering outstanding Blueprint maintenance observes
@@ -210,24 +148,8 @@ uses manual exploration. An older graph is retained cache state, not a
 successful current answer. Unsupported languages and blind spots retain the
 manual exploration contract above. Failure visibility follows
 `sdlc/principle/design-fundamentals`.
-<!-- /planned-change:blueprint-main-maintenance -->
 
 ### Use cases
-
-<!-- planned-change:blueprint-main-maintenance -->
-
-#### UC-BP1: A stale baseline answers from the existing graph and dispatches its own refresh
-
-```gherkin
-Given the Blueprint manifest records a baseline commit that is not the current origin/main
-When an agent asks the command surface for the blast radius of a changed file from the canonical checkout
-Then the command answers with the dependents from the existing graph
-And the answer is headed by a line naming the stale baseline commit and the current origin/main commit
-And it dispatches a detached regeneration for the current origin/main baseline
-But an agent asking the same question from a todo worktree receives the same headed answer with no regeneration dispatched
-```
-
-<!-- change:blueprint-main-maintenance -->
 
 #### UC-BP1: A query observes current maintenance before answering
 
@@ -240,22 +162,6 @@ And a successful answer uses a complete graph matching committed canonical main 
 And the query performs no extraction itself
 ```
 
-<!-- /planned-change:blueprint-main-maintenance -->
-
-<!-- planned-change:blueprint-main-maintenance -->
-
-#### UC-BP2: A slug-worktree merge preserves the shared baseline
-
-```gherkin
-Given an agent is working in a todo slug worktree with branch-only changes
-And the shared Blueprint reflects the current origin/main
-When origin/main is merged into that worktree
-Then the shared Blueprint continues to reflect the current origin/main
-And no branch-only structure becomes visible to Blueprint consumers
-```
-
-<!-- change:blueprint-main-maintenance -->
-
 #### UC-BP2: A slug-worktree merge preserves the shared baseline
 
 ```gherkin
@@ -265,8 +171,6 @@ When the agent merges upstream main into that worktree
 Then the shared Blueprint continues to reflect committed canonical main
 And no branch-only structure becomes visible to Blueprint consumers
 ```
-
-<!-- /planned-change:blueprint-main-maintenance -->
 
 ## See Also
 

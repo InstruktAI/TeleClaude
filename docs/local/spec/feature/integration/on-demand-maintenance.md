@@ -49,19 +49,6 @@ Publication is one of those steps and keeps its own contract
   step: a run neither performs nor lists it, because only an event supplies what
   it acts on (`local/projects/teleclaude/spec/feature/integration/event-bound-maintenance`).
 
-<!-- planned-change:blueprint-main-maintenance -->
-
-- **Uncommitted edits.** The step set is resolved from the root's committed
-  declaration. Publication reads committed state alone, under its own contract.
-  Every other step reads the canonical checkout as it stands, exactly as it does
-  at the commit boundary, so an uncommitted edit there can reach its output.
-  When the root's repository holds uncommitted changes, the run says so before
-  its first step, naming the uncommitted paths and, where known, the sessions
-  holding them, and then performs every step. Uncommitted edits never make a run
-  refuse or skip a step.
-
-<!-- change:blueprint-main-maintenance -->
-
 - **Uncommitted edits.** The step set is resolved from the root's committed
   declaration. Publication and Blueprint extraction read committed snapshots
   under their owning contracts. Other steps read the canonical checkout as it
@@ -72,8 +59,6 @@ Publication is one of those steps and keeps its own contract
   canonical main under `sdlc/spec/codebase-blueprint`. An already current cache
   completes without extraction; failure is a failed step. Existing recorded
   activation failures retain the earlier-failure reporting contract below.
-
-<!-- /planned-change:blueprint-main-maintenance -->
 
 - **Plumbing.** Every project's steps include converging that project's own
   plumbing, whatever else its declaration carries.

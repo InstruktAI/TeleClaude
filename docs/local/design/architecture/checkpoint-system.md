@@ -90,17 +90,6 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 The effective action model is a TeleClaude-owned **platform-universal base** merged with a **project-declared overlay** in `teleclaude.yml` (`ProjectConfig`). The base contains disjoint checkpoint and maintenance registries plus one binding table. Base bindings attach per subscribed capability (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`): `docs: enabled` and `agents: enabled` activate their fixed scopes (`docs/**`; `agents/**`, `.agents/**`, `**/AGENTS.master.md`) carrying artifact-pipeline maintenance; `code: enabled` activates toolchain maintenance and the slug-parameterized log judgment on changed code (`instrukt-ai-logs <project_slug>` with the slug read from `ProjectConfig`, superseding the hardcoded command in Invariant 15). A binding names the action a changed path owes without regard to which registry declares it. The overlay extends each registry with the project's own actions. Unreadable project config fails open to both base registries and the base bindings — the fail-open posture of Invariant 13 extended to configuration.
 
-<!-- planned-change:blueprint-main-maintenance -->
-
-The base registries are unconditionally present in every merged model (the
-maintenance registry is not capability-gated; only its bindings are). Their
-membership, `run`/`command` text, `main_only`/`precedence` values, and default
-bindings are owned by `teleclaude/constants.py` (`CHECKPOINT_BASE_ACTIONS`,
-`CHECKPOINT_BASE_MAINTENANCE`, `CHECKPOINT_BASE_*_BINDING`) — read there before
-declaring a new action, rather than assuming a project overlay's own binding
-to an unfamiliar id is undeclared.
-<!-- change:blueprint-main-maintenance -->
-
 The platform base registries and bindings are owned by
 `teleclaude/constants.py`; capability composition belongs to
 `base_checkpoint_model`. Blueprint membership and its activation binding
@@ -108,13 +97,10 @@ participate only in code-enabled projects. Other base registry membership
 remains unconditional, with capability-gated path bindings. Consumers resolve
 the composed model rather than imposing their own capability rules, under
 `sdlc/policy/domain-ownership`.
-<!-- /planned-change:blueprint-main-maintenance -->
 
 23. **Action registries and bindings (verb/noun split)**: Detection is three tables joined by action id. The **checkpoint registry** maps an id to the agent-facing `run`, transcript `evidence`, `main_only`, `off_main_eligible`, `precedence`, and optional `evidence_must_follow_last_mutation`; it carries no executable command. The **maintenance registry** maps an id to the `command` an automated consumer executes, `main_only`, `precedence`, and its on-demand disposition (Invariant 29); it carries no agent-facing instruction or transcript evidence. Automated consumers execute selected maintenance actions in precedence waves: equal-precedence actions run concurrently, the next wave waits for every prior terminal outcome, and failure never cancels a later wave. The single **binding table** maps a scope to action ids without owning registry membership. Each action id belongs to exactly one registry, while every binding and consumer resolves through the same joined model.
 
 TeleClaude owns both platform base registries. A project references their ids in its bindings and extends the registry whose eligibility contract its project-specific action satisfies.
-
-<!-- planned:blueprint-main-maintenance -->
 
 Canonical-main activation bindings select main-only maintenance independently
 of the changed-path set, including an empty commit. They are a declared trigger
@@ -134,7 +120,6 @@ order and one execution owner follow `sdlc/policy/code-quality-practices` and
 The cache baseline and query guarantee belong to `sdlc/spec/codebase-blueprint`;
 the local behavioral contract is
 `local/projects/teleclaude/spec/feature/workflow/blueprint-freshness`.
-<!-- /planned:blueprint-main-maintenance -->
 
 Every checkpoint-registry action also carries its judgment owner: an ordinary session by default, or the standing integrator for each main-only judgment action a project lists in `checkpoint.integrator_judgment`. A listed id that names no main-only checkpoint-registry action is rejected when the project's configuration is validated. The file-based engine defers an integrator-owned action for every non-integrator session, on main and off it. The declaration governs session surfacing only: the checkout-scoped marker of Invariant 19 is recorded for every qualifying advancement whether or not a project declares it, so the standing integrator judges canonical-main maintenance in every project, and a project that declares nothing also keeps each judgment surfaced to its own sessions. A project whose post-activation log judgment belongs to the integrator alone (`local/projects/teleclaude/policy/test-moratorium`) declares it there.
 
@@ -202,22 +187,11 @@ the action's `on_demand` disposition:
   cannot tell. With no probe, or a probe that cannot tell, the run reports that
   it cannot tell. The run names the action's command beside its reasons.
 
-<!-- planned-change:blueprint-main-maintenance -->
-
-An on-demand run tells each command it runs that the run is on demand. A command
-told so deploys none of the service definitions TeleClaude's installation
-renders, and stops, restarts or reloads no running host service. It may still
-start a service that is not running. In every other respect a command behaves
-as it does at the commit boundary and reads the canonical checkout as it stands;
-only publication reads committed state alone, under its own contract.
-<!-- change:blueprint-main-maintenance -->
-
 An on-demand run tells each command that it is on demand. Service lifecycle and
 deployment follow the non-disruptive contract in
 `local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`.
 Publication and Blueprint extraction read committed snapshots under their
 owning contracts. Other commands read the canonical checkout as it stands.
-<!-- /planned-change:blueprint-main-maintenance -->
 
 An action whose command finds nothing to act on in a root completes and says
 so rather than failing. The platform base's installation runs the root's
@@ -264,17 +238,11 @@ invocation home and the homes nested beneath it when it receives a home.
 
 ### Invariant 30 — Event bindings
 
-<!-- planned-change:blueprint-main-maintenance -->
-
-A binding's trigger is either a path `scope` or a list of `events`, never both.
-<!-- change:blueprint-main-maintenance -->
-
 Each binding declares exactly one trigger: changed paths, event types, or a
 canonical-main activation. `CheckpointBindingConfig` and its closed activation
 type own the declaration shape; the effective model keeps these trigger kinds
 separate. Activation bindings select main-only maintenance. Trigger integrity
 follows `sdlc/policy/code-quality-practices`.
-<!-- /planned-change:blueprint-main-maintenance -->
 
 An event binding names exact event types or group patterns resolved by the
 platform's shared event-type matcher, and owes only maintenance-registry
