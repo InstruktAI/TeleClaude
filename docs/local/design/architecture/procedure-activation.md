@@ -144,8 +144,6 @@ rule it relies on is stated by its owner:
   company or a profile: an agent activated for a person, a project, or the
   platform works in that home and carries no company.
 
-<!-- planned:procedure-agent-headless -->
-
 - **Attendance is the session's own audience statement.** A procedure declares
   whether people watch its agent; the activation carries that declaration, and
   the runner records it in the write that creates the agent's session. An
@@ -156,8 +154,6 @@ rule it relies on is stated by its owner:
   gives it no Discord copy or reflection, and the Discord adapter, which gives
   it no thread. It never enters reach, and never changes how an activation's
   event is delivered to the agent.
-
-<!-- /planned:procedure-agent-headless -->
 
 - **Subscriptions follow the published index.** The subscription set is read
   from the publication index and held in memory with the identity of the index

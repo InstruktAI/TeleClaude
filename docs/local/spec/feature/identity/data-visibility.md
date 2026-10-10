@@ -56,17 +56,6 @@ Command clearance — whether a caller may run a command against a target — is
 separate, up-front decision (`local/projects/teleclaude/spec/feature/identity/command-clearance`)
 and is not changed by this contract.
 
-<!-- planned-change:procedure-agent-headless -->
-
-Two audience facts a record states about itself sit beside reach, and reach
-neither widens nor narrows them. A documentation snippet its author published
-`public` is readable by every caller; reach decides only which tiers a principal
-reads in full (`local/projects/teleclaude/spec/feature/context/doc-selection-policy`). A
-person's private local documentation is readable only by that person and the
-system principal, platform administrators included (same contract).
-
-<!-- change:procedure-agent-headless -->
-
 Two audience facts a record states about itself sit beside reach, and reach
 neither widens nor narrows them. A documentation snippet its author published
 `public` is readable by every caller; reach decides only which tiers a principal
@@ -80,8 +69,6 @@ of a principal's default view of sessions — the session listing that asks for
 neither every session nor ids, and live session updates — while reach
 still decides whether a listing that asks for it shows it
 (`local/projects/teleclaude/spec/domain/agent_runtime`).
-
-<!-- /planned-change:procedure-agent-headless -->
 
 ## Canonical fields
 
@@ -127,30 +114,6 @@ When the person lists sessions, history, or projects
 Then only records about their own person home are shown
 ```
 
-<!-- planned-change:procedure-agent-headless -->
-
-#### UC-DV4: Every data surface applies the same reach
-
-```gherkin
-Given two principals with different reach
-When each views the same platform data through any surface that shows it
-Then each sees exactly the records their reach admits, the same set on every surface
-And documentation published as public follows its own audience instead
-
-Examples:
-  | surface                                                  |
-  | the session listing, including closed and by-id listings |
-  | live session updates in the TUI and web console          |
-  | conversation history search and detail                   |
-  | operation status                                         |
-  | documentation, read in full only for reached tiers       |
-  | the project listing and the todos shown per project      |
-  | memory observations: search, listing, and timeline       |
-  | messages telling a person about a published domain event |
-```
-
-<!-- change:procedure-agent-headless -->
-
 #### UC-DV4: Every data surface applies the same reach
 
 ```gherkin
@@ -171,8 +134,6 @@ Examples:
   | memory observations: search, listing, and timeline       |
   | messages telling a person about a published domain event |
 ```
-
-<!-- /planned-change:procedure-agent-headless -->
 
 #### UC-DV5: A page is filled with visible records only
 

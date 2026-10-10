@@ -287,8 +287,6 @@ Scenario Outline: The declared agent identity is validated against the subscript
     | declares an agent identity and no events                     | an agent-identity finding is reported for that file and the sync exits non-zero |
 ```
 
-<!-- planned:procedure-agent-headless -->
-
 #### UC-SFV9: A subscribed procedure may declare that no person watches its agent
 
 ```gherkin
@@ -305,8 +303,6 @@ Scenario Outline: The declared attendance is validated against the subscription
     | declares its events and an attendance outside the two   | an attendance finding is reported for that file and the sync exits non-zero |
     | declares an attendance and no events                    | an attendance finding is reported for that file and the sync exits non-zero |
 ```
-
-<!-- /planned:procedure-agent-headless -->
 
 ### Cross-context references
 

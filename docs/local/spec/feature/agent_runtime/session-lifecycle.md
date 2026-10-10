@@ -201,8 +201,6 @@ And optional `job` filter narrows further
 And the human display name is enriched from the people configuration for each entry whose email matches
 ```
 
-<!-- planned:procedure-agent-headless -->
-
 #### UC-SL58: An unattended procedure agent is listed only when asked for
 
 ```gherkin
@@ -220,8 +218,6 @@ Scenario Outline: The default listing leaves an unattended procedure agent out
     | with the session's id requested                | listed     |
     | against another computer, with no selection    | not listed |
 ```
-
-<!-- /planned:procedure-agent-headless -->
 
 #### UC-SL22: Listing closed sessions — agent status projection
 

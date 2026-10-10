@@ -227,8 +227,6 @@ Scenario Outline: The declared agent identity travels with every activation
     | declares the subject agent identity            | the procedure's agent for the event's subject in that company |
 ```
 
-<!-- planned:procedure-agent-headless -->
-
 #### UC-PSR18: An activation carries the attendance its procedure declares
 
 ```gherkin
@@ -244,8 +242,6 @@ Scenario Outline: The declared attendance travels with every activation
     | declares the attended attendance     | an attended agent      |
     | declares the unattended attendance   | an unattended agent    |
 ```
-
-<!-- /planned:procedure-agent-headless -->
 
 ### Cross-context references
 

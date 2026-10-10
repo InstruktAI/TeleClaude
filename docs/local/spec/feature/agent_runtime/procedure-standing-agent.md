@@ -87,12 +87,8 @@ person's folder carries no human identity and acts as no person.
 **Subject-bound agent**
 : The agent a procedure declaring subject identity keeps for one subject in one home — started by the first activation about that subject and reached by every later one, revived when its session has closed.
 
-<!-- planned:procedure-agent-headless -->
-
 **Unattended agent**
 : The agent of a procedure declaring that no person watches it. Its work is a run: it answers, works, and is recorded as any other agent of its procedure while its session is open, is never revived once that session has closed, and is left out of the places people look at sessions unless they ask for it.
-
-<!-- /planned:procedure-agent-headless -->
 
 ### Use cases
 
@@ -335,8 +331,6 @@ Scenario Outline: The default identity is unchanged by events about different su
     | declares the home agent identity   |
 ```
 
-<!-- planned:procedure-agent-headless -->
-
 #### UC-PSA23: An unattended agent stays out of the places people look at sessions
 
 ```gherkin
@@ -396,8 +390,6 @@ When an operator starts a session for that procedure and a company by hand
 Then that session is shown wherever sessions are shown
 ```
 
-<!-- /planned:procedure-agent-headless -->
-
 ### Cross-context references
 
 - **integration** — hands this context an activation naming the procedure, the
@@ -434,14 +426,10 @@ Then that session is shown wherever sessions are shown
   session record. After that record is purged, a later event about the subject
   starts a new agent without the earlier context.
 
-<!-- planned:procedure-agent-headless -->
-
 - Attendance is recorded on a session when it is started. Changing a
   procedure's declaration affects the agents it starts afterwards; an agent
   already running keeps the attendance it started with.
 - Sessions an unattended agent starts for its own work are attended.
-
-<!-- /planned:procedure-agent-headless -->
 
 ## See Also
 

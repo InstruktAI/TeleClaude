@@ -129,8 +129,6 @@ Channel provisioning determines whether a UI adapter can receive delivery. It do
 - Discord admin reflection is the extra admin UI lane for user input, paired with the admin output lane for assistant output.
 - Transport metadata such as Redis `target_computer` is not a session origin and does not participate in UI routing.
 
-<!-- planned:procedure-agent-headless -->
-
 - The Discord admin lane is not eligible for an unattended procedure agent
   (`local/projects/teleclaude/spec/domain/agent_runtime`): it receives no admin
   copy, no reflection, and no final-output obligation, and Discord provisions
@@ -139,8 +137,6 @@ Channel provisioning determines whether a UI adapter can receive delivery. It do
   unchanged. Attendance is the session's own statement that no person
   watches it, not a role, so the rule that a session's role never gates the
   admin copy is unchanged.
-
-<!-- /planned:procedure-agent-headless -->
 
 ### Live routing origin and native turn provenance
 

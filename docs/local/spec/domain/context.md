@@ -99,15 +99,11 @@ any location.
   than published with global reach. `integration` consumes this answer and never
   reads procedure metadata itself.
 
-<!-- planned:procedure-agent-headless -->
-
 - **Also owns (attendance):** whether people watch a subscribed procedure's
   agent — attended, the default, or unattended — declared beside its
   subscriptions, validated to be one of the two and declared only beside
   subscriptions, and published with the procedure's other subscription facts
   for `integration` to carry into each activation.
-
-<!-- /planned:procedure-agent-headless -->
 
 ### Use cases (index of feature specs)
 
