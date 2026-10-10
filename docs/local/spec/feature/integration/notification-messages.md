@@ -23,10 +23,23 @@ The message is readable markdown in plain words. It states:
 A message states facts for a person to read. It carries no agent framing, such
 as a bracketed envelope header, and no instruction or action for the reader.
 
+<!-- planned-change:domain-notifications -->
+
 Every event type is told this way, including a type introduced after the
 messages were built: what a message says comes from the facts the event and its
 type's declaration state (`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`),
 so a new type needs no change to how messages are composed or delivered.
+<!-- change:domain-notifications -->
+
+Every event type is told this way, including a type introduced after the
+messages were built: what a message says comes from the facts the event and its
+type's declaration state (`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`),
+so a new type needs no change to how messages are composed or delivered. An
+event whose type has no declaration — an event relayed from an external system,
+whose type and data are that system's own — states what happened by its type
+name, read as words, and names the inbound source that received it as the
+thing.
+<!-- /planned-change:domain-notifications -->
 
 Which events are told, to whom, and what a consumer adds to its own messages —
 such as how long a recovered thing was broken — belong to the consumer that
@@ -74,3 +87,16 @@ When the person is told about a platform event
 Then the message arrives on that channel
 And it reaches no one else
 ```
+
+<!-- planned:domain-notifications -->
+
+#### UC-NM5: An event relayed from an external system reads as well
+
+```gherkin
+Given an event relayed from an external system, whose type has no declaration in the event catalog
+When a person is told about it
+Then the message states in plain words what happened, read from the event's type name
+And it names the inbound source that received it, the computer it happened on and when it happened
+```
+
+<!-- /planned:domain-notifications -->

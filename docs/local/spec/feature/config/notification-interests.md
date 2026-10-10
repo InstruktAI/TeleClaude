@@ -34,9 +34,20 @@ overlap or repeat one another are valid and change nothing. A category that is
 switched off matches nothing and keeps its patterns as written, so switching it
 on again restores them.
 
+<!-- planned-change:domain-notifications -->
+
 Interests only select. Whether a matching event is told to the person at all,
 and to whom an event may be told, is decided by the consumer that tells people
 (`local/projects/teleclaude/spec/feature/integration/incident-alerts`).
+<!-- change:domain-notifications -->
+
+Interests only select. Whether a matching event is told to the person at all,
+and to whom an event may be told, is decided by the consumer that tells people:
+incident alerts for the `teleclaude` category
+(`local/projects/teleclaude/spec/feature/integration/incident-alerts`), and
+subscribed domain events for a published domain's category
+(`local/projects/teleclaude/spec/feature/integration/subscribed-domain-events`).
+<!-- /planned-change:domain-notifications -->
 
 A person starts with their role's interests when the person is created: a
 platform administrator starts with the `teleclaude` category switched on and

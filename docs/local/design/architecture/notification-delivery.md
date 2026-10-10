@@ -22,6 +22,16 @@ platform problems (`local/projects/teleclaude/spec/feature/integration/incident-
 The selection, message composition and delivery it uses are shared by every
 consumer that tells people.
 
+<!-- planned:domain-notifications -->
+
+Subscribed domain events is the consumer that tells people about the events of
+published domains as they come
+(`local/projects/teleclaude/spec/feature/integration/subscribed-domain-events`).
+It uses the same selection, composition and delivery, and keeps no state about
+a thing: each event is its own message.
+
+<!-- /planned:domain-notifications -->
+
 ## Inputs/Outputs
 
 **Inputs:**
@@ -45,6 +55,19 @@ consumer that tells people.
   state with the type and time of the event that brought it there, the time the
   thing became broken, and the state each selected recipient was last told.
 
+<!-- planned:domain-notifications -->
+
+- For subscribed domain events: every event its own computer emitted whose type
+  is not under `teleclaude.`; every person on the people roster with their
+  notification interests, asked whether they select the type among the domains
+  published on this computer; each such person's reach, resolved by `identity`
+  for that person and asked whether it admits the event's origin with the owner
+  the event carries
+  (`local/projects/teleclaude/spec/feature/identity/data-visibility`); and the
+  consumer's told marks: per event, the selected people already told.
+
+<!-- /planned:domain-notifications -->
+
 **Outputs:**
 
 - One message per selected recipient, sent through person-addressed messaging on
@@ -52,6 +75,14 @@ consumer that tells people.
   (`local/projects/teleclaude/spec/messaging`).
 - Incident records opened on a first failure and removed once the recovery has
   reached every selected recipient.
+
+<!-- planned:domain-notifications -->
+
+- Told marks for a domain event, written as each selected person is told and
+  removed once the event's handling completes.
+
+<!-- /planned:domain-notifications -->
+
 - A failed outcome for a transition whose message did not reach a selected
   recipient: the handling fails, and the consumer runtime retries it and finally
   parks the event as an announced dead letter.
@@ -121,6 +152,35 @@ consumer that tells people.
   (`local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`).
   A current computer never reads them.
 
+<!-- planned:domain-notifications -->
+
+### Subscribed domain events
+
+- **Every selected event is its own message.** Domain events report no state of
+  a thing, so the consumer opens, closes and remembers no matter; two events
+  about one thing are two messages.
+- **Platform events are incident alerts' alone.** The consumer passes over every
+  type under `teleclaude.` and is handed every other type, because the
+  published domains are read live on this computer: a domain published later
+  is told without a change here or a restart.
+- **The audience is interests within reach.** A person is told when a switched-on
+  category of their interests selects the type and `identity`'s reach for that
+  person admits the event's origin. An origin of none or unknown is admitted
+  only by platform reach. A person whose reach cannot be resolved fails the
+  handling rather than being guessed in or out.
+- **A recipient is outstanding until marked told.** Each handling sends only to
+  selected people without a told mark for the event, and marks each one the
+  moment the send succeeds, so a retry never repeats a recorded send. The marks
+  are removed when the handling completes; a parked event keeps its marks for as
+  long as the platform keeps its handled-event records, so a re-handled parked
+  event repeats nothing recorded. The inherent window above applies unchanged:
+  delivery is at least once.
+- **An undeclared type is told by its name.** An event relayed from an external
+  system has no type declaration; its message states what happened from the
+  type name read as words, and names the inbound source as the thing.
+
+<!-- /planned:domain-notifications -->
+
 ## Primary flows
 
 ```mermaid
@@ -165,3 +225,15 @@ as a known one.
   computer for a single event; only the origin computer tells.
 - **Dropping notification facts before the fleet answers** silences what an
   older computer's projector still tells for events it receives.
+
+<!-- planned:domain-notifications -->
+
+- **Selecting domains from a fixed list** leaves a newly published domain
+  silent until someone edits the list or restarts the computer.
+- **Guessing an audience when reach cannot be resolved** either tells a person
+  what they may not see or silently drops what they may; the handling fails
+  and is retried instead.
+- **Composing only from a declaration** leaves every event relayed from an
+  external system unreadable or unsent.
+
+<!-- /planned:domain-notifications -->

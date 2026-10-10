@@ -40,6 +40,8 @@ operations it started; and sessions its sessions spawned. Reading the outcome of
 one's own act and following one's own workers do not depend on where that work
 landed.
 
+<!-- planned-change:domain-notifications -->
+
 Every surface that lists or pushes platform data to a principal applies that
 reach and holds no visibility rule of its own: session listings and live session
 updates, conversation history, operation status, documentation depth,
@@ -49,6 +51,20 @@ another computer carry their subject and its owner, so a receiving computer that
 does not know a project can still admit the owning company's people or the owning
 person. Stored records carry their subject from the moment they are written;
 records that existed before subjects were recorded receive theirs once.
+<!-- change:domain-notifications -->
+
+Every surface that lists or pushes platform data to a principal applies that
+reach and holds no visibility rule of its own: session listings and live session
+updates, conversation history, operation status, documentation depth,
+project listings, memory observations, and the messages that tell a person about
+a published domain's events. Filtering happens on the computer that shows or
+sends the data, never on a computer that only produced it elsewhere. Records
+received from another computer carry their subject and its owner, so a receiving
+computer that does not know a project can still admit the owning company's
+people or the owning person. Stored records carry their subject from the moment
+they are written; records that existed before subjects were recorded receive
+theirs once.
+<!-- /planned-change:domain-notifications -->
 
 Command clearance — whether a caller may run a command against a target — is a
 separate, up-front decision (`local/projects/teleclaude/spec/feature/identity/command-clearance`)
@@ -107,6 +123,8 @@ Then only records about their own person home are shown
 
 #### UC-DV4: Every data surface applies the same reach
 
+<!-- planned-change:domain-notifications -->
+
 ```gherkin
 Given two principals with different reach
 When each views the same platform data through any surface that shows it
@@ -123,6 +141,28 @@ Examples:
   | the project listing and the todos shown per project      |
   | memory observations: search, listing, and timeline       |
 ```
+
+<!-- change:domain-notifications -->
+
+```gherkin
+Given two principals with different reach
+When each views the same platform data through any surface that shows it
+Then each sees exactly the records their reach admits, the same set on every surface
+And documentation published as public follows its own audience instead
+
+Examples:
+  | surface                                                  |
+  | the session listing, including closed and by-id listings |
+  | live session updates in the TUI and web console          |
+  | conversation history search and detail                   |
+  | operation status                                         |
+  | documentation, read in full only for reached tiers       |
+  | the project listing and the todos shown per project      |
+  | memory observations: search, listing, and timeline       |
+  | messages telling a person about a published domain event |
+```
+
+<!-- /planned-change:domain-notifications -->
 
 #### UC-DV5: A page is filled with visible records only
 
