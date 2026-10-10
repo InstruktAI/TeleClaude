@@ -33,8 +33,6 @@ Then the request failure surfaces as the client's documented API error
 And the TUI keeps running and retries the refresh
 ```
 
-<!-- planned:restart-never-strands-daemon -->
-
 #### UC-TDR2: A restarting daemon's refusal reads as a restart, not a failed action
 
 ```gherkin
@@ -44,5 +42,3 @@ Then the operator is told the daemon is restarting and that the action was not p
 And the refusal's machine fields are not shown to the operator
 And the TUI stays alive and the operator can repeat the action once the daemon accepts work
 ```
-
-<!-- /planned:restart-never-strands-daemon -->

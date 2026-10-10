@@ -140,39 +140,11 @@ contract governs only what happens when maintenance runs.
 
 <!-- /planned:checkpoint-event-bindings -->
 
-<!-- planned:restart-never-strands-daemon -->
-
 - **Restart admission.** The restart action begins the daemon's preparation
   only once the daemon holds no accepted work, waiting with admission still open
   up to a bound the action owns; when the bound expires it prepares regardless.
   An integration whose commit owes the restart is accepted work like any other,
   so its own restart never closes admission while it is still running.
-
-<!-- /planned:restart-never-strands-daemon -->
-
-<!-- planned-change:restart-never-strands-daemon -->
-
-- **Observation.** Every attempt and terminal outcome retains the immutable
-  activation and action identity in structured records. The commit boundary
-  records a checkout-scoped integrator judgment for every qualifying code
-  activation after its owed action records are durable, including a direct main
-  commit with no todo candidate. The judgment retains the activation time and
-  becomes eligible only after all owed actions succeed. Restart is the final
-  owed action of an activation; it succeeds when the service manager accepts
-  it, and whether the restarted daemon came back healthy belongs to the
-  integrator's log judgment, not to the action. The drain records the latest maintenance-ready time
-  on that marker; if interrupted before recording readiness, the judgment stays
-  outstanding for integrator recovery even when action files are absent. A log
-  read can discharge it only after that ready time
-  with a window covering the activation through completed maintenance. Operational
-  anomaly detection observes failed or stale actions. A regular committer has no
-  post-commit maintenance log judgment. The standing integrator inspects
-  outstanding and terminal maintenance through its recurring watch, judges
-  the relevant runtime evidence after owed actions complete, and owns bounded
-  recovery. The log bug hunter remains a later anomaly backstop. Maintenance
-  completion sends no notification to the committer.
-
-<!-- change:restart-never-strands-daemon -->
 
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. The commit boundary
@@ -195,8 +167,6 @@ contract governs only what happens when maintenance runs.
   the relevant runtime evidence after owed actions complete, and owns bounded
   recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
-
-<!-- /planned-change:restart-never-strands-daemon -->
 
 ### Use cases
 
@@ -389,8 +359,6 @@ And no generated AGENTS.md beside those masters enters the commit, because the r
 But the same path shape in an ordinary project does not acquire a home-only maintenance binding
 ```
 
-<!-- planned:restart-never-strands-daemon -->
-
 #### UC-PCM19: A restart owed by an integration does not close admission on that integration
 
 ```gherkin
@@ -401,8 +369,6 @@ Then the daemon keeps accepting work while any accepted work is held, up to the 
 And preparation begins once the daemon holds no accepted work, or when the bound expires
 And the integration completes without having had its own restart close admission around it
 ```
-
-<!-- /planned:restart-never-strands-daemon -->
 
 ## See Also
 
