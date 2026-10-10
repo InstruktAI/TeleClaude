@@ -6,14 +6,11 @@ import asyncio
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from instrukt_ai_logging import get_logger
 from redis.exceptions import ResponseError
 
-from teleclaude.channels.worker import run_subscription_worker
-from teleclaude.config.loader import load_project_config
 from teleclaude.config.machine import config
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus
 from teleclaude.core.integration.incident_alerts import build_incident_alerts_consumer
@@ -55,7 +52,6 @@ from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
-from teleclaude.paths import ConfigFileName
 from teleclaude.services.project_catalog.ownership import load_project_ownership_index
 from teleclaude.transport.redis_transport import RedisTransport
 
@@ -85,16 +81,6 @@ _INBOUND_ROUTES_UNAVAILABLE_EVENT = "API app or event producer unavailable; inbo
 _RELAY_DELIVERY_NO_REDIS_EVENT = "Event Redis client unavailable; relayed external events are not delivered here"
 
 
-def daemon_project_config_path() -> Path:
-    """Path to the daemon's own (mother) project ``teleclaude.yml``.
-
-    It lives at the daemon's working dir — NOT next to the global runtime
-    ``config.yml`` in ``~/.teleclaude`` (that dir holds the GLOBAL teleclaude.yml,
-    which is not a ProjectConfig).
-    """
-    return Path(config.computer.default_working_dir) / ConfigFileName.OVERLAY
-
-
 @dataclass
 class _EventPlatformStatus:
     redis_configured: bool
@@ -120,7 +106,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _relay_delivery_task: asyncio.Task[object] | None
         _internal_event_bus_task: asyncio.Task[object] | None
         _task_schedule_clock_task: asyncio.Task[object] | None
-        channel_subscription_worker_task: asyncio.Task[object] | None
         _hook_dispatcher: HookDispatcher | None
         cache: DaemonCache
 
@@ -328,7 +313,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         handler_registry = HandlerRegistry()
         dispatcher = HookDispatcher(contract_registry, handler_registry)
         self._hook_dispatcher = dispatcher
-        project_config = load_project_config(daemon_project_config_path())
 
         # Built-in inbound WhatsApp handling (global subscription handler).
         handler_registry.register("whatsapp_inbound", handle_whatsapp_event)
@@ -371,32 +355,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
         self._start_relay_delivery_consumer(dispatcher)
         self._install_inbound_routes()
-
-        if project_config.channel_subscriptions:
-            redis_adapter = self.client.transport
-            if isinstance(redis_adapter, RedisTransport):
-                try:
-                    redis_client = await redis_adapter._get_redis()
-                except Exception as exc:
-                    logger.error(
-                        "Failed to start channel subscription worker due to redis error",
-                        error=str(exc),
-                        exc_info=True,
-                    )
-                else:
-                    self.channel_subscription_worker_task = asyncio.create_task(
-                        run_subscription_worker(
-                            redis=redis_client,
-                            subscriptions=project_config.channel_subscriptions,
-                            shutdown_event=self.shutdown_event,
-                        ),
-                        name="channel-subscription-worker",
-                    )
-                    self.channel_subscription_worker_task.add_done_callback(
-                        self._log_background_task_exception("subscription_worker")
-                    )
-            else:
-                logger.warning("Redis adapter unavailable; skipping channel subscription worker")
 
         logger.info("Webhook service initialized")
 

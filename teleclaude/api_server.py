@@ -71,7 +71,6 @@ from teleclaude.api_models_health import HealthDTO, PreparationObservationDTO
 from teleclaude.api_models_identity import WhoAmIDTO
 from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
 from teleclaude.caller_identity import CliCaller, PersonCliCaller, Platform, SessionOf, authorizing_role
-from teleclaude.channels.api_routes import router as channels_router
 from teleclaude.checkout_head import read_checkout_head
 from teleclaude.config.machine import config
 from teleclaude.config.person_secrets import resolve_person_mcp_secret_values
@@ -188,8 +187,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(memory_router)
 
         self.app.include_router(history_routes.router)
-
-        self.app.include_router(channels_router)
 
         self.app.include_router(operations_router)
 

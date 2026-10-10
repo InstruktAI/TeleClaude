@@ -127,7 +127,7 @@ FLAG_REMINDER_SLUG = Flag("--slug", desc="Target work slug for orchestration-wat
 FLAG_REMINDER_CANCEL_ALL = Flag("--all", desc="Cancel all reminders owned by the calling session", arity=SWITCH)
 
 # =============================================================================
-# companies / agents / channels
+# companies / agents
 # =============================================================================
 
 FLAG_COMPANY_SLUG = Flag("--slug", desc="Company slug (optional; derived from the name when omitted)", arity=VALUE)
@@ -145,8 +145,6 @@ FLAG_AGENT_STATUS_REASON = Flag("--reason", desc="Reason for status change", ari
 FLAG_AGENT_STATUS_MODEL = Flag("--model", desc="Scope the status to one declared model", arity=VALUE)
 FLAG_AGENT_STATUS_UNTIL = Flag("--until", desc="ISO8601 UTC expiry for unavailable or degraded", arity=VALUE)
 FLAG_AGENT_STATUS_CLEAR = Flag("--clear", desc="Reset to available immediately", arity=SWITCH)
-
-FLAG_CHANNEL_DATA = Flag("--data", desc="JSON payload to publish", arity=VALUE)
 
 # =============================================================================
 # message

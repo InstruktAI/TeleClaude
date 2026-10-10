@@ -236,7 +236,6 @@ def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Call
         TelecCommand.COMPUTERS: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_computers"),
         TelecCommand.PROJECTS: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_projects"),
         TelecCommand.AGENTS: _lazy("teleclaude.cli.tool_commands.infra", "handle_agents"),
-        TelecCommand.CHANNELS: _lazy("teleclaude.cli.tool_commands.infra", "handle_channels"),
         TelecCommand.OPERATIONS: _lazy("teleclaude.cli.tool_commands.todo", "handle_operations"),
         TelecCommand.VERSION: _lazy("teleclaude.cli.telec.handlers.misc", "_handle_version", pass_args=False),
         TelecCommand.DOCS: _lazy("teleclaude.cli.telec.handlers.docs", "_handle_docs"),

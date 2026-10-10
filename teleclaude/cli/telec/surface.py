@@ -484,31 +484,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
         },
     ),
-    "channels": CommandDef(
-        desc="Manage internal Redis Stream channels",
-        subcommands={
-            "list": CommandDef(
-                desc="List active channels",
-                args="[--project <name>]",
-                flags=[F.FLAG_HELP, F.FLAG_PROJECT_FILTER],
-                auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
-                    human=_HR_MEMBER,
-                    scope=CommandScope.PLATFORM,
-                ),
-            ),
-            "publish": CommandDef(
-                desc="Publish a message to a channel",
-                args="<channel> [--data <json>]",
-                flags=[F.FLAG_HELP, F.FLAG_CHANNEL_DATA],
-                auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
-                    human=_HR_MEMBER,
-                    scope=CommandScope.PLATFORM,
-                ),
-            ),
-        },
-    ),
     "operations": CommandDef(
         desc="Inspect durable long-running operations",
         subcommands={
@@ -1867,8 +1842,6 @@ SESSIONS_ESCALATE = CLI_SURFACE["sessions"].subcommands["escalate"]
 
 PROJECTS_LIST = CLI_SURFACE["projects"].subcommands["list"]
 AGENTS_STATUS = CLI_SURFACE["agents"].subcommands["status"]
-CHANNELS_LIST = CLI_SURFACE["channels"].subcommands["list"]
-CHANNELS_PUBLISH = CLI_SURFACE["channels"].subcommands["publish"]
 
 JOBS_REPORT = CLI_SURFACE["jobs"].subcommands[JobsSubcommand.REPORT.value]
 JOBS_LIST = CLI_SURFACE["jobs"].subcommands[JobsSubcommand.LIST.value]

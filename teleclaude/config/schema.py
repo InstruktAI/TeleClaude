@@ -27,7 +27,7 @@ from teleclaude.project_manifest import ConfigKind as ConfigKind
 from teleclaude.slug import SLUG_PATTERN, validate_slug
 from teleclaude.snippet_scope import RESERVED_HOME_IDENTITY_PREFIXES
 
-CURRENT_SCHEMA_VERSION = 19
+CURRENT_SCHEMA_VERSION = 20
 _PROBE_REQUIRES_DEFER_ERROR = "owed_probe belongs only to an action whose on_demand is defer"
 _BLANK_INBOUND_SECRET_ERROR = "An inbound source requires a non-blank secret"
 _BLANK_INBOUND_VERIFY_TOKEN_ERROR = "The WhatsApp inbound source requires a non-blank verify_token"
@@ -444,14 +444,6 @@ class GlobalInboundSources(ClosedModel):
     whatsapp: WhatsAppInboundSource | None = None
 
 
-class ChannelSubscription(ClosedModel):
-    """A subscription that routes messages from a Redis Stream channel to a target."""
-
-    channel: str
-    filter: dict[str, Any] | None = None  # guard: loose-dict - Subscription filter is intentionally unstructured
-    target: dict[str, Any] = {}  # guard: loose-dict - Subscription target (notification or project+command)
-
-
 class HooksConfig(ClosedModel):
     """A project's own inbound sources."""
 
@@ -680,7 +672,6 @@ class ProjectConfig(TierDocument):
     business: BusinessConfig = BusinessConfig()
     hooks: HooksConfig = HooksConfig()
     jobs: list[JobScheduleConfig] = []
-    channel_subscriptions: list[ChannelSubscription] = []
     checkpoint: CheckpointConfig | None = None
     code: CapabilityConfig = CapabilityConfig()
     docs: CapabilityConfig = CapabilityConfig()

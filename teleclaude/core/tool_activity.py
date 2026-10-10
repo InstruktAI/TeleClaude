@@ -30,8 +30,6 @@ _MAPPED_TOOL_NAMES: dict[str, str] = {
     "escalate": "telec sessions escalate",
     "list_computers": "telec computers list",
     "list_projects": "telec projects list",
-    "channels_list": "telec channels list",
-    "publish": "telec channels publish",
 }
 _MAPPED_TOOL_NAME_RE: Pattern[str] = re.compile(
     r"\b(" + "|".join(re.escape(name) for name in sorted(_MAPPED_TOOL_NAMES, key=len, reverse=True)) + r")\b"

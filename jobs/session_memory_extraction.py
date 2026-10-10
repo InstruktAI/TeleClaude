@@ -2,7 +2,6 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#     "redis",
 #     "openai",
 #     "anthropic",
 #     "pyyaml",
@@ -15,16 +14,13 @@
 """Session memory extraction job.
 
 Finds sessions needing processing, reads transcripts since
-``last_memory_extraction_at``, and extracts personal + business memories plus
-actionable items. Closed sessions still use ``help_desk_processed_at`` to gate
-their final post-mortem pass.
+``last_memory_extraction_at``, and extracts personal + business memories.
+Closed sessions still use ``help_desk_processed_at`` to gate their final
+post-mortem pass.
 
 Memory extraction runs as an idempotent job with two scopes:
 - **Personal memories** are identity-scoped (tied to the user via identity_key).
 - **Business memories** are project-scoped (shared across the project).
-
-Actionable items (e.g. follow-ups, feature requests, bugs) are published to
-the internal channels subsystem for downstream routing.
 
 Consumers include help desk customer sessions, member personal assistant
 sessions, and any future long-lived session type with an identity_key.
@@ -33,22 +29,18 @@ Integration:
 - Scheduled via teleclaude.yml (default: every 30 minutes).
 - Queries sessions from the core database.
 - Saves memories via the MemoryStore.
-- Publishes actionable items via the channels publisher.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-import ssl
 import sys
-from collections.abc import Awaitable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import TypedDict
 
 from instrukt_ai_logging import get_logger
-from redis.asyncio import Redis
 
 # Ensure repo root is in path for imports
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -58,8 +50,6 @@ if str(_REPO_ROOT) not in sys.path:
 
 from jobs.base import Job, JobResult, JobRunContext, run_job_cli
 from teleclaude.caller_identity import PersonCliCaller, SystemCliCaller, caller_from_principal
-from teleclaude.channels import publisher as channels_publisher
-from teleclaude.config.machine import config
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
@@ -75,7 +65,6 @@ from teleclaude.mirrors.store import get_mirror
 from teleclaude.utils.transcript import StructuredMessage, extract_structured_messages
 
 logger = get_logger(__name__)
-_redis_client: Redis | None = None
 
 
 class _MemoryCandidate(TypedDict):
@@ -83,11 +72,6 @@ class _MemoryCandidate(TypedDict):
     title: str
     narrative: str
     facts: list[str]
-
-
-class _ActionableItem(TypedDict):
-    type: str
-    summary: str
 
 
 _MEMORY_CANDIDATE_SCHEMA: dict[str, object] = {
@@ -118,40 +102,17 @@ _MEMORY_EXTRACTION_SCHEMA: dict[str, object] = {
     "required": ["memories"],
     "additionalProperties": False,
 }
-_ACTIONABLE_ITEM_SCHEMA: dict[str, object] = {
-    "type": "object",
-    "properties": {
-        "type": {
-            "type": "string",
-            "enum": ["bug", "feature-request", "follow-up", "escalation"],
-        },
-        "summary": {"type": "string"},
-    },
-    "required": ["type", "summary"],
-    "additionalProperties": False,
-}
-_ACTIONABLE_EXTRACTION_SCHEMA: dict[str, object] = {
-    "type": "object",
-    "properties": {
-        "items": {
-            "type": "array",
-            "items": _ACTIONABLE_ITEM_SCHEMA,
-        },
-    },
-    "required": ["items"],
-    "additionalProperties": False,
-}
 
 
 class SessionMemoryExtractionJob(Job):
-    """Extract memories and actionable items from long-lived sessions.
+    """Extract memories from long-lived sessions.
 
     Scans for sessions that have transcript content beyond
     ``last_memory_extraction_at`` (or, for closed sessions, still lack a final
     ``help_desk_processed_at`` pass), reads the transcript delta, and runs
-    AI-powered extraction for personal memories, business memories, and
-    actionable items. Works for any session with a human_role — customers,
-    members, and other long-lived session types.
+    AI-powered extraction for personal and business memories. Works for any
+    session with a human_role — customers, members, and other long-lived
+    session types.
     """
 
     def run(self, context: JobRunContext | None = None) -> JobResult:
@@ -218,7 +179,7 @@ class SessionMemoryExtractionJob(Job):
         return pending
 
     async def _process_session(self, session: Session) -> None:
-        """Process a single session: extract memories and actionable items."""
+        """Process a single session: extract personal and business memories."""
         # Step 1: Read transcript since last extraction
         transcript = await self._read_transcript_delta(session.session_id, since=session.last_memory_extraction_at)
         if not transcript or not transcript.strip():
@@ -234,10 +195,7 @@ class SessionMemoryExtractionJob(Job):
         # Step 4: Extract business memories (project-scoped)
         await self._extract_business_memories(transcript, session)
 
-        # Step 5: Extract actionable items and publish to channels
-        await self._extract_and_publish_actionable_items(transcript, session)
-
-        # Step 6: Update bookkeeping timestamps
+        # Step 5: Update bookkeeping timestamps
         now = datetime.now(UTC)
         await self._update_bookkeeping(session.session_id, now)
 
@@ -382,43 +340,6 @@ class SessionMemoryExtractionJob(Job):
                 )
             )
 
-    async def _extract_and_publish_actionable_items(
-        self,
-        transcript: str,
-        session: Session,
-    ) -> None:
-        """Extract actionable items from transcript and publish to channels.
-
-        Actionable items include follow-up tasks, bug reports, feature requests,
-        and escalation triggers. Each item is published to the appropriate
-        internal channel for downstream routing.
-        """
-        project = _get_session_project(session)
-        if project is None:
-            logger.warning("Skipping actionable item extraction for session %s: project missing", session.session_id)
-            return
-
-        items = await _call_summarizer(
-            _build_actionable_items_prompt(transcript),
-            _ACTIONABLE_EXTRACTION_SCHEMA,
-            _parse_actionable_response,
-        )
-        if not items:
-            return
-
-        redis_client = await get_redis()
-        channel = channels_publisher.channel_key(project, "actionable-items")
-        for item in items:
-            await channels_publisher.publish(
-                redis_client,
-                channel,
-                {
-                    "type": item["type"],
-                    "summary": item["summary"],
-                    "session_id": session.session_id,
-                },
-            )
-
     async def _update_bookkeeping(self, session_id: str, now: datetime) -> None:
         """Update session timestamps after successful extraction."""
         await db.update_session(
@@ -471,16 +392,6 @@ def _build_business_memory_prompt(transcript: str) -> str:
     )
 
 
-def _build_actionable_items_prompt(transcript: str) -> str:
-    """Build the actionable-items extraction prompt."""
-    return (
-        "Extract actionable items from this session transcript.\n\n"
-        "Return only concrete bugs, feature requests, follow-ups, or escalations that "
-        "should be routed to downstream systems.\n\n"
-        f"Transcript:\n{transcript}"
-    )
-
-
 def _parse_memory_response(text: str) -> list[_MemoryCandidate]:
     """Parse structured memory extraction output."""
     data = json.loads(text.strip())
@@ -513,27 +424,6 @@ def _parse_memory_response(text: str) -> list[_MemoryCandidate]:
     return memories
 
 
-def _parse_actionable_response(text: str) -> list[_ActionableItem]:
-    """Parse structured actionable-item extraction output."""
-    data = json.loads(text.strip())
-    items_raw = data.get("items", [])
-    if not isinstance(items_raw, list):
-        raise ValueError("Actionable response is missing an items list")
-
-    items: list[_ActionableItem] = []
-    for item in items_raw:
-        if not isinstance(item, dict):
-            raise ValueError("Actionable item must be an object")
-
-        raw_type = item.get("type")
-        summary = item.get("summary")
-        if not isinstance(raw_type, str) or not isinstance(summary, str):
-            raise ValueError("Actionable item fields must be strings")
-
-        items.append(_ActionableItem(type=raw_type, summary=summary))
-    return items
-
-
 def _parse_observation_type(raw_type: str) -> ObservationType | None:
     """Convert summarizer output into a valid observation type."""
     try:
@@ -549,23 +439,3 @@ def _get_session_project(session: Session) -> str | None:
         return None
     project = session.project_path.strip()
     return project or None
-
-
-async def get_redis() -> Redis:
-    """Return the configured Redis client for channels publication."""
-    global _redis_client
-
-    if _redis_client is None:
-        kwargs: dict[str, Any] = {
-            "password": config.redis.password,
-            "max_connections": config.redis.max_connections,
-            "socket_timeout": config.redis.socket_timeout,
-            "health_check_interval": 10,
-            "decode_responses": False,
-        }
-        if config.redis.url.startswith("rediss://"):
-            kwargs["ssl_cert_reqs"] = ssl.CERT_NONE
-        _redis_client = Redis.from_url(config.redis.url, **kwargs)
-
-    await cast(Awaitable[bool], _redis_client.ping())
-    return _redis_client

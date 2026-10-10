@@ -505,7 +505,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._event_consumers_task: asyncio.Task[object] | None = None
         self._relay_delivery_task: asyncio.Task[object] | None = None
         self._internal_event_bus_task: asyncio.Task[object] | None = None
-        self.channel_subscription_worker_task: asyncio.Task[object] | None = None
         self._task_schedule_clock_task: asyncio.Task[object] | None = None
         self._workflow_bridge_task: asyncio.Task[object] | None = None
         self._workflow_bridge: WorkflowBridge | None = None
@@ -994,13 +993,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             except Exception:
                 logger.error("Webhook service initialization failed, continuing without webhooks", exc_info=True)
 
-            # Wire Redis transport into channels API routes
-            redis_adapter = self.client.transport
-            if redis_adapter is not None:
-                from teleclaude.channels.api_routes import set_redis_transport  # startup boundary
-
-                set_redis_transport(redis_adapter)
-
             await self._start_workflow_bridge()
             await self._start_identity_bridge()
             await self._start_cluster_bridge()
@@ -1093,11 +1085,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             await cluster_bridge.stop()
         await self._await_task_attr("_cluster_bridge_task", "Cluster Redis bridge stopped", timeout=5.0)
 
-        await self._await_task_attr(
-            "channel_subscription_worker_task",
-            "Channel subscription worker stopped",
-            timeout=5.0,
-        )
         await self._await_task_attr("_deployment_fanout_task", "Deployment fanout stopped", timeout=5.0)
         await self._await_task_attr("_task_schedule_clock_task", "Task schedule clock stopped", timeout=5.0)
         await self._await_task_attr("_internal_event_bus_task", "Internal EventBus stopped", timeout=5.0)

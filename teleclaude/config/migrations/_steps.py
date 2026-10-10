@@ -24,6 +24,7 @@ from teleclaude.config.migrations import (
     v017_retire_global_help_desk,
     v018_retire_contributor_newcomer,
     v019_retire_hook_subscriptions,
+    v020_retire_channel_subscriptions,
 )
 
 STEPS: Final = (
@@ -46,4 +47,5 @@ STEPS: Final = (
     v017_retire_global_help_desk,
     v018_retire_contributor_newcomer,
     v019_retire_hook_subscriptions,
+    v020_retire_channel_subscriptions,
 )

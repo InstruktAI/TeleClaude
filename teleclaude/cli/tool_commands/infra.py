@@ -1,4 +1,4 @@
-"""Infrastructure subcommand handlers for telec computers/projects/agents/channels.
+"""Infrastructure subcommand handlers for telec computers/projects/agents.
 
 All commands call the daemon REST API via tool_api_call() and print JSON to stdout.
 Errors go to stderr with exit code 1 (handled by tool_api_call).
@@ -6,21 +6,17 @@ Errors go to stderr with exit code 1 (handled by tool_api_call).
 
 from __future__ import annotations
 
-import json
 import sys
 
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
-from teleclaude.cli.telec.surface import AGENTS_STATUS, CHANNELS_LIST, CHANNELS_PUBLISH, PROJECTS_LIST
+from teleclaude.cli.telec.surface import AGENTS_STATUS, PROJECTS_LIST
 from teleclaude.cli.tool_client import print_json, tool_api_call
 
 __all__ = [
     "handle_agents",
     "handle_agents_availability",
     "handle_agents_status",
-    "handle_channels",
-    "handle_channels_list",
-    "handle_channels_publish",
     "handle_computers",
     "handle_projects",
 ]
@@ -189,112 +185,4 @@ def handle_agents_status(args: list[str]) -> None:
         body["clear"] = True
 
     data = tool_api_call("POST", f"/agents/{agent}/status", json_body=body)
-    print_json(data)
-
-
-# =============================================================================
-# Channels group
-# =============================================================================
-
-
-def handle_channels(args: list[str]) -> None:
-    """Manage internal Redis Stream channels.
-
-    Usage: telec channels <subcommand> [args]
-
-    Subcommands:
-      list     List active channels (optionally filtered by project)
-      publish  Publish a message to a channel
-
-    Examples:
-      telec channels list
-      telec channels list --project myproject
-      telec channels publish channel:myproject:events --data '{"type":"update"}'
-    """
-    if not args or args[0] in ("-h", "--help"):
-        print(handle_channels.__doc__ or "")
-        return
-
-    sub = args[0]
-    rest = args[1:]
-
-    if sub == "list":
-        handle_channels_list(rest)
-    elif sub == "publish":
-        handle_channels_publish(rest)
-    else:
-        print(f"Unknown channels subcommand: {sub}", file=sys.stderr)
-        print("Run 'telec channels --help' for usage.", file=sys.stderr)
-        raise SystemExit(1)
-
-
-def handle_channels_list(args: list[str]) -> None:
-    """List active internal Redis Stream channels.
-
-    Usage: telec channels list [--project <name>]
-
-    Returns all active channels, optionally filtered by project name.
-    Channel names follow the convention: channel:{project}:{topic}
-
-    Options:
-      --project <name>   Filter by project name
-
-    Examples:
-      telec channels list
-      telec channels list --project myproject
-    """
-    parsed = parse_command_args(CHANNELS_LIST, args)
-    params: dict[str, str] = {}
-    project = parsed.value(F.FLAG_PROJECT_FILTER)
-    if project is not None:
-        params["project"] = project
-
-    data = tool_api_call("GET", "/api/channels/", params=params)
-    print_json(data)
-
-
-def handle_channels_publish(args: list[str]) -> None:
-    """Publish a message to an internal Redis Stream channel.
-
-    Usage: telec channels publish <channel> --data <json>
-
-    Publishes a JSON payload to the specified channel. Publishing to a
-    non-existent channel creates it automatically.
-
-    Channel naming convention: channel:{project}:{topic}
-
-    Options:
-      <channel>      Full channel key (e.g. channel:myproject:events)
-      --data <json>  JSON payload to publish
-
-    Examples:
-      telec channels publish channel:myproject:events --data '{"type":"update"}'
-      telec channels publish channel:ai:notifications --data '{"msg":"done"}'
-    """
-    parsed = parse_command_args(CHANNELS_PUBLISH, args)
-    positionals = parsed.positionals
-    if len(positionals) > 1:
-        print(f"Error: unexpected argument: {positionals[1]}", file=sys.stderr)
-        raise SystemExit(1)
-    channel = positionals[0] if positionals else None
-    payload_str = parsed.value(F.FLAG_CHANNEL_DATA)
-
-    if not channel:
-        print("Error: channel name required", file=sys.stderr)
-        raise SystemExit(1)
-    if not payload_str:
-        print("Error: --data is required", file=sys.stderr)
-        raise SystemExit(1)
-
-    try:
-        payload = json.loads(payload_str)
-    except json.JSONDecodeError as e:
-        print(f"Error: invalid JSON for --data: {e}", file=sys.stderr)
-        raise SystemExit(1)
-
-    data = tool_api_call(
-        "POST",
-        f"/api/channels/{channel}/publish",
-        json_body={"payload": payload},
-    )
     print_json(data)
