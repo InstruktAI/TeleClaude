@@ -131,7 +131,7 @@ class DiscordAdapter(
     ) -> tuple[int, str]:
         _ = (split_idx, chunk)
         source_limit = max(1, overflow_context.available_for_content - len(overflow_context.continuation_prefix))
-        source_chunk = self._pack_complete_lines(active_text, source_limit)[0]
+        source_chunk = next(self._iter_complete_lines(active_text, source_limit))
         consumed = len(source_chunk)
         if active_text[consumed : consumed + 1] in {"\n", " "}:
             consumed += 1

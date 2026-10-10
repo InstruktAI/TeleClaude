@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from types import ModuleType
 from typing import TYPE_CHECKING
 
@@ -45,6 +45,8 @@ _DELETE_DESTINATION_FAILED_EVENT = "discord_message_delete_destination_failed"
 _DELETE_FAILED_EVENT = "discord_message_delete_failed"
 _MESSAGE_TRUNCATED_EVENT = "discord_message_truncated"
 _SEND_INTENT_RECONCILED_EVENT = "discord_send_intent_reconciled_omitted"
+_LINE_SEPARATOR = "\n"
+_WORD_SEPARATOR = " "
 
 
 class MessageOperationsMixin:
@@ -88,32 +90,41 @@ class MessageOperationsMixin:
     # =========================================================================
 
     @staticmethod
-    def _pack_complete_lines(text: str, limit: int) -> list[str]:
-        """Pack complete newline-delimited lines into chunks up to *limit* chars."""
+    def _iter_complete_lines(text: str, limit: int) -> Iterator[str]:
+        """Yield complete newline-delimited lines packed into chunks up to *limit* chars.
+
+        Each chunk is found by searching a window of *limit* characters from the current
+        position, so producing a chunk costs time bounded by *limit*, not by the unpacked rest.
+        """
         if limit <= 0:
             raise ValueError("Discord message packing requires a positive limit")
         if len(text) <= limit:
-            return [text]
+            yield text
+            return
 
-        chunks: list[str] = []
-        remaining = text
-        while remaining:
-            if len(remaining) <= limit:
-                chunks.append(remaining)
-                break
-            split_at = remaining.rfind("\n", 0, limit + 1)
+        position = 0
+        while position < len(text):
+            window_end = position + limit + 1
+            if len(text) - position <= limit:
+                yield text[position:]
+                return
+            split_at = text.rfind(_LINE_SEPARATOR, position, window_end)
             separator_len = 1
             if split_at < 0:
-                split_at = remaining.rfind(" ", 0, limit + 1)
+                split_at = text.rfind(_WORD_SEPARATOR, position, window_end)
             if split_at < 0:
-                split_at = limit
+                split_at = position + limit
                 separator_len = 0
-            if split_at == 0:
-                remaining = remaining[1:]
+            if split_at == position:
+                position += 1
                 continue
-            chunks.append(remaining[:split_at])
-            remaining = remaining[split_at + separator_len :]
-        return chunks
+            yield text[position:split_at]
+            position = split_at + separator_len
+
+    @staticmethod
+    def _pack_complete_lines(text: str, limit: int) -> list[str]:
+        """Pack complete newline-delimited lines into chunks up to *limit* chars."""
+        return list(MessageOperationsMixin._iter_complete_lines(text, limit))
 
     def _split_message_chunks(self, text: str) -> list[str]:
         """Split text into chunks that fit within Discord's message size limit."""

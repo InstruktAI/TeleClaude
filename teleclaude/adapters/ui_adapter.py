@@ -216,7 +216,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             if output_metadata is not None
             else MessageMetadata(content_format=ContentFormat.MARKDOWN)
         )
-        chunks, chunk_metadata = self._split_for_sending(output, metadata)
         version = delivery_ts.isoformat()
         async with self._get_output_delivery_lock(session.session_id):
             fresh = await db.get_session(session.session_id)
@@ -226,6 +225,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             receipt = self.get_last_delivered_at(session)
             if receipt is not None and receipt >= delivery_ts:
                 return last_message_id
+            chunks, chunk_metadata = await self._split_for_sending(output, metadata)
             destination = resolve_destination(session, self.ADAPTER_KEY, metadata=chunk_metadata)
             for index in range(sent, len(chunks)):
                 message_id = await self.send_message(

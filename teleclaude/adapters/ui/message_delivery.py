@@ -124,17 +124,23 @@ class MessageDeliveryMixin:
         return continuation_prefix, f"{continuation_prefix}{text[offset:]}"
 
     def _split_overflow_message(self, text: str) -> list[str]:
-        """Split a standalone UI message with the same overflow engine as threaded output."""
+        """Split a standalone UI message with the same overflow engine as threaded output.
+
+        The markdown state is carried across chunks: each chunk's consumed source advances
+        the state the next continuation prefix is derived from, so a chunk's parser work
+        is bounded by that chunk.
+        """
         limit = max(self.max_message_size - 10, 1)
         if len(text) <= limit:
             return [self._balance_intermediate_chunk(text)] if text else [text]
 
         chunks: list[str] = []
         offset = 0
+        markdown_state = self._markdown_initial_state()
         while offset < len(text):
-            continuation_prefix, display_text = self._overflow_display_at_offset(text, offset)
-            if len(display_text) <= limit:
-                final_chunk = self._balance_intermediate_chunk(display_text)
+            continuation_prefix = self._continuation_prefix_for_state(markdown_state)
+            if len(continuation_prefix) + len(text) - offset <= limit:
+                final_chunk = self._balance_intermediate_chunk(f"{continuation_prefix}{text[offset:]}")
                 if final_chunk:
                     chunks.append(final_chunk)
                 break
@@ -146,7 +152,9 @@ class MessageDeliveryMixin:
             overflow_plan = self._plan_overflow(text[offset:], overflow_context)
             if overflow_plan.chunk:
                 chunks.append(overflow_plan.chunk)
-            offset += overflow_plan.split_idx
+            consumed_end = offset + overflow_plan.split_idx
+            markdown_state = self._scan_markdown_state(text[offset:consumed_end], markdown_state)
+            offset = consumed_end
 
         return chunks or [text]
 
@@ -161,15 +169,31 @@ class MessageDeliveryMixin:
         """Deliver one standalone message through format dispatch and private splitting."""
         return await self._send_split_message(session, text, metadata=metadata, multi_message=multi_message)
 
-    def _split_for_sending(
+    def _format_and_split(
         self,
         text: str,
         metadata: MessageMetadata | None,
     ) -> tuple[list[str], MessageMetadata | None]:
-        """Format *text* for this platform and split it into the messages that carry it."""
+        """Format *text* for this platform and split it into the messages that carry it.
+
+        Pure string work over the text and the adapter's static configuration; its cost
+        grows with the text, so callers reach it through ``_split_for_sending``.
+        """
         converted_text, formatted_metadata = self._format_standalone_text(text, metadata)
         prepared_text, prepared_metadata = self._prepare_overflow_message(converted_text, formatted_metadata)
         return self._split_overflow_message(prepared_text), prepared_metadata
+
+    async def _split_for_sending(
+        self,
+        text: str,
+        metadata: MessageMetadata | None,
+    ) -> tuple[list[str], MessageMetadata | None]:
+        """Format and split *text* on a worker thread so the event loop keeps running.
+
+        Callers hold the session's output lock across this call and the sends that follow,
+        so messages for one session keep their delivery order while the split is in flight.
+        """
+        return await asyncio.to_thread(self._format_and_split, text, metadata)
 
     async def _send_split_message(
         self,
@@ -180,10 +204,10 @@ class MessageDeliveryMixin:
         multi_message: bool = False,
     ) -> list[str]:
         """Send a standalone UI message, overflowing into continuation messages when needed."""
-        chunks, prepared_metadata = self._split_for_sending(text, metadata)
-        destination = resolve_destination(session, self.ADAPTER_KEY, metadata=prepared_metadata)
         lock = self._get_output_delivery_lock(session.session_id)
         async with lock:
+            chunks, prepared_metadata = await self._split_for_sending(text, metadata)
+            destination = resolve_destination(session, self.ADAPTER_KEY, metadata=prepared_metadata)
             message_ids: list[str] = []
             for chunk in chunks:
                 message_id = await self.send_message(
