@@ -316,6 +316,8 @@ cycle: it follows a real close (Post-Session Memory Extraction), and the native
 transcript retains the conversation that extraction reads.
 <!-- /planned-change:interruptible-conversation-compaction -->
 
+<!-- planned-change:interruptible-conversation-compaction -->
+
 ```mermaid
 sequenceDiagram
     participant Daemon as Idle cycle
@@ -330,6 +332,39 @@ sequenceDiagram
     DB-->>Agent: Session ended (help desk, desk's home)
     Note over Daemon: No message recorded as sent
 ```
+
+<!-- change:interruptible-conversation-compaction -->
+
+```mermaid
+sequenceDiagram
+    participant Visitor as Human visitor
+    participant Daemon as Idle cycle
+    participant Desk as Ordinary restricted desk
+    participant Maintenance as Temporary compaction runtime
+    participant Queue as Accepted input queue
+    participant DB as Conversation session
+    participant Memory as Desk memory agent
+
+    Note over Daemon: Conversation idle, no relay or input waiting
+    Daemon->>Desk: Drop its tmux runtime through existing shutdown
+    Daemon->>Maintenance: Resume the recorded native transcript
+    Daemon->>Maintenance: Submit the declared compaction command
+    alt Visitor returns during maintenance
+        Visitor->>Queue: Message or desk re-entry
+        Queue->>Daemon: Return takes priority
+        Daemon->>Maintenance: Abandon attempt and drop its tmux runtime
+        Daemon->>Desk: Revive normally with slash commands disabled
+        Queue->>Desk: Deliver accepted text in order
+        Note over Daemon: Retry maintenance after the next idle period
+    else Compaction completes while the visitor is away
+        Maintenance->>Daemon: This attempt completed
+        Daemon->>DB: Perform the ordinary idle close
+        DB-->>Memory: Conversation ended at its desk
+    end
+    Note over Visitor,Maintenance: Maintenance receives no visitor input and sends no visitor reply
+```
+
+<!-- /planned-change:interruptible-conversation-compaction -->
 
 **Session resumption.** When a visitor returns through the same conversation (the same Telegram chat or WhatsApp number), or re-enters the desk with its identifier, the conversation's session at that desk continues, revived when it was closed; no new session is created. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` at the visitor's depth.
 
@@ -492,6 +527,8 @@ sequenceDiagram
 
 ### Idle Compaction Cycle
 
+<!-- planned-change:interruptible-conversation-compaction -->
+
 ```mermaid
 sequenceDiagram
     participant Daemon as Idle cycle
@@ -512,6 +549,44 @@ sequenceDiagram
     Note over Agent: Visitor returns later...
     Daemon->>Agent: Revive the same session, the visitor's current memories injected
 ```
+
+<!-- change:interruptible-conversation-compaction -->
+
+```mermaid
+sequenceDiagram
+    participant Visitor as Human visitor
+    participant Daemon as Idle cycle
+    participant Desk as Ordinary restricted desk
+    participant Maintenance as Temporary compaction runtime
+    participant Queue as Accepted input queue
+    participant DB as Conversation session
+    participant Worker as Desk memory agent
+    participant Memory as Memory
+
+    Note over Daemon: Conversation idle, no relay or input waiting
+    Daemon->>Desk: Drop its tmux runtime through existing shutdown
+    Daemon->>Maintenance: Resume the recorded native transcript
+    Daemon->>Maintenance: Submit the declared compaction command
+    alt Visitor sends input or re-enters during maintenance
+        Visitor->>Queue: Conversation return
+        Queue->>Daemon: Abandon maintenance before delivery
+        Daemon->>Maintenance: Drop the temporary tmux runtime
+        Daemon->>Desk: Revive the same conversation under its ordinary profile
+        Queue->>Desk: Deliver accepted text in order
+        Note over Daemon: The return resets the idle period
+    else This attempt completes with no returning input
+        Maintenance->>Daemon: Compaction completed
+        Daemon->>DB: Perform the ordinary idle close
+        DB-->>Worker: Conversation ended at its desk
+        Worker->>Memory: Keep visitor memories current and collect prospects
+        Worker->>DB: Advance the read point
+        Visitor->>Daemon: Return after the close
+        Daemon->>Desk: Revive the same conversation with current memories
+    end
+    Note over Visitor,Maintenance: No maintenance input or output is delivered as visitor conversation
+```
+
+<!-- /planned-change:interruptible-conversation-compaction -->
 
 ### Desk Category Reconciliation
 
