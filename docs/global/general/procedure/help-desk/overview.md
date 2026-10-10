@@ -9,7 +9,6 @@ visibility: public
 
 ## Required reads
 
-- @~/.teleclaude/docs/general/concept/help-desk/overview.md
 - @~/.teleclaude/docs/general/procedure/help-desk/escalation.md
 
 ## Goal
