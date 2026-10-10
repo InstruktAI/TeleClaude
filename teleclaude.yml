@@ -205,8 +205,11 @@ checkpoint:
     - scope:
         include:
           - teleclaude/config/**
+      # A running TUI holds the config loader it started with, so it reloads
+      # after the migration or it refuses the newer config document.
       actions:
         - config-migrate
+        - tui-reload
     - scope:
         include:
           - teleclaude/docs_layout.py
@@ -257,4 +260,4 @@ hooks:
   inbound:
     github:
       secret: ${GITHUB_WEBHOOK_SECRET}
-schema_version: 18
+schema_version: 19
