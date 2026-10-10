@@ -1,7 +1,7 @@
 ---
 description: A project help desk serves that project's external customers from the
-  project's public documentation, and escalates to the admins of the home that owns
-  the project.
+  project's public documentation, and escalates to the people accountable for the
+  project.
 visibility: public
 ---
 

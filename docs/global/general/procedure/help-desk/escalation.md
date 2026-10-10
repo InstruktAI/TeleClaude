@@ -1,6 +1,6 @@
 ---
-description: How a help-desk agent hands a visitor to the admins of the home that
-  owns the desk, and how it resumes after an admin hands the conversation back.
+description: How a help-desk agent hands a visitor to a person accountable for the
+  desk, and how it resumes after the conversation is handed back.
 visibility: public
 ---
 

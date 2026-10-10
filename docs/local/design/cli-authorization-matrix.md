@@ -23,7 +23,15 @@ Who may run which `telec` command. Every command declares, in the CLI surface sc
 5. The daemon's own `system` credential grants no role-based command reach. Caller-independent commands pass without resolving that credential.
 6. A command that does not depend on its caller admits a caller with no identity.
 
+<!-- planned-change:help-desk-escalation-in-desk -->
+
 7. Customers reach only the desk commands: `version`, `docs index`, `docs get`, `auth whoami` and `sessions escalate`. `sessions escalate` is admitted to every person band below admin, and it succeeds only from a session running in a help desk (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`). The admins of the home that owns the desk are the escalation target, and admins do not escalate.
+
+<!-- change:help-desk-escalation-in-desk -->
+
+7. Customers reach only the desk commands: `version`, `docs index`, `docs get`, `auth whoami` and `sessions escalate`. `sessions escalate` is admitted to every person band below admin, and it succeeds only from a session running in a help desk (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`). Everyone in the desk's scope is the escalation's target, the admins among them, and admins do not escalate.
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
 
 8. Who may change machine, global, company or another person's configuration is decided by configuration target clearance (`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`), by object and principal, never by a command's band.
 

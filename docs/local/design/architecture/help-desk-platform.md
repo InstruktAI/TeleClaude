@@ -1,5 +1,5 @@
 ---
-description: "Help desks: entry identifiers resolved by the core, the session as the conversation's binding, public-depth documentation, identity-scoped memory, escalation to the owning home's admins, and admin relay."
+description: "Help desks: entry identifiers resolved by the core, the session as the conversation's binding, public-depth documentation, identity-scoped memory, escalation to the people accountable for a desk, and the relay between them and the visitor."
 visibility: 'public'
 ---
 

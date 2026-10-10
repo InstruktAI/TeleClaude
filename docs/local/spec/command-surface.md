@@ -44,9 +44,19 @@ visibility: 'public'
   - `telec mcp list-tools <slug>` initializes or reuses the daemon-owned lease for one server and prints its tool catalog.
   - `telec mcp call <slug> <tool> --json '<arguments>'` invokes one MCP tool through the daemon-owned lease and returns the tool result.
 
+<!-- planned-change:help-desk-escalation-in-desk -->
+
 - Help-desk CLI mappings:
   - `telec config company help-desk-links <slug>` and `telec config project help-desk-links <slug>` render that home's help-desk entry links, one per adapter configured on the computer that runs them, and fail when the desk is not enabled or not hosted there (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
   - `telec sessions escalate --customer <name> --reason <text> [--summary <text>]` hands a help-desk visitor to the admins of the home that owns the desk (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`).
+
+<!-- change:help-desk-escalation-in-desk -->
+
+- Help-desk CLI mappings:
+  - `telec config company help-desk-links <slug>` and `telec config project help-desk-links <slug>` render that home's help-desk entry links, one per adapter configured on the computer that runs them, and fail when the desk is not enabled or not hosted there (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
+  - `telec sessions escalate --customer <name> --reason <text> [--summary <text>]` hands a help-desk visitor to everyone in the desk's scope, in a thread of the desk's escalations forum (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`).
+
+<!-- /planned-change:help-desk-escalation-in-desk -->
 
 ## Known caveats
 

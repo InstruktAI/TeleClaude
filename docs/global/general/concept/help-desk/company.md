@@ -1,7 +1,7 @@
 ---
 description: A company help desk serves that company's external customers from the
   public documentation of the company and the projects it owns, and escalates to the
-  company's admins.
+  people accountable for the company.
 visibility: public
 ---
 
