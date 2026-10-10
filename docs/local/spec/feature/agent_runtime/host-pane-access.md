@@ -13,11 +13,11 @@ Agent runtime publishes whether a session admits a fresh viewer of its bound
 host pane. Consumers use that answer separately from the lifecycle facts that
 describe the session and from the readiness that admits agent input.
 
-A bound initializing host is inspectable before the agent starts. A session
-whose close is in progress admits no fresh viewer; an existing viewer remains
-inspectable while its pane survives. A restored open session receives the
-runtime's current admission answer. Final closure remains the event that
-releases session-owned state.
+A bound open host is inspectable before the agent starts and while its session
+is closing. Runtime-established host release makes fresh attachment unavailable
+independently of the later final closure. An existing viewer remains inspectable
+while its pane survives. A restored open session receives the runtime's current
+access answer. Final closure remains the event that releases session-owned state.
 
 This boundary applies `sdlc/policy/domain-ownership`: agent runtime defines host
 access and consumers render the published answer. Session listing and finality
@@ -28,18 +28,23 @@ remain governed by
 
 The runtime's host-access projection consumes the session's lifecycle,
 closed-at marker, and host binding. Its vocabulary and wire representation are
-owned by the runtime projection and session API types. Admission describes the
-current lifecycle decision; it is not an atomic observation of host liveness.
+owned by the runtime projection and session API types. The cleanup owner
+publishes established host release through the existing binding update path
+(`local/projects/teleclaude/spec/feature/agent_runtime/session-cleanup-and-reaping`).
+Selection disposition distinguishes inspection, sanctioned headless adoption,
+and unavailable access; absence of a binding during close is not adoption.
+The access answer consumes the published facts, not an atomic liveness probe.
 
 ### Use cases
 
-#### UC-HPA1: Close admission and finality remain distinct
+#### UC-HPA1: Host release and finality remain distinct
 
 ```gherkin
-Given an agent consumes the host-access answer for a session whose close is in progress
-When it receives that session's current projection
+Given an agent consumes the host-access answer for an open session whose close is in progress
+When runtime-established host release reaches that session's projection before cleanup finishes
 Then the answer denies creation of a fresh host viewer
 And it does not declare final closure
+And the absent host does not authorize headless adoption
 And inspection of an existing surviving viewer remains independent
 ```
 
@@ -61,8 +66,24 @@ When the runtime restores the session to an open state with its host bound after
 Then the runtime's current host-access projection admits a fresh viewer again
 ```
 
+#### UC-HPA4: A bound closing host remains inspectable
+
+```gherkin
+Given an agent consumes the host-access answer for an open closing session
+And its host remains bound before runtime-established release
+When the agent requests the session's current projection
+Then the answer admits inspection through a fresh host viewer
+And input terminality does not change that inspection answer
+```
+
 ## Known caveats
 
 A host can exit after its admission answer is projected. Host liveness,
 termination, and recovery remain with their existing runtime owners; the
 projection supplies no atomic host-existence guarantee.
+
+A source runtime that has not adopted host-release publication can report a
+stale binding until final closure. A receiving projection consumes that source's
+facts; the source runtime upgrade supplies the release boundary. A failed
+binding publication can leave the previous projection until later finality;
+the cleanup owner's error handling reports that failure and continues cleanup.

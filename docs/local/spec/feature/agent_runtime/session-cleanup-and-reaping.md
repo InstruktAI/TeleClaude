@@ -21,6 +21,26 @@ The cleanup loop runs on the maintenance service tick (every hour by default). A
 
 ## Canonical fields
 
+<!-- planned:stabilize-tui-viewers -->
+
+### Host binding release
+
+Termination retains the host binding while its host remains available. Once the
+runtime establishes host termination or absence, it publishes that release
+through the existing session binding update before slow remaining cleanup.
+The session stays closing until its final lifecycle write. The host-access
+projection is owned by
+`local/projects/teleclaude/spec/feature/agent_runtime/host-pane-access`.
+
+A failed or inconclusive observation retains the binding. Binding-publication
+failure is reported within the existing best-effort post-termination cleanup;
+remaining resource cleanup and finalization retain their existing progression.
+The original host identity remains available to that cleanup's process-reap
+diagnostics. This resource observation and its publication follow
+`sdlc/policy/domain-ownership`; consumers receive the published fact rather than
+deciding host availability from close intent.
+<!-- /planned:stabilize-tui-viewers -->
+
 ### Use cases
 
 #### terminate-session — happy path

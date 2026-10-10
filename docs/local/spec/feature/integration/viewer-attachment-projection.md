@@ -9,7 +9,7 @@ delivered_by:
 
 ## What it is
 
-The shared daemon API projects the runtime's host-access answer together with
+The shared daemon API projects the runtime's host-access and selection answer together with
 the resolved connection inputs a consumer needs to render a session viewer.
 The destination is relative to the daemon serving the consumer, including
 when the session record originated on a peer. An unresolved destination stays
@@ -24,7 +24,7 @@ by `local/projects/teleclaude/design/architecture/api-server`.
 
 ## Canonical fields
 
-Session API types own the additive admission and structured destination
+Session API types own the additive access/selection and structured destination
 representation. The destination carries the resolved connection inputs, not
 an executable shell command. HTTP session reads and the session stream use the
 same projection. Runtime and integration remain the owners of the facts;
@@ -38,6 +38,7 @@ clients consume the provided answer.
 Given an agent may read a session through the daemon API
 When it receives that session through an HTTP read, a connection snapshot, or a subsequent state change
 Then the answer carries the runtime's current fresh-viewer admission
+And it carries the runtime-owned selection disposition
 And a known attachment destination is resolved relative to the daemon serving the agent
 And a destination whose connection inputs are unknown remains unresolved
 ```
