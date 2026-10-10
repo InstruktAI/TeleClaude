@@ -12,10 +12,19 @@ visibility: public
 
 ## Goal
 
+<!-- planned-change:blueprint-main-maintenance -->
+
 Derive the dependents (blast radius) of an intended change to existing code —
 callers, importers, subclasses, tests — using the integrator-maintained
 codebase Blueprint, before editing the code or concluding from manual
 exploration that a symbol or file has no dependents.
+<!-- change:blueprint-main-maintenance -->
+
+Derive the dependents of an intended change from the maintenance-owned Blueprint
+before editing existing code or concluding that a symbol or file has no
+dependents. The shared baseline and freshness guarantee belong to
+`sdlc/spec/codebase-blueprint`.
+<!-- /planned-change:blueprint-main-maintenance -->
 
 ## Preconditions
 
@@ -44,6 +53,8 @@ that the current Gherkin differs from the linked Git snapshot, not a demand to
 migrate source metadata.
 <!-- /planned:code-uc-blueprint-traceability -->
 
+<!-- planned-change:blueprint-main-maintenance -->
+
 2. Check the reported freshness. A stale answer is headed by a line naming the
    Blueprint's baseline commit and the current `origin/main` commit; the
    dependents beneath it still come from the graph on disk. If a file you are
@@ -53,6 +64,17 @@ migrate source metadata.
    explicitly and fall back to manual exploration — never silently skip this
    step, and never generate or refresh the Blueprint yourself (generation is
    integrate-time automation only).
+
+<!-- change:blueprint-main-maintenance -->
+
+2. Use the command's freshness-checked result. The command observes outstanding
+   maintenance before answering, under `sdlc/spec/codebase-blueprint`. When it
+   reports the Blueprint unavailable, state the gap and explore the affected
+   files manually. Follow the maintenance recovery reference it supplies when
+   recovery is part of the session's work.
+
+<!-- /planned-change:blueprint-main-maintenance -->
+
 3. Treat the returned dependents as candidates, not an oracle. Verify each
    against the source and decide relevance; bias to over-inclusion — a missed
    dependent is a build-time surprise, an extra candidate is a discarded read.

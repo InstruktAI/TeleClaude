@@ -41,12 +41,31 @@ contract governs only what happens when maintenance runs.
   a merge or fast-forward records the resolved pre-activation and post-activation
   tips. Changed-file resolution, command expansion, outcomes, and replay all use
   those immutable fields.
+
+<!-- planned-change:blueprint-main-maintenance -->
+
 - **Owed set.** The `main_only` actions the committed paths resolve from the
   maintenance registry and shared bindings. Actions in the same precedence
   wave run concurrently; the next precedence wave starts after every action in
   the prior wave reaches a terminal outcome. A failed action never cancels a
   later wave. Judgment actions live in the checkpoint registry and never enter
   this executor.
+
+<!-- change:blueprint-main-maintenance -->
+
+- **Owed set.** The main-only maintenance actions selected by the merged
+  registry's path bindings and canonical-main activation bindings. An
+  activation binding applies even when the commit changes no paths. The shared
+  matcher owns this selection under
+  `local/projects/teleclaude/design/architecture/checkpoint-system`. Actions run
+  in declared precedence waves; a failure does not cancel later waves.
+- **Blueprint.** In code-enabled projects, every canonical-main activation
+  owes the Blueprint action. Its committed snapshot, current-query guarantee,
+  and recovery are owned by `sdlc/spec/codebase-blueprint` and realized by
+  `local/projects/teleclaude/spec/feature/workflow/blueprint-freshness`.
+
+<!-- /planned-change:blueprint-main-maintenance -->
+
 - **Location.** Maintenance performs the owed `main_only` actions only from the
   canonical checkout on the main branch. The integration worktree may create the
   delivered commit, but only canonical main's activation range executes

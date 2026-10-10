@@ -102,6 +102,28 @@ to an unfamiliar id is undeclared.
 
 TeleClaude owns both platform base registries. A project references their ids in its bindings and extends the registry whose eligibility contract its project-specific action satisfies.
 
+<!-- planned:blueprint-main-maintenance -->
+
+Canonical-main activation bindings select main-only maintenance independently
+of the changed-path set, including an empty commit. They are a declared trigger
+alongside path and event bindings, resolved by the shared model and matcher.
+The agent-stop engine continues to select judgment actions from path bindings;
+an activation binding names maintenance only. Capability composition admits the
+Blueprint action and its activation binding only in code-enabled projects.
+
+Blueprint maintenance runs after its toolchain prerequisites and before a
+restart wave. Its writer takes the Blueprint serialization boundary beneath
+the maintenance drain boundary. Query observation waits through the maintenance
+completion interface and then pins a published generation; it performs no
+extraction and holds no Blueprint lock while waiting for maintenance. This lock
+order and one execution owner follow `sdlc/policy/code-quality-practices` and
+`sdlc/principle/design-fundamentals`.
+
+The cache baseline and query guarantee belong to `sdlc/spec/codebase-blueprint`;
+the local behavioral contract is
+`local/projects/teleclaude/spec/feature/workflow/blueprint-freshness`.
+<!-- /planned:blueprint-main-maintenance -->
+
 Every checkpoint-registry action also carries its judgment owner: an ordinary session by default, or the standing integrator for each main-only judgment action a project lists in `checkpoint.integrator_judgment`. A listed id that names no main-only checkpoint-registry action is rejected when the project's configuration is validated. The file-based engine defers an integrator-owned action for every non-integrator session, on main and off it. The declaration governs session surfacing only: the checkout-scoped marker of Invariant 19 is recorded for every qualifying advancement whether or not a project declares it, so the standing integrator judges canonical-main maintenance in every project, and a project that declares nothing also keeps each judgment surfaced to its own sessions. A project whose post-activation log judgment belongs to the integrator alone (`local/projects/teleclaude/policy/test-moratorium`) declares it there.
 
 An action is eligible for the checkpoint registry only when its outcome cannot be established by the mechanism that performs it: the checkpoint registry governs what an agent must judge and act on, never what a command either did or did not do. Deterministic maintenance therefore carries no checkpoint registry entry and is declared in the **maintenance registry** instead — `checkpoint.maintenance` in a project's `teleclaude.yml`, a map of action id to `command`, `main_only`, `precedence`, and the optional on-demand `on_demand` disposition and `owed_probe` command (Invariant 29), beside the `checkpoint.actions` map that declares judgment actions with `run` and `evidence`. An action id belongs to exactly one of the two registries across base and overlay together, and a declaration claiming an id the opposite registry already owns is rejected when the project's configuration is validated. Both registries are joined by action id into one merged model, so a single binding table and a single scope matcher serve every consumer; what differs is which registry a consumer reads. The `agent_stop` engine reads the checkpoint registry alone, which is what makes a mechanical action unsurfaceable rather than merely unsurfaced. A project declares its own actions in whichever registry this test places them.
@@ -168,12 +190,22 @@ the action's `on_demand` disposition:
   cannot tell. With no probe, or a probe that cannot tell, the run reports that
   it cannot tell. The run names the action's command beside its reasons.
 
+<!-- planned-change:blueprint-main-maintenance -->
+
 An on-demand run tells each command it runs that the run is on demand. A command
 told so deploys none of the service definitions TeleClaude's installation
 renders, and stops, restarts or reloads no running host service. It may still
 start a service that is not running. In every other respect a command behaves
 as it does at the commit boundary and reads the canonical checkout as it stands;
 only publication reads committed state alone, under its own contract.
+<!-- change:blueprint-main-maintenance -->
+
+An on-demand run tells each command that it is on demand. Service lifecycle and
+deployment follow the non-disruptive contract in
+`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`.
+Publication and Blueprint extraction read committed snapshots under their
+owning contracts. Other commands read the canonical checkout as it stands.
+<!-- /planned-change:blueprint-main-maintenance -->
 
 An action whose command finds nothing to act on in a root completes and says
 so rather than failing. The platform base's installation runs the root's
