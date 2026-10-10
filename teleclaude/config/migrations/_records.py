@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from enum import StrEnum
 from pathlib import Path
 from typing import TypedDict
@@ -42,6 +43,18 @@ class MigrationFailureReason(StrEnum):
     MIGRATION_ERROR = "migration_error"
     COMMIT_REFUSED = "commit_refused"
     FIELD_CONSTRAINT_REFUSED = "field_constraint_refused"
+
+
+# A migration that did not land as a committed document is an anomaly, not routine progress.
+_OUTCOME_LOG_LEVELS: dict[MigrationOutcome, int] = {
+    MigrationOutcome.FAILED: logging.ERROR,
+    MigrationOutcome.RESTORED_AFTER_REFUSED_COMMIT: logging.WARNING,
+    MigrationOutcome.MIGRATED_UNCOMMITTED: logging.WARNING,
+    MigrationOutcome.WRITTEN_UNTRACKED: logging.INFO,
+    MigrationOutcome.MIGRATED_COMMITTED: logging.INFO,
+    MigrationOutcome.CURRENT: logging.INFO,
+    MigrationOutcome.UPCAST_IN_MEMORY: logging.INFO,
+}
 
 
 class MigrationRecord(TypedDict):
@@ -95,5 +108,5 @@ def record_migration(
         "commit": commit,
         "diagnostic": diagnostic,
     }
-    logger.info(_LOG_MIGRATION, **record)
+    logger.log(_OUTCOME_LOG_LEVELS[outcome], _LOG_MIGRATION, **record)
     return record

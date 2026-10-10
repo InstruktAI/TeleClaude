@@ -168,19 +168,22 @@ _real_git() {
     fi
     rm -f "$_stderr_capture"
 
-    _log_wrapper_end "$_inv_id" "$_rc"
+    _log_wrapper_end "$_inv_id" "$_rc" "${1:-}"
     return $_rc
 }
 
 # A non-zero git exit is an error outcome, whether or not the command wrote
 # stderr. The captured stderr stays at DEBUG because its contents can be routine
-# progress or diagnostics; this ERROR record carries the process result.
+# progress or diagnostics; this ERROR record carries the process result, with the
+# first argument and working directory that identify which invocation failed. The
+# remaining arguments stay out: a remote URL can carry a credential.
 _log_wrapper_end() {
     local _inv_id="$1"
     local _rc="$2"
+    local _first_arg="$3"
     if [ "$_rc" -ne 0 ]; then
         if _level_enabled ERROR; then
-            { echo "$(_ts_cmd) level=ERROR logger=git-wrapper inv=$_inv_id event=end rc=$_rc" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+            { echo "$(_ts_cmd) level=ERROR logger=git-wrapper inv=$_inv_id event=end rc=$_rc cmd=\"$_first_arg\" cwd=\"$PWD\"" >> "$WRAPPER_LOG"; } 2>/dev/null || true
         fi
     fi
 }

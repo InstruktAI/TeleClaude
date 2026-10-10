@@ -15,8 +15,11 @@ import logging
 
 from instrukt_ai_logging import configure_logging
 
-# Sibling top-level packages whose loggers should share the app log level.
-_SIBLING_PACKAGES = ("teleclaude.events",)
+# Top-level loggers outside the "teleclaude" hierarchy that should share the app log level.
+# A TeleClaude module started with `python -m` logs through `get_logger(__name__)` as
+# `__main__`; every process that calls `setup_logging` is a TeleClaude process, so its
+# `__main__` logger is TeleClaude code and must not fall back to the root's WARNING.
+_SIBLING_PACKAGES = ("teleclaude.events", "__main__")
 
 
 def setup_logging(level: str | None = None, *, source: str | None = None) -> None:

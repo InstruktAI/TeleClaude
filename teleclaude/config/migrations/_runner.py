@@ -66,6 +66,9 @@ _TELEC_APPROVED_FLAG = "--approved"
 _TELEC_ONLY_FLAG = "--only"
 _TELEC_NOT_FOUND = "The canonical telec executable is unavailable"
 _TELEC_COMMIT_REFUSED = "The canonical telec commit did not land the migration"
+_TELEC_COMMIT_REFUSED_WITH_OUTPUT = "{refusal} (exit {exit_code}): {output}"
+# Bound the refusal output carried into a migration record to its most recent part.
+_REFUSAL_OUTPUT_TAIL_CHARS = 2000
 _WORKTREE_DIRECTORY = "trees"
 _INTEGRATION_WORKTREE = "_integration"
 _UTF8 = "utf-8"
@@ -200,7 +203,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
         try:
             message = _MIGRATION_SUBJECT.format(path=relative_path, version=CURRENT_VERSION)
             commit = _commit_migration_document(repository, relative_path, message, migrated)
-        except (MigrationCommitRefused, GitCommandError, OSError):
+        except (MigrationCommitRefused, GitCommandError, OSError) as refusal:
             if transaction.read_text(encoding=_UTF8) != text:
                 return record_migration(
                     key,
@@ -209,8 +212,9 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                     CURRENT_VERSION,
                     trigger,
                     MigrationOutcome.MIGRATED_UNCOMMITTED,
+                    _COMMIT_REFUSED,
                     None,
-                    None,
+                    diagnostic=str(refusal),
                 )
             transaction.replace_text(_committed_text(repository, relative_path))
             return record_migration(
@@ -222,6 +226,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 MigrationOutcome.RESTORED_AFTER_REFUSED_COMMIT,
                 _COMMIT_REFUSED,
                 None,
+                diagnostic=str(refusal),
             )
         return record_migration(
             key,
@@ -309,17 +314,21 @@ def _commit_migration_document(
         relative_path,
     ]
     # The sealed CLI is the only commit API that adds required author, session, and human-involvement metadata.
-    try:
-        subprocess.run(arguments, cwd=working_root, env=environment, capture_output=True, text=True, check=True)
-    except subprocess.CalledProcessError as exc:
-        commit = _verified_migration_commit(repository, relative_path, previous_commit, expected_document)
-        if commit is not None:
-            return commit
-        raise MigrationCommitRefused(_TELEC_COMMIT_REFUSED) from exc
+    completed = subprocess.run(
+        arguments, cwd=working_root, env=environment, capture_output=True, text=True, check=False
+    )
     commit = _verified_migration_commit(repository, relative_path, previous_commit, expected_document)
     if commit is None:
-        raise MigrationCommitRefused(_TELEC_COMMIT_REFUSED)
+        raise MigrationCommitRefused(_refusal_with_output(completed))
     return commit
+
+
+def _refusal_with_output(completed: subprocess.CompletedProcess[str]) -> str:
+    """Describe a migration commit that did not land with the tail of the command's own output."""
+    output = (completed.stdout + completed.stderr).strip()
+    return _TELEC_COMMIT_REFUSED_WITH_OUTPUT.format(
+        refusal=_TELEC_COMMIT_REFUSED, exit_code=completed.returncode, output=output[-_REFUSAL_OUTPUT_TAIL_CHARS:]
+    )
 
 
 def _verified_migration_commit(

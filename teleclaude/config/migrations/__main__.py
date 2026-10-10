@@ -8,6 +8,7 @@ import sys
 from teleclaude.config.migrations._chain import MigrationTrigger
 from teleclaude.config.migrations._records import MigrationOutcome
 from teleclaude.config.migrations._runner import migrate_registered
+from teleclaude.logging_config import setup_logging
 
 _TRIGGERS = (MigrationTrigger.MAINTENANCE.value, MigrationTrigger.INSTALL.value)
 _FAILED_MIGRATION_DIAGNOSTIC = (
@@ -23,6 +24,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--trigger", choices=_TRIGGERS, default=MigrationTrigger.MAINTENANCE.value)
     arguments = parser.parse_args()
+    setup_logging()
     records = migrate_registered(MigrationTrigger(arguments.trigger))
     for record in records:
         if record["outcome"] is not MigrationOutcome.FAILED:
