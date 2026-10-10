@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from http import HTTPMethod
 from typing import Final, cast
+from urllib.parse import parse_qs
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from instrukt_ai_logging import get_logger
@@ -76,6 +77,12 @@ _HANDSHAKE_MODE_PARAM = "hub.mode"
 _HANDSHAKE_TOKEN_PARAM = "hub.verify_token"
 _HANDSHAKE_CHALLENGE_PARAM = "hub.challenge"
 _PLAIN_TEXT = "text/plain"
+_CONTENT_TYPE_HEADER = "content-type"
+_MEDIA_TYPE_PARAMETER_SEPARATOR = ";"
+_FORM_MEDIA_TYPE: Final = "application/x-www-form-urlencoded"
+_FORM_ENCODING = "utf-8"
+_FORM_DECODE_ERRORS = "strict"
+_GITHUB_FORM_FIELD = "payload"
 _ACCEPTED_BODY: Final = {"status": "accepted"}
 
 _NATIVE_SEGMENT = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -181,6 +188,54 @@ def _native_event_name(domain: object, name: object) -> tuple[str, str]:
     if not all(_NATIVE_SEGMENT.match(segment) for segment in segments):
         raise _InvalidBody
     return domain, _NAME_SEPARATOR.join(segments)
+
+
+# guard: loose-dict-func - A request body document is third-party JSON, relayed uninterpreted.
+def _json_object(raw: str | bytes) -> dict[str, object]:
+    """Parse a JSON document that must be an object."""
+    document = json.loads(raw)
+    if not isinstance(document, dict):
+        raise _InvalidBody
+    return document
+
+
+# guard: loose-dict-func - A request body document is third-party JSON, relayed uninterpreted.
+def _read_json_body(_headers: Mapping[str, str], body: bytes) -> dict[str, object]:
+    """Read a body that is the JSON document itself."""
+    return _json_object(body)
+
+
+# guard: loose-dict-func - A request body document is third-party JSON, relayed uninterpreted.
+def _read_github_body(headers: Mapping[str, str], body: bytes) -> dict[str, object]:
+    """Read a GitHub delivery body: the JSON document itself, or GitHub's form encoding of it.
+
+    A form-encoded delivery (``application/x-www-form-urlencoded``, GitHub's default webhook content type)
+    carries the document as the single form field ``payload``.
+    """
+    media_type = headers.get(_CONTENT_TYPE_HEADER)
+    if (
+        media_type is None
+        or media_type.split(_MEDIA_TYPE_PARAMETER_SEPARATOR, 1)[0].strip().lower() != _FORM_MEDIA_TYPE
+    ):
+        return _json_object(body)
+    try:
+        fields = parse_qs(
+            body.decode(_FORM_ENCODING), keep_blank_values=True, strict_parsing=True, errors=_FORM_DECODE_ERRORS
+        )
+    except ValueError as error:  # malformed form, or bytes that are not UTF-8 (UnicodeDecodeError is a ValueError)
+        raise _InvalidBody from error
+    payloads = fields.get(_GITHUB_FORM_FIELD, [])
+    if len(fields) != 1 or len(payloads) != 1:
+        raise _InvalidBody
+    return _json_object(payloads[0])
+
+
+# guard: loose-dict - Body readers receive the request headers and raw body and return third-party request JSON.
+_BODY_READERS: Final[Mapping[RelayProtocol, Callable[[Mapping[str, str], bytes], dict[str, object]]]] = {
+    RelayProtocol.NATIVE: _read_json_body,
+    RelayProtocol.GITHUB: _read_github_body,
+    RelayProtocol.WHATSAPP: _read_json_body,
+}
 
 
 # guard: loose-dict-func - The native request body is third-party JSON, relayed uninterpreted.
@@ -310,14 +365,13 @@ class InboundRelay:
         self._producer = producer
 
     async def relay(self, request: Request, endpoint: _Endpoint) -> dict[str, str]:
-        """Handle one signed POST: verify the raw body, parse it, translate it, emit each event."""
+        """Handle one signed POST: verify the raw body, read its document per protocol, translate it, emit each event."""
         body = await request.body()
         _verify_signature(body, request.headers.get(endpoint.signature_header), endpoint)
+        headers = {k.lower(): v for k, v in request.headers.items()}
         try:
-            document = json.loads(body)
-            if not isinstance(document, dict):
-                raise _InvalidBody
-            relayed = _TRANSLATORS[endpoint.protocol](document, {k.lower(): v for k, v in request.headers.items()})
+            document = _BODY_READERS[endpoint.protocol](headers, body)
+            relayed = _TRANSLATORS[endpoint.protocol](document, headers)
         except (json.JSONDecodeError, _InvalidBody) as error:
             raise _refuse(_Refusal.INVALID_BODY, endpoint.protocol, endpoint.home) from error
         for event in relayed:
