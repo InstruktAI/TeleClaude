@@ -21,6 +21,7 @@ from teleclaude.adapters.discord import (
     MessageOperationsMixin,
 )
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
+from teleclaude.adapters.discord.escalation_threads import EscalationThreadsMixin
 from teleclaude.adapters.discord.help_desk_categories import DeskForums, HelpDeskCategoriesMixin
 from teleclaude.adapters.discord.listen_control import ListenHereView
 from teleclaude.adapters.discord.voice_room import VoiceRoom
@@ -88,6 +89,7 @@ class DiscordClientLike(Protocol):
 class DiscordAdapter(
     ChannelOperationsMixin,
     GatewayHandlersMixin,
+    EscalationThreadsMixin,
     InfrastructureMixin,
     HelpDeskCategoriesMixin,
     InputHandlersMixin,

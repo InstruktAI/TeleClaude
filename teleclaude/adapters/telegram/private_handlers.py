@@ -19,10 +19,9 @@ from telegram.ext import ContextTypes
 
 import teleclaude.core.identity as identity_module
 from teleclaude.cli.config_handlers import get_person_config, save_person_config
-from teleclaude.config.schema import MessagingChannel, TelegramCreds
+from teleclaude.config.schema import TelegramCreds
 from teleclaude.core import command_registry
 from teleclaude.core.endpoints import EntryIdentifier, parse_entry_identifier
-from teleclaude.core.help_desk_relay import AdminReply
 from teleclaude.core.inbound import (
     BindOutcome,
     ConversationRef,
@@ -72,9 +71,7 @@ _NO_TEXT = ""
 _PRIVATE_CHAT_TYPE = "private"
 _UNKNOWN_USER_NAME = "unknown"
 _PROCESS_MESSAGE_EVENT = "process_message"
-_ACCEPTED_OUTCOMES = frozenset(
-    {ConversationOutcome.DELIVERED, ConversationOutcome.SESSION_STARTED, ConversationOutcome.RELAY_ANSWERED}
-)
+_ACCEPTED_OUTCOMES = frozenset({ConversationOutcome.DELIVERED, ConversationOutcome.SESSION_STARTED})
 
 
 def get_command_service() -> CommandService:
@@ -133,23 +130,6 @@ def _bind_telegram_invite(person_slug: str, user: User) -> BindOutcome:
     return BindOutcome.ACCEPTED
 
 
-def _relay_reply(update: Update) -> AdminReply | None:
-    """What a private message answers when it replies to one of this bot's messages."""
-    message = update.effective_message
-    chat = update.effective_chat
-    replied = message.reply_to_message if message is not None else None
-    if message is None or chat is None or replied is None or replied.from_user is None or not replied.from_user.is_bot:
-        return None
-    user = update.effective_user
-    return AdminReply(
-        channel=MessagingChannel.TELEGRAM,
-        target=str(chat.id),
-        replied_message_id=str(replied.message_id),
-        admin_message_id=str(message.message_id),
-        admin_name=(user.full_name if user is not None else None) or _UNKNOWN_USER_NAME,
-    )
-
-
 class PrivateHandlersMixin:
     """Mixin providing private-chat handlers for TelegramAdapter.
 
@@ -167,7 +147,6 @@ class PrivateHandlersMixin:
         identifier: EntryIdentifier | None,
         deliver: Callable[[Session], Awaitable[None]],
         modality: TurnModality,
-        relay_reply: AdminReply | None = None,
     ) -> ConversationOutcome:
         """Hand one private-chat turn to the conversation seam."""
         assert update.effective_user is not None
@@ -195,7 +174,6 @@ class PrivateHandlersMixin:
             reply=_reply,
             bind_invite=_bind,
             modality=modality,
-            relay_reply=relay_reply,
         )
         return await handle_conversation_turn(turn)
 
@@ -279,7 +257,6 @@ class PrivateHandlersMixin:
             identifier=identifier,
             deliver=_dispatch,
             modality=TurnModality.TEXT,
-            relay_reply=_relay_reply(update),
         )
         if outcome in _ACCEPTED_OUTCOMES:
             decision.accept()

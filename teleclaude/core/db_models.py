@@ -75,7 +75,6 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     relay_status: str | None = None
     relay_channel_id: str | None = None
     relay_started_at: str | None = None
-    relay_targets: str = "[]"
     relay_exchange: str = "[]"
     transcript_files: str | None = "[]"
     char_offset: int | None = 0

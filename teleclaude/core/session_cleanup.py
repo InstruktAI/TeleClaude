@@ -30,7 +30,7 @@ from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload, SessionLifecycleContext, TeleClaudeEvents
-from teleclaude.core.models import RelayStatus, encode_relay_exchange, encode_relay_targets
+from teleclaude.core.models import RelayStatus, encode_relay_exchange
 from teleclaude.core.session_ended import report_session_ended
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_links import cleanup_session_links
@@ -305,9 +305,7 @@ async def _end_escalation_if_active(session: Session) -> None:
         relay_channel_id=None,
         relay_started_at=None,
     )
-    await db.update_session(
-        session.session_id, relay_targets=encode_relay_targets(()), relay_exchange=encode_relay_exchange(())
-    )
+    await db.update_session(session.session_id, relay_exchange=encode_relay_exchange(()))
     event_bus.emit(
         "session.escalation_ended",  # type: ignore[arg-type]
         SessionEscalatedPayload(session_id=session.session_id),

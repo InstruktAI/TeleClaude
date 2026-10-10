@@ -811,7 +811,7 @@ def _canonical_caller_content(cmd: ProcessMessageCommand) -> tuple[str, int | No
 
 
 async def _diverted(session: Session, cmd: ProcessMessageCommand) -> bool:
-    """Relay a visitor's message to the escalation's admins; ``False`` when the relay has just ended."""
+    """Relay a visitor's message to the escalation thread; ``False`` when the relay has just ended."""
     try:
         return await divert_visitor_input(session, cmd.text, cmd.actor_name)
     except RelayDeliveryFailed as exc:

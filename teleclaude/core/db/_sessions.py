@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
-_RELAY_RECORD_FIELDS = frozenset({SessionField.RELAY_TARGETS.value, SessionField.RELAY_EXCHANGE.value})
+_RELAY_RECORD_FIELDS = frozenset({SessionField.RELAY_EXCHANGE.value})
 _DIGEST_ONLY_UPDATES = ({"last_output_digest"}, {"last_projected_output_digest"})
 
 _AGENT_STATUS_UPDATE_REFUSAL = "agent-status fields are owned by the agent-status transition seam"
@@ -52,8 +52,8 @@ _AGENT_STATUS_OWNED_FIELDS = frozenset(
 def _is_unannounced_update(fields: set[str]) -> bool:
     """Whether an update is internal state the cluster is not told about.
 
-    Output digests are routing dedupe state written very often; a relay's admin
-    addresses and exchange stay on the escalating computer.
+    Output digests are routing dedupe state written very often; the relay
+    exchange stays on the escalating computer.
     """
     return fields in _DIGEST_ONLY_UPDATES or fields <= _RELAY_RECORD_FIELDS
 

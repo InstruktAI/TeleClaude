@@ -41,12 +41,6 @@ from teleclaude.core.endpoints import (
     assistant_endpoint,
     local_desk_endpoint,
 )
-from teleclaude.core.help_desk_relay import (
-    RELAY_RESEND_REPLY,
-    RelayReplyDisposition,
-    answer_from_admin,
-    claim_admin_reply,
-)
 from teleclaude.core.inbound.conversation_env import ConversationEnvironment, default_conversation_environment
 from teleclaude.core.inbound.fleet import FleetView
 from teleclaude.core.inbound.models import BindOutcome, ConversationTurn, EntryGesture, TurnModality, is_superseded
@@ -100,7 +94,6 @@ class ConversationDecision(StrEnum):
     NEUTRAL_REPLY_SUPPRESSED = "conversation_neutral_reply_suppressed"
     UNAVAILABLE_REPLY = "conversation_unavailable_reply"
     UNAVAILABLE_REPLY_SUPPRESSED = "conversation_unavailable_reply_suppressed"
-    RELAY_ANSWERED = "conversation_relay_answered"
 
 
 class ConversationOutcome(StrEnum):
@@ -112,10 +105,6 @@ class ConversationOutcome(StrEnum):
     UNAVAILABLE = "unavailable"
     INVITE_REFUSED = "invite_refused"
     NOT_ROUTED_HERE = "not_routed_here"
-    # The message answered an escalation relay, here or on the computer that holds it.
-    RELAY_ANSWERED = "relay_answered"
-    # The message may answer a relay whose holder could not be asked; the sender is asked to resend.
-    RELAY_REPLY_UNMATCHED = "relay_reply_unmatched"
 
 
 @dataclass(frozen=True)
@@ -512,31 +501,12 @@ async def _decide(turn: ConversationTurn, env: ConversationEnvironment, fleet: F
     return await _ordinary_turn(turn, env)
 
 
-async def _held_relay_reply(turn: ConversationTurn, fleet: FleetView) -> ConversationOutcome | None:
-    """On the computer about to route a reply this computer's relays did not take: ask the fleet first.
-
-    ``None`` leaves the turn ordinary input.
-    """
-    if turn.relay_reply is None:
-        return None
-    disposition = await claim_admin_reply(turn.relay_reply, turn.text, fleet)
-    if disposition is RelayReplyDisposition.OWNED_ELSEWHERE:
-        return ConversationOutcome.RELAY_ANSWERED
-    if disposition is RelayReplyDisposition.UNCERTAIN:
-        await turn.reply(RELAY_RESEND_REPLY)
-        return ConversationOutcome.RELAY_REPLY_UNMATCHED
-    return None
-
-
 async def handle_conversation_turn(
     turn: ConversationTurn, env: ConversationEnvironment | None = None
 ) -> ConversationOutcome:
     """Decide one inbound conversation turn: enter an endpoint, reach the latest session, or miss."""
     environment = env if env is not None else default_conversation_environment()
     conversation = turn.conversation
-    if turn.relay_reply is not None and await answer_from_admin(turn.relay_reply, turn.text):
-        _log(ConversationDecision.RELAY_ANSWERED, turn)
-        return ConversationOutcome.RELAY_ANSWERED
     if not conversation.reaches_every_computer:
         async with environment.locks.hold(conversation.hashed_key):
             return await _decide(turn, environment, None)
@@ -549,9 +519,6 @@ async def handle_conversation_turn(
     if router.name != environment.host:
         logger.debug(ConversationDecision.TURN_NOT_MASTER, origin=conversation.origin.value, master=router.name)
         return ConversationOutcome.NOT_ROUTED_HERE
-    held = await _held_relay_reply(turn, fleet)
-    if held is not None:
-        return held
     async with environment.locks.hold(conversation.hashed_key):
         return await _decide(turn, environment, fleet)
 

@@ -1,15 +1,63 @@
 """Protocol definitions for adapter capabilities."""
 
+from __future__ import annotations
+
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+from teleclaude.core.endpoints import DeskIdentifier
 from teleclaude.core.models import (
     JsonDict,
     MessageMetadata,
     ObservedStopPublication,
     PeerCapabilityMissing,
+    Session,
     SessionFinalOutput,
 )
+
+
+@dataclass(frozen=True)
+class EscalationThread:
+    """Discord thread opened for a help-desk escalation."""
+
+    thread_id: str
+    link: str
+
+
+@runtime_checkable
+class EscalationThreadAdapter(Protocol):
+    """Thread transport capability used by the core-owned escalation relay."""
+
+    async def open_escalation_thread(
+        self,
+        desk: DeskIdentifier,
+        *,
+        title: str,
+        brief: str,
+    ) -> EscalationThread:
+        """Open the escalation thread in the desk's forum.
+
+        Raises:
+            AdapterError: If the forum is unavailable or the thread cannot be opened.
+        """
+        ...
+
+    async def post_to_escalation_thread(self, thread_id: str, *, sender: str, text: str) -> None:
+        """Post a message into an escalation thread.
+
+        Raises:
+            AdapterError: If the thread is unavailable or the message cannot be posted.
+        """
+        ...
+
+    async def session_thread_link(self, session: Session) -> str:
+        """Ensure the session mirror exists and return its Discord thread link.
+
+        Raises:
+            AdapterError: If the session thread cannot be created or linked.
+        """
+        ...
 
 
 @runtime_checkable
