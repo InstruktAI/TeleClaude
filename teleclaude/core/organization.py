@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -30,7 +31,7 @@ logger = get_logger(__name__)
 
 _ORGANIZATION_RESOLVED_EVENT = "organization_resolved"
 _ORGANIZATION_STALE_ASSIGNMENT_EVENT = "organization_stale_assignment"
-_PLATFORM_ADMIN_UNREADABLE_EVENT = "platform_admin_config_unreadable"
+_ROSTER_PERSON_UNREADABLE_EVENT = "roster_person_config_unreadable"
 
 
 @dataclass(frozen=True)
@@ -130,24 +131,35 @@ def resolve_organization(person_slug: str) -> OrganizationalMembership:
     return result
 
 
+def _readable_people(entries: Iterable[PersonEntry]) -> list[tuple[str, PersonConfig]]:
+    """Each roster entry's slug and person configuration; a person whose configuration cannot be read is left out and logged."""
+    people: list[tuple[str, PersonConfig]] = []
+    for person in entries:
+        slug = person.slug or person.name
+        try:
+            person_config = load_person_config_for_entry(person, PEOPLE_DIR)
+        except (OSError, ValueError) as exc:
+            logger.warning(_ROSTER_PERSON_UNREADABLE_EVENT, person=slug, error=str(exc))
+            continue
+        if person_config is not None:
+            people.append((slug, person_config))
+    return people
+
+
+def roster_people() -> list[tuple[str, PersonConfig]]:
+    """Each person's slug and person configuration, from the global roster, whatever their role.
+
+    A person whose person configuration cannot be read is left out and logged.
+    """
+    return _readable_people(load_global_config().people)
+
+
 def platform_admin_people() -> list[tuple[str, PersonConfig]]:
     """Each platform admin's slug and person configuration, from the global roster.
 
     An admin whose person configuration cannot be read is left out and logged.
     """
-    admins: list[tuple[str, PersonConfig]] = []
-    for person in load_global_config().people:
-        if person.role != HUMAN_ROLE_ADMIN:
-            continue
-        slug = person.slug or person.name
-        try:
-            person_config = load_person_config_for_entry(person, PEOPLE_DIR)
-        except (OSError, ValueError) as exc:
-            logger.warning(_PLATFORM_ADMIN_UNREADABLE_EVENT, person=slug, error=str(exc))
-            continue
-        if person_config is not None:
-            admins.append((slug, person_config))
-    return admins
+    return _readable_people(platform_admin_roster())
 
 
 def platform_admin_roster() -> list[PersonEntry]:

@@ -1,4 +1,4 @@
-"""Event DB — SQLite storage for incident records, correlation state, handled-event records and signal pipeline data."""
+"""Event DB — SQLite storage for incident records, told marks, correlation state, handled-event records and signal pipeline data."""
 
 from __future__ import annotations
 
@@ -67,6 +67,19 @@ CREATE TABLE IF NOT EXISTS incident_recipients (
     PRIMARY KEY (family, subject, home, recipient)
 ) WITHOUT ROWID;
 """
+_CREATE_EVENT_TOLD_MARKS_TABLE = """
+CREATE TABLE IF NOT EXISTS event_told_marks (
+    consumer TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    told_at TEXT NOT NULL,
+    PRIMARY KEY (consumer, event_id, recipient)
+) WITHOUT ROWID;
+"""
+_SELECT_EVENT_TOLD_RECIPIENTS_SQL = "SELECT recipient FROM event_told_marks WHERE consumer = ? AND event_id = ?"
+_INSERT_EVENT_TOLD_MARK_SQL = (
+    "INSERT OR IGNORE INTO event_told_marks (consumer, event_id, recipient, told_at) VALUES (?, ?, ?, ?)"
+)
 _SELECT_INCIDENT_SQL = (
     "SELECT standing, event_type, occurred_at, broken_since FROM incidents "
     "WHERE family = ? AND subject = ? AND home = ?"
@@ -108,6 +121,14 @@ _INSERT_HANDLED_EVENT_SQL = (
     f"INSERT OR IGNORE INTO {HANDLED_EVENTS_TABLE} (consumer, event_id, handled_at) VALUES (?, ?, ?)"
 )
 _DELETE_HANDLED_EVENTS_SQL = f"DELETE FROM {HANDLED_EVENTS_TABLE} WHERE handled_at < ?"
+_DELETE_EXPIRING_EVENT_TOLD_MARKS_SQL = f"""
+DELETE FROM event_told_marks WHERE EXISTS (
+    SELECT 1 FROM {HANDLED_EVENTS_TABLE} AS handled
+    WHERE handled.consumer = event_told_marks.consumer
+      AND handled.event_id = event_told_marks.event_id
+      AND handled.handled_at < ?
+)
+"""
 _INSERT_CORRELATION_WINDOW_SQL = (
     "INSERT INTO correlation_windows (event_type, home, subject, window_start, count) VALUES (?, ?, ?, ?, 1)"
 )
@@ -223,6 +244,7 @@ class EventDB:
         await self._conn.execute(_CREATE_EPISODE_TABLE)
         await self._conn.execute(_CREATE_INCIDENTS_TABLE)
         await self._conn.execute(_CREATE_INCIDENT_RECIPIENTS_TABLE)
+        await self._conn.execute(_CREATE_EVENT_TOLD_MARKS_TABLE)
         await migrate_forward(self._conn)
         await self._conn.execute(_CREATE_HANDLED_EVENTS_TABLE)
         await self._conn.execute(_CREATE_HANDLED_EVENTS_INDEX)
@@ -271,10 +293,29 @@ class EventDB:
         await self._db().commit()
 
     async def prune_handled_events(self, *, older_than: datetime) -> int:
-        """Delete handled-event records older than the cutoff and return how many were deleted."""
-        cursor = await self._db().execute(_DELETE_HANDLED_EVENTS_SQL, (older_than.isoformat(),))
+        """Delete handled-event records older than the cutoff and return how many were deleted.
+
+        The told marks of each deleted record's consumer and event go with it, in the same transaction. A
+        mark whose event has no handled record — handling interrupted or still retrying, or the event parked —
+        is kept until that event's handling completes and its record later expires.
+        """
+        cutoff = older_than.isoformat()
+        await self._db().execute(_DELETE_EXPIRING_EVENT_TOLD_MARKS_SQL, (cutoff,))
+        cursor = await self._db().execute(_DELETE_HANDLED_EVENTS_SQL, (cutoff,))
         await self._db().commit()
         return max(cursor.rowcount, 0)
+
+    # --- Event told marks ---
+
+    async def get_event_told_recipients(self, consumer: str, event_id: str) -> frozenset[str]:
+        """Return the people the consumer has already told about the event."""
+        cursor = await self._db().execute(_SELECT_EVENT_TOLD_RECIPIENTS_SQL, (consumer, event_id))
+        return frozenset(recipient for (recipient,) in await cursor.fetchall())
+
+    async def mark_event_told(self, consumer: str, event_id: str, recipient: str, told_at: datetime) -> None:
+        """Record that the consumer told the person about the event; marking again changes nothing."""
+        await self._db().execute(_INSERT_EVENT_TOLD_MARK_SQL, (consumer, event_id, recipient, told_at.isoformat()))
+        await self._db().commit()
 
     # --- Correlation window methods ---
 

@@ -9,6 +9,7 @@ transport, per ``local/projects/teleclaude/spec/messaging`` (Person-addressed de
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Final
 
 import httpx
 from instrukt_ai_logging import get_logger
@@ -68,6 +69,18 @@ class ChannelCapabilityError(ValueError):
 
 class RecipientUnresolvableError(ValueError):
     """The caller's authority does not resolve to an addressable recipient."""
+
+
+#: What a person-addressed send raises when it cannot reach that recipient; any other exception is a defect.
+PERSON_DELIVERY_FAILURES: Final = (
+    PersonNotFoundError,
+    ChannelCredentialError,
+    ChannelCapabilityError,
+    OSError,
+    RuntimeError,
+    ValueError,
+    httpx.HTTPError,
+)
 
 
 @dataclass(frozen=True)
@@ -187,15 +200,7 @@ async def send_person_message_to_caller(
                 channel=channel,
                 origin_session_id=origin_session_id,
             )
-        except (
-            PersonNotFoundError,
-            ChannelCredentialError,
-            ChannelCapabilityError,
-            OSError,
-            RuntimeError,
-            ValueError,
-            httpx.HTTPError,
-        ) as exc:
+        except PERSON_DELIVERY_FAILURES as exc:
             failures.append(PersonMessageFailure(label, str(exc)))
         else:
             deliveries.append(PersonMessageDelivery(admin.slug, outcome.channel, outcome.message_id))
@@ -323,7 +328,6 @@ async def send_person_message(
 
     logger.info(
         "person message sent",
-        slug=slug,
         channel=resolved.channel.value,
         with_file=bool(file),
         origin_session_id=origin_session_id,

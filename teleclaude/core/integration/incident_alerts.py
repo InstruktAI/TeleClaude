@@ -171,6 +171,7 @@ class _IncidentAlerts:
             else None
         )
         return compose_notification_message(
+            event_type=record.event_type,
             declaration=declaration,
             subject=subject,
             computer=computer,

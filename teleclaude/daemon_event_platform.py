@@ -14,6 +14,7 @@ from redis.exceptions import ResponseError
 from teleclaude.config.machine import config
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus
 from teleclaude.core.integration.incident_alerts import build_incident_alerts_consumer
+from teleclaude.core.integration.subscribed_domain_events import build_subscribed_domain_events_consumer
 from teleclaude.core.integration.trigger_consumer import build_integration_trigger_consumer
 from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router_consumer
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
@@ -158,6 +159,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             build_procedure_activation_consumer(),
             build_correlation_consumer(self._event_db, self._event_producer, CorrelationConfig()),
             build_incident_alerts_consumer(self._event_db, self._event_catalog),
+            build_subscribed_domain_events_consumer(self._event_db, self._event_catalog),
         ]
 
     async def _destroy_retired_system_group(self, redis_client: object) -> None:
