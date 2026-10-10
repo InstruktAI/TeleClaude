@@ -13,7 +13,7 @@ remains non-authoritative (`general/principle/attunement`).
 
 ## Canonical fields
 
-- **Route by intended reader.** Regular planning, reasoning, notes, experiments
+- **Route by intended reader.** By default, regular planning, reasoning, notes, experiments
   and disposable probes stay in the agent's own environment, using its native
   planning and temporary-file facilities. A project scratchpad holds identified
   material a human or another session needs as input to active collaboration or
