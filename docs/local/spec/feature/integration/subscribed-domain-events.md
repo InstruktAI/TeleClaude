@@ -1,8 +1,9 @@
 ---
-description: A person hears every published-domain event their notification interests select and whose origin they can see, as it happens, from the computer where it happened, at least once — each event its own fact, with nothing to close and no recovery message.
+description: A person hears every published-domain event their notification interests
+  select and whose origin they can see, as it happens, from the computer where it
+  happened, at least once — each event its own fact, with nothing to close and no
+  recovery message.
 visibility: internal
-delivered_by:
-  - domain-notifications
 ---
 
 # Subscribed Domain Events — Spec

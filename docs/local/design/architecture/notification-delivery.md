@@ -22,15 +22,11 @@ platform problems (`local/projects/teleclaude/spec/feature/integration/incident-
 The selection, message composition and delivery it uses are shared by every
 consumer that tells people.
 
-<!-- planned:domain-notifications -->
-
 Subscribed domain events is the consumer that tells people about the events of
 published domains as they come
 (`local/projects/teleclaude/spec/feature/integration/subscribed-domain-events`).
 It uses the same selection, composition and delivery, and keeps no state about
 a thing: each event is its own message.
-
-<!-- /planned:domain-notifications -->
 
 ## Inputs/Outputs
 
@@ -55,8 +51,6 @@ a thing: each event is its own message.
   state with the type and time of the event that brought it there, the time the
   thing became broken, and the state each selected recipient was last told.
 
-<!-- planned:domain-notifications -->
-
 - For subscribed domain events: every event its own computer emitted whose type
   is not under `teleclaude.`; every person on the people roster with their
   notification interests, asked whether they select the type among the domains
@@ -66,8 +60,6 @@ a thing: each event is its own message.
   (`local/projects/teleclaude/spec/feature/identity/data-visibility`); and the
   consumer's told marks: per event, the selected people already told.
 
-<!-- /planned:domain-notifications -->
-
 **Outputs:**
 
 - One message per selected recipient, sent through person-addressed messaging on
@@ -76,12 +68,8 @@ a thing: each event is its own message.
 - Incident records opened on a first failure and removed once the recovery has
   reached every selected recipient.
 
-<!-- planned:domain-notifications -->
-
 - Told marks for a domain event, written as each selected person is told and
   kept for as long as the platform keeps the event's handled record.
-
-<!-- /planned:domain-notifications -->
 
 - A failed outcome for a transition whose message did not reach a selected
   recipient: the handling fails, and the consumer runtime retries it and finally
@@ -152,8 +140,6 @@ a thing: each event is its own message.
   (`local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`).
   A current computer never reads them.
 
-<!-- planned:domain-notifications -->
-
 ### Subscribed domain events
 
 - **Every selected event is its own message.** Domain events report no state of
@@ -179,8 +165,6 @@ a thing: each event is its own message.
 - **An undeclared type is told by its name.** An event relayed from an external
   system has no type declaration; its message states what happened from the
   type name read as words, and names the inbound source as the thing.
-
-<!-- /planned:domain-notifications -->
 
 ## Primary flows
 
@@ -227,8 +211,6 @@ as a known one.
 - **Dropping notification facts before the fleet answers** silences what an
   older computer's projector still tells for events it receives.
 
-<!-- planned:domain-notifications -->
-
 - **Selecting domains from a fixed list** leaves a newly published domain
   silent until someone edits the list or restarts the computer.
 - **Guessing an audience when reach cannot be resolved** either tells a person
@@ -236,5 +218,3 @@ as a known one.
   and is retried instead.
 - **Composing only from a declaration** leaves every event relayed from an
   external system unreadable or unsent.
-
-<!-- /planned:domain-notifications -->
