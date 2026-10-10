@@ -100,7 +100,6 @@ Scenario Outline: visitor on <adapter>
   Examples:
     | adapter  |
     | Telegram |
-    | Discord  |
     | WhatsApp |
 ```
 
@@ -116,7 +115,6 @@ Scenario Outline: visitor on <adapter>
   Examples:
     | adapter  |
     | Telegram |
-    | Discord  |
     | WhatsApp |
 ```
 
