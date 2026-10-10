@@ -613,7 +613,15 @@ Neither records project knowledge or decisions (`local/projects/teleclaude/spec/
 
 ### Business Insights
 
+<!-- planned-change:retire-internal-channels -->
+
 What desk conversations show about the business — requests for what does not exist, complaints, recurring confusion, sentiment, mentions of alternatives — is not published to channels and no scheduled job synthesizes it. Turning collected business items into durable knowledge for the home that owns the desk, and where that knowledge lands, is not designed yet.
+
+<!-- change:retire-internal-channels -->
+
+What desk conversations show about the business — requests for what does not exist, complaints, recurring confusion, sentiment, mentions of alternatives — is not synthesized by any scheduled job. Turning collected business items into durable knowledge for the home that owns the desk, and where that knowledge lands, is not designed yet.
+
+<!-- /planned-change:retire-internal-channels -->
 
 ### Desk master (`AGENTS.master.md`)
 

@@ -31,20 +31,20 @@ Use this when you need to:
 
 <!-- planned-change:retire-internal-channels -->
 
-| Command                   | Purpose                                                  | Key params                            |
-| ------------------------- | -------------------------------------------------------- | ------------------------------------- |
-| `telec sessions result`   | Send markdown/html as a separate message                 | `content`, `--format`                 |
-| `telec sessions file`     | Send a file for download                                 | `--path`, `--caption`                 |
-| `telec sessions escalate` | Escalate a help-desk visitor to the owning home's admins | `--customer`, `--reason`, `--summary` |
-| `telec channels publish`  | Publish to internal Redis channel                        | `channel`, `--data`                   |
+| Command                   | Purpose                                  | Key params                            |
+| ------------------------- | ---------------------------------------- | ------------------------------------- |
+| `telec sessions result`   | Send markdown/html as a separate message | `content`, `--format`                 |
+| `telec sessions file`     | Send a file for download                 | `--path`, `--caption`                 |
+| `telec sessions escalate` | Escalate a help-desk visitor to a person | `--customer`, `--reason`, `--summary` |
+| `telec channels publish`  | Publish to internal Redis channel        | `channel`, `--data`                   |
 
 <!-- change:retire-internal-channels -->
 
-| Command                   | Purpose                                                  | Key params                            |
-| ------------------------- | -------------------------------------------------------- | ------------------------------------- |
-| `telec sessions result`   | Send markdown/html as a separate message                 | `content`, `--format`                 |
-| `telec sessions file`     | Send a file for download                                 | `--path`, `--caption`                 |
-| `telec sessions escalate` | Escalate a help-desk visitor to the owning home's admins | `--customer`, `--reason`, `--summary` |
+| Command                   | Purpose                                  | Key params                            |
+| ------------------------- | ---------------------------------------- | ------------------------------------- |
+| `telec sessions result`   | Send markdown/html as a separate message | `content`, `--format`                 |
+| `telec sessions file`     | Send a file for download                 | `--path`, `--caption`                 |
+| `telec sessions escalate` | Escalate a help-desk visitor to a person | `--customer`, `--reason`, `--summary` |
 
 <!-- /planned-change:retire-internal-channels -->
 
