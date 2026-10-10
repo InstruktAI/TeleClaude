@@ -31,6 +31,7 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload, SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.models import RelayStatus, encode_relay_exchange, encode_relay_targets
+from teleclaude.core.session_ended import report_session_ended
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_links import cleanup_session_links
 from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_listeners
@@ -356,6 +357,22 @@ async def terminate_session(
         _cleanup_in_flight.discard(session_id)
 
 
+async def _write_session_end(session: Session, *, delete_db: bool, already_closed: bool) -> None:
+    """Write the end of a session — delete its row or close it — and report an ending that happens now.
+
+    The record held here is what the report states, so the delete variant reports from it too. A
+    session that was already closed was reported when it closed.
+    """
+    if delete_db:
+        await db.delete_session(session.session_id)
+        logger.info("Deleted session %s from database", session.session_id)
+    elif not already_closed:
+        await db.close_session(session.session_id)
+        logger.info("Closed session %s in database", session.session_id)
+    if not already_closed:
+        await report_session_ended(session)
+
+
 async def _terminate_session_inner(
     session_id: str,
     adapter_client: AdapterClient,
@@ -487,12 +504,7 @@ async def _terminate_session_inner(
                 exc_info=True,
             )
     finally:
-        if delete_db:
-            await db.delete_session(session.session_id)
-            logger.info("Deleted session %s from database", session.session_id)
-        elif not already_closed:
-            await db.close_session(session.session_id)
-            logger.info("Closed session %s in database", session.session_id)
+        await _write_session_end(session, delete_db=delete_db, already_closed=already_closed)
         clear_relaunch_awaiting_readiness(session.session_id)
     return not already_closed or delete_db
 

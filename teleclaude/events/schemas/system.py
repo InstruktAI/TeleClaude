@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from teleclaude.events.catalog import DeclaredEvent, EventData, LifecycleState, PlatformEvent
 from teleclaude.events.envelope import EventHomeKind
 from teleclaude.events.references import (
@@ -12,6 +14,7 @@ from teleclaude.events.references import (
     SessionRef,
     StreamEntryRef,
 )
+from teleclaude.events.renames import RETIRED_SESSION_ENDED_TYPE
 
 _SESSION_HOMES = (EventHomeKind.PROJECT, EventHomeKind.PERSON, EventHomeKind.COMPANY)
 _PROJECT_HOME = (EventHomeKind.PROJECT,)
@@ -20,11 +23,22 @@ BURST_FAMILY = "teleclaude.system.burst"
 FAILURE_CASCADE_FAMILY = "teleclaude.system.failure_cascade"
 ENTITY_FAMILY = "teleclaude.system.entity"
 CONFIG_VALIDATION_FAMILY = "teleclaude.config.validation"
+#: The name every kinded session-ended type sits below; a subscriber selects one kind or every ending through it.
+SESSION_ENDED_PREFIX = RETIRED_SESSION_ENDED_TYPE
+
+
+class SessionEndedKind(StrEnum):
+    """The kinds of session an ending is reported for, each the last segment of its type name."""
+
+    HELP_DESK = "help_desk"
+    PERSON = "person"
+    SYSTEM = "system"
+    UNKNOWN = "unknown"
 
 
 class SessionEndedData(EventData):
     ended_at: str
-    project_path: str
+    project_path: str | None = None
     session_id: str
 
 
@@ -114,9 +128,27 @@ class EntityRecoveredData(EventData):
     episode_start: str
 
 
-class SessionEnded(PlatformEvent[SessionRef, SessionEndedData]):
-    NAME = "teleclaude.agent_runtime.session.ended"
-    DESCRIPTION = "A session was closed and may require lifecycle-runner re-evaluation of its todo"
+class HelpDeskSessionEnded(PlatformEvent[SessionRef, SessionEndedData]):
+    NAME = f"{SESSION_ENDED_PREFIX}.{SessionEndedKind.HELP_DESK.value}"
+    DESCRIPTION = "A help-desk conversation session ended"
+    HOME_KINDS = _SESSION_HOMES
+
+
+class PersonSessionEnded(PlatformEvent[SessionRef, SessionEndedData]):
+    NAME = f"{SESSION_ENDED_PREFIX}.{SessionEndedKind.PERSON.value}"
+    DESCRIPTION = "A session a person started and talks to ended"
+    HOME_KINDS = _SESSION_HOMES
+
+
+class SystemSessionEnded(PlatformEvent[SessionRef, SessionEndedData]):
+    NAME = f"{SESSION_ENDED_PREFIX}.{SessionEndedKind.SYSTEM.value}"
+    DESCRIPTION = "A session the system started ended"
+    HOME_KINDS = _SESSION_HOMES
+
+
+class UnknownSessionEnded(PlatformEvent[SessionRef, SessionEndedData]):
+    NAME = f"{SESSION_ENDED_PREFIX}.{SessionEndedKind.UNKNOWN.value}"
+    DESCRIPTION = "A session ended whose record does not establish what kind of session it was"
     HOME_KINDS = _SESSION_HOMES
 
 
@@ -211,7 +243,10 @@ class EntityRecovered(PlatformEvent[EventRef, EntityRecoveredData]):
 
 
 DECLARED: tuple[DeclaredEvent, ...] = (
-    SessionEnded,
+    HelpDeskSessionEnded,
+    PersonSessionEnded,
+    SystemSessionEnded,
+    UnknownSessionEnded,
     SessionRestartFailed,
     SessionBootstrapFailed,
     EffectiveConfigUpdated,

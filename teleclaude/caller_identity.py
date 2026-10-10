@@ -30,8 +30,8 @@ from teleclaude.services.project_catalog.ownership import ProjectOwnershipIndex,
 from teleclaude.snippet_scope import SnippetScope
 from teleclaude.types.creation_record import EntryPoint
 
-_HUMAN_PRINCIPAL_PREFIX = "human:"
-_SYSTEM_PRINCIPAL_PREFIX = "system:"
+HUMAN_PRINCIPAL_PREFIX = "human:"
+SYSTEM_PRINCIPAL_PREFIX = "system:"
 
 
 class SessionIdentityError(ValueError):
@@ -569,7 +569,7 @@ def resolve_session_principal(session: SessionIdentityFields) -> tuple[str, str]
     if session.principal:
         return session.principal, session.human_role or HUMAN_ROLE_CUSTOMER
     if session.human_email:
-        principal = f"{_HUMAN_PRINCIPAL_PREFIX}{session.human_email}"
+        principal = f"{HUMAN_PRINCIPAL_PREFIX}{session.human_email}"
         return principal, session.human_role or HUMAN_ROLE_CUSTOMER
     if session.system_role:
         return SYSTEM_DAEMON_PRINCIPAL, session.system_role
@@ -583,8 +583,8 @@ def caller_from_principal(principal: str | None) -> CliCaller:
     """Resolve a carried principal against the lightweight people roster."""
     if not principal:
         return NoIdentityCliCaller()
-    if principal.startswith(_HUMAN_PRINCIPAL_PREFIX):
-        email = principal.removeprefix(_HUMAN_PRINCIPAL_PREFIX)
+    if principal.startswith(HUMAN_PRINCIPAL_PREFIX):
+        email = principal.removeprefix(HUMAN_PRINCIPAL_PREFIX)
         if not email:
             return NoIdentityCliCaller()
         person = person_entry_for_email(email)
@@ -593,7 +593,7 @@ def caller_from_principal(principal: str | None) -> CliCaller:
             person_slug=person.slug if person is not None else None,
             human_role=_normalize_human_role(person.role) if person is not None else None,
         )
-    if principal.startswith(_SYSTEM_PRINCIPAL_PREFIX) and principal.removeprefix(_SYSTEM_PRINCIPAL_PREFIX):
+    if principal.startswith(SYSTEM_PRINCIPAL_PREFIX) and principal.removeprefix(SYSTEM_PRINCIPAL_PREFIX):
         return SystemCliCaller()
     return NoIdentityCliCaller()
 
@@ -676,7 +676,7 @@ def session_act_exception(
 
 def human_principal_for_email(email: str) -> str:
     """Build the canonical principal for a verified person email."""
-    return f"{_HUMAN_PRINCIPAL_PREFIX}{email}"
+    return f"{HUMAN_PRINCIPAL_PREFIX}{email}"
 
 
 def person_entry_for_email(email: str) -> PersonEntry | None:

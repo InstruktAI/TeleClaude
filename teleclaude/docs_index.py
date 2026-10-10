@@ -123,6 +123,7 @@ class SnippetEntry(TypedDict):
     superseded_by: NotRequired[list[str]]
     subscriptions: NotRequired[list[str]]
     subscription_home: NotRequired[str]
+    subscription_identity: NotRequired[str]
 
 
 class IndexPayload(TypedDict):
@@ -170,6 +171,9 @@ def _copy_subscriptions_metadata(entry: SnippetEntry, metadata: Mapping[str, obj
     raw_subscription_home = metadata.get(IndexKey.SUBSCRIPTION_HOME)
     if isinstance(raw_subscription_home, str):
         entry[IndexKey.SUBSCRIPTION_HOME.value] = raw_subscription_home
+    raw_subscription_identity = metadata.get(IndexKey.SUBSCRIPTION_IDENTITY)
+    if isinstance(raw_subscription_identity, str):
+        entry[IndexKey.SUBSCRIPTION_IDENTITY.value] = raw_subscription_identity
 
 
 def _extract_description_from_md(file_path: Path) -> str:

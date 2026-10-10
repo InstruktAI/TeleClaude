@@ -9,7 +9,7 @@ import aiosqlite
 
 from teleclaude.core.models._types import JsonDict
 from teleclaude.core.operations._kinds import _COMMAND_TYPE_TO_OPERATION_KIND
-from teleclaude.types.commands import command_from_dict
+from teleclaude.types.command_wire import command_from_dict
 
 _SESSION_PROJECT_PATH_COLUMN = "session_project_path"
 _SESSION_ID_FIELD = "session_id"

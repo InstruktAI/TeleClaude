@@ -58,12 +58,12 @@ from teleclaude.history.service import (
     resolve_history_reach,
 )
 from teleclaude.identity_reach import Reach
+from teleclaude.types.command_wire import command_from_dict
 from teleclaude.types.commands import (
     CommandType,
     CreateSessionCommand,
     InternalCommand,
     ProcessMessageCommand,
-    command_from_dict,
 )
 from teleclaude.utils.transcript_discovery import SessionId
 

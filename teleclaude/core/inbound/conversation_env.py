@@ -12,7 +12,6 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final
 
 from teleclaude.caller_identity import PersonCliCaller, RoleResolver, ThisComputer
 from teleclaude.cli.config_handlers import get_global_config
@@ -24,8 +23,9 @@ from teleclaude.core.endpoints import LIVE_ROOTS, DeskRoots
 from teleclaude.core.identity import IdentityContext
 from teleclaude.core.inbound.fleet import FleetView, observe_fleet
 from teleclaude.core.inbound.gates import ConversationLocks, CooldownGate
+from teleclaude.core.session_revival import revive_session
 from teleclaude.invite import scaffold_personal_workspace
-from teleclaude.types.commands import CreateSessionCommand, ReviveAgentCommand
+from teleclaude.types.commands import CreateSessionCommand
 
 
 def utc_now_iso() -> str:
@@ -62,21 +62,6 @@ async def _create_local_session(command: CreateSessionCommand) -> Mapping[str, s
     return await get_command_service().create_session(command)
 
 
-async def _revive_local_session(session_id: str) -> bool:
-    """Revive a closed session through the revival flow; whether its agent was relaunched.
-
-    A session with no active agent or no native session id cannot resume, and is
-    refused here so the restart flow never reports a failure into the session.
-    """
-    session = await db.get_session(session_id)
-    if session is None or not session.active_agent or not session.native_session_id:
-        return False
-    result = await get_command_service().restart_agent(ReviveAgentCommand(session_id=session_id))
-    if isinstance(result, tuple):
-        return bool(result[0])
-    return bool(result[_RESTART_OK_FIELD])
-
-
 def _effective_role_here(sender: IdentityContext) -> str:
     """The highest role the sender holds on this computer: their platform role and every company membership."""
     caller = PersonCliCaller(email=sender.person_email, person_slug=sender.person_slug, human_role=sender.person_role)
@@ -92,7 +77,6 @@ def _person_display_name(person_slug: str) -> str:
     return next((person.name for person in get_global_config().people if person.slug == person_slug), person_slug)
 
 
-_RESTART_OK_FIELD: Final = "ok"
 _ENVIRONMENT_SLOT: dict[str, ConversationEnvironment] = {}
 _DEFAULT_ENVIRONMENT_KEY = "default"
 
@@ -108,7 +92,7 @@ def default_conversation_environment() -> ConversationEnvironment:
             db=db,
             observe_fleet=_observe_live_fleet,
             create_local=_create_local_session,
-            revive_local=_revive_local_session,
+            revive_local=revive_session,
             effective_role=_effective_role_here,
             person_workspace=scaffold_personal_workspace,
             find_invite=_invite_holder,
