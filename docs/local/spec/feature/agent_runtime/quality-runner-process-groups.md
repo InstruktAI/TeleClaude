@@ -75,6 +75,8 @@ And every request still runs its selected checks and receives its own outcome
 And waiting can be interrupted through the existing command cancellation context
 And the slot is released after success, failure or process exit
 And a completion record distinguishes queue waiting from suite execution
+And queued cancellation records zero suite execution time and the cancelled slot outcome
+And a slot error is recorded without suppressing its exception
 ```
 
 #### UC-CQD6: Root formatting checks reuse Prettier's content cache
