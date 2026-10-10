@@ -156,11 +156,6 @@ class DaemonCache:
         # Change subscribers: callbacks notified when cache updates
         self._subscribers: set[Callable[[str, object], None]] = set()
 
-        # Interest tracking: per-computer interest in data types
-        # Structure: {data_type: {computer1, computer2, ...}}
-        # Examples: {"sessions": {"raspi", "macbook"}, "projects": {"raspi"}}
-        self._interest: dict[str, set[str]] = {}
-
         # Cluster publisher (cross-computer events). Attached after RedisTransport
         # is wired; None during single-computer and test contexts.
         self._cluster_publisher: ClusterPublisher | None = None
@@ -358,6 +353,11 @@ class DaemonCache:
     def get_projects_digest(self, computer: str) -> str | None:
         """Get the stored projects digest for a computer."""
         return self._projects_digest.get(computer)
+
+    def get_session(self, session_id: str) -> SessionSnapshot | None:
+        """Get the current cached snapshot of one session, or None when it is not cached."""
+        cached = self._sessions.get(session_id)
+        return cached.data if cached is not None else None
 
     def get_sessions(self, computer: str | None = None) -> list[SessionSnapshot]:
         """Get cached sessions, optionally filtered by computer.
@@ -734,57 +734,6 @@ class DaemonCache:
         ]
         joined = "\n".join(parts)
         return hashlib.sha256(joined.encode("utf-8")).hexdigest()
-
-    # ==================== Interest Management ====================
-
-    def set_interest(self, data_type: str, computer: str) -> None:
-        """Register interest in a data type for a specific computer.
-
-        Args:
-            data_type: Type of data (e.g., "sessions", "projects", "todos")
-            computer: Computer name to track interest for
-        """
-        if data_type not in self._interest:
-            self._interest[data_type] = set()
-        self._interest[data_type].add(computer)
-        logger.debug("Registered interest: %s for computer %s", data_type, computer)
-
-    def has_interest(self, data_type: str, computer: str) -> bool:
-        """Check if cache has interest in data type for specific computer.
-
-        Args:
-            data_type: Type of data to check
-            computer: Computer name to check
-
-        Returns:
-            True if interest is active for this computer, False otherwise
-        """
-        return computer in self._interest.get(data_type, set())
-
-    def remove_interest(self, data_type: str, computer: str) -> None:
-        """Remove interest in a data type for a specific computer.
-
-        Args:
-            data_type: Type of data (e.g., "sessions", "projects", "todos")
-            computer: Computer name to remove interest for
-        """
-        if data_type in self._interest:
-            self._interest[data_type].discard(computer)
-            # Clean up empty sets
-            if not self._interest[data_type]:
-                del self._interest[data_type]
-            logger.debug("Removed interest: %s for computer %s", data_type, computer)
-
-    def get_interested_computers(self, data_type: str) -> list[str]:
-        """Get all computers with interest in a data type.
-
-        Args:
-            data_type: Type of data to check
-
-        Returns:
-            List of computer names with interest in this data type
-        """
-        return list(self._interest.get(data_type, set()))
 
     # ==================== Change Notifications ====================
 

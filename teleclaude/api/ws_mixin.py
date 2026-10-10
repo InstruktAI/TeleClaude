@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Literal, cast
 
 from fastapi import WebSocket, WebSocketDisconnect
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api.session_view_models import enrich_human_names
 from teleclaude.api.ws_constants import (
     API_WS_CONTROL_EVENTS,
     API_WS_CONTROL_SEND_TIMEOUT_S,
@@ -17,6 +19,7 @@ from teleclaude.api.ws_constants import (
     API_WS_REPLACEABLE_SEND_TIMEOUT_S,
     _WsClientState,
 )
+from teleclaude.api.ws_options import WsProjectionOptionError, WsProjectionOptions, WsStream, parse_ws_streams
 from teleclaude.api_models import (
     ProjectDTO,
     ProjectsInitialDataDTO,
@@ -37,9 +40,9 @@ from teleclaude.config.machine import config
 from teleclaude.constants import CacheEvent
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
 from teleclaude.core.models._adapter import session_is_unattended
-from teleclaude.core.session_listing import snapshot_reached_by_reach
+from teleclaude.core.session_listing import listed_by_default, snapshot_reached_by_reach
+from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.identity_reach import Reach, ReachCache, ReachResolutionError
-from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -48,10 +51,16 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_SESSIONS_TOPIC = "sessions"
 _REACH_RESOLUTION_FAILURE_CLOSE_REASON = "identity reach resolution failed"
+_SNAPSHOT_FAILURE_CLOSE_REASON = "initial state could not be projected"
 _WEBSOCKET_INTERNAL_ERROR_CODE = 1011
 _REACH_RESOLUTION_CLOSE_FAILED = "Failed to close a websocket after reach resolution failed"
+_SNAPSHOT_FAILED_LOG = "Failed to project initial state for stream %s"
+_CONNECTED_LOG = "WebSocket client connected"
+_LEGACY_FRAME_IGNORED_LOG = "Ignoring subscription frame on a connection that declared its options"
+_LEGACY_FRAME_INVALID_LOG = "Invalid subscribe format: %s"
+_LEGACY_FRAME_TYPE_INVALID_LOG = "Subscribe type is not usable: %s"
+_LEGACY_FRAME_TYPES_INVALID = "types missing/invalid"
 _REFRESH_DATA_FIELD = "data"
 _REFRESH_EVENT_FIELD = "event"
 _REFRESH_COMPUTER_FIELD = "computer"
@@ -61,10 +70,31 @@ _REFRESH_OWNER_FIELD = "owner"
 _REFRESH_PROJECTS_UPDATED_EVENT = "projects_updated"
 _REFRESH_COMPUTER_UPDATED_EVENT = "computer_updated"
 _REFRESH_PUSH_EVENT = "refresh"
-_EMPTY_COMPUTER_NAME = ""
+_SUBSCRIBE_FIELD = "subscribe"
+_SUBSCRIBE_TYPES_FIELD = "types"
+_SUBSCRIBE_INCLUDE_REMOVED_FIELD = "include_removed"
 _LOCAL_COMPUTER_NAME = "local"
-_COMPUTER_REFRESH_TOPICS = frozenset({"computers", "projects", "preparation"})
-_PROJECT_REFRESH_TOPICS = frozenset({"projects", "preparation"})
+_PROJECT_STREAM_EVENTS: dict[WsStream, Literal["projects_initial", "preparation_initial"]] = {
+    WsStream.PROJECTS: "projects_initial",
+    WsStream.PREPARATION: "preparation_initial",
+}
+_TODO_REFRESH_EVENTS = frozenset(
+    {
+        CacheEvent.TODOS_UPDATED.value,
+        CacheEvent.TODO_CREATED.value,
+        CacheEvent.TODO_UPDATED.value,
+        CacheEvent.TODO_RENAMED.value,
+        CacheEvent.TODO_REMOVED.value,
+        CacheEvent.TODOS_SNAPSHOT.value,
+    }
+)
+_STREAM_INIT_ORDER = (WsStream.SESSIONS, WsStream.PROJECTS, WsStream.PREPARATION, WsStream.TODOS)
+_SESSION_CHANGE_EVENTS = frozenset({CacheEvent.SESSION_STARTED.value, CacheEvent.SESSION_UPDATED.value})
+
+
+def _session_is_open(session: SessionSnapshot) -> bool:
+    """Whether a cached session is open: any lifecycle status short of closed."""
+    return session.closed_at is None and session.status != SessionLifecycleStatus.CLOSED
 
 
 class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
@@ -75,13 +105,11 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         task_registry: TaskRegistry | None
         _cache: DaemonCache | None
         _ws_clients: set[WebSocket]
-        _client_subscriptions: dict[WebSocket, dict[str, set[str]]]
         _ws_viewers: dict[WebSocket, CliCaller]
         _ws_caller_session_ids: dict[WebSocket, str | None]
         _ws_reach_caches: dict[WebSocket, ReachCache]
         _ws_sent_session_ids: dict[WebSocket, set[str]]
         _ws_client_states: dict[WebSocket, _WsClientState]
-        _previous_interest: dict[str, set[str]]
         _refresh_debounce_task: asyncio.Task[object] | None
         _refresh_pending_payloads: dict[WebSocket, JsonDict]
 
@@ -95,15 +123,19 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         websocket: WebSocket,
         viewer: CliCaller,
         caller_session_id: str | None = None,
+        options: WsProjectionOptions | None = None,
     ) -> None:
         """Handle WebSocket connection for push updates.
 
         Args:
             websocket: WebSocket connection
+            viewer: Caller identity the connection reads as
+            caller_session_id: Session that opened the connection, when one did
+            options: Projection options the connection declared; None marks a
+                legacy client that selects its streams with subscription frames
         """
         await websocket.accept()
         self._ws_clients.add(websocket)
-        self._client_subscriptions[websocket] = {}
         self._ws_viewers[websocket] = viewer
         self._ws_caller_session_ids[websocket] = caller_session_id
         self._ws_reach_caches[websocket] = ReachCache(
@@ -111,14 +143,16 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             on_invalidate=lambda: self._schedule_reach_resync(websocket),
         )
         self._ws_sent_session_ids[websocket] = set()
-        self._ensure_ws_client_state(websocket)
-        logger.info("WebSocket client connected")
-
-        # Update interest in cache when first client connects
-        if self.cache and len(self._ws_clients) == 1:
-            self._update_cache_interest()
+        state = self._ensure_ws_client_state(websocket)
+        logger.info(_CONNECTED_LOG)
 
         try:
+            if options is None:
+                state.legacy = True
+            else:
+                state.include_removed = options.include_removed
+                await self._initialize_ws_streams(websocket, options.streams)
+
             while True:
                 # Receive messages from client
                 message = await websocket.receive_text()
@@ -131,61 +165,8 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
 
                 data: dict[str, object] = data_raw  # guard: loose-dict - WebSocket message
 
-                # Handle subscription messages
-                if "subscribe" in data:
-                    subscribe_data = data["subscribe"]
-
-                    # Support both old format (string) and new format (dict)
-                    if isinstance(subscribe_data, str):
-                        # Old format: {"subscribe": "sessions"}
-                        # Treat as subscription to "local" computer for backward compatibility
-                        topic = subscribe_data
-                        computer = "local"
-                        if computer not in self._client_subscriptions[websocket]:
-                            self._client_subscriptions[websocket][computer] = set()
-                        self._client_subscriptions[websocket][computer].add(topic)
-                        logger.info("WebSocket client subscribed to %s on local computer", topic)
-
-                        # Send initial state
-                        await self._send_initial_state(websocket, topic, computer)
-
-                    elif isinstance(subscribe_data, dict):
-                        # New format: {"subscribe": {"computer": "raspi", "types": ["sessions", "projects"]}}
-                        computer_raw = subscribe_data.get("computer")
-                        types_raw = subscribe_data.get("types")
-                        include_removed = bool(subscribe_data.get("include_removed", False))
-
-                        if not isinstance(computer_raw, str) or not isinstance(types_raw, list):
-                            logger.warning("Invalid subscribe format: computer or types missing/invalid")
-                            continue
-
-                        computer = computer_raw
-                        if computer not in self._client_subscriptions[websocket]:
-                            self._client_subscriptions[websocket][computer] = set()
-
-                        for type_raw in types_raw:
-                            if not isinstance(type_raw, str):
-                                logger.warning("Subscribe type is not a string: %s", type(type_raw))
-                                continue
-                            data_type = type_raw
-                            self._client_subscriptions[websocket][computer].add(data_type)
-                            logger.info("WebSocket client subscribed to %s on computer %s", data_type, computer)
-
-                            # Pull remote data immediately for this data type
-                            await self._pull_remote_on_interest(computer, data_type)
-                            # Send initial state for this data type
-                            await self._send_initial_state(
-                                websocket, data_type, computer, include_removed=include_removed
-                            )
-                    else:
-                        logger.warning("WebSocket subscribe data is invalid type: %s", type(subscribe_data))
-                        continue
-
-                    # Update cache interest and refresh only on newly added interest
-                    if self.cache:
-                        newly_added = self._update_cache_interest()
-                        if newly_added and len(self._ws_clients) == 1:
-                            self._trigger_initial_refresh()
+                if _SUBSCRIBE_FIELD in data:
+                    await self._apply_legacy_subscribe_frame(websocket, data[_SUBSCRIBE_FIELD])
 
         except WebSocketDisconnect:
             logger.info("WebSocket client disconnected")
@@ -197,171 +178,161 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         finally:
             await self._drop_ws_client(websocket, reason="connection-end")
 
-    def _update_cache_interest(self) -> list[tuple[str, str]]:
-        """Update cache interest based on active WebSocket subscriptions."""
-        if not self.cache:
-            return []
+    async def _apply_legacy_subscribe_frame(self, websocket: WebSocket, subscribe_data: object) -> None:
+        """Apply an old-style subscription frame as projection options for a legacy connection.
 
-        # Collect current subscriptions from all connected clients
-        # Structure: {data_type: {computers}}
-        current_interest: dict[str, set[str]] = {}
-
-        for computer_subscriptions in self._client_subscriptions.values():
-            for computer, data_types in computer_subscriptions.items():
-                for data_type in data_types:
-                    if data_type not in current_interest:
-                        current_interest[data_type] = set()
-                    current_interest[data_type].add(computer)
-
-        # Remove stale interest (present in previous but not in current)
-        for data_type, prev_computers in self._previous_interest.items():
-            current_computers = current_interest.get(data_type, set())
-            for computer in prev_computers - current_computers:
-                self.cache.remove_interest(data_type, computer)
-                logger.debug("Removed stale interest: %s for %s", data_type, computer)
-
-        # Add new interest (present in current but not in previous)
-        newly_added: list[tuple[str, str]] = []
-        for data_type, curr_computers in current_interest.items():
-            prev_computers = self._previous_interest.get(data_type, set())
-            for computer in curr_computers - prev_computers:
-                self.cache.set_interest(data_type, computer)
-                logger.debug("Added new interest: %s for %s", data_type, computer)
-                newly_added.append((computer, data_type))
-
-        # Update tracking
-        self._previous_interest = current_interest
-        logger.debug("Current cache interest: %s", current_interest)
-        return newly_added
-
-    def _trigger_initial_refresh(self) -> None:
-        """Kick off background cache refresh for remote computers on first UI connect."""
-        adapter = self.client.transport
-        if not isinstance(adapter, RedisTransport):
-            return
-        coro = self._refresh_remote_cache_and_notify()
-        if self.task_registry:
-            self.task_registry.spawn(coro, name="initial-refresh")
-        else:
-            asyncio.create_task(coro, name="initial-refresh")
-
-    async def _refresh_remote_cache_and_notify(self) -> None:
-        """Refresh remote cache snapshot and notify clients to refresh projects."""
-        adapter = self.client.transport
-        if not isinstance(adapter, RedisTransport):
-            return
-        await adapter.refresh_remote_snapshot()
-        self._on_cache_change("projects_updated", {"computer": None})
-
-    async def _pull_remote_on_interest(self, computer: str, data_type: str) -> None:
-        """Pull remote data immediately after subscription."""
-        if computer == "local":
-            return
-        adapter = self.client.transport
-        if not isinstance(adapter, RedisTransport):
-            return
-
-        if data_type in ("projects", "preparation"):
-            adapter.request_refresh(computer, "projects", reason="interest")
-        elif data_type == "sessions":
-            adapter.request_refresh(computer, "sessions", reason="interest")
-
-    async def _send_initial_state(
-        self,
-        websocket: WebSocket,
-        data_type: str,
-        computer: str,
-        include_removed: bool = False,
-    ) -> None:
-        """Send initial state for a subscription.
-
-        Args:
-            websocket: WebSocket connection
-            data_type: Data type (e.g., "sessions", "projects", "todos")
-            computer: Computer name to filter data by
-            include_removed: Whether to include soft-removed todos
+        A frame's types select streams and its include-removed flag sets that
+        option; its computer field is ignored. The first frame that selects a
+        stream fixes the flag. Later frames only add streams not yet selected and
+        never re-send an initialized stream's snapshot.
         """
-        try:
-            if data_type == "sessions":
-                # Send current sessions from cache for this computer
-                if self.cache:
-                    cached_sessions = self.cache.get_sessions(computer)
-                    viewer = self._ws_viewers.get(websocket)
-                    reach_cache = self._ws_reach_caches.get(websocket)
-                    visible = [
-                        session
-                        for session in cached_sessions
-                        if viewer is not None
-                        and reach_cache is not None
-                        and not session_is_unattended(session)
-                        and self._viewer_can_read_session(reach_cache.get(), session)
-                    ]
-                    self._ws_sent_session_ids[websocket].update(session.session_id for session in visible)
-                    sessions = [SessionDTO.from_core(s, computer=s.computer) for s in visible]
-                    event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions, computer=computer))
-                    await self._send_or_enqueue_payload(websocket, event.event, event.model_dump(exclude_none=True))
-            elif data_type in ("preparation", "projects"):
-                # Send current projects from cache for this computer
-                if self.cache:
-                    reach_cache = self._ws_reach_caches.get(websocket)
-                    if reach_cache is None:
-                        return
-                    reach = reach_cache.get()
-                    cached_projects = self.cache.get_projects(computer if computer != "local" else None)
-                    projects: list[ProjectDTO | ProjectWithTodosDTO] = []
-                    for proj in cached_projects:
-                        if not reach.admits(proj.subject, proj.owner, None):
-                            continue
-                        comp = proj.computer or ""
-                        if data_type == "preparation":
-                            todos = self.cache.get_todos(
-                                comp or config.computer.name, proj.path, include_removed=include_removed
-                            )
-                            todo_exists = False
-                            projects.append(
-                                ProjectWithTodosDTO(
-                                    computer=comp,
-                                    name=proj.name,
-                                    path=proj.path,
-                                    description=proj.description,
-                                    subject=proj.subject,
-                                    owner=proj.owner,
-                                    has_todo=todo_exists,
-                                    todos=[
-                                        t.model_copy(
-                                            update={
-                                                "computer": comp or config.computer.name,
-                                                "project_path": proj.path,
-                                            }
-                                        )
-                                        for t in todos
-                                    ],
-                                )
-                            )
-                        else:
-                            projects.append(
-                                ProjectDTO(
-                                    computer=comp,
-                                    name=proj.name,
-                                    path=proj.path,
-                                    description=proj.description,
-                                    subject=proj.subject,
-                                    owner=proj.owner,
-                                )
-                            )
+        state = self._ws_client_states.get(websocket)
+        if state is None or not state.legacy:
+            logger.debug(_LEGACY_FRAME_IGNORED_LOG)
+            return
+        frame = self._legacy_frame_options(subscribe_data)
+        if frame is None:
+            return
+        streams, include_removed = frame
+        if not state.streams:
+            state.include_removed = include_removed
+        await self._initialize_ws_streams(websocket, streams)
 
-                    event = ProjectsInitialEventDTO(  # type: ignore[assignment]
-                        event="projects_initial" if data_type == "projects" else "preparation_initial",
-                        data=ProjectsInitialDataDTO(projects=projects, computer=computer),
-                    )
-                    await self._send_or_enqueue_payload(websocket, event.event, event.model_dump(exclude_none=True))
-            elif data_type == "todos":
-                # Todos are project-specific, can't send initial state without project context
-                logger.debug("Skipping initial state for todos (project-specific)")
+    @staticmethod
+    def _legacy_frame_options(subscribe_data: object) -> tuple[frozenset[WsStream], bool] | None:
+        """Resolve a legacy subscription frame into streams and the include-removed flag."""
+        if isinstance(subscribe_data, str):
+            try:
+                return parse_ws_streams([subscribe_data]), False
+            except WsProjectionOptionError as exc:
+                logger.warning(_LEGACY_FRAME_INVALID_LOG, exc)
+                return None
+        if not isinstance(subscribe_data, dict):
+            logger.warning(_LEGACY_FRAME_INVALID_LOG, type(subscribe_data))
+            return None
+        types_raw = subscribe_data.get(_SUBSCRIBE_TYPES_FIELD)
+        if not isinstance(types_raw, list):
+            logger.warning(_LEGACY_FRAME_INVALID_LOG, _LEGACY_FRAME_TYPES_INVALID)
+            return None
+        streams: set[WsStream] = set()
+        for type_raw in types_raw:
+            if not isinstance(type_raw, str):
+                logger.warning(_LEGACY_FRAME_TYPE_INVALID_LOG, type(type_raw))
+                continue
+            try:
+                streams.update(parse_ws_streams([type_raw]))
+            except WsProjectionOptionError as exc:
+                logger.warning(_LEGACY_FRAME_TYPE_INVALID_LOG, exc)
+        return frozenset(streams), bool(subscribe_data.get(_SUBSCRIBE_INCLUDE_REMOVED_FIELD, False))
+
+    async def _initialize_ws_streams(self, websocket: WebSocket, requested: Iterable[WsStream]) -> None:
+        """Queue the initial state of each requested stream not yet initialized.
+
+        A stream receives subsequent changes only once its initial state is
+        queued, so the snapshot always precedes the changes on the connection's
+        serialized sender. Nothing suspends between capturing a snapshot and
+        marking its stream initialized.
+        """
+        state = self._ws_client_states.get(websocket)
+        if state is None:
+            return
+        wanted = frozenset(requested)
+        for stream in _STREAM_INIT_ORDER:
+            if stream not in wanted or stream in state.streams:
+                continue
+            if not await self._send_stream_snapshot(websocket, stream, state.include_removed):
+                return
+            state.streams.add(stream)
+
+    async def _send_stream_snapshot(self, websocket: WebSocket, stream: WsStream, include_removed: bool) -> bool:
+        """Queue one stream's initial state; close the connection and return False when it cannot be projected."""
+        try:
+            if stream is WsStream.SESSIONS:
+                self._queue_session_snapshot(websocket)
+            elif stream in _PROJECT_STREAM_EVENTS:
+                self._queue_projects_snapshot(websocket, stream, include_removed)
         except ReachResolutionError as exc:
             await self._close_ws_for_reach_failure(websocket, str(exc))
-        except Exception as e:
-            logger.error("Failed to send initial state for %s on %s: %s", data_type, computer, e, exc_info=True)
+            return False
+        except Exception:
+            logger.error(_SNAPSHOT_FAILED_LOG, stream, exc_info=True)
+            await self._drop_ws_client(websocket, reason=_SNAPSHOT_FAILURE_CLOSE_REASON)
+            return False
+        return True
+
+    def _queue_session_snapshot(self, websocket: WebSocket) -> None:
+        """Queue the viewer's complete eligible session snapshot, unpartitioned by computer.
+
+        Eligibility composes the owners: open lifecycle status, the default
+        listing's attended-session rule, and the viewer's identity reach.
+        """
+        cache = self.cache
+        reach_cache = self._ws_reach_caches.get(websocket)
+        if cache is None or reach_cache is None:
+            return
+        reach = reach_cache.get()
+        open_sessions = [session for session in cache.get_sessions() if _session_is_open(session)]
+        visible = [
+            session
+            for session in listed_by_default(open_sessions, all_sessions=False, session_ids=None)
+            if self._viewer_can_read_session(reach, session)
+        ]
+        self._ws_sent_session_ids.setdefault(websocket, set()).update(session.session_id for session in visible)
+        sessions = enrich_human_names([SessionDTO.from_core(session, computer=session.computer) for session in visible])
+        event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions))
+        self._enqueue_ws_payload(websocket, event.event, event.model_dump(exclude_none=True))
+
+    def _queue_projects_snapshot(self, websocket: WebSocket, stream: WsStream, include_removed: bool) -> None:
+        """Queue every cached computer's reach-admitted projects, with todos for the preparation stream."""
+        cache = self.cache
+        reach_cache = self._ws_reach_caches.get(websocket)
+        if cache is None or reach_cache is None:
+            return
+        reach = reach_cache.get()
+        projects: list[ProjectDTO | ProjectWithTodosDTO] = []
+        for proj in cache.get_projects(None):
+            if not reach.admits(proj.subject, proj.owner, None):
+                continue
+            comp = proj.computer or ""
+            if stream is WsStream.PREPARATION:
+                todos = cache.get_todos(comp or config.computer.name, proj.path, include_removed=include_removed)
+                projects.append(
+                    ProjectWithTodosDTO(
+                        computer=comp,
+                        name=proj.name,
+                        path=proj.path,
+                        description=proj.description,
+                        subject=proj.subject,
+                        owner=proj.owner,
+                        has_todo=False,
+                        todos=[
+                            t.model_copy(
+                                update={
+                                    _REFRESH_COMPUTER_FIELD: comp or config.computer.name,
+                                    _REFRESH_PROJECT_PATH_FIELD: proj.path,
+                                }
+                            )
+                            for t in todos
+                        ],
+                    )
+                )
+            else:
+                projects.append(
+                    ProjectDTO(
+                        computer=comp,
+                        name=proj.name,
+                        path=proj.path,
+                        description=proj.description,
+                        subject=proj.subject,
+                        owner=proj.owner,
+                    )
+                )
+
+        event = ProjectsInitialEventDTO(
+            event=_PROJECT_STREAM_EVENTS[stream],
+            data=ProjectsInitialDataDTO(projects=projects, computer=_LOCAL_COMPUTER_NAME),
+        )
+        self._enqueue_ws_payload(websocket, event.event, event.model_dump(exclude_none=True))
 
     def _schedule_reach_resync(self, websocket: WebSocket) -> None:
         """Queue a fresh session snapshot after a live viewer's reach changes."""
@@ -373,17 +344,27 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             asyncio.create_task(self._resync_ws_reach(websocket))
 
     async def _resync_ws_reach(self, websocket: WebSocket) -> None:
-        """Rebuild the sessions already sent to one connection from current reach."""
-        subscriptions = self._client_subscriptions.get(websocket)
-        sent_session_ids = self._ws_sent_session_ids.get(websocket)
-        if subscriptions is None or sent_session_ids is None:
+        """Rebuild every initialized stream of one connection from current reach.
+
+        The delivered-session record is kept: a session the new snapshot omits was
+        still shown to this connection, so its explicit closure stays deliverable.
+        """
+        state = self._ws_client_states.get(websocket)
+        if state is None:
             return
-        sent_session_ids.clear()
-        for computer, topics in tuple(subscriptions.items()):
-            for topic in sorted(topics):
-                await self._send_initial_state(websocket, topic, computer)
-                if websocket not in self._ws_clients:
-                    return
+        for stream in _STREAM_INIT_ORDER:
+            if stream not in state.streams:
+                continue
+            if not await self._send_stream_snapshot(websocket, stream, state.include_removed):
+                return
+
+    async def _send_session_snapshots(self, targets: Iterable[WebSocket]) -> None:
+        """Queue a fresh complete session snapshot to each connection that selected the session stream."""
+        for websocket in targets:
+            state = self._ws_client_states.get(websocket)
+            if state is None or WsStream.SESSIONS not in state.streams:
+                continue
+            await self._send_stream_snapshot(websocket, WsStream.SESSIONS, state.include_removed)
 
     async def _close_ws_for_reach_failure(self, websocket: WebSocket, reason: str) -> None:
         """Close a connection whose visibility decision could not be resolved."""
@@ -399,19 +380,17 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         return snapshot_reached_by_reach(reach, session)
 
     def _session_event_targets(self, session: SessionSnapshot) -> list[WebSocket]:
-        """Select subscribed viewers who can read this session at send time.
+        """Select initialized session-stream viewers who can read this session at send time.
 
         An unattended procedure agent is shown to no viewer: it is a presentation
-        fact beside reach, so the reach check below is untouched.
+        fact beside reach, so the reach check below is untouched. The source
+        computer of the session takes no part in selection.
         """
         if session_is_unattended(session):
             return []
-        computer = session.computer or config.computer.name
-        local = computer in ("", "local", config.computer.name)
         targets: list[WebSocket] = []
-        for websocket, subscriptions in self._client_subscriptions.items():
-            subscribed_computers = ("local", config.computer.name) if local else (computer,)
-            if not any("sessions" in subscriptions.get(name, set()) for name in subscribed_computers):
+        for websocket, state in self._ws_client_states.items():
+            if websocket not in self._ws_clients or WsStream.SESSIONS not in state.streams:
                 continue
             viewer = self._ws_viewers.get(websocket)
             reach_cache = self._ws_reach_caches.get(websocket)
@@ -458,13 +437,8 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             event: Event type (e.g., "session_updated", "computer_updated")
             data: Event data
         """
-        session_payload = self._build_session_cache_payload(event, data)
-        if session_payload is not None:
-            session = self._extract_session_snapshot(data)
-            if session is not None:
-                targets = self._session_event_targets(session)
-                if targets:
-                    self._broadcast_payload(event, session_payload, targets=targets)
+        if event in _SESSION_CHANGE_EVENTS:
+            self._deliver_session_change(event, data)
             return
 
         if event == "session_closed":
@@ -489,14 +463,28 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
 
         self._broadcast_payload(event, self._build_generic_payload(event, data))
 
-    def _build_session_cache_payload(self, event: str, data: object) -> JsonDict | None:
-        """Build DTO-backed payloads for session cache events when possible."""
-        if event not in ("session_started", "session_updated"):
-            return None
-        session = self._extract_session_snapshot(data)
+    def _deliver_session_change(self, event: str, data: object) -> None:
+        """Deliver a session change as the session's current cached row.
+
+        Cache notifications are dispatched after the change that raised them, so
+        the notified payload may be older than the cache. The row is re-read here:
+        a session that left the cache since is not delivered, and its closure
+        notice owns that outcome.
+        """
+        notified = self._extract_session_snapshot(data)
+        cache = self.cache
+        if notified is None or cache is None:
+            return
+        session = cache.get_session(notified.session_id)
         if session is None:
-            return None
-        dto = SessionDTO.from_core(session, computer=session.computer)
+            return
+        targets = self._session_event_targets(session)
+        if targets:
+            self._broadcast_payload(event, self._build_session_cache_payload(event, session), targets=targets)
+
+    def _build_session_cache_payload(self, event: str, session: SessionSnapshot) -> JsonDict:
+        """Build the DTO-backed payload for a session started or updated event."""
+        dto = enrich_human_names([SessionDTO.from_core(session, computer=session.computer)])[0]
         if event == CacheEvent.SESSION_STARTED.value:
             return SessionStartedEventDTO(event=event, data=dto).model_dump(exclude_none=True)
         return SessionUpdatedEventDTO(event=event, data=dto).model_dump(exclude_none=True)
@@ -542,8 +530,11 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         ).model_dump(exclude_none=True)
 
     def _refresh_targets(self, event: str, data: object) -> list[WebSocket]:
-        """Select project-refresh viewers and apply reach before a path is delivered."""
-        computer, project_path = self._extract_refresh_targets(event, data)
+        """Select initialized viewers of the notice's streams and apply reach before a path is delivered.
+
+        Todo change notices also reach the todos stream; project and computer notices do not.
+        """
+        _, project_path = self._extract_refresh_targets(event, data)
         if isinstance(data, dict):
             subject_raw = data.get(_REFRESH_SUBJECT_FIELD)
             owner_raw = data.get(_REFRESH_OWNER_FIELD)
@@ -552,19 +543,11 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             owner_raw = self._get_optional_str_attr(data, _REFRESH_OWNER_FIELD)
         subject = subject_raw if isinstance(subject_raw, str) else None
         owner = owner_raw if isinstance(owner_raw, str) else None
-        topics = _COMPUTER_REFRESH_TOPICS if event == _REFRESH_COMPUTER_UPDATED_EVENT else _PROJECT_REFRESH_TOPICS
         entry_update = project_path is not None and event != _REFRESH_COMPUTER_UPDATED_EVENT
+        notice_streams = _PROJECT_STREAM_EVENTS.keys() | ({WsStream.TODOS} if event in _TODO_REFRESH_EVENTS else set())
         targets: list[WebSocket] = []
-        for websocket, subscriptions in self._client_subscriptions.items():
-            computer_names = tuple(subscriptions) if computer is None else (computer,)
-            if computer in (None, _EMPTY_COMPUTER_NAME, _LOCAL_COMPUTER_NAME, config.computer.name):
-                computer_names = (*computer_names, _LOCAL_COMPUTER_NAME, config.computer.name)
-            has_topic = any(
-                topic in subscriptions.get(computer_name, set())
-                for computer_name in set(computer_names)
-                for topic in topics
-            )
-            if not has_topic:
+        for websocket, state in self._ws_client_states.items():
+            if websocket not in self._ws_clients or not state.streams & notice_streams:
                 continue
             if entry_update:
                 reach_cache = self._ws_reach_caches.get(websocket)
@@ -726,13 +709,6 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         state = self._ensure_ws_client_state(websocket)
         state.queue.put_nowait((event, payload))
 
-    async def _send_or_enqueue_payload(self, websocket: WebSocket, event: str, payload: JsonDict) -> None:
-        """Send directly for untracked sockets or enqueue for managed clients."""
-        if websocket in self._ws_clients:
-            self._enqueue_ws_payload(websocket, event, payload)
-            return
-        await self._send_ws_payload(websocket, event, payload)
-
     async def _ws_sender_loop(self, websocket: WebSocket, state: _WsClientState) -> None:
         """Serialize outbound writes for a websocket client."""
         while True:
@@ -809,10 +785,9 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         return False
 
     async def _drop_ws_client(self, websocket: WebSocket, *, reason: str) -> None:
-        """Remove sender/subscription state for one websocket client."""
+        """Remove sender and projection state for one websocket client."""
         state = self._ws_client_states.pop(websocket, None)
         self._ws_clients.discard(websocket)
-        self._client_subscriptions.pop(websocket, None)
         self._ws_viewers.pop(websocket, None)
         self._ws_caller_session_ids.pop(websocket, None)
         reach_cache = self._ws_reach_caches.pop(websocket, None)
@@ -832,8 +807,5 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                 logger.debug("WebSocket sender task ended with error during cleanup", exc_info=True)
 
         await self._close_ws(websocket)
-
-        if self.cache and len(self._ws_clients) == 0:
-            self._update_cache_interest()
 
         logger.debug("WebSocket client removed", extra={"client_id": id(websocket), "reason": reason})

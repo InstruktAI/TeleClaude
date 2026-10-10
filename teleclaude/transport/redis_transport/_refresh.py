@@ -69,10 +69,6 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
             """Discover peers currently online via Redis heartbeats."""
             raise NotImplementedError
 
-        async def pull_interested_sessions(self) -> None:
-            """Refresh session snapshots for interested peers."""
-            raise NotImplementedError
-
         async def pull_remote_projects_with_todos(self, computer: str) -> bool:
             """Refresh projects and todos for one peer; True only on success."""
             _ = computer

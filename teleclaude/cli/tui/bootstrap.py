@@ -9,7 +9,6 @@ from teleclaude.api_models import ProjectDTO, ProjectWithTodosDTO, TuiBootstrapD
 BOOTSTRAP_PILLARS: tuple[TuiBootstrapPillar, ...] = (
     "computers",
     "projects",
-    "sessions",
     "availability",
     "jobs",
     "settings",
@@ -21,7 +20,6 @@ BOOTSTRAP_MAX_RETRY_DELAY_S = 60.0
 _PILLAR_FIELDS: dict[TuiBootstrapPillar, str] = {
     "computers": "computers",
     "projects": "projects_with_todos",
-    "sessions": "sessions",
     "availability": "availability",
     "jobs": "jobs",
     "settings": "settings",

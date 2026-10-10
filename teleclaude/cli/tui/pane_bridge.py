@@ -269,14 +269,28 @@ class PaneManagerBridge(TelecMixin, Widget):
         self._mark_layout_dirty()
 
     def update_sessions(self, sessions: list[SessionDTO]) -> None:
-        """Reconcile a merged session snapshot through the serial pane writer."""
-        self._sessions = sessions
+        """Reconcile the complete session snapshot through the serial pane writer.
+
+        Snapshot absence is not closure: a session still claimed as preview or
+        sticky stays in the catalog, so its pane lives and dies by tmux liveness
+        and the explicit closure that calls ``remove_session``.
+        """
+        present = {session.session_id for session in sessions}
+        claimed = {*self._sticky_session_ids, self._preview_session_id}
+        retained = [s for s in self._sessions if s.session_id in claimed and s.session_id not in present]
+        self._sessions = [*sessions, *retained]
         self._mark_layout_dirty()
 
     def on_data_refreshed(self, message: DataRefreshed) -> None:
-        """Update cached data from API refresh."""
-        self._computers = {c.name: c for c in message.computers}
-        self.update_sessions(message.sessions)
+        """Update computer metadata from an API refresh; the session catalog follows the socket stream only.
+
+        Changed metadata re-applies the current layout intent, because the catalog
+        can arrive before the computers a remote pane attaches through.
+        """
+        computers = {c.name: c for c in message.computers}
+        if computers != self._computers:
+            self._computers = computers
+            self._mark_layout_dirty()
 
     def sync_layout_state(
         self,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 
+from teleclaude.api.ws_options import WsStream
 from teleclaude.config.machine import config
 from teleclaude.core.models import JsonDict
 
@@ -44,7 +45,16 @@ __all__ = [
 
 @dataclass  # pyright: ignore[reportUnusedClass]
 class _WsClientState:
-    """Per-client sender state for serialized WebSocket writes."""
+    """Per-client sender state and projection options for one WebSocket connection.
+
+    ``streams`` holds the streams whose initial state has been queued; a stream
+    receives subsequent changes only once it is in the set. ``legacy`` marks a
+    connection that opened without options and selects its streams with
+    subscription frames.
+    """
 
     queue: asyncio.Queue[tuple[str, JsonDict]] = field(default_factory=asyncio.Queue)
     sender_task: asyncio.Task[object] | None = None
+    streams: set[WsStream] = field(default_factory=set)
+    include_removed: bool = False
+    legacy: bool = False

@@ -61,6 +61,12 @@ from teleclaude.api.todo_routes import router as todo_router
 from teleclaude.api.todo_stamp_routes import router as todo_stamp_router
 from teleclaude.api.ws_constants import API_WS_PING_INTERVAL_S, API_WS_PING_TIMEOUT_S
 from teleclaude.api.ws_mixin import _WebSocketMixin
+from teleclaude.api.ws_options import (
+    WS_INCLUDE_REMOVED_PARAM,
+    WS_STREAM_PARAM,
+    WsProjectionOptionError,
+    parse_ws_projection_options,
+)
 from teleclaude.api_models import (
     AgentStopActivityEventDTO,
     SessionLifecycleStatusEventDTO,
@@ -94,6 +100,7 @@ from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_lifecycle import LifecycleTransitionReason
 from teleclaude.core.shutdown_drain import CONTINUATION_HEADER, ShutdownRefusal, get_shutdown_drain
 from teleclaude.hooks.inbound import INBOUND_PATH_PREFIX
 from teleclaude.identity_reach import ReachCache
@@ -119,6 +126,8 @@ API_WATCH_LAG_THRESHOLD_MS = config.api.watch_lag_threshold_ms
 API_WATCH_INFLIGHT_THRESHOLD_S = config.api.watch_inflight_threshold_s
 API_WATCH_DUMP_COOLDOWN_S = config.api.watch_dump_cooldown_s
 API_MCP_REAPER_INTERVAL_S = config.api.mcp_reaper_interval_s
+WS_POLICY_VIOLATION_CODE = 1008
+_WS_OPTIONS_REFUSED_LOG = "WebSocket connection options refused: %s"
 
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 
@@ -210,16 +219,12 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._on_server_exit: ServerExitHandler | None = None
         # WebSocket state
         self._ws_clients: set[WebSocket] = set()
-        # Per-computer subscriptions: {websocket: {computer: {data_types}}}
-        self._client_subscriptions: dict[WebSocket, dict[str, set[str]]] = {}
         self._ws_viewers: dict[WebSocket, CliCaller] = {}
         self._ws_caller_session_ids: dict[WebSocket, str | None] = {}
         self._ws_reach_caches: dict[WebSocket, ReachCache] = {}
         self._ws_sent_session_ids: dict[WebSocket, set[str]] = {}
         # Per-websocket sender state for serialized outbound writes.
         self._ws_client_states: dict[WebSocket, _WsClientState] = {}
-        # Track previous interest to remove stale entries
-        self._previous_interest: dict[str, set[str]] = {}  # {data_type: {computers}}
         # Debounce refresh-style WS events to avoid burst refresh storms
         self._refresh_debounce_task: asyncio.Task[object] | None = None
         self._refresh_pending_payloads: dict[WebSocket, JsonDict] = {}
@@ -324,6 +329,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         if session is None:
             return
         snapshot = SessionSnapshot.from_db_session(session, computer=config.computer.name)
+        close_failed = context.reason == LifecycleTransitionReason.CLOSE_FAILED
+        if close_failed and self.cache:
+            # The failed close restored the record; the snapshot below must carry that state.
+            self.cache.update_session(snapshot)
         targets = self._session_event_targets(snapshot)
         if not targets:
             return
@@ -337,6 +346,8 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             delivery_scope=context.delivery_scope,
         )
         self._broadcast_payload("session_status", dto.model_dump(exclude_none=True), targets=targets)
+        if close_failed:
+            await self._send_session_snapshots(targets)
 
     async def _session_event_targets_for_id(self, session_id: str | None) -> list[WebSocket]:
         """Resolve a session's current reach before delivering its event."""
@@ -553,10 +564,21 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         ) -> None:
             """WebSocket endpoint for push updates."""
             identity = carried_caller(websocket, websocket.headers.get("x-teleclaude-daemon-token"))
+            try:
+                options = parse_ws_projection_options(
+                    websocket.query_params.getlist(WS_STREAM_PARAM),
+                    websocket.query_params.get(WS_INCLUDE_REMOVED_PARAM),
+                )
+            except WsProjectionOptionError as exc:
+                logger.warning(_WS_OPTIONS_REFUSED_LOG, exc)
+                await websocket.accept()
+                await websocket.close(code=WS_POLICY_VIOLATION_CODE, reason=str(exc))
+                return
             await self._handle_websocket(
                 websocket,
                 caller_for_role_resolution(identity),
                 caller_session_id=identity.session_id or None,
+                options=options,
             )
 
     async def start(self) -> None:
@@ -586,7 +608,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             except Exception as e:
                 logger.warning("Error closing WebSocket: %s", e)
         self._ws_clients.clear()
-        self._client_subscriptions.clear()
         self._ws_viewers.clear()
         self._ws_caller_session_ids.clear()
         for reach_cache in self._ws_reach_caches.values():
@@ -594,9 +615,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._ws_reach_caches.clear()
         self._ws_sent_session_ids.clear()
         self._refresh_pending_payloads.clear()
-
-        # Interest is cleared when _client_subscriptions is cleared
-        # No need to explicitly clear cache interest
 
         await self.mcp_runtimes.close()
         await self._stop_server()

@@ -21,10 +21,6 @@ from teleclaude.api_models_operations import OperationFailedEventDTO, OperationS
 __all__ = [
     "JsonObject",
     "JsonValue",
-    "SubscribeData",
-    "SubscribeRequest",
-    "UnsubscribeData",
-    "UnsubscribeRequest",
     "WsEvent",
 ]
 
@@ -48,35 +44,3 @@ type WsEvent = (
     | OperationSucceededEventDTO
     | OperationFailedEventDTO
 )
-
-
-# Subscribe/Unsubscribe requests (not DTOs, strictly for CLI -> Server)
-
-
-class SubscribeData:
-    """Data payload for a channel subscription request."""
-
-    def __init__(self, computer: str, types: list[str]):
-        self.computer = computer
-        self.types = types
-
-
-class UnsubscribeData:
-    """Data payload for a channel unsubscription request."""
-
-    def __init__(self, computer: str):
-        self.computer = computer
-
-
-class SubscribeRequest:
-    """WebSocket subscribe request envelope."""
-
-    def __init__(self, subscribe: SubscribeData):
-        self.subscribe = subscribe
-
-
-class UnsubscribeRequest:
-    """WebSocket unsubscribe request envelope."""
-
-    def __init__(self, unsubscribe: UnsubscribeData):
-        self.unsubscribe = unsubscribe

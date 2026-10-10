@@ -17,7 +17,6 @@ from teleclaude.api_models import (
     ProjectsInitialEventDTO,
     ProjectWithTodosDTO,
     SessionClosedEventDTO,
-    SessionDTO,
     SessionLifecycleStatusEventDTO,
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
@@ -28,7 +27,6 @@ from teleclaude.cli.models import WsEvent
 from teleclaude.cli.tui.animation_triggers import ActivityTrigger
 from teleclaude.cli.tui.messages import AgentActivity, SessionClosed, SessionStarted, SessionUpdated
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
-from teleclaude.cli.tui.tree import _is_local_name
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.config.machine import config
@@ -72,18 +70,14 @@ class TelecAppWsMixin:
             sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
             prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
             computers, projects = self._get_sessions_view_data(sessions_view)
-            prep_view.reconcile_sessions(list(event.data.sessions), computer=event.data.computer)
-            merged = self._merge_sessions_for_computer(
-                existing=getattr(sessions_view, "_sessions", []),
-                incoming=list(event.data.sessions),
-                computer=event.data.computer,
-            )
+            sessions = list(event.data.sessions)
+            prep_view.reconcile_sessions(sessions, computer=None)
             pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)  # type: ignore[attr-defined]
-            pane_bridge.update_sessions(merged)
+            pane_bridge.update_sessions(sessions)
             sessions_view.update_data(
                 computers=computers,
                 projects=projects,
-                sessions=merged,
+                sessions=sessions,
             )
             return True
 
@@ -254,7 +248,6 @@ class TelecAppWsMixin:
                 f"Session {event.session_id} failed to close",
                 severity="error",
             )
-            self._refresh_data(["sessions"])  # type: ignore[attr-defined]
             return
         self.notify_text(  # type: ignore[attr-defined]
             f"Session {event.session_id}: {event.status}",
@@ -268,30 +261,6 @@ class TelecAppWsMixin:
             getattr(sessions_view, "_computers", []),
             getattr(sessions_view, "_projects", []),
         )
-
-    @staticmethod
-    def _merge_sessions_for_computer(
-        *,
-        existing: list[SessionDTO],
-        incoming: list[SessionDTO],
-        computer: str | None,
-    ) -> list[SessionDTO]:
-        """Replace one computer's sessions while preserving sessions for others.
-
-        A per-computer initial event must not wipe sessions from other computers
-        — each subscribed computer fires its own event on WS reconnect, and a
-        wholesale replace causes panes for any non-matching computer to die.
-        """
-        if computer is None:
-            # No computer label — fall back to the legacy replace semantics.
-            return incoming
-        if _is_local_name(computer, config.computer.name):
-            retained = [
-                session for session in existing if not _is_local_name(session.computer or "", config.computer.name)
-            ]
-        else:
-            retained = [session for session in existing if session.computer != computer]
-        return retained + incoming
 
     @staticmethod
     def _merge_projects(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 
 from textual.message import Message
 
@@ -18,6 +18,8 @@ from teleclaude.api_models import (
 from teleclaude.cli.tui.creator_session import SessionLookup
 
 # --- Data refresh messages ---
+
+_PAYLOAD_ARITY_MESSAGE = "DataRefreshed expects {expected} positional payload values"
 
 
 @dataclass(frozen=True)
@@ -42,7 +44,6 @@ class _RefreshPayload:
     computers: list[ComputerDTO]
     projects: list[ProjectDTO]
     projects_with_todos: list[ProjectWithTodosDTO]
-    sessions: list[SessionDTO]
     availability: dict[str, AgentAvailabilityDTO] | None
     jobs: list[JobDTO]
     tts_enabled: bool
@@ -62,8 +63,9 @@ class DataRefreshed(Message):
         **chiptunes_state: object,
     ) -> None:
         super().__init__()
-        if len(payload) != 8:
-            raise TypeError("DataRefreshed expects 8 positional payload values")
+        expected = len(fields(_RefreshPayload))
+        if len(payload) != expected:
+            raise TypeError(_PAYLOAD_ARITY_MESSAGE.format(expected=expected))
         self._payload = _RefreshPayload(*payload)
         self.requested_pillars = requested_pillars
         self.missing_pillars = missing_pillars
@@ -113,11 +115,6 @@ class DataRefreshed(Message):
     def projects_with_todos(self) -> list[ProjectWithTodosDTO]:
         """Return projects enriched with todo metadata."""
         return self._payload.projects_with_todos
-
-    @property
-    def sessions(self) -> list[SessionDTO]:
-        """Return the refreshed session list."""
-        return self._payload.sessions
 
     @property
     def availability(self) -> dict[str, AgentAvailabilityDTO] | None:

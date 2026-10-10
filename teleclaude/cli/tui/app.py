@@ -24,13 +24,13 @@ from textual.widget import Widget
 from textual.widgets import Input, TabbedContent, TabPane
 from textual.widgets._tabbed_content import ContentTabs
 
+from teleclaude.api.ws_options import WsStream
 from teleclaude.api_models import (
     AgentAvailabilityDTO,
     ComputerDTO,
     JobDTO,
     ModelAvailabilityDTO,
     ProjectWithTodosDTO,
-    SessionDTO,
     TuiBootstrapDTO,
     TuiBootstrapPillar,
 )
@@ -119,6 +119,7 @@ _SAFE_INPUT_AGENT = "agent"
 _SAFE_INPUT_AVAILABLE = "available"
 _SAFE_INPUT_STATUS = "status"
 _EMPTY_LINEAGE = ""
+_SESSIONS_VIEW_SESSIONS_ATTR = "_sessions"
 _APP_STATE_FIELDS = {
     "_persisted": ("_init_state", "persisted"),
     "_start_view": ("_init_state", "start_view"),
@@ -235,7 +236,6 @@ class _AppMediaState:
 class _RefreshStateSnapshot:
     computers: list[ComputerDTO]
     projects_with_todos: list[ProjectWithTodosDTO]
-    sessions: list[SessionDTO]
     jobs: list[JobDTO]
     tts_enabled: bool
     session_lookup: SessionLookup
@@ -601,7 +601,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
 
         refusals = self.api.start_websocket(
             callback=self._on_ws_event,
-            subscriptions=["sessions", "preparation", "todos"],
+            subscriptions=[WsStream.SESSIONS, WsStream.PREPARATION, WsStream.TODOS],
             on_connect=self._on_ws_connected,
             include_removed=True,
         )
@@ -812,7 +812,6 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         projects_with_todos = (
             data.projects_with_todos if data.projects_with_todos is not None else current.projects_with_todos
         )
-        sessions = data.sessions if data.sessions is not None else current.sessions
         jobs = data.jobs if data.jobs is not None else current.jobs
         settings = data.settings
         chiptunes_status = data.chiptunes
@@ -823,7 +822,6 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             computers,
             projects_from_projects_with_todos(projects_with_todos),
             projects_with_todos,
-            sessions,
             data.availability,
             jobs,
             self._extract_tts_enabled(settings) if settings is not None else current.tts_enabled,
@@ -987,7 +985,6 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         return _RefreshStateSnapshot(
             computers=list(getattr(sessions_view, "_computers", self._runtime_state.computers)),
             projects_with_todos=projects_with_todos,
-            sessions=list(getattr(sessions_view, "_sessions", [])),
             jobs=list(getattr(jobs_view, "_jobs", [])),
             tts_enabled=bool(getattr(status_bar, "tts_enabled", False)),
             session_lookup=dict(getattr(prep_view, "_session_lookup", {})),
@@ -1021,7 +1018,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         sessions_view.update_data(
             computers=message.computers,
             projects=message.projects,
-            sessions=message.sessions,
+            sessions=list(getattr(sessions_view, _SESSIONS_VIEW_SESSIONS_ATTR, [])),
         )
         prep_view.update_data(
             message.projects_with_todos,

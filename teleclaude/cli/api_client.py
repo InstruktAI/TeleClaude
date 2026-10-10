@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass, field
 from http import HTTPMethod
 from typing import TYPE_CHECKING, Any, Unpack
+from urllib.parse import urlencode
 
 import httpx
 from instrukt_ai_logging import get_logger
@@ -19,6 +20,7 @@ from pydantic import TypeAdapter, ValidationError
 from websockets.exceptions import ConnectionClosed, WebSocketException
 from websockets.sync.client import ClientConnection, unix_connect
 
+from teleclaude.api.ws_options import WS_FLAG_FALSE, WS_FLAG_TRUE, WS_INCLUDE_REMOVED_PARAM, WS_STREAM_PARAM, WsStream
 from teleclaude.api_models import (
     ComputerDTO,
     CreateSessionResponseDTO,
@@ -37,7 +39,7 @@ from teleclaude.cli.api_client_request import JsonBody, RequestOptions
 from teleclaude.cli.api_client_runtime import TelecRuntimeAPI
 from teleclaude.cli.api_session_args import CreateSessionArgs, RunSessionArgs
 from teleclaude.cli.clearance import ClearanceScope, clearance_scope_refusal, refresh_cli_identity_role
-from teleclaude.cli.models import SubscribeData, SubscribeRequest, UnsubscribeData, UnsubscribeRequest, WsEvent
+from teleclaude.cli.models import WsEvent
 from teleclaude.cli.session_auth import ResolvedCliIdentity
 from teleclaude.cli.tool_client import (
     NotAcceptedCause,
@@ -75,6 +77,10 @@ _MESSAGE_FIELD = "message"
 _DIRECT_FIELD = "direct"
 _CLOSE_LINK_FIELD = "close_link"
 _SESSIONS_SEND_COMMAND = "sessions send"
+_SESSIONS_LIST_COMMAND = "sessions list"
+_TODO_LIST_COMMAND = "todo list"
+_WS_QUERY_SEPARATOR = "?"
+_WS_CONNECTED_LOG = "WebSocket connected, streams: %s"
 _PROJECT_ADOPT_COMMAND = "telec config project adopt"
 _PROJECT_ADOPT_CLEARANCE = ClearanceScope.verb(_PROJECT_ADOPT_COMMAND)
 _HTTP_POST = HTTPMethod.POST
@@ -86,8 +92,6 @@ WS_BACKOFF_MULTIPLIER = 2.0  # Exponential backoff multiplier
 API_CONNECT_RETRY_DELAYS_S = (0.1, 0.3, 0.6)
 
 __all__ = ["APIError", "TelecAPIClient"]
-
-type WsPayload = dict[str, dict[str, str | list[str] | bool]]
 
 WS_OPERATION_ERRORS = (OSError, RuntimeError, WebSocketException)
 REQUEST_WRAP_ERRORS = (OSError, RuntimeError, TypeError, ValueError)
@@ -111,7 +115,7 @@ class _WebSocketState:
     thread: threading.Thread | None = None
     running: bool = False
     include_removed: bool = False
-    subscriptions: set[str] = field(default_factory=set)
+    subscriptions: set[WsStream] = field(default_factory=set)
     callback: Callable[[WsEvent], None] | None = None
     on_connect: Callable[[], None] | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -213,17 +217,19 @@ class _TelecConnectionClient:
     def start_websocket(
         self,
         callback: Callable[[WsEvent], None],
-        subscriptions: list[str] | None = None,
+        subscriptions: list[WsStream] | None = None,
         on_connect: Callable[[], None] | None = None,
         include_removed: bool = False,
     ) -> list[str]:
         """Start WebSocket connection for push updates.
 
-        Runs in a background thread to avoid blocking the TUI event loop.
+        Runs in a background thread to avoid blocking the TUI event loop. The
+        connection declares the resource streams its caller holds command
+        clearance to read; the daemon projects those streams for the caller.
 
         Args:
             callback: Function called with (event_type, data) for each message
-            subscriptions: Topics to subscribe to (e.g., ["sessions", "preparation"])
+            subscriptions: Streams to receive (e.g., [WsStream.SESSIONS, WsStream.PREPARATION])
             include_removed: Whether to include soft-removed entries
         """
         if self._ws_state.running:
@@ -231,13 +237,13 @@ class _TelecConnectionClient:
             return []
 
         subscription_scopes = {
-            "sessions": ClearanceScope.verb("sessions list"),
-            "preparation": ClearanceScope.verb("todo list"),
-            "todos": ClearanceScope.verb("todo list"),
+            WsStream.SESSIONS: ClearanceScope.verb(_SESSIONS_LIST_COMMAND),
+            WsStream.PREPARATION: ClearanceScope.verb(_TODO_LIST_COMMAND),
+            WsStream.TODOS: ClearanceScope.verb(_TODO_LIST_COMMAND),
         }
-        allowed_subscriptions: list[str] = []
+        allowed_subscriptions: list[WsStream] = []
         refusals: list[str] = []
-        for subscription in subscriptions or ["sessions", "preparation"]:
+        for subscription in subscriptions or [WsStream.SESSIONS, WsStream.PREPARATION]:
             scope = subscription_scopes.get(subscription, ClearanceScope.ungoverned())
             refusal = clearance_scope_refusal(scope, self._http_state.clearance_identity)
             if refusal is None:
@@ -278,25 +284,6 @@ class _TelecConnectionClient:
         self._ws_state.thread = None
         logger.info("WebSocket client stopped")
 
-    def subscribe(self, computer: str, types: list[str]) -> None:
-        """Subscribe to updates for a specific computer."""
-        payload = SubscribeRequest(subscribe=SubscribeData(computer=computer, types=types))
-        self._send_ws({"subscribe": {"computer": payload.subscribe.computer, "types": payload.subscribe.types}})
-
-    def unsubscribe(self, computer: str) -> None:
-        """Unsubscribe from updates for a specific computer."""
-        payload = UnsubscribeRequest(unsubscribe=UnsubscribeData(computer=computer))
-        self._send_ws({"unsubscribe": {"computer": payload.unsubscribe.computer}})
-
-    def _send_ws(self, payload: WsPayload) -> None:
-        with self._ws_state.lock:
-            if not self._ws_state.ws:
-                return
-            try:
-                self._ws_state.ws.send(json.dumps(payload))
-            except WS_OPERATION_ERRORS:
-                pass
-
     @property
     def ws_connected(self) -> bool:
         """Check if WebSocket is connected."""
@@ -334,41 +321,23 @@ class _TelecConnectionClient:
             time.sleep(backoff)
             backoff = min(backoff * WS_BACKOFF_MULTIPLIER, WS_MAX_BACKOFF)
 
+    def _ws_uri(self) -> str:
+        """Build the connection URI declaring the selected streams and the include-removed option."""
+        flag = WS_FLAG_TRUE if self._ws_state.include_removed else WS_FLAG_FALSE
+        query = [(WS_STREAM_PARAM, stream.value) for stream in sorted(self._ws_state.subscriptions)]
+        query.append((WS_INCLUDE_REMOVED_PARAM, flag))
+        return WS_URI + _WS_QUERY_SEPARATOR + urlencode(query)
+
     def _ws_connect_and_run(self) -> None:
         """Connect to WebSocket and process messages until disconnection."""
         logger.debug("Connecting to WebSocket at %s", self.socket_path)
         identity_headers = {} if self._daemon_credential else self._http_state.identity_headers
-        ws = unix_connect(path=self.socket_path, uri=WS_URI, additional_headers=identity_headers)
+        ws = unix_connect(path=self.socket_path, uri=self._ws_uri(), additional_headers=identity_headers)
 
         with self._ws_state.lock:
             self._ws_state.ws = ws
 
-        logger.info("WebSocket connected, subscribing to: %s", self._ws_state.subscriptions)
-
-        initial_sub = SubscribeRequest(
-            subscribe=SubscribeData(computer="local", types=list(self._ws_state.subscriptions))
-        )
-        initial_payload: WsPayload = {
-            "subscribe": {
-                "computer": initial_sub.subscribe.computer,
-                "types": initial_sub.subscribe.types,
-                "include_removed": self._ws_state.include_removed,
-            }
-        }
-        ws.send(json.dumps(initial_payload))
-
-        from teleclaude.config.machine import config  # noqa: PLC0415 - deferred command-local dependency.
-
-        # Subscribe to each config-defined remote computer
-        for rc in config.remote_computers:
-            remote_payload: WsPayload = {
-                "subscribe": {
-                    "computer": rc.name,
-                    "types": list(self._ws_state.subscriptions),
-                    "include_removed": self._ws_state.include_removed,
-                }
-            }
-            ws.send(json.dumps(remote_payload))
+        logger.info(_WS_CONNECTED_LOG, sorted(self._ws_state.subscriptions))
 
         if self._ws_state.on_connect:
             self._ws_state.on_connect()
