@@ -6,6 +6,11 @@ delivered_by:
 
 # Agent Job Reporting — Spec
 
+## Required reads
+
+- @docs/local/spec/domain/agent_runtime.md
+- @docs/local/spec/domain/context-map.md
+
 ## What it is
 
 Scheduled agent jobs submit their outcome and optional checkpoint through one
@@ -33,7 +38,7 @@ And a later report replaces that state instead of adding another run-history rec
 
 ```gherkin
 Given an earlier run for project P and job J has stalled and a successor run is open
-When the earlier run reports after the successor has opened
+When the agent session belonging to the earlier run reports after the successor has opened
 Then the successor remains open and its current state is unchanged
 And only a report from the session holding the successor run can close it
 ```
