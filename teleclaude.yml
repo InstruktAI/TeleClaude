@@ -191,8 +191,10 @@ checkpoint:
         include:
           - pyproject.toml
           - requirements*.txt
+          - uv.lock
       actions:
         - deps
+        - restart
     - scope:
         include:
           - teleclaude/install/**
