@@ -102,6 +102,30 @@ Accepted messages retain their original occurrence and ordering. A readiness
 wait does not authorize a duplicate resend, a new session, or a synthetic
 lifecycle transition. Recovery follows UC-SID6.
 
+<!-- planned:interruptible-conversation-compaction -->
+
+### Returning input during idle maintenance
+
+Accepted conversation input remains durable while a temporary compaction
+launch is running. Before normal delivery readiness or composer observation,
+the conversation runtime abandons that maintenance attempt, discards its tmux
+runtime through the existing shutdown path and revives the ordinary agent
+from the conversation's recorded transcript. Delivery reads the revived
+session afresh and follows its ordinary profile, readiness and queue-ordering
+contract. It neither injects visitor input into maintenance nor expires the
+input when maintenance is abandoned.
+
+Desk re-entry takes the same runtime-return operation even when it carries no
+text to deliver. Multiple returning messages share that operation; they do not
+start independent replacements. Cancellation remains reachable during
+maintenance instead of waiting for the compaction operation to finish.
+
+An abandoned maintenance launch does not end the conversation. Its later
+startup or completion cannot satisfy ordinary input readiness or close the
+revived session. Native transcript resumption and tmux process handling keep
+their existing contracts.
+<!-- /planned:interruptible-conversation-compaction -->
+
 ### Conversation input authority
 
 Text accepted from a conversation channel is conversation for the agent and

@@ -40,6 +40,25 @@ agent keys or silently substitute one known agent for another.
 - **Dispatch contract:** the agent's relative position in role-specific
   selection where that runtime is eligible.
 
+<!-- planned:interruptible-conversation-compaction -->
+
+### Compaction launch declaration
+
+An agent's canonical compaction declaration carries its native command and the
+runtime-owned recipe for a temporary launch resuming its recorded native
+transcript. The recipe is an internal declaration, separate from the
+operator-editable launch profiles. The ordinary desk profile keeps native
+slash commands disabled; the compaction recipe enables its native command and
+preserves the other applicable confinement settings, including bundled-skill
+suppression.
+
+The launch carries immutable coordination context for its maintenance attempt
+to its managed hook subprocesses. It changes neither the conversation's
+persisted confinement identity nor the provider's native transcript semantics.
+Agents without a declared command and launch recipe retain their existing
+idle-close eligibility; the declaration supplies no new provider capability.
+<!-- /planned:interruptible-conversation-compaction -->
+
 ### Use cases
 
 #### UC-AV-1: A known agent keeps one identity across runtime surfaces

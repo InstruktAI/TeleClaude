@@ -177,6 +177,25 @@ malformed provider-owned values are preserved because their ownership cannot be
 established; a declared event is replaced with TeleClaude's valid list shape
 during merge.
 
+<!-- planned:interruptible-conversation-compaction -->
+
+### Maintenance launch context
+
+A temporary compaction launch supplies immutable attempt context through its
+child-process startup environment. Its managed hook subprocesses inherit that
+context, and the receiver captures it at startup and carries it unchanged in
+the normalized internal event envelope. The provider's native event names and
+payload semantics, installed hook commands and hook trust state remain
+unchanged. Ordinary launches carry no maintenance context.
+
+The agent-runtime consumer owns matching that context to its active attempt.
+Maintenance startup opens only that attempt's readiness, and maintenance
+completion settles only that attempt. Events from an abandoned or superseded
+attempt do not update the ordinary conversation's readiness, status or close
+state and do not wake its pending control input. The receiver transports these
+coordination facts; it decides no compaction lifecycle policy.
+<!-- /planned:interruptible-conversation-compaction -->
+
 Receiver-added payload fields:
 
 - TeleClaude session id,

@@ -39,6 +39,36 @@ memory agents among them, whose lifecycle is their procedure's own.
 
 ## Canonical fields
 
+<!-- planned:interruptible-conversation-compaction -->
+
+### Temporary compaction launches
+
+The idle cycle resumes the conversation's recorded native transcript in a
+temporary maintenance launch and submits the agent's declared compaction
+command. The ordinary help-desk launch keeps native slash commands disabled
+and bundled skills unavailable. Maintenance enables the compaction command
+without widening the desk's other restrictions or changing the conversation's
+identity, endpoint, memory scope or native transcript binding.
+
+Returning conversation input or desk re-entry abandons maintenance immediately,
+discards its tmux runtime through the existing shutdown machinery, and revives
+the ordinary conversation through the existing transcript-resumption path.
+Accepted input remains queued until that ordinary runtime can receive it, in
+its accepted order; none reaches the maintenance launch. The person's return
+resets the idle period, so the abandoned attempt waits for the next idle period.
+
+Maintenance commands do not count as the person's input and produce no reply
+to them. Maintenance startup and completion belong to their originating
+attempt; a cancelled or superseded attempt neither opens the revived desk's
+input readiness nor closes it. Abandoning a maintenance launch does not end the
+conversation or trigger its memory agent. With no returning input, completed
+compaction proceeds to the ordinary idle close and its session-ended behavior.
+
+The platform uses its existing tmux shutdown and native transcript revival
+contract. It neither rolls back a compaction already recorded by the agent nor
+implements transcript validation or additional process-exit checks.
+<!-- /planned:interruptible-conversation-compaction -->
+
 ### Use cases
 
 #### UC-CC1: An idle conversation session is compacted, then closed
@@ -125,6 +155,39 @@ Given a session that is not a conversation session, such as an agent's worker, a
 When it has had no input for 30 minutes or longer
 Then the idle cycle neither compacts nor closes it
 ```
+
+<!-- planned:interruptible-conversation-compaction -->
+
+#### UC-CC10: A desk agent keeps native commands unavailable while serving its visitor
+
+```gherkin
+Given a help-desk agent serving a human visitor
+When the visitor's conversation starts or revives
+Then native slash-command execution is unavailable to that desk agent
+And bundled skills remain unavailable
+```
+
+#### UC-CC11: A returning person abandons idle maintenance
+
+```gherkin
+Given a human person's conversation is undergoing idle compaction
+When the person sends conversation input or re-enters their desk
+Then the temporary compaction launch is abandoned without waiting for compaction to finish
+And the ordinary agent resumes the same conversation
+And accepted input reaches that ordinary agent in its accepted order, with none discarded or delivered to maintenance
+And maintenance waits for the next idle period
+```
+
+#### UC-CC12: An abandoned attempt cannot affect the revived conversation
+
+```gherkin
+Given a human person's conversation resumed after idle maintenance was abandoned
+When startup or completion from the abandoned attempt arrives later
+Then that attempt neither opens the resumed agent's input readiness nor closes the conversation
+And the person's conversation continues normally
+```
+
+<!-- /planned:interruptible-conversation-compaction -->
 
 ### Cross-context references
 

@@ -271,6 +271,31 @@ Memories are kept current by memory agents (`local/projects/teleclaude/spec/feat
 
 ### Customer Session Lifecycle
 
+<!-- planned:interruptible-conversation-compaction -->
+
+#### Interruptible compaction runtime
+
+The visitor-facing desk keeps native slash commands disabled and bundled
+skills unavailable. The idle cycle resumes the same native transcript in a
+temporary maintenance launch whose recipe enables the compaction command
+while retaining the desk's other restrictions. Maintenance is not a new
+conversation and receives no visitor input.
+
+Returning input remains in the existing durable queue. A visitor's message
+or desk re-entry abandons the attempt, discards the temporary tmux runtime
+through the existing shutdown machinery, and revives the ordinary restricted
+desk through the existing transcript-resumption path. The queue then drains
+in accepted order. Returning input takes priority over maintenance, whose
+next attempt follows the next idle period.
+
+Attempt-scoped startup and completion cannot open readiness or close a desk
+revived after cancellation. Abandoning maintenance does not emit a conversation
+end; the existing memory-extraction behavior follows only a real session end.
+Compaction that completed before cancellation stays in the native transcript;
+the platform performs no rollback, transcript validation or additional
+process-exit verification.
+<!-- /planned:interruptible-conversation-compaction -->
+
 A desk session is closed only to spare resources while its visitor is away, never to end the conversation. After 30 minutes without visitor input, the daemon compacts its context and closes it. Its end wakes the desk's memory agent, which keeps the memories about that visitor current. The visitor's next message, or their re-entry at the desk, revives the same session with those memories injected (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-continuity`).
 
 **Idle cycle.** The daemon's idle cycle visits conversation sessions — desk sessions and a person's own assistant sessions, never agents the platform started for a procedure — periodically, well within the 30-minute threshold. A session whose agent is idle, which has had no input for 30 minutes, which carries no active escalation relay and has no input waiting, goes through:
@@ -279,7 +304,17 @@ A desk session is closed only to spare resources while its visitor is away, neve
 2. Closing the session, once compaction completed and no input arrived meanwhile
 3. None of it is recorded as a message sent into the session — it is invisible to the visitor
 
+<!-- planned-change:interruptible-conversation-compaction -->
+
 A step that fails or does not finish leaves the session open and is retried on the next pass. Extraction is not part of the cycle: it follows the close (Post-Session Memory Extraction), and compaction loses nothing it needs, because the agent's native transcript keeps every entry from before a compaction.
+<!-- change:interruptible-conversation-compaction -->
+
+A failed launch is abandoned and ordinary conversation delivery is restored.
+A returning person abandons unfinished compaction and resets the idle period;
+the cycle retries after the next idle period. Extraction is not part of the
+cycle: it follows a real close (Post-Session Memory Extraction), and the native
+transcript retains the conversation that extraction reads.
+<!-- /planned-change:interruptible-conversation-compaction -->
 
 ```mermaid
 sequenceDiagram
