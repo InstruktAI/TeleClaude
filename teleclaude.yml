@@ -134,9 +134,9 @@ checkpoint:
           - teleclaude/**/*.py
       actions:
         - log-check
-    # Every module the daemon process imports owes a restart. Exclusions name
-    # only modules outside the daemon's import closure; CLI modules the daemon
-    # imports are re-included by override despite the broad cli/** exclusion.
+      # Every module the daemon process imports owes a restart. Exclusions name
+      # only modules outside the daemon's import closure; CLI modules the daemon
+      # imports are re-included by override despite the broad cli/** exclusion.
     - scope:
         include:
           - teleclaude/**/*.py
@@ -223,8 +223,8 @@ checkpoint:
     - scope:
         include:
           - teleclaude/config/**
-      # A running TUI holds the config loader it started with, so it reloads
-      # after the migration or it refuses the newer config document.
+        # A running TUI holds the config loader it started with, so it reloads
+        # after the migration or it refuses the newer config document.
       actions:
         - config-migrate
         - tui-reload
@@ -278,4 +278,4 @@ hooks:
   inbound:
     github:
       secret: ${GITHUB_WEBHOOK_SECRET}
-schema_version: 19
+schema_version: 20
