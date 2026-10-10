@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
 from jobs.base import JobResult
+from teleclaude.cron.result_store import job_result_transaction
 from teleclaude.cron_status import JobRunStatus as JobRunStatus
 from teleclaude.events.renames import current_type_name
+from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import CRON_STATE_PATH
 
 _JOB_KEY_SEPARATOR = ":"
@@ -167,6 +171,7 @@ class CronState:
         *,
         legacy_project_slug: str | None = None,
         aggregate_job_keys: frozenset[str] = frozenset(),
+        persist_migrations: bool = True,
     ) -> CronState:
         """Load state from disk or create new."""
         if path is None:
@@ -224,13 +229,12 @@ class CronState:
                         state.legacy_pending_emissions[key] = PendingEmission.from_dict(emission_data)
             except (json.JSONDecodeError, KeyError):
                 pass
-        if needs_migration:
+        if needs_migration and persist_migrations:
             state.save()
         return state
 
     def save(self) -> None:
         """Persist state to disk."""
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         data: CronStateDict = {
             "jobs": {name: job.to_dict() for name, job in self.jobs.items()},
             "pending_emissions": {key: emission.to_dict() for key, emission in self.pending_emissions.items()},
@@ -239,7 +243,8 @@ class CronState:
                 key: emission.to_dict() for key, emission in self.legacy_pending_emissions.items()
             },
         }
-        self.path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        with file_transaction(self.path) as transaction:
+            transaction.replace_text(json.dumps(data, indent=2))
 
     def get_job(self, name: str) -> JobState:
         """Get or create job state."""
@@ -264,13 +269,14 @@ class CronState:
         persist: bool = True,
     ) -> JobState:
         """Open a run for a job at dispatch time."""
-        job = self.get_job(name)
-        job.run_started_at = started_at
-        job.run_session_id = session_id
-        job.last_status = JobRunStatus.RUNNING
-        job.last_error = None
-        if persist:
-            self.save()
+        with _job_lifecycle_lock(name, persist=persist):
+            job = self.get_job(name)
+            job.run_started_at = started_at
+            job.run_session_id = session_id
+            job.last_status = JobRunStatus.RUNNING
+            job.last_error = None
+            if persist:
+                self.save()
         return job
 
     def close_run(
@@ -282,14 +288,15 @@ class CronState:
         persist: bool = True,
     ) -> JobState:
         """Close an open run with a real job result."""
-        job = self.get_job(name)
-        job.last_run = closed_at or datetime.now(UTC)
-        job.last_status = JobRunStatus.SUCCESS if result.success else JobRunStatus.FAILED
-        job.last_error = None if result.success else result.message
-        job.run_started_at = None
-        job.run_session_id = None
-        if persist:
-            self.save()
+        with _job_lifecycle_lock(name, persist=persist):
+            job = self.get_job(name)
+            job.last_run = closed_at or datetime.now(UTC)
+            job.last_status = JobRunStatus.SUCCESS if result.success else JobRunStatus.FAILED
+            job.last_error = None if result.success else result.message
+            job.run_started_at = None
+            job.run_session_id = None
+            if persist:
+                self.save()
         return job
 
     def mark_stalled(
@@ -301,14 +308,15 @@ class CronState:
         persist: bool = True,
     ) -> JobState:
         """Mark an open run as stalled."""
-        job = self.get_job(name)
-        job.last_run = stalled_at or datetime.now(UTC)
-        job.last_status = JobRunStatus.STALLED
-        job.last_error = error
-        job.run_started_at = None
-        job.run_session_id = None
-        if persist:
-            self.save()
+        with _job_lifecycle_lock(name, persist=persist):
+            job = self.get_job(name)
+            job.last_run = stalled_at or datetime.now(UTC)
+            job.last_status = JobRunStatus.STALLED
+            job.last_error = error
+            job.run_started_at = None
+            job.run_session_id = None
+            if persist:
+                self.save()
         return job
 
     def add_pending_emission(self, emission: PendingEmission, *, persist: bool = True) -> None:
@@ -347,8 +355,26 @@ def compose_job_key(project_slug: str, job_identity: str) -> str:
 
 def project_slug_for_job_key(job_key: str) -> str | None:
     """Return the project slug from a qualified job key, or None for a legacy key."""
+    parsed = split_job_key(job_key)
+    return parsed[0] if parsed is not None else None
+
+
+def split_job_key(job_key: str) -> tuple[str, str] | None:
+    """Return the project slug and job identity from a qualified scheduler key."""
     project_slug, separator, job_identity = job_key.partition(_JOB_KEY_SEPARATOR)
-    return project_slug if separator and job_identity else None
+    if not separator or not project_slug or not job_identity:
+        return None
+    return project_slug, job_identity
+
+
+@contextmanager
+def _job_lifecycle_lock(job_key: str, *, persist: bool) -> Iterator[None]:
+    parsed = split_job_key(job_key)
+    if not persist or parsed is None:
+        yield
+        return
+    with job_result_transaction(*parsed):
+        yield
 
 
 def _migrate_job_key(job_name: str, legacy_project_slug: str | None) -> str:

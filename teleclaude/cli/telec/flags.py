@@ -478,6 +478,7 @@ FLAG_JOB_SUCCESS = Flag("--success", desc="Whether the job completed successfull
 FLAG_JOB_MESSAGE = Flag("--message", desc="Human-readable outcome summary", arity=VALUE)
 FLAG_JOB_ITEMS_PROCESSED = Flag("--items-processed", desc="Count of processed items (default: 0)", arity=VALUE)
 FLAG_JOB_ERROR = Flag("--error", desc="Error detail; repeat for multiple errors", arity=REPEATED)
+FLAG_JOB_STATE_JSON = Flag("--state-json", desc="Opaque checkpoint replacement as a JSON object", arity=VALUE)
 
 # =============================================================================
 # events / mcp

@@ -27,6 +27,7 @@ import re
 import sys
 import threading
 from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -46,6 +47,12 @@ from teleclaude.config.machine import config as global_config
 from teleclaude.config.schema import JobCategory, JobScheduleConfig, JobSubscription, JobWhenConfig, is_agent_job
 from teleclaude.constants import SlashCommand
 from teleclaude.core.models import HumanActionIntent
+from teleclaude.cron.result_store import (
+    job_result_transaction,
+    load_job_result_in_transaction,
+    write_job_result,
+    write_job_result_in_transaction,
+)
 from teleclaude.cron.state import (
     CronState,
     JobRunStatus,
@@ -53,6 +60,7 @@ from teleclaude.cron.state import (
     PendingEmission,
     compose_job_key,
     project_slug_for_job_key,
+    split_job_key,
 )
 from teleclaude.events.envelope import (
     EventHomeKind,
@@ -66,7 +74,8 @@ from teleclaude.events.producer import ensure_event_producer
 from teleclaude.events.references import JobRef
 from teleclaude.events.schemas.jobs import JobRunData, JobRunEventType, JobRunFailed, JobRunStalled, JobRunSucceeded
 from teleclaude.events.wire import LegacyFacts
-from teleclaude.paths import CRON_PID_PATH, JOBS_DIR, TELECLAUDE_HOME, ConfigFileName
+from teleclaude.file_transaction import FileTransaction
+from teleclaude.paths import CRON_PID_PATH, TELECLAUDE_HOME, ConfigFileName
 from teleclaude.project_root import resolve_project_root
 from teleclaude.runtime.config import require_own_checkout
 from teleclaude.services.project_catalog import ProjectCatalogService, ProjectNode, get_project_catalog_service
@@ -79,6 +88,14 @@ _DYNAMIC_JOB_PACKAGE_PREFIX = "_teleclaude_job"
 _LEGACY_AGGREGATE_JOB_KEYS = frozenset({"log-bug-hunter", "sdlc/procedure/maintenance/log-bug-hunter"})
 _SCHEDULE_LOOKAHEAD_DAYS: Final = 8
 _SUBSCRIBER_CONFIG_SKIP_EVENT: Final = "subscriber_job_config_unreadable"
+_INVALID_JOB_RESULT_LOG: Final = "invalid job result record"
+_SCRIPT_RESULT_PERSISTENCE_FAILED: Final = "Script result persistence failed: "
+_SCRIPT_RESULT_PERSISTENCE_FAILED_LOG: Final = "unable to persist script job result"
+_AGENT_RESULT_PERSISTENCE_FAILED: Final = "Agent dispatch result persistence failed: "
+_AGENT_RESULT_PERSISTENCE_FAILED_LOG: Final = "unable to persist agent dispatch failure result"
+_INVALID_JOB_KEY_ERROR: Final = "Scheduled job identity is not project-qualified"
+_AGENT_SESSION_SPAWN_FAILED: Final = "agent session spawn failed"
+_STALLED_RUN_MESSAGE: Final = "{job_name} stalled after {timeout_seconds:.0f}s"
 
 
 class Schedule(Enum):
@@ -533,6 +550,17 @@ def _close_run_with_emission(
     *,
     run_started_at: datetime,
 ) -> None:
+    with _job_result_transaction(job_name):
+        _close_run_with_emission_locked(state, job_name, result, run_started_at=run_started_at)
+
+
+def _close_run_with_emission_locked(
+    state: CronState,
+    job_name: str,
+    result: JobResult,
+    *,
+    run_started_at: datetime,
+) -> None:
     state.close_run(job_name, result, persist=False)
     state.add_pending_emission(
         _pending_emission_for_result(job_name, result, run_started_at=run_started_at), persist=False
@@ -540,7 +568,7 @@ def _close_run_with_emission(
     state.save()
 
 
-def _mark_stalled_with_emission(
+def _mark_stalled_with_emission_locked(
     state: CronState,
     job_name: str,
     *,
@@ -632,46 +660,46 @@ def _run_timeout(schedule_config: JobScheduleConfig | None) -> timedelta:
     return timedelta(seconds=timeout)
 
 
-def _load_reported_result(path: Path) -> JobResult | None:
-    if not path.exists():
-        return None
-    try:
-        return JobResult.from_json(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        logger.exception("invalid job result record", path=str(path))
-        return None
-
-
-def _find_reported_result(
-    job_name: str, run_started_at: datetime, session_id: str | None, jobs_dir: Path
-) -> JobResult | None:
-    runs_dir = jobs_dir / job_name / "runs"
-    if not runs_dir.is_dir():
-        return None
-    for path in sorted(runs_dir.glob("*.json"), key=lambda item: item.stat().st_mtime):
-        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
-        if mtime < run_started_at:
-            continue
-        result = _load_reported_result(path)
-        if result is not None and result.session_id == session_id:
-            return result
-    return None
+@contextmanager
+def _job_result_transaction(job_name: str) -> Iterator[FileTransaction]:
+    parsed_job = split_job_key(job_name)
+    if parsed_job is None:
+        raise ValueError(_INVALID_JOB_KEY_ERROR)
+    project_slug, job_identity = parsed_job
+    with job_result_transaction(project_slug, job_identity) as transaction:
+        yield transaction
 
 
 def _close_reported_agent_runs(
     state: CronState,
     schedules: dict[str, JobScheduleConfig],
-    *,
-    jobs_dir: Path = JOBS_DIR,
 ) -> None:
     for job_name, job_state in state.iter_open_runs():
         schedule_config = schedules.get(job_name)
         if not schedule_config or not is_agent_job(schedule_config) or job_state.run_started_at is None:
             continue
-        result = _find_reported_result(job_name, job_state.run_started_at, job_state.run_session_id, jobs_dir)
-        if result is None:
-            continue
-        _close_run_with_emission(state, job_name, result, run_started_at=job_state.run_started_at)
+        with _job_result_transaction(job_name) as transaction:
+            current = state.jobs.get(job_name)
+            if (
+                current is None
+                or current.last_status is not JobRunStatus.RUNNING
+                or current.run_started_at is None
+                or current.run_session_id != job_state.run_session_id
+            ):
+                continue
+            try:
+                result = load_job_result_in_transaction(transaction)
+            except (OSError, ValueError):
+                logger.exception(_INVALID_JOB_RESULT_LOG, job=job_name)
+                continue
+            if result is None or result.session_id != current.run_session_id:
+                continue
+            _close_run_with_emission_locked(
+                state,
+                job_name,
+                result,
+                run_started_at=current.run_started_at,
+            )
 
 
 def _mark_stalled_runs(
@@ -680,18 +708,38 @@ def _mark_stalled_runs(
     *,
     now: datetime,
 ) -> None:
-    for job_name, job_state in state.iter_open_runs():
-        if job_state.run_started_at is None:
-            continue
-        timeout = _run_timeout(schedules.get(job_name))
-        if now - job_state.run_started_at <= timeout:
-            continue
-        _mark_stalled_with_emission(
-            state,
-            job_name,
-            run_started_at=job_state.run_started_at,
-            message=f"{job_name} stalled after {timeout.total_seconds():.0f}s",
-        )
+    for job_name, _job_state in state.iter_open_runs():
+        with _job_result_transaction(job_name) as transaction:
+            current = state.jobs.get(job_name)
+            if current is None or current.last_status is not JobRunStatus.RUNNING or current.run_started_at is None:
+                continue
+            timeout = _run_timeout(schedules.get(job_name))
+            if now - current.run_started_at <= timeout:
+                continue
+            schedule_config = schedules.get(job_name)
+            if schedule_config is not None and is_agent_job(schedule_config):
+                try:
+                    result = load_job_result_in_transaction(transaction)
+                except (OSError, ValueError):
+                    logger.exception(_INVALID_JOB_RESULT_LOG, job=job_name)
+                    result = None
+                if result is not None and result.session_id == current.run_session_id:
+                    _close_run_with_emission_locked(
+                        state,
+                        job_name,
+                        result,
+                        run_started_at=current.run_started_at,
+                    )
+                    continue
+            _mark_stalled_with_emission_locked(
+                state,
+                job_name,
+                run_started_at=current.run_started_at,
+                message=_STALLED_RUN_MESSAGE.format(
+                    job_name=job_name,
+                    timeout_seconds=timeout.total_seconds(),
+                ),
+            )
 
 
 def _job_is_due(
@@ -725,13 +773,28 @@ def _run_due_agent_job(
     project_root: Path,
 ) -> bool:
     run_started_at = datetime.now(UTC)
-    session_id, refusal_detail = _dispatch_agent_job(job_name, schedule_config, project_root)
-    if session_id:
-        state.open_run(job_name, started_at=run_started_at, session_id=session_id)
-        return True
-    result = JobResult(success=False, message=refusal_detail or "agent session spawn failed")
-    _close_run_with_emission(state, job_name, result, run_started_at=run_started_at)
-    return False
+    with _job_result_transaction(job_name) as transaction:
+        session_id, refusal_detail = _dispatch_agent_job(job_name, schedule_config, project_root)
+        if session_id:
+            state.open_run(job_name, started_at=run_started_at, session_id=session_id, persist=False)
+            state.save()
+            return True
+        result = JobResult(success=False, message=refusal_detail or _AGENT_SESSION_SPAWN_FAILED)
+        try:
+            write_job_result_in_transaction(
+                transaction,
+                result,
+                execution_session_id=None,
+            )
+        except (OSError, TypeError, ValueError) as error:
+            logger.exception(_AGENT_RESULT_PERSISTENCE_FAILED_LOG, name=job_name)
+            result = JobResult(
+                success=False,
+                message=f"{_AGENT_RESULT_PERSISTENCE_FAILED}{error}",
+                errors=[str(error)],
+            )
+        _close_run_with_emission_locked(state, job_name, result, run_started_at=run_started_at)
+        return False
 
 
 def _run_due_script_job(
@@ -744,12 +807,37 @@ def _run_due_script_job(
 ) -> tuple[bool, bool]:
     try:
         run_started_at = datetime.now(UTC)
-        state.open_run(job_name, started_at=run_started_at)
+        parsed_job = split_job_key(job_name)
+        if parsed_job is None or parsed_job[0] != project_slug:
+            raise ValueError(_INVALID_JOB_KEY_ERROR)
+        _, job_identity = parsed_job
+        with _job_result_transaction(job_name) as transaction:
+            current_result = load_job_result_in_transaction(transaction)
+            state.open_run(job_name, started_at=run_started_at, persist=False)
+            state.save()
         result, timed_out = _run_script_job(
             script_job,
-            JobRunContext(project_root=project_root, project_slug=project_slug),
+            JobRunContext(
+                project_root=project_root,
+                project_slug=project_slug,
+                state=current_result.state if current_result is not None else None,
+            ),
             timeout_s=schedule_config.timeout if schedule_config else None,
         )
+        try:
+            write_job_result(
+                project_slug,
+                job_identity,
+                result,
+                execution_session_id=None,
+            )
+        except (OSError, TypeError, ValueError) as error:
+            logger.exception(_SCRIPT_RESULT_PERSISTENCE_FAILED_LOG, name=job_name)
+            result = JobResult(
+                success=False,
+                message=f"{_SCRIPT_RESULT_PERSISTENCE_FAILED}{error}",
+                errors=[str(error)],
+            )
         _close_run_with_emission(state, job_name, result, run_started_at=run_started_at)
         if result.success:
             logger.info("job completed", name=job_name, message=result.message, items=result.items_processed)
@@ -773,7 +861,7 @@ def _run_pre_dispatch_sweeps(
     schedules: dict[str, JobScheduleConfig],
     now: datetime,
 ) -> None:
-    _close_reported_agent_runs(state, schedules, jobs_dir=JOBS_DIR)
+    _close_reported_agent_runs(state, schedules)
     _mark_stalled_runs(state, schedules, now=now)
     _drain_pending_emissions(state)
 

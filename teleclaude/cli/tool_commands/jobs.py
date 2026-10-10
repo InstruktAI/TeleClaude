@@ -6,11 +6,10 @@ import json
 import sys
 import uuid
 from collections.abc import Mapping
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, NoReturn, cast
 
-from jobs.base import JobResult
+from jobs.base import JobResult, JSONState
 from teleclaude.api_models import JobDTO
 from teleclaude.cli.session_auth import resolve_cli_identity
 from teleclaude.cli.telec import flags as F
@@ -48,7 +47,8 @@ from teleclaude.core.configuration_clearance import (
     decide,
     standing_for,
 )
-from teleclaude.paths import JOBS_DIR
+from teleclaude.cron.result_store import job_result_transaction, write_job_result_in_transaction
+from teleclaude.cron.state import CronState, JobRunStatus, compose_job_key
 from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.session_identity import get_session_id
@@ -83,6 +83,9 @@ _SUBSCRIPTION_MESSAGES: Final[dict[SubscriptionChange, str]] = {
     SubscriptionChange.UNCHANGED: "Job {name} subscription is unchanged",
     SubscriptionChange.NOT_SUBSCRIBED: "Project does not subscribe to job {name}",
 }
+_STATE_JSON_INVALID_ERROR: Final[str] = "Error: --state-json must contain valid JSON"
+_STATE_JSON_OBJECT_ERROR: Final[str] = "Error: --state-json must contain a JSON object"
+_REPORT_RUN_ERROR: Final[str] = "Error: no open run belongs to this reporting session"
 
 
 def handle_jobs(args: list[str]) -> None:
@@ -135,6 +138,7 @@ def handle_jobs_report(args: list[str]) -> None:
     message = parsed.value(F.FLAG_JOB_MESSAGE)
     items_processed_raw = parsed.value(F.FLAG_JOB_ITEMS_PROCESSED)
     errors = list(parsed.values(F.FLAG_JOB_ERROR))
+    state_raw = parsed.value(F.FLAG_JOB_STATE_JSON)
 
     if success_raw is None:
         print("Error: --success is required", file=sys.stderr)
@@ -144,22 +148,28 @@ def handle_jobs_report(args: list[str]) -> None:
         print("Error: --message is required", file=sys.stderr)
         raise SystemExit(1)
     items_processed = _parse_non_negative_int(items_processed_raw) if items_processed_raw is not None else 0
+    state = _parse_state_json(state_raw) if state_raw is not None else None
 
     project_root = _invoking_project_root()
     project_slug = _invoking_project_slug(project_root)
     _validate_known_job(job_name, project_root)
-    runs_dir = _contained_runs_dir(_project_job_key(project_slug, job_name))
-    runs_dir.mkdir(parents=True, exist_ok=True)
+    session_id = get_session_id()
 
     result = JobResult(
         success=success,
         message=message,
         items_processed=items_processed,
         errors=errors or None,
-        session_id=get_session_id(),
+        session_id=session_id,
+        state=state,
     )
-    record_path = runs_dir / _record_filename()
-    record_path.write_text(result.to_json() + "\n", encoding="utf-8")
+    with job_result_transaction(project_slug, job_name) as transaction:
+        _require_current_open_agent_run(project_slug, job_name, session_id)
+        record_path = write_job_result_in_transaction(
+            transaction,
+            result,
+            execution_session_id=session_id,
+        )
 
     print(json.dumps({"status": "ok", "path": str(record_path)}, ensure_ascii=True))
 
@@ -375,20 +385,27 @@ def _invoking_project_slug(project_root: Path) -> str:
     return project.slug
 
 
-def _project_job_key(project_slug: str, job_name: str) -> str:
-    return f"{project_slug}:{job_name}"
-
-
-def _contained_runs_dir(job_name: str) -> Path:
-    root = JOBS_DIR.resolve(strict=False)
-    runs_dir = (root / job_name / "runs").resolve(strict=False)
+def _parse_state_json(raw: str) -> JSONState:
     try:
-        runs_dir.relative_to(root)
-    except ValueError as exc:
-        print("Error: job_id resolves outside the jobs directory", file=sys.stderr)
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(_STATE_JSON_INVALID_ERROR, file=sys.stderr)
         raise SystemExit(1) from exc
-    return runs_dir
+    if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
+        print(_STATE_JSON_OBJECT_ERROR, file=sys.stderr)
+        raise SystemExit(1)
+    return cast(JSONState, value)
 
 
-def _record_filename() -> str:
-    return f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')}.json"
+def _require_current_open_agent_run(project_slug: str, job_name: str, session_id: str | None) -> None:
+    state = CronState.load(persist_migrations=False)
+    job_state = state.jobs.get(compose_job_key(project_slug, job_name))
+    if (
+        session_id is None
+        or job_state is None
+        or job_state.last_status is not JobRunStatus.RUNNING
+        or job_state.run_started_at is None
+        or job_state.run_session_id != session_id
+    ):
+        print(_REPORT_RUN_ERROR, file=sys.stderr)
+        raise SystemExit(1)

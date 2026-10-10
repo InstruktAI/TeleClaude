@@ -14,6 +14,12 @@ import traceback
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Final, cast
+
+type JSONValue = str | int | float | bool | None | list[JSONValue] | dict[str, JSONValue]
+type JSONState = dict[str, JSONValue]
+_JOB_RESULT_STATE_FIELD: Final[str] = "state"
+_JOB_RESULT_STATE_ERROR: Final[str] = "Job result state must be an object"
 
 
 @dataclass
@@ -25,10 +31,14 @@ class JobResult:
     items_processed: int = 0
     errors: list[str] | None = None
     session_id: str | None = None
+    state: JSONState | None = None
 
     def to_json(self) -> str:
         """Serialize the result for the cron runner subprocess contract."""
-        return json.dumps(asdict(self), ensure_ascii=True)
+        data = asdict(self)
+        if self.state is None:
+            data.pop(_JOB_RESULT_STATE_FIELD)
+        return json.dumps(data, ensure_ascii=True)
 
     @classmethod
     def from_json(cls, raw: str) -> JobResult:
@@ -42,6 +52,7 @@ class JobResult:
         items_processed = data.get("items_processed", 0)
         errors = data.get("errors")
         session_id = data.get("session_id")
+        state = data.get(_JOB_RESULT_STATE_FIELD)
 
         if not isinstance(success, bool):
             raise ValueError("Job result success must be a boolean")
@@ -54,6 +65,10 @@ class JobResult:
                 raise ValueError("Job result errors must be a list of strings")
         if session_id is not None and not isinstance(session_id, str):
             raise ValueError("Job result session_id must be a string")
+        if _JOB_RESULT_STATE_FIELD in data and (
+            not isinstance(state, dict) or any(not isinstance(key, str) for key in state)
+        ):
+            raise ValueError(_JOB_RESULT_STATE_ERROR)
 
         return cls(
             success=success,
@@ -61,6 +76,7 @@ class JobResult:
             items_processed=items_processed,
             errors=errors,
             session_id=session_id,
+            state=cast(JSONState, state) if state is not None else None,
         )
 
 
@@ -70,6 +86,7 @@ class JobRunContext:
 
     project_root: Path
     project_slug: str
+    state: JSONState | None = None
 
 
 class Job(ABC):

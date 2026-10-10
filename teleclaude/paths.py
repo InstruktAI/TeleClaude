@@ -44,6 +44,7 @@ def is_platform_home(path: Path) -> bool:
 
 
 STATE_DIR = TELECLAUDE_HOME / "state"
+JOB_RUNS_DIR = STATE_DIR / "runs"
 LOGS_DIR = TELECLAUDE_HOME / "logs"
 GLOBAL_DOCS_DIR = TELECLAUDE_HOME / "docs"
 GLOBAL_DOCS_ROOTS = (DEFAULT_TELECLAUDE_HOME / "docs", GLOBAL_DOCS_DIR)

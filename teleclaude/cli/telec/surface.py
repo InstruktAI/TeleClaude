@@ -1070,16 +1070,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             JobsSubcommand.REPORT.value: CommandDef(
                 desc="Write a structured recurring job result record",
-                args="<name> --success <true|false> --message <text> [--items-processed <n>] [--error <text> ...]",
+                args="<name> --success <true|false> --message <text> [--items-processed <n>] [--error <text> ...] [--state-json <object>]",
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_JOB_SUCCESS,
                     F.FLAG_JOB_MESSAGE,
                     F.FLAG_JOB_ITEMS_PROCESSED,
                     F.FLAG_JOB_ERROR,
+                    F.FLAG_JOB_STATE_JSON,
                 ],
                 notes=[
-                    "The positional is the job's declared name and identity. Validated against configured jobs; writes JSON under ~/.teleclaude/jobs/{project}:<name>/runs/.",
+                    "The positional is the job's declared name and identity. Validated against configured jobs; writes the current record under state/runs/<project>/<name>.json.",
+                    "--state-json replaces the opaque checkpoint object; omission preserves the previous checkpoint.",
                     "This command writes locally and does not call the daemon.",
                 ],
                 auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
