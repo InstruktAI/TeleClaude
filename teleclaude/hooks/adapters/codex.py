@@ -11,6 +11,8 @@ from teleclaude.core.events import AgentHookEvents
 from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters.base import (
     HookAdapter,
+    HookEventNormalization,
+    HookNormalizationReason,
     normalize_common_payload,
     parse_stdin_hook_input,
 )
@@ -39,6 +41,10 @@ _CONTEXT_SEPARATOR = "\n\n"
 _UNSUPPORTED_DELIVERY_EVENT = "Codex event does not support control delivery"
 _TOOL_USE_ID_FIELD = "tool_use_id"
 _TOOL_CALL_ID_FIELD = "tool_call_id"
+_POST_COMPACT_TRIGGER_FIELD = "trigger"
+_POST_COMPACT_MANUAL_TRIGGER = "manual"
+_POST_COMPACT_AUTO_TRIGGER = "auto"
+_INVALID_POST_COMPACT_TRIGGER = "Codex PostCompact payload requires a manual or auto trigger"
 
 
 class CodexHookEvent(StrEnum):
@@ -49,6 +55,7 @@ class CodexHookEvent(StrEnum):
     PRE_TOOL_USE = "PreToolUse"
     POST_TOOL_USE = "PostToolUse"
     PERMISSION_REQUEST = "PermissionRequest"
+    POST_COMPACT = "PostCompact"
     STOP = "Stop"
 
 
@@ -78,6 +85,10 @@ class CodexAdapter(HookAdapter):
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
             CodexHookEvent.PERMISSION_REQUEST: NativeHookSpec(AgentHookEvents.AGENT_BLOCKED, frozenset()),
+            CodexHookEvent.POST_COMPACT: NativeHookSpec(
+                AgentHookEvents.AGENT_IDLE,
+                frozenset(),
+            ),
             CodexHookEvent.STOP: NativeHookSpec(
                 AgentHookEvents.AGENT_STOP,
                 frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
@@ -102,6 +113,17 @@ class CodexAdapter(HookAdapter):
         if isinstance(tool_call_id, str) and tool_call_id:
             normalized[_TOOL_CALL_ID_FIELD] = tool_call_id
         return normalized
+
+    def normalize_event(self, raw_event_type: str, data: JsonDict) -> HookEventNormalization:
+        """Map only provider-confirmed manual compaction to an idle boundary."""
+        if raw_event_type == CodexHookEvent.POST_COMPACT:
+            trigger = data.get(_POST_COMPACT_TRIGGER_FIELD)
+            if trigger == _POST_COMPACT_MANUAL_TRIGGER:
+                return HookEventNormalization(AgentHookEvents.AGENT_IDLE, HookNormalizationReason.MAPPED_EVENT)
+            if trigger == _POST_COMPACT_AUTO_TRIGGER:
+                return HookEventNormalization(None, HookNormalizationReason.PROVIDER_NOT_IDLE)
+            raise ValueError(_INVALID_POST_COMPACT_TRIGGER)
+        return super().normalize_event(raw_event_type, data)
 
     def render_response(self, hook_event_name: str, intent: HookResponseIntent) -> HookEmission:
         """Render context without using fields unavailable on Codex Stop."""

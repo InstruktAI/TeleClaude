@@ -11,6 +11,15 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.caller_identity import (
+    SYSTEM_PRINCIPAL_PREFIX,
+    RoleResolver,
+    SessionIdentityError,
+    SessionOf,
+    identity_for_session,
+    resolve_session_principal,
+    visitor_principal,
+)
+from teleclaude.caller_identity import (
     CliCaller as CliCaller,
 )
 from teleclaude.caller_identity import (
@@ -21,11 +30,6 @@ from teleclaude.caller_identity import (
 )
 from teleclaude.caller_identity import (
     PersonCliCaller as PersonCliCaller,
-)
-from teleclaude.caller_identity import (
-    RoleResolver,
-    SessionOf,
-    identity_for_session,
 )
 from teleclaude.caller_identity import (
     SessionIdentity as SessionIdentity,
@@ -53,7 +57,9 @@ from teleclaude.constants import (
     HUMAN_ROLES,
 )
 from teleclaude.core.agents import AgentName
-from teleclaude.core.models import MessageAuthorKind, Session
+from teleclaude.core.db import db
+from teleclaude.core.models import MessageAuthorKind, Session, SessionEntryPoint
+from teleclaude.identity_reach import Reach, resolve_reach, visitor_reach
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 
 if TYPE_CHECKING:
@@ -605,6 +611,82 @@ def get_identity_resolver() -> IdentityResolver:
     if _resolver_instance is None:
         _resolver_instance = IdentityResolver()
     return _resolver_instance
+
+
+_PERSON_KEY_PREFIX = "person:"
+_ADAPTER_PLATFORMS = ("discord", "telegram", "whatsapp")
+
+
+@dataclass(frozen=True)
+class MemoryPerson:
+    """Who the person a conversation session serves is, as memory needs to know them.
+
+    ``person_slug`` is set when the person is registered. The facts say who the
+    person is; what a memory record is about is memory's choice.
+    """
+
+    identity_key: str
+    principal: str
+    person_slug: str | None
+
+    @property
+    def registered(self) -> bool:
+        """Whether the platform knows the person as a registered person."""
+        return self.person_slug is not None
+
+
+def memory_person_for_session(session: Session) -> MemoryPerson | None:
+    """The person a conversation session serves, or ``None`` when the session names no one.
+
+    A registered person is keyed ``person:<slug>`` whichever adapter they write from,
+    found through the session's human principal or its adapter binding. Anyone else is
+    keyed by the platform identity they wrote from.
+    """
+    caller = identity_for_session(session).caller
+    if isinstance(caller, PersonCliCaller) and caller.person_slug and caller.email:
+        return _registered_person(caller.person_slug, caller.email)
+    resolver = get_identity_resolver()
+    for platform in _ADAPTER_PLATFORMS:
+        section = session.get_origin_section(platform)
+        if not section:
+            continue
+        context = resolver.resolve(platform, section)
+        if context.person_slug and context.person_email:
+            return _registered_person(context.person_slug, context.person_email)
+    identity_key = derive_identity_key(session.origin_metadata)
+    if identity_key is None:
+        return None
+    return MemoryPerson(identity_key=identity_key, principal=visitor_principal(identity_key), person_slug=None)
+
+
+def memory_person_reach(person: MemoryPerson) -> Reach:
+    """What a session serving this person may read: a registered person's own reach, a visitor's own records."""
+    if person.registered:
+        return resolve_reach(caller_from_principal(person.principal))
+    return visitor_reach(person.identity_key)
+
+
+def _registered_person(person_slug: str, email: str) -> MemoryPerson:
+    return MemoryPerson(
+        identity_key=f"{_PERSON_KEY_PREFIX}{person_slug}",
+        principal=human_principal_for_email(email),
+        person_slug=person_slug,
+    )
+
+
+async def is_procedure_agent_session(session_id: str) -> bool:
+    """Whether the session is an agent the platform started for a procedure, running under the system principal."""
+    session = await db.get_session(session_id)
+    if session is None:
+        return False
+    try:
+        principal, _role = resolve_session_principal(session)
+    except SessionIdentityError:
+        return False
+    if not principal.startswith(SYSTEM_PRINCIPAL_PREFIX):
+        return False
+    handover = await db.get_startup_handover(session_id)
+    return handover is not None and handover.intent.entry_point is SessionEntryPoint.PROCEDURE_ACTIVATION
 
 
 def caller_for_session(session: Session) -> CliCaller:

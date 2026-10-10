@@ -325,6 +325,7 @@ async def terminate_session(
     kill_tmux: bool | None = None,
     delete_channel: bool = True,
     delete_db: bool = False,
+    expire_inbound: bool = True,
 ) -> bool:
     """Terminate a session and mark it closed in the DB.
 
@@ -335,6 +336,8 @@ async def terminate_session(
         session: Optional pre-fetched session object
         kill_tmux: Whether to kill tmux (defaults to True)
         delete_channel: Whether to delete adapter channels/topics
+        expire_inbound: Whether input still queued for the session is dropped; a close that
+            keeps the conversation (the idle close) leaves it queued, and its delivery resumes the session
 
     Returns:
         True if session was terminated, False if session not found or already in flight
@@ -352,6 +355,7 @@ async def terminate_session(
             kill_tmux=kill_tmux,
             delete_channel=delete_channel,
             delete_db=delete_db,
+            expire_inbound=expire_inbound,
         )
     finally:
         _cleanup_in_flight.discard(session_id)
@@ -382,6 +386,7 @@ async def _terminate_session_inner(
     kill_tmux: bool | None = None,
     delete_channel: bool = True,
     delete_db: bool = False,
+    expire_inbound: bool = True,
 ) -> bool:
     """Inner implementation of terminate_session (called only when not in flight)."""
     session = session or await db.get_session(session_id)
@@ -472,18 +477,20 @@ async def _terminate_session_inner(
                     exc_info=True,
                 )
 
-        # Expire any pending inbound messages before marking the session closed.
-        try:
-            await get_inbound_queue_manager().expire_session(session.session_id)
-        except RuntimeError:
-            pass  # Queue manager not initialized (e.g. tests) — skip
-        except Exception as exc:
-            logger.error(
-                "session_close_inbound_expire_failed",
-                session_id=session.session_id,
-                error=str(exc),
-                exc_info=True,
-            )
+        # Expire any pending inbound messages before marking the session closed. A close that keeps
+        # the conversation leaves them queued: their delivery resumes the session.
+        if expire_inbound:
+            try:
+                await get_inbound_queue_manager().expire_session(session.session_id)
+            except RuntimeError:
+                pass  # Queue manager not initialized (e.g. tests) — skip
+            except Exception as exc:
+                logger.error(
+                    "session_close_inbound_expire_failed",
+                    session_id=session.session_id,
+                    error=str(exc),
+                    exc_info=True,
+                )
 
         removed_control_payloads = await db.discard_pending_control_payloads(session_id=session.session_id)
         logger.info(

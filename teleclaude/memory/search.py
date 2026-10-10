@@ -12,7 +12,7 @@ from sqlmodel import Session as SqlSession
 from teleclaude.core.db import db
 from teleclaude.core.db.connection_factory import create_sync_db_engine as create_engine
 from teleclaude.identity_reach import Reach
-from teleclaude.memory.types import ObservationType, SearchResult
+from teleclaude.memory.types import CURRENT_MEMORY_PREDICATE, ObservationType, SearchResult
 
 logger = get_logger(__name__)
 
@@ -58,8 +58,9 @@ _SUBJECT_COLUMN = "memory_observations.subject"
 _SUBJECT_OWNER_COLUMN = "memory_observations.subject_owner"
 _PRINCIPAL_COLUMN = "memory_observations.principal"
 _REACH_FILTER_TEMPLATE = " AND ({predicate})"
-_ANCHOR_EPOCH_SQL = "SELECT created_at_epoch FROM memory_observations WHERE id = :id"
-_ANCHOR_ID_SQL = f"SELECT {_SEARCH_COLUMNS} FROM memory_observations WHERE id = :id"
+_CURRENT_ONLY_TEMPLATE = " AND " + CURRENT_MEMORY_PREDICATE
+_ANCHOR_EPOCH_SQL = "SELECT created_at_epoch FROM memory_observations WHERE id = :id" + _CURRENT_ONLY_TEMPLATE
+_ANCHOR_ID_SQL = f"SELECT {_SEARCH_COLUMNS} FROM memory_observations WHERE id = :id" + _CURRENT_ONLY_TEMPLATE
 _ID_PARAMETER = "id"
 _EPOCH_PARAMETER = "epoch"
 _LIMIT_PARAMETER = "limit"
@@ -105,6 +106,7 @@ class MemorySearch:
                 sql = (
                     f"SELECT {_SEARCH_COLUMNS} FROM memory_observations "  # guard: raw-sql
                     "WHERE id IN (SELECT rowid FROM memory_observations_fts WHERE memory_observations_fts MATCH :query)"
+                    + _CURRENT_ONLY_TEMPLATE
                 )
                 params: dict[str, str | int] = {"query": query, "limit": limit}
                 if project:
@@ -130,7 +132,7 @@ class MemorySearch:
             like_pattern = f"%{query}%"
             sql = (
                 f"SELECT {_SEARCH_COLUMNS} FROM memory_observations "  # guard: raw-sql
-                "WHERE (title LIKE :pattern OR narrative LIKE :pattern OR facts LIKE :pattern)"
+                "WHERE (title LIKE :pattern OR narrative LIKE :pattern OR facts LIKE :pattern)" + _CURRENT_ONLY_TEMPLATE
             )
             params = {"pattern": like_pattern, "limit": limit}
             if project:
@@ -175,7 +177,7 @@ class MemorySearch:
             # Before anchor
             before_sql = (
                 f"SELECT {_SEARCH_COLUMNS} FROM memory_observations "  # guard: raw-sql
-                "WHERE created_at_epoch <= :epoch AND id != :id"
+                "WHERE created_at_epoch <= :epoch AND id != :id" + _CURRENT_ONLY_TEMPLATE
             )
             params_before: dict[str, str | int] = {
                 _EPOCH_PARAMETER: anchor_epoch,
@@ -204,7 +206,7 @@ class MemorySearch:
             # After anchor
             after_sql = (
                 f"SELECT {_SEARCH_COLUMNS} FROM memory_observations "  # guard: raw-sql
-                "WHERE created_at_epoch >= :epoch AND id != :id"
+                "WHERE created_at_epoch >= :epoch AND id != :id" + _CURRENT_ONLY_TEMPLATE
             )
             params_after: dict[str, str | int] = {
                 _EPOCH_PARAMETER: anchor_epoch,
@@ -241,7 +243,7 @@ class MemorySearch:
                         f"SELECT {_SEARCH_COLUMNS} FROM memory_observations "  # guard: raw-sql
                         "WHERE id IN ("
                         "SELECT rowid FROM memory_observations_fts"
-                        " WHERE memory_observations_fts MATCH :query)"
+                        " WHERE memory_observations_fts MATCH :query)" + _CURRENT_ONLY_TEMPLATE
                     )
                     params: dict[str, str | int] = {"query": query, "limit": limit}
                     if project:
@@ -261,6 +263,7 @@ class MemorySearch:
                 sql = (
                     f"SELECT {_SEARCH_COLUMNS} FROM memory_observations "  # guard: raw-sql
                     "WHERE (title LIKE :pattern OR narrative LIKE :pattern OR facts LIKE :pattern)"
+                    + _CURRENT_ONLY_TEMPLATE
                 )
                 params = {"pattern": like_pattern, "limit": limit}
                 if project:

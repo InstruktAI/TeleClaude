@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     principal TEXT,
     last_memory_extraction_at TEXT,
     help_desk_processed_at TEXT,
+    idle_compaction_requested_at TEXT,
+    idle_compaction_completed_at TEXT,
+    idle_closed_at TEXT,
     relay_status TEXT,
     relay_channel_id TEXT,
     relay_started_at TEXT,
@@ -566,13 +569,17 @@ CREATE TABLE IF NOT EXISTS memory_observations (
     identity_key TEXT,
     subject TEXT,
     subject_owner TEXT,
-    principal TEXT
+    principal TEXT,
+    state TEXT NOT NULL DEFAULT 'current',
+    retired_at TEXT,
+    source_session_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_memory_obs_session ON memory_observations(memory_session_id);
 CREATE INDEX IF NOT EXISTS idx_memory_obs_project ON memory_observations(project, created_at_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_obs_type ON memory_observations(type);
 CREATE INDEX IF NOT EXISTS idx_memory_obs_identity ON memory_observations(project, identity_key);
+CREATE INDEX IF NOT EXISTS idx_memory_obs_source_session ON memory_observations(source_session_id);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_observations_fts USING fts5(
     title, subtitle, narrative, facts, concepts,

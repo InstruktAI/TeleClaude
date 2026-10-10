@@ -277,6 +277,11 @@ from teleclaude.project_manifest import load_roots
 _record_import_timing("teleclaude.paths", _t)
 
 _t = time.perf_counter()
+from teleclaude.core.idle_close import ConversationIdleCycle
+
+_record_import_timing("teleclaude.core.idle_close", _t)
+
+_t = time.perf_counter()
 from teleclaude.services.maintenance_service import MaintenanceService
 
 _record_import_timing("teleclaude.services.maintenance_service", _t)
@@ -942,6 +947,12 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
             logger.info("Poller watch task started")
 
+            self.idle_cycle_task = asyncio.create_task(
+                ConversationIdleCycle(self.client).run(), name="conversation-idle-cycle"
+            )
+            self.idle_cycle_task.add_done_callback(self._log_background_task_exception("conversation_idle_cycle"))
+            logger.info("Conversation idle cycle started")
+
             # Watch every file the config loader reads — config.yml, the sibling
             # experiments.yml, and .env — so any edit triggers the reload decision.
             # The handler hot-reloads live sections and restarts only when a
@@ -1070,6 +1081,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         for attr_name, log_message in (
             ("cleanup_task", "Periodic cleanup task stopped"),
             ("poller_watch_task", "Poller watch task stopped"),
+            ("idle_cycle_task", "Conversation idle cycle stopped"),
             ("hook_outbox_task", "Hook outbox worker stopped"),
             ("agent_status_watchdog_task", "Agent status watchdog stopped"),
             ("mirror_worker_task", "Mirror worker stopped"),

@@ -57,7 +57,8 @@ from teleclaude.core.models import (
     SessionLaunchIntent,
     SessionLaunchKind,
 )
-from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.session_runtime_gate import RuntimeMutationInProgress, session_runtime_owner
+from teleclaude.core.session_status import is_close_started, is_session_terminal
 from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.types.commands import CreateSessionCommand
 
@@ -212,10 +213,37 @@ async def _create_at(
     return session_id or None
 
 
+async def _after_close(env: ConversationEnvironment, session: Session, *, in_flight: bool = False) -> Session:
+    """The session once the runtime mutation on it has ended: a close in flight, or a revival under way.
+
+    The idle cycle holds the runtime owner until its close ends, so waiting on the owner waits for the close.
+    """
+    if not in_flight and (not is_close_started(lifecycle_status=session.lifecycle_status) or session.closed_at):
+        return session
+    async with session_runtime_owner(session.session_id, wait=True):
+        return await env.db.get_session(session.session_id) or session
+
+
 async def _revive(turn: ConversationTurn, env: ConversationEnvironment, session: Session) -> Session | None:
-    """Revive a closed session through the revival flow; the revived session, or ``None`` when it cannot be."""
+    """Revive a closed session through the revival flow; the revived session, or ``None`` when it cannot be.
+
+    A session whose close is in flight is revived once the close ended, so input that arrived
+    during the close reaches the conversation instead of a neutral reply. A close that was
+    called off leaves the session open and it continues.
+    """
+    session = await _after_close(env, session)
+    if _is_open(session):
+        return session
     try:
         revived = await env.revive_local(session.session_id)
+    except RuntimeMutationInProgress:
+        # Another revival of this session is under way, such as the delivery of input queued
+        # across an idle close; the session is ours once it ends.
+        current = await _after_close(env, session, in_flight=True)
+        if _is_open(current):
+            return current
+        _log(ConversationDecision.REVIVE_FAILED, turn, session_id=session.session_id)
+        return None
     except (AgentDispatchFailure, ShutdownRefusal, ValueError, RuntimeError) as exc:
         _log(ConversationDecision.REVIVE_FAILED, turn, session_id=session.session_id, error=str(exc))
         return None

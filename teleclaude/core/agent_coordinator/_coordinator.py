@@ -46,8 +46,10 @@ from teleclaude.core.events import (
     UserPromptSubmitActivityEvent,
     UserPromptSubmitPayload,
 )
+from teleclaude.core.models import SessionField
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.reminders.models import ReminderEvent, ReminderEventAnchor
+from teleclaude.core.session_idle_compaction import live_compaction_request
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_listeners import (
     DeliveryBlockEvidence,
@@ -368,10 +370,17 @@ class AgentCoordinator(
         """Record a provider-confirmed native command completion without finalizing output."""
         payload = cast(AgentIdlePayload, context.data)
         idle_at = datetime.now(UTC)
+        session = await db.get_session(context.session_id)
+        compaction_completion = (
+            {SessionField.IDLE_COMPACTION_COMPLETED_AT.value: idle_at.isoformat()}
+            if session is not None and live_compaction_request(session) is not None
+            else {}
+        )
         await db.update_session(
             context.session_id,
             last_agent_idle_at=idle_at.isoformat(),
             last_activity=idle_at.isoformat(),
+            **compaction_completion,
         )
         await self._apply_agent_status(context, payload)
         logger.info(

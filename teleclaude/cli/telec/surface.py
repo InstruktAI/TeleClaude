@@ -17,6 +17,7 @@ from .surface_types import (
     _HR_MEMBER,
     _INTEGRATOR_RESERVATION,
     _ORCHESTRATOR_RESERVATION,
+    _TASKER_REACH,
     _WORKER_REACH,
     CommandAuth,
     CommandDef,
@@ -1546,12 +1547,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
     "memories": CommandDef(
         desc=(
-            "Read or remove durable personal-preference observations about the human. "
-            "Memories capture meta-level things about who the human is — their relational stance, "
+            "Read or remove durable observations about people. "
+            "Memories capture meta-level things about who a person is — their relational stance, "
             "values, communication style, vision — never coding norms, architectural decisions, "
             "or operational gotchas (those live in policies, principles, and addenda). "
-            "Memories are written exclusively by the session memory extraction agent (the memory "
-            "scraper, invoked via /extract-memory); other agents must never create them."
+            "Memories are kept current by the memory agents a conversation session's end starts; "
+            "other agents must never create them."
         ),
         subcommands={
             "list": CommandDef(
@@ -1586,9 +1587,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "save": CommandDef(
                 desc=(
-                    "Persist a memory observation. Reserved for the session memory extraction "
-                    "agent (the memory scraper, invoked via /extract-memory). Other agents must "
-                    "never call this."
+                    "Persist a memory observation. A person's memories are kept through the "
+                    "curation verbs; other agents must never call this."
                 ),
                 args="<text> [--title <title>] [--type <type>] [--project <name>]",
                 flags=[
@@ -1607,6 +1607,59 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[F.FLAG_HELP],
                 examples=["telec memories delete 42"],
                 auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+            ),
+            "scope": CommandDef(
+                desc=(
+                    "Show the scope a conversation session defines for curation: its person, memory "
+                    "namespace, read point, current memories and, for a desk, the prospects already recorded."
+                ),
+                args="--session <session_id>",
+                flags=[F.FLAG_HELP, F.FLAG_MEMORIES_CURATION_SESSION],
+                examples=["telec memories scope --session 00000000-0000-4000-8000-000000000000"],
+                auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+            ),
+            "add": CommandDef(
+                desc="Add a current memory about the session's person.",
+                args="--session <session_id> --type <type> <text>",
+                flags=[F.FLAG_HELP, F.FLAG_MEMORIES_CURATION_SESSION, F.FLAG_MEMORIES_CURATION_TYPE],
+                examples=[
+                    'telec memories add --session 00000000-0000-4000-8000-000000000000 --type preference "Prefers short answers"'
+                ],
+                auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+            ),
+            "update": CommandDef(
+                desc="Replace the statement of a current memory in the session's scope.",
+                args="<id> --session <session_id> <text>",
+                flags=[F.FLAG_HELP, F.FLAG_MEMORIES_CURATION_SESSION],
+                examples=[
+                    'telec memories update 42 --session 00000000-0000-4000-8000-000000000000 "Now prefers detail"'
+                ],
+                auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+            ),
+            "retire": CommandDef(
+                desc="Retire a current memory in the session's scope: it leaves use and stays recorded.",
+                args="<id> --session <session_id>",
+                flags=[F.FLAG_HELP, F.FLAG_MEMORIES_CURATION_SESSION],
+                examples=["telec memories retire 42 --session 00000000-0000-4000-8000-000000000000"],
+                auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+            ),
+            "prospect": CommandDef(
+                desc="Collect a business item from a desk conversation as a prospect for the home that owns the desk.",
+                args="--session <session_id> --type <type> <text>",
+                flags=[F.FLAG_HELP, F.FLAG_MEMORIES_CURATION_SESSION, F.FLAG_MEMORIES_CURATION_TYPE],
+                examples=[
+                    'telec memories prospect --session 00000000-0000-4000-8000-000000000000 --type request "Wants an export"'
+                ],
+                auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+            ),
+            "advance": CommandDef(
+                desc="Advance a conversation session's read point to the newest entry read; it never moves backwards.",
+                args="--session <session_id> --to <timestamp>",
+                flags=[F.FLAG_HELP, F.FLAG_MEMORIES_CURATION_SESSION, F.FLAG_MEMORIES_ADVANCE_TO],
+                examples=[
+                    "telec memories advance --session 00000000-0000-4000-8000-000000000000 --to 2026-10-10T12:00:00Z"
+                ],
+                auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
             ),
             "timeline": CommandDef(
                 desc="Show personal-preference observations around an anchor ID.",
@@ -1889,6 +1942,12 @@ MEMORIES_SEARCH = CLI_SURFACE["memories"].subcommands["search"]
 MEMORIES_SAVE = CLI_SURFACE["memories"].subcommands["save"]
 MEMORIES_DELETE = CLI_SURFACE["memories"].subcommands["delete"]
 MEMORIES_TIMELINE = CLI_SURFACE["memories"].subcommands["timeline"]
+MEMORIES_SCOPE = CLI_SURFACE["memories"].subcommands["scope"]
+MEMORIES_ADD = CLI_SURFACE["memories"].subcommands["add"]
+MEMORIES_UPDATE = CLI_SURFACE["memories"].subcommands["update"]
+MEMORIES_RETIRE = CLI_SURFACE["memories"].subcommands["retire"]
+MEMORIES_PROSPECT = CLI_SURFACE["memories"].subcommands["prospect"]
+MEMORIES_ADVANCE = CLI_SURFACE["memories"].subcommands["advance"]
 
 MESSAGE = CLI_SURFACE["message"]
 

@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -18,14 +19,13 @@ from sqlalchemy.orm.attributes import QueryableAttribute
 from sqlmodel import Session as SqlSession
 
 from teleclaude import paths as tc_paths
-from teleclaude.caller_identity import CliCaller
 from teleclaude.constants import HookSourceKind, MarkerState
 from teleclaude.core import db_models
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.hooks.main_db import main_sync_engine
-from teleclaude.identity_reach import ReachResolutionError
-from teleclaude.memory.context import generate_context_sync
+from teleclaude.identity_reach import Reach, ReachResolutionError
+from teleclaude.memory.context.builder import generate_context_sync
 
 try:
     import fcntl
@@ -118,11 +118,13 @@ def _get_sqlmodel_module() -> Any:
     return sys.modules.get("sqlmodel", sqlmodel)
 
 
-def _get_memory_context(project_name: str, caller: CliCaller, identity_key: str | None = None) -> str:
-    """Fetch pre-formatted memory context from local database."""
+def _get_memory_context(
+    project_name: str, resolve_memory_reach: Callable[[], Reach], identity_key: str | None = None
+) -> str:
+    """Fetch pre-formatted memory context from local database for the reach the session's person has."""
     try:
         db_path = str(tc_paths.MAIN_DB_PATH)
-        return generate_context_sync(project_name, db_path, caller, identity_key=identity_key)
+        return generate_context_sync(project_name, db_path, resolve_memory_reach(), identity_key=identity_key)
     except ReachResolutionError:
         logger.error(_MEMORY_REACH_RESOLUTION_FAILED, project=project_name, exc_info=True)
         return ""

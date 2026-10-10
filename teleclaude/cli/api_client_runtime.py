@@ -173,3 +173,86 @@ class TelecRuntimeAPI:
             request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.verb("memories timeline")),
         )
         return _MEMORY_ROWS.validate_json(resp.text)
+
+    async def memory_curation_scope(
+        self, session_id: str
+    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
+        """List the scope a conversation session defines for curation."""
+        resp = await self._request(
+            "GET",
+            "/api/memory/curation/scope",
+            request_options=RequestOptions(
+                params={"session_id": session_id}, clearance_scope=ClearanceScope.verb("memories scope")
+            ),
+        )
+        return _MEMORY_ROW.validate_json(resp.text)
+
+    async def memory_curation_add(
+        self, session_id: str, obs_type: str, text: str
+    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
+        """Add a current memory about a conversation session's person."""
+        resp = await self._request(
+            "POST",
+            "/api/memory/curation/add",
+            request_options=RequestOptions(
+                json_body={"session_id": session_id, "type": obs_type, "text": text},
+                clearance_scope=ClearanceScope.verb("memories add"),
+            ),
+        )
+        return _MEMORY_ROW.validate_json(resp.text)
+
+    async def memory_curation_update(
+        self, session_id: str, observation_id: int, text: str
+    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
+        """Replace the statement of a current memory in a conversation session's scope."""
+        resp = await self._request(
+            "POST",
+            "/api/memory/curation/update",
+            request_options=RequestOptions(
+                json_body={"session_id": session_id, "id": observation_id, "text": text},
+                clearance_scope=ClearanceScope.verb("memories update"),
+            ),
+        )
+        return _MEMORY_ROW.validate_json(resp.text)
+
+    async def memory_curation_retire(
+        self, session_id: str, observation_id: int
+    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
+        """Retire a current memory in a conversation session's scope."""
+        resp = await self._request(
+            "POST",
+            "/api/memory/curation/retire",
+            request_options=RequestOptions(
+                json_body={"session_id": session_id, "id": observation_id},
+                clearance_scope=ClearanceScope.verb("memories retire"),
+            ),
+        )
+        return _MEMORY_ROW.validate_json(resp.text)
+
+    async def memory_curation_prospect(
+        self, session_id: str, obs_type: str, text: str
+    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
+        """Collect a business item from a desk conversation as a prospect."""
+        resp = await self._request(
+            "POST",
+            "/api/memory/curation/prospect",
+            request_options=RequestOptions(
+                json_body={"session_id": session_id, "type": obs_type, "text": text},
+                clearance_scope=ClearanceScope.verb("memories prospect"),
+            ),
+        )
+        return _MEMORY_ROW.validate_json(resp.text)
+
+    async def memory_curation_advance(
+        self, session_id: str, newest_entry_read: str
+    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
+        """Advance a conversation session's read point."""
+        resp = await self._request(
+            "POST",
+            "/api/memory/curation/advance",
+            request_options=RequestOptions(
+                json_body={"session_id": session_id, "to": newest_entry_read},
+                clearance_scope=ClearanceScope.verb("memories advance"),
+            ),
+        )
+        return _MEMORY_ROW.validate_json(resp.text)

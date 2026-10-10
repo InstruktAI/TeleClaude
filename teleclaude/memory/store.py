@@ -19,7 +19,7 @@ from teleclaude.core.db.connection_factory import create_sync_db_engine as creat
 from teleclaude.events.envelope import EventHomeMarker
 from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.memory._row_conversion import row_to_memory_observation, row_to_memory_summary
-from teleclaude.memory.types import ObservationInput, ObservationResult
+from teleclaude.memory.types import CURRENT_MEMORY_PREDICATE, ObservationInput, ObservationResult
 from teleclaude.services.project_catalog.ownership import (
     ProjectOwnership,
     ProjectOwnershipIndex,
@@ -97,7 +97,7 @@ class MemoryStore:
         """Save an observation via the async database."""
         project = inp.project or DEFAULT_PROJECT
         now = datetime.now(UTC)
-        title = inp.title or _auto_title(inp.text)
+        title = inp.title or auto_title(inp.text)
         subject, subject_owner, principal = _observation_visibility(inp)
 
         # Get or create manual session for this project
@@ -120,6 +120,8 @@ class MemoryStore:
             subject=subject,
             subject_owner=subject_owner,
             principal=principal,
+            state=inp.state.value,
+            source_session_id=inp.source_session_id,
         )
 
         async with db._session() as session:
@@ -133,7 +135,7 @@ class MemoryStore:
         """Save an observation via sync database access (for hook receiver)."""
         project = inp.project or DEFAULT_PROJECT
         now = datetime.now(UTC)
-        title = inp.title or _auto_title(inp.text)
+        title = inp.title or auto_title(inp.text)
         subject, subject_owner, principal = _observation_visibility(inp)
         session_id = self._get_or_create_manual_session_sync(project, db_path)
 
@@ -157,6 +159,8 @@ class MemoryStore:
                     subject=subject,
                     subject_owner=subject_owner,
                     principal=principal,
+                    state=inp.state.value,
+                    source_session_id=inp.source_session_id,
                 )
                 session.add(obs)
                 session.commit()
@@ -219,7 +223,7 @@ class MemoryStore:
             return []
         placeholders = ", ".join([":id_" + str(i) for i in range(len(ids))])
         params = {f"id_{i}": id_val for i, id_val in enumerate(ids)}
-        sql = f"SELECT * FROM memory_observations WHERE id IN ({placeholders})"  # guard: raw-sql
+        sql = f"SELECT * FROM memory_observations WHERE id IN ({placeholders}) AND {CURRENT_MEMORY_PREDICATE}"  # guard: raw-sql
         if project:
             sql += " AND project = :project"
             params["project"] = project  # type: ignore[assignment]
@@ -237,8 +241,9 @@ class MemoryStore:
         async with db._session() as session:
             result = await session.exec(  # type: ignore[call-overload]
                 text(  # guard: raw-sql
-                    "SELECT * FROM memory_observations WHERE project = :project "
-                    "ORDER BY created_at_epoch DESC LIMIT :limit"
+                    "SELECT * FROM memory_observations WHERE project = :project AND "
+                    + CURRENT_MEMORY_PREDICATE
+                    + " ORDER BY created_at_epoch DESC LIMIT :limit"
                 ).bindparams(project=project, limit=limit)
             )
             rows = result.fetchall()
@@ -307,7 +312,7 @@ class MemoryStore:
             engine.dispose()
 
 
-def _auto_title(text: str) -> str:
+def auto_title(text: str) -> str:
     """Extract first sentence as title, truncated to 80 chars."""
     first_line = text.strip().split("\n")[0]
     for sep in (".", "!", "?"):

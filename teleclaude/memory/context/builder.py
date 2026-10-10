@@ -6,20 +6,20 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import text  # guard: raw-sql - Sync memory access
 from sqlmodel import Session as SqlSession
 
-from teleclaude.caller_identity import CliCaller
 from teleclaude.core.db.connection_factory import create_sync_db_engine as create_engine
-from teleclaude.identity_reach import Reach, resolve_reach
+from teleclaude.identity_reach import Reach
 from teleclaude.memory._row_conversion import row_to_memory_observation, row_to_memory_summary
 from teleclaude.memory.context.compiler import compile_timeline
 from teleclaude.memory.context.renderer import render_context
 from teleclaude.memory.store import resolve_observation_project_scope
+from teleclaude.memory.types import CURRENT_MEMORY_PREDICATE
 
 logger = get_logger(__name__)
 _MEMORY_SUBJECT_COLUMN = "memory_observations.subject"
 _MEMORY_SUBJECT_OWNER_COLUMN = "memory_observations.subject_owner"
 _MEMORY_PRINCIPAL_COLUMN = "memory_observations.principal"
 _REACH_FILTER_TEMPLATE = " AND ({predicate})"
-_OBSERVATIONS_SQL = "SELECT * FROM memory_observations WHERE project = :project"
+_OBSERVATIONS_SQL = f"SELECT * FROM memory_observations WHERE project = :project AND {CURRENT_MEMORY_PREDICATE}"
 _OBSERVATIONS_ORDER_LIMIT_SQL = " ORDER BY created_at_epoch DESC LIMIT 100"
 _SUMMARIES_SQL = "SELECT * FROM memory_summaries WHERE project = :project ORDER BY created_at_epoch DESC LIMIT 5"
 
@@ -27,11 +27,10 @@ _SUMMARIES_SQL = "SELECT * FROM memory_summaries WHERE project = :project ORDER 
 def generate_context_sync(
     project: str,
     db_path: str,
-    caller: CliCaller,
+    reach: Reach,
     identity_key: str | None = None,
 ) -> str:
-    """Generate memory context markdown (sync, for hook receiver)."""
-    reach = resolve_reach(caller)
+    """Generate memory context markdown (sync, for hook receiver) for what the given reach admits."""
     engine = create_engine(db_path)
     try:
         with SqlSession(engine) as session:

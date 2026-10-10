@@ -7,7 +7,13 @@ from dataclasses import dataclass
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.caller_identity import CliCaller, PersonCliCaller, SystemCliCaller, human_principal_for_email
+from teleclaude.caller_identity import (
+    CliCaller,
+    PersonCliCaller,
+    SystemCliCaller,
+    human_principal_for_email,
+    visitor_principal,
+)
 from teleclaude.config.declaration_changes import (
     subscribe_declaration_changes,
     unsubscribe_declaration_changes,
@@ -267,6 +273,24 @@ def resolve_reach(caller: CliCaller | None) -> Reach:
     except Exception as exc:
         logger.exception(_REACH_RESOLUTION_FAILED)
         raise ReachResolutionError(_REACH_RESOLUTION_FAILED) from exc
+
+
+def visitor_reach(identity_key: str) -> Reach:
+    """The reach of an unregistered desk visitor: exactly the records kept under the platform identity they wrote from.
+
+    Being about the desk's home admits nothing here; the people whose reach covers that
+    home see the same records through their own reach.
+    """
+    return Reach(
+        everything=False,
+        subjects=frozenset(),
+        registered_projects=frozenset(),
+        administered_companies=frozenset(),
+        assignments=frozenset(),
+        person_slug=None,
+        shared_documentation=False,
+        principal=visitor_principal(identity_key),
+    )
 
 
 class ReachCache:

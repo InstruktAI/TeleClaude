@@ -534,6 +534,11 @@ FLAG_MEMORIES_SAVE_TYPE = Flag("--type", desc="Observation type", arity=VALUE)
 FLAG_MEMORIES_SAVE_PROJECT = Flag("--project", desc="Project name", arity=VALUE)
 FLAG_MEMORIES_BEFORE = Flag("--before", desc="Observations before anchor (default: 3)", arity=VALUE)
 FLAG_MEMORIES_AFTER = Flag("--after", desc="Observations after anchor (default: 3)", arity=VALUE)
+FLAG_MEMORIES_CURATION_SESSION = Flag(
+    "--session", "-s", "The conversation session whose memories are curated", arity=VALUE
+)
+FLAG_MEMORIES_CURATION_TYPE = Flag("--type", desc="Observation type", arity=VALUE)
+FLAG_MEMORIES_ADVANCE_TO = Flag("--to", desc="Timestamp (ISO8601) of the newest conversation entry read", arity=VALUE)
 
 # =============================================================================
 # code

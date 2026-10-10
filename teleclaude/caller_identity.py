@@ -32,6 +32,7 @@ from teleclaude.types.creation_record import EntryPoint
 
 HUMAN_PRINCIPAL_PREFIX = "human:"
 SYSTEM_PRINCIPAL_PREFIX = "system:"
+VISITOR_PRINCIPAL_PREFIX = "visitor:"
 
 
 class SessionIdentityError(ValueError):
@@ -677,6 +678,11 @@ def session_act_exception(
 def human_principal_for_email(email: str) -> str:
     """Build the canonical principal for a verified person email."""
     return f"{HUMAN_PRINCIPAL_PREFIX}{email}"
+
+
+def visitor_principal(identity_key: str) -> str:
+    """Build the principal an unregistered visitor's records are kept under, from the platform identity they wrote from."""
+    return f"{VISITOR_PRINCIPAL_PREFIX}{identity_key}"
 
 
 def person_entry_for_email(email: str) -> PersonEntry | None:

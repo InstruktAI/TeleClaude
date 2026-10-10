@@ -39,9 +39,9 @@ from teleclaude.core.events import (
     AgentHookEvents,
     AgentHookEventType,
 )
-from teleclaude.core.identity import NoIdentityCliCaller, derive_identity_key
+from teleclaude.core.identity import NoIdentityCliCaller, derive_identity_key, memory_person_reach
 from teleclaude.core.injected_text import EnvelopeField, EnvelopeName, render_xml_envelope, semantic_envelope
-from teleclaude.core.models import JsonDict
+from teleclaude.core.models import JsonDict, Session
 from teleclaude.core.organization import CompanyMembership, resolve_organization
 from teleclaude.core.session_status import AgentStatusReason
 from teleclaude.git import GitCommandError
@@ -89,6 +89,8 @@ from teleclaude.hooks.session_map import (
     _write_session_map_atomic,
     get_outbox_session,
 )
+from teleclaude.identity_reach import Reach, resolve_reach
+from teleclaude.memory.curation import MemoryScope, memory_scope
 from teleclaude.session_identity import inspect_session_identity_marker
 from teleclaude.session_scoping._extractors._common import CERTAIN_EDIT_TOOLS, _canonical_tool_name
 from teleclaude.utils.transcript import (
@@ -118,6 +120,7 @@ EVENT_CONTROL_DELIVERY_TERMINAL = "control_delivery_batch_terminal"
 EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL = "control_delivery_hook_arrival"
 EVENT_CHECKPOINT_EVIDENCE_ADDRESS_RESOLVED = "checkpoint_evidence_address_resolved"
 _MEMORY_CALLER_RESOLUTION_FAILED = "memory_context_caller_resolution_failed"
+_MEMORY_SCOPE_RESOLUTION_FAILED = "memory_context_scope_resolution_failed"
 _SESSION_EXPORT_BINDINGS = (
     _get_session_map_path,
     _get_tmux_contract_tmpdir,
@@ -475,6 +478,43 @@ def _resolve_memory_caller(session_id: str) -> CliCaller:
     return caller_from_principal(principal)
 
 
+def _resolve_memory_scope(session_id: str) -> MemoryScope | None:
+    """The starting session's memory scope, read from the session columns that predate every migration."""
+    row = _load_session_row(
+        session_id,
+        cast(QueryableAttribute[Any], db_models.Session.session_id),
+        cast(QueryableAttribute[Any], db_models.Session.origin_metadata),
+        cast(QueryableAttribute[Any], db_models.Session.principal),
+        cast(QueryableAttribute[Any], db_models.Session.human_email),
+        cast(QueryableAttribute[Any], db_models.Session.human_role),
+        cast(QueryableAttribute[Any], db_models.Session.system_role),
+        cast(QueryableAttribute[Any], db_models.Session.project_path),
+        cast(QueryableAttribute[Any], db_models.Session.subdir),
+    )
+    if row is None:
+        return None
+    origin_metadata: JsonDict = {}
+    if row.origin_metadata:
+        parsed = json.loads(row.origin_metadata)
+        if isinstance(parsed, dict):
+            origin_metadata = parsed
+    return memory_scope(
+        Session(
+            session_id=row.session_id,
+            computer_name="",
+            tmux_session_name="",
+            title="",
+            origin_metadata=origin_metadata,
+            principal=row.principal,
+            human_email=row.human_email,
+            human_role=row.human_role,
+            system_role=row.system_role,
+            project_path=row.project_path,
+            subdir=row.subdir,
+        )
+    )
+
+
 def _resolve_identity_context(
     session_id: str,
     *,
@@ -708,18 +748,25 @@ def _print_additional_context(
     receiver_ingress_id: str,
 ) -> str | None:
     """Gather startup context; the boundary owns the single eventual response."""
-    project_name = Path(cwd).name if cwd else None
+    scope: MemoryScope | None = None
+    try:
+        scope = _resolve_memory_scope(session_id)
+    except (SQLAlchemyError, TypeError, ValueError, OSError, RuntimeError):
+        logger.error(_MEMORY_SCOPE_RESOLUTION_FAILED, session_id=session_id, exc_info=True)
+    project_name = scope.namespace if scope is not None else (Path(cwd).name if cwd else None)
     if not project_name:
         return None
 
-    identity_key: str | None = None
+    identity_key: str | None = scope.person.identity_key if scope is not None else None
     person_header: str | None = None
     memberships_listed = False
     try:
-        identity_key, person_header, memberships_listed = _resolve_identity_context(
+        legacy_identity_key, person_header, memberships_listed = _resolve_identity_context(
             session_id,
             receiver_ingress_id=receiver_ingress_id,
         )
+        if scope is None:
+            identity_key = legacy_identity_key
     except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError):
         logger.debug(_IDENTITY_PERSON_RESOLUTION_FAILED, session_id=session_id)
 
@@ -730,12 +777,16 @@ def _print_additional_context(
     except (OSError, ValueError):
         logger.debug(_COMPANY_RESOLUTION_FAILED, project_name=project_name)
 
-    try:
-        memory_caller = _resolve_memory_caller(session_id)
-    except (SQLAlchemyError, TypeError, ValueError):
-        logger.error(_MEMORY_CALLER_RESOLUTION_FAILED, session_id=session_id, exc_info=True)
-        memory_caller = NoIdentityCliCaller()
-    memory_context = _get_memory_context(project_name, memory_caller, identity_key=identity_key)
+    def resolve_memory_reach() -> Reach:
+        if scope is not None:
+            return memory_person_reach(scope.person)
+        try:
+            return resolve_reach(_resolve_memory_caller(session_id))
+        except (SQLAlchemyError, TypeError, ValueError):
+            logger.error(_MEMORY_CALLER_RESOLUTION_FAILED, session_id=session_id, exc_info=True)
+            return resolve_reach(NoIdentityCliCaller())
+
+    memory_context = _get_memory_context(project_name, resolve_memory_reach, identity_key=identity_key)
     if not memory_context and not person_header and not company_header:
         logger.info(
             EVENT_SESSION_START_CONTEXT_COMPOSED,
