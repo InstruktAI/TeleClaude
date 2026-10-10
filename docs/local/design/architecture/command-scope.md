@@ -45,20 +45,6 @@ the root from the same resolution. No command derives a worktree or project root
 the raw invocation directory, from the repository root of the code that happens to run,
 or from the daemon's own working directory.
 
-<!-- planned-change:retire-internal-channels -->
-
-```mermaid
-flowchart LR
-    Dir[invocation directory] --> R[scope resolution]
-    R --> W[worktree root<br/>the change]
-    R --> P[project root<br/>the invocation's project, exists once]
-    W --> Wc[code lint / format / test / add<br/>code commit: commit and gate<br/>code pre-commit<br/>telec code capability switches]
-    P --> Pc[todo, docs, bugs, jobs report,<br/>content dump, mcp project overlay,<br/>config project adopt, code maintenance]
-    S[daemon and live home] --> Sc[sessions, reminders, agents, computers,<br/>channels, operations, message, auth,<br/>events, signals, history, memories,<br/>projects list, config by kind and slug]
-```
-
-<!-- change:retire-internal-channels -->
-
 ```mermaid
 flowchart LR
     Dir[invocation directory] --> R[scope resolution]
@@ -68,8 +54,6 @@ flowchart LR
     P --> Pc[todo, docs, bugs, jobs report,<br/>content dump, mcp project overlay,<br/>config project adopt, code maintenance]
     S[daemon and live home] --> Sc[sessions, reminders, agents, computers,<br/>operations, message, auth,<br/>events, signals, history, memories,<br/>projects list, config by kind and slug]
 ```
-
-<!-- /planned-change:retire-internal-channels -->
 
 ## Invariants
 
@@ -137,23 +121,11 @@ flowchart LR
 
 ### Commands that act on daemon and live-home state
 
-<!-- planned-change:retire-internal-channels -->
-
-| Command group                                                                                                            | Shared state it acts on                                     |
-| ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| `telec sessions …`, `reminders …`, `agents …`, `computers`, `channels …`, `operations`, `message`, `auth …`              | Daemon and live-home state shared by every session          |
-| `telec events`, `signals`, `history …`, `memories …`                                                                     | Shared runtime records and stores                           |
-| `telec projects list`, `telec config computer …`, `global …`, `person …`, `company …`, and `project get`/`patch` by slug | The machine, people, company and project registries by name |
-
-<!-- change:retire-internal-channels -->
-
 | Command group                                                                                                            | Shared state it acts on                                     |
 | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
 | `telec sessions …`, `reminders …`, `agents …`, `computers`, `operations`, `message`, `auth …`                            | Daemon and live-home state shared by every session          |
 | `telec events`, `signals`, `history …`, `memories …`                                                                     | Shared runtime records and stores                           |
 | `telec projects list`, `telec config computer …`, `global …`, `person …`, `company …`, and `project get`/`patch` by slug | The machine, people, company and project registries by name |
-
-<!-- /planned-change:retire-internal-channels -->
 
 ### Commands that act on the running installation
 

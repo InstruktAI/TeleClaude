@@ -29,24 +29,11 @@ Use this when you need to:
 
 ### Messaging command surface
 
-<!-- planned-change:retire-internal-channels -->
-
 | Command                   | Purpose                                  | Key params                            |
 | ------------------------- | ---------------------------------------- | ------------------------------------- |
 | `telec sessions result`   | Send markdown/html as a separate message | `content`, `--format`                 |
 | `telec sessions file`     | Send a file for download                 | `--path`, `--caption`                 |
 | `telec sessions escalate` | Escalate a help-desk visitor to a person | `--customer`, `--reason`, `--summary` |
-| `telec channels publish`  | Publish to internal Redis channel        | `channel`, `--data`                   |
-
-<!-- change:retire-internal-channels -->
-
-| Command                   | Purpose                                  | Key params                            |
-| ------------------------- | ---------------------------------------- | ------------------------------------- |
-| `telec sessions result`   | Send markdown/html as a separate message | `content`, `--format`                 |
-| `telec sessions file`     | Send a file for download                 | `--path`, `--caption`                 |
-| `telec sessions escalate` | Escalate a help-desk visitor to a person | `--customer`, `--reason`, `--summary` |
-
-<!-- /planned-change:retire-internal-channels -->
 
 | `telec message` | Send a message to a person | `<text>`, `--recipient <slug>`, `--file <path>`, `--subject <text>`, `--channel <name>` |
 
