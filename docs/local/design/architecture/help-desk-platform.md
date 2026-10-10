@@ -881,18 +881,14 @@ sequenceDiagram
 
 <!-- planned-change:help-desk-idle-memory-cycle -->
 
-| Scenario                                                                                    | Behavior                                       | Recovery                                                               |
-| ------------------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
-| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key | Personal memories not injected; the agent handles without context      |
-| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                  | The visitor uses a working desk link                                   |
-| A desk identifier sent to a computer's own bot when that computer is not the master         | Neutral reply                                  | Desk links are rendered on the master, naming its bot                  |
-| The entered desk's home is not on the master                                                | Neutral reply, no session                      | Make the desk's home present on the master                             |
-| A restricted session names no enabled desk                                                  | Session creation is refused                    | The core resolves an endpoint first or sends the neutral reply         |
-| Memory extraction dies mid-processing                                                       | Partial extraction; marker not updated         | Next idle trigger or cron sweep reprocesses from last marker           |
-| Compaction injected before extraction                                                       | Cannot happen — extraction must complete first | Daemon enforces sequencing; if extraction fails, compaction is skipped |
-| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)       | Most recent memories prioritized                                       |
-| Normal; no action needed                                                                    |
-| Session transcript unavailable at job time                                                  | Job skips session, logs warning                | Sweep re-run on next schedule; transcript may become available         |
+| Scenario                                                                                    | Behavior                                       | Recovery                                                          |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------- |
+| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key | Personal memories not injected; the agent handles without context |
+| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                  | The visitor uses a working desk link                              |
+| A desk identifier sent to a computer's own bot when that computer is not the master         | Neutral reply                                  | Desk links are rendered on the master, naming its bot             |
+| The entered desk's home is not on the master                                                | Neutral reply, no session                      | Make the desk's home present on the master                        |
+| A restricted session names no enabled desk                                                  | Session creation is refused                    | The core resolves an endpoint first or sends the neutral reply    |
+| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)       | Most recent memories prioritized                                  |
 
 <!-- change:help-desk-idle-memory-cycle -->
 
