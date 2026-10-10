@@ -71,8 +71,8 @@ naming the field, the flag and the reference; it still loads, and a consumer
 that needs the absent value refuses when it is used. Loading, writing, commit
 and publication validate the document alone. Elsewhere the value may be
 absent, and a field with nothing declared is not judged. Inbound source secrets are needed
-where `computer.is_ingress_node` is set, and a person's voice-bot token where
-`computer.is_master` is set. The per-file published schema cannot express a
+where `computer.is_ingress_node` is set. A person's voice-bot token is needed
+nowhere: without it, that person has no voice room. The per-file published schema cannot express a
 condition on the machine configuration, so it does not carry these needs.
 
 A file points at its schema with a `# yaml-language-server: $schema=<ref>`

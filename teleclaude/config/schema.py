@@ -257,9 +257,8 @@ OUTPUT_VISIBILITY_BOTH: Final = "both"
 OUTPUT_VISIBILITY_OFF: Final = "off"
 OutputVisibilityValue = Literal["mobile", "full", "both", "off"]
 _PROJECT_OWNER_CONFLICT = "Project configuration cannot declare both company and person owners"
-# Only the ingress verifies inbound requests; voice ownership follows the master.
+# Only the ingress verifies inbound requests.
 _INGRESS_FLAG: Final = "computer.is_ingress_node"
-_MASTER_FLAG: Final = "computer.is_master"
 
 
 class MailConnector(StrEnum):
@@ -341,7 +340,7 @@ class DiscordCreds(ClosedModel):
     user_id: str  # Discord user IDs are snowflakes (strings)
     nick: str | None = None
     avatar_url: str | None = None
-    voice_bot_token: Annotated[str | None, SENSITIVE, RequiredWhen(_MASTER_FLAG)] = None
+    voice_bot_token: Annotated[str | None, SENSITIVE] = None
 
 
 class WhatsAppCreds(ClosedModel):
