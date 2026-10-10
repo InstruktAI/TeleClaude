@@ -140,6 +140,24 @@ implementation remain the current appliance contract.
   (`event-catalog`); who is a platform administrator or what a principal may
   see (`identity`); what an event means (its producing context).
 
+<!-- planned:help-desk-discord-categories -->
+
+- **Owns (help-desk Discord surface):** on the master, each hosted desk's
+  Discord category and its three channels. This covers the per-person grants
+  that turn the desk's scope into Discord visibility and channel abilities,
+  re-syncing those grants when a declaration they derive from changes, and
+  mirroring each desk session into its own desk's customer-sessions forum
+  (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`).
+  A desk forum is no entry point: a post Discord lets through into a desk's
+  customer-sessions thread reaches no session.
+- **Does not own (help-desk Discord surface):** who is in a desk's scope
+  (`identity`); which desks this computer hosts (`agent_runtime`'s endpoint
+  registry); whether a home keeps a desk, or a person's Discord binding
+  (`config`); a desk session's lifecycle or its escalation relay
+  (`agent_runtime`).
+
+<!-- /planned:help-desk-discord-categories -->
+
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

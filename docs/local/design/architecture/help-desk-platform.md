@@ -859,6 +859,39 @@ sequenceDiagram
 
 <!-- /planned-change:help-desk-idle-memory-cycle -->
 
+<!-- planned:help-desk-discord-categories -->
+
+### Desk Category Reconciliation
+
+```mermaid
+sequenceDiagram
+    participant Notice as Declaration-change notice (config)
+    participant Registry as Endpoint registry (agent_runtime)
+    participant Scope as Desk scope (identity)
+    participant Master as Discord surface on the master (integration)
+    participant Guild as Discord guild
+
+    Note over Master: At startup, on a declaration change, and on a project registry change
+    Notice->>Master: A declaration changed
+    Master->>Registry: Which desks does this computer host?
+    Registry-->>Master: The hosted desks, or an inconclusive reading
+    loop Each hosted desk
+        Master->>Scope: Who is in this desk's scope?
+        Scope-->>Master: People, each with any bound Discord account
+        Master->>Guild: Verify or create the category and its three channels
+        Master->>Guild: Make each channel's per-person grants match the scope
+    end
+    Master->>Guild: Remove the categories of desks no longer hosted, only after a conclusive reading
+```
+
+Every pass reads the current desks and scopes in full, so changes that arrive
+during a pass are absorbed by one more pass. Overwrites are compared with what
+the scope requires and edited only where they differ. An inconclusive provider
+lookup or desk reading changes nothing in that pass
+(`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`).
+
+<!-- /planned:help-desk-discord-categories -->
+
 ### Help Desk Scaffolding
 
 ```mermaid
@@ -930,6 +963,19 @@ sequenceDiagram
 | Visitor messages during relay when their adapter is down                              | Messages queued or lost depending on platform                     | The person answering sees a gap and can ask the visitor to repeat   |
 
 <!-- /planned-change:help-desk-escalation-in-desk -->
+
+<!-- planned:help-desk-discord-categories -->
+
+**Discord desk surface failure modes:**
+
+| Scenario                                                               | Behavior                                                                         | Recovery                                                                                            |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| The bot lacks permission to create channels or edit their grants       | The pass records the failure and leaves existing channels and grants as they are | An operator grants the bot the channel-management permissions; the next pass converges              |
+| The guild reaches Discord's category limit                             | The new desk's category is not created; its sessions get no thread               | An operator frees categories or the per-desk layout is revisited                                    |
+| A person in scope has no bound Discord account, or is not in the guild | They are given no grant and see no desk                                          | They bind their account or join the guild; the next pass grants them                                |
+| A desk's customer-sessions forum is not yet provisioned                | The desk's session gets no thread, and is never placed in another forum          | The next pass provisions the forum; the session's thread follows when the session is next reflected |
+
+<!-- /planned:help-desk-discord-categories -->
 
 ## See Also
 

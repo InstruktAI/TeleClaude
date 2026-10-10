@@ -96,6 +96,25 @@ TeleClaudeNext.
   reach. The behavioral contract is
   `local/projects/teleclaude/spec/feature/identity/data-visibility`.
 
+<!-- planned:help-desk-discord-categories -->
+
+- **Also owns:** a help desk's scope — the people a desk belongs to, who see its
+  operator surface and receive its escalations. A company desk's scope is that
+  company's whole roster, members and admins alike. A company-owned project
+  desk's scope is the owning company's whole roster. A person-owned project
+  desk's scope is the owning person. Every desk's scope also includes the
+  platform administrators. Identity resolves it from its own membership facts,
+  config's project ownership and the platform roster, and reinterprets none of
+  them. Desk scope is a separate answer from reach: for a company-owned project
+  desk it admits company members that project reach does not. Because identity
+  owns both answers, no consumer relaxes reach. A long-lived consumer holds a
+  resolved desk scope only until a declaration identity reads changes. The
+  consumers are the help desk's Discord surface
+  (`local/projects/teleclaude/spec/feature/integration/discord-admin-reflection-state`)
+  and its escalation.
+
+<!-- /planned:help-desk-discord-categories -->
+
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

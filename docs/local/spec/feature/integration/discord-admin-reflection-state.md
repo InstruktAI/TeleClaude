@@ -43,17 +43,22 @@ reconciled by the master alone. It holds three channels:
 | `escalations` (forum)       | read threads and reply in them; open none | opens the threads the desk's escalations need         |
 | `team-chat` (text channel)  | read and post                             | grants access only; reads and answers nothing         |
 
-A desk's category is visible only to the people in its scope, through
-per-person permission overwrites, never through Discord roles: for a company
-desk the company's members and admins, for a project desk the owning company's
-members and admins or the person who owns it, and for every desk the platform's
-admins. A person is in Discord scope only through a bound Discord account. The
-master keeps every overwrite in step with the desk's scope and re-syncs them
-when a roster, a role or a Discord binding changes. A desk that stops being
-hosted loses its category. No session at a desk is reflected into any other
-forum of the guild — not the all-sessions forum and not a project's own forum —
-so no desk's customer conversation is visible outside its scope, and the guild
-holds no shared help-desk category.
+A desk's category is visible only to the people in its scope, as identity
+resolves it (`local/projects/teleclaude/spec/domain/identity`), through
+per-person permission overwrites, never through Discord roles. For a company
+desk the scope is the company's members and admins. For a project desk it is
+the owning company's members and admins, or the person who owns it. Every
+desk's scope includes the platform's admins. A person is in Discord scope only
+through a bound Discord account. The master keeps every overwrite in step with
+the desk's scope, and re-syncs them when a declaration the scope or a Discord
+binding derives from changes. A desk that stops being hosted loses its
+category. Removal follows only a conclusive reading of the hosted desks: a desk
+whose home's configuration fails to load keeps its category. No session at a
+desk is reflected into any other forum of the guild — not the all-sessions
+forum and not a project's own forum — so no desk's customer conversation is
+visible outside its scope, and the guild holds no shared help-desk category. A
+desk's forums are no entry point: a post that Discord lets through into a
+customer-sessions thread reaches no session.
 
 <!-- /planned-change:help-desk-discord-categories -->
 
@@ -248,6 +253,8 @@ And any existing launcher in that forum is not treated as a valid project launch
 And a button click without a launch target returns user-safe feedback without creating a session
 ```
 
+<!-- planned-change:help-desk-discord-categories -->
+
 #### UC-DARS-11: Shared containers and their children retain distinct owners
 
 ```gherkin
@@ -265,6 +272,20 @@ And foreign computers do not mutate the claimed child
 And the master treats the child as ownerless only after every retained computer has completed ownership adoption and the same child survives two complete reconciliation epochs without a claim
 And incomplete or mixed-version ownership evidence causes no provider deletion
 ```
+
+<!-- change:help-desk-discord-categories -->
+
+#### UC-DARS-11: Shared containers are provisioned by the master alone
+
+```gherkin
+Given a Discord category, forum, or channel is a singleton shared container across the fleet
+When the fleet reconciles that container
+Then only the master computer may create or adopt it
+And every non-master may verify and use the existing container without creating a duplicate
+And no computer writes its provider identity to configuration
+```
+
+<!-- /planned-change:help-desk-discord-categories -->
 
 #### UC-DARS-12: Explicit reset is a database operation
 
@@ -432,6 +453,24 @@ Then everyone in the desk's scope reads it
 And the bot neither answers nor routes the message anywhere
 ```
 
+#### UC-DARS-26: A post in a desk's customer-sessions thread reaches no customer
+
+```gherkin
+Given a person whom Discord lets post in a desk's customer-sessions thread
+When they post there
+Then the message reaches no session and no customer
+And the customer's conversation continues as before
+```
+
+#### UC-DARS-27: A desk whose home fails to load keeps its category
+
+```gherkin
+Given a hosted desk's category is in the guild
+And that desk's home configuration fails to load on the master
+When the master reconciles the guild
+Then the desk's category and its channels remain
+```
+
 <!-- /planned:help-desk-discord-categories -->
 
 ### Cross-context references
@@ -445,6 +484,18 @@ And the bot neither answers nor routes the message anywhere
   are operational state that must survive daemon restart.
 - `agent_runtime` consumes project/forum routing by receiving explicit
   session-create commands after the Discord adapter has resolved project context.
+
+<!-- planned:help-desk-discord-categories -->
+
+- `identity` owns a desk's scope. The desk surface turns it into per-person
+  grants and never re-derives who belongs to a desk.
+- `agent_runtime`'s endpoint registry owns which desks the master hosts, and
+  each session's desk is the one its endpoint names.
+- `config` owns whether a home keeps a desk and each person's Discord binding.
+  Its declaration-change notice is the signal on which the master re-syncs desk
+  grants and categories.
+
+<!-- /planned:help-desk-discord-categories -->
 
 ## Allowed values
 
