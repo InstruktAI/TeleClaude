@@ -32,6 +32,7 @@ class UserReflectionProjectionReason(StrEnum):
     BINDING_CONFLICT = "binding_conflict"
     ACCEPTED_RECEIPT_UNBOUND = "accepted_receipt_unbound"
     DAEMON_CONTROL = "daemon_control"
+    UNATTENDED = "unattended"
     ORIGIN_ALREADY_VISIBLE = "origin_already_visible"
     TARGET_UNAVAILABLE = "target_unavailable"
     NO_REFLECTABLE_PART = "no_reflectable_part"

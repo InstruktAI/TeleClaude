@@ -10,7 +10,12 @@ from fastapi import HTTPException, Query
 from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution
 from teleclaude.core import command_handlers
 from teleclaude.core.models import SessionSnapshot
-from teleclaude.core.session_listing import build_session_listing_selection, normalize_session_ids, sessions_reached_by
+from teleclaude.core.session_listing import (
+    build_session_listing_selection,
+    listed_by_default,
+    normalize_session_ids,
+    sessions_reached_by,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
@@ -80,6 +85,7 @@ async def build_local_session_listing(
 
     if caller_session_id and not query.all_sessions and query.session_ids is None:
         merged = [session for session in merged if session.initiator_session_id == caller_session_id]
+    merged = listed_by_default(merged, all_sessions=query.all_sessions, session_ids=query.session_ids)
     if query.job:
         merged = [session for session in merged if session.job == query.job]
     return merged, frozenset(session.session_id for session in local_sessions)

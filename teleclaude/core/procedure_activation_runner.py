@@ -46,12 +46,13 @@ from teleclaude.core.models import (
     SessionLaunchIntent,
     SessionLaunchKind,
 )
+from teleclaude.core.models._adapter import session_is_unattended
 from teleclaude.core.operations._kinds import OPERATION_KIND_PROCEDURE_ACTIVATION
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_revival import revive_session, session_is_resumable
 from teleclaude.core.session_startup_message import resolve_command_document
 from teleclaude.core.session_status import is_session_terminal
-from teleclaude.docs_subscriptions import SubscriptionHomeKind, SubscriptionIdentity
+from teleclaude.docs_subscriptions import SubscriptionAttendance, SubscriptionHomeKind, SubscriptionIdentity
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.paths import REPO_ROOT
 from teleclaude.types.activation_home import ActivationHome
@@ -217,7 +218,8 @@ async def _find_bound_sessions(
 
     The binding section names the subject; the session's job and home say which
     procedure and home it was started for. Closed sessions are included, since a
-    later event about the subject revives them.
+    later event about the subject revives them — except an unattended agent's,
+    which is a run that is done, judged by the session's own stamp.
     """
     bound = await db.get_sessions_by_origin_metadata(
         BINDING_SECTION, BindingField.SUBJECT, subject, include_closed=True
@@ -229,13 +231,22 @@ async def _find_bound_sessions(
     ]
     open_session = _system_principal_session([session for session in serving if _is_open(session)])
     closed_session = _system_principal_session(
-        [session for session in serving if not _is_open(session) and session_is_resumable(session)]
+        [
+            session
+            for session in serving
+            if not _is_open(session) and session_is_resumable(session) and not session_is_unattended(session)
+        ]
     )
     return open_session, closed_session
 
 
-async def _create_agent(procedure_id: str, home: ActivationHome, folder: Path) -> Session:
-    """Start the procedure's agent in the home's folder and return its session."""
+async def _create_agent(
+    procedure_id: str, home: ActivationHome, folder: Path, attendance: SubscriptionAttendance
+) -> Session:
+    """Start the procedure's agent in the home's folder and return its session.
+
+    An unattended procedure's agent is stamped unattended in the creating write.
+    """
     launch = procedure_activation_launch(procedure_id, home)
     if resolve_command_document(SlashCommand.ACTIVATE_PROCEDURE.value) is None:
         raise RuntimeError(_COMMAND_DOCUMENT_MISSING_ERROR.format(command=SlashCommand.ACTIVATE_PROCEDURE.value))
@@ -255,6 +266,7 @@ async def _create_agent(procedure_id: str, home: ActivationHome, folder: Path) -
             dispatch_mode=AgentDispatchMode.AUTOMATIC,
         ),
         entry_point=SessionEntryPoint.PROCEDURE_ACTIVATION,
+        unattended=attendance is SubscriptionAttendance.UNATTENDED,
     )
     result = await get_command_service().create_session(create_cmd)
     session_id_raw = result.get(_SESSION_ID_FIELD)
@@ -275,7 +287,9 @@ class _Resolution:
     candidate_count: int
 
 
-async def _resolve_home_agent(procedure_id: str, home: ActivationHome, folder: Path) -> _Resolution:
+async def _resolve_home_agent(
+    procedure_id: str, home: ActivationHome, folder: Path, attendance: SubscriptionAttendance
+) -> _Resolution:
     """The home's one agent: the standing session when one stands, otherwise a started one."""
     candidate_count = 0
 
@@ -285,7 +299,7 @@ async def _resolve_home_agent(procedure_id: str, home: ActivationHome, folder: P
         return session
 
     async def _create() -> Session | None:
-        return await _create_agent(procedure_id, home, folder)
+        return await _create_agent(procedure_id, home, folder, attendance)
 
     async def _reconcile(session: Session) -> Session:
         return session
@@ -300,7 +314,7 @@ async def _resolve_home_agent(procedure_id: str, home: ActivationHome, folder: P
 async def _resolve_subject_agent(
     cmd: ActivateProcedureCommand, procedure_id: str, home: ActivationHome, folder: Path
 ) -> _Resolution:
-    """The agent bound to the event's subject: woken when open, revived when closed, otherwise started and bound."""
+    """The agent bound to the event's subject: woken when open, revived when closed and attended, otherwise started and bound."""
     subject = _subject_token(cmd)
     open_session, closed_session = await _find_bound_sessions(procedure_id, home, folder, subject)
     candidate_count = sum(session is not None for session in (open_session, closed_session))
@@ -313,7 +327,7 @@ async def _resolve_subject_agent(
         if revived is None:
             raise RuntimeError(_CREATED_SESSION_MISSING_ERROR.format(session_id=closed_session.session_id))
         return _Resolution(revived, ActivationOutcome.REVIVED, candidate_count)
-    created = await _create_agent(procedure_id, home, folder)
+    created = await _create_agent(procedure_id, home, folder, cmd.attendance)
     await db.update_origin_metadata(
         created.session_id,
         BINDING_SECTION,
@@ -391,7 +405,7 @@ async def activate(cmd: ActivateProcedureCommand) -> ProcedureActivationResult:
         if cmd.identity is SubscriptionIdentity.SUBJECT:
             resolution = await _resolve_subject_agent(cmd, procedure_id, home, folder)
         else:
-            resolution = await _resolve_home_agent(procedure_id, home, folder)
+            resolution = await _resolve_home_agent(procedure_id, home, folder, cmd.attendance)
         await _deliver_event(cmd, resolution.session)
 
         operation_row = await db.get_operation_by_request(

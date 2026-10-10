@@ -34,6 +34,10 @@ _UNREADABLE_IDENTITY_ERROR = (
     "Unreadable subscription_identity {identity!r} for subscribed procedure {procedure_id!r} — "
     "refusing rather than widening which agent answers its events."
 )
+_UNREADABLE_ATTENDANCE_ERROR = (
+    "Unreadable subscription_attendance {attendance!r} for subscribed procedure {procedure_id!r} — "
+    "refusing rather than widening which agents appear where people look at sessions."
+)
 _TIER_KIND_MISMATCH_ERROR = (
     "Procedure {procedure_id!r} is published in a {tier} tier but answers {answered} events — "
     "refusing rather than widening reach."
@@ -52,6 +56,7 @@ class IndexKey(StrEnum):
     SUBSCRIPTIONS = "subscriptions"
     SUBSCRIPTION_HOME = "subscription_home"
     SUBSCRIPTION_IDENTITY = "subscription_identity"
+    SUBSCRIPTION_ATTENDANCE = "subscription_attendance"
 
 
 class SubscriptionHomeKind(StrEnum):
@@ -68,6 +73,13 @@ class SubscriptionIdentity(StrEnum):
 
     HOME = "home"
     SUBJECT = "subject"
+
+
+class SubscriptionAttendance(StrEnum):
+    """Whether people look at a procedure's agents: ``unattended`` ones stay out of session listings and Discord."""
+
+    ATTENDED = "attended"
+    UNATTENDED = "unattended"
 
 
 #: The home kind a procedure published in a home's own tier must answer, and the token prefix naming that home.
@@ -92,11 +104,12 @@ class IndexFileIdentity:
 
 @dataclass(frozen=True)
 class SubscriptionEntry:
-    """One live procedure's declared patterns, the home kind it answers, the reach of its tier and its agent identity.
+    """One live procedure's declared patterns, the home kind it answers, the reach of its tier and its agent.
 
     ``home_slug`` is the one home the publishing tier limits the procedure to,
     or ``None`` for a global procedure, which answers every home of its kind.
-    ``identity`` is which agent answers each activating event.
+    ``identity`` is which agent answers each activating event; ``attendance``
+    is whether people look at that agent's session.
     """
 
     procedure_id: str
@@ -104,6 +117,7 @@ class SubscriptionEntry:
     home_kind: SubscriptionHomeKind
     home_slug: str | None
     identity: SubscriptionIdentity
+    attendance: SubscriptionAttendance
 
     def matches_type(self, event_type: str) -> bool:
         """Whether any declared pattern selects the event type."""
@@ -170,6 +184,13 @@ def _subscription_entry(
         identity = SubscriptionIdentity(str(raw_identity))
     except ValueError as exc:
         raise ValueError(_UNREADABLE_IDENTITY_ERROR.format(identity=raw_identity, procedure_id=procedure_id)) from exc
+    raw_attendance = entry.get(IndexKey.SUBSCRIPTION_ATTENDANCE, SubscriptionAttendance.ATTENDED)
+    try:
+        attendance = SubscriptionAttendance(str(raw_attendance))
+    except ValueError as exc:
+        raise ValueError(
+            _UNREADABLE_ATTENDANCE_ERROR.format(attendance=raw_attendance, procedure_id=procedure_id)
+        ) from exc
     tier_home_kind, home_slug = _tier_reach(procedure_id, entry)
     if tier_home_kind is not None and home_kind is not tier_home_kind:
         raise ValueError(
@@ -183,6 +204,7 @@ def _subscription_entry(
         home_kind=home_kind,
         home_slug=home_slug,
         identity=identity,
+        attendance=attendance,
     )
 
 
@@ -192,10 +214,11 @@ def published_procedure_subscriptions() -> SubscriptionPublication:
     Reads the one file publication already replaces atomically, so its bytes
     are the version a caller re-derives from on an identity change. Each entry
     carries its parsed type patterns, the home kind it answers, its agent
-    identity (``home`` when undeclared), and its tier's reach: a ``scope: global`` entry answers every home of its kind, a
+    identity (``home`` when undeclared), its attendance (``attended`` when
+    undeclared), and its tier's reach: a ``scope: global`` entry answers every home of its kind, a
     ``scope: company`` or ``scope: person`` entry the one home its
-    ``source_project`` token names. An entry whose tier, patterns, home kind or
-    agent identity cannot be read raises. Pending (``delivered_by``) entries are excluded.
+    ``source_project`` token names. An entry whose tier, patterns, home kind,
+    agent identity or attendance cannot be read raises. Pending (``delivered_by``) entries are excluded.
     """
     identity = published_index_identity()
     raw = (GLOBAL_DOCS_DIR / _INDEX_FILE_NAME).read_bytes()

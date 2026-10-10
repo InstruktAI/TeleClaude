@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from teleclaude.caller_identity import CliCaller
 from teleclaude.config.machine import config
 from teleclaude.core.models import SessionSnapshot
+from teleclaude.core.models._adapter import session_is_unattended
 from teleclaude.identity_reach import Reach, resolve_reach
 from teleclaude.utils.transcript_discovery import SessionId
 
@@ -87,3 +88,19 @@ def sessions_reached_by(
         if snapshot_reached_by_reach(reach, session):
             reached.append(session)
     return reached
+
+
+def listed_by_default(
+    sessions: Sequence[SessionSnapshot],
+    *,
+    all_sessions: bool,
+    session_ids: frozenset[str] | None,
+) -> list[SessionSnapshot]:
+    """Leave unattended procedure agents out of a listing unless it asks for every session or names ids.
+
+    Attendance is the session's own presentation fact beside reach: it hides
+    nothing from a caller who asks and grants nothing to one who does not.
+    """
+    if all_sessions or session_ids is not None:
+        return list(sessions)
+    return [session for session in sessions if not session_is_unattended(session)]

@@ -20,7 +20,14 @@ from teleclaude.config import machine as teleclaude_config
 from teleclaude.core.db import db
 from teleclaude.core.identity import session_person_role
 from teleclaude.core.integration.discord_admin_state import session_launcher_key
-from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, DiscordMetadataField, EndpointStamp, Session
+from teleclaude.core.models import (
+    ChannelMetadata,
+    DiscordAdapterMetadata,
+    DiscordMetadataField,
+    EndpointStamp,
+    Session,
+)
+from teleclaude.core.models._adapter import session_is_unattended
 from teleclaude.core.reconciliation.feature_ids import DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID
 from teleclaude.core.session_utils import get_short_project_name
 from teleclaude.services.project_catalog import get_project_catalog_service
@@ -195,8 +202,11 @@ class ChannelOperationsMixin:
     def _resolve_target_forum(self, session: Session) -> int | None:
         """Determine which Discord forum this session's thread belongs in.
 
-        A help desk session belongs in no forum, its project's own included.
+        A help desk session belongs in no forum, its project's own included, and
+        neither does an unattended procedure agent: people do not look at it.
         """
+        if session_is_unattended(session):
+            return None
         endpoint = EndpointStamp.from_session(session)
         if endpoint is not None and endpoint.is_help_desk:
             return None

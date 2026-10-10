@@ -470,7 +470,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         router = self._router()
         origin_adapter = router.resolve_origin_ui_adapter(session)
-        admin_target = router.resolve_admin_output_target(origin_adapter)
+        admin_target = router.resolve_admin_output_target(session, origin_adapter)
 
         if origin_adapter is None and admin_target is None:
             logger.debug(
@@ -593,7 +593,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         """
         router = self._router()
         origin_adapter = router.resolve_origin_ui_adapter(session)
-        admin_target = router.resolve_admin_output_target(origin_adapter)
+        admin_target = router.resolve_admin_output_target(session, origin_adapter)
         return sorted(
             lane
             for lane in {origin_adapter, admin_target}
@@ -813,7 +813,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         router = self._router()
         origin_adapter = router.resolve_origin_ui_adapter(session_to_use)
         discord_target = (
-            origin_adapter if origin_adapter == "discord" else router.resolve_admin_output_target(origin_adapter)
+            origin_adapter
+            if origin_adapter == "discord"
+            else router.resolve_admin_output_target(session_to_use, origin_adapter)
         )
 
         if discord_target is None:
@@ -843,7 +845,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             ensure_channels = False
         router = self._router()
         origin_adapter = router.resolve_origin_ui_adapter(session)
-        admin_target = router.resolve_admin_output_target(origin_adapter)
+        admin_target = router.resolve_admin_output_target(session, origin_adapter)
         if origin_adapter is not None:
             await self._route_to_ui(
                 session,
@@ -873,7 +875,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             return
         router = self._router()
         origin_adapter = router.resolve_origin_ui_adapter(session)
-        admin_target = router.resolve_admin_output_target(origin_adapter)
+        admin_target = router.resolve_admin_output_target(session, origin_adapter)
         if origin_adapter is not None:
             await self._route_to_ui(
                 session,
@@ -907,7 +909,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         router = self._router()
         origin_adapter = router.resolve_origin_ui_adapter(session)
         discord_target = (
-            origin_adapter if origin_adapter == "discord" else router.resolve_admin_output_target(origin_adapter)
+            origin_adapter
+            if origin_adapter == "discord"
+            else router.resolve_admin_output_target(session, origin_adapter)
         )
         if discord_target is None:
             return False

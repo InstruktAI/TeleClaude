@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from teleclaude.docs_subscriptions import IndexKey, SubscriptionHomeKind, SubscriptionIdentity
+from teleclaude.docs_subscriptions import IndexKey, SubscriptionAttendance, SubscriptionHomeKind, SubscriptionIdentity
 from teleclaude.events.type_pattern import TypePattern, TypePatternError
 from teleclaude.resource_validation._models import _error
 from teleclaude.snippet_scope import SnippetScope
@@ -21,6 +21,8 @@ _SUBSCRIPTION_HOME_VALUE_FINDING = "snippet_subscriptions_home_invalid_value"
 _SUBSCRIPTION_HOME_TIER_FINDING = "snippet_subscriptions_home_invalid_tier"
 _SUBSCRIPTION_IDENTITY_UNEXPECTED_FINDING = "snippet_subscriptions_identity_unexpected"
 _SUBSCRIPTION_IDENTITY_VALUE_FINDING = "snippet_subscriptions_identity_invalid_value"
+_SUBSCRIPTION_ATTENDANCE_UNEXPECTED_FINDING = "snippet_subscriptions_attendance_unexpected"
+_SUBSCRIPTION_ATTENDANCE_VALUE_FINDING = "snippet_subscriptions_attendance_invalid_value"
 #: The tiers where a procedure's subscriptions are routed.
 _SUBSCRIPTION_ROUTED_SCOPES = frozenset({SnippetScope.GLOBAL, SnippetScope.COMPANY, SnippetScope.PERSON})
 #: The one home kind a procedure published in a home's own tier can answer.
@@ -85,6 +87,15 @@ def _validate_subscription_identity(path: Path, declared_identity: object) -> No
         _error(_SUBSCRIPTION_IDENTITY_VALUE_FINDING, path=str(path), value=str(declared_identity))
 
 
+def _validate_subscription_attendance(path: Path, declared_attendance: object) -> None:
+    if declared_attendance is None:
+        return
+    try:
+        SubscriptionAttendance(str(declared_attendance))
+    except ValueError:
+        _error(_SUBSCRIPTION_ATTENDANCE_VALUE_FINDING, path=str(path), value=str(declared_attendance))
+
+
 def validate_subscriptions(
     path: Path,
     meta: Mapping[str, object],
@@ -95,11 +106,14 @@ def validate_subscriptions(
     subscriptions = meta.get("subscriptions")
     declared_home = meta.get(_SUBSCRIPTION_HOME_FIELD)
     declared_identity = meta.get(IndexKey.SUBSCRIPTION_IDENTITY)
+    declared_attendance = meta.get(IndexKey.SUBSCRIPTION_ATTENDANCE)
     if subscriptions is None:
         if declared_home is not None:
             _error(_SUBSCRIPTION_HOME_UNEXPECTED_FINDING, path=str(path))
         if declared_identity is not None:
             _error(_SUBSCRIPTION_IDENTITY_UNEXPECTED_FINDING, path=str(path))
+        if declared_attendance is not None:
+            _error(_SUBSCRIPTION_ATTENDANCE_UNEXPECTED_FINDING, path=str(path))
         return
     if snippet_type != "procedure":
         _error("snippet_subscriptions_invalid_type", path=str(path))
@@ -117,6 +131,7 @@ def validate_subscriptions(
         _error(_SUBSCRIPTION_TIER_FINDING, path=str(path), tier=_subscription_tier_name(classification))
     _validate_subscription_home(path, declared_home, classification)
     _validate_subscription_identity(path, declared_identity)
+    _validate_subscription_attendance(path, declared_attendance)
 
 
 def validate_activation_mode_exclusivity(path: Path, meta: Mapping[str, object]) -> None:

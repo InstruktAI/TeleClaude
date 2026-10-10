@@ -52,6 +52,7 @@ from teleclaude.core.models import (
     SessionLaunchKind,
     SessionSnapshot,
 )
+from teleclaude.core.models._adapter import UNATTENDED_SECTION, unattended_stamp
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.session_cleanup import host_pane_name, terminate_session
 from teleclaude.core.session_company import record_session_company_resolved
@@ -398,6 +399,10 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     # the row, so every reader finds it through `EndpointStamp.from_session`.
     if cmd.endpoint is not None:
         creation_metadata[ENDPOINT_SECTION] = cmd.endpoint.to_dict()
+    # An unattended procedure agent is stamped in the same write, so no listing,
+    # snapshot or adapter ever observes the session without it.
+    if cmd.unattended:
+        creation_metadata[UNATTENDED_SECTION] = unattended_stamp()
 
     # Create session atomically with all known fields — the SESSION_STARTED
     # event must carry complete data so downstream consumers never see partial state.

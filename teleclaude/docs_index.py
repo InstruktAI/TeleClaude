@@ -124,6 +124,7 @@ class SnippetEntry(TypedDict):
     subscriptions: NotRequired[list[str]]
     subscription_home: NotRequired[str]
     subscription_identity: NotRequired[str]
+    subscription_attendance: NotRequired[str]
 
 
 class IndexPayload(TypedDict):
@@ -174,6 +175,9 @@ def _copy_subscriptions_metadata(entry: SnippetEntry, metadata: Mapping[str, obj
     raw_subscription_identity = metadata.get(IndexKey.SUBSCRIPTION_IDENTITY)
     if isinstance(raw_subscription_identity, str):
         entry[IndexKey.SUBSCRIPTION_IDENTITY.value] = raw_subscription_identity
+    raw_subscription_attendance = metadata.get(IndexKey.SUBSCRIPTION_ATTENDANCE)
+    if isinstance(raw_subscription_attendance, str):
+        entry[IndexKey.SUBSCRIPTION_ATTENDANCE.value] = raw_subscription_attendance
 
 
 def _extract_description_from_md(file_path: Path) -> str:

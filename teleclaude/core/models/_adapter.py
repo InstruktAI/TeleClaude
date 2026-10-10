@@ -307,6 +307,30 @@ class EndpointStamp:
         return dict(asdict_exclude_none(self))
 
 
+UNATTENDED_SECTION = "unattended"
+
+
+class UnattendedStampField(StrEnum):
+    """Persisted key names in a session's root ``unattended`` origin section."""
+
+    UNATTENDED = "unattended"
+
+
+def unattended_stamp() -> JsonDict:
+    """The root ``unattended`` section written with a session whose agent runs unattended."""
+    return {UnattendedStampField.UNATTENDED: True}
+
+
+def session_is_unattended(session: _OriginMetadataHolder) -> bool:
+    """Whether the session was created as an unattended procedure agent, from its own stamp.
+
+    The one reader for a session record and a session snapshot, local or from
+    another computer; a session without the stamp is attended.
+    """
+    section = session.origin_metadata.get(UNATTENDED_SECTION)
+    return isinstance(section, dict) and section.get(UnattendedStampField.UNATTENDED) is True
+
+
 @dataclass
 class RedisTransportMetadata:
     """Redis-specific adapter metadata."""

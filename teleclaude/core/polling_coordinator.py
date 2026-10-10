@@ -24,6 +24,7 @@ from teleclaude.core.injected_text import (
     visible_input_update,
 )
 from teleclaude.core.models import MessageAuthor, MessageMetadata
+from teleclaude.core.models._adapter import session_is_unattended
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
 from teleclaude.core.session_output import assistant_messages_are_bare_noop
@@ -539,6 +540,8 @@ async def _project_user_reflection(
             watermark_advanced=False,
         )
         observe(UserReflectionProjectionOutcome.SUPPRESSED, UserReflectionProjectionReason.DAEMON_CONTROL)
+    elif session_is_unattended(session):
+        observe(UserReflectionProjectionOutcome.SUPPRESSED, UserReflectionProjectionReason.UNATTENDED)
     else:
         result = SKIPPED_TURN_REFLECTION
         if InputOrigin.DISCORD.value in adapter_client.adapters:

@@ -36,6 +36,7 @@ from teleclaude.caller_identity import CliCaller
 from teleclaude.config.machine import config
 from teleclaude.constants import CacheEvent
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
+from teleclaude.core.models._adapter import session_is_unattended
 from teleclaude.core.session_listing import snapshot_reached_by_reach
 from teleclaude.identity_reach import Reach, ReachCache, ReachResolutionError
 from teleclaude.transport.redis_transport import RedisTransport
@@ -292,6 +293,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                         for session in cached_sessions
                         if viewer is not None
                         and reach_cache is not None
+                        and not session_is_unattended(session)
                         and self._viewer_can_read_session(reach_cache.get(), session)
                     ]
                     self._ws_sent_session_ids[websocket].update(session.session_id for session in visible)
@@ -397,7 +399,13 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         return snapshot_reached_by_reach(reach, session)
 
     def _session_event_targets(self, session: SessionSnapshot) -> list[WebSocket]:
-        """Select subscribed viewers who can read this session at send time."""
+        """Select subscribed viewers who can read this session at send time.
+
+        An unattended procedure agent is shown to no viewer: it is a presentation
+        fact beside reach, so the reach check below is untouched.
+        """
+        if session_is_unattended(session):
+            return []
         computer = session.computer or config.computer.name
         local = computer in ("", "local", config.computer.name)
         targets: list[WebSocket] = []

@@ -116,6 +116,7 @@ from teleclaude.core.session_listeners import (
 )
 from teleclaude.core.session_listing import (
     SESSION_IDS_FIELD,
+    listed_by_default,
 )
 from teleclaude.core.session_startup_message import resolve_command_input
 from teleclaude.core.session_status import is_session_terminal as _terminal
@@ -387,6 +388,9 @@ async def list_sessions(
                 remote_sessions = [
                     session for session in remote_sessions if session.initiator_session_id == caller_session_id
                 ]
+            remote_sessions = listed_by_default(
+                remote_sessions, all_sessions=query.all_sessions, session_ids=query.session_ids
+            )
             if query.job:
                 remote_sessions = [session for session in remote_sessions if session.job == query.job]
             dtos = [SessionDTO.from_core(session, computer=session.computer) for session in remote_sessions]

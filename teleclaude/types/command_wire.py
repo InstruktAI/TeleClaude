@@ -9,7 +9,7 @@ from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import EndpointStamp, SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._types import JsonDict
-from teleclaude.docs_subscriptions import SubscriptionIdentity
+from teleclaude.docs_subscriptions import SubscriptionAttendance, SubscriptionIdentity
 from teleclaude.types.commands import (
     ActivateProcedureCommand,
     CallerProvenance,
@@ -76,6 +76,7 @@ _WIRE_ENUM_FIELDS: Mapping[str, type[Enum]] = {
     "text_kind": TranscriptEntryKind,
     "source_feature": InjectedTextSourceFeature,
     "identity": SubscriptionIdentity,
+    "attendance": SubscriptionAttendance,
 }
 
 

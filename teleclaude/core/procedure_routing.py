@@ -115,6 +115,7 @@ async def _submit(event: ReceivedEvent, entry: SubscriptionEntry, home: Activati
         home=home.to_token(),
         event_json=event.model_dump_json(),
         identity=entry.identity,
+        attendance=entry.attendance,
         request_id=_activation_request_id(event, entry.procedure_id, home),
     )
     receipt = await run_local_command(command)

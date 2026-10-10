@@ -10,7 +10,7 @@ from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import EndpointStamp, SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._types import JsonDict, JsonValue
-from teleclaude.docs_subscriptions import SubscriptionIdentity
+from teleclaude.docs_subscriptions import SubscriptionAttendance, SubscriptionIdentity
 from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.discord_thread_claims import (
     DiscordThreadClaimAction,
@@ -232,6 +232,7 @@ class CreateSessionCommand(InternalCommand):
     command_input_mode: CommandInputMode = CommandInputMode.ORDINARY
     command_input_source_text: str | None = None
     endpoint: EndpointStamp | None = None
+    unattended: bool = False
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -764,13 +765,15 @@ class ActivateProcedureCommand(InternalCommand):
     """Intent to wake or start a procedure's agent for the activation home named by a token.
 
     ``identity`` is which agent answers the event: the home's one agent, or the
-    agent of the event's subject within the home.
+    agent of the event's subject within the home. ``attendance`` is whether
+    people look at that agent's session.
     """
 
     procedure_id: str
     home: str
     event_json: str
     identity: SubscriptionIdentity
+    attendance: SubscriptionAttendance
 
     def __init__(
         self,
@@ -779,6 +782,7 @@ class ActivateProcedureCommand(InternalCommand):
         home: str,
         event_json: str,
         identity: SubscriptionIdentity = SubscriptionIdentity.HOME,
+        attendance: SubscriptionAttendance = SubscriptionAttendance.ATTENDED,
         request_id: str | None = None,
     ):
         super().__init__(
@@ -792,6 +796,7 @@ class ActivateProcedureCommand(InternalCommand):
         self.home = ActivationHome.from_token(home).to_token()
         self.event_json = event_json
         self.identity = identity
+        self.attendance = attendance
 
     def to_payload(self) -> dict[str, object]:
         return {"session_id": "", "args": [self.procedure_id, self.home]}

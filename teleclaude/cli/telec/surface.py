@@ -126,6 +126,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_SESSIONS_LIST_JOB,
                     F.FLAG_COMPUTER,
                 ],
+                notes=[
+                    "Procedure agents that run unattended are listed only with --all (or by session id).",
+                    "An agent caller's default listing keeps its own children even with --job; "
+                    "`--all --job <procedure>` finds a procedure's agents.",
+                ],
                 auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
             ),
             "show": CommandDef(
