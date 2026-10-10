@@ -90,6 +90,16 @@ version. Recovery resumes that publication; an existing version naming another
 candidate is a conflict. The next attempt uses a new baseline only after the
 previous publication completes.
 
+### Initial activation
+
+An explicit current-state bootstrap earns the same final candidate and
+installation proof as an ordinary release. Its successful publication alone
+does not enable ordinary publication. A full dry-run on a real releasable change
+interval after that baseline must succeed first. Scheduled attempts remain in
+verification mode while this prerequisite is pending; no-change results do not
+satisfy it. The release maintainer records the qualifying evidence when enabling
+ordinary publication.
+
 ### Use cases
 
 #### UC-RP1: Failover preserves unsuccessful inspection evidence
@@ -149,6 +159,17 @@ When that publication is retried
 Then recovery reconciles the same version and proved candidate
 And an existing conflicting version stops recovery with the conflict visible
 And completed publication becomes the next comparison baseline
+```
+
+#### UC-RP7: Bootstrap does not bypass initial pipeline validation
+
+```gherkin
+Given a release operator has published the initial proved baseline
+And no full dry-run of a real subsequent releasable interval has succeeded
+When a scheduled or ordinary manual attempt runs
+Then ordinary publication remains inactive
+And a no-change result leaves the initial validation prerequisite pending
+And activation requires retained evidence of a successful full dry-run
 ```
 
 ### Cross-context references

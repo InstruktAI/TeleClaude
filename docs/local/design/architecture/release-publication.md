@@ -118,8 +118,15 @@ version nor interprets an unpublished tag as the completed baseline.
 
 The explicit bootstrap path supplies the initial version and current-state notes
 without claiming a historical inspector verdict. It uses the ordinary final
-candidate, lint, installer proof, and publication machinery. Normal scheduled
-inspection becomes active only after a compatible baseline is published.
+candidate, lint, installer proof, and publication machinery. Bootstrap does not
+activate ordinary publication. A checked-in workflow activation setting starts
+disabled: scheduled attempts after bootstrap can inspect and prove a dry-run,
+but ordinary scheduled and manual publication remain inactive. The release
+maintainer enables ordinary publication only after verifying a successful full
+dry-run on a real releasable post-baseline interval. A no-change result does not
+satisfy this prerequisite. When that interval does not yet exist, activation
+remains pending. The activation change records the qualifying run and candidate;
+once enabled, ordinary attempts retain all candidate and proof gates.
 
 ## Failure modes
 
