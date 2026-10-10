@@ -5,10 +5,9 @@ project's ``business.publishes`` declarations. Each domain has exactly one
 owning publisher — a domain declared by two registered projects is a split, and
 sync hard-blocks on it — so the union defines validity with one owner per domain.
 
-This module reads only the publisher declaration it needs. Full configuration
-loads own normalization and may write an eligible legacy document, so using one
-to discover domains would let read-only cross-project validation mutate an
-unrelated publisher's configuration.
+Each publisher's ``business`` section is read from its loaded project
+configuration; loading migrates in memory and writes nothing, so discovering
+domains never changes another publisher's configuration.
 """
 
 from __future__ import annotations
