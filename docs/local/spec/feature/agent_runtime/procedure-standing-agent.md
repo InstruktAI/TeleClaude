@@ -368,19 +368,13 @@ Scenario Outline: Asking for it shows an unattended agent to anyone whose reach 
     | naming the session by its id         |
 ```
 
-#### UC-PSA25: Attendance changes nothing else about the agent
+#### UC-PSA25: Attendance does not change which agent answers
 
 ```gherkin
-Scenario Outline: An unattended agent answers its activations as an attended one would
-  Given a procedure declaring itself unattended and <identity>
-  When a later activation for that procedure arrives
-  Then it reaches the same agent an attended procedure with that identity would reach
-  And that agent is still left out of the places people look at sessions
-
-  Examples:
-    | identity                                              |
-    | the home agent identity, with its agent still running |
-    | the subject agent identity, with its agent closed     |
+Given a procedure declaring itself unattended keeps a running agent for a home
+When a later activation for that procedure and home arrives
+Then it reaches that same agent, as it would for an attended procedure
+And that agent is still left out of the places people look at sessions
 ```
 
 #### UC-PSA26: An agent started by hand is attended

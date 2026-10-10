@@ -144,7 +144,7 @@ TeleClaudeNext repository.
 
 - **Owns (unattended agents):** a session the activation runner starts for a
   procedure declaring itself unattended records, in the write that creates it,
-  that no person watches it, and keeps that fact when it is woken or revived.
+  that no person watches it, as a fact of that session's record.
   The fact is the session's own audience statement, beside reach and never
   part of it: the session listing leaves an unattended session out unless the
   caller asks for every session, for the procedure's job, or for the session by
