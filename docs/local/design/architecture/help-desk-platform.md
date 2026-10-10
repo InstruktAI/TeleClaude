@@ -350,11 +350,15 @@ sequenceDiagram
     Daemon->>Maintenance: Resume the recorded native transcript
     Daemon->>Maintenance: Submit the declared compaction command
     alt Visitor returns during maintenance
-        Visitor->>Queue: Message or desk re-entry
-        Queue->>Daemon: Return takes priority
+        opt Return includes conversation text
+            Visitor->>Queue: Accept the message durably
+        end
+        Visitor->>Daemon: Returning message or desk re-entry
         Daemon->>Maintenance: Abandon attempt and drop its tmux runtime
         Daemon->>Desk: Revive normally with slash commands disabled
-        Queue->>Desk: Deliver accepted text in order
+        opt Accepted text is waiting
+            Queue->>Desk: Deliver accepted text in order
+        end
         Note over Daemon: Retry maintenance after the next idle period
     else Compaction completes while the visitor is away
         Maintenance->>Daemon: This attempt completed
@@ -568,11 +572,15 @@ sequenceDiagram
     Daemon->>Maintenance: Resume the recorded native transcript
     Daemon->>Maintenance: Submit the declared compaction command
     alt Visitor sends input or re-enters during maintenance
-        Visitor->>Queue: Conversation return
-        Queue->>Daemon: Abandon maintenance before delivery
+        opt Return includes conversation text
+            Visitor->>Queue: Accept the message durably
+        end
+        Visitor->>Daemon: Returning message or desk re-entry
         Daemon->>Maintenance: Drop the temporary tmux runtime
         Daemon->>Desk: Revive the same conversation under its ordinary profile
-        Queue->>Desk: Deliver accepted text in order
+        opt Accepted text is waiting
+            Queue->>Desk: Deliver accepted text in order
+        end
         Note over Daemon: The return resets the idle period
     else This attempt completes with no returning input
         Maintenance->>Daemon: Compaction completed
