@@ -79,7 +79,7 @@ a thing: each event is its own message.
 <!-- planned:domain-notifications -->
 
 - Told marks for a domain event, written as each selected person is told and
-  removed once the event's handling completes.
+  kept for as long as the platform keeps the event's handled record.
 
 <!-- /planned:domain-notifications -->
 
@@ -160,9 +160,9 @@ a thing: each event is its own message.
   a thing, so the consumer opens, closes and remembers no matter; two events
   about one thing are two messages.
 - **Platform events are incident alerts' alone.** The consumer passes over every
-  type under `teleclaude.` and is handed every other type, because the
-  published domains are read live on this computer: a domain published later
-  is told without a change here or a restart.
+  type under `teleclaude.` and is handed every other type. The domains it tells
+  are those published on this computer when the event is handled, so a domain
+  published later is told without a change here or a restart.
 - **The audience is interests within reach.** A person is told when a switched-on
   category of their interests selects the type and `identity`'s reach for that
   person admits the event's origin. An origin of none or unknown is admitted
@@ -171,9 +171,10 @@ a thing: each event is its own message.
 - **A recipient is outstanding until marked told.** Each handling sends only to
   selected people without a told mark for the event, and marks each one the
   moment the send succeeds, so a retry never repeats a recorded send. The marks
-  are removed when the handling completes; a parked event keeps its marks for as
-  long as the platform keeps its handled-event records, so a re-handled parked
-  event repeats nothing recorded. The inherent window above applies unchanged:
+  are never removed by the handling itself: they are kept for as long as the
+  platform keeps the consumer's handled record of the event and pruned with it,
+  so a handling interrupted after its last send, and a parked event handled
+  again, repeat nothing recorded. The inherent window above applies unchanged:
   delivery is at least once.
 - **An undeclared type is told by its name.** An event relayed from an external
   system has no type declaration; its message states what happened from the

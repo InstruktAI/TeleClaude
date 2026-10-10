@@ -144,8 +144,8 @@ implementation remain the current appliance contract.
   published domain's events — and what each decides: which events it tells, to
   which recipients within their reach, and when an open matter is closed; the
   incident record of open matters per lifecycle family and thing; the record of
-  which selected people a domain event has reached while its handling is in
-  progress; and composing each message from the event's facts and its type's
+  which selected people a domain event has reached, kept with the event's
+  handled record; and composing each message from the event's facts and its type's
   declaration, or its type name when it has none
   (`local/projects/teleclaude/design/architecture/notification-delivery`,
   `local/projects/teleclaude/spec/feature/integration/incident-alerts`,
