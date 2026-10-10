@@ -79,9 +79,23 @@ source in the global configuration.
 
 ### Provider requests
 
+<!-- planned-change:github-webhook-form-content-type -->
+
 - A GitHub delivery is verified with GitHub's signature over the raw body under
   the project's secret. It is relayed as `github.<event>`, where `<event>` is
   GitHub's event type for the delivery, with the delivery body as its data.
+
+<!-- change:github-webhook-form-content-type -->
+
+- A GitHub delivery is verified with GitHub's signature over the raw body under
+  the project's secret. It arrives in either content type GitHub offers: a JSON
+  body, or a form-encoded body whose single `payload` field holds the same JSON
+  document. It is relayed as `github.<event>`, where `<event>` is GitHub's event
+  type for the delivery, with that JSON document as its data, so both content
+  types relay the same event.
+
+<!-- /planned-change:github-webhook-form-content-type -->
+
 - A WhatsApp webhook is verified with Meta's signature over the raw body under
   the global WhatsApp secret. Each message it carries is relayed as one event,
   `whatsapp.message.<type>`, with that message as its data. A webhook that
@@ -252,6 +266,43 @@ When a delivery arrives at /hooks/inbound/github/project/web
 Then the ingress responds with a server error
 And the error record names the project and the unresolved reference, never a secret
 ```
+
+<!-- planned:github-webhook-form-content-type -->
+
+#### UC-IF25: A GitHub delivery is accepted in either content type GitHub offers
+
+```gherkin
+Scenario Outline: Both GitHub content types relay the same event
+  Given the project "web" declares a GitHub source
+  And GitHub delivers a push whose JSON document names the repository "acme/web"
+  When the delivery arrives at /hooks/inbound/github/project/web <encoded>, signed over the raw body with the project's secret
+  Then the ingress accepts it
+  And the cluster receives the platform event "github.push"
+  And its data is the JSON document GitHub delivered
+
+  Examples:
+    | encoded                                                        |
+    | as a JSON body                                                 |
+    | as a form-encoded body whose single field "payload" holds the JSON document |
+```
+
+#### UC-IF26: A form-encoded GitHub delivery without a single payload document is refused
+
+```gherkin
+Scenario Outline: The form body must carry exactly one JSON document
+  Given the project "web" declares a GitHub source
+  When a correctly signed form-encoded delivery arrives at /hooks/inbound/github/project/web <form>
+  Then the ingress rejects it with an "invalid payload" client error
+  And nothing is relayed
+
+  Examples:
+    | form                                           |
+    | with no "payload" field                        |
+    | with the "payload" field given twice           |
+    | whose "payload" field is not a JSON object     |
+```
+
+<!-- /planned:github-webhook-form-content-type -->
 
 ### Cross-context references
 
