@@ -177,8 +177,6 @@ malformed provider-owned values are preserved because their ownership cannot be
 established; a declared event is replaced with TeleClaude's valid list shape
 during merge.
 
-<!-- planned:interruptible-conversation-compaction -->
-
 ### Maintenance launch context
 
 A temporary compaction launch supplies immutable attempt context through its
@@ -194,7 +192,6 @@ completion settles only that attempt. Events from an abandoned or superseded
 attempt do not update the ordinary conversation's readiness, status or close
 state and do not wake its pending control input. The receiver transports these
 coordination facts; it decides no compaction lifecycle policy.
-<!-- /planned:interruptible-conversation-compaction -->
 
 Receiver-added payload fields:
 

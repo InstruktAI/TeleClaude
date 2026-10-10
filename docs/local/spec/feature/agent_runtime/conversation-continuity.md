@@ -39,8 +39,6 @@ memory agents among them, whose lifecycle is their procedure's own.
 
 ## Canonical fields
 
-<!-- planned:interruptible-conversation-compaction -->
-
 ### Temporary compaction launches
 
 The idle cycle resumes the conversation's recorded native transcript in a
@@ -67,7 +65,6 @@ compaction proceeds to the ordinary idle close and its session-ended behavior.
 The platform uses its existing tmux shutdown and native transcript revival
 contract. It neither rolls back a compaction already recorded by the agent nor
 implements transcript validation or additional process-exit checks.
-<!-- /planned:interruptible-conversation-compaction -->
 
 ### Use cases
 
@@ -156,8 +153,6 @@ When it has had no input for 30 minutes or longer
 Then the idle cycle neither compacts nor closes it
 ```
 
-<!-- planned:interruptible-conversation-compaction -->
-
 #### UC-CC10: A desk agent keeps native commands unavailable while serving its visitor
 
 ```gherkin
@@ -186,8 +181,6 @@ When startup or completion from the abandoned attempt arrives later
 Then that attempt neither opens the resumed agent's input readiness nor closes the conversation
 And the person's conversation continues normally
 ```
-
-<!-- /planned:interruptible-conversation-compaction -->
 
 ### Cross-context references
 

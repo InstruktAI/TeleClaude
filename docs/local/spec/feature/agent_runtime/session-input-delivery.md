@@ -102,8 +102,6 @@ Accepted messages retain their original occurrence and ordering. A readiness
 wait does not authorize a duplicate resend, a new session, or a synthetic
 lifecycle transition. Recovery follows UC-SID6.
 
-<!-- planned:interruptible-conversation-compaction -->
-
 ### Returning input during idle maintenance
 
 Accepted conversation input remains durable while a temporary compaction
@@ -124,7 +122,6 @@ An abandoned maintenance launch does not end the conversation. Its later
 startup or completion cannot satisfy ordinary input readiness or close the
 revived session. Native transcript resumption and tmux process handling keep
 their existing contracts.
-<!-- /planned:interruptible-conversation-compaction -->
 
 ### Conversation input authority
 

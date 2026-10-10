@@ -271,8 +271,6 @@ Memories are kept current by memory agents (`local/projects/teleclaude/spec/feat
 
 ### Customer Session Lifecycle
 
-<!-- planned:interruptible-conversation-compaction -->
-
 #### Interruptible compaction runtime
 
 The visitor-facing desk keeps native slash commands disabled and bundled
@@ -294,7 +292,6 @@ end; the existing memory-extraction behavior follows only a real session end.
 Compaction that completed before cancellation stays in the native transcript;
 the platform performs no rollback, transcript validation or additional
 process-exit verification.
-<!-- /planned:interruptible-conversation-compaction -->
 
 A desk session is closed only to spare resources while its visitor is away, never to end the conversation. After 30 minutes without visitor input, the daemon compacts its context and closes it. Its end wakes the desk's memory agent, which keeps the memories about that visitor current. The visitor's next message, or their re-entry at the desk, revives the same session with those memories injected (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-continuity`).
 
@@ -304,36 +301,11 @@ A desk session is closed only to spare resources while its visitor is away, neve
 2. Closing the session, once compaction completed and no input arrived meanwhile
 3. None of it is recorded as a message sent into the session — it is invisible to the visitor
 
-<!-- planned-change:interruptible-conversation-compaction -->
-
-A step that fails or does not finish leaves the session open and is retried on the next pass. Extraction is not part of the cycle: it follows the close (Post-Session Memory Extraction), and compaction loses nothing it needs, because the agent's native transcript keeps every entry from before a compaction.
-<!-- change:interruptible-conversation-compaction -->
-
 A failed launch is abandoned and ordinary conversation delivery is restored.
 A returning person abandons unfinished compaction and resets the idle period;
 the cycle retries after the next idle period. Extraction is not part of the
 cycle: it follows a real close (Post-Session Memory Extraction), and the native
 transcript retains the conversation that extraction reads.
-<!-- /planned-change:interruptible-conversation-compaction -->
-
-<!-- planned-change:interruptible-conversation-compaction -->
-
-```mermaid
-sequenceDiagram
-    participant Daemon as Idle cycle
-    participant Tmux as Agent Session (tmux)
-    participant DB as Session DB
-    participant Agent as Desk memory agent
-
-    Note over Daemon: No input for 30m, agent idle, no relay
-    Daemon->>Tmux: Agent's compaction command
-    Tmux->>Daemon: Compaction finished
-    Daemon->>DB: Close the session
-    DB-->>Agent: Session ended (help desk, desk's home)
-    Note over Daemon: No message recorded as sent
-```
-
-<!-- change:interruptible-conversation-compaction -->
 
 ```mermaid
 sequenceDiagram
@@ -367,8 +339,6 @@ sequenceDiagram
     end
     Note over Visitor,Maintenance: Maintenance receives no visitor input and sends no visitor reply
 ```
-
-<!-- /planned-change:interruptible-conversation-compaction -->
 
 **Session resumption.** When a visitor returns through the same conversation (the same Telegram chat or WhatsApp number), or re-enters the desk with its identifier, the conversation's session at that desk continues, revived when it was closed; no new session is created. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` at the visitor's depth.
 
@@ -531,31 +501,6 @@ sequenceDiagram
 
 ### Idle Compaction Cycle
 
-<!-- planned-change:interruptible-conversation-compaction -->
-
-```mermaid
-sequenceDiagram
-    participant Daemon as Idle cycle
-    participant Agent as Desk Session (tmux)
-    participant DB as Session DB
-    participant Worker as Desk memory agent
-    participant Memory as Memory
-
-    Note over Daemon: No input for 30m, agent idle, no relay, no input waiting
-    Daemon->>Agent: Agent's compaction command
-    Agent->>Daemon: Compaction finished
-    Daemon->>DB: Close the session
-    DB-->>Worker: Session ended (help desk)
-    Worker->>Memory: Keep the visitor's memories current, collect business prospects
-    Worker->>DB: Advance the read point
-    Note over Daemon: No message recorded as sent
-
-    Note over Agent: Visitor returns later...
-    Daemon->>Agent: Revive the same session, the visitor's current memories injected
-```
-
-<!-- change:interruptible-conversation-compaction -->
-
 ```mermaid
 sequenceDiagram
     participant Visitor as Human visitor
@@ -593,8 +538,6 @@ sequenceDiagram
     end
     Note over Visitor,Maintenance: No maintenance input or output is delivered as visitor conversation
 ```
-
-<!-- /planned-change:interruptible-conversation-compaction -->
 
 ### Desk Category Reconciliation
 
