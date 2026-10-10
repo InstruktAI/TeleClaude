@@ -31,6 +31,7 @@ from teleclaude.quality.checkout_grading import (
     subject_checkout_grading_environment,
 )
 from teleclaude.quality.lint import LintRunner
+from teleclaude.quality.native_slot import full_native_slot
 from teleclaude.quality.selection import (
     GradingRoot,
     QualityCheckFamily,
@@ -399,6 +400,9 @@ def run_make_target(
     if variables:
         command.extend(_MAKE_VARIABLE_TEMPLATE.format(key=key, value=value) for key, value in variables.items())
     if files is None:
+        if target == _MAKE_LINT_TARGET:
+            with full_native_slot(execution_root):
+                return run_process_group_command(command, execution_root, child_env).exit_code
         return run_process_group_command(command, execution_root, child_env).exit_code
     with _nul_file(files) as files_from:
         command.append(_FILES_FROM_ARGUMENT_TEMPLATE.format(files_from=files_from))

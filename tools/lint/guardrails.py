@@ -82,6 +82,19 @@ PYTHON_GLOB = "*.py"
 UTF8_ENCODING = "utf-8"
 EMPTY_SOURCE_LINE = ""
 NEWLINE = "\n"
+_AST_DEFAULT_FILENAME = "<unknown>"
+
+
+@cache
+def _read_source(path: Path) -> str:
+    """Read one source image for all rules in the current invocation."""
+    return path.read_text(encoding=UTF8_ENCODING)
+
+
+@cache
+def _parse_source(source: str, filename: str = _AST_DEFAULT_FILENAME) -> ast.Module:
+    """Parse each source image once without changing rule traversal or findings."""
+    return ast.parse(source, filename=filename)
 
 
 class RuntimePathBypass(NamedTuple):
@@ -103,6 +116,18 @@ def main(argv: Sequence[str] | None = None) -> None:
     # binary is shared across worktrees and downstream projects.
     repo_root = Path.cwd().resolve()
     selected_paths = _normalize_selected_paths(repo_root, args.paths)
+
+    _read_source.cache_clear()
+    _parse_source.cache_clear()
+    try:
+        _run_checks(repo_root, selected_paths)
+    finally:
+        _read_source.cache_clear()
+        _parse_source.cache_clear()
+
+
+def _run_checks(repo_root: Path, selected_paths: set[str] | None) -> None:
+    """Keep rule order unchanged while sharing this invocation's source images."""
 
     # Module size gate
     _check_module_sizes(repo_root, selected_paths)
@@ -167,8 +192,8 @@ def _check_identity_role_imports(repo_root: Path, selected_paths: set[str] | Non
         if not path.is_file() or path.relative_to(repo_root).as_posix() == identity_path:
             continue
         try:
-            source = path.read_text(encoding=UTF8_ENCODING)
-            tree = ast.parse(source, filename=path.relative_to(repo_root).as_posix())
+            source = _read_source(path)
+            tree = _parse_source(source, filename=path.relative_to(repo_root).as_posix())
         except (OSError, UnicodeDecodeError, SyntaxError):
             continue
         module_import_prefixes: set[str] = set()
@@ -280,7 +305,7 @@ def _check_module_sizes(repo_root: Path, selected_paths: set[str] | None = None)
         if rel in MODULE_SIZE_EXCEPTIONS:
             continue
         try:
-            line_count = len(path.read_text(encoding="utf-8").splitlines())
+            line_count = len(_read_source(path).splitlines())
         except OSError:
             continue
 
@@ -381,7 +406,7 @@ def _check_source_patterns(repo_root: Path, selected_paths: set[str] | None = No
         for path in _iter_rule_candidate_paths(repo_root, rule, selected_paths):
             rel = path.relative_to(repo_root).as_posix()
             try:
-                lines = path.read_text(encoding="utf-8").splitlines()
+                lines = _read_source(path).splitlines()
             except (OSError, UnicodeDecodeError):
                 continue
             for lineno, line in enumerate(lines, start=1):
@@ -472,8 +497,8 @@ def _collect_runtime_path_bypasses(repo_root: Path, selected_paths: set[str] | N
         if rel in {"teleclaude/paths.py", "teleclaude/runtime/config.py", "tools/lint/guardrails.py"}:
             continue
         try:
-            source = path.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=rel)
+            source = _read_source(path)
+            tree = _parse_source(source, filename=rel)
         except (OSError, UnicodeDecodeError, SyntaxError):
             continue
         lines = source.splitlines()
@@ -534,8 +559,8 @@ def _collect_direct_environment_reads(
         }:
             continue
         try:
-            source = path.read_text(encoding=UTF8_ENCODING)
-            tree = ast.parse(source, filename=rel)
+            source = _read_source(path)
+            tree = _parse_source(source, filename=rel)
         except (OSError, UnicodeDecodeError, SyntaxError):
             continue
         lines = source.splitlines()
@@ -755,10 +780,13 @@ def _warn_for_loose_dicts(repo_root: Path, selected_paths: set[str] | None = Non
         if path in excluded_files:
             continue
         try:
-            lines = path.read_text(encoding="utf-8").splitlines()
+            source = _read_source(path)
+            lines = source.splitlines()
         except OSError:
             continue
-        guarded_ranges = _collect_function_guard_ranges(lines)
+        guarded_ranges = _collect_function_guard_ranges(
+            lines, source=source, filename=path.relative_to(repo_root).as_posix()
+        )
         for lineno, line in enumerate(lines, start=1):
             if legacy_noqa_marker in line:
                 legacy_marker_matches.append(f"{path.relative_to(repo_root)}:{lineno}: {line.strip()}")
@@ -796,16 +824,18 @@ def _warn_for_loose_dicts(repo_root: Path, selected_paths: set[str] | None = Non
         _fail("guardrails warning: loose dict typings detected\n")
 
 
-def _collect_function_guard_ranges(lines: list[str]) -> list[tuple[int, int]]:
+def _collect_function_guard_ranges(
+    lines: list[str], *, source: str | None = None, filename: str = _AST_DEFAULT_FILENAME
+) -> list[tuple[int, int]]:
     """Collect line ranges guarded by function-scope loose-dict markers.
 
     Marker usage:
     - Add `# guard: loose-dict-func - reason` directly above a function/class def.
     - That marker exempts loose-dict checks for the entire function/class block.
     """
-    source = "\n".join(lines)
+    source = NEWLINE.join(lines) if source is None else source
     try:
-        tree = ast.parse(source)
+        tree = _parse_source(source, filename=filename)
     except SyntaxError:
         return []
 

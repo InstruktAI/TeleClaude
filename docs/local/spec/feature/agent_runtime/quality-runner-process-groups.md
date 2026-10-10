@@ -65,12 +65,40 @@ And the original return or exception still determines the gate outcome
 And records are emitted per stage rather than per candidate file
 ```
 
+#### UC-CQD5: Full native lint runs share one repository concurrency slot
+
+```gherkin
+Given two full native lint requests target checkouts sharing one Git repository
+When one request runs the native suite
+Then the other waits for that repository's full-native slot
+And every request still runs its selected checks and receives its own outcome
+And waiting can be interrupted through the existing command cancellation context
+And the slot is released after success, failure or process exit
+And a completion record distinguishes queue waiting from suite execution
+```
+
+#### UC-CQD6: Root formatting checks reuse Prettier's content cache
+
+```gherkin
+Given root Markdown formatting checks use Prettier with no plugins
+When the file contents, formatting options, Prettier version and Node version are unchanged
+Then the check may reuse Prettier's built-in content cache
+And changed files are checked by the same formatter and options
+And formatting writes preserve the cache for other unchanged files
+```
+
 ## Known caveats
 
 - Abrupt process termination can prevent a stage's completion record. TRACE
   entry records identify which stage was entered when diagnosing that case.
 - Guardrail stage durations do not include earlier hook startup or Git-tree
   materialization, and do not time the separate native toolchain.
+- Full-native concurrency control reduces competition; it does not reuse
+  arbitrary Make or state-dependent guardrail results. Scoped native requests
+  retain their existing behavior.
+- Prettier's cache does not fingerprint plugin implementations. This project's
+  root formatter currently has no plugins; adopting or updating a plugin
+  requires invalidating its formatting cache.
 
 ## See also
 

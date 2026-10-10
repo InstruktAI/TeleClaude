@@ -275,12 +275,12 @@ format_python() {
 }
 
 format_root_prettier() {
-    prettier --write "$@"
+    prettier --write --cache --cache-strategy content "$@"
 }
 
 check_root_prettier() {
     local status
-    if prettier --check "$@"; then
+    if prettier --check --cache --cache-strategy content "$@"; then
         return 0
     else
         status=$?

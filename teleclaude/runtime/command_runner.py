@@ -238,6 +238,11 @@ def _raise_if_cancelled(cancellation: ProcessGroupCancellation | None) -> None:
         raise ProcessGroupCancellationRequested
 
 
+def raise_if_command_cancelled() -> None:
+    """Check the current command owner's cancellation while waiting for resources."""
+    _raise_if_cancelled(_PROCESS_GROUP_CANCELLATION.get())
+
+
 def _reaped_exit_code(process: subprocess.Popen[bytes]) -> int:
     """Return a reaped command's exit code; SIGKILL was the last signal sent when it is still unreaped."""
     exit_code = process.poll()
