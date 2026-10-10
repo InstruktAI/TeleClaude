@@ -149,7 +149,6 @@ def act_for_command(command: InternalCommand) -> RelayedAct | None:
             | CommandType.GET_SESSION_DATA
             | CommandType.SYSTEM
             | CommandType.SET_VOICE_FOCUS
-            | CommandType.DISCORD_THREAD_CLAIM
             | CommandType.ACTIVATE_PROCEDURE
         ):
             return None

@@ -67,7 +67,7 @@ class _ProjectForumPruneSkip(StrEnum):
 
 
 AsyncDiscordCallable = Callable[..., Awaitable[object]]
-discord_operation_exceptions: tuple[type[Exception], ...] = (AttributeError, RuntimeError, TypeError, ValueError)
+discord_operation_exceptions: tuple[type[Exception], ...] = ()
 
 try:
     from discord import DiscordException
@@ -402,12 +402,21 @@ class ProvisioningMixin:
 
         return guild  # type: ignore[no-any-return]
 
-    async def _find_or_create_category(self, guild: object, name: str) -> object | None:
+    async def _find_or_create_category(
+        self,
+        guild: object,
+        name: str,
+        *,
+        overwrites: Mapping[object, object] | None = None,
+        propagate_errors: bool = False,
+    ) -> object | None:
         """Find an existing category by name, or create one.
 
         Only creates when the guild cache is confirmed populated (categories is
         a list). If the cache is unavailable (None), refuses to create to
-        prevent duplicate categories from transient gateway issues.
+        prevent duplicate categories from transient gateway issues. A category
+        created with ``overwrites`` is closed from its first moment. When
+        ``propagate_errors`` is true, provider creation failures reach the caller.
         """
         categories = getattr(guild, "categories", None)
         if categories is None:
@@ -428,10 +437,15 @@ class ProvisioningMixin:
 
         try:
             create_category = self._require_async_callable(create_fn, label="guild.create_category")
-            category = await create_category(name=name)
+            if overwrites is not None:
+                category = await create_category(name=name, overwrites=overwrites)
+            else:
+                category = await create_category(name=name)
             logger.info("Created Discord category: %s (id=%s)", name, getattr(category, "id", "?"))
             return category
         except discord_operation_exceptions as exc:
+            if propagate_errors:
+                raise
             logger.warning("Failed to create Discord category '%s': %s", name, exc)
             return None
 
@@ -444,6 +458,8 @@ class ProvisioningMixin:
         *,
         create: bool = True,
         excluded_ids: frozenset[int] | None = None,
+        overwrites: Mapping[object, object] | None = None,
+        propagate_errors: bool = False,
     ) -> int | None:
         """Find an existing forum by name within the category, or create one under it.
 
@@ -453,7 +469,9 @@ class ProvisioningMixin:
         here and will not be reclaimed. When ``create`` is False, resolves in
         scope but never creates — shared forums are provisioned by the master
         computer only. A forum without a target category is never created;
-        callers must supply the per-computer or shared category.
+        callers must supply the per-computer or shared category. A forum created
+        with ``overwrites`` is closed from its first moment. When
+        ``propagate_errors`` is true, provider creation failures reach the caller.
         """
         if category is None:
             logger.warning("Refusing to create forum '%s' without a target category", name)
@@ -490,12 +508,17 @@ class ProvisioningMixin:
 
         try:
             create_forum = self._require_async_callable(create_fn, label="guild.create_forum")
-            forum = await create_forum(name=name, topic=topic, category=category)
+            if overwrites is not None:
+                forum = await create_forum(name=name, topic=topic, category=category, overwrites=overwrites)
+            else:
+                forum = await create_forum(name=name, topic=topic, category=category)
             forum_id = self._parse_optional_int(getattr(forum, "id", None))
             if forum_id is not None:
                 logger.info("Created Discord forum: %s (id=%s)", name, forum_id)
             return forum_id
         except discord_operation_exceptions as exc:
+            if propagate_errors:
+                raise
             logger.warning("Failed to create Discord forum '%s': %s", name, exc)
             return None
 
@@ -524,15 +547,31 @@ class ProvisioningMixin:
         return channel_category_id == category_id
 
     async def _find_or_create_text_channel(
-        self, guild: object, category: object | None, name: str, *, create: bool = True
+        self,
+        guild: object,
+        category: object | None,
+        name: str,
+        *,
+        create: bool = True,
+        category_scoped: bool = False,
+        overwrites: Mapping[object, object] | None = None,
+        propagate_errors: bool = False,
     ) -> int | None:
         """Find an existing text channel by name, or create one under the category.
 
         Refuses to create when the guild channel cache is not populated. When
         ``create`` is False, resolves an existing channel by name but never
         creates — shared channels are provisioned by the master computer only.
+        With ``category_scoped`` the name is matched only among the category's
+        own channels, so a same-named channel of another category is never
+        claimed. A channel created with ``overwrites`` is closed from its first
+        moment. When ``propagate_errors`` is true, provider creation failures
+        reach the caller.
         """
-        existing_channel_id = find_existing_text_channel_id(guild, name, self._parse_optional_int)
+        if category_scoped:
+            existing_channel_id = self._find_text_channel_in_category(guild, category, name)
+        else:
+            existing_channel_id = find_existing_text_channel_id(guild, name, self._parse_optional_int)
         if existing_channel_id is not None:
             logger.debug("Found existing Discord text channel: %s (id=%s)", name, existing_channel_id)
             return existing_channel_id
@@ -548,17 +587,41 @@ class ProvisioningMixin:
 
         try:
             create_text_channel = self._require_async_callable(create_fn, label="guild.create_text_channel")
+            # guard: loose-dict - dynamic kwargs; category and overwrites keys conditionally added
+            kwargs: dict[str, object] = {"name": name}
             if category is not None:
-                channel = await create_text_channel(name=name, category=category)
-            else:
-                channel = await create_text_channel(name=name)
+                kwargs["category"] = category
+            if overwrites is not None:
+                kwargs["overwrites"] = overwrites
+            channel = await create_text_channel(**kwargs)
             ch_id = self._parse_optional_int(getattr(channel, "id", None))
             if ch_id is not None:
                 logger.info("Created Discord text channel: %s (id=%s)", name, ch_id)
             return ch_id
         except discord_operation_exceptions as exc:
+            if propagate_errors:
+                raise
             logger.warning("Failed to create Discord text channel '%s': %s", name, exc)
             return None
+
+    def _find_text_channel_in_category(self, guild: object, category: object | None, name: str) -> int | None:
+        """Return the id of the category's own text channel with the given name."""
+        if category is None:
+            return None
+        for channel in self._candidate_channels_for_category(guild, category):
+            channel_name = getattr(channel, _NAME_ATTR, None)
+            channel_type = getattr(channel, "type", None)
+            is_text = channel_type is not None and getattr(channel_type, "value", channel_type) == 0
+            if (
+                is_text
+                and isinstance(channel_name, str)
+                and channel_name.lower() == name.lower()
+                and self._channel_matches_category(channel, category)
+            ):
+                found_id = self._parse_optional_int(getattr(channel, _ID_ATTR, None))
+                if found_id is not None:
+                    return found_id
+        return None
 
     async def _persist_project_forum_ids(self, project_changes: list[tuple[str, int | None]]) -> None:
         """Persist project forum observations without returning provider state to config."""

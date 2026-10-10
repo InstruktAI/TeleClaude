@@ -77,14 +77,17 @@ class ConversationRef:
     ``key_field`` names the field of the origin section the conversation's
     sessions carry ``key`` in. ``reaches_every_computer`` marks adapters whose
     inbound messages every computer receives, where the mesh master alone
-    decides. ``refine`` lets an adapter exclude its own non-conversation
-    sessions from the per-computer lookup.
+    decides. ``carries_desk_entry`` marks adapters whose conversations can enter
+    a help desk; on the others a desk identifier is a miss and no desk session
+    is the conversation's session. ``refine`` lets an adapter exclude its own
+    non-conversation sessions from the per-computer lookup.
     """
 
     origin: InputOrigin
     key_field: str
     key: str
     reaches_every_computer: bool
+    carries_desk_entry: bool
     refine: Callable[[Session], bool] | None = None
 
     @property

@@ -32,7 +32,6 @@ from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.types.commands import (
     CommandType,
     CreateSessionCommand,
-    DiscordThreadClaimCommand,
     HandoffAgentCommand,
     InternalCommand,
     ProcessMessageCommand,
@@ -60,7 +59,6 @@ COMMAND_HANDLER_METHODS: dict[CommandType, str] = {
     CommandType.CLOSE_SESSION: "close_session",
     CommandType.SYSTEM: "system_command",
     CommandType.SET_VOICE_FOCUS: "set_voice_focus",
-    CommandType.DISCORD_THREAD_CLAIM: "discord_thread_claim",
     CommandType.ACTIVATE_PROCEDURE: "activate_procedure",
 }
 
@@ -336,10 +334,6 @@ async def invoke_command_handler(command: InternalCommand, *, source_computer: s
         raise ValueError(f"No handler registered for command type: {command.command_type.value}")
     handler = getattr(cmds, handler_name)
 
-    if isinstance(command, DiscordThreadClaimCommand):
-        result = await handler(command, source_computer=source_computer or config.computer.name)
-        return cast(JsonValue, result)
-
     result = await handler(command)
     return cast(JsonValue, result)
 
@@ -381,8 +375,6 @@ def shutdown_refusal_envelope(refusal: ShutdownRefusal) -> JsonDict:
 async def execute_command_envelope(command: InternalCommand, *, source_computer: str | None = None) -> JsonDict:
     """Run a command and return the Redis request/response envelope."""
     try:
-        if isinstance(command, DiscordThreadClaimCommand) and not source_computer:
-            raise ValueError("shared Discord child claims require an authenticated transport source")
         data = await run_local_command(command, source_computer=source_computer)
     except ShutdownRefusal as exc:
         return shutdown_refusal_envelope(exc)

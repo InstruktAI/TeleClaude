@@ -121,7 +121,6 @@ class GatewayHandlersMixin:
     - _infrastructure_provisioned: bool
     - _ready_event: asyncio.Event
     - _project_forum_map: dict[str, int]
-    - _help_desk_channel_id: int | None
     - _all_sessions_channel_id: int | None
     - _team_channel_map: dict[int, str]
     - _multi_agent: bool
@@ -134,7 +133,6 @@ class GatewayHandlersMixin:
     - _register_session_launcher_view(forum_id, message_id) -> bool
     - _handle_discord_dm(message) (async)
     - _is_managed_message(message) -> bool
-    - _is_help_desk_thread(message) -> bool
     - _is_bot_message(message) -> bool
     - _is_customer_session(session) -> bool
     - _resolve_or_create_discord_session(message) -> tuple[Session | None, bool] (async)
@@ -155,7 +153,6 @@ class GatewayHandlersMixin:
     _forum_project_map: dict[int, str]
     _project_category_id: int | None
     _registered_launcher_message_ids: set[int]
-    _help_desk_channel_id: int | None
     _all_sessions_channel_id: int | None
     _team_channel_map: dict[int, str]
 
@@ -185,6 +182,8 @@ class GatewayHandlersMixin:
 
         async def _handle_projects_changed(self, _event: str, context: ProjectsChangedContext) -> None: ...
 
+        def _request_desk_reconcile(self) -> None: ...
+
         async def _post_or_update_launcher(self, forum_id: int) -> None: ...
 
         async def _remove_obsolete_launchers(self, forum_id: int) -> None: ...
@@ -194,8 +193,6 @@ class GatewayHandlersMixin:
         async def _handle_discord_dm(self, message: object) -> None: ...
 
         def _is_managed_message(self, message: object) -> bool: ...
-
-        def _is_help_desk_thread(self, message: object) -> bool: ...
 
         def _is_bot_message(self, message: object) -> bool: ...
 
@@ -400,18 +397,16 @@ class GatewayHandlersMixin:
 
         if self._multi_agent:
             await self._post_project_forum_launchers()
-            cleanup_forum_ids: set[int] = set()
-            if self._help_desk_channel_id is not None:
-                cleanup_forum_ids.add(self._help_desk_channel_id)
             if self._all_sessions_channel_id is not None:
-                cleanup_forum_ids.add(self._all_sessions_channel_id)
-            for forum_id in cleanup_forum_ids:
                 try:
-                    await self._remove_obsolete_launchers(forum_id)
+                    await self._remove_obsolete_launchers(self._all_sessions_channel_id)
                 except Exception as exc:
-                    logger.warning("Failed to remove obsolete launcher for forum %s: %s", forum_id, exc)
+                    logger.warning(
+                        "Failed to remove obsolete launcher for forum %s: %s", self._all_sessions_channel_id, exc
+                    )
 
         self._infrastructure_provisioned = True
+        self._request_desk_reconcile()
         if getattr(self, "_project_reconcile_pending", False):
             await self._handle_projects_changed(
                 TeleClaudeEvents.PROJECTS_CHANGED,
@@ -502,6 +497,7 @@ class GatewayHandlersMixin:
                     key_field=DISCORD_DM_KEY_FIELD,
                     key=str(dm_channel_id),
                     reaches_every_computer=True,
+                    carries_desk_entry=False,
                 ),
                 sender=sender,
                 text=text,
@@ -624,10 +620,10 @@ class GatewayHandlersMixin:
             )
             return
 
-        # Role-based authorization: customers only accepted from help desk threads
-        if self._is_customer_session(session) and not self._is_help_desk_thread(message):
+        # Role-based authorization: Discord is never a customer surface
+        if self._is_customer_session(session):
             logger.error(
-                "Blocking customer session %s from non-help-desk channel (human_role=%s)",
+                "Blocking customer session %s from a Discord channel (human_role=%s)",
                 session.session_id,
                 session_person_role(session),
             )
@@ -783,11 +779,12 @@ class GatewayHandlersMixin:
     def _is_managed_message(self, message: object) -> bool:
         """Check if a message originates from a managed channel.
 
-        Managed channels include: help desk, all-sessions, project forums,
-        and team text channels. When ``_help_desk_channel_id`` is not configured,
-        all messages are accepted (dev/test mode).
+        Managed channels include: all-sessions, project forums, and team text
+        channels. A help desk's forums and team chat are not managed, so a post
+        there reaches no session. When no guild is configured, all messages are
+        accepted (dev/test mode).
         """
-        if self._help_desk_channel_id is None:
+        if self._guild_id is None:
             return True
 
         channel = getattr(message, "channel", None)
@@ -816,24 +813,7 @@ class GatewayHandlersMixin:
     def _get_managed_forum_ids(self) -> set[int]:
         """Build the set of all managed Discord forum IDs."""
         ids: set[int] = set()
-        if self._help_desk_channel_id is not None:
-            ids.add(self._help_desk_channel_id)
         if self._all_sessions_channel_id is not None:
             ids.add(self._all_sessions_channel_id)
         ids.update(self._project_forum_map.values())
         return ids
-
-    def _is_help_desk_thread(self, message: object) -> bool:
-        """Check if a message originates from the help desk forum or a thread within it."""
-        if self._help_desk_channel_id is None:
-            return True
-        channel = getattr(message, "channel", None)
-        channel_id = self._parse_optional_int(getattr(channel, "id", None))
-        if channel_id == self._help_desk_channel_id:
-            return True
-        parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))
-        if parent_id == self._help_desk_channel_id:
-            return True
-        parent_obj = getattr(channel, "parent", None)
-        parent_obj_id = self._parse_optional_int(getattr(parent_obj, "id", None))
-        return parent_obj_id == self._help_desk_channel_id

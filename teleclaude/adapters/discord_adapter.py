@@ -21,6 +21,7 @@ from teleclaude.adapters.discord import (
     MessageOperationsMixin,
 )
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
+from teleclaude.adapters.discord.help_desk_categories import DeskForums, HelpDeskCategoriesMixin
 from teleclaude.adapters.discord.listen_control import ListenHereView
 from teleclaude.adapters.discord.voice_room import VoiceRoom
 from teleclaude.adapters.editable_ui_adapter import EditableUiAdapter
@@ -28,6 +29,7 @@ from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import discord_policy
 from teleclaude.adapters.ui.threaded_output import OverflowContext
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.config.declaration_changes import subscribe_declaration_changes, unsubscribe_declaration_changes
 from teleclaude.config.machine import config
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.command_dispatch import dispatch_command
@@ -45,12 +47,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import DiscordAdapterMetadata, DiscordMetadataField, MessageMetadata
-from teleclaude.types.commands import DiscordThreadClaimCommand, SetVoiceFocusCommand
-from teleclaude.types.discord_thread_claims import (
-    DiscordThreadClaimAction,
-    DiscordThreadClaimKind,
-    DiscordThreadClaimLifecycle,
-)
+from teleclaude.types.commands import SetVoiceFocusCommand
 from teleclaude.utils.markdown import (
     GFM_MARKDOWN_INITIAL_STATE,
     GfmMarkdownState,
@@ -69,6 +66,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 DISCORD_TYPING_INTERVAL_S = 5.0
+_DESK_RECONCILE_TASK_NAME = "discord-desk-reconcile"
+_DESK_PASS_FAILED_EVENT = "discord.help_desk_pass.failed"
 
 
 class DiscordClientLike(Protocol):
@@ -90,6 +89,7 @@ class DiscordAdapter(
     ChannelOperationsMixin,
     GatewayHandlersMixin,
     InfrastructureMixin,
+    HelpDeskCategoriesMixin,
     InputHandlersMixin,
     MessageOperationsMixin,
     EditableUiAdapter,
@@ -142,151 +142,6 @@ class DiscordAdapter(
         """Convert generic markdown into Discord-friendly markdown/text."""
         return discordify_markdown(text)
 
-    async def _resolve_discord_claim_master(self) -> str | None:
-        """Resolve the only computer authorized to persist shared Discord child claims."""
-        if config.computer.is_master:
-            return config.computer.name
-        for peer in await self.client.discover_peers():
-            name = peer.get("name")
-            if peer.get("is_master") is True and isinstance(name, str):
-                return name
-        return None
-
-    async def _discord_claim_fleet_members(self) -> tuple[frozenset[str], frozenset[str]]:
-        """Return discovered live members and those advertising the shared-claim capability."""
-        peers = await self.client.discover_peers()
-        live = {config.computer.name}
-        capable = {config.computer.name}
-        for peer in peers:
-            name = peer.get("name")
-            capabilities = peer.get("capability_set")
-            if isinstance(name, str):
-                live.add(name)
-                if (
-                    isinstance(capabilities, list)
-                    and "project/spec/feature/integration/discord-admin-reflection-state" in capabilities
-                ):
-                    capable.add(name)
-        return frozenset(live), frozenset(capable)
-
-    async def _observe_discord_shared_thread(
-        self,
-        *,
-        thread_id: int,
-        parent_id: int,
-        kind: DiscordThreadClaimKind,
-        local_identity: str,
-        lifecycle: DiscordThreadClaimLifecycle,
-    ) -> None:
-        """Publish a non-enforcing shared-child observation to the master claim ledger."""
-        master = await self._resolve_discord_claim_master()
-        if master is None:
-            logger.info("discord.shared_thread_claim.held", reason="master_unavailable", thread_id=thread_id)
-            return
-        command = DiscordThreadClaimCommand(
-            action=DiscordThreadClaimAction.OBSERVE,
-            thread_id=thread_id,
-            parent_id=parent_id,
-            kind=kind,
-            local_identity=local_identity,
-            lifecycle=lifecycle,
-            protocol_generation=1,
-        )
-        command.computer = master
-        await dispatch_command(self.client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
-
-    async def _claim_discord_shared_thread(
-        self,
-        *,
-        thread_id: int,
-        parent_id: int,
-        kind: DiscordThreadClaimKind,
-        local_identity: str,
-        lifecycle: DiscordThreadClaimLifecycle,
-    ) -> bool:
-        """Acquire the master-held owner row before an activated shared-child binding advances."""
-        master = await self._resolve_discord_claim_master()
-        if master is None:
-            return False
-        command = DiscordThreadClaimCommand(
-            action=DiscordThreadClaimAction.CLAIM,
-            thread_id=thread_id,
-            parent_id=parent_id,
-            kind=kind,
-            local_identity=local_identity,
-            lifecycle=lifecycle,
-            protocol_generation=1,
-        )
-        command.computer = master
-        result = await dispatch_command(self.client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
-        return isinstance(result, dict) and result.get("outcome") == "claimed"
-
-    async def _complete_discord_shared_thread_inventory(self, *, epoch: int) -> bool:
-        """Publish this member's completed shared-child inventory to the authenticated master boundary."""
-        master = await self._resolve_discord_claim_master()
-        if master is None:
-            return False
-        inventory_items = []
-        for session in await db.list_sessions(computer_name=config.computer.name, include_closed=True):
-            metadata = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
-            if metadata.thread_id is None or metadata.channel_id not in {
-                self._help_desk_channel_id,
-                self._escalation_channel_id,
-            }:
-                continue
-            kind = (
-                DiscordThreadClaimKind.ESCALATION_RELAY
-                if metadata.channel_id == self._escalation_channel_id
-                else DiscordThreadClaimKind.HELP_DESK_SESSION
-            )
-            lifecycle = (
-                DiscordThreadClaimLifecycle.ACTIVE
-                if session.closed_at is None
-                else DiscordThreadClaimLifecycle.TERMINAL
-            )
-            inventory_items.append(
-                {
-                    "thread_id": metadata.thread_id,
-                    "parent_id": metadata.channel_id,
-                    "kind": kind.value,
-                    "local_identity": session.session_id,
-                    "lifecycle": lifecycle.value,
-                }
-            )
-        command = DiscordThreadClaimCommand(
-            action=DiscordThreadClaimAction.COMPLETE_INVENTORY,
-            thread_id=0,
-            parent_id=0,
-            kind=DiscordThreadClaimKind.HELP_DESK_SESSION,
-            local_identity="",
-            lifecycle=DiscordThreadClaimLifecycle.PENDING,
-            protocol_generation=1,
-            inventory_epoch=epoch,
-            inventory_items=inventory_items,
-        )
-        command.computer = master
-        result = await dispatch_command(self.client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
-        return isinstance(result, dict) and result.get("outcome") == "completed"
-
-    async def _open_discord_shared_thread_epoch(self) -> int | None:
-        """Request the durable current inventory epoch from the authenticated master."""
-        master = await self._resolve_discord_claim_master()
-        if master is None:
-            return None
-        command = DiscordThreadClaimCommand(
-            action=DiscordThreadClaimAction.OPEN_EPOCH,
-            thread_id=0,
-            parent_id=0,
-            kind=DiscordThreadClaimKind.HELP_DESK_SESSION,
-            local_identity="",
-            lifecycle=DiscordThreadClaimLifecycle.PENDING,
-            protocol_generation=1,
-        )
-        command.computer = master
-        result = await dispatch_command(self.client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
-        value = result.get("owner_computer") if isinstance(result, dict) else None
-        return int(value) if isinstance(value, str) and value.isdigit() else None
-
     # -------------------------------------------------------------------------
 
     def __init__(self, client: AdapterClient, *, task_registry: TaskRegistry | None = None) -> None:
@@ -296,10 +151,7 @@ class DiscordAdapter(
         self._discord: ModuleType = importlib.import_module("discord")
         self._token = config.discord.token.strip() if config.discord.token else ""
         self._guild_id = config.discord.guild_id
-        self._help_desk_channel_id: int | None = None
         self._all_sessions_channel_id: int | None = None
-        self._escalation_channel_id: int | None = None
-        self._operator_chat_channel_id: int | None = None
         self._announcements_channel_id: int | None = None
         self._general_channel_id: int | None = None
         self._gateway_task: asyncio.Task[object] | None = None
@@ -313,6 +165,9 @@ class DiscordAdapter(
         self._projects_changed_handler: EventHandler | None = None
         self._project_reconcile_lock = asyncio.Lock()
         self._project_reconcile_pending = False
+        self._desk_reconcile_lock = asyncio.Lock()
+        self._desk_reconcile_pending = False
+        self._desk_reconcile_task: asyncio.Task[object] | None = None
         self._registered_listen_message_ids: set[int] = set()
         # project_path -> discord_forum_id mapping, built at startup
         self._project_forum_map: dict[str, int] = {}
@@ -326,6 +181,8 @@ class DiscordAdapter(
         self._reflection_webhook_cache: dict[int, object] = {}
         # team channel ID -> person's home folder path
         self._team_channel_map: dict[int, str] = {}
+        # desk entry identifier -> the desk's forums, rebuilt after each desk reconciliation pass
+        self._desk_forums: dict[str, DeskForums] = {}
         self._tree: object | None = None
 
         # Guard against duplicate infrastructure provisioning on Discord reconnect.
@@ -360,6 +217,7 @@ class DiscordAdapter(
         self._projects_changed_handler = event_bus.subscribe(
             TeleClaudeEvents.PROJECTS_CHANGED, self._handle_projects_changed
         )
+        subscribe_declaration_changes(self._request_desk_reconcile)
         self._register_cancel_slash_command()
         self._register_gateway_handlers()
         self._ready_event.clear()
@@ -384,6 +242,7 @@ class DiscordAdapter(
     async def stop(self) -> None:
         """Stop Discord client and gateway task."""
         await self._qos_scheduler.stop()
+        unsubscribe_declaration_changes(self._request_desk_reconcile)
         self._tree = None
         self._registered_launcher_message_ids.clear()
         self._registered_listen_message_ids.clear()
@@ -437,6 +296,7 @@ class DiscordAdapter(
         """Serialize live forum reconciliation, coalescing changes during a pass."""
         _ = context
         self._project_reconcile_pending = True
+        self._request_desk_reconcile()
         if not self._infrastructure_provisioned:
             return
 
@@ -446,6 +306,34 @@ class DiscordAdapter(
                 await self._reconcile_project_forums()
                 if self._multi_agent:
                     await self._post_project_forum_launchers()
+
+    def _request_desk_reconcile(self) -> None:
+        """Ask for a desk-category pass and make sure one task is draining the requests.
+
+        Called from synchronous publishers, so it only records the request and
+        schedules; requests that arrive while a pass runs are absorbed by one more
+        pass. Before infrastructure is provisioned the request waits for startup.
+        """
+        self._desk_reconcile_pending = True
+        if not self._infrastructure_provisioned or not config.computer.is_master:
+            return
+        if self._desk_reconcile_task is not None and not self._desk_reconcile_task.done():
+            return
+        coroutine = self._drain_desk_reconcile_requests()
+        if self.task_registry:
+            self._desk_reconcile_task = self.task_registry.spawn(coroutine, name=_DESK_RECONCILE_TASK_NAME)
+        else:
+            self._desk_reconcile_task = asyncio.create_task(coroutine, name=_DESK_RECONCILE_TASK_NAME)
+
+    async def _drain_desk_reconcile_requests(self) -> None:
+        """Run a desk pass per request; a pass that fails is logged once and later requests are still served."""
+        async with self._desk_reconcile_lock:
+            while self._desk_reconcile_pending:
+                self._desk_reconcile_pending = False
+                try:
+                    await self._reconcile_help_desk_categories()
+                except Exception:
+                    logger.exception(_DESK_PASS_FAILED_EVENT)
 
     async def send_output_update(
         self,

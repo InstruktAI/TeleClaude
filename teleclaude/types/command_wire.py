@@ -16,7 +16,6 @@ from teleclaude.types.commands import (
     CloseSessionCommand,
     CommandType,
     CreateSessionCommand,
-    DiscordThreadClaimCommand,
     GetSessionDataCommand,
     HandleFileCommand,
     HandleVoiceCommand,
@@ -33,11 +32,6 @@ from teleclaude.types.commands import (
     StartAgentCommand,
     SystemCommand,
     UnsubscribeSessionCommand,
-)
-from teleclaude.types.discord_thread_claims import (
-    DiscordThreadClaimAction,
-    DiscordThreadClaimKind,
-    DiscordThreadClaimLifecycle,
 )
 from teleclaude.types.media import MediaRef
 
@@ -62,7 +56,6 @@ COMMAND_CLASS_BY_TYPE: dict[CommandType, type[InternalCommand]] = {
     CommandType.CLOSE_SESSION: CloseSessionCommand,
     CommandType.SYSTEM: SystemCommand,
     CommandType.SET_VOICE_FOCUS: SetVoiceFocusCommand,
-    CommandType.DISCORD_THREAD_CLAIM: DiscordThreadClaimCommand,
     CommandType.ACTIVATE_PROCEDURE: ActivateProcedureCommand,
 }
 
@@ -70,9 +63,6 @@ _WIRE_ENUM_FIELDS: Mapping[str, type[Enum]] = {
     "response_mode": ResponseMode,
     "entry_point": SessionEntryPoint,
     "command_input_mode": CommandInputMode,
-    "action": DiscordThreadClaimAction,
-    "kind": DiscordThreadClaimKind,
-    "lifecycle": DiscordThreadClaimLifecycle,
     "text_kind": TranscriptEntryKind,
     "source_feature": InjectedTextSourceFeature,
     "identity": SubscriptionIdentity,

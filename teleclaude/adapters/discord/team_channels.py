@@ -31,6 +31,32 @@ else:
     discord_operation_exceptions = (DiscordException,) + discord_operation_exceptions
 
 
+def base_private_overwrites(
+    discord_module: object, guild: object, bot_user: object | None, **bot_permissions: bool
+) -> dict[object, object]:
+    """The overwrites every private surface starts from: deny @everyone, allow the bot.
+
+    The bot always holds view, read, send and message management; ``bot_permissions``
+    adds the further permissions a surface needs, such as thread handling.
+    """
+    permission_overwrite_cls = getattr(discord_module, "PermissionOverwrite", None)
+    if permission_overwrite_cls is None:
+        return {}
+
+    overwrites: dict[object, object] = {}
+
+    default_role = getattr(guild, "default_role", None)
+    if default_role is not None:
+        overwrites[default_role] = permission_overwrite_cls(view_channel=False, read_messages=False)
+
+    if bot_user is not None:
+        overwrites[bot_user] = permission_overwrite_cls(
+            view_channel=True, read_messages=True, send_messages=True, manage_messages=True, **bot_permissions
+        )
+
+    return overwrites
+
+
 class TeamChannelsMixin:
     """Mixin providing team channel provisioning for DiscordAdapter.
 
@@ -161,19 +187,8 @@ class TeamChannelsMixin:
         if permission_overwrite_cls is None:
             return {}
 
-        overwrites: dict[object, object] = {}
-
-        # Deny @everyone
-        default_role = getattr(guild, "default_role", None)
-        if default_role is not None:
-            overwrites[default_role] = permission_overwrite_cls(view_channel=False, read_messages=False)
-
-        # Allow the bot
         bot_user = getattr(self._client, "user", None) if self._client is not None else None
-        if bot_user is not None:
-            overwrites[bot_user] = permission_overwrite_cls(
-                view_channel=True, read_messages=True, send_messages=True, manage_messages=True
-            )
+        overwrites = base_private_overwrites(self._discord, guild, bot_user)
 
         # Allow the person
         if owner_user_id is not None:

@@ -78,9 +78,7 @@ _FOLLOWUP_SEND_LABEL = "Discord interaction followup.send"
 _STARTING_AGENT_TEMPLATE = "Starting {agent_name}..."
 _FAILED_AGENT_TEMPLATE = "Failed to start {agent_name}."
 _EMPTY_VALUE = ""
-_HELP_DESK_FORUM = "help_desk"
 _UNKNOWN_FORUM = "unknown"
-_HELP_DESK_FORUM_NOT_ENTRY_EVENT = "help_desk_forum_thread_not_entry"
 _NO_SESSION_PROJECT_EVENT = "discord_session_creation_no_project"
 
 
@@ -437,10 +435,6 @@ class InputHandlersMixin:
 
         async def _create() -> Session | None:
             forum_type, project_path = self._resolve_forum_context(message)
-            if forum_type == _HELP_DESK_FORUM:
-                # A help desk is entered by its identifier; a new thread in the shared forum starts nothing.
-                logger.info(_HELP_DESK_FORUM_NOT_ENTRY_EVENT, thread_id=routing_ids.thread_id)
-                return None
             if forum_type == _UNKNOWN_FORUM:
                 return None
             return await self._create_session_for_message(

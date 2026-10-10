@@ -57,10 +57,7 @@ _FORUM_SOURCE_SEGMENT = "discord_forum"
 _DISCORD_SOURCE_PREFIX = "discord."
 _CATEGORIES_SOURCE_PREFIX = "discord.categories."
 _REFLECTED_ID_ATTRIBUTES = {
-    "help_desk_channel_id": "_help_desk_channel_id",
     "all_sessions_channel_id": "_all_sessions_channel_id",
-    "escalation_channel_id": "_escalation_channel_id",
-    "operator_chat_channel_id": "_operator_chat_channel_id",
     "announcements_channel_id": "_announcements_channel_id",
     "general_channel_id": "_general_channel_id",
 }
@@ -82,10 +79,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
     - _client: DiscordClientLike | None
     - _guild_id: int | None
     - _discord: ModuleType
-    - _help_desk_channel_id: int | None
     - _all_sessions_channel_id: int | None
-    - _escalation_channel_id: int | None
-    - _operator_chat_channel_id: int | None
     - _announcements_channel_id: int | None
     - _general_channel_id: int | None
     - _project_forum_map: dict[str, int]
@@ -110,10 +104,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
     if TYPE_CHECKING:
         _discord: ModuleType
         _client: object
-        _help_desk_channel_id: int | None
         _all_sessions_channel_id: int | None
-        _escalation_channel_id: int | None
-        _operator_chat_channel_id: int | None
         _announcements_channel_id: int | None
         _general_channel_id: int | None
 
@@ -121,6 +112,8 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
 
         @staticmethod
         def _require_async_callable(fn: object, *, label: str) -> Callable[..., Awaitable[object]]: ...
+
+        async def _retire_shared_help_desk_surface(self, guild: object, *, is_master: bool) -> None: ...
 
         async def _get_channel(self, channel_id: int) -> object | None: ...
 
@@ -180,10 +173,11 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
     async def _ensure_discord_infrastructure(self) -> None:
         """Auto-provision the Discord channel structure for this computer.
 
-        Shared categories — Operations (#announcements, #general), Help Desk
-        (#customer-sessions, #escalations, #operator-chat), and Team (per-person
-        text channels) — are generic across the guild and provisioned by the
-        master computer only. Non-master computers resolve these by name but
+        Shared categories — Operations (#announcements, #general) and Team
+        (per-person text channels) — are generic across the guild and provisioned
+        by the master computer only. The guild-wide Help Desk category those
+        replaced by per-desk categories is retired here on every start until it is
+        gone; the desk categories themselves are reconciled separately. Non-master computers resolve these by name but
         never create them, so a shared Discord app cannot accrue duplicates.
 
         The per-computer category — Projects - {computer} (#unknown catch-all
@@ -228,33 +222,8 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
                 self._general_channel_id = ch_id
                 changes["general_channel_id"] = ch_id
 
-        # --- Category: Help Desk (shared — master provisions, others resolve) ---
-        hd_cat = await self._ensure_category(guild, "Help Desk", existing_cats, cat_changes, create=is_master)
-
-        self._help_desk_channel_id = await self._validate_channel_id(self._help_desk_channel_id)
-        if self._help_desk_channel_id is None:
-            forum_id = await self._find_or_create_forum(
-                guild, hd_cat, "Customer Sessions", "Customer support sessions", create=is_master
-            )
-            if forum_id is not None:
-                self._help_desk_channel_id = forum_id
-                changes["help_desk_channel_id"] = forum_id
-
-        self._escalation_channel_id = await self._validate_channel_id(self._escalation_channel_id)
-        if self._escalation_channel_id is None:
-            forum_id = await self._find_or_create_forum(
-                guild, hd_cat, "Escalations", "Human-admin escalation relay threads", create=is_master
-            )
-            if forum_id is not None:
-                self._escalation_channel_id = forum_id
-                changes["escalation_channel_id"] = forum_id
-
-        self._operator_chat_channel_id = await self._validate_channel_id(self._operator_chat_channel_id)
-        if self._operator_chat_channel_id is None:
-            ch_id = await self._find_or_create_text_channel(guild, hd_cat, "operator-chat", create=is_master)
-            if ch_id is not None:
-                self._operator_chat_channel_id = ch_id
-                changes["operator_chat_channel_id"] = ch_id
+        # --- Retire the guild-wide Help Desk category (replaced by per-desk categories) ---
+        await self._retire_shared_help_desk_surface(guild, is_master=is_master)
 
         # --- Category: Projects - {computer} (per-computer, always enabled when Discord is configured) ---
         computer_name_slug = config.computer.name.lower().replace("-", "_").replace(" ", "_")
@@ -648,9 +617,6 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         """Remove launcher threads from a forum with no authorized project target."""
         if self._client is None or not self._multi_agent:
             return
-        if forum_id == self._help_desk_channel_id and not config.computer.is_master:
-            return
-
         forum_channel = await self._get_channel(forum_id)
         if forum_channel is None or not self._is_forum_channel(forum_channel):
             return

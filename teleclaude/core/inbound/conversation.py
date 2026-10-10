@@ -13,6 +13,8 @@ by what the person sent and nothing else:
   earlier session is left running without the conversation;
 - a message without an identifier goes to the conversation's session, revived
   when it was closed;
+- a conversation that carries no desk entry (Discord) never enters a desk: a
+  desk identifier there is a miss, and a desk session is not its session;
 - every miss gets the one neutral reply, at most once per cooldown window.
 
 On a per-computer adapter (Telegram) the session is the binding and this
@@ -86,6 +88,7 @@ class ConversationDecision(StrEnum):
     ENTRY_SUPERSEDED = "conversation_entry_superseded"
     ENTRY_NOT_HOSTED_HERE = "conversation_entry_not_hosted_here"
     ENTRY_REFUSED = "conversation_entry_refused"
+    ENTRY_DESK_NOT_CARRIED = "conversation_entry_desk_not_carried"
     TURN_DELIVERED = "conversation_turn_delivered"
     TURN_REVIVED = "conversation_turn_revived"
     TURN_OWN_ASSISTANT = "conversation_turn_own_assistant"
@@ -281,6 +284,11 @@ def _can_be_conversation_session(turn: ConversationTurn, session: Session, env: 
     return not _hidden_on_this_computer(stamp, env) and (stamp is not None or _is_open(session))
 
 
+def _is_uncarried_desk_session(turn: ConversationTurn, latest: _Latest) -> bool:
+    """Whether the conversation's session is a desk session on a conversation that carries no desk entry."""
+    return not turn.conversation.carries_desk_entry and latest.endpoint is not None and latest.endpoint.is_help_desk
+
+
 async def _latest_per_computer(turn: ConversationTurn, env: ConversationEnvironment) -> _Latest | None:
     """The conversation's newest session that can be its session."""
     conversation = turn.conversation
@@ -460,6 +468,8 @@ async def _enter_by_invite(
 async def _ordinary_turn(turn: ConversationTurn, env: ConversationEnvironment) -> ConversationOutcome:
     """A turn without an identifier: the conversation's session, else a registered person's own assistant."""
     latest = await _latest(turn, env)
+    if latest is not None and _is_uncarried_desk_session(turn, latest):
+        latest = None
     if latest is not None:
         session = latest.session
         if not _is_open(session):
@@ -491,6 +501,9 @@ async def _decide(turn: ConversationTurn, env: ConversationEnvironment, fleet: F
     if gesture is EntryGesture.IDENTIFIER and isinstance(identifier, InviteToken):
         return await _enter_by_invite(turn, env, identifier)
     if gesture is EntryGesture.IDENTIFIER and isinstance(identifier, DeskIdentifier):
+        if not turn.conversation.carries_desk_entry:
+            _log(ConversationDecision.ENTRY_DESK_NOT_CARRIED, turn)
+            return await _miss(turn, env)
         desk_fleet = fleet if fleet is not None else await env.observe_fleet()
         endpoint = _resolve_desk(turn, env, desk_fleet, identifier)
         if endpoint is None:

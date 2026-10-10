@@ -99,6 +99,7 @@ def telegram_conversation(user_id: int) -> ConversationRef:
         key_field=_KEY_FIELD,
         key=str(user_id),
         reaches_every_computer=False,
+        carries_desk_entry=True,
         refine=_is_private_chat_session,
     )
 

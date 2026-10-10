@@ -87,6 +87,7 @@ def whatsapp_conversation(phone_number: str) -> ConversationRef:
         key_field=WHATSAPP_KEY_FIELD,
         key=phone_number,
         reaches_every_computer=True,
+        carries_desk_entry=True,
     )
 
 

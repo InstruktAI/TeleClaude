@@ -9,11 +9,10 @@ from __future__ import annotations
 import functools
 from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
-from typing import TYPE_CHECKING, Concatenate, TypedDict, cast
+from typing import TYPE_CHECKING, Concatenate, TypedDict
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config.machine import config
 from teleclaude.constants import (
     COMMAND_ROLE_MAP,
     ROLE_INTEGRATOR,
@@ -46,14 +45,6 @@ from teleclaude.core.command_handlers import (
     run_agent_command,
     start_agent,
 )
-from teleclaude.core.integration.discord_admin_state import (
-    DiscordSharedChildKind,
-    DiscordSharedThreadClaim,
-    DiscordThreadClaimInventoryItem,
-)
-from teleclaude.core.integration.discord_admin_state import (
-    DiscordThreadClaimLifecycle as PersistedDiscordThreadClaimLifecycle,
-)
 from teleclaude.core.models import SessionLaunchIntent, ThinkingMode
 from teleclaude.core.procedure_activation_runner import activate as _activate_procedure
 from teleclaude.core.session_launcher import create_session
@@ -64,7 +55,6 @@ from teleclaude.types.commands import (
     ActivateProcedureCommand,
     CloseSessionCommand,
     CreateSessionCommand,
-    DiscordThreadClaimCommand,
     GetSessionDataCommand,
     HandleFileCommand,
     HandleVoiceCommand,
@@ -325,56 +315,6 @@ class CommandService:
             "session_id": record.focused_session_id,
             "basis": record.basis.value,
             "set_at": record.set_at.isoformat(),
-        }
-
-    @_admitted
-    async def discord_thread_claim(
-        self, cmd: DiscordThreadClaimCommand, *, source_computer: str
-    ) -> dict[str, str | None]:
-        """Apply a claim mutation only on the configured fleet master."""
-        if not config.computer.is_master:
-            raise ValueError("shared Discord child claims must target the fleet master")
-        if cmd.action.value == "open_epoch":
-            epoch = await db.open_discord_thread_reconciliation_epoch(protocol_generation=cmd.protocol_generation)
-            return {"outcome": "opened", "owner_computer": str(epoch), "lifecycle": None}
-        if cmd.action.value == "complete_inventory":
-            if cmd.inventory_epoch is None:
-                raise ValueError("inventory completion requires an epoch")
-            items = tuple(
-                DiscordThreadClaimInventoryItem(
-                    thread_id=int(cast(int | str, item["thread_id"])),
-                    parent_id=int(cast(int | str, item["parent_id"])),
-                    kind=DiscordSharedChildKind(str(item["kind"])),
-                    local_identity=str(item["local_identity"]),
-                    lifecycle=PersistedDiscordThreadClaimLifecycle(str(item["lifecycle"])),
-                )
-                for item in cmd.inventory_items
-            )
-            completed = await db.replace_discord_thread_claim_inventory(
-                source_computer,
-                protocol_generation=cmd.protocol_generation,
-                epoch=cmd.inventory_epoch,
-                items=items,
-            )
-            return {"outcome": "completed" if completed else "refused", "owner_computer": None, "lifecycle": None}
-        claim = DiscordSharedThreadClaim(
-            thread_id=cmd.thread_id,
-            parent_id=cmd.parent_id,
-            kind=DiscordSharedChildKind(cmd.kind.value),
-            computer=source_computer,
-            local_identity=cmd.local_identity,
-            lifecycle=PersistedDiscordThreadClaimLifecycle(cmd.lifecycle.value),
-            protocol_generation=cmd.protocol_generation,
-        )
-        result = await db.observe_discord_shared_thread(
-            claim,
-            source_computer=source_computer,
-            enforce_owner=cmd.action.value == "claim",
-        )
-        return {
-            "outcome": result.outcome.value,
-            "owner_computer": result.owner_computer,
-            "lifecycle": result.lifecycle.value if result.lifecycle is not None else None,
         }
 
     @_admitted

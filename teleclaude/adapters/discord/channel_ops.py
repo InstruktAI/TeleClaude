@@ -16,39 +16,30 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
+from teleclaude.adapters.discord.help_desk_categories import DeskForums
 from teleclaude.config import machine as teleclaude_config
 from teleclaude.core.db import db
+from teleclaude.core.endpoints import DeskIdentifier
 from teleclaude.core.identity import session_person_role
 from teleclaude.core.integration.discord_admin_state import session_launcher_key
-from teleclaude.core.models import (
-    ChannelMetadata,
-    DiscordAdapterMetadata,
-    DiscordMetadataField,
-    EndpointStamp,
-    Session,
-)
+from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, DiscordMetadataField, EndpointStamp, Session
 from teleclaude.core.models._adapter import session_is_unattended
-from teleclaude.core.reconciliation.feature_ids import DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID
 from teleclaude.core.session_utils import get_short_project_name
 from teleclaude.services.project_catalog import get_project_catalog_service
-from teleclaude.types.discord_thread_claims import DiscordThreadClaimKind, DiscordThreadClaimLifecycle
 
 if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
 
-# The shared help-desk forum, which reflects platform-desk sessions and is no entry point,
-# and a forum this adapter does not recognize.
-_HELP_DESK_FORUM_TYPE = "help_desk"
+# A forum this adapter does not recognize.
 _UNKNOWN_FORUM_TYPE = "unknown"
 _UNRECOGNIZED_FORUM_WARNING = (
-    "Unrecognized forum parent_id=%s; ignoring the message. Known forums: help_desk=%s all_sessions=%s projects=%s"
+    "Unrecognized forum parent_id=%s; ignoring the message. Known forums: all_sessions=%s projects=%s"
 )
 
 DISCORD_THREAD_FETCH_MESSAGE_ATTRIBUTE = "fetch_message"
 DISCORD_THREAD_ID_ATTRIBUTE = "id"
-ORPHAN_CANDIDATE_DELETION_EPOCH_THRESHOLD = 2
 THREAD_CLEANUP_PACING_SECONDS = 0.5
 THREAD_STARTER_FETCH_LABEL = "Discord thread fetch_message"
 
@@ -122,7 +113,6 @@ class ChannelOperationsMixin:
     """Mixin providing channel/thread lifecycle methods for DiscordAdapter.
 
     Required host attributes:
-    - _help_desk_channel_id: int | None
     - _all_sessions_channel_id: int | None
     - _project_forum_map: dict[str, int]
     - _team_channel_map: dict[int, str]
@@ -136,10 +126,9 @@ class ChannelOperationsMixin:
     - _get_managed_forum_ids() -> set[int]
     """
 
-    _help_desk_channel_id: int | None
-    _escalation_channel_id: int | None
     _all_sessions_channel_id: int | None
     _project_forum_map: dict[str, int]
+    _desk_forums: dict[str, DeskForums]
     _team_channel_map: dict[int, str]
     _guild_id: int | None
 
@@ -156,22 +145,6 @@ class ChannelOperationsMixin:
         def display_title(self, session: Session) -> str: ...
 
         def _get_managed_forum_ids(self) -> set[int]: ...
-
-        async def _observe_discord_shared_thread(
-            self,
-            *,
-            thread_id: int,
-            parent_id: int,
-            kind: DiscordThreadClaimKind,
-            local_identity: str,
-            lifecycle: DiscordThreadClaimLifecycle,
-        ) -> None: ...
-
-        async def _open_discord_shared_thread_epoch(self) -> int | None: ...
-
-        async def _complete_discord_shared_thread_inventory(self, *, epoch: int) -> bool: ...
-
-        async def _discord_claim_fleet_members(self) -> tuple[frozenset[str], frozenset[str]]: ...
 
     # =========================================================================
     # ensure_channel
@@ -202,14 +175,16 @@ class ChannelOperationsMixin:
     def _resolve_target_forum(self, session: Session) -> int | None:
         """Determine which Discord forum this session's thread belongs in.
 
-        A help desk session belongs in no forum, its project's own included, and
-        neither does an unattended procedure agent: people do not look at it.
+        A help desk session belongs in its own desk's customer-sessions forum and
+        in no other forum, its project's own and the catch-all included. A desk whose
+        forum is not provisioned yet gets no thread. An unattended procedure agent
+        belongs in no forum: people do not look at it.
         """
         if session_is_unattended(session):
             return None
         endpoint = EndpointStamp.from_session(session)
         if endpoint is not None and endpoint.is_help_desk:
-            return None
+            return self._desk_customer_sessions_forum(endpoint)
         # Check project-specific forums
         forum_id = self._match_project_forum(session)
         if forum_id is not None:
@@ -228,6 +203,13 @@ class ChannelOperationsMixin:
         )
         return self._all_sessions_channel_id
 
+    def _desk_customer_sessions_forum(self, endpoint: EndpointStamp) -> int | None:
+        """The customer-sessions forum of the desk an endpoint stamp names, when it is provisioned."""
+        if endpoint.desk_kind is None or endpoint.slug is None:
+            return None
+        forums = self._desk_forums.get(DeskIdentifier(endpoint.desk_kind, endpoint.slug).render())
+        return forums.customer_sessions if forums is not None else None
+
     def _match_project_forum(self, session: Session) -> int | None:
         """Match session project_path to a trusted dir with a discord_forum ID."""
         project_path = session.project_path
@@ -242,8 +224,8 @@ class ChannelOperationsMixin:
         """Determine forum type and project path for an incoming message.
 
         Returns (forum_type, project_path) where forum_type is one of:
-        'help_desk', 'project', 'all_sessions', 'team', 'unknown'. Neither the
-        help-desk forum nor an unknown forum names a project path.
+        'project', 'all_sessions', 'team', 'unknown'. An unknown forum names no
+        project path.
         """
         channel = getattr(message, "channel", None)
         channel_id = self._parse_optional_int(getattr(channel, "id", None))
@@ -260,10 +242,6 @@ class ChannelOperationsMixin:
         if parent_id is None:
             parent_id = channel_id
 
-        if parent_id is not None and parent_id == self._help_desk_channel_id:
-            # The shared help-desk forum is no entry point.
-            return _HELP_DESK_FORUM_TYPE, None
-
         if parent_id is not None and parent_id == self._all_sessions_channel_id:
             entries = get_project_catalog_service().list_entries()
             return "all_sessions", str(entries[0].root) if entries else None
@@ -276,7 +254,6 @@ class ChannelOperationsMixin:
             logger.warning(
                 _UNRECOGNIZED_FORUM_WARNING,
                 parent_id,
-                self._help_desk_channel_id,
                 self._all_sessions_channel_id,
                 list(self._project_forum_map.values()),
             )
@@ -354,14 +331,6 @@ class ChannelOperationsMixin:
                 title=title,
                 content=topper,
             )
-            if target_forum_id == self._help_desk_channel_id:
-                await self._observe_discord_shared_thread(
-                    thread_id=thread_id,
-                    parent_id=target_forum_id,
-                    kind=DiscordThreadClaimKind.HELP_DESK_SESSION,
-                    local_identity=session.session_id,
-                    lifecycle=DiscordThreadClaimLifecycle.PENDING,
-                )
             await db.update_origin_metadata(
                 session.session_id,
                 "discord",
@@ -433,26 +402,39 @@ class ChannelOperationsMixin:
     # =========================================================================
 
     async def cleanup_stale_resources(self) -> int:
-        """Scan Discord forums and clean up orphan/stale threads."""
+        """Scan Discord forums and clean up orphan/stale threads.
+
+        A help desk's forums are swept on the master alone, which is the one
+        computer that hosts desk sessions.
+        """
         if self._client is None:
             return 0
 
         cleaned = 0
-        for forum_id, match_field in [
-            *[(forum_id, ThreadMatchField.THREAD_ID) for forum_id in self._get_managed_forum_ids()],
-            (self._escalation_channel_id, ThreadMatchField.RELAY),
-        ]:
-            if forum_id is None:
-                continue
-            cleaned += await self._cleanup_forum_threads(forum_id, match_field)
+        for forum_id in self._get_managed_forum_ids():
+            cleaned += await self._cleanup_forum_threads(forum_id, ThreadMatchField.THREAD_ID)
+        if teleclaude_config.config.computer.is_master:
+            for forums in self._desk_forums.values():
+                if forums.customer_sessions is not None:
+                    cleaned += await self._cleanup_forum_threads(
+                        forums.customer_sessions, ThreadMatchField.THREAD_ID, desk_forum=True
+                    )
+                if forums.escalations is not None:
+                    cleaned += await self._cleanup_forum_threads(
+                        forums.escalations, ThreadMatchField.RELAY, desk_forum=True
+                    )
 
         return cleaned
 
-    async def _cleanup_forum_threads(self, forum_id: int, match_type: ThreadMatchField) -> int:
+    async def _cleanup_forum_threads(
+        self, forum_id: int, match_type: ThreadMatchField, *, desk_forum: bool = False
+    ) -> int:
         """Scan a single forum for orphan/stale threads and delete them.
 
         Collects both active and archived threads, then deletes any
-        that have no corresponding active session in the database.
+        that have no corresponding active session in the database. A desk
+        forum has no launcher thread to spare; a project forum's launcher
+        identity must resolve before anything in it is deleted.
         """
         forum = await self._get_channel(forum_id)
         if forum is None or not self._is_forum_channel(forum):
@@ -463,40 +445,15 @@ class ChannelOperationsMixin:
             logger.warning("Skipping Discord thread cleanup for forum %s because discovery is incomplete", forum_id)
             return 0
 
-        is_shared_forum = forum_id in {self._help_desk_channel_id, self._escalation_channel_id}
-        if is_shared_forum and not teleclaude_config.config.computer.is_master:
-            return 0
-        completed_epoch: int | None = None
-        if is_shared_forum:
-            open_epoch = await self._open_discord_shared_thread_epoch()
-            if open_epoch is None or not await self._complete_discord_shared_thread_inventory(epoch=open_epoch):
-                logger.info(
-                    "discord.shared_thread_cleanup.epoch_unavailable",
-                    forum_id=forum_id,
-                    feature_id=DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID,
-                )
-                return 0
-            live_members, capable_members = await self._discord_claim_fleet_members()
-            activation = await db.discord_thread_claim_activation(
-                protocol_generation=1,
-                live_members=live_members,
-                capability_members=capable_members,
-            )
-            if not activation.active:
-                logger.info("discord.shared_thread_cleanup.held", feature_id=DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID)
-                return 0
-            completed_epoch = await db.completed_discord_thread_claim_epoch(protocol_generation=1)
-            if completed_epoch is not None:
-                await db.complete_discord_thread_reconciliation_epoch(protocol_generation=1, epoch=completed_epoch)
         launcher_thread_id: int | None = None
-        if not is_shared_forum and match_type == ThreadMatchField.THREAD_ID:
+        if not desk_forum:
             launcher = await db.get_discord_reflection(session_launcher_key(forum_id))
             launcher_thread_id = launcher.provider_id if launcher is not None else None
-        if not is_shared_forum and match_type == ThreadMatchField.THREAD_ID and launcher_thread_id is None:
-            logger.warning(
-                "Skipping Discord session cleanup for forum %s because launcher identity is unresolved", forum_id
-            )
-            return 0
+            if launcher_thread_id is None:
+                logger.warning(
+                    "Skipping Discord session cleanup for forum %s because launcher identity is unresolved", forum_id
+                )
+                return 0
 
         cleaned = 0
         for thread in all_threads:
@@ -507,14 +464,8 @@ class ChannelOperationsMixin:
             if thread_id == launcher_thread_id:
                 continue
 
-            if is_shared_forum:
-                should_delete = await self._shared_thread_cleanup_decision(
-                    thread_id, forum_id, match_type, completed_epoch=completed_epoch
-                )
-            else:
-                ownership = await self._thread_ownership(thread_id, match_type)
-                should_delete = ownership != ThreadOwnership.ACTIVE
-            if not should_delete:
+            ownership = await self._thread_ownership(thread_id, match_type)
+            if ownership == ThreadOwnership.ACTIVE:
                 continue
 
             recoverable_errors = recoverable_operation_errors(self._discord)
@@ -533,66 +484,6 @@ class ChannelOperationsMixin:
             await asyncio.sleep(THREAD_CLEANUP_PACING_SECONDS)
 
         return cleaned
-
-    async def _shared_thread_cleanup_decision(
-        self,
-        thread_id: int,
-        forum_id: int,
-        match_type: ThreadMatchField,
-        *,
-        completed_epoch: int | None,
-    ) -> bool:
-        """Decide whether one activated shared-forum thread may be deleted this pass.
-
-        A claimed child is deleted only by its recorded durable owner once local
-        state is terminal; a foreign owner's claim is preserved outright. An
-        unclaimed child is deleted only after its durable orphan-candidate proof
-        spans two consecutive complete fleet inventories — never from local
-        absence alone.
-        """
-        owner = await db.get_discord_shared_thread_owner(thread_id)
-        if owner is not None:
-            await db.reset_discord_thread_orphan_candidate(thread_id=thread_id)
-            if owner.computer != teleclaude_config.config.computer.name:
-                logger.info(
-                    "discord.shared_thread_cleanup.retained_foreign_owner",
-                    thread_id=thread_id,
-                    parent_id=forum_id,
-                    owner_computer=owner.computer,
-                )
-                return False
-            ownership = await self._thread_ownership(thread_id, match_type)
-            delete = ownership == ThreadOwnership.CLOSED
-            logger.info(
-                "discord.shared_thread_cleanup.owner_decision",
-                thread_id=thread_id,
-                parent_id=forum_id,
-                owner_computer=owner.computer,
-                outcome="delete" if delete else "retain",
-            )
-            return delete
-
-        if completed_epoch is None:
-            logger.info(
-                "discord.shared_thread_cleanup.candidate_held",
-                thread_id=thread_id,
-                parent_id=forum_id,
-                reason="incomplete_epoch",
-            )
-            return False
-        candidate = await db.advance_discord_thread_orphan_candidate(
-            thread_id=thread_id, parent_id=forum_id, epoch=completed_epoch
-        )
-        delete = candidate.consecutive_complete_epochs >= ORPHAN_CANDIDATE_DELETION_EPOCH_THRESHOLD
-        logger.info(
-            "discord.shared_thread_cleanup.candidate_advanced",
-            thread_id=thread_id,
-            parent_id=forum_id,
-            reconciliation_epoch=completed_epoch,
-            consecutive_complete_epochs=candidate.consecutive_complete_epochs,
-            outcome="delete" if delete else "held",
-        )
-        return delete
 
     async def _thread_ownership(self, thread_id: int, match_type: ThreadMatchField) -> ThreadOwnership:
         """Classify a Discord thread's ownership.

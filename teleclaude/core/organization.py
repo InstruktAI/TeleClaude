@@ -11,7 +11,12 @@ from typing import TYPE_CHECKING, TypedDict
 from instrukt_ai_logging import get_logger
 
 from teleclaude.caller_identity import resolve_session_principal
-from teleclaude.config.identity_schema import CompanyRole, PersonEntry
+from teleclaude.config.identity_schema import (
+    CompanyRole,
+    PersonEntry,
+    ProjectOwnerKind,
+    project_owner_identity,
+)
 from teleclaude.config.loader import (
     company_memberships,
     find_company_config_path,
@@ -21,6 +26,8 @@ from teleclaude.config.loader import (
 )
 from teleclaude.config.schema import PersonConfig
 from teleclaude.constants import HUMAN_ROLE_ADMIN
+from teleclaude.core.endpoints import DeskIdentifier
+from teleclaude.core.models import HelpDeskKind
 from teleclaude.paths import PEOPLE_DIR
 from teleclaude.services.project_catalog import get_project_catalog_service
 
@@ -32,6 +39,8 @@ logger = get_logger(__name__)
 _ORGANIZATION_RESOLVED_EVENT = "organization_resolved"
 _ORGANIZATION_STALE_ASSIGNMENT_EVENT = "organization_stale_assignment"
 _ROSTER_PERSON_UNREADABLE_EVENT = "roster_person_config_unreadable"
+_UNKNOWN_DESK_COMPANY_MESSAGE = "A help desk names company {slug}, which no declaration answers for."
+_UNKNOWN_DESK_PROJECT_MESSAGE = "A help desk names project {slug}, which no declaration answers for."
 
 
 @dataclass(frozen=True)
@@ -174,6 +183,55 @@ def company_admin_slugs(company_slug: str, companies_root: Path | None = None) -
         return []
     company = load_company_config(declaration)
     return sorted(slug for slug, member in company.members.items() if member.role is CompanyRole.ADMIN)
+
+
+class UnknownDeskScopeError(LookupError):
+    """A help desk names a company or project no declaration answers for."""
+
+
+def _company_roster(company_slug: str) -> set[str]:
+    """Everyone on a company's roster, admins and members alike; raises when the company is unknown."""
+    declaration = find_company_config_path(company_slug)
+    if declaration is None:
+        raise UnknownDeskScopeError(_UNKNOWN_DESK_COMPANY_MESSAGE.format(slug=company_slug))
+    return set(load_company_config(declaration).members)
+
+
+@dataclass(frozen=True)
+class DeskScope:
+    """The people a help desk belongs to."""
+
+    people: tuple[str, ...]
+
+
+def _project_desk_owner_people(project_slug: str) -> set[str]:
+    """The people who own one project's desk through its declared owner; raises when the project is unknown."""
+    project = get_project_catalog_service().get_by_slug(project_slug)
+    if project is None:
+        raise UnknownDeskScopeError(_UNKNOWN_DESK_PROJECT_MESSAGE.format(slug=project_slug))
+    owner = project_owner_identity(project.config.company, project.config.person)
+    if owner is None:
+        return set()
+    owner_kind, owner_slug = owner
+    if owner_kind is ProjectOwnerKind.PERSON:
+        return {owner_slug}
+    return _company_roster(owner_slug)
+
+
+def desk_scope(desk: DeskIdentifier) -> DeskScope:
+    """Resolve who a help desk belongs to, in slug order.
+
+    A company desk belongs to that company's whole roster. A project desk belongs
+    to its owning company's whole roster, or to its owning person. Every desk also
+    belongs to the platform admins. A declaration that fails to load, or a desk
+    whose company or project is unknown, raises.
+    """
+    if desk.kind is HelpDeskKind.COMPANY:
+        owners = _company_roster(desk.slug)
+    else:
+        owners = _project_desk_owner_people(desk.slug)
+    admins = {person.slug for person in platform_admin_roster() if person.slug is not None}
+    return DeskScope(people=tuple(sorted(owners | admins)))
 
 
 def company_project_slugs(company_slug: str) -> list[str]:

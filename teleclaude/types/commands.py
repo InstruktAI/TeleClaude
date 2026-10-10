@@ -12,11 +12,6 @@ from teleclaude.core.models import EndpointStamp, SessionEntryPoint, SessionLaun
 from teleclaude.core.models._types import JsonDict, JsonValue
 from teleclaude.docs_subscriptions import SubscriptionAttendance, SubscriptionIdentity
 from teleclaude.types.activation_home import ActivationHome
-from teleclaude.types.discord_thread_claims import (
-    DiscordThreadClaimAction,
-    DiscordThreadClaimKind,
-    DiscordThreadClaimLifecycle,
-)
 from teleclaude.types.media import MediaRef
 
 
@@ -39,7 +34,6 @@ class CommandType(str, Enum):
     CLOSE_SESSION = "close_session"
     SYSTEM = "system_command"
     SET_VOICE_FOCUS = "set_voice_focus"
-    DISCORD_THREAD_CLAIM = "discord_thread_claim"
     ACTIVATE_PROCEDURE = "activate_procedure"
 
 
@@ -168,22 +162,6 @@ class InternalCommand:
             else:
                 payload[name] = _json_value(value)
         return payload
-
-
-@dataclass(kw_only=True)
-class DiscordThreadClaimCommand(InternalCommand):
-    """Request a source-bound contender observation or singular shared-child claim."""
-
-    command_type: CommandType = field(init=False, default=CommandType.DISCORD_THREAD_CLAIM)
-    action: DiscordThreadClaimAction
-    thread_id: int
-    parent_id: int
-    kind: DiscordThreadClaimKind
-    local_identity: str
-    lifecycle: DiscordThreadClaimLifecycle
-    protocol_generation: int
-    inventory_epoch: int | None = None
-    inventory_items: list[dict[str, object]] = field(default_factory=list)
 
 
 def _json_value(value: object) -> JsonValue:

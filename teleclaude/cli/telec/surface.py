@@ -85,7 +85,7 @@ def _render_command(lines: list[str], path: str, cmd: CommandDef, depth: int) ->
         _render_command(lines, f"{path} {sub_name}", sub_def, depth=min(depth + 1, 6))
 
 
-_HELP_DESK_LINKS_NOTE = "Renders only on the mesh master and where the desk is enabled; a Discord visitor sends the identifier as their first message."
+_HELP_DESK_LINKS_NOTE = "Renders only on the mesh master and where the desk is enabled."
 # Creation is judged at the home it lands in: the caller's own person scope, the named company, or the platform.
 _PROJECT_CREATE_AUTH = CommandAuth(
     system=_AGENT_REACH,

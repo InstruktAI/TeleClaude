@@ -29,6 +29,5 @@ COMMAND_ADMISSION: dict[CommandType, AdmissionClass] = {
     CommandType.CLOSE_SESSION: AdmissionClass.BUSINESS_WORK,
     CommandType.SYSTEM: AdmissionClass.BUSINESS_WORK,
     CommandType.SET_VOICE_FOCUS: AdmissionClass.BUSINESS_WORK,
-    CommandType.DISCORD_THREAD_CLAIM: AdmissionClass.BUSINESS_WORK,
     CommandType.ACTIVATE_PROCEDURE: AdmissionClass.BUSINESS_WORK,
 }

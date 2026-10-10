@@ -8,6 +8,8 @@ from enum import StrEnum
 from typing import Protocol
 
 PROJECT_FORUM_KEY_PREFIX = "project_forum:"
+HELP_DESK_KEY_PREFIX = "help_desk:"
+_HELP_DESK_ARTIFACT_SEPARATOR = "."
 
 
 class DiscordProvider(StrEnum):
@@ -35,6 +37,15 @@ class DiscordScopeKind(StrEnum):
     PERSON = "person"
 
 
+class HelpDeskArtifact(StrEnum):
+    """The Discord artifacts one help desk's category holds, with the category itself."""
+
+    CATEGORY = "category"
+    CUSTOMER_SESSIONS = "customer_sessions"
+    ESCALATIONS = "escalations"
+    TEAM_CHAT = "team_chat"
+
+
 class DiscordVerificationResult(StrEnum):
     """Provider lookup result used by reconciliation decisions."""
 
@@ -53,44 +64,6 @@ class DiscordReflectionOutcome(StrEnum):
     INCONCLUSIVE = "inconclusive"
     SKIPPED = "skipped"
     FAILED_CLOSED = "failed_closed"
-
-
-class DiscordSharedChildKind(StrEnum):
-    """Shared Discord child categories governed by the claim ledger."""
-
-    HELP_DESK_SESSION = "help_desk_session"
-    ESCALATION_RELAY = "escalation_relay"
-
-
-class DiscordThreadClaimLifecycle(StrEnum):
-    """Lifecycle state whose owner may reconcile a shared Discord child."""
-
-    PENDING = "pending"
-    ACTIVE = "active"
-    TERMINAL = "terminal"
-
-
-class DiscordThreadClaimOutcome(StrEnum):
-    """Closed outcomes returned by the source-bound shared-child claim boundary."""
-
-    OBSERVED = "observed"
-    CLAIMED = "claimed"
-    NOT_OWNER = "not_owner"
-    REFUSED = "refused"
-
-
-class DiscordThreadClaimMemberState(StrEnum):
-    """Adoption state retained for every computer participating in the protocol."""
-
-    OBSERVED = "observed"
-    ADOPTED = "adopted"
-
-
-class DiscordThreadReconciliationEpochPhase(StrEnum):
-    """Durable state of one master-allocated reconciliation epoch."""
-
-    OPEN = "open"
-    COMPLETED = "completed"
 
 
 @dataclass(frozen=True)
@@ -115,56 +88,6 @@ class DiscordReflectionRecord:
     verified_at: datetime | None
 
 
-@dataclass(frozen=True)
-class DiscordSharedThreadClaim:
-    """One source-bound contender or owner observation for a shared provider child."""
-
-    thread_id: int
-    parent_id: int
-    kind: DiscordSharedChildKind
-    computer: str
-    local_identity: str
-    lifecycle: DiscordThreadClaimLifecycle
-    protocol_generation: int
-
-
-@dataclass(frozen=True)
-class DiscordSharedThreadClaimResult:
-    """The durable owner decision for one shared provider child."""
-
-    outcome: DiscordThreadClaimOutcome
-    owner_computer: str | None
-    lifecycle: DiscordThreadClaimLifecycle | None
-
-
-@dataclass(frozen=True)
-class DiscordThreadClaimActivation:
-    """Whether durable membership and live capability evidence permit enforcement."""
-
-    active: bool
-    retained_members: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class DiscordThreadClaimInventoryItem:
-    """One local shared-child fact submitted as part of a complete member inventory."""
-
-    thread_id: int
-    parent_id: int
-    kind: DiscordSharedChildKind
-    local_identity: str
-    lifecycle: DiscordThreadClaimLifecycle
-
-
-@dataclass(frozen=True)
-class DiscordThreadOrphanCandidate:
-    """The current durable garbage-collection proof for one shared child."""
-
-    thread_id: int
-    parent_id: int
-    consecutive_complete_epochs: int
-
-
 class DiscordReflectionRepository(Protocol):
     """Repository seam used by reconciliation without exposing database models."""
 
@@ -180,43 +103,6 @@ class DiscordReflectionRepository(Protocol):
 
     async def delete_discord_reflection(self, logical_key: str) -> None: ...
 
-    async def observe_discord_shared_thread(
-        self, claim: DiscordSharedThreadClaim, *, source_computer: str, enforce_owner: bool
-    ) -> DiscordSharedThreadClaimResult: ...
-
-    async def get_discord_shared_thread_owner(self, thread_id: int) -> DiscordSharedThreadClaim | None: ...
-
-    async def observe_discord_thread_claim_member(self, computer: str, *, protocol_generation: int) -> None: ...
-
-    async def complete_discord_thread_claim_inventory(
-        self, computer: str, *, protocol_generation: int, epoch: int
-    ) -> bool: ...
-
-    async def replace_discord_thread_claim_inventory(
-        self,
-        computer: str,
-        *,
-        protocol_generation: int,
-        epoch: int,
-        items: tuple[DiscordThreadClaimInventoryItem, ...],
-    ) -> bool: ...
-
-    async def open_discord_thread_reconciliation_epoch(self, *, protocol_generation: int) -> int: ...
-
-    async def complete_discord_thread_reconciliation_epoch(self, *, protocol_generation: int, epoch: int) -> bool: ...
-
-    async def discord_thread_claim_activation(
-        self, *, protocol_generation: int, live_members: frozenset[str], capability_members: frozenset[str]
-    ) -> DiscordThreadClaimActivation: ...
-
-    async def advance_discord_thread_orphan_candidate(
-        self, *, thread_id: int, parent_id: int, epoch: int
-    ) -> DiscordThreadOrphanCandidate: ...
-
-    async def reset_discord_thread_orphan_candidate(self, *, thread_id: int) -> None: ...
-
-    async def completed_discord_thread_claim_epoch(self, *, protocol_generation: int) -> int | None: ...
-
 
 def shared_key(name: str) -> str:
     """Build the stable logical key for one shared Discord artifact."""
@@ -231,3 +117,23 @@ def project_forum_key(identity: str) -> str:
 def session_launcher_key(forum_id: int) -> str:
     """Build the stable logical key for one forum launcher."""
     return f"session_launcher:{forum_id}"
+
+
+def help_desk_key(entry_identifier: str, artifact: HelpDeskArtifact) -> str:
+    """Build the stable logical key for one artifact of the help desk an entry identifier names."""
+    return f"{HELP_DESK_KEY_PREFIX}{entry_identifier}{_HELP_DESK_ARTIFACT_SEPARATOR}{artifact.value}"
+
+
+def parse_help_desk_key(logical_key: str) -> tuple[str, HelpDeskArtifact] | None:
+    """The entry identifier and artifact a help-desk logical key names, or ``None`` for any other key."""
+    if not logical_key.startswith(HELP_DESK_KEY_PREFIX):
+        return None
+    entry_identifier, separator, artifact = logical_key.removeprefix(HELP_DESK_KEY_PREFIX).rpartition(
+        _HELP_DESK_ARTIFACT_SEPARATOR
+    )
+    if not separator:
+        return None
+    try:
+        return entry_identifier, HelpDeskArtifact(artifact)
+    except ValueError:
+        return None

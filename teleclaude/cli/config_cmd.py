@@ -150,9 +150,7 @@ _FLEET_LAGGING_ERROR = (
 )
 _NO_LINKS_LINE = "No entry links could be generated for {identifier}."
 _LINK_LINE = "  {adapter}: {link}"
-_DISCORD_LINK_LINE = "  {adapter}: {link} (send {identifier} as your first message)"
 _LINKS_HEADING = "Entry links for {identifier}:"
-_DISCORD_ADAPTER = "discord"
 _LIST_SEPARATOR = ", "
 
 _KIND_TO_SUBJECT: dict[str, ConfigSubjectKind] = {
@@ -794,8 +792,7 @@ def _handle_help_desk_links(kind: str, subject_kind: ConfigSubjectKind, args: li
         return
     print(_LINKS_HEADING.format(identifier=rendered))
     for adapter, link in available.items():
-        line = _DISCORD_LINK_LINE if adapter == _DISCORD_ADAPTER else _LINK_LINE
-        print(line.format(adapter=adapter, link=link, identifier=rendered))
+        print(_LINK_LINE.format(adapter=adapter, link=link))
 
 
 # --- rendering (shared across verbs) ---

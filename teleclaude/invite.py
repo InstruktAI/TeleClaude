@@ -127,24 +127,21 @@ def generate_invite_links(
 
 
 async def render_help_desk_links(identifier: str, *, telegram_allowed: bool) -> dict[str, str | None]:
-    """Render a hosted help desk's entry links per adapter, with this computer's bots.
+    """Render a hosted help desk's entry links for the adapters that carry desk entry.
 
-    ``telegram_allowed`` is false when the identifier cannot be a Telegram
-    start parameter; that adapter then has no link. A bot whose identity
-    cannot be resolved has no link either.
+    Discord carries none, so the result has no Discord link. ``telegram_allowed``
+    is false when the identifier cannot be a Telegram start parameter; that
+    adapter then has no link. A bot whose identity cannot be resolved has no
+    link either.
     """
     telegram_username: str | None = None
-    discord_bot_id: str | None = None
     if telegram_allowed:
         try:
             telegram_username = await resolve_telegram_bot_username()
         except ValueError as e:
             logger.warning(_LINK_BOT_UNRESOLVED_EVENT, adapter=_TELEGRAM_ADAPTER, error=str(e))
-    try:
-        discord_bot_id = await resolve_discord_bot_user_id()
-    except ValueError as e:
-        logger.warning(_LINK_BOT_UNRESOLVED_EVENT, adapter=_DISCORD_ADAPTER, error=str(e))
-    return generate_invite_links(identifier, telegram_username, discord_bot_id, config.whatsapp.business_number)
+    links = generate_invite_links(identifier, telegram_username, None, config.whatsapp.business_number)
+    return {adapter: link for adapter, link in links.items() if adapter != _DISCORD_ADAPTER}
 
 
 # --- Workspace Scaffolding ---

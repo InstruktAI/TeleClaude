@@ -12,7 +12,6 @@ identifier on its own.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,6 +37,7 @@ _DESK_IDENTIFIER_TEMPLATE = "hd-{kind}-{slug}"
 _DESK_IDENTIFIER_PATTERN = re.compile(r"^hd-(company|project)-([a-z0-9]+(?:-[a-z0-9]+)*)$")
 _INVITE_TOKEN_PATTERN = re.compile(r"^inv_[0-9a-f]{16}$")
 _COMPANY_DECLARATION_UNREADABLE_EVENT = "help_desk_company_declaration_unreadable"
+_UNRESOLVED_PROJECT_ROOTS_MESSAGE = "Registered project roots yield no project: {roots}"
 
 
 @dataclass(frozen=True)
@@ -118,26 +118,55 @@ def project_help_desk_folder(root: Path) -> Path:
     return root / HELP_DESK_DIRNAME
 
 
-def _enabled_project_desks(roots: DeskRoots) -> Iterable[tuple[DeskIdentifier, Path]]:
-    for node in ProjectCatalogService(manifest_path=roots.projects_manifest).list_projects():
-        if node.config.help_desk.enabled:
-            yield DeskIdentifier(HelpDeskKind.PROJECT, node.slug), project_help_desk_folder(node.root)
+def _enabled_project_desks(catalog: ProjectCatalogService) -> list[tuple[DeskIdentifier, Path]]:
+    return [
+        (DeskIdentifier(HelpDeskKind.PROJECT, node.slug), project_help_desk_folder(node.root))
+        for node in catalog.list_projects()
+        if node.config.help_desk.enabled
+    ]
 
 
-def _enabled_company_desks(roots: DeskRoots) -> Iterable[tuple[DeskIdentifier, Path]]:
+def _enabled_company_desks(roots: DeskRoots, *, skip_unreadable: bool) -> list[tuple[DeskIdentifier, Path]]:
+    """The enabled company desks; a declaration that fails to load is skipped or raises per ``skip_unreadable``."""
+    desks: list[tuple[DeskIdentifier, Path]] = []
     for declaration in list_company_config_paths(roots.companies_root):
         slug = declaration.parent.name
         try:
             enabled = load_company_config(declaration).help_desk.enabled
         except (OSError, ValueError) as exc:
+            if not skip_unreadable:
+                raise
             logger.warning(_COMPANY_DECLARATION_UNREADABLE_EVENT, company=slug, error=str(exc))
             continue
         if enabled:
-            yield DeskIdentifier(HelpDeskKind.COMPANY, slug), company_help_desk_folder(slug, roots)
+            desks.append((DeskIdentifier(HelpDeskKind.COMPANY, slug), company_help_desk_folder(slug, roots)))
+    return desks
 
 
 def _enabled_desks(roots: DeskRoots) -> list[tuple[DeskIdentifier, Path]]:
-    return [*_enabled_company_desks(roots), *_enabled_project_desks(roots)]
+    catalog = ProjectCatalogService(manifest_path=roots.projects_manifest)
+    return [*_enabled_company_desks(roots, skip_unreadable=True), *_enabled_project_desks(catalog)]
+
+
+class DeskHomeUnreadableError(RuntimeError):
+    """A registered project root yields no project, so the desks it would host cannot be enumerated."""
+
+
+def hosted_desks(is_master: bool, roots: DeskRoots = LIVE_ROOTS) -> tuple[DeskIdentifier, ...]:
+    """The desks this computer hosts, in enumeration order.
+
+    Only the master hosts desks; any other computer hosts none. A desk home that
+    fails to load raises instead of being left out: the answer names every desk
+    that exists, so a consumer can remove the artifacts of any desk it omits.
+    """
+    if not is_master:
+        return ()
+    company_desks = _enabled_company_desks(roots, skip_unreadable=False)
+    catalog = ProjectCatalogService(manifest_path=roots.projects_manifest)
+    _entries, unresolved_roots = catalog.list_entries_with_unresolved_roots()
+    if unresolved_roots:
+        raise DeskHomeUnreadableError(_UNRESOLVED_PROJECT_ROOTS_MESSAGE.format(roots=unresolved_roots))
+    return tuple(identifier for identifier, _folder in [*company_desks, *_enabled_project_desks(catalog)])
 
 
 def _desk_endpoint(identifier: DeskIdentifier, folder: Path, host: str) -> Endpoint:
@@ -223,6 +252,7 @@ def desk_home_present(identifier: DeskIdentifier, roots: DeskRoots = LIVE_ROOTS)
 __all__ = [
     "LIVE_ROOTS",
     "TELEGRAM_START_PARAMETER_MAX",
+    "DeskHomeUnreadableError",
     "DeskIdentifier",
     "DeskRoots",
     "Endpoint",
@@ -233,6 +263,7 @@ __all__ = [
     "desk_endpoint_for_stamp",
     "desk_for_folder",
     "desk_home_present",
+    "hosted_desks",
     "local_desk_endpoint",
     "parse_entry_identifier",
     "project_help_desk_folder",

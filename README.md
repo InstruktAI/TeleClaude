@@ -84,7 +84,7 @@ TeleClaude is not a bot. It is a high-integrity operating system for the agentic
 
 ### The Help Desk Platform
 
-- **Multi-Channel Ingress:** Customers reach you on Discord, Telegram, WhatsApp, or web. Every channel resolves to the same help desk — platform-agnostic from the first message.
+- **Multi-Channel Ingress:** Customers reach you on Telegram, WhatsApp, or web. Every channel resolves to the same help desk — platform-agnostic from the first message. Discord is your team's surface, never a customer's: each help desk gets a private Discord category that only its people can see.
 - **Identity-Scoped Memory:** Every customer gets persistent, identity-keyed observation history. The AI remembers who they are, what they asked before, and what patterns emerge across interactions — across platforms, across sessions.
 - **Admin Relay and Escalation:** When the AI needs human help, it calls `telec sessions escalate`. A Discord relay thread opens. Admin and customer communicate directly — messages routed transparently between platforms. When the admin is done, they tag `@agent`, and the entire relay conversation is compiled and injected into the AI session as context. The handback is seamless.
 - **Session Post-Processing:** The richness doesn't end when a conversation stops. Completed sessions are scraped and metabolized — business intelligence distilled, logs archived. The system learns from every interaction, not just during it.
