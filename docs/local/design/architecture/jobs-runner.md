@@ -89,34 +89,12 @@ spawned and no stdout is parsed.
 **Agent jobs** (`script` absent, `job` required) — The runner opens a run and creates an
 agent session (fire-and-forget) for the job's declared name; the session executes the
 procedure snippet ID in `job`.
-<!-- planned-change:job-run-state-single-file -->
-
-The name is the job's identity everywhere: the dispatch argument, the run state key, the run directory, and the report key.
-
-<!-- change:job-run-state-single-file -->
 
 The name is the job's identity everywhere: the dispatch argument, the run state key, the per-job state file path, and the report key.
-<!-- /planned-change:job-run-state-single-file -->
-<!-- planned-change:job-run-state-single-file -->
-
-The agent loads the procedure with its required-read closure, executes its task, produces its declared
-artifacts, and reports a structured outcome via `telec jobs report <name>`. The runner's
-sweep on a later tick reads that outcome and closes the run; a run never reported within
-its window is stalled.
-<!-- change:job-run-state-single-file -->
 
 The agent loads the procedure with its required-read closure and executes its task. When it needs prior job-owned state, it reads the checkpoint from the latest record at `STATE_DIR/runs/<project_slug>/<job_name>.json`. It submits its outcome and any replacement checkpoint through `telec jobs report <name> ... --state-json '<object>'`. The command and the script-result adapter use one state writer under the checkpoint-update contract in `local/projects/teleclaude/spec/feature/agent_runtime/agent-job-reporting`. The runner reads the same record and closes only the open run whose session identity matches the report. A late report cannot close or replace a successor's result; a run with no matching report within its window is stalled.
-<!-- /planned-change:job-run-state-single-file -->
-
-<!-- planned-change:job-run-state-single-file -->
-
-Agent jobs are daemon-independent for outcome reporting: the structured outcome is written
-to the job's run directory on the local filesystem, so a run still closes when the daemon
-is down.
-<!-- change:job-run-state-single-file -->
 
 Agent jobs are daemon-independent for outcome reporting: `telec jobs report` writes the latest outcome and job-owned state to the local filesystem, so a run still closes when the daemon is down.
-<!-- /planned-change:job-run-state-single-file -->
 
 #### Outcome reporting and notification
 
@@ -165,15 +143,7 @@ and the walk continues.
 - A `JobResult` outcome for every run, script and agent alike
 - Job-run outcome events on close/stall, projected to a human when actionable
 
-<!-- planned-change:job-run-state-single-file -->
-
-- Run reports under `JOBS_DIR`, keyed by project and declared job name (human-readable audit)
-
-<!-- change:job-run-state-single-file -->
-
 - The latest per-job outcome/checkpoint record at `STATE_DIR/runs/<project_slug>/<job_name>.json`, shared by script results and agent reports. Each accepted outcome atomically updates the record under the checkpoint replacement/preservation contract in `local/projects/teleclaude/spec/feature/agent_runtime/agent-job-reporting`. The JSON contains the structured outcome and optional opaque job-owned state; per-run report history is not accumulated.
-
-<!-- /planned-change:job-run-state-single-file -->
 
 - Updated run lifecycle in `~/.teleclaude/state/cron_state.json`, per project and job
 
@@ -189,17 +159,8 @@ and the walk continues.
 - Both job classes produce the same `JobResult` outcome and job-run outcome event shape.
 - A clean run is silent; an actionable outcome (failure or stall) notifies a human.
 
-<!-- planned-change:job-run-state-single-file -->
-
-- Agent jobs produce a run report and a structured outcome every run, even with nothing to process.
-- A job has one identity, the `name` its declaration carries. Dispatch, run state, the run directory, the report key, the runner's job filter, and the jobs API all use that name, and nothing derives another identity from the execution pointer.
-
-<!-- change:job-run-state-single-file -->
-
 - Both job classes produce one structured outcome every run, including an empty successful run. Script returns and agent reports use the same current-record writer. A job's procedure or script owns its checkpoint schema; the runner persists the opaque payload under the shared reporting contract.
 - A job has one identity, the `name` its declaration carries. Dispatch, run state, the per-job state path, the report key, the runner's job filter, and the jobs API all use that name, and nothing derives another identity from the execution pointer.
-
-<!-- /planned-change:job-run-state-single-file -->
 
 ### Configuration surface
 
@@ -278,15 +239,6 @@ returns an explicit API error.
    instance, with a PEP 723 header and a `run_job_cli(JOB)` `__main__` for standalone use.
 2. Register in `teleclaude.yml` with a `name` and `script` pointing to the module.
 
-<!-- planned-change:job-run-state-single-file -->
-
-`JOB.run(context)` receives the project it runs in — its root and slug — so one published
-module serves every subscribing project without reading an ambient working directory. A
-module published in the global registry lives in the mother repository; a module declared
-locally lives in the declaring project.
-
-<!-- change:job-run-state-single-file -->
-
 `JOB.run(context)` receives its project's root and slug and its previous opaque
 checkpoint when present. The runner resolves the current record from the
 effective declaration and supplies that checkpoint; the job's script contract
@@ -295,31 +247,12 @@ without resolving its own job identity or reading an ambient working directory.
 Global modules live in the mother repository; local modules live in the declaring
 project.
 
-<!-- /planned-change:job-run-state-single-file -->
-
-<!-- planned-change:job-run-state-single-file -->
-
-`JobResult` is the structured outcome both classes produce:
-
-```python
-@dataclass
-class JobResult:
-    success: bool
-    message: str
-    items_processed: int = 0
-    errors: list[str] | None = None
-```
-
-<!-- change:job-run-state-single-file -->
-
 `JobResult` is the shared outcome envelope defined by `jobs/base.py`. A script
 returns its outcome and optional replacement checkpoint to the runner. The runner
 uses the same current-record writer as the agent-report CLI, then closes the
 script run through its existing outcome lifecycle. Checkpoint update semantics
 belong to `local/projects/teleclaude/spec/feature/agent_runtime/agent-job-reporting`;
 checkpoint meaning belongs to the job's procedure or script.
-
-<!-- /planned-change:job-run-state-single-file -->
 
 ### Agent job contract
 
@@ -331,15 +264,8 @@ The runner dispatches `/run-job <name>` through the canonical command-session co
 rooted at the project the run belongs to, and opens a run keyed by that project and name. The
 run boundary gives the session both the job's name and the procedure its declaration points
 at.
-<!-- planned-change:job-run-state-single-file -->
-
-The agent loads the procedure with its required-read closure, does its work, writes a run
-report under its project's run directory, reports its outcome via `telec jobs report <name>`,
-and stops.
-<!-- change:job-run-state-single-file -->
 
 The agent loads the procedure with its required-read closure, does its work, reads the latest checkpoint when needed, and submits the outcome through one `telec jobs report <name> --success <true|false> --message '<summary>' [--state-json '<object>']` call. The optional object follows the shared checkpoint-update contract in `local/projects/teleclaude/spec/feature/agent_runtime/agent-job-reporting`. The CLI writes the current record at `STATE_DIR/runs/<project_slug>/<job_name>.json`; the agent does not write it directly. It then stops.
-<!-- /planned-change:job-run-state-single-file -->
 
 An agent outcome carries the reporting session's identity as well as the project
 and job. The sweep closes only the run opened for that session; a late outcome

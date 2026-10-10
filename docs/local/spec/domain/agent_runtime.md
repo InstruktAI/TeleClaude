@@ -31,16 +31,7 @@ TeleClaudeNext repository.
 
 ### Ownership boundary
 
-<!-- planned-change:job-run-state-single-file -->
-
-- **Owns:** live-session acceptance and input execution, supervised agent
-  processes, runtime status, and session lifecycle transitions.
-
-<!-- change:job-run-state-single-file -->
-
 - **Owns:** live-session acceptance and input execution, supervised agent processes, runtime status, and session lifecycle transitions. For scheduled jobs, it also owns the shared outcome/checkpoint handoff and current-record persistence for agent procedures and script results, including agent-report correlation to the currently open run. Each job's procedure or script owns the meaning of its optional checkpoint payload; agent_runtime stores and returns that payload without interpreting it.
-
-<!-- /planned-change:job-run-state-single-file -->
 
 - **Owns (endpoints and conversation entry):** the core's endpoint registry —
   each person's assistant and each help desk enabled on the master — and the one

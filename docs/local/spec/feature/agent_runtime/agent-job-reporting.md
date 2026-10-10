@@ -1,7 +1,6 @@
 ---
-description: Shared outcome and opaque checkpoint reporting for scheduled agent procedures and script jobs.
-delivered_by:
-  - job-run-state-single-file
+description: Shared outcome and opaque checkpoint reporting for scheduled agent procedures
+  and script jobs.
 ---
 
 # Job Reporting — Spec
@@ -37,8 +36,6 @@ its checkpoint schema; the runtime stores its object without interpreting it.
   job's brief or script contract.
 
 ### Use cases
-
-<!-- planned:job-run-state-single-file -->
 
 #### UC-AJR-1: A report replaces the current project-job state
 
@@ -92,8 +89,6 @@ When the runner starts that script job
 Then the agent observes that job's checkpoint in the supplied execution context
 And a checkpoint from another project or job is not supplied
 ```
-
-<!-- /planned:job-run-state-single-file -->
 
 ## Known caveats
 
