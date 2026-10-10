@@ -37,27 +37,11 @@ flowchart LR
 
 ## Invariants
 
-<!-- planned-change:stabilize-tui-viewers -->
-
-- **Single State Owner**: The Sessions view owns the layout state — an ordered `sticky_ids` list (max `MAX_STICKY = 5`) and a single `preview_id`. The pane bridge holds a mirror that is re-synced from this owner on every data refresh; no second source of truth exists.
-
-<!-- change:stabilize-tui-viewers -->
-
 - **Single Preview Intent**: The local layout owner holds one typed preview intent for a session, an artifact, or none, alongside its ordered sticky intent. Session-row highlighting and the pane bridge read that same preview. Selecting an artifact replaces the session preview at the owner before layout is queued; refresh synchronization and reload adoption preserve the current intent (`local/projects/teleclaude/spec/feature/presentation/viewer-continuity`).
-
-<!-- /planned-change:stabilize-tui-viewers -->
 
 - **I1 — No Dual Reference**: `preview_id` is never also in `sticky_ids`. Enforced at every mutation boundary (all preview gestures route through one sticky-aware selector) and on persisted-state load (a corrupt `preview in sticky` snapshot self-heals by dropping the preview). This makes "a duplicate pane in place of the preview window" structurally impossible.
 
-<!-- planned-change:stabilize-tui-viewers -->
-
-- **Derived Layout**: The non-TUI cell assignment is the pure function `desired(sticky_ids, preview_id)` (see Layout derivation). No hidden child or active-pane fields participate.
-
-<!-- change:stabilize-tui-viewers -->
-
 - **Desired and Rendered Assignment**: The local preview and sticky intent order wanted identities through the canonical layout model. Rendered cells contain wanted surviving viewers and fresh attachments admitted by the shared session projection. A temporarily absent rendered cell retains its logical intent. The renderer's observation of pane liveness and placement is distinct from runtime-owned session state (`local/projects/teleclaude/spec/feature/presentation/viewer-continuity`).
-
-<!-- /planned-change:stabilize-tui-viewers -->
 
 - **Minimal Reflow Only On Tier Change**: Tier changes apply the smallest tmux delta that preserves surviving session pane ids: split added cells, kill removed cells, and move existing panes only where geometry requires it. Same-tier transitions swap only the cells whose assigned session changed (`respawn-pane -k` on that single pane); stable panes are never destroyed.
 - **Orphans Reaped, Stable Panes Preserved**: At render entry, live non-TUI panes that no tracked session maps to are reaped (a crashed process or a stale reflow can leak one). Tracked panes backing a desired session are never killed as part of this sweep. Column widths are set with explicit split percentages, never `select-layout even-horizontal`, so a stray pane can no longer leak an extra column.
@@ -72,11 +56,7 @@ flowchart LR
 - **Un-Sticky Transitions to Preview**: When a sticky session is removed (double-press), that session becomes the active preview. Any previously active preview is dismissed. This preserves the user's focus on the session they just interacted with and minimizes layout disruption.
 - **Local-Only State**: TUI state is local UI state; core session state remains owned by the daemon.
 
-<!-- planned:stabilize-tui-viewers -->
-
 - **Attachment Projection and Pane Observation**: The renderer consumes fresh-attachment admission and resolved destination from the shared session projection (`local/projects/teleclaude/spec/feature/integration/viewer-attachment-projection`). It keeps local preview/sticky intent and the observed attachment of a wanted surviving viewer independently of inputs for fresh creation. Reconciliation seeds every identifiable surviving viewer into the observed assignment, including an artifact, before comparing placement. An already-correct grid retains its placement; recovery changes only placement that differs from the declared geometry. This composes the publishing owners with local rendering under `sdlc/policy/domain-ownership`.
-
-<!-- /planned:stabilize-tui-viewers -->
 
 - **Shared Human Filter Is Cross-View Single-Owner**: The human filter — narrowing rows to one person's work — is a single app-level setting shared by the Sessions and Preparation views, owned at the app/shared level rather than by either view, and persisted in `tui_state.json` so it survives tab switches and process restarts. It holds exactly one person or none. Both views read the same setting and render their row set against it; a chip click posts a filter message that updates the one setting, never a second per-view copy. The owning human of a row resolves from existing data — a todo's `created_by_principal`, a session's `human_email` — through the identity resolver; rows whose human does not match are hidden, and rows with no resolvable human are hidden while a filter is active.
 - **Ownership Surface Is Multi-User-Gated**: The owner chips and the shared human filter are a multi-user affordance. They render only when the instance has more than one registered person — the same multi-user determination that gates the terminal-login requirement (the identity context's registered-people determination, read as one shared predicate by both surfaces). In single-user mode the chips and the filter are absent from both views entirely, not merely empty. The bidirectional todo↔session jumps and the claim-state highlighting are not gated — they aid solo navigation, not owner-disambiguation, and stay active regardless of user count.
@@ -114,20 +94,11 @@ The Sessions view is the single owner of layout state:
 
 - `sticky_ids`: ordered list of sticky session ids, capped at `MAX_STICKY = 5`.
 
-<!-- planned-change:stabilize-tui-viewers -->
-
-- `preview_id`: the single previewed session (or doc), or `null`. Held by the
-  reactive `preview_session_id`; never equal to a member of `sticky_ids` (I1).
-
-<!-- change:stabilize-tui-viewers -->
-
 - Preview intent has a session, artifact, or empty case. The session-preview
   accessor and row highlighting are derived from its session case; sticky
   selection retains I1. The existing persisted session-preview slot holds a
   session or nothing, while a surviving artifact's pane identity restores its
   local intent during reload.
-
-<!-- /planned-change:stabilize-tui-viewers -->
 
 - `collapsed`: set of collapsed session ids (session-level row fold)
 - Default fold for new rows: a session row that appears in the tree renders **collapsed by default**. Expanding a row persists that choice in the session fold state, so user-expanded rows stay expanded across tree rebuilds and process restarts; a row the user never expanded stays collapsed when it reappears.
@@ -186,13 +157,6 @@ flowchart TD
 
 Production TUI views own their state as Textual reactive attributes and emit
 Textual `Message`s for cross-widget effects; there is no central reducer object.
-<!-- planned-change:stabilize-tui-viewers -->
-
-The Sessions view owns `sticky_ids` + `preview_id` and posts `PreviewChanged` /
-`StickyChanged`; the pane bridge consumes those, mirrors the state, and drives
-the pane manager through the canonical `layout_model`. The logical interactions
-below name the user-facing operations (not reducer intents).
-<!-- change:stabilize-tui-viewers -->
 
 The local layout owner holds sticky intent and one typed preview intent. The
 Sessions view's session-preview accessor reads only the session case, and
@@ -200,7 +164,6 @@ artifact selection and reload adoption update that same owner. Messages carry
 the current intent to the bridge; rendered assignment composes it with observed
 viewers and the published attachment answer. The logical interactions below
 name user-facing operations rather than a second state owner.
-<!-- /planned-change:stabilize-tui-viewers -->
 
 #### Logical interactions
 
@@ -236,15 +199,7 @@ name user-facing operations rather than a second state owner.
 
 #### State contract
 
-<!-- planned-change:stabilize-tui-viewers -->
-
-- The Sessions view is the only owner of `sticky_ids` + `preview_id`; the pane bridge mirror is re-synced from it on every data refresh.
-
-<!-- change:stabilize-tui-viewers -->
-
 - The local layout owner supplies sticky intent and the complete session/artifact/empty preview intent to every bridge synchronization. Session-specific highlighting and persistence read the session case without writing another preview source.
-
-<!-- /planned-change:stabilize-tui-viewers -->
 
 - Views post `PreviewChanged` / `StickyChanged`; they do not call the pane manager directly.
 - Every preview gesture routes through one sticky-aware selector that enforces I1.
@@ -252,28 +207,11 @@ name user-facing operations rather than a second state owner.
 
 #### Layout derivation — `desired(sticky_ids, preview_id)`
 
-<!-- planned-change:stabilize-tui-viewers -->
-
-`desired()` returns the ordered list of sessions occupying the non-TUI cells:
-<!-- change:stabilize-tui-viewers -->
-
 `desired()` orders the viewer identities wanted by local sticky and preview intent:
-<!-- /planned-change:stabilize-tui-viewers -->
 
 - `preview_id is None` **or** `preview_id in sticky_ids` → `sticky_ids`.
 - `len(sticky_ids) < MAX_STICKY` → `sticky_ids + [preview_id]` (preview is an added pane).
 - `len(sticky_ids) == MAX_STICKY` and preview not sticky → `sticky_ids[:MAX_STICKY-1] + [preview_id]`; the **last sticky pane is borrowed** to show the preview and reverts to that sticky when the preview clears (same tier → in-place swap).
-
-<!-- planned-change:stabilize-tui-viewers -->
-
-`tier = 1 + len(desired)` indexes `LAYOUT_SPECS`. The renderer diffs the new
-cell assignment against the previous: same tier → `respawn-pane -k` only on the
-cells whose session changed; tier change → a minimal reflow that preserves
-surviving pane ids, splits added cells, and kills removed cells. The 4↔5 boundary
-uses explicit pane moves because the TUI pane changes between top-left and
-full-left shapes. Removing a sticky (`un-sticky → preview`) promotes that session
-to `preview_id`, dismissing any prior preview.
-<!-- change:stabilize-tui-viewers -->
 
 The renderer materializes those wanted identities from surviving viewers and
 the published fresh-attachment answer. The rendered cell count selects its
@@ -282,7 +220,6 @@ a tier change preserves surviving pane identities while adjusting geometry.
 The existing index-preserving grid and un-sticky-to-preview interaction retain
 their meanings. Intact observed placement requires no recovery movement
 (`local/projects/teleclaude/spec/feature/presentation/viewer-continuity`).
-<!-- /planned-change:stabilize-tui-viewers -->
 
 #### Pane-count matrix
 

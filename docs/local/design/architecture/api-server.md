@@ -104,8 +104,6 @@ command or lifecycle intent handoff; routes derive the response from the
 command's declared response mode. The API does not acquire ownership of
 session lifecycle, peer storage, or external adapter delivery.
 
-<!-- planned:stabilize-tui-viewers -->
-
 ### Viewer attachment projection
 
 The session DTO projection composes agent runtime's host-access answer with
@@ -123,7 +121,6 @@ the runtime answer and registry facts, while the renderer holds local view
 intent and observed panes. Peer session records are projected relative to the
 serving computer. Published attachment inputs are independent of whether the
 consumer has completed a separate computer-resource request.
-<!-- /planned:stabilize-tui-viewers -->
 
 ## Failure modes
 

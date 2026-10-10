@@ -1,8 +1,7 @@
 ---
-description: Local preview intent and observed viewer identity survive data updates and intact reloads while session attachment facts remain daemon-projected.
+description: Local preview intent and observed viewer identity survive data updates
+  and intact reloads while session attachment facts remain daemon-projected.
 visibility: internal
-delivered_by:
-  - stabilize-tui-viewers
 ---
 
 # Viewer Continuity — Spec

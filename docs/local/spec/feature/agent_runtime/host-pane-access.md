@@ -1,8 +1,7 @@
 ---
-description: Runtime-owned admission for fresh session viewers, distinct from inspection of an existing viewer, agent input readiness, and final session closure.
+description: Runtime-owned admission for fresh session viewers, distinct from inspection
+  of an existing viewer, agent input readiness, and final session closure.
 visibility: internal
-delivered_by:
-  - stabilize-tui-viewers
 ---
 
 # Host Pane Access — Spec

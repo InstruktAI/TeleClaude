@@ -21,8 +21,6 @@ The cleanup loop runs on the maintenance service tick (every hour by default). A
 
 ## Canonical fields
 
-<!-- planned:stabilize-tui-viewers -->
-
 ### Host binding release
 
 Termination retains the host binding while its host remains available. Once the
@@ -39,7 +37,6 @@ The original host identity remains available to that cleanup's process-reap
 diagnostics. This resource observation and its publication follow
 `sdlc/policy/domain-ownership`; consumers receive the published fact rather than
 deciding host availability from close intent.
-<!-- /planned:stabilize-tui-viewers -->
 
 ### Use cases
 

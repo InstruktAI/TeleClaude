@@ -1,8 +1,7 @@
 ---
-description: The daemon's shared session projection carries runtime-owned fresh-viewer admission and a destination resolved relative to the serving computer.
+description: The daemon's shared session projection carries runtime-owned fresh-viewer
+  admission and a destination resolved relative to the serving computer.
 visibility: internal
-delivered_by:
-  - stabilize-tui-viewers
 ---
 
 # Viewer Attachment Projection — Spec
