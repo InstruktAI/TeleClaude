@@ -239,7 +239,6 @@ Given a project subscribing none of code, docs, or agents
 And declaring at least one checkpoint path binding of its own
 When an agent turn ends
 Then the checkpoint engine evaluates the turn
-But a project whose only bindings of its own name events evaluates nothing for that turn
 ```
 
 <!-- /planned-change:checkpoint-event-bindings -->
@@ -468,6 +467,20 @@ And no other configuration is validated
 And this holds for a raw git commit and for telec code commit alike
 And a home subscribing neither code nor docs runs no other check and raises no commit obligation
 ```
+
+<!-- planned:checkpoint-event-bindings -->
+
+#### UC-CFG-CAP-35: An event binding alone leaves the engine silent
+
+```
+Given a project subscribing none of code, docs, or agents
+And declaring checkpoint bindings of its own that all name events
+When an agent turn ends
+Then the checkpoint engine evaluates nothing for that turn
+And no checkpoint is emitted
+```
+
+<!-- /planned:checkpoint-event-bindings -->
 
 ## Known caveats
 
