@@ -24,7 +24,7 @@ class PreparationObservationDTO(BaseModel):
     phase: DrainPhase
     held_units: int
     budget_seconds: float
-    preparation_started_at: datetime | None
+    preparation_started_at: datetime | None = None
     held_labels: tuple[str, ...]
     termination_grace_seconds: float
 
