@@ -435,19 +435,6 @@ And it skips the current tick and retries snapshot collection on the next poll c
 And when the tmux binary can be started again the same polling task resumes delivering output without needing re-registration
 ```
 
-<!-- planned:fix-daemon-event-loop-wedged-170s-splitting -->
-
-#### UC-OPD20: A very large reflected user turn does not stall the daemon
-
-```gherkin
-Given a session's latest fresh user turn originated outside Discord and is several million characters long
-When the user-reflection step projects that turn to the Discord admin lane
-Then the daemon keeps answering health and read requests and keeps its Discord connection alive while the turn is prepared for delivery
-And the reflected turn reaches Discord as consecutive messages that each fit within Discord's message limit
-```
-
-<!-- /planned:fix-daemon-event-loop-wedged-170s-splitting -->
-
 ### Cross-context references
 
 - **integration** — the adapter client's send-output-update and broadcast-user-input paths deliver the projected messages to adapter-bound subscribers (Telegram, Discord, web, terminal). Adapter-side fanout, edit-vs-append semantics, and chunking are integration's concern. agent_runtime hands over a fully rendered (message, delivery timestamp, multi-message flag) triple and lets integration decide how it lands.
