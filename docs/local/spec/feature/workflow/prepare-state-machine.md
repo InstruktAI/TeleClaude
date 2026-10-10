@@ -248,11 +248,26 @@ And two todos claiming the same feature-spec region are serialized by "telec tod
 
 #### UC-WPS16: The bug lane dispatches its diagnosis and advances on a settled stamp
 
+<!-- planned-change:diagnosis-settles-evidenced-cause -->
+
 A bug's `diagnosis` is authored by a dispatched peer, not by the session driving
 preparation, and it carries the evidence its causal claims rest on. The driving session
 triages before the peer is spent, interrogates the written mechanism after as a skeptical
 examiner rather than a second diagnostician, and stamps the cause once every causal
 transition is evidenced and the strongest rival no longer explains the observations.
+
+<!-- change:diagnosis-settles-evidenced-cause -->
+
+A bug's `diagnosis` is authored by a dispatched peer, not by the session driving
+preparation, and it carries the evidence its causal claims rest on. The driving session
+triages before the peer is spent, interrogates the written mechanism after as a skeptical
+examiner rather than a second diagnostician, and stamps the cause once every causal
+transition is evidenced and the strongest rival no longer explains the observations. The one
+exception is a filing whose causal account its reporter established and triage confirms in
+full (UC-WPS31).
+
+<!-- /planned-change:diagnosis-settles-evidenced-cause -->
+
 Artifact presence alone does not advance the phase: the stamp does, and it binds to the
 artifact's digest. The transition carries no review phase, verdict, or findings artifact of
 its own.
@@ -280,7 +295,15 @@ And the derived phase returns to DIAGNOSE
 #### UC-WPS17: An unresolved cause holds the bug instead of dispatching another author
 
 ```gherkin
+<!-- planned-change:diagnosis-settles-evidenced-cause -->
+
 Given a todo of kind bug whose dispatched peer either grounds no cause, or writes a mechanism whose interrogation reaches neither settlement condition
+
+<!-- change:diagnosis-settles-evidenced-cause -->
+
+Given a todo of kind bug whose dispatched peer either grounds no cause, or writes a mechanism whose interrogation does not reach all three settlement conditions
+
+<!-- /planned-change:diagnosis-settles-evidenced-cause -->
 When the driving session stamps the unresolved-diagnosis outcome for the slug
 Then the todo carries a hold whose audited source is diagnosis_unresolved
 And the diagnosis records both positions and the observation that would separate them
@@ -289,6 +312,30 @@ And no settled stamp is current, so the diagnosis cannot be consumed as a conclu
 And a subsequent prepare dispatch for the slug does not spawn another diagnosis peer
 And releasing the hold returns the slug to DIAGNOSE
 ```
+
+<!-- planned:diagnosis-settles-evidenced-cause -->
+
+#### UC-WPS31: A bug whose filing already settles its cause advances without a diagnosis peer
+
+```gherkin
+Given a todo of kind bug whose input carries a causal account written by a session other than the driving session
+And the driving session confirmed every transition, every occurrence, and the strongest rival against the account's cited sources without investigating
+When the driving session records the account and its confirmation in the diagnosis artifact and stamps the diagnosis settled
+Then no diagnosis peer is dispatched for the slug
+And the diagnosis artifact names the driving session as transcriber and the reporter's account as its source
+And the derived phase is PLAN_DRAFTING
+When the diagnosis is revised after that stamp
+Then the stamp is no longer current for the artifact's digest
+And the derived phase returns to DIAGNOSE
+When confirmation finds a gap, a source that does not show the account's observation, or a rival the evidence leaves standing
+Then one diagnosis peer is dispatched for the slug
+And its brief carries the symptom and the evidence without the reporter's causal account
+Given a bug whose causal account was written by the driving session itself
+When the driving session triages it
+Then one diagnosis peer is dispatched for the slug
+```
+
+<!-- /planned:diagnosis-settles-evidenced-cause -->
 
 #### UC-WPS24: Closing a lifecycle driver releases its claim without changing work state
 
