@@ -1,5 +1,5 @@
 ---
-description: A chat-platform message longer than the platform's single-message limit is delivered as consecutive in-limit messages without holding up the daemon's other work.
+description: How delivering a chat-platform message longer than the platform's single-message limit affects the daemon's other work.
 delivered_by:
   - fix-daemon-event-loop-wedged-170s-splitting
 ---
@@ -8,10 +8,8 @@ delivered_by:
 
 ## What it is
 
-When a message bound for a chat platform is longer than that platform's
-single-message limit, the adapter delivering it splits it into consecutive
-messages, in order, each within the limit. Formatting markup still open where
-one message ends is closed there and reopened at the start of the next.
+The behavior an observer can rely on while the daemon delivers a message that
+is longer than the receiving chat platform's single-message limit.
 
 ## Canonical fields
 
