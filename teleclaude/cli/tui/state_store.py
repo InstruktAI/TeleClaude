@@ -13,6 +13,10 @@ from teleclaude.cli.tui.theme import get_pane_theming_mode, normalize_pane_themi
 from teleclaude.paths import TUI_STATE_PATH
 
 logger = get_logger(__name__)
+_STATE_LOAD_FAILURE = "Failed to load TUI state"
+_STATE_SAVE_FAILURE = "Failed to save TUI state"
+_STATE_INVALID_FAILURE = "TUI state is not a JSON object"
+_STATE_LOCK_FAILURE = "Failed to lock TUI state for saving"
 
 _REQUIRED_NAMESPACES = ("sessions", "preparation", "status_bar", "app")
 _FLAT_FORMAT_KEYS = (
@@ -129,7 +133,7 @@ def load_state() -> dict[str, dict[str, object]]:  # guard: loose-dict - namespa
         with open(TUI_STATE_PATH, encoding="utf-8") as file:
             loaded: Any = json.load(file)
         if not isinstance(loaded, dict):
-            logger.warning("TUI state at %s is not an object; ignoring", TUI_STATE_PATH)
+            logger.error(_STATE_INVALID_FAILURE, path=str(TUI_STATE_PATH))
             return _empty_state()
 
         raw = dict(loaded)
@@ -139,7 +143,7 @@ def load_state() -> dict[str, dict[str, object]]:  # guard: loose-dict - namespa
             return state
         return _normalize_namespaced_state(raw)
     except (json.JSONDecodeError, OSError, TypeError) as exc:
-        logger.warning("Failed to load TUI state from %s: %s", TUI_STATE_PATH, exc)
+        logger.error(_STATE_LOAD_FAILURE, path=str(TUI_STATE_PATH), error=repr(exc), exc_info=True)
         return _empty_state()
 
 
@@ -158,8 +162,15 @@ def save_state(state: dict[str, object]) -> None:  # guard: loose-dict - namespa
         with open(lock_path, "w", encoding="utf-8") as lock_file:
             try:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            except (ImportError, OSError):
+            except ImportError:
                 pass
+            except OSError as exc:
+                logger.error(
+                    _STATE_LOCK_FAILURE,
+                    path=str(lock_path),
+                    error=repr(exc),
+                    exc_info=True,
+                )
 
             tmp_path = TUI_STATE_PATH.with_suffix(".tmp")
             with open(tmp_path, "w", encoding="utf-8") as file:
@@ -169,4 +180,4 @@ def save_state(state: dict[str, object]) -> None:  # guard: loose-dict - namespa
             os.replace(tmp_path, TUI_STATE_PATH)
         logger.debug("Saved TUI state to %s", TUI_STATE_PATH)
     except OSError as exc:
-        logger.error("Failed to save TUI state to %s: %s", TUI_STATE_PATH, exc)
+        logger.error(_STATE_SAVE_FAILURE, path=str(TUI_STATE_PATH), error=repr(exc), exc_info=True)

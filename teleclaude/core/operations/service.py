@@ -39,7 +39,11 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     default_session_runner,
     dispatch_lifecycle_session,
 )
-from teleclaude.core.next_machine.manual_start import adopt_manual_lifecycle_session, resolve_manual_dispatch_intent
+from teleclaude.core.next_machine.manual_start import (
+    adopt_manual_lifecycle_session,
+    resolve_manual_dispatch_intent,
+    work_feedback_for_manual_skip,
+)
 from teleclaude.core.next_machine.prepare import next_prepare
 from teleclaude.core.next_machine.slug_resolution import resolve_holder_children_db
 from teleclaude.core.next_machine.work import next_work
@@ -67,6 +71,7 @@ from teleclaude.core.operations._kinds import (
     OPERATION_KIND_TODO_RENAME,
     OPERATION_KIND_TODO_WORK,
 )
+from teleclaude.core.operations._outcome import OperationCompletion
 from teleclaude.core.operations._relayed_ownership import was_started_by_principal
 from teleclaude.core.operations.todo_identity import (
     pin_operation_todo_identity,
@@ -103,6 +108,7 @@ class SerializedOperation(TypedDict, total=False):
     progress_reason: str
     result: str
     error: str
+    work_feedback: str
     error_payload: OperationErrorPayload
     client_request_id: str
 
@@ -113,6 +119,7 @@ _HOLDER_AWARE_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
 _FOLLOW_THROUGH_TASK_NAME_TEMPLATE = "operation-follow-through-{operation_id}"
 _OPERATION_WORK_TEMPLATE = "operation:{kind}"
 _FOLLOW_THROUGH_WORK = "operation-follow-through"
+_RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE = "{prefix}: {slug} {reason}"
 
 
 def _operation_payload_abandon(operation: Operation) -> bool:
@@ -596,7 +603,7 @@ class OperationsService:
         a row accepted earlier gets a unit registered here.
         """
         unit = unit or get_shutdown_drain().register(_OPERATION_WORK_TEMPLATE.format(kind=kind))
-        factories: dict[str, Callable[[Operation], Awaitable[str]]] = {
+        factories: dict[str, Callable[[Operation], Awaitable[str | OperationCompletion]]] = {
             OPERATION_KIND_TODO_WORK: self._run_todo_work,
             OPERATION_KIND_TASK_RUN: self._run_task_run,
             OPERATION_KIND_TODO_INTEGRATE: lambda op: next_integrate(
@@ -632,7 +639,7 @@ class OperationsService:
         self,
         operation_id: str,
         kind: str,
-        coro_factory: Callable[[Operation], Awaitable[str]],
+        coro_factory: Callable[[Operation], Awaitable[str | OperationCompletion]],
     ) -> None:
         """Generic operation runner shared by all operation kinds."""
         heartbeat_task: asyncio.Task[None] | None = None
@@ -670,13 +677,15 @@ class OperationsService:
             token = set_progress_callback(_capture_progress)
             caller_token = set_caller_session_id(operation.caller_session_id)
             async with pin_operation_todo_identity(operation), follow_through_scope() as follow_throughs:
-                result = await coro_factory(operation)
+                outcome = await coro_factory(operation)
+            completion = outcome if isinstance(outcome, OperationCompletion) else OperationCompletion(outcome)
             await self._flush_latest_progress(operation_id, latest_progress)
             completed_at = datetime.now(UTC)
             if await self._db.complete_operation(
                 operation_id,
-                result,
+                completion.result,
                 completed_at.isoformat(),
+                work_feedback=completion.work_feedback,
             ):
                 self._emit_outcome_event(kind, operation_id)
                 await self._deliver_outcome(operation, outcome=DeliveryOutcome.COMPLETED, occurred_at=completed_at)
@@ -711,6 +720,7 @@ class OperationsService:
                 error_text,
                 failed_at.isoformat(),
                 error_payload_json=error_payload_json,
+                work_feedback=exc.work_feedback if isinstance(exc, OperationFailure) else None,
             )
             if transitioned and operation is not None:
                 self._emit_outcome_event(kind, operation_id, error=error_text)
@@ -776,21 +786,21 @@ class OperationsService:
             raise RuntimeError(error or f"{command.command_type.value} failed")
         return json.dumps(result, sort_keys=True)
 
-    async def _run_todo_prepare(self, operation: Operation) -> str:
+    async def _run_todo_prepare(self, operation: Operation) -> str | OperationCompletion:
         return await self._run_todo_lifecycle_operation(
             operation,
             lane=RunnerLane.PREPARE,
             state_machine=lambda op, cwd: next_prepare(self._db, op.slug, cwd),
         )
 
-    async def _run_todo_work(self, operation: Operation) -> str:
+    async def _run_todo_work(self, operation: Operation) -> str | OperationCompletion:
         return await self._run_todo_lifecycle_operation(
             operation,
             lane=RunnerLane.WORK,
             state_machine=lambda op, cwd: next_work(self._db, op.slug, cwd),
         )
 
-    async def _run_task_run(self, operation: Operation) -> str:
+    async def _run_task_run(self, operation: Operation) -> str | OperationCompletion:
         return await self._run_todo_lifecycle_operation(
             operation,
             lane=RunnerLane.TASK_RUN,
@@ -819,8 +829,8 @@ class OperationsService:
         operation: Operation,
         *,
         lane: RunnerLane,
-        state_machine: Callable[[Operation, str], Awaitable[str]],
-    ) -> str:
+        state_machine: Callable[[Operation, str], Awaitable[str | OperationCompletion]],
+    ) -> str | OperationCompletion:
         cwd, caller_session_id = todo_operation_context(operation)
         if operation.slug is None:
             return await state_machine(operation, cwd)
@@ -845,12 +855,18 @@ class OperationsService:
             raise ClaimConflict(slug=slug, holder=adoption.session_id)
         if adoption.status is ManualLifecycleStatus.SKIPPED:
             reason = self._format_manual_lifecycle_reason(adoption.reason)
-            return f"{RUNNER_NOT_DISPATCHED}: {slug} {reason}"
+            return OperationCompletion(
+                _RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE.format(prefix=RUNNER_NOT_DISPATCHED, slug=slug, reason=reason),
+                work_feedback=adoption.work_feedback,
+            )
 
         intent, skip_reason = await resolve_manual_dispatch_intent(todos_db, slug, requested_lane=lane)
         if intent is None:
-            reason = skip_reason.value if skip_reason is not None else "invalid-kind"
-            return f"{RUNNER_NOT_DISPATCHED}: {slug} {reason}"
+            reason = skip_reason.value if skip_reason is not None else RunnerSkipReason.INVALID_KIND.value
+            return OperationCompletion(
+                _RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE.format(prefix=RUNNER_NOT_DISPATCHED, slug=slug, reason=reason),
+                work_feedback=work_feedback_for_manual_skip(skip_reason),
+            )
         client = self._lifecycle_client_factory()
         await client.connect()
         try:
@@ -971,4 +987,6 @@ class OperationsService:
             payload["error_payload"] = cast(OperationErrorPayload, parsed_error_payload)
         if operation.client_request_id is not None:
             payload["client_request_id"] = operation.client_request_id
+        if operation.work_feedback is not None:
+            payload["work_feedback"] = operation.work_feedback
         return payload

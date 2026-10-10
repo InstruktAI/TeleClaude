@@ -613,6 +613,7 @@ class Operation(SQLModel, table=True):
     result_text: str | None = None
     error_text: str | None = None
     error_payload: str | None = None
+    work_feedback: str | None = None
     created_at: str
     updated_at: str
     started_at: str | None = None

@@ -163,17 +163,14 @@ class TelecAppWsMixin:
             return True
 
         if isinstance(event, ErrorEventDTO):
-            self.notify_text(event.data.message, severity="error")  # type: ignore[attr-defined]
             return True
 
         if isinstance(event, OperationFailedEventDTO):
-            # Surface background-operation failures (e.g. RemoveRefused) as toasts.
-            self.notify_text(event.error, severity="error")  # type: ignore[attr-defined]
+            self.present_work_feedback(event.work_feedback, event.operation_id)  # type: ignore[attr-defined]
             return True
 
         if isinstance(event, OperationSucceededEventDTO):
-            # Successful completions stay silent — the relevant view already
-            # reflects the new state through its own data refresh.
+            self.present_work_feedback(event.work_feedback, event.operation_id)  # type: ignore[attr-defined]
             return True
 
         return False
@@ -243,16 +240,6 @@ class TelecAppWsMixin:
             return
         if event.status != "error":
             return
-        if event.reason == "close_failed":
-            self.notify_text(  # type: ignore[attr-defined]
-                f"Session {event.session_id} failed to close",
-                severity="error",
-            )
-            return
-        self.notify_text(  # type: ignore[attr-defined]
-            f"Session {event.session_id}: {event.status}",
-            severity="warning",
-        )
 
     @staticmethod
     def _get_sessions_view_data(sessions_view: SessionsView) -> tuple[object, object]:

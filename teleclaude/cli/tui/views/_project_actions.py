@@ -5,12 +5,16 @@ from __future__ import annotations
 from collections.abc import Awaitable
 from typing import Protocol
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.api_models import ProjectDTO
 from teleclaude.cli.api_client import APIError
 
 _PROJECT_ADD_WORKER_GROUP = "project-add"
 _PROJECT_ADD_SUCCESS_TEMPLATE = "Project '{name}' added"
-_ERROR_SEVERITY = "error"
+_PROJECT_ADD_FAILURE_EVENT = "tui.project_add_failed"
+
+logger = get_logger(__name__)
 
 
 class NewProjectResultLike(Protocol):
@@ -34,6 +38,8 @@ class ProjectNotifier(Protocol):
 
     def notify_text(self, message: str, *, severity: str = "information") -> None: ...
 
+    def present_work_feedback(self, message: str | None, operation_id: str | None = None) -> None: ...
+
     def run_worker(
         self,
         work: Awaitable[object],
@@ -48,10 +54,13 @@ async def save_new_project(app: ProjectNotifier, result: NewProjectResultLike) -
     try:
         project = await app.api.add_project(result.path)
     except APIError as exc:
-        app.notify_text(exc.detail, severity=_ERROR_SEVERITY)
+        if exc.work_feedback is not None:
+            app.present_work_feedback(exc.work_feedback)
+        else:
+            logger.error(_PROJECT_ADD_FAILURE_EVENT, path=result.path, error=repr(exc), exc_info=True)
         return False
     except Exception as exc:
-        app.notify_text(str(exc), severity=_ERROR_SEVERITY)
+        logger.error(_PROJECT_ADD_FAILURE_EVENT, path=result.path, error=repr(exc), exc_info=True)
         return False
 
     app.notify(_PROJECT_ADD_SUCCESS_TEMPLATE.format(name=project.name))

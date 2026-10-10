@@ -121,6 +121,7 @@ class ToolAPIError(Exception):
         is_timeout: bool = False,
         is_unavailable: bool = False,
         is_shutdown_refusal: bool = False,
+        work_feedback: str | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
@@ -128,6 +129,7 @@ class ToolAPIError(Exception):
         self.is_timeout = is_timeout
         self.is_unavailable = is_unavailable
         self.is_shutdown_refusal = is_shutdown_refusal
+        self.work_feedback = work_feedback
 
     @property
     def not_accepted_cause(self) -> NotAcceptedCause | None:
@@ -189,7 +191,7 @@ def tool_api_request(
         scoped_identity = refresh_cli_identity_role(clearance_identity or resolve_cli_identity())
         refusal = clearance_scope_refusal(clearance_scope, scoped_identity)
         if refusal is not None:
-            raise ToolAPIError(refusal, status_code=403)
+            raise ToolAPIError(refusal, status_code=403, work_feedback=refusal)
     from teleclaude.caller_identity import (  # noqa: PLC0415 - request construction owns caller serialization.
         CarriedIdentity,
     )
@@ -247,7 +249,11 @@ def tool_api_request(
         raise ToolAPIError(f"authentication required — {detail}", status_code=401)
     if resp.status_code == 403:
         detail = _extract_detail(resp)
-        raise ToolAPIError(f"permission denied — {detail}", status_code=403)
+        raise ToolAPIError(
+            f"permission denied — {detail}",
+            status_code=403,
+            work_feedback=_work_feedback_value(resp),
+        )
     if resp.status_code >= 400:
         detail_value = _detail_value(resp)
         refused = is_shutdown_refusal(resp.status_code, detail_value)
@@ -255,6 +261,7 @@ def tool_api_request(
             shutdown_refusal_message() if refused else f"{resp.status_code} — {detail_value}",
             status_code=resp.status_code,
             is_shutdown_refusal=refused,
+            work_feedback=shutdown_refusal_message() if refused else _work_feedback_value(resp),
         )
 
     try:
@@ -302,6 +309,18 @@ def _detail_value(resp: httpx.Response) -> object:
     except Exception:
         pass
     return resp.text
+
+
+def _work_feedback_value(resp: httpx.Response) -> str | None:
+    """Read only the documented structured work-feedback field."""
+    try:
+        data = resp.json()
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    work_feedback = data.get("work_feedback")
+    return work_feedback if isinstance(work_feedback, str) else None
 
 
 def _extract_detail(resp: httpx.Response) -> str:

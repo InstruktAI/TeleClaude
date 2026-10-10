@@ -6,6 +6,25 @@ from typing_extensions import TypedDict
 
 from teleclaude.docs_reconcile import BlockingSnippet
 
+_REMOVE_REFUSED_WORK_FEEDBACK = (
+    "Removal is blocked because it would orphan documentation references. "
+    "Resolve the listed references before trying again."
+)
+_REMOVE_LIVE_WORK_FEEDBACK = (
+    "Removal is blocked while live work holds this todo. Finish or release that work before trying again."
+)
+_REVIEWER_CONFLICT_WORK_FEEDBACK_WITH_HOLDER = (
+    "A reviewer is already working on {subject}; continue with that session using {reuse_command}."
+)
+_REVIEWER_CONFLICT_WORK_FEEDBACK = "A reviewer is already working on {subject}."
+_CLAIM_CONFLICT_WORK_FEEDBACK_WITH_HOLDER = (
+    "Another session is already working on {slug}; contact it with `telec sessions send {holder} <message>`."
+)
+_CLAIM_CONFLICT_WORK_FEEDBACK = "Another lifecycle run is already working on {slug}; try again after it finishes."
+_LANE_CROSSING_WORK_FEEDBACK = (
+    "This todo is held in the {held_lane} lane and cannot be started from {requested_lane}. {sanctioned_path}."
+)
+
 
 class OperationErrorPayload(TypedDict):
     """Structured operation failure payload contract."""
@@ -48,6 +67,7 @@ class OperationFailure(Exception):
     """Base class for operation failures with structured API payloads."""
 
     error_kind: str
+    work_feedback: str | None = None
 
     def to_error_payload(self) -> OperationErrorPayload:
         """Return the machine-readable operation error payload."""
@@ -66,6 +86,7 @@ class RemoveRefused(OperationFailure):
     def __init__(self, *, slug: str, blocking_snippets: list[BlockingSnippet]) -> None:
         self.slug = slug
         self.blocking_snippets = blocking_snippets
+        self.work_feedback = _REMOVE_REFUSED_WORK_FEEDBACK
         super().__init__(slug)
 
     def to_error_payload(self) -> RemoveRefusalErrorPayload:
@@ -104,6 +125,7 @@ class RemoveRefusedLiveWork(OperationFailure):
         self.session_ids = session_ids
         self.operation_ids = operation_ids
         self.claim_holder = claim_holder
+        self.work_feedback = _REMOVE_LIVE_WORK_FEEDBACK
         super().__init__(slug)
 
     def to_error_payload(self) -> RemoveRefusedLiveWorkErrorPayload:
@@ -153,6 +175,11 @@ class ReviewerConflict(OperationFailure):
         self.subject = subject
         self.holder = holder
         self.reuse_command = reuse_command
+        self.work_feedback = (
+            _REVIEWER_CONFLICT_WORK_FEEDBACK_WITH_HOLDER.format(subject=subject, reuse_command=reuse_command)
+            if holder
+            else _REVIEWER_CONFLICT_WORK_FEEDBACK.format(subject=subject)
+        )
         super().__init__(subject)
 
     def to_error_payload(self) -> ReviewerConflictErrorPayload:
@@ -219,6 +246,11 @@ class ClaimConflict(OperationFailure):
     def __init__(self, *, slug: str, holder: str | None) -> None:
         self.slug = slug
         self.holder = holder
+        self.work_feedback = (
+            _CLAIM_CONFLICT_WORK_FEEDBACK_WITH_HOLDER.format(slug=slug, holder=holder)
+            if holder
+            else _CLAIM_CONFLICT_WORK_FEEDBACK.format(slug=slug)
+        )
         super().__init__(slug)
 
     def to_error_payload(self) -> ClaimConflictErrorPayload:
@@ -261,6 +293,11 @@ class LaneCrossingRefused(OperationFailure):
         self.held_lane = held_lane
         self.requested_lane = requested_lane
         self.sanctioned_path = sanctioned_path
+        self.work_feedback = _LANE_CROSSING_WORK_FEEDBACK.format(
+            held_lane=held_lane,
+            requested_lane=requested_lane,
+            sanctioned_path=sanctioned_path,
+        )
         super().__init__(slug)
 
     def to_error_payload(self) -> LaneCrossingRefusedErrorPayload:

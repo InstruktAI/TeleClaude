@@ -131,11 +131,13 @@ class APIError(Exception):
         detail: str | None = None,
         *,
         not_accepted_cause: NotAcceptedCause | None = None,
+        work_feedback: str | None = None,
     ):
         super().__init__(message)
         self.status_code = status_code
         self.detail = detail or message  # Fallback to full message if no detail
         self.not_accepted_cause = not_accepted_cause
+        self.work_feedback = work_feedback
 
     def exit_if_not_accepted(self) -> None:
         """Exit with the not-accepted message when this failure was a refusal or an unreachable daemon."""
@@ -438,7 +440,7 @@ class _TelecConnectionClient:
 
         refusal = None if self._daemon_credential else clearance_scope_refusal(options.clearance_scope, identity)
         if refusal is not None:
-            raise APIError(refusal)
+            raise APIError(refusal, work_feedback=refusal)
         identity_headers = (
             self._build_identity_headers(identity) if identity is not None else self._http_state.identity_headers
         )
@@ -462,9 +464,13 @@ class _TelecConnectionClient:
             # Parse JSON response to extract human-friendly detail
             status_code = error.response.status_code
             detail = None
+            work_feedback = None
             try:
                 body = error.response.json()
-                detail = body.get("detail")
+                if isinstance(body, dict):
+                    detail = body.get("detail")
+                    raw_work_feedback = body.get("work_feedback")
+                    work_feedback = raw_work_feedback if isinstance(raw_work_feedback, str) else None
             except (json.JSONDecodeError, ValueError):
                 detail = error.response.text
             if is_shutdown_refusal(status_code, detail):
@@ -474,11 +480,13 @@ class _TelecConnectionClient:
                     status_code=status_code,
                     detail=refusal_message,
                     not_accepted_cause=NotAcceptedCause.DRAINING,
+                    work_feedback=refusal_message,
                 ) from error
             raise APIError(
                 f"API request failed: {status_code} {detail or error.response.text}",
                 status_code=status_code,
                 detail=detail,
+                work_feedback=work_feedback,
             ) from error
         except httpx.TimeoutException as error:
             raise APIError("API request timed out. Server may be blocked or overloaded.") from error

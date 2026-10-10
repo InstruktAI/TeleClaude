@@ -95,6 +95,7 @@ from teleclaude.cli.tui.widgets.agent_status import AgentRenderStatus, classify_
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
+from teleclaude.cli.tui.work_feedback import WorkFeedbackPresenter
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.agents import get_enabled_agents
 from teleclaude.core.session_listing import SESSION_LISTING_MAX_IDS
@@ -118,6 +119,7 @@ _AVAILABILITY_PILLARS: tuple[TuiBootstrapPillar, ...] = (_AVAILABILITY_PILLAR,)
 _SAFE_INPUT_AGENT = "agent"
 _SAFE_INPUT_AVAILABLE = "available"
 _SAFE_INPUT_STATUS = "status"
+_WORK_FEEDBACK_SEVERITY: SeverityLevel = "error"
 _EMPTY_LINEAGE = ""
 _SESSIONS_VIEW_SESSIONS_ATTR = "_sessions"
 _APP_STATE_FIELDS = {
@@ -355,6 +357,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             self.theme = "teleclaude-light-agent" if is_agent else "teleclaude-light"
 
         self.api = api
+        self._work_feedback_presenter = WorkFeedbackPresenter(
+            lambda message: self.notify_text(message, severity=_WORK_FEEDBACK_SEVERITY)
+        )
         from teleclaude.cli.session_auth import resolve_cli_identity  # noqa: PLC0415 - capture the TUI's launch caller.
 
         self._clearance_identity = resolve_cli_identity()
@@ -391,6 +396,10 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         cannot vouch for its own message.
         """
         self.notify(message, title=title, severity=severity, timeout=timeout, markup=False)
+
+    def present_work_feedback(self, message: str | None, operation_id: str | None = None) -> None:
+        """Present an owner-declared work message, deduplicated for operation outcomes."""
+        self._work_feedback_presenter.present(message, operation_id)
 
     def __getattr__(self, name: str) -> object:
         """Keep legacy mixin attribute access working via grouped state."""
@@ -606,7 +615,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             include_removed=True,
         )
         for refusal in refusals:
-            self.notify_text(refusal, severity="error")
+            self.present_work_feedback(refusal)
 
         logger.trace("[PERF] on_mount api+ws done dt=%.3f", _t.monotonic() - _m0)
 

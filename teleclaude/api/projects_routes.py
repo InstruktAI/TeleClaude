@@ -16,6 +16,7 @@ from teleclaude.api.auth import (
     carried_caller,
     require_clearance_at_caller_person,
 )
+from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api_models import AddProjectRequest, ProjectDTO, TodoDTO
 from teleclaude.config.machine import config
 from teleclaude.config.project_subject_init import adopt_project_subject
@@ -42,6 +43,8 @@ _PROJECT_ADOPT_COMMAND = "telec config project adopt"
 _PROJECT_ADOPTION_REFUSED = "project adoption refused — required standing: {required_standing} ({reason})"
 _PROJECT_PATH_REQUIRED = "project path must be an absolute path"
 _PROJECT_PATH_FILE = "project path names a file"
+_PROJECT_PATH_FILE_WORK_FEEDBACK = "Project adoption needs a directory; choose a folder as the project path."
+_PROJECT_IDENTITY_CONFLICT_WORK_FEEDBACK = "Another registered project already owns this project identity; use its existing entry or choose a different folder."
 _PROJECT_PATH_CREATE_FAILED = "project folder could not be created"
 _PROJECT_REFRESH_UNAVAILABLE = "project refresh is not configured"
 _PROJECT_ADOPTION_FAILED = "project adoption failed: {reason}"
@@ -174,11 +177,14 @@ async def add_project(
         ),
     )
     if not clearance.allowed:
-        raise HTTPException(
+        detail = _PROJECT_ADOPTION_REFUSED.format(
+            required_standing=clearance.required_standing.value,
+            reason=clearance.reason,
+        )
+        raise DeclaredWorkRefusal(
             status_code=403,
-            detail=_PROJECT_ADOPTION_REFUSED.format(
-                required_standing=clearance.required_standing.value, reason=clearance.reason
-            ),
+            detail=detail,
+            work_feedback=detail,
         )
     requested_path = Path(request.path).expanduser()
     if not requested_path.is_absolute():
@@ -189,7 +195,11 @@ async def add_project(
         raise HTTPException(status_code=400, detail=_PROJECT_PATH_REQUIRED) from exc
 
     if project_root.exists() and not project_root.is_dir():
-        raise HTTPException(status_code=400, detail=_PROJECT_PATH_FILE)
+        raise DeclaredWorkRefusal(
+            status_code=400,
+            detail=_PROJECT_PATH_FILE,
+            work_feedback=_PROJECT_PATH_FILE_WORK_FEEDBACK,
+        )
 
     created_directories: list[Path] = []
     if not project_root.exists():
@@ -205,7 +215,11 @@ async def add_project(
             if project_root.is_dir():
                 created_directories.clear()
             else:
-                raise HTTPException(status_code=400, detail=_PROJECT_PATH_FILE) from exc
+                raise DeclaredWorkRefusal(
+                    status_code=400,
+                    detail=_PROJECT_PATH_FILE,
+                    work_feedback=_PROJECT_PATH_FILE_WORK_FEEDBACK,
+                ) from exc
         except OSError as exc:
             raise HTTPException(status_code=400, detail=_PROJECT_PATH_CREATE_FAILED) from exc
 
@@ -217,7 +231,12 @@ async def add_project(
         )
     except ProjectIdentityConflict as exc:
         _remove_created_directories(created_directories)
-        raise HTTPException(status_code=409, detail=_PROJECT_ADOPTION_FAILED.format(reason=str(exc))) from exc
+        detail = _PROJECT_ADOPTION_FAILED.format(reason=str(exc))
+        raise DeclaredWorkRefusal(
+            status_code=409,
+            detail=detail,
+            work_feedback=_PROJECT_IDENTITY_CONFLICT_WORK_FEEDBACK,
+        ) from exc
     except (OSError, ValueError) as exc:
         _remove_created_directories(created_directories)
         raise HTTPException(status_code=400, detail=_PROJECT_ADOPTION_FAILED.format(reason=str(exc))) from exc

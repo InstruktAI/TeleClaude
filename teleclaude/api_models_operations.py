@@ -50,6 +50,7 @@ class OperationStatusDTO(BaseModel):
     progress_reason: str | None = None
     result: str | None = None
     error: str | None = None
+    work_feedback: str | None = None
     error_payload: OperationStatusErrorPayload | None = None
     client_request_id: str | None = None
 
@@ -72,6 +73,7 @@ class OperationStatusPayload(TypedDict):
     progress_reason: NotRequired[str]
     result: NotRequired[str]
     error: NotRequired[str]
+    work_feedback: NotRequired[str]
     error_payload: NotRequired[OperationStatusErrorPayload]
     client_request_id: NotRequired[str]
 
@@ -95,6 +97,7 @@ class OperationSucceededEventDTO(BaseModel):
         "agent_runtime.procedure_activation.completed",
     ]
     operation_id: str
+    work_feedback: str | None = None
 
 
 class OperationFailedEventDTO(BaseModel):
@@ -117,3 +120,4 @@ class OperationFailedEventDTO(BaseModel):
     ]
     operation_id: str
     error: str
+    work_feedback: str | None = None

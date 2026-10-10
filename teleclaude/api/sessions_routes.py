@@ -56,6 +56,7 @@ from teleclaude.api.session_route_helpers import dispatch_caller_command, http_e
 from teleclaude.api.session_route_helpers import resolve_created_session_transport as _resolve_created_session_transport
 from teleclaude.api.session_view_models import enrich_human_names
 from teleclaude.api.sessions_actions_routes import guard_generic_create_session
+from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
@@ -454,7 +455,12 @@ async def _create_session_response(
             caller_session_id=exc.caller_session_id,
             ignition_path=_SESSION_START_IGNITION_PATH,
         )
-        raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc
+        detail = str(exc)
+        raise DeclaredWorkRefusal(
+            status_code=exc.http_status_code,
+            detail=detail,
+            work_feedback=detail,
+        ) from exc
 
     cmd = CommandMapper.map_api_input(
         "new_session",
@@ -572,7 +578,12 @@ async def _create_session_response(
     except DirectLinkExclusivityError as exc:
         # Lost the race against a concurrent ignition on this caller: the
         # session exists but stays unlinked rather than becoming a third peer.
-        raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc
+        detail = str(exc)
+        raise DeclaredWorkRefusal(
+            status_code=exc.http_status_code,
+            detail=detail,
+            work_feedback=detail,
+        ) from exc
     except Exception as e:
         refusal = agent_dispatch_http_refusal(e)
         if refusal:
@@ -931,7 +942,12 @@ async def send_message_endpoint(
     except (SessionMessageRejectedError, UnidentifiableCallerError) as exc:
         if isinstance(exc, UnidentifiableCallerError):
             logger.warning("Refused unidentifiable caller: caller=%s target=%s", exc.caller_session_id, session_id)
-        raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc
+        detail = str(exc)
+        raise DeclaredWorkRefusal(
+            status_code=exc.http_status_code,
+            detail=detail,
+            work_feedback=detail,
+        ) from exc
     except HTTPException:
         raise
     except Exception as e:

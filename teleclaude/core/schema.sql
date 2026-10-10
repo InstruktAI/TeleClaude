@@ -273,6 +273,7 @@ CREATE TABLE IF NOT EXISTS operations (
     result_text TEXT,
     error_text TEXT,
     error_payload TEXT,
+    work_feedback TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     started_at TEXT,

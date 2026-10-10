@@ -2,6 +2,7 @@
 
 from fastapi import HTTPException
 
+from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.core.agent_dispatch import (
     AgentDispatchFailure,
     AgentDispatchOutcome,
@@ -14,6 +15,8 @@ from teleclaude.core.models import AgentDispatchMode, JsonDict, SessionEntryPoin
 from teleclaude.core.session_startup_message import StartupMessageError
 
 _ROUTING_REASON_FIELD = "routing_reason"
+_AGENT_DISPATCH_DETAIL_TEMPLATE = "{reason}: {error}"
+_STARTUP_MESSAGE_DETAIL_TEMPLATE = "startup_message_invalid: {error}"
 
 _BAD_REQUEST_REASONS = frozenset(
     {
@@ -48,12 +51,19 @@ def agent_dispatch_http_refusal(error: Exception) -> HTTPException | None:
             status_code = 503
         else:
             return None
-        return HTTPException(status_code=status_code, detail=f"{error.reason.value}: {error}")
+        detail = _AGENT_DISPATCH_DETAIL_TEMPLATE.format(reason=error.reason.value, error=error)
+        if error.reason in _BAD_REQUEST_REASONS or error.reason in _CONFLICT_REASONS:
+            return DeclaredWorkRefusal(status_code=status_code, detail=detail, work_feedback=detail)
+        return HTTPException(status_code=status_code, detail=detail)
     if isinstance(error, RemoteDispatchError):
         status_code = 409 if error.reason is RemoteDispatchReason.TARGET_DISPATCH_CAPABILITY_REQUIRED else 502
-        return HTTPException(status_code=status_code, detail=f"{error.reason.value}: {error}")
+        detail = _AGENT_DISPATCH_DETAIL_TEMPLATE.format(reason=error.reason.value, error=error)
+        if error.reason is RemoteDispatchReason.TARGET_DISPATCH_CAPABILITY_REQUIRED:
+            return DeclaredWorkRefusal(status_code=status_code, detail=detail, work_feedback=detail)
+        return HTTPException(status_code=status_code, detail=detail)
     if isinstance(error, StartupMessageError):
-        return HTTPException(status_code=400, detail=f"startup_message_invalid: {error}")
+        detail = _STARTUP_MESSAGE_DETAIL_TEMPLATE.format(error=error)
+        return DeclaredWorkRefusal(status_code=400, detail=detail, work_feedback=detail)
     return None
 
 

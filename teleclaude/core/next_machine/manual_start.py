@@ -85,6 +85,7 @@ __all__ = [
     "guard_driver_start",
     "manual_start_lifecycle_session",
     "resolve_manual_dispatch_intent",
+    "work_feedback_for_manual_skip",
 ]
 
 
@@ -104,6 +105,29 @@ _SANCTIONED_PATH_BY_HELD_LANE: dict[RunnerLane, str] = {
     RunnerLane.PREPARE: _SANCTIONED_PATH_FROM_PREPARE,
     RunnerLane.WORK: _SANCTIONED_PATH_FROM_WORK,
 }
+_MANUAL_SKIP_FEEDBACK: dict[RunnerSkipReason, str] = {
+    RunnerSkipReason.APPROVAL_PENDING: "This todo is waiting for approval; complete its approval step before starting work.",
+    RunnerSkipReason.AT_CAPACITY: "All lifecycle driver slots are in use; try again when one becomes available.",
+    RunnerSkipReason.DELIVERED: "This todo is already delivered and cannot be started again.",
+    RunnerSkipReason.DEPENDENCY_BLOCKED: "This todo is blocked by dependencies; complete them before starting it.",
+    RunnerSkipReason.FINALIZE_READY: "This todo is ready to finalize; finish its delivery before starting more work.",
+    RunnerSkipReason.HELD: "This todo is on hold; release the hold before starting work.",
+    RunnerSkipReason.ICEBOX: "This todo is in the icebox; unfreeze it before starting work.",
+    RunnerSkipReason.POLICY_DISABLED: "The requested lifecycle lane is disabled for this todo.",
+    RunnerSkipReason.REMOVED: "This todo is removed; reactivate it before starting work.",
+    RunnerSkipReason.SCHEDULE_BLOCKED: "This todo is not scheduled to run yet; try again when its schedule allows.",
+    RunnerSkipReason.TASK_AUTHORIZATION_MISSING: "This task is not authorized to run; approve its task plan first.",
+}
+_CONFLICTING_SESSION_BINDING_FEEDBACK = (
+    "This session already owns another todo; finish or release that lifecycle claim before starting this one."
+)
+
+
+def work_feedback_for_manual_skip(reason: RunnerSkipReason | str | None) -> str | None:
+    """Publish feedback only for deliberate manual-start work refusals."""
+    if isinstance(reason, RunnerSkipReason):
+        return _MANUAL_SKIP_FEEDBACK.get(reason)
+    return None
 
 
 @dataclass(frozen=True)
@@ -572,6 +596,7 @@ async def adopt_manual_lifecycle_session(
             status=ManualLifecycleStatus.ALREADY_DRIVEN,
             session_id=owner_session_id,
             reason=reason,
+            work_feedback=work_feedback_for_manual_skip(reason),
         )
     if reason is not None:
         return ManualLifecycleSessionResult(
@@ -579,6 +604,7 @@ async def adopt_manual_lifecycle_session(
             lane=lane,
             status=ManualLifecycleStatus.SKIPPED,
             reason=reason,
+            work_feedback=work_feedback_for_manual_skip(reason),
         )
     if task_skip_reason is not None:
         return ManualLifecycleSessionResult(
@@ -586,6 +612,7 @@ async def adopt_manual_lifecycle_session(
             lane=lane,
             status=ManualLifecycleStatus.SKIPPED,
             reason=task_skip_reason,
+            work_feedback=work_feedback_for_manual_skip(task_skip_reason),
         )
 
     session = await runtime_db.get_session(caller_session_id)
@@ -605,6 +632,7 @@ async def adopt_manual_lifecycle_session(
             lane=lane,
             status=ManualLifecycleStatus.SKIPPED,
             reason=f"conflicting session binding: caller owns working_slug={session.working_slug}",
+            work_feedback=_CONFLICTING_SESSION_BINDING_FEEDBACK,
         )
     adopted = await adopt_headless_session(
         runtime_db=runtime_db,

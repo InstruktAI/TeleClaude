@@ -39,6 +39,7 @@ from teleclaude.api.todo_update_support import (
     validate_kind_for_update,
     validate_update_request,
 )
+from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.config.machine import config
@@ -111,6 +112,10 @@ _CLAIMED_HOLD_WARNING = (
     "Contact it with `telec sessions send {session_id} <message>`."
 )
 _TODO_UPDATE_EVENT_SOURCE = "api.todo.update"
+_REACTIVATE_NO_MATCH_DETAIL_TEMPLATE = "No soft-removed entry found for slug '{slug}'"
+_REACTIVATE_AMBIGUOUS_DETAIL_TEMPLATE = (
+    "Ambiguous slug '{slug}': multiple removed rows exist ({details}). Restore by id instead."
+)
 
 
 # ── Response models ─────────────────────────────────────────────────────────
@@ -810,18 +815,27 @@ async def todo_reactivate(
     matches = [r for r in removed_entries if r["slug"] == slug]
 
     if not matches:
-        raise HTTPException(status_code=404, detail=f"No soft-removed entry found for slug '{slug}'")
+        detail = _REACTIVATE_NO_MATCH_DETAIL_TEMPLATE.format(slug=slug)
+        raise DeclaredWorkRefusal(status_code=404, detail=detail, work_feedback=detail)
     if len(matches) > 1:
         details = ", ".join(f"{m['id']} (removed {m.get('removed_at')})" for m in matches)
-        raise HTTPException(
+        detail = _REACTIVATE_AMBIGUOUS_DETAIL_TEMPLATE.format(slug=slug, details=details)
+        raise DeclaredWorkRefusal(
             status_code=409,
-            detail=f"Ambiguous slug '{slug}': multiple removed rows exist ({details}). Restore by id instead.",
+            detail=detail,
+            work_feedback=detail,
         )
 
     todo_id = matches[0]["id"]
     try:
         await todos_db.reactivate_removed(todo_id, cwd=effective_cwd)
     except ReactivateRefused as exc:
+        if exc.work_feedback is not None:
+            raise DeclaredWorkRefusal(
+                status_code=400,
+                detail=str(exc),
+                work_feedback=exc.work_feedback,
+            ) from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return _SlugStatusResponse(status="ok", slug=slug)
@@ -839,5 +853,11 @@ async def todo_reactivate_by_id(
     try:
         slug = await todos_db.reactivate_removed(todo_id, cwd=effective_cwd)
     except ReactivateRefused as exc:
+        if exc.work_feedback is not None:
+            raise DeclaredWorkRefusal(
+                status_code=400,
+                detail=str(exc),
+                work_feedback=exc.work_feedback,
+            ) from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _SlugStatusResponse(status="ok", slug=slug)

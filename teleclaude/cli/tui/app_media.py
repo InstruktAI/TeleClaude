@@ -12,6 +12,7 @@ from textual.css.query import NoMatches
 from teleclaude.api_models import ChiptunesStatusDTO, SettingsPatchDTO, TTSSettingsPatchDTO
 from teleclaude.chiptunes.dislikes import is_disliked, remove_dislike, save_dislike
 from teleclaude.chiptunes.favorites import is_favorited, remove_favorite, save_favorite
+from teleclaude.cli.api_client import APIError
 from teleclaude.cli.tui.animation_colors import palette_registry
 from teleclaude.cli.tui.animation_engine import AnimationPriority
 from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger
@@ -25,6 +26,17 @@ from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 from teleclaude.config import machine as config_mod
 
 logger = get_logger(__name__)
+_TTS_UPDATE_FAILURE = "TTS setting update failed"
+_CHIPTUNES_SYNC_FAILURE = "ChipTunes state sync failed before playback decision"
+_CHIPTUNES_PLAY_PAUSE_FAILURE = "ChipTunes play/pause request failed"
+_CHIPTUNES_NEXT_FAILURE = "ChipTunes next-track request failed"
+_CHIPTUNES_PREV_FAILURE = "ChipTunes previous-track request failed"
+_CHIPTUNES_STOP_FAILURE = "ChipTunes stop request failed"
+_FAVORITE_REMOVE_FAILURE = "Failed to remove ChipTunes favorite"
+_FAVORITE_SAVE_FAILURE = "Failed to save ChipTunes favorite"
+_DISLIKE_REMOVE_FAILURE = "Failed to remove ChipTunes dislike"
+_DISLIKE_SAVE_FAILURE = "Failed to save ChipTunes dislike"
+_CHIPTUNES_RECONCILE_FAILURE = "ChipTunes state reconciliation failed"
 
 
 def _chiptunes_gate_enabled() -> bool:
@@ -34,6 +46,12 @@ def _chiptunes_gate_enabled() -> bool:
 
 class TelecAppMediaMixin:
     """Animation engine, TTS, and ChipTunes management."""
+
+    def _report_media_failure(self, message: str, error: Exception) -> None:
+        if isinstance(error, APIError) and error.work_feedback is not None:
+            self.present_work_feedback(error.work_feedback)  # type: ignore[attr-defined]
+            return
+        logger.error(message, error=repr(error), exc_info=True)
 
     # --- Animation and TTS keyboard actions ---
 
@@ -85,7 +103,7 @@ class TelecAppMediaMixin:
             status_bar = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
             status_bar.tts_enabled = new_val
         except Exception as e:
-            self.notify_text(f"Failed to toggle TTS: {e}", severity="error")  # type: ignore[attr-defined]
+            self._report_media_failure(_TTS_UPDATE_FAILURE, e)
 
     # --- ChipTunes player controls ---
 
@@ -101,7 +119,8 @@ class TelecAppMediaMixin:
         # Sync fresh state from daemon before deciding pause vs resume
         try:
             await self._sync_chiptunes_footer_state()
-        except Exception:
+        except Exception as exc:
+            self._report_media_failure(_CHIPTUNES_SYNC_FAILURE, exc)
             pass  # proceed with cached state if sync fails
         try:
             if footer.chiptunes_playing:
@@ -116,7 +135,7 @@ class TelecAppMediaMixin:
                 # No receipt tracking, no reconcile — button shows pause immediately.
                 # WS events correct the state once the worker is up.
         except Exception as e:
-            self.notify_text(f"Failed to pause/resume: {e}", severity="error")  # type: ignore[attr-defined]
+            self._report_media_failure(_CHIPTUNES_PLAY_PAUSE_FAILURE, e)
 
     @work(exclusive=False, group="settings")
     async def _chiptunes_next(self) -> None:
@@ -129,7 +148,7 @@ class TelecAppMediaMixin:
             self._apply_chiptunes_receipt(receipt.command_id, receipt.action)
             self._schedule_chiptunes_reconcile()
         except Exception as e:
-            self.notify_text(f"Failed to skip track: {e}", severity="error")  # type: ignore[attr-defined]
+            self._report_media_failure(_CHIPTUNES_NEXT_FAILURE, e)
 
     @work(exclusive=False, group="settings")
     async def _chiptunes_prev(self) -> None:
@@ -142,7 +161,7 @@ class TelecAppMediaMixin:
             self._apply_chiptunes_receipt(receipt.command_id, receipt.action)
             self._schedule_chiptunes_reconcile()
         except Exception as e:
-            self.notify_text(f"Failed to go to previous track: {e}", severity="error")  # type: ignore[attr-defined]
+            self._report_media_failure(_CHIPTUNES_PREV_FAILURE, e)
 
     @work(exclusive=False, group="settings")
     async def _chiptunes_stop(self) -> None:
@@ -161,7 +180,7 @@ class TelecAppMediaMixin:
             )
             self._cancel_chiptunes_reconcile()
         except Exception as e:
-            self.notify_text(f"Failed to stop: {e}", severity="error")  # type: ignore[attr-defined]
+            self._report_media_failure(_CHIPTUNES_STOP_FAILURE, e)
 
     def _apply_chiptunes_footer_state(
         self,
@@ -223,8 +242,7 @@ class TelecAppMediaMixin:
             except OSError as exc:
                 # OSError covers transport failures (httpx.ConnectError is a subclass).
                 # Non-transport exceptions propagate to the asyncio error handler.
-                # Log at warning so reconcile failures are visible in production.
-                logger.warning("ChipTunes reconcile sync failed: %s", exc)
+                logger.error(_CHIPTUNES_RECONCILE_FAILURE, error=repr(exc), exc_info=True)
             finally:
                 self._chiptunes_reconcile_task = None  # type: ignore[attr-defined]
 
@@ -259,7 +277,7 @@ class TelecAppMediaMixin:
             try:
                 removed = await asyncio.to_thread(remove_favorite, sid_path)
             except OSError as e:
-                self.notify_text(f"Failed to remove favorite: {e}", severity="error")  # type: ignore[attr-defined]
+                self._report_media_failure(_FAVORITE_REMOVE_FAILURE, e)
                 return
 
             if removed:
@@ -270,7 +288,7 @@ class TelecAppMediaMixin:
         try:
             await asyncio.to_thread(save_favorite, track, sid_path)
         except OSError as e:
-            self.notify_text(f"Failed to save favorite: {e}", severity="error")  # type: ignore[attr-defined]
+            self._report_media_failure(_FAVORITE_SAVE_FAILURE, e)
             return
 
         footer.chiptunes_favorited = True
@@ -293,7 +311,7 @@ class TelecAppMediaMixin:
             try:
                 removed = await asyncio.to_thread(remove_dislike, sid_path)
             except OSError as e:
-                self.notify_text(f"Failed to remove dislike: {e}", severity="error")  # type: ignore[attr-defined]
+                self._report_media_failure(_DISLIKE_REMOVE_FAILURE, e)
                 return
 
             if removed:
@@ -304,7 +322,7 @@ class TelecAppMediaMixin:
         try:
             await asyncio.to_thread(save_dislike, track, sid_path)
         except OSError as e:
-            self.notify_text(f"Failed to save dislike: {e}", severity="error")  # type: ignore[attr-defined]
+            self._report_media_failure(_DISLIKE_SAVE_FAILURE, e)
             return
 
         footer.chiptunes_disliked = True

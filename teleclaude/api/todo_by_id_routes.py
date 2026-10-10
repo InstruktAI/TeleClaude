@@ -11,6 +11,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api import todo_artifact_routes, todo_routes, todo_stamp_routes
 from teleclaude.api.auth import CallerIdentity, carried_caller
+from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
@@ -87,7 +88,8 @@ async def _resolve_identity(
             outcome=_IdentityOutcome.REFUSED,
             resolution=resolution,
         )
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        detail = str(exc)
+        raise DeclaredWorkRefusal(status_code=409, detail=detail, work_feedback=detail) from exc
     except TodoIdentityNotFound as exc:
         _log_identity_decision(
             action=action,
@@ -140,7 +142,8 @@ async def _perform_identity_action[ResultT](
                 outcome=_IdentityOutcome.REFUSED,
                 resolution=current_resolution,
             )
-            raise HTTPException(status_code=409, detail=str(refusal)) from refusal
+            detail = str(refusal)
+            raise DeclaredWorkRefusal(status_code=409, detail=detail, work_feedback=detail) from refusal
         except TodoIdentityNotFound as missing:
             _log_identity_decision(
                 action=action,

@@ -32,7 +32,7 @@ from teleclaude.cli.tui.widgets.modals import (
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
-from teleclaude.constants import ARTIFACT_INPUT, RUNNER_NOT_DISPATCHED, TodoStatus
+from teleclaude.constants import ARTIFACT_INPUT, TodoStatus
 from teleclaude.core.next_machine.lifecycle import (
     ApprovalGate,
     pending_approval_gate,
@@ -54,12 +54,12 @@ if TYPE_CHECKING:
 # carries no positive poll_after_ms.
 _LIFECYCLE_POLL_BUDGET_S = 60.0
 _LIFECYCLE_POLL_DEFAULT_DELAY_S = 0.25
-_MISSING_TODO_ID_WARNING = "row missing durable id; refresh the todo pane"
 _UNRESOLVED_TARGET_EVENT = "preparation_action_target_unresolved"
 _NEW_BUG_MODAL_TITLE = "New Bug"
 _NEW_BUG_SLUG_PLACEHOLDER = "my-new-bug"
 RETAINED_TODO_STATUSES: frozenset[TodoStatus] = frozenset({TodoStatus.REMOVED, TodoStatus.DELIVERED})
 _ROW_ACTION_FAILURE_EVENT = "tui.preparation_row_action_failed"
+_ROW_ACTION_RESOLVE_IDENTITY = "resolve_todo_identity"
 _ROW_ACTION_POST = "POST"
 _ROW_ACTION_DELETE = "DELETE"
 _TODO_BY_ID_ACTION_PATH_TEMPLATE = "/todos/by-id/{todo_id}/{action}"
@@ -91,18 +91,17 @@ _STAMP_TYPE_BODY_KEY = "stamp_type"
 # the model column names, and the values the follow-through worker branches on.
 _HTTP_METHOD_GET = "GET"
 _OPERATION_STATUS_PATH_TEMPLATE = "/operations/{operation_id}"
+_OPERATION_RESPONSE_KEY_OPERATION_ID = "operation_id"
 _OPERATION_RESPONSE_KEY_STATE = "state"
-_OPERATION_RESPONSE_KEY_RESULT = "result"
 _OPERATION_RESPONSE_KEY_ERROR = "error"
+_OPERATION_RESPONSE_KEY_WORK_FEEDBACK = "work_feedback"
 _OPERATION_RESPONSE_KEY_RECOVERY_COMMAND = "recovery_command"
 _OPERATION_RESPONSE_KEY_POLL_AFTER_MS = "poll_after_ms"
 _OPERATION_STATE_COMPLETED = "completed"
-_NOTIFY_SEVERITY_ERROR = "error"
 _NOTIFY_SEVERITY_WARNING = "warning"
 _RECOVERY_COMMAND_TEMPLATE = "telec operations get {operation_id}"
-_OUTCOME_UNKNOWN_MESSAGE_TEMPLATE = "Operation {operation_id} outcome unknown: {recovery}"
-_OPERATION_ENDED_IN_STATE_MESSAGE_TEMPLATE = "Operation ended in state '{state}'"
-_RUNNER_NOT_DISPATCHED_PREFIX = f"{RUNNER_NOT_DISPATCHED}:"
+_OUTCOME_UNKNOWN_LOG = "TUI could not establish the operation outcome before its observation bound"
+_OPERATION_OUTCOME_LOG = "TUI observed an operation without declared work feedback"
 _WARNING_RESPONSE_KEY = "warnings"
 _RESPONSE_KEY_STATUS = "status"
 _RESPONSE_STATUS_OK = "ok"
@@ -114,7 +113,6 @@ _HOLD_MODAL_SUBMIT_LABEL = "Hold"
 _NO_HOLD_CONTROL_MESSAGE = "No hold control is available for this todo"
 _HOLD_SUCCESS_MESSAGE_TEMPLATE = "Held '{slug}'"
 _RELEASE_HOLD_SUCCESS_MESSAGE_TEMPLATE = "Released hold on '{slug}'"
-_UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE = "Unexpected response: {response}"
 _REMOTE_PROJECT_NOTICE = "Add a project on its own computer."
 
 
@@ -240,7 +238,7 @@ class PreparationViewActionsMixin:
     def _report_unresolved_target(self, action: PreparationAction, slug: str | None) -> None:
         """Log a row action whose project target cannot be resolved."""
         item = self._current_item()  # type: ignore[attr-defined]
-        logger.warning(
+        logger.error(
             _UNRESOLVED_TARGET_EVENT,
             action=action.value,
             slug=slug,
@@ -251,7 +249,7 @@ class PreparationViewActionsMixin:
         """Return a row's durable id or explain why its action cannot proceed."""
         todo_id = row.todo.todo_id
         if todo_id is None:
-            self.app.notify(_MISSING_TODO_ID_WARNING, severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
+            logger.error(_ROW_ACTION_FAILURE_EVENT, action=_ROW_ACTION_RESOLVE_IDENTITY, slug=row.slug)
             return None
         return todo_id
 
@@ -291,12 +289,20 @@ class PreparationViewActionsMixin:
                 clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
             )
         except ToolAPIError as exc:
-            self.app.notify_text(str(exc), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
+            if exc.work_feedback is not None:
+                self.app.present_work_feedback(exc.work_feedback)  # type: ignore[attr-defined]
+            else:
+                logger.error(
+                    _ROW_ACTION_FAILURE_EVENT,
+                    action=action.value,
+                    todo_id=todo_id,
+                    error=repr(exc),
+                    exc_info=True,
+                )
             return
         # Row actions cross the API boundary; contain unexpected failures before they unwind Textual.
-        except Exception as exc:
+        except Exception:
             logger.error(_ROW_ACTION_FAILURE_EVENT, action=action.value, todo_id=todo_id, exc_info=True)
-            self.app.notify_text(str(exc), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
             return
 
         if isinstance(result, dict) and result.get(_RESPONSE_KEY_STATUS) == _RESPONSE_STATUS_OK:
@@ -310,12 +316,14 @@ class PreparationViewActionsMixin:
             self.app._refresh_data()  # type: ignore[attr-defined]
             return
         if isinstance(result, dict) and result.get(_RESPONSE_KEY_DETAIL):
-            self.app.notify_text(str(result[_RESPONSE_KEY_DETAIL]), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
+            logger.error(
+                _ROW_ACTION_FAILURE_EVENT,
+                action=action.value,
+                todo_id=todo_id,
+                detail=result[_RESPONSE_KEY_DETAIL],
+            )
             return
-        self.app.notify_text(
-            _UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE.format(response=result),
-            severity=_NOTIFY_SEVERITY_ERROR,
-        )  # type: ignore[attr-defined]
+        logger.error(_ROW_ACTION_FAILURE_EVENT, action=action.value, todo_id=todo_id, response=repr(result))
 
     @staticmethod
     def _next_command(base: str, slug: str | None) -> str:
@@ -639,15 +647,19 @@ class PreparationViewActionsMixin:
                     clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
                 )
             except Exception as exc:
-                self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
+                feedback = getattr(exc, "work_feedback", None)
+                if isinstance(feedback, str):
+                    self.app.present_work_feedback(feedback)  # type: ignore[attr-defined]
+                else:
+                    logger.error(_ROW_ACTION_FAILURE_EVENT, action=kind.value, slug=slug, exc_info=True)
                 return
 
             if isinstance(result, dict) and result.get("status") == "ok":
                 self.app.notify(f"Created {slug}")  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
-                self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
+                logger.error(_ROW_ACTION_FAILURE_EVENT, action=kind.value, slug=slug, detail=result["detail"])
             else:
-                self.app.notify_text(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
+                logger.error(_ROW_ACTION_FAILURE_EVENT, action=kind.value, slug=slug, response=repr(result))
 
         self.app.push_screen(  # type: ignore[attr-defined]
             ContentInputModal(title=f"New {'Bug' if kind == 'bug' else 'Todo'}"),
@@ -803,7 +815,10 @@ class PreparationViewActionsMixin:
                 clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
             )
         except ToolAPIError as exc:
-            self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
+            if exc.work_feedback is not None:
+                self.app.present_work_feedback(exc.work_feedback)  # type: ignore[attr-defined]
+            else:
+                logger.error(_ROW_ACTION_FAILURE_EVENT, action=path, error=repr(exc), exc_info=True)
             return
         if isinstance(result, dict) and result.get("operation_id"):
             self.app.notify_text(f"{display_label}...")  # type: ignore[attr-defined]
@@ -811,9 +826,9 @@ class PreparationViewActionsMixin:
             self._follow_lifecycle_operation(str(result["operation_id"]), scope)  # type: ignore[attr-defined]
             return
         if isinstance(result, dict) and result.get("detail"):
-            self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
+            logger.error(_ROW_ACTION_FAILURE_EVENT, action=path, detail=result["detail"])
             return
-        self.app.notify_text(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
+        logger.error(_ROW_ACTION_FAILURE_EVENT, action=path, response=repr(result))
 
     @work(thread=True, group="lifecycle-op")
     def _follow_lifecycle_operation(self, operation_id: str, scope: ClearanceScope) -> None:
@@ -842,10 +857,11 @@ class PreparationViewActionsMixin:
                 )
             except ToolAPIError as exc:
                 if time.monotonic() - start > _LIFECYCLE_POLL_BUDGET_S:
-                    self.app.call_from_thread(  # type: ignore[attr-defined]
-                        self.app.notify_text,
-                        str(exc),
-                        severity=_NOTIFY_SEVERITY_ERROR,  # type: ignore[attr-defined]
+                    logger.error(
+                        _OUTCOME_UNKNOWN_LOG,
+                        operation_id=operation_id,
+                        error=repr(exc),
+                        exc_info=True,
                     )
                     return
                 delay_s = _LIFECYCLE_POLL_DEFAULT_DELAY_S
@@ -859,11 +875,11 @@ class PreparationViewActionsMixin:
             if time.monotonic() - start > _LIFECYCLE_POLL_BUDGET_S:
                 recovery = (
                     response.get(_OPERATION_RESPONSE_KEY_RECOVERY_COMMAND) if isinstance(response, dict) else None
-                ) or _RECOVERY_COMMAND_TEMPLATE.format(operation_id=operation_id)
-                self.app.call_from_thread(  # type: ignore[attr-defined]
-                    self.app.notify_text,  # type: ignore[attr-defined]
-                    _OUTCOME_UNKNOWN_MESSAGE_TEMPLATE.format(operation_id=operation_id, recovery=recovery),
-                    severity=_NOTIFY_SEVERITY_ERROR,
+                )
+                logger.error(
+                    _OUTCOME_UNKNOWN_LOG,
+                    operation_id=operation_id,
+                    recovery_command=recovery or _RECOVERY_COMMAND_TEMPLATE.format(operation_id=operation_id),
                 )
                 return
 
@@ -880,25 +896,28 @@ class PreparationViewActionsMixin:
     ) -> None:
         """Surface a terminal lifecycle-operation outcome to the operator."""
         state = response.get(_OPERATION_RESPONSE_KEY_STATE)
-        error = response.get(_OPERATION_RESPONSE_KEY_ERROR)
-        if state != _OPERATION_STATE_COMPLETED or (isinstance(error, str) and error):
-            message = (
-                error
-                if isinstance(error, str) and error
-                else _OPERATION_ENDED_IN_STATE_MESSAGE_TEMPLATE.format(state=state)
-            )
+        work_feedback = response.get(_OPERATION_RESPONSE_KEY_WORK_FEEDBACK)
+        operation_id = response.get(_OPERATION_RESPONSE_KEY_OPERATION_ID)
+        if isinstance(work_feedback, str):
             self.app.call_from_thread(  # type: ignore[attr-defined]
-                self.app.notify_text,
-                str(message),
-                severity=_NOTIFY_SEVERITY_ERROR,  # type: ignore[attr-defined]
+                self.app.present_work_feedback,  # type: ignore[attr-defined]
+                work_feedback,
+                operation_id if isinstance(operation_id, str) else None,
             )
             return
-        result = response.get(_OPERATION_RESPONSE_KEY_RESULT)
-        if isinstance(result, str) and result.startswith(_RUNNER_NOT_DISPATCHED_PREFIX):
-            self.app.call_from_thread(  # type: ignore[attr-defined]
-                self.app.notify_text,
-                result,
-                severity=_NOTIFY_SEVERITY_ERROR,  # type: ignore[attr-defined]
+        if state != _OPERATION_STATE_COMPLETED:
+            logger.error(
+                _OPERATION_OUTCOME_LOG,
+                operation_id=operation_id,
+                state=state,
+                error=response.get(_OPERATION_RESPONSE_KEY_ERROR),
+            )
+        elif response.get(_OPERATION_RESPONSE_KEY_ERROR) is not None:
+            logger.error(
+                _OPERATION_OUTCOME_LOG,
+                operation_id=operation_id,
+                state=state,
+                error=response.get(_OPERATION_RESPONSE_KEY_ERROR),
             )
 
     def action_prepare(self) -> None:
@@ -1259,9 +1278,23 @@ class PreparationViewActionsMixin:
                 # but call refresh_data to be sure if needed.
                 self.app._refresh_data()  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
-                self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
+                logger.error(
+                    _ROW_ACTION_FAILURE_EVENT,
+                    action=PreparationAction.REACTIVATE_SELECTED.value,
+                    todo_id=todo_id,
+                    detail=result["detail"],
+                )
         except Exception as exc:
-            self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
+            feedback = getattr(exc, "work_feedback", None)
+            if isinstance(feedback, str):
+                self.app.present_work_feedback(feedback)  # type: ignore[attr-defined]
+            else:
+                logger.error(
+                    _ROW_ACTION_FAILURE_EVENT,
+                    action=PreparationAction.REACTIVATE_SELECTED.value,
+                    todo_id=todo_id,
+                    exc_info=True,
+                )
 
 
 def _handle_flash_dependencies(view: PreparationViewActionsMixin) -> None:

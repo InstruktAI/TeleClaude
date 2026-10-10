@@ -105,6 +105,8 @@ if TYPE_CHECKING:
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
+_RECEIVER_CONTRACT_VIOLATION_LOG = "Hook receiver rejected an invalid event contract"
+_RECEIVER_ERROR_REPORT_FAILURE_LOG = "Hook receiver error reporting failed"
 
 # Structured log event name for SessionStart context composition.
 EVENT_SESSION_START_CONTEXT_COMPOSED = "session_start_context_composed"
@@ -960,14 +962,14 @@ def _emit_receiver_error_best_effort(
         session_id = _get_cached_session_id(args.agent, raw_native_session_id)
         if not session_id:
             session_id = _find_session_id_by_native(raw_native_session_id)
+        logger.error(
+            _RECEIVER_CONTRACT_VIOLATION_LOG,
+            agent=args.agent,
+            event_type=getattr(args, "event_type", None),
+            code=code,
+            session_id=session_id,
+        )
         if not session_id:
-            logger.error(
-                "Receiver error with unknown session",
-                agent=args.agent,
-                event_type=getattr(args, "event_type", None),
-                code=code,
-                message=message,
-            )
             return
         enqueue_hook_event(
             session_id,
@@ -982,7 +984,14 @@ def _emit_receiver_error_best_effort(
             outbox_db=_get_default_outbox_db(),
         )
     except SQLAlchemyError as exc:
-        logger.error("Receiver error reporting failed", error=str(exc), code=code)
+        logger.error(
+            _RECEIVER_ERROR_REPORT_FAILURE_LOG,
+            agent=args.agent,
+            event_type=getattr(args, "event_type", None),
+            code=code,
+            error=repr(exc),
+            exc_info=True,
+        )
 
 
 def _parse_receiver_input(args: argparse.Namespace, adapter: HookAdapter) -> tuple[str, str, JsonDict]:

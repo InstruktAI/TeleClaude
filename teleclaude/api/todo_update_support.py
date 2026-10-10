@@ -10,6 +10,7 @@ import teleclaude.core.todo_dependency_warnings as dependency_warnings
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.api.todo_artifact_authority import refuse_todo_update_outside_claiming_group
 from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
+from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.constants import (
     REMOVED_TODO_MUTATION_REFUSED_DETAIL,
     REMOVED_TODO_RETENTION_WINDOW,
@@ -40,6 +41,8 @@ TASK_ERROR_RELEASE_REFUSAL = (
     "Recover with `telec todo stamp --task-outcome success` (delivers) "
     "or kill the run and start it manually."
 )
+_CIRCULAR_DEPENDENCY_DETAIL_TEMPLATE = "circular dependency detected: {cycle}"
+_TASK_ERROR_RELEASE_DETAIL_TEMPLATE = "slug '{slug}' {refusal}"
 HOLD_REASON_REQUIRED_DETAIL = "reason is required with hold"
 HOLD_REASON_REQUIRES_HOLD_DETAIL = "reason is valid only with hold"
 
@@ -115,7 +118,8 @@ async def apply_group_membership_update(
         cycle = detect_circular_dependency(deps, slug, requested_after)
         if cycle:
             cycle_str = " -> ".join(cycle)
-            raise HTTPException(status_code=409, detail=f"circular dependency detected: {cycle_str}")
+            detail = _CIRCULAR_DEPENDENCY_DETAIL_TEMPLATE.format(cycle=cycle_str)
+            raise DeclaredWorkRefusal(status_code=409, detail=detail, work_feedback=detail)
 
     try:
         await todos_db.check_membership_update(
@@ -125,7 +129,8 @@ async def apply_group_membership_update(
             after=requested_after,
         )
     except (GroupCycleRefused, GroupDependencyConflict, HolderTransitionRefused) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        detail = str(exc)
+        raise DeclaredWorkRefusal(status_code=409, detail=detail, work_feedback=detail) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -137,7 +142,8 @@ async def apply_group_membership_update(
             cwd=cwd,
         )
     except (GroupCycleRefused, GroupDependencyConflict, HolderTransitionRefused, HolderReconciliationRefused) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        detail = str(exc)
+        raise DeclaredWorkRefusal(status_code=409, detail=detail, work_feedback=detail) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -158,7 +164,8 @@ async def apply_dependency_update(
         cycle = detect_circular_dependency(deps, slug, requested_after)
         if cycle:
             cycle_str = " -> ".join(cycle)
-            raise HTTPException(status_code=409, detail=f"circular dependency detected: {cycle_str}")
+            detail = _CIRCULAR_DEPENDENCY_DETAIL_TEMPLATE.format(cycle=cycle_str)
+            raise DeclaredWorkRefusal(status_code=409, detail=detail, work_feedback=detail)
         await todos_db.set_deps(slug, after=requested_after)
 
     target_status = await todos_db.find_live_slug_conflict(slug)
@@ -203,13 +210,11 @@ async def require_slug_in_todo(todos_db: TodosDb, slug: str) -> None:
     if await todos_db.slug_in_todo(slug):
         return
     if await todos_db.has_removed_todo(slug):
-        raise HTTPException(
-            status_code=404,
-            detail=REMOVED_TODO_MUTATION_REFUSED_DETAIL.format(
-                slug=slug,
-                retention_days=REMOVED_TODO_RETENTION_WINDOW.days,
-            ),
+        detail = REMOVED_TODO_MUTATION_REFUSED_DETAIL.format(
+            slug=slug,
+            retention_days=REMOVED_TODO_RETENTION_WINDOW.days,
         )
+        raise DeclaredWorkRefusal(status_code=404, detail=detail, work_feedback=detail)
     require_slug_found(slug, found=False)
 
 
@@ -229,7 +234,8 @@ async def apply_hold_update(
         raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
     writer = StateWriter(raw_state)
     if release and writer.state.hold_audit.source == HoldAuditSource.TASK_ERROR:
-        raise HTTPException(status_code=409, detail=f"slug '{slug}' {TASK_ERROR_RELEASE_REFUSAL}")
+        detail = _TASK_ERROR_RELEASE_DETAIL_TEMPLATE.format(slug=slug, refusal=TASK_ERROR_RELEASE_REFUSAL)
+        raise DeclaredWorkRefusal(status_code=409, detail=detail, work_feedback=detail)
     writer.state.hold = hold
     if hold:
         normalized_reason = normalize_hold_reason(hold=hold, reason=reason)
@@ -265,7 +271,7 @@ async def apply_unclaim_update(
     )
     unclaim_summary = format_claim_release_outcome(outcome=unclaim_outcome)
     if isinstance(unclaim_outcome, ClaimReleaseRefusal):
-        raise HTTPException(status_code=409, detail=unclaim_summary)
+        raise DeclaredWorkRefusal(status_code=409, detail=unclaim_summary, work_feedback=unclaim_summary)
     return unclaim_summary
 
 

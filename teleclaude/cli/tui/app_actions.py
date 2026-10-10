@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time as _t
+from enum import StrEnum
 
 from instrukt_ai_logging import get_logger
 from textual import work
@@ -36,10 +37,31 @@ APP_QUERY_ERRORS = (AttributeError, LookupError, RuntimeError, TypeError, ValueE
 _MAIN_TABS_SELECTOR = "#main-tabs"
 _SESSIONS_TAB = "sessions"
 _SESSIONS_VIEW_SELECTOR = "#sessions-view"
+_APP_ACTION_FAILURE_EVENT = "tui.app_action_failed"
+_APP_ACTION_RESULT_FAILURE_EVENT = "tui.app_action_result_failed"
+
+
+class _AppAction(StrEnum):
+    CREATE_SESSION = "create_session"
+    END_SESSION = "end_session"
+    HANDOFF_SESSION = "handoff_session"
+    HANDOFF_SESSIONS = "handoff_sessions"
+    RESUME = "resume"
+    RESTART_SESSION = "restart_session"
+    RESTART_SESSIONS = "restart_sessions"
+    REVIVE = "revive"
+    REVIVE_SESSION = "revive_session"
+    RUN_JOB = "run_job"
 
 
 class TelecAppActionsMixin:
     """User-initiated action handlers, tab switching, and pane theming."""
+
+    def _report_action_failure(self, action: str, error: Exception, **context: object) -> None:
+        if isinstance(error, APIError) and error.work_feedback is not None:
+            self.present_work_feedback(error.work_feedback)  # type: ignore[attr-defined]
+            return
+        logger.error(_APP_ACTION_FAILURE_EVENT, action=action, error=repr(error), exc_info=True, **context)
 
     @staticmethod
     def _bridge_has_doc_preview(pane_bridge: object) -> bool:
@@ -119,9 +141,19 @@ class TelecAppActionsMixin:
                         sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
                         sessions_view.select_session(result.session_id, request_focus=True)
                 else:
-                    self.notify_text(result.error or "Revive failed", severity="error")  # type: ignore[attr-defined]
+                    logger.error(
+                        _APP_ACTION_RESULT_FAILURE_EVENT,
+                        action=_AppAction.REVIVE,
+                        session_id=message.revive_session_id,
+                        error=result.error,
+                    )
             except APP_ACTION_ERRORS as error:
-                self.notify_text(f"Failed to revive session: {error}", severity="error")  # type: ignore[attr-defined]
+                self._report_action_failure(
+                    _AppAction.REVIVE,
+                    error,
+                    session_id=message.revive_session_id,
+                    computer=message.computer,
+                )
             return
 
         # Resume by native session ID
@@ -138,7 +170,12 @@ class TelecAppActionsMixin:
                 self._tui_initiated_sessions.add(result.session_id)  # type: ignore[attr-defined]
                 self.notify("Resuming session...")  # type: ignore[attr-defined]
             except APP_ACTION_ERRORS as error:
-                self.notify_text(f"Failed to resume session: {error}", severity="error")  # type: ignore[attr-defined]
+                self._report_action_failure(
+                    _AppAction.RESUME,
+                    error,
+                    native_session_id=message.native_session_id,
+                    computer=message.computer,
+                )
             return
 
         # Normal new session
@@ -161,7 +198,7 @@ class TelecAppActionsMixin:
             if result.routing_explanation:
                 self.notify_text(result.routing_explanation)  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
-            self.notify_text(f"Failed to create session: {error}", severity="error")  # type: ignore[attr-defined]
+            self._report_action_failure(_AppAction.CREATE_SESSION, error, computer=message.computer)
 
     @work(exclusive=True, group="session-action")
     async def on_kill_session_request(self, message: KillSessionRequest) -> None:
@@ -172,7 +209,12 @@ class TelecAppActionsMixin:
                 sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
                 sessions_view.optimistically_hide_session(message.session_id)
         except APP_ACTION_ERRORS as error:
-            self.notify_text(f"Failed to kill session: {error}", severity="error")  # type: ignore[attr-defined]
+            self._report_action_failure(
+                _AppAction.END_SESSION,
+                error,
+                session_id=message.session_id,
+                computer=message.computer,
+            )
 
     @work(exclusive=True, group="session-action")
     async def on_revive_session_request(self, message: ReviveSessionRequest) -> None:
@@ -186,7 +228,12 @@ class TelecAppActionsMixin:
             )
             self.notify("Reviving headless session...")  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
-            self.notify_text(f"Failed to revive session: {error}", severity="error")  # type: ignore[attr-defined]
+            self._report_action_failure(
+                _AppAction.REVIVE_SESSION,
+                error,
+                session_id=message.session_id,
+                computer=message.computer,
+            )
 
     @work(exclusive=True, group="session-action")
     async def on_restart_session_request(self, message: RestartSessionRequest) -> None:
@@ -195,7 +242,12 @@ class TelecAppActionsMixin:
             await self.api.agent_restart(message.session_id, computer=message.computer)  # type: ignore[attr-defined]
             self.notify("Restarting agent...")  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
-            self.notify_text(f"Failed to restart session: {error}", severity="error")  # type: ignore[attr-defined]
+            self._report_action_failure(
+                _AppAction.RESTART_SESSION,
+                error,
+                session_id=message.session_id,
+                computer=message.computer,
+            )
 
     @work(exclusive=True, group="session-action")
     async def on_restart_sessions_request(self, message: RestartSessionsRequest) -> None:
@@ -204,16 +256,16 @@ class TelecAppActionsMixin:
         for session_id in message.session_ids:
             try:
                 await self.api.agent_restart(session_id, computer=message.computer)  # type: ignore[attr-defined]
-            except APP_ACTION_ERRORS:
+            except APP_ACTION_ERRORS as error:
                 failures += 1
-                logger.exception("Failed to restart session %s", session_id)
+                self._report_action_failure(
+                    _AppAction.RESTART_SESSIONS,
+                    error,
+                    session_id=session_id,
+                    computer=message.computer,
+                )
 
-        if failures:
-            self.notify(  # type: ignore[attr-defined]
-                f"Restarted {len(message.session_ids) - failures}/{len(message.session_ids)} sessions",
-                severity="warning",
-            )
-        else:
+        if not failures:
             self.notify_text(  # type: ignore[attr-defined]
                 f"Restarted {len(message.session_ids)} sessions on {message.computer}"
             )
@@ -231,7 +283,12 @@ class TelecAppActionsMixin:
             successor = result.selected_agent or "selected successor"
             self.notify_text(f"Handoff to {successor} started")  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
-            self.notify_text(f"Failed to hand off session: {error}", severity="error")  # type: ignore[attr-defined]
+            self._report_action_failure(
+                _AppAction.HANDOFF_SESSION,
+                error,
+                session_id=message.session_id,
+                computer=message.computer,
+            )
 
     @work(exclusive=True, group="session-action")
     async def on_handoff_sessions_request(self, message: HandoffSessionsRequest) -> None:
@@ -244,11 +301,16 @@ class TelecAppActionsMixin:
                     computer=message.computer,
                     handoff=True,
                 )
-            except APP_ACTION_ERRORS:
+            except APP_ACTION_ERRORS as error:
                 failures += 1
-                logger.exception("Failed to hand off session %s", session_id)
-        completed = len(message.session_ids) - failures
-        self.notify_text(f"Started handoff for {completed}/{len(message.session_ids)} sessions")  # type: ignore[attr-defined]
+                self._report_action_failure(
+                    _AppAction.HANDOFF_SESSIONS,
+                    error,
+                    session_id=session_id,
+                    computer=message.computer,
+                )
+        if not failures:
+            self.notify_text(f"Started handoff for {len(message.session_ids)} sessions")  # type: ignore[attr-defined]
 
     async def on_settings_changed(self, message: SettingsChanged) -> None:
         """Apply footer-initiated setting changes."""
@@ -280,7 +342,7 @@ class TelecAppActionsMixin:
             await self.api.run_job(job_name, project)  # type: ignore[attr-defined]
             self.notify_text(f"Job '{job_name}' started for {project}")  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
-            self.notify_text(f"Failed to run job: {error}", severity="error")  # type: ignore[attr-defined]
+            self._report_action_failure(_AppAction.RUN_JOB, error, job_name=job_name, project=project)
 
     # --- Tab switching ---
 

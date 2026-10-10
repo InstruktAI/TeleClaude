@@ -47,6 +47,8 @@ _REMOVED_IDENTITY_ACTION_REFUSAL = (
 _DELIVERED_IDENTITY_ACTION_REFUSAL = "Todo {todo_id} ({slug}) is delivered and read-only."
 _IDENTITY_ACTION_REFUSAL = "Todo {todo_id} ({slug}) with status {status} does not allow changes."
 _IDENTITY_NOT_FOUND = "Todo identity {todo_id} was not found."
+_REACTIVATE_NOT_REMOVED_FEEDBACK = "This todo is not removed, so it cannot be reactivated."
+_REACTIVATE_LIVE_TWIN_FEEDBACK = "Another live todo already uses this slug; resolve that entry before reactivating."
 
 
 class RemovalContext(TypedDict):
@@ -154,10 +156,12 @@ class ReactivateRefused(Exception):
         reason: str,
         todo_id: str,
         slug: str | None = None,
+        work_feedback: str | None = None,
     ) -> None:
         self.reason = reason
         self.todo_id = todo_id
         self.slug = slug
+        self.work_feedback = work_feedback
         super().__init__(f"reactivate refused for {todo_id} ({slug}): {reason}")
 
 
@@ -399,6 +403,7 @@ class TodosDbTodoSoftDeleteMixin:
                     reason="not_removed",
                     todo_id=todo_id,
                     slug=entry.slug if entry is not None else None,
+                    work_feedback=_REACTIVATE_NOT_REMOVED_FEEDBACK,
                 )
 
             live_twin = await cast(Any, self)._active_entry(db_session, entry.slug)
@@ -407,6 +412,7 @@ class TodosDbTodoSoftDeleteMixin:
                     reason="live_twin_exists",
                     todo_id=todo_id,
                     slug=entry.slug,
+                    work_feedback=_REACTIVATE_LIVE_TWIN_FEEDBACK,
                 )
 
             restored_status = entry.prev_status or "icebox"

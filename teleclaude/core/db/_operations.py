@@ -322,7 +322,14 @@ class DbOperationsMixin:
             await db_session.exec(stmt)
             await db_session.commit()
 
-    async def complete_operation(self, operation_id: str, result_text: str, now_iso: str) -> bool:
+    async def complete_operation(
+        self,
+        operation_id: str,
+        result_text: str,
+        now_iso: str,
+        *,
+        work_feedback: str | None = None,
+    ) -> bool:
         """Mark a non-terminal operation as completed; report whether this call made the transition."""
         stmt = (
             update(db_models.Operation)
@@ -335,6 +342,7 @@ class DbOperationsMixin:
                 result_text=result_text,
                 error_text=None,
                 error_payload=None,
+                work_feedback=work_feedback,
                 updated_at=now_iso,
                 heartbeat_at=now_iso,
                 completed_at=now_iso,
@@ -353,6 +361,7 @@ class DbOperationsMixin:
         *,
         state: str = "failed",
         error_payload_json: str | None = None,
+        work_feedback: str | None = None,
     ) -> bool:
         """Mark a non-terminal operation as terminal failure; report whether this call made the transition."""
         stmt = (
@@ -365,6 +374,7 @@ class DbOperationsMixin:
                 state=state,
                 error_text=error_text,
                 error_payload=error_payload_json,
+                work_feedback=work_feedback,
                 updated_at=now_iso,
                 heartbeat_at=now_iso,
                 completed_at=now_iso,
@@ -396,6 +406,7 @@ class DbOperationsMixin:
                     state="stale",
                     error_text=error_text,
                     error_payload=None,
+                    work_feedback=None,
                     updated_at=now_iso,
                     heartbeat_at=now_iso,
                     completed_at=now_iso,
@@ -435,6 +446,7 @@ class DbOperationsMixin:
                     state="stale",
                     error_text=error_text,
                     error_payload=None,
+                    work_feedback=None,
                     updated_at=now_iso,
                     completed_at=now_iso,
                 )

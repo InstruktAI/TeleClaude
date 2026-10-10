@@ -59,6 +59,7 @@ from teleclaude.api.todo_artifact_routes import router as todo_artifact_router
 from teleclaude.api.todo_by_id_routes import router as todo_by_id_router
 from teleclaude.api.todo_routes import router as todo_router
 from teleclaude.api.todo_stamp_routes import router as todo_stamp_router
+from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api.ws_constants import API_WS_PING_INTERVAL_S, API_WS_PING_TIMEOUT_S
 from teleclaude.api.ws_mixin import _WebSocketMixin
 from teleclaude.api.ws_options import (
@@ -128,6 +129,7 @@ API_WATCH_DUMP_COOLDOWN_S = config.api.watch_dump_cooldown_s
 API_MCP_REAPER_INTERVAL_S = config.api.mcp_reaper_interval_s
 WS_POLICY_VIOLATION_CODE = 1008
 _WS_OPTIONS_REFUSED_LOG = "WebSocket connection options refused: %s"
+_HOOK_RECEIVER_ERROR_SOURCE = "hook_receiver"
 
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 
@@ -409,6 +411,13 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         context: ErrorEventContext,
     ) -> None:
         """Broadcast error events to WS clients."""
+        if context.source == _HOOK_RECEIVER_ERROR_SOURCE:
+            logger.debug(
+                "Suppressing technical hook feedback from TUI websocket delivery",
+                source=context.source,
+                code=context.code,
+            )
+            return
         user_message = get_user_facing_error_message(context)
         if user_message is None:
             logger.debug(
@@ -458,11 +467,13 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 event=event,
                 operation_id=context.operation_id,
                 error=context.error,
+                work_feedback=operation.work_feedback,
             )
         else:
             dto = OperationSucceededEventDTO(
                 event=event,
                 operation_id=context.operation_id,
+                work_feedback=operation.work_feedback,
             )
         self._broadcast_payload(event, dto.model_dump(exclude_none=True), targets=targets)
 
@@ -485,6 +496,15 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         async def _shutdown_refusal(request, exc):  # type: ignore[no-untyped-def]
             """Service-level refusal of new work while draining: explicit and retryable."""
             return shutdown_refusal_response(exc)
+
+        @self.app.exception_handler(DeclaredWorkRefusal)
+        async def _declared_work_refusal(request, exc):  # type: ignore[no-untyped-def]
+            """Preserve the HTTP refusal contract while carrying its explicit work message."""
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail, "work_feedback": exc.work_feedback},
+                headers=exc.headers,
+            )
 
         @self.app.middleware("http")
         async def _track_requests(request, call_next):  # type: ignore[no-untyped-def]

@@ -107,3 +107,4 @@ class ManualLifecycleSessionResult:
     status: ManualLifecycleStatus
     session_id: str | None = None
     reason: RunnerSkipReason | str | None = None
+    work_feedback: str | None = None
