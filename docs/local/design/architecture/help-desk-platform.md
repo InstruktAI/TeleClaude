@@ -817,7 +817,6 @@ sequenceDiagram
 | Scenario                                                               | Behavior                                                                | Recovery                                                                                            |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | A declaration, a binding or a Discord call fails during a pass         | The pass stops with that error, which is logged                         | The cause is repaired; the next declaration change or restart reconciles                            |
-| The guild reaches Discord's category limit                             | The new desk's category is not created; its sessions get no thread      | An operator frees categories or the per-desk layout is revisited                                    |
 | A person in scope has no bound Discord account, or is not in the guild | They are given no grant and see no desk                                 | They bind their account or join the guild; the next pass grants them                                |
 | A desk's customer-sessions forum is not yet provisioned                | The desk's session gets no thread, and is never placed in another forum | The next pass provisions the forum; the session's thread follows when the session is next reflected |
 
