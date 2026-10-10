@@ -1,10 +1,8 @@
 ---
-delivered_by:
-  - help-desk-idle-memory-cycle
-description: How a memory agent keeps the memories about the person in one ended
-  conversation current — read what the conversation added since its read point,
-  change that person's current memories to match, collect a desk's business items,
-  and advance the read point.
+description: How a memory agent keeps the memories about the person in one ended conversation
+  current — read what the conversation added since its read point, change that person's
+  current memories to match, collect a desk's business items, and advance the read
+  point.
 ---
 
 # Conversation Memory — Procedure

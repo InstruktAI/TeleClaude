@@ -1,9 +1,7 @@
 ---
-delivered_by:
-  - help-desk-idle-memory-cycle
-description: Keeps the memories about a project help-desk visitor current when
-  their desk session ends — one agent per desk session, returned to by that
-  session's later ends.
+description: Keeps the memories about a project help-desk visitor current when their
+  desk session ends — one agent per desk session, returned to by that session's later
+  ends.
 subscriptions:
   - teleclaude.agent_runtime.session.ended.help_desk
 subscription_home: project

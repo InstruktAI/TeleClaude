@@ -211,8 +211,6 @@ Then every shared snippet is returned at full depth, internal ones included
 And a member of that company below administrator receives only the shared snippets published as public
 ```
 
-<!-- planned:help-desk-idle-memory-cycle -->
-
 #### UC-DV14: An unregistered desk visitor reaches what was recorded under their own platform identity
 
 ```gherkin
@@ -224,8 +222,6 @@ And no memory recorded under any other identity is admitted to it
 And no record is admitted to it for being about the desk's home
 And the people whose reach admits the desk's home see those same memories, as records about that home
 ```
-
-<!-- /planned:help-desk-idle-memory-cycle -->
 
 ## Known caveats
 

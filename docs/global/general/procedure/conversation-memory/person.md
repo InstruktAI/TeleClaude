@@ -1,9 +1,7 @@
 ---
-delivered_by:
-  - help-desk-idle-memory-cycle
-description: Keeps a person's own memories current as their conversations in
-  their home end — one standing agent per person home, so their memories are
-  changed by one agent, one ended conversation at a time.
+description: Keeps a person's own memories current as their conversations in their
+  home end — one standing agent per person home, so their memories are changed by
+  one agent, one ended conversation at a time.
 subscriptions:
   - teleclaude.agent_runtime.session.ended.person
 subscription_home: person

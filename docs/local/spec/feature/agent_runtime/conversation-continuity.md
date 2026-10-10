@@ -1,7 +1,8 @@
 ---
-description: A help-desk or assistant conversation outlives the session that carries it — an idle conversation session is compacted and closed while its person is away, a memory agent keeps what the conversation taught about that person current, and the revived session starts with it.
-delivered_by:
-  - help-desk-idle-memory-cycle
+description: A help-desk or assistant conversation outlives the session that carries
+  it — an idle conversation session is compacted and closed while its person is away,
+  a memory agent keeps what the conversation taught about that person current, and
+  the revived session starts with it.
 ---
 
 # Conversation Continuity — Spec

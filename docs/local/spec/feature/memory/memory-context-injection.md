@@ -9,11 +9,7 @@ visibility: 'public'
 
 The memory context generator turns a project's recent observations into a Markdown block that is prepended to each new agent session's startup context. The session-start consumer in `agent_runtime` requests the block from the `memory` service for the resolved project (optionally scoped by identity) and includes the rendered string in the session's initial context. The pipeline fetches the most-recent observations for the project, orders them newest-first, and renders them as a `# Memory Context` Markdown section with a summary index table and per-observation detail blocks.
 
-<!-- planned:help-desk-idle-memory-cycle -->
-
 For a help-desk session the resolved project is the desk's own memory namespace and the identity scope is its visitor's (`local/projects/teleclaude/design/architecture/help-desk-platform`, Identity-Scoped Memory); for any other session the project is its working folder's. Only current memories are rendered: a retired memory or a business prospect never reaches startup context (`local/projects/teleclaude/spec/feature/memory/memory-curation` UC-MC3).
-
-<!-- /planned:help-desk-idle-memory-cycle -->
 
 ## Canonical fields
 
@@ -31,21 +27,6 @@ And the empty string is returned when the project has no observations or any err
 And the session proceeds with whatever the service returned
 ```
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-#### Context generation
-
-```
-Given the memory service receives a context request for <project> (optionally scoped by identity)
-When it builds the response
-Then it fetches up to the most-recent 50 observations for that project, ordered newest-first
-And if no observations are returned, it returns the empty string
-And otherwise it renders the observation timeline as Markdown and returns the resulting string
-And any error during read or render results in the empty string being returned
-```
-
-<!-- change:help-desk-idle-memory-cycle -->
-
 #### Context generation
 
 ```
@@ -56,8 +37,6 @@ And if no observations are returned, it returns the empty string
 And otherwise it renders the observation timeline as Markdown and returns the resulting string
 And any error during read or render results in the empty string being returned
 ```
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 #### Rendering shape
 

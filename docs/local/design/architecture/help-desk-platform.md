@@ -86,11 +86,7 @@ The platform operates on two planes.
 
 <!-- /planned-change:help-desk-escalation-in-desk -->
 
-<!-- planned:help-desk-idle-memory-cycle -->
-
 - Business items from desk conversations (requests, complaints, confusion, sentiment, mentions of alternatives), collected as prospects for the home that owns the desk
-
-<!-- /planned:help-desk-idle-memory-cycle -->
 
 ### Architecture
 
@@ -156,35 +152,16 @@ flowchart TD
 
 A session whose role is below member and that carries no system role runs only inside an enabled help desk on the master: a customer's at the desk the conversation's session belongs to. A request naming no enabled desk is refused; nothing is silently redirected (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`). A desk entry is a door that places a person below their effective role (`local/projects/teleclaude/design/architecture/scoped-roles`), which is how a registered person who follows a desk link lands in that desk.
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-**Identity key format:** `{platform}:{platform_user_id}` — e.g., `discord:999001`, `telegram:12345678`, `whatsapp:31612345678`. It is derived from the session's origin metadata at query time, not stored as a denormalized column on the session, and the memory system receives it as an opaque string.
-
-<!-- change:help-desk-idle-memory-cycle -->
-
 **Identity key format:** a registered person is keyed as that person — `person:{slug}` — whichever adapter they write from; anyone else is keyed by the platform identity they write from — `{platform}:{platform_user_id}`, e.g. `discord:999001`, `telegram:12345678`, `whatsapp:31612345678`. Identity derives the key from the session at the moment it is needed, both when memories are saved and when they are injected; it is not stored as a denormalized column on the session, and the memory system receives it as an opaque string.
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 #### Tool access for help-desk visitors
 
 A help-desk session below admin is confined to its desk: below member by its recorded role (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle` UC-SL48), and a member who entered the desk by the endpoint it was created at (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry` UC-CE22):
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-- It reads files only inside its desk folder and its own session's uploads, never another session's uploads.
-- It runs only the desk commands its recorded role admits, which the CLI surface declares (`local/projects/teleclaude/design/cli-authorization-matrix`): for a customer `telec version`, `telec docs index`, `telec docs get`, `telec auth whoami` and `telec sessions escalate`.
-- No documentation corpus is mounted for it; it reads documentation only through `telec docs` at its own depth and through its desk master.
-- Its agent is chosen by availability from the dispatch order for desk sessions (`local/projects/teleclaude/design/architecture/agent-dispatch`), like every other session kind; that order holds only agents that carry a desk confinement profile. When no agent in it is available, no session is created and the visitor receives the neutral reply.
-
-<!-- change:help-desk-idle-memory-cycle -->
-
 - It reads files only inside its desk folder and its own session's uploads, never another session's uploads.
 - It runs only the desk commands its recorded role admits, which the CLI surface declares (`local/projects/teleclaude/design/cli-authorization-matrix`): for a customer `telec version`, `telec docs index`, `telec docs get`, `telec auth whoami` and `telec sessions escalate`.
 - No documentation corpus is mounted for it; it reads documentation only through `telec docs` at its own depth and through its desk master.
 - Its agent is chosen by availability from the dispatch order for desk sessions (`local/projects/teleclaude/design/architecture/agent-dispatch`), like every other session kind; that order holds only agents that carry a desk confinement profile and declare a compaction command. When no agent in it is available, no session is created and the visitor receives the neutral reply.
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 #### Documentation reach
 
@@ -433,46 +410,6 @@ The desk's master and the help-desk procedure (`general/procedure/help-desk/over
 
 ### Identity-Scoped Memory
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-The memory system gains a second scoping axis. The `project` field remains (operator-level namespace). A new `identity_key` field optionally scopes memories to a specific person.
-
-```mermaid
-erDiagram
-    MEMORY_OBSERVATIONS {
-        int id PK
-        text project "help-desk"
-        text identity_key "NULL or platform:user_id"
-        text type "preference|decision|discovery|..."
-        text title
-        text narrative
-        text facts "JSON array"
-        text created_at
-    }
-```
-
-**Query semantics:**
-
-| Query                                            | Returns                                   |
-| ------------------------------------------------ | ----------------------------------------- |
-| `project=help-desk, identity_key=NULL`           | Operator's general/business memories only |
-| `project=help-desk, identity_key=discord:999001` | Alice's personal memories only            |
-| `project=help-desk` (no identity filter)         | All memories for the help desk            |
-
-**Context injection at SessionStart:**
-
-```sql
--- Inject both operator knowledge and customer-specific memories
-WHERE project = :project
-  AND (identity_key IS NULL OR identity_key = :identity_key)
-ORDER BY created_at_epoch DESC
-LIMIT 50
-```
-
-The hook receiver resolves the session's identity (from adapter metadata via the derivation path) and passes the `identity_key` to `generate_context_sync`. If no identity is available, only project-level memories are injected.
-
-<!-- change:help-desk-idle-memory-cycle -->
-
 The memory system gains a second scoping axis. The `project` field remains the namespace. The `identity_key` field optionally scopes memories to one person.
 
 Every desk has a memory namespace of its own, derived from the desk's identity (its kind and its home's slug), never from its folder name: every desk folder carries the same name, so a folder-derived namespace would merge every desk's memories into one.
@@ -487,8 +424,6 @@ Memories are kept current by memory agents (`local/projects/teleclaude/spec/feat
 
 **Context injection at SessionStart.** For a desk session, the hook receiver asks memory for the desk's namespace, narrowed to the visitor's identity key, under the reach identity resolves for the session's visitor (`local/projects/teleclaude/spec/feature/identity/data-visibility` UC-DV14 for an unregistered visitor). The session therefore starts with the current memories about that visitor at that desk and with nothing recorded about anyone else or at any other desk. A session that is not at a desk keeps its namespace from its working folder.
 
-<!-- /planned-change:help-desk-idle-memory-cycle -->
-
 **API changes:**
 
 - `POST /api/memory/save` — add optional `identity_key` field
@@ -497,45 +432,7 @@ Memories are kept current by memory agents (`local/projects/teleclaude/spec/feat
 
 ### Customer Session Lifecycle
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-Customer sessions have a distinct lifecycle from admin sessions. They stay alive indefinitely — there is no idle timeout that kills a customer session. The 7d inactivity sweep is the only natural death.
-
-<!-- change:help-desk-idle-memory-cycle -->
-
 A desk session is closed only to spare resources while its visitor is away, never to end the conversation. After 30 minutes without visitor input, the daemon compacts its context and closes it. Its end wakes the desk's memory agent, which keeps the memories about that visitor current. The visitor's next message, or their re-entry at the desk, revives the same session with those memories injected (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-continuity`).
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->
-
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-**Idle compaction sequence.** After a configurable idle threshold (e.g., 30 minutes of no customer input), the daemon:
-
-1. Runs memory extraction on the recent conversation (same job as post-session processing)
-2. Injects `/compact` into the tmux pane
-3. Does NOT update `last_message_sent` — this is invisible to the customer
-
-This keeps the session file lean without losing context. The agent retains compacted history plus injected memories on the next customer message.
-
-```mermaid
-sequenceDiagram
-    participant Daemon
-    participant Job as Memory Extraction Job
-    participant Tmux as Agent Session (tmux)
-    participant DB as Session DB
-
-    Note over Daemon: Idle threshold reached (30m)
-    Daemon->>Job: Spawn extraction (session_id)
-    Job->>DB: Read transcript since last_memory_extraction_at
-    Job->>Job: Extract personal + business memories
-    Job->>DB: Update last_memory_extraction_at
-    Job->>Daemon: Extraction complete
-    Daemon->>Tmux: Inject /compact
-    Note over Tmux: Context compacted, session stays alive
-    Note over Daemon: Do NOT update last_message_sent
-```
-
-<!-- change:help-desk-idle-memory-cycle -->
 
 **Idle cycle.** The daemon's idle cycle visits conversation sessions — desk sessions and a person's own assistant sessions, never agents the platform started for a procedure — periodically, well within the 30-minute threshold. A session whose agent is idle, which has had no input for 30 minutes, which carries no active escalation relay and has no input waiting, goes through:
 
@@ -560,8 +457,6 @@ sequenceDiagram
     Note over Daemon: No message recorded as sent
 ```
 
-<!-- /planned-change:help-desk-idle-memory-cycle -->
-
 <!-- planned-change:help-desk-discord-categories -->
 
 **Session resumption.** When a visitor returns through the same conversation (the same Telegram chat, Discord direct message or WhatsApp number), or re-enters the desk with its identifier, the conversation's session at that desk continues, revived when it was closed; no new session is created. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` at the visitor's depth.
@@ -572,27 +467,11 @@ sequenceDiagram
 
 <!-- /planned-change:help-desk-discord-categories -->
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-**Bookkeeping.** A `last_memory_extraction_at` timestamp on the session record tracks the high-water mark. The extraction job processes only new conversation since this marker. This makes both idle-triggered and cron-triggered extraction idempotent.
-
-<!-- change:help-desk-idle-memory-cycle -->
-
 **Bookkeeping.** A `last_memory_extraction_at` timestamp on the session record is the session's read point: the newest conversation entry its memory agent has read. The agent reads only the conversation after it and advances it last, after its memory changes are made, so a session that ends again is read from where its memory agent stopped.
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 **Session state fields (additions):**
 
 - `last_memory_extraction_at` — timestamp of last successful extraction (high-water mark)
-
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-- `help_desk_processed_at` — timestamp of final post-mortem processing
-
-<!-- change:help-desk-idle-memory-cycle -->
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 <!-- planned-change:help-desk-escalation-in-desk -->
 
@@ -609,12 +488,6 @@ sequenceDiagram
 <!-- /planned-change:help-desk-escalation-in-desk -->
 
 ### Post-Session Memory Extraction
-
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-Nothing extracts memories from help-desk sessions. A session memory extraction job exists in the repository but is not scheduled, and the daemon's idle sweep only stamps `last_memory_extraction_at` on idle sessions without extracting anything.
-
-<!-- change:help-desk-idle-memory-cycle -->
 
 Memory extraction follows a conversation session's end. The session-ended event names the session, its home, and that it was a help-desk session; it wakes the desk memory procedure in the home that owns the desk. That procedure's agent is bound to the session: one memory agent per desk session, and the same agent is brought back when that session ends again after a revival. A person's own assistant sessions wake the person-memory procedure in their home, whose single standing agent keeps that person's memories. Both are procedure agents (`local/projects/teleclaude/design/architecture/procedure-activation`); no direct model API call is made.
 
@@ -650,8 +523,6 @@ sequenceDiagram
 
 Neither records project knowledge or decisions (`local/projects/teleclaude/spec/domain/memory`). Namespaces, keys and subjects follow Identity-Scoped Memory.
 
-<!-- /planned-change:help-desk-idle-memory-cycle -->
-
 ### Business Insights
 
 What desk conversations show about the business — requests for what does not exist, complaints, recurring confusion, sentiment, mentions of alternatives — is not synthesized by any scheduled job. Turning collected business items into durable knowledge for the home that owns the desk, and where that knowledge lands, is not designed yet.
@@ -678,43 +549,19 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 4. **Identity key is derived**: The `identity_key` is derived from origin metadata at query time, not stored as a denormalized column on the session.
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-5. **Extract before compact**: Memory extraction MUST complete before compaction is injected. Compaction destroys the raw conversation that the extractor reads. The sequence is always: extract → compact, never the reverse.
-
-<!-- change:help-desk-idle-memory-cycle -->
-
 5. **Compaction keeps the conversation readable**: compaction shortens the agent's context, not its native transcript, which keeps every entry from before a compaction; memory extraction reads that transcript after the session ended, so compaction never takes anything extraction needs.
 
-<!-- /planned-change:help-desk-idle-memory-cycle -->
+6. **Help desks are folders of their homes**: A help desk is never a repository of its own. Scaffolding is idempotent: the operator brain is seeded only while absent, the ignore declaration converges to its kind's template, and nothing the template does not carry is touched.
 
-7. **Help desks are folders of their homes**: A help desk is never a repository of its own. Scaffolding is idempotent: the operator brain is seeded only while absent, the ignore declaration converges to its kind's template, and nothing the template does not carry is touched.
+7. **A desk exists only where its home enables it**: no machine-wide desk location exists. A desk's folder follows from its home, and a home without `help_desk.enabled` has no desk.
 
-8. **A desk exists only where its home enables it**: no machine-wide desk location exists. A desk's folder follows from its home, and a home without `help_desk.enabled` has no desk.
+8. **Extraction resumes from its read point**: a memory agent reads only the conversation after the session's read point and advances it after its memory changes, so no stretch of a conversation is read twice; memories are kept current, not accumulated. Durable state lives in the database, not in the agent.
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
+9. **Entry names an endpoint exactly**: an identifier either resolves to an endpoint the receiving computer can serve, or the person gets the neutral reply. No identifier is interpreted as a nearby one, and no miss reveals which organisations exist.
 
-9. **Jobs are idempotent**: Memory extraction can be re-run safely. The `last_memory_extraction_at` marker ensures only new conversation is processed. Premature agent death, glitches, or periodic re-runs never produce duplicate actions or memories. The job runner treats agents as ephemeral — durable state lives in the database, not in the agent.
+10. **Closing spares resources, never the conversation**: a desk session closes after 30 minutes without visitor input, only after its context was compacted; its memory agent keeps the visitor's memories current from the closed conversation, and any later message or re-entry revives the same session with those memories injected.
 
-<!-- change:help-desk-idle-memory-cycle -->
-
-9. **Extraction resumes from its read point**: a memory agent reads only the conversation after the session's read point and advances it after its memory changes, so no stretch of a conversation is read twice; memories are kept current, not accumulated. Durable state lives in the database, not in the agent.
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->
-
-10. **Entry names an endpoint exactly**: an identifier either resolves to an endpoint the receiving computer can serve, or the person gets the neutral reply. No identifier is interpreted as a nearby one, and no miss reveals which organisations exist.
-
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-11. **Customer sessions stay alive**: No idle timeout kills a customer session. Only the 7d inactivity sweep ends sessions. Idle compaction keeps sessions lean without terminating them.
-
-<!-- change:help-desk-idle-memory-cycle -->
-
-11. **Closing spares resources, never the conversation**: a desk session closes after 30 minutes without visitor input, only after its context was compacted; its memory agent keeps the visitor's memories current from the closed conversation, and any later message or re-entry revives the same session with those memories injected.
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->
-
-12. **Relay is session-scoped**: The admin relay is a state of the session, not a separate entity. When the session dies (7d sweep), the relay state dies with it.
+11. **Relay is session-scoped**: The admin relay is a state of the session, not a separate entity. When the session dies (7d sweep), the relay state dies with it.
 
 <!-- planned-change:help-desk-escalation-in-desk -->
 
@@ -847,34 +694,6 @@ sequenceDiagram
 
 ### Idle Compaction Cycle
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-```mermaid
-sequenceDiagram
-    participant Daemon
-    participant Job as Memory Extraction Job
-    participant Agent as Customer Session (tmux)
-    participant DB as Session DB
-    participant Memory as Memory API
-
-    Note over Daemon: 30m idle threshold reached
-    Daemon->>Job: Spawn extraction (session_id)
-    Job->>DB: Read last_memory_extraction_at
-    Job->>Agent: Read transcript since marker
-    Job->>Memory: Save personal memories (identity-scoped)
-    Job->>Memory: Save business memories (project-scoped)
-    Job->>DB: Update last_memory_extraction_at
-    Job->>Daemon: Extraction complete
-    Daemon->>Agent: Inject /compact
-    Note over Agent: Context compacted, session stays alive
-    Note over Daemon: last_message_sent NOT updated
-
-    Note over Agent: Customer returns later...
-    Agent->>Agent: Has compacted history + injected memories + telec docs index/get
-```
-
-<!-- change:help-desk-idle-memory-cycle -->
-
 ```mermaid
 sequenceDiagram
     participant Daemon as Idle cycle
@@ -895,8 +714,6 @@ sequenceDiagram
     Note over Agent: Visitor returns later...
     Daemon->>Agent: Revive the same session, the visitor's current memories injected
 ```
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 <!-- planned:help-desk-discord-categories -->
 
@@ -956,19 +773,6 @@ sequenceDiagram
 
 ## Failure Modes
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-| Scenario                                                                                    | Behavior                                       | Recovery                                                          |
-| ------------------------------------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------- |
-| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key | Personal memories not injected; the agent handles without context |
-| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                  | The visitor uses a working desk link                              |
-| A desk identifier sent to a computer's own bot when that computer is not the master         | Neutral reply                                  | Desk links are rendered on the master, naming its bot             |
-| The entered desk's home is not on the master                                                | Neutral reply, no session                      | Make the desk's home present on the master                        |
-| A restricted session names no enabled desk                                                  | Session creation is refused                    | The core resolves an endpoint first or sends the neutral reply    |
-| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)       | Most recent memories prioritized                                  |
-
-<!-- change:help-desk-idle-memory-cycle -->
-
 | Scenario                                                                                    | Behavior                                                       | Recovery                                                                                                                                             |
 | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key                 | Personal memories not injected; the agent handles without context                                                                                    |
@@ -980,8 +784,6 @@ sequenceDiagram
 | Compaction does not finish                                                                  | The session stays open, not compacted                          | A later pass retries; the session is never closed uncompacted                                                                                        |
 | Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)                       | Most recent memories prioritized                                                                                                                     |
 | Session transcript unavailable to the memory agent                                          | Nothing read; read point not advanced                          | A later activation for the session retries                                                                                                           |
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->
 
 **Escalation failure modes:**
 

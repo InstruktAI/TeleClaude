@@ -97,12 +97,4 @@ And the observation can later be retrieved by any identity-scoped query plus ide
 - **The CLI does NOT expose an identity-scope option.** Only programmatic callers and the in-process context-injection path can supply or read identity scope. CLI-saved observations are always unscoped.
 - **Integer id, not UUID.** Observations are identified by an integer id assigned at save. The memory domain spec calls for a UUID observation identifier; promoting to UUID is a cutover decision.
 
-<!-- planned-change:help-desk-idle-memory-cycle -->
-
-- **No update path.** Once persisted, an observation's fields cannot be modified; the only mutations are delete (see `observation-delete`) and search-index re-indexing.
-
-<!-- change:help-desk-idle-memory-cycle -->
-
 - **No update path on the save surface.** The save path never modifies a persisted observation. A memory's statement is changed, and a memory retired, only through curation (`local/projects/teleclaude/spec/feature/memory/memory-curation`); the other mutations are delete (see `observation-delete`) and search-index re-indexing.
-
-<!-- /planned-change:help-desk-idle-memory-cycle -->

@@ -1,7 +1,7 @@
 ---
-description: The operations a memory agent uses to keep the memories about one person current — list, add, update, retire — plus collecting business items as prospects and advancing a conversation's read point; open only to procedure agents.
-delivered_by:
-  - help-desk-idle-memory-cycle
+description: The operations a memory agent uses to keep the memories about one person
+  current — list, add, update, retire — plus collecting business items as prospects
+  and advancing a conversation's read point; open only to procedure agents.
 ---
 
 # Memory Curation — Spec

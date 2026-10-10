@@ -28,16 +28,12 @@ describes the current appliance only.
   architecture, operational gotchas — nor decisions: those are documentation,
   shaped through the human-involved documentation process.
 
-<!-- planned:help-desk-idle-memory-cycle -->
-
 - **Keeps memories current, and collects business items as prospects.** A
   memory about a person is current or retired, kept current by memory agents
   rather than accumulated (`local/projects/teleclaude/spec/feature/memory/memory-curation`).
   Business items from help-desk conversations — what visitors ask for, complain
   about, or are confused by — are collected as prospects for the home that owns
   the desk; they are raw material, never used as memories.
-
-<!-- /planned:help-desk-idle-memory-cycle -->
 
 - **Does not own:** session transcripts, general project documentation, or
   decisions inferred from an observation by consuming domains.
