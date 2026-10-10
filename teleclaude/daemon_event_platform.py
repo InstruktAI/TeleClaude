@@ -13,6 +13,7 @@ from redis.exceptions import ResponseError
 
 from teleclaude.config.machine import config
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus
+from teleclaude.core.integration.event_bound_maintenance import build_event_bound_maintenance_consumer
 from teleclaude.core.integration.incident_alerts import build_incident_alerts_consumer
 from teleclaude.core.integration.subscribed_domain_events import build_subscribed_domain_events_consumer
 from teleclaude.core.integration.trigger_consumer import build_integration_trigger_consumer
@@ -20,11 +21,6 @@ from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.procedure_routing import build_procedure_activation_consumer
 from teleclaude.core.reconciliation import FleetCapabilityMap, contraction_answer_from_live_map
-from teleclaude.deployment.handler import (
-    DEPLOYMENT_FANOUT_CHANNEL,
-    configure_deployment_handler,
-    handle_deployment_event,
-)
 from teleclaude.events import (
     Consumer,
     ConsumerRuntime,
@@ -102,7 +98,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _event_producer: EventProducer | None
         _event_redis_client: object | None
         _event_platform_status: _EventPlatformStatus
-        _deployment_fanout_task: asyncio.Task[object] | None
         _event_consumers_task: asyncio.Task[object] | None
         _relay_delivery_task: asyncio.Task[object] | None
         _internal_event_bus_task: asyncio.Task[object] | None
@@ -157,6 +152,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             self._build_integration_trigger(),
             build_lifecycle_router_consumer(),
             build_procedure_activation_consumer(),
+            build_event_bound_maintenance_consumer(),
             build_correlation_consumer(self._event_db, self._event_producer, CorrelationConfig()),
             build_incident_alerts_consumer(self._event_db, self._event_catalog),
             build_subscribed_domain_events_consumer(self._event_db, self._event_catalog),
@@ -327,34 +323,6 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             )
         )
 
-        # Built-in deployment channel handler.
-        redis_transport = self.client.transport
-        _get_redis_fn = redis_transport._get_redis if isinstance(redis_transport, RedisTransport) else None
-        configure_deployment_handler(_get_redis_fn)
-        handler_registry.register("deployment_update", handle_deployment_event)
-        contract_registry.register(
-            Contract(
-                id="deployment-github",
-                source_criterion=PropertyCriterion(match="github"),
-                type_criterion=PropertyCriterion(match=["push", "release"]),
-                target=Target(handler="deployment_update"),
-            )
-        )
-        contract_registry.register(
-            Contract(
-                id="deployment-fanout",
-                source_criterion=PropertyCriterion(match="deployment"),
-                type_criterion=PropertyCriterion(match="version_available"),
-                target=Target(handler="deployment_update"),
-            )
-        )
-        if isinstance(redis_transport, RedisTransport):
-            self._deployment_fanout_task = asyncio.create_task(
-                self._deployment_fanout_consumer(dispatcher, redis_transport),
-                name="deployment-fanout",
-            )
-            self._deployment_fanout_task.add_done_callback(self._log_background_task_exception("deployment_fanout"))
-
         self._start_relay_delivery_consumer(dispatcher)
         self._install_inbound_routes()
 
@@ -371,44 +339,3 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             return
         install_inbound_routes(app, producer)
         logger.info(_INBOUND_ROUTES_INSTALLED_EVENT)
-
-    async def _deployment_fanout_consumer(self, dispatcher: HookDispatcher, redis_transport: RedisTransport) -> None:
-        """Consume deployment version_available events from Redis Stream and dispatch locally.
-
-        Messages published by this daemon carry a daemon_id matching config.computer.name.
-        The consumer skips those to avoid double-executing updates that this daemon already
-        triggered directly (github-source path calls execute_update before publishing).
-        Remote daemons have different daemon_id values and will process the message normally.
-        """
-        from teleclaude.hooks.webhook_models import HookEvent as _HookEvent  # startup boundary
-
-        last_id = "$"  # only new messages after startup
-        logger.info("Deployment fanout consumer started (channel=%s)", DEPLOYMENT_FANOUT_CHANNEL)
-        while not self.shutdown_event.is_set():
-            try:
-                redis = await redis_transport._get_redis()
-                results = await redis.xread({DEPLOYMENT_FANOUT_CHANNEL: last_id}, count=10, block=5000)
-                if not results:
-                    continue
-                for _stream, messages in results:
-                    for msg_id, data in messages:
-                        last_id = msg_id.decode() if isinstance(msg_id, bytes) else str(msg_id)
-                        event_json = data.get(b"event") or data.get("event")
-                        if event_json is None:
-                            continue
-                        if isinstance(event_json, bytes):
-                            event_json = event_json.decode()
-                        try:
-                            event = _HookEvent.from_json(event_json)
-                            if event.properties.get("daemon_id") == config.computer.name:
-                                logger.debug("Deployment fanout: skipping self-originated message")
-                                continue
-                            await dispatcher.dispatch(event)
-                        except Exception as exc:
-                            logger.warning("Deployment fanout: dispatch failed: %s", exc)
-            except asyncio.CancelledError:
-                break
-            except Exception as exc:
-                logger.warning("Deployment fanout consumer error: %s", exc)
-                await asyncio.sleep(5)
-        logger.info("Deployment fanout consumer stopped")

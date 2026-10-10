@@ -1105,7 +1105,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             await cluster_bridge.stop()
         await self._await_task_attr("_cluster_bridge_task", "Cluster Redis bridge stopped", timeout=5.0)
 
-        await self._await_task_attr("_deployment_fanout_task", "Deployment fanout stopped", timeout=5.0)
         await self._await_task_attr("_task_schedule_clock_task", "Task schedule clock stopped", timeout=5.0)
         await self._await_task_attr("_internal_event_bus_task", "Internal EventBus stopped", timeout=5.0)
         await self._await_task_attr("_event_consumers_task", "Event consumers stopped", timeout=5.0)

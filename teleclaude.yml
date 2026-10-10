@@ -124,6 +124,13 @@ checkpoint:
         - '{interpreter}'
         - -m
         - teleclaude.entrypoints.docs_layout_convergence
+    self-update:
+      main_only: true
+      command:
+        - '{interpreter}'
+        - -m
+        - teleclaude.deployment.self_update
+        - '{event_file}'
   integrator_judgment:
     - log-check
   bindings:
@@ -250,6 +257,11 @@ checkpoint:
           - teleclaude/mcp/teleclaude-mcp.schema.json
       actions:
         - config-schemas
+    - events:
+        - github.push
+        - github.release
+      actions:
+        - self-update
 jobs:
   - category: system
     name: temp-reaper

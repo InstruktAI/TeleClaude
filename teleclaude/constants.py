@@ -11,6 +11,7 @@ from typing import Final
 
 from teleclaude import agent_registry
 from teleclaude.core.worktree_layout import WORKTREE_DIR as WORKTREE_DIR
+from teleclaude.events.type_pattern import TypePattern
 
 # Taxonomy Types (single source of truth)
 # Used for snippet categorization and get_context filtering
@@ -655,12 +656,29 @@ class CheckpointBinding:
 
 
 @dataclass(frozen=True)
+class CheckpointEventBinding:
+    """Maps event type patterns to the maintenance action ids an event of a selected type owes."""
+
+    patterns: tuple[TypePattern, ...]
+    actions: tuple[str, ...]
+
+    def selects(self, event_type: str) -> bool:
+        """Whether any of the binding's patterns selects the event type."""
+        return any(pattern.matches(event_type) for pattern in self.patterns)
+
+
+@dataclass(frozen=True)
 class CheckpointModel:
-    """The effective checkpoint and maintenance registries plus shared bindings."""
+    """The effective checkpoint and maintenance registries plus shared bindings.
+
+    ``bindings`` are selected by changed paths; ``event_bindings`` only by an event's type.
+    The two kinds never mix, so a consumer of one cannot select the other.
+    """
 
     actions: dict[str, CheckpointAction]
     maintenance: dict[str, MaintenanceAction]
     bindings: tuple[CheckpointBinding, ...]
+    event_bindings: tuple[CheckpointEventBinding, ...] = ()
 
 
 CHECKPOINT_COMMIT_EVIDENCE = ["telec code commit"]
