@@ -75,6 +75,15 @@ implementation remain the current appliance contract.
   a restart or a separate trigger. Editing a procedure's subscriptions changes
   its event membership and never the identity of its agent.
 
+<!-- planned:procedure-agent-headless -->
+
+- **Also owns (attendance in the activation):** each activation carries the
+  attendance its procedure declares, attended when undeclared, read from the
+  same published subscription as its agent identity; routing decides nothing
+  about it.
+
+<!-- /planned:procedure-agent-headless -->
+
 - **Also owns (internal handler boundary):** an internal handler receives the
   matched contract alongside the event, so a handler serving several contracts
   knows which one matched when subscriptions overlap.

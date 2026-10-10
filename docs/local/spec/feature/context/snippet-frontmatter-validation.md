@@ -287,6 +287,27 @@ Scenario Outline: The declared agent identity is validated against the subscript
     | declares an agent identity and no events                     | an agent-identity finding is reported for that file and the sync exits non-zero |
 ```
 
+<!-- planned:procedure-agent-headless -->
+
+#### UC-SFV9: A subscribed procedure may declare that no person watches its agent
+
+```gherkin
+Scenario Outline: The declared attendance is validated against the subscription
+  Given a procedure snippet published in the global tier <declaration>
+  When snippet validation runs
+  Then <outcome>
+
+  Examples:
+    | declaration                                             | outcome                                                                      |
+    | declares its events and no attendance                   | no attendance finding is reported                                            |
+    | declares its events and the attended attendance         | no attendance finding is reported                                            |
+    | declares its events and the unattended attendance       | no attendance finding is reported                                            |
+    | declares its events and an attendance outside the two   | an attendance finding is reported for that file and the sync exits non-zero |
+    | declares an attendance and no events                    | an attendance finding is reported for that file and the sync exits non-zero |
+```
+
+<!-- /planned:procedure-agent-headless -->
+
 ### Cross-context references
 
 - workflow and integration own lifecycle state transitions and delivery-time

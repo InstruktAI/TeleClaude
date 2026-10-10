@@ -143,6 +143,18 @@ rule it relies on is stated by its owner:
   home, and only then carries a company profile. Location never supplies a
   company or a profile: an agent activated for a person, a project, or the
   platform works in that home and carries no company.
+
+<!-- planned:procedure-agent-headless -->
+
+- **Attendance is the session's own audience statement.** A procedure declares
+  whether people watch its agent; the activation carries that declaration, and
+  the runner records it in the write that creates the agent's session. The
+  session listing, live session updates, and the Discord adapter read it from
+  the session; nothing else does, and it never enters identity resolution,
+  reach, or delivery.
+
+<!-- /planned:procedure-agent-headless -->
+
 - **Subscriptions follow the published index.** The subscription set is read
   from the publication index and held in memory with the identity of the index
   it came from. Before matching an event, the consumer establishes whether the

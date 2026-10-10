@@ -8,6 +8,8 @@ description: The TUI Sessions view reflects authoritative session state — a se
 
 ## What it is
 
+<!-- planned-change:procedure-agent-headless -->
+
 The TUI Sessions view is a projection of the authoritative session state the
 viewer's role reaches (`local/projects/teleclaude/design/architecture/scoped-roles`), not a ledger
 of the live events it happened to receive. Every open session in the
@@ -15,6 +17,20 @@ authoritative session store whose project the viewer's effective role reaches
 above `customer` is visible, regardless of lifecycle status or human ownership,
 and so are the sessions other computers share with this one when the viewer
 holds a platform role; a session whose `closed_at` is set is not.
+
+<!-- change:procedure-agent-headless -->
+
+The TUI Sessions view is a projection of the authoritative session state the
+viewer's role reaches (`local/projects/teleclaude/design/architecture/scoped-roles`), not a ledger
+of the live events it happened to receive. Every open session in the
+authoritative session store whose project the viewer's effective role reaches
+above `customer` is visible, regardless of lifecycle status or human ownership,
+and so are the sessions other computers share with this one when the viewer
+holds a platform role; a session whose `closed_at` is set is not, and neither
+is an unattended procedure agent
+(`local/projects/teleclaude/spec/feature/agent_runtime/procedure-standing-agent`).
+
+<!-- /planned-change:procedure-agent-headless -->
 
 A session absent from a snapshot is out of the viewer's view, not closed: the
 TUI drops it from the view without recording a closure, and only a
@@ -45,6 +61,8 @@ Then the session appears in the TUI Sessions view without a TUI restart
 And the TUI does not issue a reconnect-initiated session pull
 ```
 
+<!-- planned-change:procedure-agent-headless -->
+
 #### UC-SVIS-2: Every open lifecycle state is included in the authoritative bootstrap set
 
 ```
@@ -54,6 +72,20 @@ When the TUI reads the sessions pillar of GET /tui/bootstrap during startup
 Then the returned set contains every open session the viewer's role reaches, regardless of lifecycle status or human ownership
 And it excludes the session whose closed_at is set and every session in a project the viewer's role does not reach
 ```
+
+<!-- change:procedure-agent-headless -->
+
+#### UC-SVIS-2: Every open lifecycle state is included in the authoritative bootstrap set
+
+```
+Given open sessions in the authoritative store spanning lifecycle statuses — active, initializing, headless, closing, and escalated — alongside a session whose closed_at is set
+And a viewer whose role reaches the projects those sessions run in
+When the TUI reads the sessions pillar of GET /tui/bootstrap during startup
+Then the returned set contains every open session the viewer's role reaches other than an unattended procedure agent, regardless of lifecycle status or human ownership
+And it excludes the session whose closed_at is set and every session in a project the viewer's role does not reach
+```
+
+<!-- /planned-change:procedure-agent-headless -->
 
 #### UC-SVIS-3: A pushed lifecycle error triggers targeted reconciliation
 
@@ -73,3 +105,16 @@ When the websocket reconnects and the server pushes the viewer's sessions snapsh
 Then the session leaves the TUI Sessions view
 And the TUI records no closure for it, and no pane or provenance entry marks it closed
 ```
+
+<!-- planned:procedure-agent-headless -->
+
+#### UC-SVIS-5: An unattended procedure agent never enters the view
+
+```
+Given an unattended procedure agent is open in a project the viewer's role reaches
+When the TUI starts, its websocket reconnects, or that agent's session changes
+Then neither the sessions bootstrap, the pushed sessions snapshot, nor any live session update carries that session
+And the TUI Sessions view does not show it
+```
+
+<!-- /planned:procedure-agent-headless -->

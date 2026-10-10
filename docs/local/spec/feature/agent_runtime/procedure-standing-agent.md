@@ -87,6 +87,13 @@ person's folder carries no human identity and acts as no person.
 **Subject-bound agent**
 : The agent a procedure declaring subject identity keeps for one subject in one home — started by the first activation about that subject and reached by every later one, revived when its session has closed.
 
+<!-- planned:procedure-agent-headless -->
+
+**Unattended agent**
+: The agent of a procedure declaring that no person watches it. It answers, works, and is recorded as any other agent of its procedure; it is left out of the places people look at sessions unless they ask for it.
+
+<!-- /planned:procedure-agent-headless -->
+
 ### Use cases
 
 #### UC-PSA1: The first activation starts the procedure's standing agent
@@ -328,6 +335,64 @@ Scenario Outline: The default identity is unchanged by events about different su
     | declares the home agent identity   |
 ```
 
+<!-- planned:procedure-agent-headless -->
+
+#### UC-PSA23: An unattended agent stays out of the places people look at sessions
+
+```gherkin
+Scenario Outline: A person's ordinary view of sessions leaves an unattended agent out
+  Given a procedure declaring itself unattended
+  And an activation has started its agent
+  When a person whose reach admits that agent's session <view>
+  Then the agent's session is not shown
+
+  Examples:
+    | view                                            |
+    | lists sessions without asking for every session |
+    | opens the TUI sessions view                     |
+    | looks for the session's thread in Discord       |
+```
+
+#### UC-PSA24: An unattended agent is shown when asked for
+
+```gherkin
+Scenario Outline: Asking for it shows an unattended agent to anyone whose reach admits it
+  Given a procedure declaring itself unattended has an agent
+  When a person whose reach admits that agent's session lists sessions <request>
+  Then the agent's session is shown
+
+  Examples:
+    | request                              |
+    | asking for every session             |
+    | asking for the procedure's job       |
+    | naming the session by its id         |
+```
+
+#### UC-PSA25: Attendance changes nothing else about the agent
+
+```gherkin
+Scenario Outline: An unattended agent answers its activations as an attended one would
+  Given a procedure declaring itself unattended and <identity>
+  When a later activation for that procedure arrives
+  Then it reaches the same agent an attended procedure with that identity would reach
+  And that agent is still left out of the places people look at sessions
+
+  Examples:
+    | identity                                              |
+    | the home agent identity, with its agent still running |
+    | the subject agent identity, with its agent closed     |
+```
+
+#### UC-PSA26: An agent started by hand is attended
+
+```gherkin
+Given a procedure declaring itself unattended answers company events
+When an operator starts a session for that procedure and a company by hand
+Then that session is shown wherever sessions are shown
+```
+
+<!-- /planned:procedure-agent-headless -->
+
 ### Cross-context references
 
 - **integration** — hands this context an activation naming the procedure, the
@@ -363,6 +428,15 @@ Scenario Outline: The default identity is unchanged by events about different su
 - A subject-bound agent is found again only while the platform retains its
   session record. After that record is purged, a later event about the subject
   starts a new agent without the earlier context.
+
+<!-- planned:procedure-agent-headless -->
+
+- Attendance is recorded on a session when it is started. Changing a
+  procedure's declaration affects the agents it starts afterwards; an agent
+  already running keeps the attendance it started with.
+- Sessions an unattended agent starts for its own work are attended.
+
+<!-- /planned:procedure-agent-headless -->
 
 ## See Also
 
