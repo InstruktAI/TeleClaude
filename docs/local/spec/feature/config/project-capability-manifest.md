@@ -219,6 +219,8 @@ And no checkpoint is emitted
 And no commit obligation is raised
 ```
 
+<!-- planned-change:checkpoint-event-bindings -->
+
 #### UC-CFG-CAP-6: A declared binding alone activates the engine
 
 ```
@@ -227,6 +229,20 @@ And declaring at least one checkpoint binding of its own
 When an agent turn ends
 Then the checkpoint engine evaluates the turn
 ```
+
+<!-- change:checkpoint-event-bindings -->
+
+#### UC-CFG-CAP-6: A declared path binding alone activates the engine
+
+```
+Given a project subscribing none of code, docs, or agents
+And declaring at least one checkpoint path binding of its own
+When an agent turn ends
+Then the checkpoint engine evaluates the turn
+But a project whose only bindings of its own name events evaluates nothing for that turn
+```
+
+<!-- /planned-change:checkpoint-event-bindings -->
 
 #### UC-CFG-CAP-7: Base bindings attach per subscribed capability
 
