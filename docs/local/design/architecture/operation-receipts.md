@@ -61,6 +61,30 @@ status_path, poll_after_ms, computer, success_event, failure_event, recovery_com
 
 ## Invariants
 
+<!-- planned:quiet-technical-faults -->
+
+### Published work feedback
+
+An operation retains its semantic owner's optional work-feedback declaration
+separately from its result and diagnostic error. The declaration is persisted
+in the same terminal write and projected identically by operation status reads
+and authorized live outcome delivery. A completed operation may carry a work
+refusal; completion alone does not grant notification eligibility.
+
+The operation carrier transports the declaration without deriving it from
+result prose, error prose, exception ancestry or HTTP status. Presentation
+applies the work-feedback boundary
+(`local/projects/teleclaude/spec/feature/presentation/work-feedback`); operation
+state, terminal event types and caller wake delivery keep their own contracts.
+
+Existing operation records acquire an absent declaration through the storage
+migration. A wire payload without the optional declaration supplies no work
+feedback; a consumer does not reconstruct one from its diagnostic fields.
+External shape evolution preserves independent consumers
+(`sdlc/policy/backward-compatibility-hygiene`).
+
+<!-- /planned:quiet-technical-faults -->
+
 - **Persist before execute.** The operation row is written to DB before the background
   task is scheduled. The receipt is always valid even if the daemon crashes immediately
   after returning it.
