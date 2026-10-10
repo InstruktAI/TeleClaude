@@ -1,5 +1,5 @@
 ---
-description: How GitHub signs webhook deliveries and how a receiver validates them.
+description: How GitHub encodes and signs webhook deliveries, and how a receiver validates them.
 ---
 
 # GitHub Webhook Delivery Validation
@@ -13,6 +13,18 @@ description: How GitHub signs webhook deliveries and how a receiver validates th
 - The `X-Hub-Signature` header carries an HMAC-SHA1 signature and is included
   only for legacy purposes.
 
+## Content types
+
+- A webhook's content type is `json` or `form`; the REST API documents `form` as
+  the default.
+- `json` sends the JSON payload unwrapped as the request body.
+- `form` sends the request as `application/x-www-form-urlencoded`, with the JSON
+  payload as the value of a single form parameter named `payload`.
+- The signature covers the request body exactly as sent, so for `form` it covers
+  the form-encoded body, not the JSON inside it. The documentation states only
+  "the payload contents"; the TeleClaude ingress validates `form` deliveries
+  over the raw form-encoded body.
+
 ## Validation
 
 - Compute the HMAC-SHA256 of the payload exactly as received, under the same
@@ -25,4 +37,6 @@ description: How GitHub signs webhook deliveries and how a receiver validates th
 
 ## Sources
 
+- [Creating webhooks](https://docs.github.com/en/webhooks/using-webhooks/creating-webhooks)
+- [REST API endpoints for repository webhooks](https://docs.github.com/en/rest/repos/webhooks)
 - [Validating webhook deliveries](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries)

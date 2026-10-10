@@ -16,6 +16,8 @@ single hook event with `source="github"` and `type=<event>`. For `ping`
 events specifically, the normalizer also passes through `zen` and
 `hook_id` so downstream handlers can confirm the registration handshake.
 
+<!-- planned-change:github-webhook-form-content-type -->
+
 The normalizer is the GitHub adapter of the ingress. A project receives
 GitHub deliveries by declaring a GitHub source in its own configuration
 (`local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`).
@@ -28,6 +30,21 @@ event's timestamp, and delivers it to its own hook dispatcher. The
 downstream consumer there is the deployment-update handler (matched via a
 programmatic contract for events `push` / `release`), which uses the
 normalized event to trigger version-fanout logic.
+<!-- change:github-webhook-form-content-type -->
+
+The normalizer is the GitHub adapter of the ingress. A project receives
+GitHub deliveries by declaring a GitHub source in its own configuration
+(`local/projects/teleclaude/spec/feature/integration/inbound-webhook-endpoint-framework`).
+The ingress reads the event type from a verified delivery and relays it to
+the cluster as the platform event `github.<event>`, whose origin is that
+project, whose subject is the project's GitHub source, and whose data is the
+JSON document the delivery carries, in whichever content type GitHub sent it.
+Each computer turns the relayed event back into the hook event above, stamped with the relayed
+event's timestamp, and delivers it to its own hook dispatcher. The
+downstream consumer there is the deployment-update handler (matched via a
+programmatic contract for events `push` / `release`), which uses the
+normalized event to trigger version-fanout logic.
+<!-- /planned-change:github-webhook-form-content-type -->
 
 ## Canonical fields
 
@@ -107,6 +124,8 @@ And the deployment-event handler is invoked
 And the deployment update flow runs (see deployment-version-fanout)
 ```
 
+<!-- planned-change:github-webhook-form-content-type -->
+
 #### UC-GH8: A verified delivery is relayed as a GitHub platform event about its project
 
 ```gherkin
@@ -118,6 +137,22 @@ And its subject is the project's GitHub source
 And its data is the delivery body
 And every computer's hook dispatcher receives the normalized push event once
 ```
+
+<!-- change:github-webhook-form-content-type -->
+
+#### UC-GH8: A verified delivery is relayed as a GitHub platform event about its project
+
+```gherkin
+Given the project "web" declares a GitHub source
+When GitHub delivers a push signed with that project's secret to /hooks/inbound/github/project/web
+Then the cluster receives the platform event "github.push"
+And its origin is the project "web"
+And its subject is the project's GitHub source
+And its data is the JSON document the delivery carries
+And every computer's hook dispatcher receives the normalized push event once
+```
+
+<!-- /planned-change:github-webhook-form-content-type -->
 
 ### Cross-context references
 
