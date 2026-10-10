@@ -78,6 +78,8 @@ class TelecAppWsMixin:
                 incoming=list(event.data.sessions),
                 computer=event.data.computer,
             )
+            pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)  # type: ignore[attr-defined]
+            pane_bridge.update_sessions(merged)
             sessions_view.update_data(
                 computers=computers,
                 projects=projects,

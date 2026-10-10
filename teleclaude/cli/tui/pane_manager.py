@@ -20,7 +20,7 @@ from teleclaude.cli.tui._pane_specs import (
     SessionPaneSpec,
 )
 from teleclaude.cli.tui.artifact_panes import doc_pane_key, parse_doc_pane_command
-from teleclaude.cli.tui.pane_layout import PaneLayoutMixin
+from teleclaude.cli.tui.pane_layout import _PANE_ID_FORMAT, PaneLayoutMixin, _PaneCommand, _PaneFlag
 from teleclaude.cli.tui.pane_theming import PaneThemingMixin
 from teleclaude.cli.tui.types import DocPreviewState
 from teleclaude.config.machine import config
@@ -45,6 +45,9 @@ class _PaneLayoutState:
     # Ordered cell assignment from the last applied layout. Diffing the new
     # desired assignment against this drives same-tier in-place swaps.
     cell_specs: list[SessionPaneSpec] | None = None
+    geometry_dirty: bool = False
+    detached_panes: set[str] = field(default_factory=set)
+    recovery_focus: str | None = None
 
 
 @dataclass
@@ -271,7 +274,11 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
     @property
     def _protected_panes(self) -> set[str]:
         """Panes held out of the orphan sweep because their owner is unknown."""
-        return set(self._unresolved_panes.values())
+        return (
+            set(self._unresolved_panes.values())
+            | set(self._reload_session_panes.values())
+            | set(self._reload_doc_panes)
+        )
 
     def _resolve_unresolved_panes(self) -> None:
         """Bind a protected pane to its session once the catalog can name it.
@@ -292,6 +299,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         for tmux_name, pane_id in list(self._unresolved_panes.items()):
             if not self._get_pane_exists(pane_id):
                 del self._unresolved_panes[tmux_name]
+                self._layout_state.geometry_dirty = True
                 continue
             session_id = by_tmux_name.get(tmux_name)
             if session_id is None:
@@ -313,6 +321,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
 
         output = self._run_tmux("list-panes", "-F", "#{pane_id}")
         live_panes = {p.strip() for p in output.split("\n") if p.strip()}
+        live_panes.update(pane for pane in self._layout_state.detached_panes if self._get_pane_exists(pane))
 
         dead_sessions = [sid for sid, pid in self.state.session_to_pane.items() if pid not in live_panes]
         for sid in dead_sessions:
@@ -334,9 +343,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         Sessions omitted by a scoped snapshot leave the viewer's pane layout;
         the attached tmux session itself remains alive.
         """
-        previous_cells = self._layout_state.cell_specs
         new_catalog = {session.session_id: session for session in sessions}
-        prior_session_ids = set(self._session_catalog)
         self._session_catalog = new_catalog
         visible_ids = set(new_catalog)
         self._layout_state.sticky_specs = [
@@ -347,12 +354,6 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             self._layout_state.active_spec = None
             self.state.active_session_id = None
         self._resolve_unresolved_panes()
-        if prior_session_ids - visible_ids:
-            cell_specs = self._build_session_specs()
-            self._reflow_layout(previous_cells, cell_specs)
-            self._layout_state.cell_specs = cell_specs
-            for session_id in prior_session_ids - visible_ids:
-                self.state.session_to_pane.pop(session_id, None)
 
     def _adopt_reload_doc_pane(self) -> None:
         """Keep the viewer a reload found, and let go of any beyond the first.
@@ -550,7 +551,10 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
 
     def _get_pane_exists(self, pane_id: str) -> bool:
         """Check if a pane still exists."""
-        output = self._run_tmux("list-panes", "-F", "#{pane_id}")
+        args: list[str] = [_PaneCommand.LIST, _PaneFlag.FORMAT, _PANE_ID_FORMAT]
+        if pane_id in self._layout_state.detached_panes:
+            args.append(_PaneFlag.ALL)
+        output = self._run_tmux(*args)
         return pane_id in output.split("\n")
 
     def _get_appearance_env(self) -> dict[str, str]:
@@ -847,6 +851,10 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
 
         pane_id = self.state.session_to_pane.get(session_id)
         if pane_id:
+            if self._layout_state.geometry_dirty:
+                self._layout_state.recovery_focus = pane_id
+            if pane_id in self._layout_state.detached_panes:
+                return False
             self._run_tmux("select-pane", "-t", pane_id)
             logger.debug("Focused pane %s for session %s", pane_id, session_id)
             return True

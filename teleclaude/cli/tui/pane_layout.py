@@ -5,7 +5,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -20,6 +21,28 @@ if TYPE_CHECKING:
     from teleclaude.cli.tui.types import DocPreviewState
 
 logger = get_logger(__name__)
+_PANE_ID_FORMAT = "#{pane_id}"
+_PANE_PERCENT_SIZE = "{size}%"
+
+
+class _PaneCommand(StrEnum):
+    BREAK = "break-pane"
+    JOIN = "join-pane"
+    KILL = "kill-pane"
+    DISPLAY = "display-message"
+    SELECT = "select-pane"
+    LIST = "list-panes"
+
+
+class _PaneFlag(StrEnum):
+    SOURCE = "-s"
+    TARGET = "-t"
+    DETACHED = "-d"
+    PRINT = "-p"
+    SIZE = "-l"
+    VERTICAL = "-v"
+    FORMAT = "-F"
+    ALL = "-a"
 
 
 @dataclass(frozen=True)
@@ -80,8 +103,9 @@ class PaneLayoutMixin:
             logger.warning("apply_layout: no layout for tier=%d", new_tier)
             return
 
+        recovered = self._recover_rendered_cells(cell_specs)
         prev_cells = self._layout_state.cell_specs  # type: ignore[attr-defined]
-        if prev_cells is not None and len(prev_cells) == len(cell_specs):
+        if not recovered and prev_cells is not None and len(prev_cells) == len(cell_specs):
             swapped = self._swap_changed_cells(prev_cells, cell_specs)
             if swapped is not None:
                 # Commit structural state before cosmetic theming: a theming
@@ -89,6 +113,7 @@ class PaneLayoutMixin:
                 # cell_specs (the split-brain that duplicates the preview pane).
                 self._layout_state.cell_specs = cell_specs  # type: ignore[attr-defined]
                 self._layout_state.layout_signature = self._compute_layout_signature()  # type: ignore[attr-defined]
+                self._restore_layout_geometry(cell_specs)
                 for pane, new_spec in swapped:
                     self._theme_swapped_pane(pane, new_spec)
                 self._refresh_backgrounds_if_needed()
@@ -99,9 +124,83 @@ class PaneLayoutMixin:
         logger.debug("apply_layout: tier changed -> minimal reflow (specs=%d)", len(cell_specs))
         self._reflow_layout(prev_cells, cell_specs)
         self._layout_state.cell_specs = cell_specs  # type: ignore[attr-defined]
+        self._restore_layout_geometry(cell_specs)
         self.invalidate_bg_cache()
         if request.focus and active_spec:
             self.focus_pane_for_session(active_spec.session_id)  # type: ignore[attr-defined]
+
+    def _recover_rendered_cells(self, desired_specs: list[SessionPaneSpec]) -> bool:
+        """Reconcile resolved survivors absent from the observed cell assignment."""
+        previous = list(self._layout_state.cell_specs or [])  # type: ignore[attr-defined]
+        previous_ids = {spec.session_id for spec in previous}
+        desired_by_id = {spec.session_id: spec for spec in desired_specs}
+        recovered = False
+        for session_id, pane in list(self.state.session_to_pane.items()):  # type: ignore[attr-defined]
+            if session_id in previous_ids:
+                continue
+            self._layout_state.geometry_dirty = True  # type: ignore[attr-defined]
+            spec = desired_by_id.get(session_id)
+            if spec is not None:
+                observed_doc = self.adopted_doc_preview()  # type: ignore[attr-defined]
+                if observed_doc is not None and doc_pane_key(observed_doc.doc_id) == session_id:
+                    spec = replace(spec, command=observed_doc.command)
+                previous.append(spec)
+                recovered = True
+            else:
+                self._run_tmux(_PaneCommand.KILL, _PaneFlag.TARGET, pane)  # type: ignore[attr-defined]
+                self.state.session_to_pane.pop(session_id)  # type: ignore[attr-defined]
+                self._layout_state.detached_panes.discard(pane)  # type: ignore[attr-defined]
+        if recovered:
+            self._layout_state.cell_specs = previous  # type: ignore[attr-defined]
+        return recovered
+
+    def _restore_layout_geometry(self, specs: list[SessionPaneSpec]) -> None:
+        """Place known surviving viewers in the declared grid without respawning."""
+        if not self._layout_state.geometry_dirty or self._protected_panes:  # type: ignore[attr-defined]
+            return
+        panes = {spec.session_id: self.state.session_to_pane.get(spec.session_id) for spec in specs}  # type: ignore[attr-defined]
+        if any(pane is None or not self._get_pane_exists(pane) for pane in panes.values()):  # type: ignore[attr-defined]
+            return
+        if self._layout_state.recovery_focus is None:  # type: ignore[attr-defined]
+            self._layout_state.recovery_focus = self._run_tmux(  # type: ignore[attr-defined]
+                _PaneCommand.DISPLAY, _PaneFlag.PRINT, _PANE_ID_FORMAT
+            )
+        focused = self._layout_state.recovery_focus  # type: ignore[attr-defined]
+        for pane in panes.values():
+            if pane is not None and pane not in self._layout_state.detached_panes:  # type: ignore[attr-defined]
+                self._run_tmux(_PaneCommand.BREAK, _PaneFlag.SOURCE, pane, _PaneFlag.DETACHED)  # type: ignore[attr-defined]
+                self._layout_state.detached_panes.add(pane)  # type: ignore[attr-defined]
+        layout = LAYOUT_SPECS[1 + len(specs)]
+        tops: list[str | None] = [self._tui_pane_id] + [None] * (layout.cols - 1)  # type: ignore[attr-defined]
+        for col in range(1, layout.cols):
+            spec = self._get_layout_spec(specs, layout.grid[0][col])
+            if spec is None:
+                continue
+            pane = panes[spec.session_id]
+            if pane is not None:
+                target, args = self._top_row_split_request(layout, col, tops, 1 + len(specs))
+                self._join_existing_pane(pane, target, args)
+                tops[col] = pane
+        if layout.rows > 1:
+            for col, target in enumerate(tops):
+                spec = self._get_layout_spec(specs, layout.grid[1][col])
+                if spec is not None and target is not None:
+                    pane = panes[spec.session_id]
+                    if pane is not None:
+                        self._join_existing_pane(pane, target, [_PaneFlag.VERTICAL, _PaneFlag.DETACHED])
+        self._layout_state.geometry_dirty = False  # type: ignore[attr-defined]
+        if focused == self._tui_pane_id or focused in panes.values():  # type: ignore[attr-defined]
+            self._run_tmux(_PaneCommand.SELECT, _PaneFlag.TARGET, focused)  # type: ignore[attr-defined]
+        self._layout_state.recovery_focus = None  # type: ignore[attr-defined]
+
+    def _join_existing_pane(self, pane: str, target: str, split_args: list[str]) -> None:
+        """Move a surviving pane using the grid's split dimensions."""
+        args = list(split_args)
+        if _PaneFlag.PRINT in args:
+            index = args.index(_PaneFlag.PRINT)
+            args[index : index + 2] = [_PaneFlag.SIZE, _PANE_PERCENT_SIZE.format(size=args[index + 1])]
+        self._run_tmux(_PaneCommand.JOIN, _PaneFlag.SOURCE, pane, _PaneFlag.TARGET, target, *args)  # type: ignore[attr-defined]
+        self._layout_state.detached_panes.discard(pane)  # type: ignore[attr-defined]
 
     def _reap_orphans(self) -> None:
         """Kill live non-TUI panes that no tracked session maps to.

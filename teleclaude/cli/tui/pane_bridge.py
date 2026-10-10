@@ -6,11 +6,14 @@ import queue
 import subprocess
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
+from textual.message import Message
 from textual.widget import Widget
 
+from teleclaude.cli.tui.artifact_panes import doc_pane_key
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import (
     DataRefreshed,
@@ -29,7 +32,7 @@ if TYPE_CHECKING:
     from teleclaude.api_models import ComputerDTO as APIComputerDTO
     from teleclaude.api_models import SessionDTO
 
-_SENTINEL = object()
+_SESSIONS_PILLAR = "sessions"
 PANE_WRITER_ERRORS = (
     AttributeError,
     LookupError,
@@ -41,6 +44,21 @@ PANE_WRITER_ERRORS = (
 )
 
 
+@dataclass(frozen=True)
+class _PaneOperation:
+    run: Callable[[], None] | None
+    coalesce: bool = False
+
+
+class _DocPreviewRestored(Message):
+    """Return a discovered viewer to its UI owner without blocking the writer."""
+
+    def __init__(self, preview: DocPreviewState, revision: int) -> None:
+        super().__init__()
+        self.preview = preview
+        self.revision = revision
+
+
 class PaneWriter:
     """Serial writer thread for pane operations with latest-wins coalescing.
 
@@ -48,8 +66,7 @@ class PaneWriter:
     by a single dedicated thread.  This guarantees:
     1. Serial execution — no concurrent PaneState mutation.
     2. Non-blocking — the Textual event loop never waits for tmux subprocesses.
-    3. Coalescing — if multiple requests pile up while one executes, only the
-       latest is processed.  Intermediate states are skipped.
+    3. Complete layout snapshots coalesce; other operations preserve ordering.
     """
 
     def __init__(
@@ -59,41 +76,42 @@ class PaneWriter:
     ) -> None:
         self._pm = pane_manager
         self._on_error = on_error
-        self._queue: queue.Queue[Callable[[], None] | object] = queue.Queue()
+        self._queue: queue.Queue[_PaneOperation] = queue.Queue()
         self._thread = threading.Thread(target=self._run, daemon=True, name="pane-writer")
         self._thread.start()
 
-    def schedule(self, fn: Callable[[], None]) -> None:
-        """Enqueue a pane operation.  Latest-wins coalescing applied."""
-        self._queue.put(fn)
+    def schedule(self, fn: Callable[[], None], *, coalesce: bool = False) -> None:
+        """Enqueue an operation, optionally coalescing complete layout snapshots."""
+        self._queue.put(_PaneOperation(fn, coalesce))
 
     def stop(self) -> None:
         """Signal the writer thread to exit and wait for it."""
-        self._queue.put(_SENTINEL)
+        self._queue.put(_PaneOperation(None))
         self._thread.join(timeout=5)
 
     def _run(self) -> None:
         """Process pane operations serially, coalescing pending ones."""
+        pending: _PaneOperation | None = None
         while True:
-            item = self._queue.get()
-            if item is _SENTINEL:
+            item = pending if pending is not None else self._queue.get()
+            pending = None
+            if item.run is None:
                 break
 
             # Drain: if more items arrived while we were blocked or executing
             # the previous operation, use only the latest.
             latest = item
-            while not self._queue.empty():
+            while latest.coalesce:
                 try:
                     peek = self._queue.get_nowait()
                 except queue.Empty:
                     break
-                if peek is _SENTINEL:
-                    # Execute the current latest, then exit.
-                    self._execute(latest)
-                    return
+                if not peek.coalesce:
+                    pending = peek
+                    break
                 latest = peek
 
-            self._execute(latest)
+            self._execute(latest.run)
 
     @staticmethod
     def _execute(fn: object) -> None:
@@ -134,6 +152,7 @@ class PaneManagerBridge(TelecMixin, Widget):
         self._active_doc_preview: DocPreviewState | None = None
         self._layout_dirty: bool = False
         self._pending_focus: bool = False
+        self._preview_revision = 0
 
     def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
         """Convert API ComputerDTO to pane_manager ComputerDTO."""
@@ -182,18 +201,49 @@ class PaneManagerBridge(TelecMixin, Widget):
         preview_id = self._preview_session_id
         sticky_ids = list(self._sticky_session_ids)
         doc_preview = self._active_doc_preview
+        preview_revision = self._preview_revision
+        computers = dict(self._computers)
+
+        def get_computer_info(computer_name: str) -> ComputerInfo | None:
+            info = computers.get(computer_name)
+            if info is None:
+                return None
+            return ComputerInfo(name=info.name, is_local=info.is_local, user=info.user, host=info.host)
 
         def _do_layout() -> None:
             self.pane_manager.update_session_catalog(sessions)
+            if self.pane_manager.has_reload_panes():
+                self.pane_manager.seed_for_reload(
+                    active_session_id=preview_id,
+                    sticky_session_ids=sticky_ids,
+                    get_computer_info=get_computer_info,
+                )
+            restored_doc = self.pane_manager.adopted_doc_preview()
+            effective_doc = doc_preview
+            if restored_doc is not None and preview_id is None and doc_preview is None and preview_revision == 0:
+                effective_doc = restored_doc
+                self.post_message(_DocPreviewRestored(restored_doc, preview_revision))
             self.pane_manager.apply_layout(
                 active_session_id=preview_id,
                 sticky_session_ids=sticky_ids,
-                get_computer_info=self._get_computer_info,
-                active_doc_preview=doc_preview,
-                focus=focus,
+                get_computer_info=get_computer_info,
+                active_doc_preview=effective_doc,
+                focus=False,
             )
 
-        self._writer.schedule(_do_layout)
+        self._writer.schedule(_do_layout, coalesce=True)
+        focus_id = preview_id or (doc_pane_key(doc_preview.doc_id) if doc_preview is not None else None)
+        if focus and focus_id is not None:
+            self._writer.schedule(lambda: self.pane_manager.focus_pane_for_session(focus_id))
+
+    def on__doc_preview_restored(self, message: _DocPreviewRestored) -> None:
+        """Receive a restored viewer on the UI thread while its intent is current."""
+        if (
+            message.revision == self._preview_revision
+            and self._preview_session_id is None
+            and self._active_doc_preview is None
+        ):
+            self._active_doc_preview = message.preview
 
     def update_single_session(self, session: SessionDTO) -> None:
         """Update or add a single session in the bridge's session list and catalog.
@@ -212,39 +262,23 @@ class PaneManagerBridge(TelecMixin, Widget):
         if not updated:
             next_sessions.append(session)
         self._sessions = next_sessions
-        self.pane_manager.update_session_catalog(self._sessions)
+        self._mark_layout_dirty()
 
     def remove_session(self, session_id: str) -> None:
         """Remove a session from the bridge's session list and catalog."""
         self._sessions = [s for s in self._sessions if s.session_id != session_id]
-        self.pane_manager.update_session_catalog(self._sessions)
+        self._mark_layout_dirty()
+
+    def update_sessions(self, sessions: list[SessionDTO]) -> None:
+        """Reconcile a merged session snapshot through the serial pane writer."""
+        self._sessions = sessions
+        self._mark_layout_dirty()
 
     def on_data_refreshed(self, message: DataRefreshed) -> None:
         """Update cached data from API refresh."""
         self._computers = {c.name: c for c in message.computers}
-        self._sessions = message.sessions
-        self.pane_manager.update_session_catalog(self._sessions)
-
-        # On reload, map discovered panes to session state now that the
-        # session catalog is available.  This replaces seed_layout_for_reload.
-        has_reload_panes = getattr(self.pane_manager, "has_reload_panes", None)
-        should_seed_reload = (
-            has_reload_panes()
-            if callable(has_reload_panes)
-            else bool(
-                getattr(self.pane_manager, "_reload_session_panes", {})
-                or getattr(self.pane_manager, "_reload_command_panes", [])
-            )
-        )
-        if should_seed_reload:
-            self.pane_manager.seed_for_reload(
-                active_session_id=self._preview_session_id,
-                sticky_session_ids=list(self._sticky_session_ids),
-                get_computer_info=self._get_computer_info,
-            )
-            # A viewer that survived the reload keeps showing its document, so
-            # the bridge resumes owning it rather than opening a second one.
-            self._active_doc_preview = self.pane_manager.adopted_doc_preview()
+        if _SESSIONS_PILLAR in message.requested_pillars and _SESSIONS_PILLAR not in message.missing_pillars:
+            self.update_sessions(message.sessions)
 
     def sync_layout_state(
         self,
@@ -272,6 +306,7 @@ class PaneManagerBridge(TelecMixin, Widget):
         """
         self._preview_session_id = session_id
         self._active_doc_preview = doc
+        self._preview_revision += 1
         self._mark_layout_dirty(focus=focus)
 
     def on_preview_changed(self, message: PreviewChanged) -> None:
