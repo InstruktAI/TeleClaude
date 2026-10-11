@@ -21,9 +21,10 @@ the shell environment (after `.env` is sourced), optionally merges a sibling
 defaults, and validates it through the closed Pydantic models of the typed
 runtime configuration aggregate it exposes to consumers. Undeclared keys fail
 with dotted paths; section-declared aliases, dynamic named mappings, lists, and
-explicitly open parameter bags remain valid. A rejected machine configuration
-fails in the same validation-error form as the file-backed `teleclaude.yml`
-overlays. This is the machine-level inventory layer; it is distinct from the
+explicitly open parameter bags remain valid. A machine schema rejection retains
+the same schema-error detail as the file-backed `teleclaude.yml` overlays inside
+the raised configuration-load error. Diagnostic rendering depends on the
+calling surface. This is the machine-level inventory layer; it is distinct from the
 `teleclaude.yml` layered-overlay system that resolves per-workspace
 global/project/person settings.
 
@@ -195,16 +196,16 @@ Then the next behavior governed by that setting uses the changed value
 And the daemon process remains running without a restart
 ```
 
-#### UC-CFG-LOAD-17: A rejected machine configuration shows what to fix without exposing secrets
+#### UC-CFG-LOAD-17: Machine schema-error detail masks sensitive and undeclared input
 
 ```gherkin
-Given an operator-authored machine configuration holds values its sections reject
-When an operator or agent loads or validates the machine configuration
-Then the failure names the configuration file and the dotted path of every rejected value
-And it reads in the same validation-error form as a rejected teleclaude.yml overlay
-And a rejected value of a field the schema declares sensitive is masked
-And the value held by an undeclared key is masked
-And every other rejected value is shown as written
+Given an agent loads an operator-authored machine configuration holding schema-invalid values
+When the machine schema rejects the input
+Then the raised configuration-load error names the configuration file
+And its schema-error detail identifies the dotted paths of rejected fields
+And that detail has the same validation-error form as a rejected teleclaude.yml overlay
+And rejected input values of schema-declared sensitive fields and undeclared keys are masked
+And other rejected input values remain in that detail
 ```
 
 #### UC-CFG-LOAD-18: A machine configuration change that does not load is refused, not applied
@@ -243,6 +244,15 @@ Then the change is applied and teleclaude.config.validation.recovered is reporte
   configuration mechanisms.
 
 ## Known caveats
+
+- **Schema detail and diagnostic rendering are distinct.** The machine-schema
+  result from `telec config validate` renders the raised error text, including
+  retained non-sensitive input in schema-error detail. Its computer-readiness
+  findings instead use the config-owned value-free description. Handled
+  computer-patch refusals follow
+  `local/projects/teleclaude/spec/feature/config/machine-config-cli-surface`;
+  service start/restart refusals follow UC-CFG-LOAD-18. Those refusal descriptions
+  identify the file and findings without rejected input values.
 
 - **A null computer name is not an assigned identity.** An explicit null
   `computer.name` becomes the string `"None"` through runtime text coercion,
