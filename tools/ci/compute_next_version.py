@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import argparse
-import re
 from enum import StrEnum
 
 from tools.ci.gha import append_output, required_env
+from tools.release.attempt import stable_version_components
 
 BUMP = "BUMP"
 BASELINE_TAG = "BASELINE_TAG"
@@ -21,7 +21,6 @@ VERSION_SEPARATOR = "."
 SUMMARY_END = ")"
 INVALID_BASELINE = "BASELINE_TAG must be a semantic release tag in MAJOR.MINOR.PATCH form."
 INVALID_BUMP = "BUMP must be patch or minor."
-SEMANTIC_TAG_PATTERN = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 
 
 class ReleaseBump(StrEnum):
@@ -33,10 +32,10 @@ class ReleaseBump(StrEnum):
 
 def next_tag(last_tag: str, bump: ReleaseBump) -> str:
     """Apply the existing minor-or-patch version arithmetic."""
-    if SEMANTIC_TAG_PATTERN.fullmatch(last_tag) is None:
-        raise ValueError(INVALID_BASELINE)
-    parts = last_tag.removeprefix(TAG_PREFIX).split(VERSION_SEPARATOR)
-    major, minor, patch = (int(part) for part in parts)
+    try:
+        major, minor, patch = stable_version_components(last_tag)
+    except ValueError:
+        raise ValueError(INVALID_BASELINE) from None
     if bump is ReleaseBump.MINOR:
         minor += 1
         patch = 0

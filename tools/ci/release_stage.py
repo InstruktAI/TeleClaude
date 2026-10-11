@@ -22,7 +22,6 @@ from tools.ci.gha import append_output, repo_root
 from tools.ci.publish_release import publish_proved_candidate
 from tools.ci.read_inspector_report import InspectorSelection, select_inspector_report
 from tools.release.attempt import (
-    CandidateIdentity,
     ProofIdentity,
     ProviderAttempt,
     ProviderFailure,
@@ -31,6 +30,7 @@ from tools.release.attempt import (
     PublicationReceipt,
     PublicationState,
     load_attempt_identity,
+    load_candidate_identity,
     load_proof_identity,
     load_publication_receipt,
     validate_runtime_acceptance_evidence,
@@ -84,7 +84,6 @@ _AGE_IDENTITY = "CODEX_AUTH_AGE_IDENTITY"
 _SEED_CIPHERTEXT = "CODEX_AUTH_SEED_CIPHERTEXT"
 _CLAUDE_TOKEN = "CLAUDE_CODE_OAUTH_TOKEN"
 _SEED_OPERATION = "RELEASE_SEED_OPERATION_ID"
-_BOOTSTRAP_NOTES = "BOOTSTRAP_NOTES"
 _REPOSITORY_WORKFLOW_PATH = ".github/workflows/release.yaml"
 _MAIN_REF = "refs/heads/main"
 _STATE_FILENAME = "release-controller-state.json"
@@ -100,6 +99,7 @@ _CANDIDATE_PREFIX = "release-candidate-"
 _PROOF_PREFIX = "release-proof-"
 _RECEIPT_FILENAME = "publication-receipt.json"
 _CANDIDATE_FILENAME = "candidate-identity.json"
+_COMMIT_NOTES_FILENAME = "commit-notes.md"
 _PROOF_FILENAME = "proof-identity.json"
 _BUNDLE_FILENAME = "candidate.bundle"
 _CANDIDATE_CHECK_FILENAME = "candidate-check.json"
@@ -129,7 +129,6 @@ _CODEX_STATE_DIRECTORY = "codex"
 _CLAUDE_STATE_DIRECTORY = "claude"
 _CODEX_AUTH_HOME = "codex-home"
 _CLAUDE_CONFIG_HOME = "claude-config"
-_BOOTSTRAP_NOTES_FILE = "bootstrap-notes.md"
 _ARTIFACT_MANIFEST_FILENAME = "artifact-manifest.json"
 _ARTIFACT_MANIFEST_SCHEMA = 1
 _ARTIFACT_MANIFEST_HASH_OUTPUT = "artifact_manifest_sha256"
@@ -571,15 +570,6 @@ def confirm_uploaded_artifact(name: str, artifact_id: int, digest: str) -> None:
         client.confirm_uploaded_artifact(expected, artifact_id, name, digest)
 
 
-def write_bootstrap_notes(output_path: Path) -> None:
-    """Materialize authorized current-state notes from the workflow input."""
-    notes = os.environ.get(_BOOTSTRAP_NOTES, _EMPTY).strip()
-    if not notes:
-        raise ValueError(_INVALID_SEED)
-    output_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    output_path.write_text(notes + _NEWLINE, encoding=_UTF8)
-
-
 def recover_publication(repository_root: Path, output_directory: Path, token: str) -> bool:
     """Settle the oldest retained partial publication before allowing a new source capture."""
     output_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -628,19 +618,20 @@ def recover_publication(repository_root: Path, output_directory: Path, token: st
         if candidate_name not in artifact_map or proof_name not in artifact_map:
             raise GitHubArtifactError(_INVALID_ARTIFACT)
         with GitHubArtifactClient(token) as client, tempfile.TemporaryDirectory(dir=output_directory) as download_root:
+            required_candidate_files = {
+                _CANDIDATE_FILENAME,
+                _BUNDLE_FILENAME,
+                _CANDIDATE_CHECK_FILENAME,
+                _RUNTIME_ACCEPTANCE_REPORT_FILENAME,
+            }
+            if receipt.candidate.commit_notes_sha256 is not None:
+                required_candidate_files.add(_COMMIT_NOTES_FILENAME)
             candidate_download = client.download_artifact(
                 artifact_map[candidate_name],
                 producer,
                 candidate_name,
                 Path(download_root) / "candidate",
-                frozenset(
-                    {
-                        _CANDIDATE_FILENAME,
-                        _BUNDLE_FILENAME,
-                        _CANDIDATE_CHECK_FILENAME,
-                        _RUNTIME_ACCEPTANCE_REPORT_FILENAME,
-                    }
-                ),
+                frozenset(required_candidate_files),
             )
             proof_download = client.download_artifact(
                 artifact_map[proof_name],
@@ -649,9 +640,15 @@ def recover_publication(repository_root: Path, output_directory: Path, token: st
                 Path(download_root) / "proof",
                 frozenset({_PROOF_FILENAME, _PROOF_LOG_FILENAME}),
             )
-            candidate = CandidateIdentity.model_validate_json(
+            candidate = load_candidate_identity(
                 (candidate_download.extracted_directory / _CANDIDATE_FILENAME).read_bytes()
             )
+            if (
+                candidate.commit_notes_sha256 is not None
+                and _sha256_file(candidate_download.extracted_directory / _COMMIT_NOTES_FILENAME)
+                != candidate.commit_notes_sha256
+            ):
+                raise GitHubArtifactError(_INVALID_ARTIFACT)
             proof = load_proof_identity((proof_download.extracted_directory / _PROOF_FILENAME).read_bytes())
             candidate_check = candidate_download.extracted_directory / _CANDIDATE_CHECK_FILENAME
             acceptance_report = candidate_download.extracted_directory / _RUNTIME_ACCEPTANCE_REPORT_FILENAME
@@ -673,6 +670,11 @@ def recover_publication(repository_root: Path, output_directory: Path, token: st
                 token,
                 candidate_check.read_bytes(),
                 acceptance_report.read_bytes(),
+                commit_notes_path=(
+                    candidate_download.extracted_directory / _COMMIT_NOTES_FILENAME
+                    if candidate.commit_notes_sha256 is not None
+                    else None
+                ),
             )
         append_output("recovered_tag", receipt.tag)
     append_output("recovered_publication", _TRUE)
@@ -681,7 +683,7 @@ def recover_publication(repository_root: Path, output_directory: Path, token: st
 
 def prepare_proof_checkout(repository_root: Path, candidate_path: Path, bundle_path: Path) -> None:
     """Import R while preserving S as the local main ref consumed by the Tart harness."""
-    candidate = CandidateIdentity.model_validate_json(candidate_path.read_bytes())
+    candidate = load_candidate_identity(candidate_path.read_bytes())
     if candidate.bundle_sha256 is None or _sha256_file(bundle_path) != candidate.bundle_sha256:
         raise ValueError(_INVALID_ARTIFACT)
     repo = Repo(repository_root)
@@ -705,7 +707,7 @@ def record_candidate_check(
     runtime_succeeded: bool,
 ) -> None:
     """Bind native lint and complete runtime acceptance to the final candidate."""
-    candidate = CandidateIdentity.model_validate_json(candidate_path.read_bytes())
+    candidate = load_candidate_identity(candidate_path.read_bytes())
     digest = _sha256_file(lint_log)
     report_data = _read_bounded_file(runtime_report_path, _MAX_RUNTIME_REPORT_BYTES)
     report_digest = hashlib.sha256(report_data).hexdigest()
@@ -747,7 +749,7 @@ def record_proof(
     output_directory: Path,
 ) -> ProofIdentity:
     """Write exact candidate-bound installer proof plus bounded text evidence."""
-    candidate = CandidateIdentity.model_validate_json(candidate_path.read_bytes())
+    candidate = load_candidate_identity(candidate_path.read_bytes())
     report_data = _read_bounded_file(runtime_report_path, _MAX_RUNTIME_REPORT_BYTES)
     report_digest = validate_runtime_acceptance_evidence(
         candidate, None, candidate_check_path.read_bytes(), report_data
@@ -1011,8 +1013,6 @@ def main(argv: list[str] | None = None) -> int:
     confirm_upload.add_argument("--name", required=True)
     confirm_upload.add_argument("--artifact-id", type=int, required=True)
     confirm_upload.add_argument("--digest", required=True)
-    bootstrap_notes = commands.add_parser("write-bootstrap-notes")
-    bootstrap_notes.add_argument("--output", type=Path, required=True)
     manifest = commands.add_parser("write-artifact-manifest")
     manifest.add_argument("--root", type=Path, required=True)
     download = commands.add_parser("download-artifact")
@@ -1077,7 +1077,6 @@ def _stage_handler(args: argparse.Namespace) -> Callable[[], object]:
         "confirm-seed": lambda: confirm_seed(args.output_directory, args.artifact_id, args.digest),
         "ensure-provider-attempt": lambda: ensure_provider_attempt(args.path, ProviderName(args.provider)),
         "confirm-upload": lambda: confirm_uploaded_artifact(args.name, args.artifact_id, args.digest),
-        "write-bootstrap-notes": lambda: write_bootstrap_notes(args.output),
         "write-artifact-manifest": lambda: write_artifact_manifest(args.root),
         "download-artifact": lambda: _download_manifest_command(args),
         "download-artifact-exact": lambda: _download_exact_command(args),

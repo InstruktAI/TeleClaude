@@ -16,7 +16,12 @@ from pydantic import BaseModel, ConfigDict
 from teleclaude.git import GitCommandError, Repo
 from tools.ci.export_manifests import export_manifests
 from tools.ci.gha import append_output, repo_root
-from tools.release.attempt import AttemptIdentity, load_attempt_identity, validate_attempt_checkout
+from tools.release.attempt import (
+    AttemptIdentity,
+    ReleaseDecisionMode,
+    load_attempt_identity,
+    validate_attempt_checkout,
+)
 from tools.release.evidence_contract import (
     BASELINE_DIRECTORY_NAME,
     DIFF_DIRECTORY_NAME,
@@ -176,7 +181,11 @@ class EvidenceIndex(EvidenceRecord):
 
 def build_evidence(repo: Repo, attempt: AttemptIdentity, output_directory: Path) -> Path:
     """Materialize the complete source view, changed-file inventory, and bounded prompt."""
-    if attempt.bootstrap or attempt.baseline_sha is None or attempt.baseline_tag is None:
+    if (
+        attempt.decision_mode != ReleaseDecisionMode.AUTOMATIC
+        or attempt.baseline_sha is None
+        or attempt.baseline_tag is None
+    ):
         raise ValueError(NO_BASELINE)
     validate_attempt_checkout(repo, attempt)
     if repo.commit(HEAD_REFERENCE).hexsha != attempt.source_sha:

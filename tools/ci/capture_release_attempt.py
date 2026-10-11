@@ -7,6 +7,7 @@ import base64
 import json
 import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 import httpx
@@ -17,8 +18,12 @@ from tools.ci.gha import append_output
 from tools.release.attempt import (
     AttemptIdentity,
     PublishedRelease,
+    ReleaseDecisionMode,
     capture_attempt,
+    load_release_provenance,
+    normalize_stable_version,
     select_completed_release,
+    stable_version_is_newer,
 )
 from tools.release.github_artifacts import (
     ExpectedWorkflowAttempt,
@@ -36,9 +41,12 @@ _EVENT_ENVIRONMENT = "GITHUB_EVENT_NAME"
 _REF_ENVIRONMENT = "GITHUB_REF"
 _TOKEN_ENVIRONMENT = "GH_TOKEN"
 _OPERATION_ENVIRONMENT = "RELEASE_OPERATION"
+_VERSION_ENVIRONMENT = "RELEASE_VERSION"
 _WORKFLOW_PATH = ".github/workflows/release.yaml"
 _MAIN_REF = "refs/heads/main"
 _REMOTE_MAIN_REF = "refs/remotes/origin/main"
+_REMOTE_NAME = "origin"
+_REMOTE_TAG_PREFIX = "refs/tags/"
 _GIT_CONFIG_COUNT = "GIT_CONFIG_COUNT"
 _GIT_CONFIG_KEY = "GIT_CONFIG_KEY_0"
 _GIT_CONFIG_VALUE = "GIT_CONFIG_VALUE_0"
@@ -51,21 +59,25 @@ _EMPTY = ""
 _STATUS_FILENAME = "capture-state.json"
 _ATTEMPT_FILENAME = "attempt.json"
 _PROVENANCE_FILENAME = "release-provenance.json"
-_SCHEMA_VERSION = "schema_version"
-_PROVENANCE_SCHEMA_VERSION = 1
 _STATUS_OUTPUT = "capture_status"
 _SOURCE_OUTPUT = "source_sha"
 _BASELINE_OUTPUT = "baseline_tag"
+_BASELINE_SHA_OUTPUT = "baseline_sha"
 _LATEST_RELEASE_OUTPUT = "latest_completed_tag"
+_DECISION_MODE_OUTPUT = "decision_mode"
+_REQUESTED_VERSION_OUTPUT = "requested_version"
 _READY = "ready"
-_BOOTSTRAP = "bootstrap"
-_BOOTSTRAP_READY = "bootstrap_ready"
+_AUTOMATIC = "automatic"
+_BASELINE_UNAVAILABLE = "baseline_unavailable"
+_SCHEDULED_OPERATION = "scheduled"
 _NO_CHANGE = "no_change"
 _INVALID_INPUT = "The release run identity or operation is invalid."
 _CHECKOUT_DIRTY = "Source capture requires a clean workflow checkout."
 _ATTEMPT_OUTPUT_EXISTS = "Release capture output requires a new directory."
 _REPOSITORY_MISMATCH = "The release workflow repository identity does not match its checkout."
-_ALLOWED_OPERATIONS = frozenset({"scheduled", "dry-run", "release", "bootstrap"})
+_VERSION_NOT_NEWER = "The supplied release version must be newer than the completed release baseline."
+_VERSION_TAG_CONFLICT = "The supplied release version already has a Git tag."
+_ALLOWED_OPERATIONS = frozenset({"scheduled", "dry-run", "release"})
 _EXPECTED_FILES = ("attempt.json", "capture-state.json")
 
 
@@ -80,11 +92,15 @@ def capture_release(
     operation: str,
     token: str,
     *,
+    requested_version: str | None = None,
     github_transport: httpx.BaseTransport | None = None,
 ) -> tuple[str, AttemptIdentity | None]:
     """Read live GitHub release state after concurrency admission and capture source S."""
     if operation not in _ALLOWED_OPERATIONS or not run_id.isdigit() or run_attempt < 1 or not token:
         raise ValueError(_INVALID_INPUT)
+    if operation == _SCHEDULED_OPERATION and requested_version is not None:
+        raise ValueError(_INVALID_INPUT)
+    manual_version = normalize_stable_version(requested_version) if requested_version is not None else None
     if output_directory.exists() or output_directory.is_symlink():
         raise ValueError(_ATTEMPT_OUTPUT_EXISTS)
     if ref != _MAIN_REF:
@@ -93,7 +109,7 @@ def capture_release(
     if repo.is_dirty(untracked_files=True):
         raise ValueError(_CHECKOUT_DIRTY)
     git_environment = _git_environment(token)
-    repo.git.fetch("origin", _MAIN_REF + ":" + _REMOTE_MAIN_REF, env=git_environment)
+    repo.git.fetch(_REMOTE_NAME, _MAIN_REF + ":" + _REMOTE_MAIN_REF, env=git_environment)
     expected = ExpectedWorkflowAttempt(
         repository=repository,
         workflow_path=_WORKFLOW_PATH,
@@ -116,31 +132,39 @@ def capture_release(
         ]
         baseline = _latest_completed_release(releases)
         latest_completed_tag = baseline.tag_name if baseline is not None else None
-        if operation == "bootstrap":
-            if baseline is not None and _has_current_provenance(repo, baseline.tag_name):
+        if baseline is not None:
+            repo.git.fetch(
+                _REMOTE_NAME,
+                _REMOTE_TAG_PREFIX + baseline.tag_name + ":" + _REMOTE_TAG_PREFIX + baseline.tag_name,
+                env=git_environment,
+            )
+        has_supported_baseline = baseline is not None and _has_current_provenance(repo, baseline.tag_name)
+        if manual_version is not None:
+            if baseline is not None and not has_supported_baseline:
                 raise ValueError(_INVALID_INPUT)
+            if baseline is not None and not stable_version_is_newer(manual_version, baseline.tag_name):
+                raise ValueError(_VERSION_NOT_NEWER)
+            if _remote_tag_exists(repo, manual_version, git_environment):
+                raise ValueError(_VERSION_TAG_CONFLICT)
             attempt = capture_attempt(
                 repo,
                 repository=repository,
                 workflow_run_id=run_id,
                 workflow_run_attempt=run_attempt,
-                baseline_tag=None,
-                bootstrap=True,
+                baseline_tag=baseline.tag_name if baseline is not None else None,
+                decision_mode=ReleaseDecisionMode.MANUAL,
+                requested_version=manual_version,
             )
-            status = _BOOTSTRAP
-        elif baseline is None or not _has_current_provenance(repo, baseline.tag_name):
+            status = _READY
+        elif baseline is None or not has_supported_baseline:
             output_directory.mkdir(parents=True)
-            _write_state(output_directory, _BOOTSTRAP_READY, None, latest_completed_tag)
-            append_output(_STATUS_OUTPUT, _BOOTSTRAP_READY)
+            _write_state(output_directory, _BASELINE_UNAVAILABLE, None, latest_completed_tag)
+            append_output(_STATUS_OUTPUT, _BASELINE_UNAVAILABLE)
+            append_output(_DECISION_MODE_OUTPUT, _AUTOMATIC)
+            append_output(_BASELINE_SHA_OUTPUT, _EMPTY)
             append_output(_LATEST_RELEASE_OUTPUT, latest_completed_tag or _EMPTY)
-            return _BOOTSTRAP_READY, None
+            return _BASELINE_UNAVAILABLE, None
         else:
-            git_env = git_environment
-            repo.git.fetch(
-                "origin",
-                "refs/tags/" + baseline.tag_name + ":refs/tags/" + baseline.tag_name,
-                env=git_env,
-            )
             attempt = capture_attempt(
                 repo,
                 repository=repository,
@@ -162,8 +186,11 @@ def capture_release(
     )
     _write_state(output_directory, status, attempt, latest_completed_tag)
     append_output(_STATUS_OUTPUT, status)
+    append_output(_DECISION_MODE_OUTPUT, attempt.decision_mode.value)
     append_output(_SOURCE_OUTPUT, attempt.source_sha)
     append_output(_BASELINE_OUTPUT, attempt.baseline_tag or _EMPTY)
+    append_output(_BASELINE_SHA_OUTPUT, attempt.baseline_sha or _EMPTY)
+    append_output(_REQUESTED_VERSION_OUTPUT, attempt.requested_version or _EMPTY)
     append_output(_LATEST_RELEASE_OUTPUT, latest_completed_tag or _EMPTY)
     return status, attempt
 
@@ -176,13 +203,19 @@ def _latest_completed_release(releases: list[PublishedRelease]) -> PublishedRele
         return None
 
 
+def _remote_tag_exists(repo: Repo, tag: str, environment: Mapping[str, str]) -> bool:
+    """Refuse a new manual decision when its target tag already exists remotely."""
+    return bool(str(repo.git.ls_remote(_REMOTE_NAME, _REMOTE_TAG_PREFIX + tag, env=environment)).strip())
+
+
 def _has_current_provenance(repo: Repo, tag: str) -> bool:
-    """Require the published candidate to establish the new source-provenance protocol."""
+    """Require a completed release to carry readable current or migratable provenance."""
     try:
-        value = json.loads(str(repo.git.show(f"{tag}:{_PROVENANCE_FILENAME}")))
-    except (GitCommandError, json.JSONDecodeError):
+        value = str(repo.git.show(f"{tag}:{_PROVENANCE_FILENAME}")).encode(_UTF8)
+        load_release_provenance(value, tag)
+    except (GitCommandError, json.JSONDecodeError, ValueError):
         return False
-    return isinstance(value, dict) and value.get(_SCHEMA_VERSION) == _PROVENANCE_SCHEMA_VERSION
+    return True
 
 
 def _write_state(
@@ -223,6 +256,7 @@ def main(argv: list[str] | None = None) -> int:
         repository = os.environ.get(_REPOSITORY_ENVIRONMENT, _EMPTY)
         event_value = os.environ.get(_EVENT_ENVIRONMENT, _EMPTY)
         operation = os.environ.get(_OPERATION_ENVIRONMENT, _EMPTY)
+        requested_version = os.environ.get(_VERSION_ENVIRONMENT) or None
         status, _attempt = capture_release(
             Path.cwd(),
             args.output_directory,
@@ -233,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
             os.environ.get(_REF_ENVIRONMENT, _EMPTY),
             operation,
             os.environ.get(_TOKEN_ENVIRONMENT, _EMPTY),
+            requested_version=requested_version,
         )
         print(status)
     except (OSError, ValueError, RuntimeError, GitHubArtifactError, ValidationError) as error:

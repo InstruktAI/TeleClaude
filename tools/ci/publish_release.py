@@ -24,9 +24,14 @@ from tools.release.attempt import (
     ProofIdentity,
     PublicationReceipt,
     PublicationState,
+    ReleaseDecisionMode,
+    load_candidate_identity,
     load_proof_identity,
+    load_release_provenance,
+    release_decision_digest,
     validate_runtime_acceptance_evidence,
 )
+from tools.release.changelog import MAX_RELEASE_BODY_BYTES, verify_commit_notes
 from tools.release.github_artifacts import GitHubArtifactClient, GitHubArtifactError
 from tools.release.project_metadata import (
     normalize_release_owned_file,
@@ -77,7 +82,9 @@ _RELEASE_CONFLICT = "An existing GitHub Release does not match this candidate an
 _OUTPUT_EXISTS = "The publication receipt path must be new."
 _COMMAND_FAILED = "Publication command {command} failed with exit code {return_code}."
 _RELEASE_NOTE_MISSING = "The candidate changelog has no section for its release tag."
+_RELEASE_NOTES_MISMATCH = "The candidate changelog, notes artifact, and release decision do not match."
 _RELEASE_MARKER = "<!-- teleclaude-release:v1"
+_NO_BASELINE_LABEL = "none"
 _GIT_CONFIG_COUNT = "GIT_CONFIG_COUNT"
 _GIT_CONFIG_KEY = "GIT_CONFIG_KEY_0"
 _GIT_CONFIG_VALUE = "GIT_CONFIG_VALUE_0"
@@ -131,7 +138,7 @@ def verify_candidate_bundle(
     if len(commit.parents) != 1 or commit.parents[0].hexsha != attempt.source_sha:
         raise ValueError(_PROVENANCE_MISMATCH)
     if attempt.baseline_tag is None or attempt.baseline_sha is None:
-        if not attempt.bootstrap:
+        if attempt.decision_mode != ReleaseDecisionMode.MANUAL:
             raise ValueError(_PROVENANCE_MISMATCH)
     else:
         if repo.commit(attempt.baseline_tag).hexsha != attempt.baseline_sha:
@@ -221,6 +228,7 @@ def publish_proved_candidate(
     candidate_check_data: bytes,
     runtime_report_data: bytes,
     *,
+    commit_notes_path: Path | None = None,
     github_transport: httpx.BaseTransport | None = None,
 ) -> PublicationReceipt:
     """Reconcile refs atomically and create or recover the release for one proved R."""
@@ -232,6 +240,7 @@ def publish_proved_candidate(
     _validate_proof(candidate, proof)
     repo = Repo(repository_root)
     verify_candidate_bundle(repository_root, candidate, bundle_path, github_token)
+    body = _release_body(repository_root, candidate, proof, commit_notes_path)
     remote_tag_sha = _remote_ref(repository_root, "refs/tags/" + candidate.version, github_token)
     if remote_tag_sha is not None and remote_tag_sha != candidate.candidate_sha:
         raise ValueError(_TAG_CONFLICT)
@@ -293,7 +302,6 @@ def publish_proved_candidate(
     )
     remote_main_sha = repo.commit(_REMOTE_MAIN).hexsha
     repo.git.merge_base("--is-ancestor", candidate.candidate_sha, remote_main_sha)
-    body = _release_body(repository_root, candidate, proof)
     with GitHubArtifactClient(github_token, transport=github_transport) as github:
         existing = github.get_release_by_tag(candidate.attempt.repository, candidate.version)
         if existing is not None:
@@ -381,20 +389,63 @@ def _local_ref(repository_root: Path, reference: str) -> str:
     raise RuntimeError(_ERROR)
 
 
-def _release_body(repository_root: Path, candidate: CandidateIdentity, proof: ProofIdentity) -> str:
+def _release_body(
+    repository_root: Path,
+    candidate: CandidateIdentity,
+    proof: ProofIdentity,
+    commit_notes_path: Path | None,
+) -> str:
     """Use the candidate's own notes and attach exact source, run, and proof references."""
     content = _git_bytes(repository_root, "show", f"{candidate.candidate_sha}:{_RELEASE_FILES[0]}").decode(_UTF8)
-    headings = [index for index, line in enumerate(content.splitlines()) if line.startswith("## [")]
+    lines = content.splitlines()
+    headings = [index for index, line in enumerate(lines) if line.startswith("## [")]
     expected = "## [" + candidate.version.removeprefix("v") + "]"
     if not headings:
         raise ValueError(_RELEASE_NOTE_MISSING)
-    lines = content.splitlines()
     if not lines[headings[0]].startswith(expected):
         raise ValueError(_RELEASE_NOTE_MISSING)
     end = next((index for index in headings[1:] if index > headings[0]), len(lines))
-    section = _NEWLINE.join(lines[headings[0] : end]).strip()
-    if not section or len(section.encode(_UTF8)) > 128 * 1024:
+    section = _NEWLINE.join(lines[headings[0] : end]).rstrip("\n")
+    if not section:
         raise ValueError(_RELEASE_NOTE_MISSING)
+    if candidate.commit_notes_sha256 is not None:
+        if commit_notes_path is None or not commit_notes_path.is_file():
+            raise ValueError(_RELEASE_NOTES_MISMATCH)
+        notes_data = commit_notes_path.read_bytes()
+        if hashlib.sha256(notes_data).hexdigest() != candidate.commit_notes_sha256:
+            raise ValueError(_RELEASE_NOTES_MISMATCH)
+        try:
+            verify_commit_notes(
+                repository_root,
+                candidate.attempt.source_sha,
+                candidate.attempt.baseline_sha,
+                commit_notes_path,
+                require_head=False,
+            )
+            notes = notes_data.decode(_UTF8, errors="strict").rstrip("\n")
+            provenance_data = _git_bytes(repository_root, "show", f"{candidate.candidate_sha}:{_RELEASE_FILES[-1]}")
+            decision = load_release_provenance(provenance_data, candidate.version)
+        except (UnicodeDecodeError, ValueError):
+            raise ValueError(_RELEASE_NOTES_MISMATCH) from None
+        if notes and section.count(notes) != 1:
+            raise ValueError(_RELEASE_NOTES_MISMATCH)
+        if (
+            decision.mode != candidate.attempt.decision_mode
+            or decision.source_sha != candidate.attempt.source_sha
+            or decision.workflow_run_id != candidate.attempt.workflow_run_id
+            or decision.workflow_run_attempt != candidate.attempt.workflow_run_attempt
+            or decision.assessment_sha256 != candidate.assessment_sha256
+            or decision.legacy_assessment_sha256 != candidate.legacy_assessment_sha256
+            or decision.commit_notes_sha256 != candidate.commit_notes_sha256
+            or candidate.decision_sha256
+            != release_decision_digest(
+                candidate.attempt,
+                candidate.version,
+                candidate.assessment_sha256,
+                candidate.legacy_assessment_sha256,
+            )
+        ):
+            raise ValueError(_RELEASE_NOTES_MISMATCH)
     attempt = candidate.attempt
     run_url = (
         "https://github.com/"
@@ -404,14 +455,14 @@ def _release_body(repository_root: Path, candidate: CandidateIdentity, proof: Pr
         + "/attempts/"
         + str(attempt.workflow_run_attempt)
     )
-    return (
+    body = (
         section
         + "\n\n## Provenance\n\n"
         + "- Source: `"
         + attempt.source_sha
         + "`\n"
         + "- Baseline: `"
-        + (attempt.baseline_tag or "bootstrap")
+        + (attempt.baseline_tag or attempt.legacy_baseline_marker or _NO_BASELINE_LABEL)
         + "`\n"
         + "- Candidate: `"
         + candidate.candidate_sha
@@ -426,11 +477,14 @@ def _release_body(repository_root: Path, candidate: CandidateIdentity, proof: Pr
         + ")\n\n"
         + _release_marker(candidate, proof)
     )
+    if len(body.encode(_UTF8)) > MAX_RELEASE_BODY_BYTES:
+        raise ValueError(_RELEASE_NOTES_MISMATCH)
+    return body
 
 
 def _release_marker(candidate: CandidateIdentity, proof: ProofIdentity) -> str:
     """Create an exact machine identity for idempotent GitHub Release recovery."""
-    return (
+    marker = (
         _RELEASE_MARKER
         + " candidate="
         + candidate.candidate_sha
@@ -439,15 +493,17 @@ def _release_marker(candidate: CandidateIdentity, proof: ProofIdentity) -> str:
         + " source="
         + candidate.attempt.source_sha
         + " baseline="
-        + (candidate.attempt.baseline_tag or "bootstrap")
+        + (candidate.attempt.baseline_tag or candidate.attempt.legacy_baseline_marker or _NO_BASELINE_LABEL)
         + " run="
         + candidate.attempt.workflow_run_id
         + " attempt="
         + str(candidate.attempt.workflow_run_attempt)
         + " proof="
         + str(proof.evidence_sha256)
-        + " -->"
     )
+    if candidate.commit_notes_sha256 is not None:
+        marker += " notes=" + candidate.commit_notes_sha256
+    return marker + " -->"
 
 
 def _write_receipt(path: Path, receipt: PublicationReceipt) -> None:
@@ -519,10 +575,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--candidate-check", type=Path, required=True)
     parser.add_argument("--runtime-report", type=Path, required=True)
     parser.add_argument("--bundle", type=Path, required=True)
+    parser.add_argument("--commit-notes", type=Path)
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        candidate = CandidateIdentity.model_validate_json(args.candidate.read_bytes())
+        candidate = load_candidate_identity(args.candidate.read_bytes())
         proof = load_proof_identity(args.proof.read_bytes())
         token = os.environ.get(_TOKEN_VARIABLE, _EMPTY)
         repository = os.environ.get(_REPOSITORY_VARIABLE, _EMPTY)
@@ -537,6 +594,7 @@ def main(argv: list[str] | None = None) -> int:
             token,
             args.candidate_check.read_bytes(),
             args.runtime_report.read_bytes(),
+            commit_notes_path=args.commit_notes,
         )
     except (OSError, ValidationError, ValueError, RuntimeError, GitHubArtifactError) as error:
         print(str(error), file=sys.stderr)

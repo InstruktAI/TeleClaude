@@ -1,0 +1,29 @@
+[changelog]
+header = ""
+body = """
+{% for commit in commits -%}
+- [{{ commit.id | truncate(length=7, end="") }}](https://github.com/InstruktAI/TeleClaude/commit/{{ commit.id }}) {{ commit.message | split(pat="\\n") | first | trim_end | escape }}
+{% endfor -%}
+"""
+footer = ""
+trim = true
+format = false
+render_always = true
+
+[remote]
+offline = true
+
+[git]
+conventional_commits = false
+filter_unconventional = false
+require_conventional = false
+split_commits = false
+commit_parsers = []
+filter_commits = false
+fail_on_unmatched_commit = false
+tag_pattern = ".*"
+ignore_tags = ".*"
+limit_tags = 0
+topo_order = false
+topo_order_commits = false
+sort_commits = "oldest"

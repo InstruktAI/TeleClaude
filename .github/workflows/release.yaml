@@ -9,9 +9,9 @@ on:
         type: choice
         required: true
         default: dry-run
-        options: [dry-run, release, bootstrap, seed, reseed, retry, cancel]
-      bootstrap_notes:
-        description: Current-state notes for the initial v0.7.0 baseline
+        options: [dry-run, release, seed, reseed, retry, cancel]
+      version:
+        description: Explicit stable version for a manual release or dry-run
         type: string
         required: false
       seed_operation_id:
@@ -38,7 +38,6 @@ env:
   CODEX_CLI_VERSION: '0.162.1'
   CLAUDE_CODE_VERSION: '2.1.259'
   AGE_VERSION: 'v1.3.2'
-  BOOTSTRAP_VERSION: 'v0.7.0'
 
 jobs:
   recover-publication:
@@ -161,6 +160,7 @@ jobs:
         !(github.event_name == 'workflow_dispatch' &&
           (inputs.operation == 'seed' || inputs.operation == 'reseed' || inputs.operation == 'retry' || inputs.operation == 'cancel')) &&
         !(github.event_name == 'workflow_dispatch' && inputs.operation == 'release' &&
+          inputs.version == '' &&
           needs.recover-publication.outputs.publication_enabled != 'true')
       }}
     needs: [recover-publication]
@@ -173,7 +173,10 @@ jobs:
       capture_status: ${{ steps.capture.outputs.capture_status }}
       source_sha: ${{ steps.capture.outputs.source_sha }}
       baseline_tag: ${{ steps.capture.outputs.baseline_tag }}
+      baseline_sha: ${{ steps.capture.outputs.baseline_sha }}
       latest_completed_tag: ${{ steps.capture.outputs.latest_completed_tag }}
+      decision_mode: ${{ steps.capture.outputs.decision_mode }}
+      requested_version: ${{ steps.capture.outputs.requested_version }}
       selected_classification: ${{ steps.select.outputs.selected_classification }}
       selected_provider: ${{ steps.select.outputs.selected_provider }}
       codex_failure: ${{ steps.select.outputs.codex_failure }}
@@ -183,6 +186,7 @@ jobs:
       artifact_manifest_sha256: ${{ steps.manifest.outputs.artifact_manifest_sha256 }}
     env:
       RELEASE_OPERATION: ${{ github.event_name == 'schedule' && 'scheduled' || inputs.operation }}
+      RELEASE_VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -210,14 +214,14 @@ jobs:
           uv run python -m tools.ci.capture_release_attempt
           --output-directory "$RUNNER_TEMP/release-analysis"
       - name: Confirm checked out source is the captured source
-        if: ${{ steps.capture.outputs.capture_status == 'ready' || steps.capture.outputs.capture_status == 'bootstrap' }}
+        if: ${{ steps.capture.outputs.capture_status == 'ready' }}
         env:
           CAPTURED_SOURCE_SHA: ${{ steps.capture.outputs.source_sha }}
         run: |
           git checkout --detach "$CAPTURED_SOURCE_SHA"
           test "$(git rev-parse HEAD)" = "$CAPTURED_SOURCE_SHA"
       - name: Build bounded shared evidence
-        if: ${{ steps.capture.outputs.capture_status == 'ready' }}
+        if: ${{ steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
         run: >-
           uv run python -m tools.ci.build_release_prompt
           --attempt "$RUNNER_TEMP/release-analysis/attempt.json"
@@ -227,7 +231,7 @@ jobs:
         run: echo "enabled=$RELEASE_PUBLICATION_ENABLED" >> "$GITHUB_OUTPUT"
       - name: Install pinned subscription inspector CLIs and age
         continue-on-error: true
-        if: ${{ steps.capture.outputs.capture_status == 'ready' }}
+        if: ${{ steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
         run: |
           npm install --global --no-audit --no-fund "@openai/codex@$CODEX_CLI_VERSION" "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
           go install filippo.io/age/cmd/age@v1.3.2
@@ -237,7 +241,7 @@ jobs:
       - name: Restore Codex state and write begin checkpoint
         id: codex_prepare
         continue-on-error: true
-        if: ${{ steps.capture.outputs.capture_status == 'ready' }}
+        if: ${{ steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODEX_AUTH_AGE_IDENTITY: ${{ secrets.CODEX_AUTH_AGE_IDENTITY }}
@@ -303,6 +307,7 @@ jobs:
           ${{
             !cancelled() &&
             steps.capture.outputs.capture_status == 'ready' &&
+            steps.capture.outputs.decision_mode == 'automatic' &&
             steps.codex_run.outputs.codex_boundary_closed != 'false' &&
             steps.codex_settled_confirm.outputs.codex_success != 'true'
           }}
@@ -313,7 +318,7 @@ jobs:
           --evidence "$RUNNER_TEMP/release-evidence"
           --output-directory "$RUNNER_TEMP/release-analysis/claude"
       - name: Ensure typed Codex outcome exists
-        if: ${{ always() && steps.capture.outputs.capture_status == 'ready' }}
+        if: ${{ always() && steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
         run: >-
           uv run python -m tools.ci.release_stage ensure-provider-attempt
           --provider codex
@@ -326,7 +331,7 @@ jobs:
           --path "$RUNNER_TEMP/release-analysis/claude/claude-attempt.json"
       - name: Select one complete report
         id: select
-        if: ${{ always() && steps.capture.outputs.capture_status == 'ready' }}
+        if: ${{ always() && steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
         shell: bash
         run: |
           args=(--codex-attempt "$RUNNER_TEMP/release-analysis/codex-result/codex-attempt.json" --output-directory "$RUNNER_TEMP/release-analysis/selection")
@@ -370,9 +375,10 @@ jobs:
     if: >-
       ${{
         needs.release-analysis.result == 'success' &&
+        needs.release-analysis.outputs.capture_status == 'ready' &&
         (
-          (needs.release-analysis.outputs.capture_status == 'ready' && contains(fromJSON('["patch","minor"]'), needs.release-analysis.outputs.selected_classification)) ||
-          needs.release-analysis.outputs.capture_status == 'bootstrap'
+          needs.release-analysis.outputs.decision_mode == 'manual' ||
+          contains(fromJSON('["patch","minor"]'), needs.release-analysis.outputs.selected_classification)
         )
       }}
     needs: [release-analysis]
@@ -385,8 +391,8 @@ jobs:
       artifact_id: ${{ steps.candidate_upload.outputs.artifact-id }}
       artifact_digest: ${{ steps.candidate_upload.outputs.artifact-digest }}
       candidate_version: ${{ steps.candidate_version.outputs.version }}
-      candidate_sha: ${{ steps.prepare_normal.outputs.candidate_sha || steps.prepare_bootstrap.outputs.candidate_sha }}
-      candidate_tree_sha: ${{ steps.prepare_normal.outputs.candidate_tree_sha || steps.prepare_bootstrap.outputs.candidate_tree_sha }}
+      candidate_sha: ${{ steps.prepare_auto.outputs.candidate_sha || steps.prepare_manual.outputs.candidate_sha }}
+      candidate_tree_sha: ${{ steps.prepare_auto.outputs.candidate_tree_sha || steps.prepare_manual.outputs.candidate_tree_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -418,52 +424,72 @@ jobs:
           --manifest-sha256 "${{ needs.release-analysis.outputs.artifact_manifest_sha256 }}"
       - name: Compute selected semantic version
         id: version
-        if: ${{ needs.release-analysis.outputs.capture_status == 'ready' }}
+        if: ${{ needs.release-analysis.outputs.capture_status == 'ready' && needs.release-analysis.outputs.decision_mode == 'automatic' }}
         env:
           BASELINE_TAG: ${{ needs.release-analysis.outputs.baseline_tag }}
           BUMP: ${{ needs.release-analysis.outputs.selected_classification }}
         run: uv run python -m tools.ci.compute_next_version
-      - name: Record explicit baseline version
-        id: bootstrap_version
-        if: ${{ needs.release-analysis.outputs.capture_status == 'bootstrap' }}
-        run: echo "next_tag=$BOOTSTRAP_VERSION" >> "$GITHUB_OUTPUT"
-      - name: Write authorized current-state notes
-        if: ${{ needs.release-analysis.outputs.capture_status == 'bootstrap' }}
-        env:
-          BOOTSTRAP_NOTES: ${{ inputs.bootstrap_notes }}
-        run: >-
-          uv run python -m tools.ci.release_stage write-bootstrap-notes
-          --output "$RUNNER_TEMP/bootstrap-notes.md"
       - name: Select the version to materialize
         id: candidate_version
         env:
           NORMAL_VERSION: ${{ steps.version.outputs.next_tag }}
-          BOOTSTRAP_TAG: ${{ steps.bootstrap_version.outputs.next_tag }}
+          REQUESTED_VERSION: ${{ needs.release-analysis.outputs.requested_version }}
         run: |
-          if [ -n "$BOOTSTRAP_TAG" ]; then echo "version=$BOOTSTRAP_TAG" >> "$GITHUB_OUTPUT"; else echo "version=$NORMAL_VERSION" >> "$GITHUB_OUTPUT"; fi
-      - name: Freeze normal release candidate
-        id: prepare_normal
-        if: ${{ needs.release-analysis.outputs.capture_status == 'ready' }}
+          if [ -n "$REQUESTED_VERSION" ]; then echo "version=$REQUESTED_VERSION" >> "$GITHUB_OUTPUT"; else echo "version=$NORMAL_VERSION" >> "$GITHUB_OUTPUT"; fi
+      - name: Select the exact captured Git range for release notes
+        env:
+          CAPTURED_BASELINE_SHA: ${{ needs.release-analysis.outputs.baseline_sha }}
+          CAPTURED_SOURCE_SHA: ${{ needs.release-analysis.outputs.source_sha }}
+        run: |
+          if [ -n "$CAPTURED_BASELINE_SHA" ]; then
+            printf 'GIT_CLIFF_RANGE=%s..%s\n' "$CAPTURED_BASELINE_SHA" "$CAPTURED_SOURCE_SHA" >> "$GITHUB_ENV"
+          else
+            printf 'GIT_CLIFF_RANGE=%s\n' "$CAPTURED_SOURCE_SHA" >> "$GITHUB_ENV"
+          fi
+      - name: Generate complete captured commit notes with git-cliff
+        id: git_cliff
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
+        env:
+          CANDIDATE_VERSION: ${{ steps.candidate_version.outputs.version }}
+        with:
+          version: v2.14.2
+          config: cliff.toml
+          args: >-
+            --no-exec
+            --offline
+            --tag "$CANDIDATE_VERSION"
+            --output "$RUNNER_TEMP/release-commit-notes.md"
+            "$GIT_CLIFF_RANGE"
+      - name: Verify complete commit identity coverage
+        env:
+          CAPTURED_BASELINE_SHA: ${{ needs.release-analysis.outputs.baseline_sha }}
+          CAPTURED_SOURCE_SHA: ${{ needs.release-analysis.outputs.source_sha }}
+        run: |
+          args=(--source "$CAPTURED_SOURCE_SHA" --notes "$RUNNER_TEMP/release-commit-notes.md")
+          if [ -n "$CAPTURED_BASELINE_SHA" ]; then args+=(--baseline "$CAPTURED_BASELINE_SHA"); fi
+          uv run python -m tools.release.changelog verify-commit-notes "${args[@]}"
+      - name: Freeze automatically assessed candidate
+        id: prepare_auto
+        if: ${{ needs.release-analysis.outputs.decision_mode == 'automatic' }}
         run: >-
           uv run python -m tools.ci.commit_release_artifacts
           --attempt "$RUNNER_TEMP/release-analysis-download/files/attempt.json"
           --selection "$RUNNER_TEMP/release-analysis-download/files/selection/selection.json"
           --version "${{ steps.candidate_version.outputs.version }}"
+          --commit-notes-file "$RUNNER_TEMP/release-commit-notes.md"
           --output-directory "$RUNNER_TEMP/release-candidate"
-      - name: Freeze explicit bootstrap candidate
-        id: prepare_bootstrap
-        if: ${{ needs.release-analysis.outputs.capture_status == 'bootstrap' }}
-        shell: bash
-        env:
-          LATEST_COMPLETED_TAG: ${{ needs.release-analysis.outputs.latest_completed_tag }}
-          CANDIDATE_VERSION: ${{ steps.candidate_version.outputs.version }}
-        run: |
-          args=(--attempt "$RUNNER_TEMP/release-analysis-download/files/attempt.json" --version "$CANDIDATE_VERSION" --output-directory "$RUNNER_TEMP/release-candidate" --bootstrap-notes-file "$RUNNER_TEMP/bootstrap-notes.md")
-          if [ -n "$LATEST_COMPLETED_TAG" ]; then args+=(--bootstrap-previous-tag "$LATEST_COMPLETED_TAG"); fi
-          uv run python -m tools.ci.commit_release_artifacts "${args[@]}"
+      - name: Freeze manually versioned candidate
+        id: prepare_manual
+        if: ${{ needs.release-analysis.outputs.decision_mode == 'manual' }}
+        run: >-
+          uv run python -m tools.ci.commit_release_artifacts
+          --attempt "$RUNNER_TEMP/release-analysis-download/files/attempt.json"
+          --version "${{ steps.candidate_version.outputs.version }}"
+          --commit-notes-file "$RUNNER_TEMP/release-commit-notes.md"
+          --output-directory "$RUNNER_TEMP/release-candidate"
       - name: Run native lint on the final candidate
         id: lint
-        if: ${{ steps.prepare_normal.outcome == 'success' || steps.prepare_bootstrap.outcome == 'success' }}
+        if: ${{ steps.prepare_auto.outcome == 'success' || steps.prepare_manual.outcome == 'success' }}
         shell: bash
         run: |
           set +e
@@ -475,13 +501,13 @@ jobs:
           exit 1
       - name: Run full runtime acceptance on the frozen candidate
         id: runtime_acceptance
-        if: ${{ always() && (steps.prepare_normal.outcome == 'success' || steps.prepare_bootstrap.outcome == 'success') }}
+        if: ${{ always() && (steps.prepare_auto.outcome == 'success' || steps.prepare_manual.outcome == 'success') }}
         continue-on-error: true
         timeout-minutes: 65
         env:
           PYTHONPATH: ${{ github.workspace }}
-          CANDIDATE_SHA: ${{ steps.prepare_normal.outputs.candidate_sha || steps.prepare_bootstrap.outputs.candidate_sha }}
-          CANDIDATE_TREE_SHA: ${{ steps.prepare_normal.outputs.candidate_tree_sha || steps.prepare_bootstrap.outputs.candidate_tree_sha }}
+          CANDIDATE_SHA: ${{ steps.prepare_auto.outputs.candidate_sha || steps.prepare_manual.outputs.candidate_sha }}
+          CANDIDATE_TREE_SHA: ${{ steps.prepare_auto.outputs.candidate_tree_sha || steps.prepare_manual.outputs.candidate_tree_sha }}
         run: |
           mkdir -p "$RUNNER_TEMP/release-candidate"
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
@@ -499,8 +525,8 @@ jobs:
       - name: Verify the runtime profile left the frozen candidate unchanged
         if: always()
         env:
-          CANDIDATE_SHA: ${{ steps.prepare_normal.outputs.candidate_sha || steps.prepare_bootstrap.outputs.candidate_sha }}
-          CANDIDATE_TREE_SHA: ${{ steps.prepare_normal.outputs.candidate_tree_sha || steps.prepare_bootstrap.outputs.candidate_tree_sha }}
+          CANDIDATE_SHA: ${{ steps.prepare_auto.outputs.candidate_sha || steps.prepare_manual.outputs.candidate_sha }}
+          CANDIDATE_TREE_SHA: ${{ steps.prepare_auto.outputs.candidate_tree_sha || steps.prepare_manual.outputs.candidate_tree_sha }}
         run: |
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test "$(git rev-parse 'HEAD^{tree}')" = "$CANDIDATE_TREE_SHA"
@@ -531,6 +557,7 @@ jobs:
           path: |
             ${{ runner.temp }}/release-candidate/candidate.bundle
             ${{ runner.temp }}/release-candidate/candidate-identity.json
+            ${{ runner.temp }}/release-candidate/commit-notes.md
             ${{ runner.temp }}/release-candidate/candidate-check.json
             ${{ runner.temp }}/release-candidate/runtime-acceptance-report.json
           if-no-files-found: error
@@ -586,7 +613,7 @@ jobs:
           --artifact-id "${{ needs.candidate.outputs.artifact_id }}"
           --digest "${{ needs.candidate.outputs.artifact_digest }}"
           --destination "$RUNNER_TEMP/release-candidate-download-${{ github.run_id }}-${{ github.run_attempt }}"
-          --files candidate.bundle candidate-identity.json candidate-check.json runtime-acceptance-report.json
+          --files candidate.bundle candidate-identity.json commit-notes.md candidate-check.json runtime-acceptance-report.json
       - name: Keep captured source as local main and select candidate
         id: proof_checkout
         run: >-
@@ -650,8 +677,13 @@ jobs:
         needs.candidate.result == 'success' &&
         needs.installer-proof.result == 'success' &&
         (
-          needs.release-analysis.outputs.capture_status == 'bootstrap' ||
           (
+            needs.release-analysis.outputs.decision_mode == 'manual' &&
+            github.event_name == 'workflow_dispatch' &&
+            inputs.operation == 'release'
+          ) ||
+          (
+            needs.release-analysis.outputs.decision_mode == 'automatic' &&
             needs.release-analysis.outputs.publication_enabled == 'true' &&
             (github.event_name == 'schedule' || inputs.operation == 'release')
           )
@@ -687,7 +719,7 @@ jobs:
             --artifact-id "${{ needs.candidate.outputs.artifact_id }}" \
             --digest "${{ needs.candidate.outputs.artifact_digest }}" \
             --destination "$RUNNER_TEMP/candidate" \
-            --files candidate.bundle candidate-identity.json candidate-check.json runtime-acceptance-report.json
+            --files candidate.bundle candidate-identity.json commit-notes.md candidate-check.json runtime-acceptance-report.json
           uv run python -m tools.ci.release_stage download-artifact-exact \
             --name "release-proof-${{ github.run_id }}-${{ github.run_attempt }}" \
             --artifact-id "${{ needs.installer-proof.outputs.artifact_id }}" \
@@ -705,6 +737,7 @@ jobs:
           --candidate-check "$RUNNER_TEMP/candidate/files/candidate-check.json"
           --runtime-report "$RUNNER_TEMP/candidate/files/runtime-acceptance-report.json"
           --bundle "$RUNNER_TEMP/candidate/files/candidate.bundle"
+          --commit-notes "$RUNNER_TEMP/candidate/files/commit-notes.md"
           --receipt "$RUNNER_TEMP/release-publication/publication-receipt.json"
       - name: Detect retained publication files
         id: publication_files
@@ -746,6 +779,8 @@ jobs:
           CHECKED_IN_PUBLICATION_ENABLED: ${{ needs.recover-publication.outputs.publication_enabled }}
           SEED_RESULT: ${{ needs.seed-auth.result }}
           CAPTURE_STATUS: ${{ needs.release-analysis.outputs.capture_status }}
+          DECISION_MODE: ${{ needs.release-analysis.outputs.decision_mode }}
+          REQUESTED_VERSION: ${{ needs.release-analysis.outputs.requested_version }}
           ANALYSIS_RESULT: ${{ needs.release-analysis.result }}
           SELECTED_PROVIDER: ${{ needs.release-analysis.outputs.selected_provider }}
           SELECTED_CLASSIFICATION: ${{ needs.release-analysis.outputs.selected_classification }}
@@ -767,13 +802,13 @@ jobs:
             echo "Publication retry result: recovered=$RECOVERED $RECOVERED_URL"
           elif [ "$OPERATION" = 'cancel' ]; then
             echo 'Attempt cancelled before source capture; no provider was invoked.'
-          elif [ "$OPERATION" = 'release' ] && [ "$CHECKED_IN_PUBLICATION_ENABLED" != 'true' ]; then
-            echo 'Manual publication is disabled; no new source attempt was started.'
-          elif [ "$CAPTURE_STATUS" = 'bootstrap_ready' ]; then
-            echo 'Bootstrap readiness: the latest publication does not establish a release-provenance baseline.'
+          elif [ "$OPERATION" = 'release' ] && [ -z "$REQUESTED_VERSION" ] && [ "$CHECKED_IN_PUBLICATION_ENABLED" != 'true' ]; then
+            echo 'Automatic publication is disabled; no new source attempt was started.'
+          elif [ "$CAPTURE_STATUS" = 'baseline_unavailable' ]; then
+            echo 'No completed release baseline with supported provenance is available for automatic assessment.'
           elif [ "$CAPTURE_STATUS" = 'no_change' ]; then
             echo 'No source change since the last completed release; no candidate was prepared.'
-          elif [ "$SELECTED_CLASSIFICATION" = 'none' ]; then
+          elif [ "$DECISION_MODE" = 'automatic' ] && [ "$SELECTED_CLASSIFICATION" = 'none' ]; then
             echo "No release selected by $SELECTED_PROVIDER; no candidate was prepared."
           elif [ "$ANALYSIS_RESULT" != 'success' ]; then
             echo 'Inspection did not produce a complete valid assessment.'
@@ -783,9 +818,9 @@ jobs:
             echo 'Full installer proof failed; proof logs were retained and publication was not attempted.'
           elif [ "$PUBLISH_RESULT" = 'success' ]; then
             echo "Published verified release: $RELEASE_URL"
-          elif [ "$CAPTURE_STATUS" = 'bootstrap' ]; then
-            echo 'Bootstrap candidate was fully verified but publication did not complete.'
-          elif [ "$PUBLICATION_ENABLED" != 'true' ]; then
+          elif [ "$DECISION_MODE" = 'manual' ] && [ "$OPERATION" = 'dry-run' ]; then
+            echo "Manual dry-run proof complete for $CANDIDATE_VERSION ($CANDIDATE_SHA); installer evidence SHA-256 $PROOF_DIGEST. No release was published."
+          elif [ "$OPERATION" = 'dry-run' ] || { [ "$DECISION_MODE" = 'automatic' ] && [ "$PUBLICATION_ENABLED" != 'true' ]; }; then
             echo "Dry-run proof complete for $CANDIDATE_VERSION ($CANDIDATE_SHA); installer evidence SHA-256 $PROOF_DIGEST. Ordinary publication remains disabled."
           else
             echo 'Publication did not complete; a partial receipt was retained when available.'
