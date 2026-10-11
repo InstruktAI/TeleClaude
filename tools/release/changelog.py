@@ -3,16 +3,16 @@
 # requires-python = ">=3.12"
 # dependencies = []
 # ///
-"""Generate changelog sections from git commits or AI lane reports.
+"""Generate changelog sections from git commits or one selected inspection report.
 
 Produces Keep a Changelog formatted sections for GitHub releases
 and CHANGELOG.md maintenance.
 
 Usage:
-  # From lane reports (CI — primary path)
-  uv run python -m tools.release.changelog from-reports \\
+  # From the selected inspection report (release path)
+  uv run python -m tools.release.changelog from-report \\
     --tag v0.6.0 --since v0.5.0 \\
-    --claude-report claude-report.json \\
+    --report selected-report.json \\
     --output release-notes.md --prepend CHANGELOG.md
 
   # From git log only (backfill / fallback)
@@ -35,8 +35,6 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import ValidationError
-
 # Anchor git operations to this script's own repository, so commit history is
 # read from the repo the tool ships in regardless of the caller's cwd (the
 # script-location resolution the standalone-execution policy mandates).
@@ -45,8 +43,6 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from tools.release.report_models import load_report  # noqa: E402 -- resolve sibling release modules from any cwd
-
-_INVALID_REPORT_EXCEPTIONS = (OSError, ValidationError)
 
 # ---------------------------------------------------------------------------
 # Commit parsing
@@ -161,10 +157,8 @@ def categorize_commits(subjects: list[str]) -> dict[str, list[str]]:
 
 
 # ---------------------------------------------------------------------------
-# Lane report merging
+# Selected report formatting
 # ---------------------------------------------------------------------------
-
-ARBITER_PREFERENCE = ("claude", "codex", "gemini")
 
 CHANGE_TYPE_CATEGORY: dict[str, str] = {
     "added": "Added",
@@ -173,46 +167,17 @@ CHANGE_TYPE_CATEGORY: dict[str, str] = {
 }
 
 
-def merge_lane_reports(
-    report_paths: dict[str, Path],
-) -> tuple[str, dict[str, list[str]]]:
-    """Merge lane reports. Returns (highlights, categorized_contract_changes)."""
-    highlights = ""
-    seen: set[tuple[str, str, str]] = set()
+def categorize_report(report_path: Path) -> tuple[str, dict[str, list[str]]]:
+    """Format only one complete report already selected by the inspector boundary."""
+    report = load_report(report_path)
+    if not report.assessment_complete:
+        raise ValueError("The selected inspection report is incomplete.")
     cats: dict[str, list[str]] = defaultdict(list)
-
-    for lane in ARBITER_PREFERENCE:
-        path = report_paths.get(lane)
-        if path is None:
-            continue
-        try:
-            report = load_report(path)
-        except _INVALID_REPORT_EXCEPTIONS:
-            continue
-
-        # First valid release_notes becomes the highlights
-        notes = report.release_notes
-        if not highlights and notes:
-            highlights = notes
-
-        # Merge contract changes (deduplicate across lanes)
-        for change in report.contract_changes:
-            key = (change.surface, change.item, change.change_type)
-            if key in seen:
-                continue
-            seen.add(key)
-
-            cat = CHANGE_TYPE_CATEGORY.get(change.change_type, "Changed")
-            surface = change.surface
-            item = change.item
-            details = change.details
-            if surface:
-                entry = f"**{surface.upper()}:** `{item}` — {details}"
-            else:
-                entry = f"`{item}` — {details}"
-            cats[cat].append(entry)
-
-    return highlights, dict(cats)
+    for change in report.contract_changes:
+        category = CHANGE_TYPE_CATEGORY[change.change_type]
+        entry = f"**{change.surface.upper()}:** `{change.item}` — {change.details}"
+        cats[category].append(entry)
+    return report.release_notes, dict(cats)
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +252,7 @@ def cmd_from_git(args: argparse.Namespace) -> int:
     version = args.tag.lstrip("v")
     date = args.date or git_tag_date(args.tag)
 
-    subjects = git_log_subjects(args.since, args.tag)
+    subjects = git_log_subjects(args.since, args.until or args.tag)
     categories = categorize_commits(subjects)
 
     if not any(categories.values()):
@@ -306,25 +271,18 @@ def cmd_from_git(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_from_reports(args: argparse.Namespace) -> int:
-    """Generate changelog from lane reports + git log."""
+def cmd_from_report(args: argparse.Namespace) -> int:
+    """Generate changelog from the one validated selected report + git log."""
     version = args.tag.lstrip("v")
     date = args.date or git_tag_date(args.tag)
 
-    # Load lane reports
-    report_paths: dict[str, Path] = {}
-    for lane in ARBITER_PREFERENCE:
-        path: Path | None = getattr(args, f"{lane}_report", None)
-        if path:
-            report_paths[lane] = path
-
-    highlights, contract_cats = merge_lane_reports(report_paths)
+    highlights, contract_cats = categorize_report(args.report)
 
     # Also parse git log for commit-level detail. A git failure (e.g. run from
     # outside the repo, or a missing ref) degrades to report-only notes — but it
     # is surfaced, never silently swallowed.
     try:
-        subjects = git_log_subjects(args.since, args.tag)
+        subjects = git_log_subjects(args.since, args.until or args.tag)
         commit_cats = categorize_commits(subjects)
     except subprocess.CalledProcessError as exc:
         print(
@@ -349,6 +307,28 @@ def cmd_from_reports(args: argparse.Namespace) -> int:
         repo_url=args.repo_url,
     )
 
+    _output(section, args)
+    return 0
+
+
+def cmd_from_bootstrap(args: argparse.Namespace) -> int:
+    """Write authorized current-state notes without implying a historical assessment."""
+    version = args.tag.removeprefix("v")
+    date = args.date or git_tag_date(args.tag)
+    notes = args.notes_file.read_text(encoding="utf-8").strip()
+    if not notes:
+        raise ValueError("Bootstrap release notes must describe the current state.")
+    section = format_section(
+        version=version,
+        date=date,
+        categories={},
+        highlights=(
+            "This release establishes a current-state baseline. It does not claim a complete historical compatibility audit.\n\n"
+            + notes
+        ),
+        compare_base=args.since,
+        repo_url=args.repo_url,
+    )
     _output(section, args)
     return 0
 
@@ -381,6 +361,7 @@ def main(argv: list[str] | None = None) -> int:
     shared = argparse.ArgumentParser(add_help=False)
     shared.add_argument("--tag", required=True, help="Release tag (e.g. v0.6.0)")
     shared.add_argument("--since", required=True, help="Previous tag (e.g. v0.5.0)")
+    shared.add_argument("--until", help="End revision for candidate note generation (defaults to --tag)")
     shared.add_argument("--date", help="Override release date (YYYY-MM-DD)")
     shared.add_argument("--output", type=Path, help="Write section to file")
     shared.add_argument("--prepend", type=Path, help="Prepend section to CHANGELOG.md")
@@ -393,11 +374,23 @@ def main(argv: list[str] | None = None) -> int:
     p_git = sub.add_parser("from-git", parents=[shared], help="Generate from git log")
     p_git.set_defaults(func=cmd_from_git)
 
-    p_rep = sub.add_parser("from-reports", parents=[shared], help="Generate from lane reports + git")
-    p_rep.add_argument("--claude-report", type=Path, default=Path("claude-report.json"))
-    p_rep.add_argument("--codex-report", type=Path, default=Path("codex-report.json"))
-    p_rep.add_argument("--gemini-report", type=Path, default=Path("gemini-report.json"))
-    p_rep.set_defaults(func=cmd_from_reports)
+    p_rep = sub.add_parser("from-report", parents=[shared], help="Generate from the selected report + git")
+    p_rep.add_argument("--report", type=Path, required=True, help="Complete report selected by read_inspector_report")
+    p_rep.set_defaults(func=cmd_from_report)
+
+    p_bootstrap = sub.add_parser("from-bootstrap", help="Generate a current-state baseline section")
+    p_bootstrap.add_argument("--tag", required=True, help="Bootstrap release tag.")
+    p_bootstrap.add_argument("--notes-file", type=Path, required=True, help="Authorized current-state notes.")
+    p_bootstrap.add_argument("--since", help="Previous published release tag, if one exists.")
+    p_bootstrap.add_argument("--date", help="Override release date (YYYY-MM-DD)")
+    p_bootstrap.add_argument("--output", type=Path, help="Write section to file")
+    p_bootstrap.add_argument("--prepend", type=Path, help="Prepend section to CHANGELOG.md")
+    p_bootstrap.add_argument(
+        "--repo-url",
+        default="https://github.com/InstruktAI/TeleClaude",
+        help="Repository URL for compare links",
+    )
+    p_bootstrap.set_defaults(func=cmd_from_bootstrap)
 
     args = parser.parse_args(argv)
     result: int = args.func(args)

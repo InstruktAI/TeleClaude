@@ -27,9 +27,7 @@ COREPACK_MIN_VERSION="0.34.5"
 # launches pnpm 11+ while its declared Node engine range still includes the
 # Node 22/24 patch releases that later corepack majors drop.
 COREPACK_INSTALL_VERSION="0.34.7"
-# Prettier the quality runner's root formatting legs execute from PATH. Installed
-# once per machine so a gate run never resolves the package against the registry.
-PRETTIER_INSTALL_VERSION="3.9.9"
+source "$INSTALL_DIR/bin/init/tool_versions.sh"
 
 # Installer output goes to the log file, so a corepack download confirmation
 # would block on input nobody can see.

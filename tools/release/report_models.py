@@ -30,6 +30,7 @@ class LaneReport(BaseModel):
     rationale: str
     contract_changes: list[ContractChange]
     release_notes: str
+    assessment_complete: bool
 
 
 def load_report(path: Path) -> LaneReport:

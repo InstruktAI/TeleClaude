@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from teleclaude.cli.telec.surface import export_surface_markdown
 from teleclaude.config.schema_export import export_config_markdown
@@ -17,18 +18,19 @@ MANIFEST_DIRECTORY = "manifests"
 NEWLINE = "\n"
 
 
-def write_manifest(name: str, content: str) -> None:
+def write_manifest(name: str, content: str, output_directory: Path | None = None) -> None:
     """Write one generated manifest using the shell print newline contract."""
-    destination = repo_root() / MANIFEST_DIRECTORY / name
+    destination_root = output_directory if output_directory is not None else repo_root() / MANIFEST_DIRECTORY
+    destination = destination_root / name
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(content + NEWLINE, encoding="utf-8")
 
 
-def export_manifests() -> None:
+def export_manifests(output_directory: Path | None = None) -> None:
     """Generate all manifests used by release analysis and tagging."""
-    write_manifest(CLI_MANIFEST, export_surface_markdown())
-    write_manifest(EVENTS_MANIFEST, export_events_markdown())
-    write_manifest(CONFIG_MANIFEST, export_config_markdown())
+    write_manifest(CLI_MANIFEST, export_surface_markdown(), output_directory)
+    write_manifest(EVENTS_MANIFEST, export_events_markdown(), output_directory)
+    write_manifest(CONFIG_MANIFEST, export_config_markdown(), output_directory)
 
 
 def main(argv: list[str] | None = None) -> int:

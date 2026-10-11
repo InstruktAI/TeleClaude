@@ -3,61 +3,62 @@
 from __future__ import annotations
 
 import argparse
-import tomllib
+import re
+from enum import StrEnum
 
-from teleclaude.git import GitCommandError, Repo
-from tools.ci.gha import append_output, repo_root, required_env
+from tools.ci.gha import append_output, required_env
 
-ABBREV = "--abbrev=0"
 BUMP = "BUMP"
+BASELINE_TAG = "BASELINE_TAG"
 DESCRIPTION = "Compute the next release tag."
 LAST_TAG = "last_tag"
-MINOR = "minor"
 NEXT_TAG = "next_tag"
-NO_TAG_PREFIX = "No previous tags — using pyproject.toml version "
-NO_TAG_SUFFIX = " as baseline"
-PYPROJECT = "pyproject.toml"
 SUMMARY_PREFIX = "Computed next version: "
 SUMMARY_MIDDLE = " (bump="
 SUMMARY_SUFFIX = " from "
 TAG_PREFIX = "v"
+VERSION_SEPARATOR = "."
+SUMMARY_END = ")"
+INVALID_BASELINE = "BASELINE_TAG must be a semantic release tag in MAJOR.MINOR.PATCH form."
+INVALID_BUMP = "BUMP must be patch or minor."
+SEMANTIC_TAG_PATTERN = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 
 
-def latest_tag(repo: Repo) -> str:
-    """Read the latest tag or use the project version as the no-tag baseline."""
-    try:
-        return str(repo.git.describe("--tags", ABBREV)).strip()
-    except GitCommandError:
-        with (repo_root() / PYPROJECT).open("rb") as pyproject_file:
-            project = tomllib.load(pyproject_file)["project"]
-        version = project["version"]
-        if not isinstance(version, str):
-            raise ValueError("pyproject project.version must be a string") from None
-        print(NO_TAG_PREFIX + version + NO_TAG_SUFFIX)
-        return TAG_PREFIX + version
+class ReleaseBump(StrEnum):
+    """Supported release increments under the current pre-major policy."""
+
+    PATCH = "patch"
+    MINOR = "minor"
 
 
-def next_tag(last_tag: str, bump: str) -> str:
+def next_tag(last_tag: str, bump: ReleaseBump) -> str:
     """Apply the existing minor-or-patch version arithmetic."""
-    clean_version = last_tag.removeprefix(TAG_PREFIX).split("-", maxsplit=1)[0]
-    major, minor, patch = (int(part) for part in clean_version.split("."))
-    if bump == MINOR:
+    if SEMANTIC_TAG_PATTERN.fullmatch(last_tag) is None:
+        raise ValueError(INVALID_BASELINE)
+    parts = last_tag.removeprefix(TAG_PREFIX).split(VERSION_SEPARATOR)
+    major, minor, patch = (int(part) for part in parts)
+    if bump is ReleaseBump.MINOR:
         minor += 1
         patch = 0
-    else:
+    elif bump is ReleaseBump.PATCH:
         patch += 1
-    return TAG_PREFIX + ".".join((str(major), str(minor), str(patch)))
+    else:
+        raise ValueError(INVALID_BUMP)
+    return TAG_PREFIX + VERSION_SEPARATOR.join((str(major), str(minor), str(patch)))
 
 
 def main(argv: list[str] | None = None) -> int:
     """Export the release tag outputs consumed by later workflow steps."""
     argparse.ArgumentParser(description=DESCRIPTION).parse_args(argv)
-    last = latest_tag(Repo(repo_root()))
-    bump = required_env(BUMP)
+    last = required_env(BASELINE_TAG)
+    try:
+        bump = ReleaseBump(required_env(BUMP))
+    except ValueError:
+        raise ValueError(INVALID_BUMP) from None
     following = next_tag(last, bump)
     append_output(LAST_TAG, last)
     append_output(NEXT_TAG, following)
-    print(SUMMARY_PREFIX + following + SUMMARY_MIDDLE + bump + SUMMARY_SUFFIX + last + ")")
+    print(SUMMARY_PREFIX + following + SUMMARY_MIDDLE + bump + SUMMARY_SUFFIX + last + SUMMARY_END)
     return 0
 
 
