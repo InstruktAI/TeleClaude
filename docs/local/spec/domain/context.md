@@ -113,6 +113,21 @@ any location.
   subscriptions, and published with the procedure's other subscription facts
   for `integration` to carry into each activation.
 
+<!-- planned:procedure-event-delivery -->
+
+- **Also owns (procedure delivery declarations):** validation and publication
+  of the delivery settings declared beside subscriptions, their effective
+  defaults, and the declaration-implied required-read graph composed with
+  authored dependencies. The schema owns the field vocabulary; the context
+  feature contracts own validation and retrieval
+  (`general/spec/snippet-authoring-schema`,
+  `local/projects/teleclaude/spec/feature/context/snippet-frontmatter-validation`,
+  `local/projects/teleclaude/spec/feature/context/doc-snippet-three-phase-retrieval`).
+  Runtime consumes those published facts and owns when and how many events
+  reach an agent; context supplies instructions and does not decide event work.
+
+<!-- /planned:procedure-event-delivery -->
+
 ### Use cases (index of feature specs)
 
 - **documentation-layout-convergence** — `docs/local/spec/feature/context/documentation-layout-convergence.md` — converging every registered repository on every computer to the documentation layout, one verified commit per repository

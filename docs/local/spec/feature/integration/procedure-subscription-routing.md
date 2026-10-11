@@ -243,6 +243,26 @@ Scenario Outline: The declared attendance travels with every activation
     | declares the unattended attendance   | an unattended agent    |
 ```
 
+<!-- planned:procedure-event-delivery -->
+
+#### UC-PSR19:
+
+```gherkin
+Given an agent author has published a subscribed procedure with a delivery policy
+When a matching event produces an activation
+Then an agent inspecting the activation sees the effective published delivery policy carried unchanged
+And the activation retains the same identity when that event is replayed
+```
+
+Routing carries the delivery declaration resolved by context along with the
+existing subscription facts. Runtime consumes it through its procedure
+activation command and owns delivery under
+`local/projects/teleclaude/spec/feature/agent_runtime/procedure-event-delivery`.
+This keeps declaration interpretation with its owner
+(`sdlc/policy/domain-ownership`).
+
+<!-- /planned:procedure-event-delivery -->
+
 ### Cross-context references
 
 - **event-catalog** — owns the event envelope this context reads, the one

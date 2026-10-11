@@ -80,6 +80,16 @@ implementation remain the current appliance contract.
   same published subscription as its agent identity; routing decides nothing
   about it.
 
+<!-- planned:procedure-event-delivery -->
+
+- **Also owns (delivery declarations in activations):** carrying the effective
+  delivery policy from context's published subscription into the runtime
+  activation command, under
+  `local/projects/teleclaude/spec/feature/integration/procedure-subscription-routing`.
+  Routing derives no defaults and makes no hook eligibility decisions.
+
+<!-- /planned:procedure-event-delivery -->
+
 - **Also owns (internal handler boundary):** an internal handler receives the
   matched contract alongside the event, so a handler serving several contracts
   knows which one matched when subscriptions overlap.
