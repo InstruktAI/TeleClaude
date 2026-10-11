@@ -142,6 +142,11 @@ artifacts retain only age-encrypted state; the stable decryption identity is a
 repository secret available to the restore controller. Runtime model credentials
 and storage/publication credentials have separate lifetimes and access.
 
+`tools/ci/release_stage.py` owns checkpoint locations in controller auth storage.
+The producers persist those locations in controller state and emit directory
+outputs consumed directly by the release workflow's uploads. Report destinations
+do not select checkpoint storage; upload wiring does not reconstruct its paths.
+
 Restoration selects current settled authentication state through live artifact
 and workflow-attempt metadata after serialization. The encrypted envelope binds
 its generation, producing attempt, and predecessor. Ciphertext authentication,

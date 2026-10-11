@@ -255,7 +255,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.codex_prepare.outputs.codex_begin_name }}
-          path: ${{ runner.temp }}/release-auth/codex-begun/*
+          path: ${{ steps.codex_prepare.outputs.codex_begin_directory }}/*
           if-no-files-found: error
           retention-days: 90
       - name: Confirm begin checkpoint before Codex can refresh
@@ -283,7 +283,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.codex_run.outputs.codex_settled_name }}
-          path: ${{ runner.temp }}/release-auth/codex-settled/*
+          path: ${{ steps.codex_run.outputs.codex_settled_directory }}/*
           if-no-files-found: error
           retention-days: 90
       - name: Confirm refreshed auth was durably settled

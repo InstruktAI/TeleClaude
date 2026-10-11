@@ -146,6 +146,20 @@ class ProviderPhase(StrEnum):
     INSPECTION = "inspection"
 
 
+class CodexCheckpointDirectory(StrEnum):
+    """Controller-owned locations relative to auth-state storage."""
+
+    BEGUN = "codex-begun"
+    SETTLED = "codex-settled"
+
+
+class CodexCheckpointOutput(StrEnum):
+    """Directory handoffs consumed by the workflow's immutable checkpoint uploads."""
+
+    BEGUN = "codex_begin_directory"
+    SETTLED = "codex_settled_directory"
+
+
 class ProviderOperation(StrEnum):
     """Bounded operations whose setup failures must remain actionable."""
 
@@ -241,6 +255,11 @@ def _job_temporary_parent() -> Path:
     return Path(required_env(_RUNNER_TEMP)).resolve()
 
 
+def _codex_checkpoint_directory(state_directory: Path, checkpoint: CodexCheckpointDirectory) -> Path:
+    """Keep checkpoint storage with controller auth state, independently of report destinations."""
+    return state_directory.parent / checkpoint
+
+
 def prepare_codex(attempt_path: Path, evidence_directory: Path, state_directory: Path, result_directory: Path) -> bool:
     """Restore the current managed login and upload its begin checkpoint before Codex starts."""
     repository = os.environ.get(_GITHUB_REPOSITORY, _EMPTY)
@@ -279,7 +298,7 @@ def prepare_codex(attempt_path: Path, evidence_directory: Path, state_directory:
             operation = ProviderOperation.RESTORE_AUTH
             restored = restore_latest_auth_state(client, repository, identity, controller_root, codex_home)
             operation = ProviderOperation.BEGIN_CHECKPOINT
-            begin_directory = output_root / "codex-begun"
+            begin_directory = _codex_checkpoint_directory(state_directory, CodexCheckpointDirectory.BEGUN)
             lease = write_begin_checkpoint(workflow, repository, restored.artifact, begin_directory)
         operation = ProviderOperation.WRITE_STATE
         state = CodexControllerState(
@@ -305,6 +324,7 @@ def prepare_codex(attempt_path: Path, evidence_directory: Path, state_directory:
             encoding=_UTF8,
         )
         append_output("codex_begin_name", lease.artifact_name)
+        append_output(CodexCheckpointOutput.BEGUN, str(begin_directory))
         append_output("codex_prepared", _TRUE)
         return True
     except (OSError, RuntimeError, ValueError, ValidationError, GitHubArtifactError) as error:
@@ -387,7 +407,7 @@ def run_codex(state_directory: Path, report_output_directory: Path) -> bool:
                 encoding=_UTF8,
             )
         auth_after = _read_principal_auth(state)
-        settled_directory = result_directory.parent / "codex-settled"
+        settled_directory = _codex_checkpoint_directory(state_directory, CodexCheckpointDirectory.SETTLED)
         settled_envelope, settled_name = write_settled_auth_state(
             lease,
             state.begin_reference,
@@ -401,6 +421,7 @@ def run_codex(state_directory: Path, report_output_directory: Path) -> bool:
         state.settled_generation = settled_envelope.generation
         state.auth_settlement_failed = False
         append_output("codex_settled_name", settled_name)
+        append_output(CodexCheckpointOutput.SETTLED, str(settled_directory))
         append_output("codex_settlement_artifact", _TRUE)
         _write_state(state_directory, state)
         return True
