@@ -9,7 +9,18 @@ from typing import cast
 
 _INVALID_LAUNCH_PAYLOAD = "Inspector launch payload is invalid."
 _UTF8_ENCODING = "utf-8"
-_STDIN = sys.stdin.buffer
+_STDIN_DESCRIPTOR = sys.stdin.fileno()
+_HEADER_SEPARATOR = b"\n"
+
+
+def _read_environment_header() -> bytes:
+    """Consume only the frame: buffered readline would discard trailing bytes at execve."""
+    header = bytearray()
+    while byte := os.read(_STDIN_DESCRIPTOR, 1):
+        if byte == _HEADER_SEPARATOR:
+            break
+        header.extend(byte)
+    return bytes(header)
 
 
 def main() -> int:
@@ -18,8 +29,8 @@ def main() -> int:
         print(_INVALID_LAUNCH_PAYLOAD, file=sys.stderr)
         return 2
     try:
-        payload = json.loads(_STDIN.readline().decode(_UTF8_ENCODING))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+        payload = json.loads(_read_environment_header().decode(_UTF8_ENCODING))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         print(_INVALID_LAUNCH_PAYLOAD, file=sys.stderr)
         return 2
     if not isinstance(payload, dict) or not all(

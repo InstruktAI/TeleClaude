@@ -105,6 +105,12 @@ remain mode 0700; private files remain mode 0600, with read-only configuration
 files mode 0444. Temporary input files remain in controller-owned mode-0700
 staging and are removed after installation. Credential bytes never enter argv.
 
+The isolated launcher consumes only the newline-delimited JSON environment frame
+from the stdin descriptor, without buffering subsequent bytes. After `execve`,
+the provider receives the original trailing stdin byte stream unchanged,
+including empty input, embedded newlines and large prompts. Environment values
+stay off argv; malformed environment frames fail before provider launch.
+
 The trusted controller owns credentials, persistence, and artifact transport.
 The inspector runs under a separate unprivileged identity with read-only source
 access and provider-native tool permissions. Its tool processes cannot read the
