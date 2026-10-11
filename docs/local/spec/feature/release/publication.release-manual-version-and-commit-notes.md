@@ -107,6 +107,14 @@ documentation and configuration readiness, the harness's access probes, repeat
 installation, and restart/reinstallation. Evidence is retained on success and
 failure, and the disposable machine is cleaned up.
 
+### Hosted runtime acceptance
+
+The final candidate passes the full GitHub-hosted runtime profile defined by
+`local/projects/teleclaude/spec/feature/agent_runtime/runtime-acceptance`
+before full installation proof. Publication requires both results for that
+candidate. The bounded journey allowance and its verification purpose are owned
+by `local/projects/teleclaude/policy/test-moratorium`.
+
 ### Publication and recovery
 
 The published tag names the exact candidate that passed verification. Later
