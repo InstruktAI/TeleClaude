@@ -292,11 +292,13 @@ sequenceDiagram
     Act->>Op: submit one activation per match, keyed by event, procedure, and home
     Act-->>Rt: handled (or failed, retried, then parked)
     Op->>AR: activate(procedure, home, event)
-    AR->>AR: resolve, serialized per procedure and home
+    AR->>AR: resolve the responsibility, serialized per procedure and home
+    AR->>AR: persist the event for hook delivery, keyed by the activation
     alt none running
-        AR->>AR: dispatch the generic command in the home, system principal, company set for a company home
+        AR->>AR: bind the pending event before launching the canonical procedure brief
+    else agent exists
+        AR->>AR: arrange the next eligible hook delivery, waking only when idle
     end
-    AR->>AR: enqueue the event for an eligible hook, keyed by the activation
     AR->>Op: complete, or fail with reason
 ```
 
