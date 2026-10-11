@@ -773,7 +773,7 @@ def _producer(repository: str, workflow: WorkflowAttempt) -> AuthProducer:
         repository=repository,
         workflow_path=workflow_path,
         event=event,
-        ref=workflow.ref,
+        ref=workflow.branch_ref,
         run_id=workflow.id,
         run_attempt=workflow.run_attempt,
         head_sha=workflow.head_sha,
@@ -786,7 +786,7 @@ def _expected_from_workflow(repository: str, workflow: WorkflowAttempt) -> Expec
         repository=repository,
         workflow_path=workflow.path.split(_WORKFLOW_PATH_SUFFIX_SEPARATOR, maxsplit=1)[0],
         event=WorkflowEvent(workflow.event),
-        ref=workflow.ref,
+        ref=workflow.branch_ref,
         run_id=workflow.id,
         run_attempt=workflow.run_attempt,
     )

@@ -46,6 +46,7 @@ _RUN_ATTEMPT_SEPARATOR = "-"
 _RUN_ATTEMPT_MARKER = "attempt"
 _RELEASE_WORKFLOW_PATH = ".github/workflows/release.yaml"
 _DEFAULT_RELEASE_REF = "refs/heads/main"
+_BRANCH_REF_PREFIX = "refs/heads/"
 _ARTIFACTS_KEY = "artifacts"
 _WORKFLOW_RUNS_ROUTE = "/repos/{repository}/actions/runs/{run_id}/attempts/{attempt}"
 _RUN_ARTIFACTS_ROUTE = "/repos/{repository}/actions/runs/{run_id}/artifacts"
@@ -114,10 +115,15 @@ class WorkflowAttempt(GitHubRecord):
     run_attempt: int
     path: str
     event: str
-    ref: str
+    head_branch: str
     head_sha: str
     workflow_id: int
     repository: GitHubRepository
+
+    @property
+    def branch_ref(self) -> str:
+        """Qualify the API branch name for the admitted branch-only release protocol."""
+        return _BRANCH_REF_PREFIX + self.head_branch
 
 
 class ArtifactWorkflow(GitHubRecord):
@@ -155,7 +161,7 @@ class WorkflowRunSummary(GitHubRecord):
     run_attempt: int
     path: str
     event: str
-    ref: str
+    head_branch: str
     head_sha: str
 
 
@@ -259,7 +265,7 @@ class GitHubArtifactClient:
             or attempt.run_attempt != run_attempt
             or attempt.repository.full_name.casefold() != repository.casefold()
             or workflow_path != _RELEASE_WORKFLOW_PATH
-            or attempt.ref != _DEFAULT_RELEASE_REF
+            or attempt.head_branch != _MAIN_BRANCH
             or attempt.event not in {WorkflowEvent.SCHEDULE.value, WorkflowEvent.WORKFLOW_DISPATCH.value}
         ):
             raise GitHubArtifactProvenanceError(_WORKFLOW_PROVENANCE_MISMATCH)
@@ -294,7 +300,7 @@ class GitHubArtifactClient:
         for event in (WorkflowEvent.SCHEDULE, WorkflowEvent.WORKFLOW_DISPATCH):
             for summary in self._list_workflow_run_summaries(repository, event):
                 workflow_path = summary.path.split(_WORKFLOW_PATH_SUFFIX_SEPARATOR, maxsplit=1)[0]
-                if workflow_path != _RELEASE_WORKFLOW_PATH or summary.ref != _DEFAULT_RELEASE_REF:
+                if workflow_path != _RELEASE_WORKFLOW_PATH or summary.head_branch != _MAIN_BRANCH:
                     continue
                 expected = ExpectedWorkflowAttempt(
                     repository=repository,
@@ -580,7 +586,7 @@ class GitHubArtifactClient:
             or expected.ref != _DEFAULT_RELEASE_REF
             or actual.event != expected.event
             or expected.event not in {WorkflowEvent.SCHEDULE, WorkflowEvent.WORKFLOW_DISPATCH}
-            or actual.ref != expected.ref
+            or actual.branch_ref != expected.ref
         ):
             raise GitHubArtifactProvenanceError(_WORKFLOW_PROVENANCE_MISMATCH)
 
