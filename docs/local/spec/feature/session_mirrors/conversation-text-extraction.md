@@ -136,8 +136,8 @@ And source processing does not occupy the caller's event loop
 ```gherkin
 Given an agent inspects the provenance of a mirrored conversation
 When a native source identity is established
-Then the producing transcript's recorded identity supplies that fact
-And the source filename alone cannot establish or change it
+Then its value follows the producing runtime's transcript storage convention
+And the appropriate filename, directory component or stored metadata supplies it under that convention
 ```
 
 ## Known caveats
