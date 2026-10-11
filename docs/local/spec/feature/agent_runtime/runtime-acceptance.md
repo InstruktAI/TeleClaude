@@ -215,6 +215,7 @@ This journey consumes
 
 ```gherkin
 Given an agent runs the full acceptance profile as the authenticated synthetic owner
+And the platform has not established that caller as a procedure agent under its system authority
 When the owner invokes memory-curation operations through the public CLI
 Then each operation is refused
 And a fresh authorized memory listing reports no memory added by those attempts
