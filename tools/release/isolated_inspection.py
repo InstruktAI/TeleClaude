@@ -9,6 +9,7 @@ import platform
 import pwd
 import shutil
 import signal
+import stat
 import subprocess
 import tempfile
 from collections.abc import Mapping, Sequence
@@ -45,7 +46,8 @@ _SUDO_ENVIRONMENT = {"PATH": _CONTROLLER_PATH, "HOME": "/"}
 _USER_ENVIRONMENT_KEYS = frozenset({"HOME", "PATH", "TMPDIR", "LANG", "LC_ALL"})
 _CODEX_ENVIRONMENT_KEYS = frozenset({"CODEX_HOME"})
 _CLAUDE_ENVIRONMENT_KEYS = frozenset({"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN"})
-_LAUNCHER = Path(__file__).with_name("inspector_exec.py")
+_LAUNCHER_SOURCE = Path(__file__).with_name("inspector_exec.py")
+_LAUNCHER_DIRECTORY = "inspector-launcher"
 _FILESYSTEM_HELPER = Path(__file__).with_name("inspector_fs.py")
 _LAUNCHER_PAYLOAD_SEPARATOR = b"\n"
 _ENVIRONMENT_ENCODING = "utf-8"
@@ -88,7 +90,6 @@ _CONTROLLER_STAGING_DIRECTORY = "inspector-controller-staging"
 _PRINCIPAL_HOME_DIRECTORY = "home"
 _PRINCIPAL_TEMP_DIRECTORY = "tmp"
 _STATE_DIRECTORY = "state"
-_LAUNCHER_ARGUMENT = str(_LAUNCHER)
 _COMMA = ","
 _EMPTY_BYTES = b""
 _COLON = ":"
@@ -98,6 +99,7 @@ _PRIVATE_FILE_MODE_INT = 0o600
 _PRIVATE_ROOT_INITIAL_MODE = 0o700
 _CONTROLLER_ROOT_MODE = 0o711
 _PROCESS_CLEANUP_FAILED = "The inspector's process boundary could not be fully closed."
+_LAUNCHER_INVALID = "The controller-owned inspector launcher is unavailable or unsafe."
 
 
 class InspectorRole(StrEnum):
@@ -199,7 +201,42 @@ def create_controller_root(root: Path, *, temporary_parent: Path) -> Path:
         raise ValueError(_PRIVATE_PATH_INVALID)
     root.mkdir(mode=_PRIVATE_ROOT_INITIAL_MODE, parents=True)
     root.chmod(_CONTROLLER_ROOT_MODE)
+    _stage_launcher(root)
     return root
+
+
+def _stage_launcher(controller_directory: Path) -> None:
+    """Copy only trusted launcher code into controller-owned, provider-readable storage."""
+    if _LAUNCHER_SOURCE.is_symlink() or not _LAUNCHER_SOURCE.is_file():
+        raise ValueError(_LAUNCHER_INVALID)
+    directory = controller_directory / _LAUNCHER_DIRECTORY
+    directory.mkdir(mode=_PRIVATE_ROOT_INITIAL_MODE)
+    launcher = directory / _LAUNCHER_SOURCE.name
+    launcher.write_bytes(_LAUNCHER_SOURCE.read_bytes())
+    launcher.chmod(_READ_ONLY_FILE_MODE)
+    directory.chmod(_READ_ONLY_DIRECTORY_MODE)
+
+
+def _staged_launcher(controller_directory: Path) -> Path:
+    """Require fixed non-symlink paths owned by the controller and the exact checked-in bytes."""
+    directory = controller_directory / _LAUNCHER_DIRECTORY
+    launcher = directory / _LAUNCHER_SOURCE.name
+    checks = (
+        (controller_directory, True, _CONTROLLER_ROOT_MODE),
+        (directory, True, _READ_ONLY_DIRECTORY_MODE),
+        (launcher, False, _READ_ONLY_FILE_MODE),
+    )
+    try:
+        for path, is_directory, mode in checks:
+            metadata = path.lstat()
+            expected_type = stat.S_ISDIR(metadata.st_mode) if is_directory else stat.S_ISREG(metadata.st_mode)
+            if not expected_type or metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) != mode:
+                raise ValueError(_LAUNCHER_INVALID)
+        if launcher.read_bytes() != _LAUNCHER_SOURCE.read_bytes():
+            raise ValueError(_LAUNCHER_INVALID)
+    except OSError:
+        raise ValueError(_LAUNCHER_INVALID) from None
+    return launcher
 
 
 def create_principal_layout(role: InspectorRole, root: Path) -> tuple[Path, Path, Path]:
@@ -294,12 +331,14 @@ def run_isolated_process(
     working_directory: Path,
     environment: Mapping[str, str],
     *,
+    controller_directory: Path,
     stdin: bytes = _EMPTY_BYTES,
     timeout_seconds: int = _TIMEOUT_SECONDS,
 ) -> IsolatedProcessResult:
     """Run one CLI with a strict child environment and reap its UID before returning."""
     account = ensure_inspector_principal(role)
     _validate_environment(role, environment)
+    launcher = _staged_launcher(controller_directory)
     if not working_directory.is_dir() or working_directory.is_symlink():
         raise ValueError(_WORKING_DIRECTORY_INVALID)
     if not executable.is_file() or not os.access(executable, os.X_OK):
@@ -313,7 +352,7 @@ def run_isolated_process(
         account.pw_name,
         _SUDO_SEPARATOR,
         python,
-        _LAUNCHER_ARGUMENT,
+        str(launcher),
         str(executable),
         *arguments,
     ]
@@ -386,6 +425,15 @@ def remove_principal_tree(role: InspectorRole, root: Path, target: Path) -> None
 def remove_controller_root(root: Path, *, temporary_parent: Path) -> None:
     """Remove the now-empty controller root after isolated principals are removed."""
     validate_controller_root(root, temporary_parent=temporary_parent)
+    directory = root / _LAUNCHER_DIRECTORY
+    try:
+        metadata = directory.lstat()
+    except FileNotFoundError:
+        pass
+    else:
+        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid():
+            raise ValueError(_LAUNCHER_INVALID)
+        directory.chmod(_PRIVATE_ROOT_INITIAL_MODE)
     shutil.rmtree(root)
 
 

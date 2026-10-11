@@ -114,6 +114,14 @@ the provider receives the original trailing stdin byte stream unchanged,
 including empty input, embedded newlines and large prompts. Environment values
 stay off argv; malformed environment frames fail before provider launch.
 
+Controller-root creation stages the checked-in launcher into controller-owned,
+read-only code storage. Both inspectors receive the controller root explicitly;
+launcher selection verifies ownership, permissions and exact source content.
+Isolated identities need no access to the private checkout to load this code.
+Provider-private state remains separate, and controller-root cleanup removes the
+staged code after provider processes settle. Launcher storage and its permission
+declarations belong to `tools/release/isolated_inspection.py`.
+
 The trusted controller owns credentials, persistence, and artifact transport.
 The inspector runs under a separate unprivileged identity with read-only source
 access and provider-native tool permissions. Its tool processes cannot read the

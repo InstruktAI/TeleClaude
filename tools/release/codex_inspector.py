@@ -158,6 +158,7 @@ def run_codex_inspection(
             arguments,
             evidence_directory,
             environment,
+            controller_directory=controller_directory,
             stdin=prompt,
             timeout_seconds=timeout_seconds,
         )

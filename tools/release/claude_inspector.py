@@ -345,6 +345,7 @@ def run_claude_inspection(
             arguments,
             evidence_directory,
             environment,
+            controller_directory=controller_directory,
             timeout_seconds=timeout_seconds,
         )
     except InspectorBoundaryError:
