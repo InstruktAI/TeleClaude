@@ -67,6 +67,13 @@ This repository only. Satellite projects keep their own testing contract, declar
   collaborators or authentication decisions. Synthetic input and disposable
   operating environments provide isolation; no live user configuration,
   credentials, daemon or storage is used.
+- Public command-line tools, including `curl`, are permitted inside this
+  harness. Real CLI journeys remain subprocess invocations; supporting HTTP
+  observations may use a command-line client or a Python client. The choice
+  follows the boundary being verified and its timeout, cleanup and diagnostic
+  requirements. The general preference for native Python APIs is not a ban on
+  subprocess tools here: rejecting a tool requires a concrete correctness or
+  operational reason, preserving fidelity to real invocations.
 - The allowance includes only the harness, its scenario data, essential execution
   dependencies, and its fast commit/full hosted-CI/release wiring. It does not
   restore a general test corpus, the generic `test` binding, unit tests,
