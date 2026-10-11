@@ -73,8 +73,6 @@ documentation and configuration readiness, the harness's access probes, repeat
 installation, and restart/reinstallation. Evidence is retained on success and
 failure, and the disposable machine is cleaned up.
 
-<!-- planned:cli-runtime-smoke-harness -->
-
 ### Hosted runtime acceptance
 
 The final candidate passes the full GitHub-hosted runtime profile defined by
@@ -92,8 +90,6 @@ was never run; migration never manufactures success or changes their original
 evidence. Completed publications remain completed. An incomplete publication
 without acceptance evidence cannot resume publication until the full profile
 has been proved against its original candidate; its captured source is retained.
-
-<!-- /planned:cli-runtime-smoke-harness -->
 
 ### Publication and recovery
 

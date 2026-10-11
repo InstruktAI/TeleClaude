@@ -1,8 +1,7 @@
 ---
-description: Bounded real-process CLI acceptance evidence gates commits and hosted validation against independently reviewed public journeys.
+description: Bounded real-process CLI acceptance evidence gates commits and hosted
+  validation against independently reviewed public journeys.
 visibility: internal
-delivered_by:
-  - cli-runtime-smoke-harness
 ---
 
 # Runtime Acceptance — Spec
