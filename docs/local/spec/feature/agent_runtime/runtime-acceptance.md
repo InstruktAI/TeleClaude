@@ -190,6 +190,38 @@ Then publication is refused with a finding identifying each invalid declaration
 And none of those declarations becomes an active subscription
 ```
 
+<!-- planned:conversation-memory-continuity -->
+
+#### UC-RA14:
+
+This journey consumes
+`local/projects/teleclaude/spec/feature/session_mirrors/session-id-namespaces`
+UC-SIN-6 and
+`local/projects/teleclaude/spec/feature/session_mirrors/mirror-reconciliation-loop`
+UC-MRL-10.
+
+```gherkin
+Given an agent runs the full acceptance profile with a synthetic native transcript no session record claims
+When the runtime archives it and a fresh CLI process searches for a term in its conversation
+Then exactly one result names a TeleClaude conversation identity
+And history retrieval by that identity and by the transcript's native identity returns the conversation
+And after the transcript file is removed and the runtime restarts, history retrieval still returns the conversation
+```
+
+#### UC-RA15:
+
+This journey consumes
+`local/projects/teleclaude/spec/feature/memory/memory-curation` UC-MC6.
+
+```gherkin
+Given an agent runs the full acceptance profile as the authenticated synthetic owner
+When the owner invokes memory-curation operations through the public CLI
+Then each operation is refused
+And a fresh authorized memory listing reports no memory added by those attempts
+```
+
+<!-- /planned:conversation-memory-continuity -->
+
 ## Known caveats
 
 - These journeys establish their named observable behavior, not exhaustive CLI,
