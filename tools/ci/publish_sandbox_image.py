@@ -12,7 +12,6 @@ BUILD = "build"
 DESCRIPTION = "Build and publish the sandbox runner image."
 DOCKER = "docker"
 DOCKERFILE = "docker/sandbox-runner/Dockerfile"
-HEAD_COMMIT = "HEAD_COMMIT"
 GITHUB_TOKEN = "GITHUB_TOKEN"
 IMAGE_NAME = "IMAGE_NAME"
 LATEST = "latest"
@@ -20,8 +19,15 @@ LOGIN = "login"
 PASSWORD_STDIN = "--password-stdin"
 PUSH = "push"
 REGISTRY = "ghcr.io"
+SOURCE_REVISION_OPTION = "--source-revision"
 TAG = "-t"
 USER = "-u"
+
+
+class ImageArguments(argparse.Namespace):
+    """Workflow-supplied image source revision."""
+
+    source_revision: str
 
 
 def docker(arguments: list[str], *, input_text: str | None = None) -> None:
@@ -31,11 +37,13 @@ def docker(arguments: list[str], *, input_text: str | None = None) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     """Authenticate, build both image tags, then push both tags."""
-    argparse.ArgumentParser(description=DESCRIPTION).parse_args(argv)
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
+    parser.add_argument(SOURCE_REVISION_OPTION, required=True)
+    parsed = parser.parse_args(argv, namespace=ImageArguments())
     image_name = required_env(IMAGE_NAME)
     actor = required_env(ACTOR)
     token = required_env(GITHUB_TOKEN)
-    sha = required_env(HEAD_COMMIT)
+    sha = parsed.source_revision
     tagged_image = image_name + ":" + sha
     latest_image = image_name + ":" + LATEST
     # Docker login's password-stdin protocol avoids exposing the token in argv.

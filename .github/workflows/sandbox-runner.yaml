@@ -40,4 +40,4 @@ jobs:
         env:
           ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: uv run python -m tools.ci.publish_sandbox_image
+        run: uv run python -m tools.ci.publish_sandbox_image --source-revision "$HEAD_COMMIT"
