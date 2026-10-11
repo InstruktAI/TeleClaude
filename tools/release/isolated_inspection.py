@@ -246,6 +246,12 @@ def install_principal_file(
         staging_path.unlink(missing_ok=True)
 
 
+def validate_principal_file_absent(role: InspectorRole, temporary_root: Path, target: Path) -> None:
+    """Validate an output destination inside provider-private state with controller privilege."""
+    account = ensure_inspector_principal(role)
+    _run_filesystem_operation(FilesystemOperation.CHECK_ABSENT, temporary_root, target, account.pw_uid, account.pw_gid)
+
+
 def read_principal_file(role: InspectorRole, path: Path, max_bytes: int = _MAX_PRIVATE_FILE_BYTES) -> bytes:
     """Read one private inspector-owned file through the trusted controller boundary."""
     account = ensure_inspector_principal(role)

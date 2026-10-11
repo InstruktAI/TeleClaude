@@ -102,7 +102,7 @@ directory/file creation run together under the privileged controller filesystem
 boundary. Descriptor-relative traversal refuses symlinks instead of requiring
 the controller UID to search provider-owned directories. Provider directories
 remain mode 0700; private files remain mode 0600, with read-only configuration
-files mode 0444. Temporary input files remain in controller-owned mode-0700
+files mode 0400. Temporary input files remain in controller-owned mode-0700
 staging and are removed after installation. Credential bytes never enter argv.
 
 The isolated launcher consumes only the newline-delimited JSON environment frame

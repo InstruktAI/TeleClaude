@@ -19,6 +19,7 @@ from tools.release.isolated_inspection import (
     make_read_only_tree,
     read_principal_file,
     run_isolated_process,
+    validate_principal_file_absent,
 )
 from tools.release.report_models import LaneReport
 
@@ -126,8 +127,7 @@ def run_codex_inspection(
         mode=_READ_ONLY_CONFIG_MODE,
     )
     client_report = codex_home / _CLIENT_REPORT_FILENAME
-    if client_report.exists() or client_report.is_symlink():
-        raise ValueError(_RESULT_PATH_EXISTS)
+    validate_principal_file_absent(InspectorRole.CODEX, controller_directory, client_report)
     prompt = (evidence_directory / PROMPT_FILENAME).read_bytes()
     schema_path = evidence_directory / REPORT_SCHEMA_FILENAME
     environment = {

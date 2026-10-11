@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import os
 import stat
@@ -21,13 +22,14 @@ _OPERATION_ARGUMENT = "operation"
 _SOURCE_OPTION = "--source"
 _MODE_OPTION = "--mode"
 _PRIVATE_MODE = 0o600
-_READ_ONLY_MODE = 0o444
+_READ_ONLY_MODE = 0o400
 _DIRECTORY_MODE = 0o700
 _MAX_FILE_BYTES = 4 * 1024 * 1024
 _OCTAL_BASE = 8
 _PARENT_COMPONENT = ".."
 _INVALID_PATH = "Inspector filesystem boundary refused the path."
 _INVALID_SOURCE = "Inspector filesystem boundary refused the staged file."
+_PATH_EXISTS = "Inspector filesystem boundary refused an existing path."
 _BINARY_READ_MODE = "rb"
 _BINARY_WRITE_MODE = "wb"
 _OCTAL_FORMAT = "o"
@@ -42,6 +44,7 @@ class FilesystemOperation(StrEnum):
 
     CREATE_DIRECTORY = "create_directory"
     INSTALL_FILE = "install_file"
+    CHECK_ABSENT = "check_absent"
 
 
 class FilesystemArguments(argparse.Namespace):
@@ -101,6 +104,16 @@ def create_directory(root: Path, target: Path, uid: int, gid: int) -> None:
             os.close(descriptor)
 
 
+def check_absent(root: Path, target: Path) -> None:
+    """Refuse any existing report path without asking the controller UID to search private state."""
+    with _destination_parent(root, target) as parent:
+        try:
+            os.stat(target.name, dir_fd=parent, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        raise FileExistsError(errno.EEXIST, _PATH_EXISTS)
+
+
 def install_file(root: Path, target: Path, uid: int, gid: int, source: Path, mode: int) -> None:
     """Copy bounded controller staging bytes into a new provider-owned file."""
     if mode not in {_PRIVATE_MODE, _READ_ONLY_MODE}:
@@ -149,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
         operation = FilesystemOperation(arguments.operation)
         if operation is FilesystemOperation.CREATE_DIRECTORY:
             create_directory(arguments.root, arguments.target, arguments.uid, arguments.gid)
+        elif operation is FilesystemOperation.CHECK_ABSENT:
+            check_absent(arguments.root, arguments.target)
         else:
             if arguments.source is None:
                 raise ValueError(_INVALID_SOURCE)

@@ -71,7 +71,7 @@ diagnostic file through the provider attempt's `diagnostic_path`. It identifies
 the provider, explicit phase and operation, exception type, and available errno
 or native command status. Evidence contains no raw exception message, traceback,
 environment, argv, payload or credential content. A failure before provider
-launch leaves the provider `exit_code` absent; a setup command's status is
+launch leaves the provider `exit_code` null; a setup command's status is
 diagnostic metadata, not a provider exit code.
 
 The selected inspector receives a compact change inventory and public-contract
