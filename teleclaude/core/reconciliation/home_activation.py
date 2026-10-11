@@ -19,6 +19,7 @@ from teleclaude.core.reconciliation.home_retained_set import (
     historical_home_membership,
     home_membership,
     home_retained_set_digest,
+    home_retained_set_scope,
 )
 from teleclaude.core.reconciliation.template_installation import (
     HomeTemplateDisposition,
@@ -248,7 +249,7 @@ def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResu
     hook_outcomes = install_code_hooks(home)
     held_paths: tuple[Path, ...] = ()
     unrestored_paths: tuple[Path, ...] = ()
-    with main_branch_lock():
+    with main_branch_lock(), home_retained_set_scope():
         wait_for_index_lock_clear(home)
         retained_files = tuple(
             file
@@ -308,7 +309,8 @@ def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResu
                     unrestored_paths=unrestored_paths,
                 )
     ensure_git_filters(home, enabled=True)
-    breach_paths = _recorded_breaches(repository, home=home)
+    with home_retained_set_scope():
+        breach_paths = _recorded_breaches(repository, home=home)
     _log_completion(recorded, breach_paths, outcomes, home=home)
     return HomeActivationResult(
         status=HomeActivationStatus.ACTIVATED,

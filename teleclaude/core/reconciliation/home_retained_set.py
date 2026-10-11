@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -42,6 +46,42 @@ _CHECK_IGNORE_NOT_IGNORED_STATUS = 1
 _HOME_RETAINED_SET_TEMPLATE = REPO_ROOT / "templates" / "home" / "dot_gitignore"
 _GIT_SYMBOLIC_LINK_MODE = "120000"
 _GIT_SUBMODULE_MODE = "160000"
+_UTF8 = "utf-8"
+_EVALUATION_SCOPE = "home_retained_set_evaluation"
+
+
+@dataclass
+class _DeclarationEvaluation:
+    repository: Repo
+    environment: dict[str, str]
+    memberships: dict[str, HomeMembership] = field(default_factory=dict)
+
+
+_EVALUATION: ContextVar[_DeclarationEvaluation | None] = ContextVar(_EVALUATION_SCOPE, default=None)
+
+
+@contextmanager
+def home_retained_set_scope() -> Iterator[None]:
+    """Reuse Git's declaration evaluator within one synchronous membership pass."""
+    if _EVALUATION.get() is not None:
+        yield
+        return
+    with TemporaryDirectory() as scratch:
+        scratch_path = Path(scratch)
+        rendered = render_template(
+            _HOME_RETAINED_SET_TEMPLATE.read_text(encoding=_UTF8),
+            template=_HOME_RETAINED_SET_TEMPLATE,
+            values={},
+            # guard: direct-env-read - allowed: configuration loading or interpolation
+            environ=os.environ,
+        )
+        (scratch_path / _DECLARATION_FILENAME).write_text(rendered, encoding=_UTF8)
+        with Repo.init(scratch_path) as repository:
+            token = _EVALUATION.set(_DeclarationEvaluation(repository, _isolated_git_environment()))
+            try:
+                yield
+            finally:
+                _EVALUATION.reset(token)
 
 
 def home_retained_set_digest() -> str:
@@ -158,30 +198,27 @@ def _is_symbolic_link(path: Path) -> bool:
 
 
 def _declaration_membership(relative_path: Path) -> HomeMembership:
+    evaluation = _EVALUATION.get()
+    if evaluation is None:
+        with home_retained_set_scope():
+            return _declaration_membership(relative_path)
     relative_name = relative_path.as_posix()
-    with TemporaryDirectory() as scratch:
-        scratch_path = Path(scratch)
-        declaration_path = scratch_path / _DECLARATION_FILENAME
-        rendered = render_template(
-            _HOME_RETAINED_SET_TEMPLATE.read_text(encoding="utf-8"),
-            template=_HOME_RETAINED_SET_TEMPLATE,
-            values={},
-            # guard: direct-env-read - allowed: configuration loading or interpolation
-            environ=os.environ,
+    if relative_name in evaluation.memberships:
+        return evaluation.memberships[relative_name]
+    membership = HomeMembership.NOT_RETAINED
+    try:
+        evaluation.repository.git.check_ignore(
+            _CHECK_IGNORE_OPTION,
+            _PATH_ARGUMENT_SEPARATOR,
+            relative_name,
+            env=evaluation.environment,
         )
-        declaration_path.write_text(rendered, encoding="utf-8")
-        repository = Repo.init(scratch_path)
-        try:
-            repository.git.check_ignore(
-                _CHECK_IGNORE_OPTION,
-                _PATH_ARGUMENT_SEPARATOR,
-                relative_name,
-                env=_isolated_git_environment(),
-            )
-        except GitCommandError as error:
-            if error.status == _CHECK_IGNORE_NOT_IGNORED_STATUS:
-                return HomeMembership.RETAINED
-    return HomeMembership.NOT_RETAINED
+    except GitCommandError as error:
+        if error.status != _CHECK_IGNORE_NOT_IGNORED_STATUS:
+            return membership
+        membership = HomeMembership.RETAINED
+    evaluation.memberships[relative_name] = membership
+    return membership
 
 
 def _isolated_git_environment() -> dict[str, str]:

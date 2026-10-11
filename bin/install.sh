@@ -553,6 +553,13 @@ setup_corepack() {
 # Install the pinned Prettier the quality runner's root formatting legs call.
 setup_prettier() {
     print_info "Ensuring prettier@$PRETTIER_INSTALL_VERSION..."
+    local installed_version=""
+    if command -v prettier >/dev/null 2>&1 && installed_version=$(prettier --version 2>/dev/null); then
+        if [ "$installed_version" = "$PRETTIER_INSTALL_VERSION" ]; then
+            print_success "prettier already at the required version"
+            return 0
+        fi
+    fi
     if ! npm install -g "prettier@$PRETTIER_INSTALL_VERSION" >> "$LOG_FILE" 2>&1; then
         print_error "Failed to install prettier"
         exit 1
