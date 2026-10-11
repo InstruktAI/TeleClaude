@@ -111,13 +111,17 @@ Then fresh CLI processes observe the accepted configuration and registered proje
 And the restarted runtime answers requests within the readiness budget
 ```
 
-#### UC-RA8: Expected refusals leave state unchanged
+#### UC-RA8: A caller without administrator standing cannot change machine configuration
+
+This journey consumes the computer-write standing and unchanged-state contract
+in `local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`.
 
 ```gherkin
-Given an agent exercises the independently specified invalid-input and unauthorized-caller cases
-When each public command is refused
-Then its response matches the public refusal contract
-And a subsequent authorized read confirms no protected state changed
+Given an agent runs the refusal journey with a registered person lacking platform administrator standing
+And that person has authenticated through their own terminal
+When the person attempts a machine-configuration patch through the public CLI
+Then the command refuses the write and names the required standing
+And an administrator reading the configuration afterwards observes the original values and revision
 ```
 
 #### UC-RA9: Every profile reports errors and cleans up its owned resources
@@ -138,6 +142,21 @@ When hosted runtime acceptance runs
 Then the full journey set executes against that exact candidate
 And a failure prevents publication even if an earlier source revision passed
 And success leaves the full installation proof required
+```
+
+#### UC-RA11: Invalid configuration input is refused without changing state
+
+This journey consumes
+`local/projects/teleclaude/spec/feature/config/machine-config-cli-surface`
+UC-CFG-CLI-3 and
+`local/projects/teleclaude/spec/feature/config/unknown-key-warning`.
+
+```gherkin
+Given an agent runs the invalid-input journey as the authenticated synthetic administrator
+And the machine configuration is valid
+When a public configuration patch submits an undeclared top-level key with the current revision
+Then the command exits unsuccessfully and identifies the invalid key
+And a fresh authorized read reports the original configuration values and revision
 ```
 
 ## Known caveats
