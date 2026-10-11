@@ -521,6 +521,9 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
     ) -> Session | None:
         """Update session fields and handle events.
 
+        A nonempty payload returns the resulting session or None for a missing
+        row. An empty payload returns None without looking up the row.
+
         Args:
             session_id: Session ID
             **fields: Fields to update (title, status, tmux_size, etc.)
@@ -530,13 +533,14 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
         if _AGENT_STATUS_OWNED_FIELDS & {str(key.value if isinstance(key, SessionField) else key) for key in fields}:
             raise ValueError(_AGENT_STATUS_UPDATE_REFUSAL)
         updates: dict[str, object] = {}  # guard: loose-dict - Dynamic update payload
+        result: Session | None = None
 
         if fields:
             async with self._session() as db_session:
                 row = await db_session.get(db_models.Session, session_id)
                 if not row:
                     logger.warning("Attempted to update non-existent session: %s", session_id)
-                    return
+                    return None
 
                 for key, value in fields.items():
                     field = None
@@ -604,16 +608,18 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
                     db_session.add(row)
                     await db_session.commit()
 
+                result = self._to_core_session(row)
+
         # Digest updates are internal dedupe state for output routing and can occur
         # very frequently. Emitting SESSION_UPDATED for digest-only writes creates
         # unnecessary event fan-out and cache churn.
         if updates and _is_unannounced_update(set(updates)):
             logger.trace("Skipping SESSION_UPDATED emit for internal-only update: %s", session_id)
-            return
+            return result
 
         if not updates:
             logger.trace("Skipping redundant update for session %s", session_id)
-            return
+            return result
 
         # Emit SESSION_UPDATED event for state changes (title, status, etc.).
         # Activity events (user input, tool use, agent output) flow through AgentActivityEvent.
@@ -622,6 +628,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
             SessionUpdatedContext(session_id=session_id, updated_fields=updates),
             visibility=EventVisibility.CLUSTER,
         )
+        return result
 
     async def persist_lifecycle_transition(
         self,
