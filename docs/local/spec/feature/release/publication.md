@@ -34,9 +34,26 @@ tag. Its released manifests and recorded source identify the comparison. Release
 artifact changes are distinguished from functional source and dependency changes.
 The workflow makes each stage's result and its evidence address visible.
 
+### Release decision
+
+An explicit version on a manually dispatched release or dry-run selects the
+operator-decided path. It accepts a stable semantic version newer than the
+completed baseline, with an unused target tag. It captures remote main after
+serialization, and records the supplied version and workflow request as the
+release decision. This path runs without an inspector or AI summary. It is
+repeatable for subsequent releases and can establish an initial baseline when
+no completed release exists (`general/policy/human-contract`). An explicit
+version can release the captured source even when it has no new functional
+changes; the version decision is the operator's.
+
+A request without an explicit version selects automatic assessment. Its
+no-change and no-release outcomes finish successfully before candidate creation.
+Automatic assessment requires a completed baseline. The workflow declaration
+owns the dispatch inputs and activation settings.
+
 ### Inspector
 
-One inspector role assesses actual source and contract changes against the
+For automatic assessment, one inspector role assesses actual source and contract changes against the
 baseline. Codex is attempted first using subscription authentication. An unsuccessful
 Codex inspection selects Claude, also using subscription authentication. Each
 provider is attempted once. An execution error, invalid report, or incomplete
@@ -56,6 +73,23 @@ completed; incomplete or invalid assessment cannot authorize publication.
 Classification is owned by
 `local/projects/teleclaude/spec/release-inspector-prompt`, and the report contract
 by `local/projects/teleclaude/spec/release-report-schema`.
+
+### Release notes
+
+Both decision paths use git-cliff over the exact completed-baseline-to-source
+interval. With no prior baseline, the manual path covers the captured source's
+reachable history. The shared notes include every commit once, with a linked
+abbreviated SHA, its subject and a comparison link when a baseline exists.
+Conventional-commit parsing, category filters and summary generation do not
+remove commits from that list (`general/principle/grounding`).
+
+Automatic releases add the selected inspector's concise consumer-facing summary.
+Manual releases contain the deterministic commit notes without an AI summary.
+The same generated section is committed into the candidate's cumulative
+changelog before verification and copied into its GitHub release body. Note
+rendering failures and output limits are visible failures; completeness is never
+represented by silently dropping commits. The workflow and git-cliff
+configuration own the pinned implementation and rendering template.
 
 ### Candidate and proof
 
@@ -108,22 +142,23 @@ version. Recovery resumes that publication; an existing version naming another
 candidate is a conflict. The next attempt uses a new baseline only after the
 previous publication completes.
 
-### Initial activation
+### Automatic activation
 
-An explicit current-state bootstrap earns the same final candidate and
-installation proof as an ordinary release. Its successful publication alone
-does not enable ordinary publication. A full dry-run on a real releasable change
-interval after that baseline must succeed first. Scheduled attempts remain in
-verification mode while this prerequisite is pending; no-change results do not
-satisfy it. The release maintainer records the qualifying evidence when enabling
-ordinary publication.
+Automatic publication requires a successful full automatic-path dry-run on a
+real releasable interval against a completed baseline. Scheduled attempts remain
+in verification mode while that prerequisite is pending; no-change outcomes and
+manual-version proof do not satisfy it. The release maintainer records the
+qualifying evidence when enabling automatic publication. An explicit manual
+version remains publishable through its own complete candidate lint and installer
+proof regardless of automatic-provider readiness. Both paths preserve the same
+verification and publication identity requirements.
 
 ### Use cases
 
 #### UC-RP1: Failover preserves unsuccessful inspection evidence
 
 ```gherkin
-Given a release operator starts an attempt
+Given a release operator starts an automatically assessed attempt
 When the primary inspection ends
 Then an unsuccessful primary inspection selects the fallback inspector
 And the primary failure remains visible even when the fallback succeeds
@@ -179,15 +214,37 @@ And an existing conflicting version stops recovery with the conflict visible
 And completed publication becomes the next comparison baseline
 ```
 
-#### UC-RP7: Bootstrap does not bypass initial pipeline validation
+#### UC-RP7: Automatic publication requires its own complete validation
 
 ```gherkin
-Given a release operator has published the initial proved baseline
-And no full dry-run of a real subsequent releasable interval has succeeded
-When a scheduled or ordinary manual attempt runs
-Then ordinary publication remains inactive
-And a no-change result leaves the initial validation prerequisite pending
-And activation requires retained evidence of a successful full dry-run
+Given a release operator has a completed baseline
+And no full automatically assessed dry-run of a real releasable interval has succeeded
+When an automatically assessed attempt runs
+Then automatic publication remains inactive
+And a no-change result or manual-version proof leaves that prerequisite pending
+And automatic activation requires retained evidence of its successful full dry-run
+```
+
+#### UC-RP8: An explicit version supplies a repeatable manual release decision
+
+```gherkin
+Given a release operator supplies a valid newer semantic version for remote main
+When the manually dispatched attempt captures its source
+Then no AI inspection or AI summary is requested
+And the supplied version is bound to the final candidate
+And publication requires successful lint and full installer proof of that candidate
+And a later explicit version can use the same path for a subsequent release
+```
+
+#### UC-RP9: Both release paths retain the complete commit list
+
+```gherkin
+Given a release operator has a captured source and its completed baseline
+When notes are generated for an automatic or manually versioned candidate
+Then every commit in that interval has its subject and commit link in the notes
+And automatic notes also contain the selected inspector summary
+And manual notes contain no AI summary
+And the proved candidate changelog and published release use the same section
 ```
 
 ### Cross-context references
@@ -204,4 +261,7 @@ And activation requires retained evidence of a successful full dry-run
 - A no-change dry-run establishes the no-release path; exercising later stages
   requires a candidate with releasable changes.
 - Subscription credential readiness and refreshed credential persistence are
-  prerequisites of hosted inspection, separate from repository App installation.
+  prerequisites of automatic inspection, separate from repository App installation.
+- Published candidate and proof evidence remains interpretable across owned
+  record migrations; the published commit and tag are immutable. Migration
+  behavior is owned by `sdlc/policy/backward-compatibility-hygiene`.

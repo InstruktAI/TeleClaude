@@ -22,19 +22,20 @@ consumes the installer and update contracts through their existing boundaries.
   provider failure, with every attempted provider's outcome retained.
 - Preparation produces a final candidate and an incremental Git bundle, together
   with source, baseline, tree, version, and artifact identities.
-- Verification produces lint and disposable-machine proof bound to the candidate.
+- Verification produces lint, hosted runtime acceptance and disposable-machine installation proof bound to the candidate.
 - Publication produces the exact candidate tag, its GitHub Release, retained
   evidence, and a mainline metadata reconciliation when main has advanced.
-- An explicitly requested bootstrap produces a current-state baseline through
-  the same candidate and proof boundary. Its notes distinguish that certification
-  from historical change assessment.
+- A manually supplied version produces an operator-decided candidate through
+  the same candidate and proof boundary, with deterministic commit notes and no
+  inspector invocation. A first manual publication establishes a baseline.
 
 ## Invariants
 
 ### Candidate and mainline
 
-Let the captured source be S, the previous published release B, the proved
-candidate R, and main's tip at publication H. Capture verifies that S contains B;
+Let the captured source be S, the previous published release B when present, the
+proved candidate R, and main's tip at publication H. Capture verifies that S
+contains B whenever a completed baseline exists;
 it resolves canonical main at execution time rather than using a stale queued
 event revision. R is a normal child of S. Its tree differs from S only in the
 release-owned artifacts and application-version metadata.
@@ -62,6 +63,31 @@ which downstream jobs fetch explicitly before importing it. The full repository
 bundle used inside the disposable machine remains local to that proof run.
 Transferred evidence is addressed by exact artifact identity and checked against
 the recorded digest and candidate, rather than accepted by a matching filename.
+
+### Decision and note ownership
+
+The attempt records whether the version decision came from complete automatic
+assessment or an explicit manual input. Both paths use the same candidate and
+publication owners. The manual decision carries its supplied semantic version;
+automatic decisions carry the selected provider assessment. Manual decisions do
+not fabricate inspector reports or successful provider attempts
+(`general/principle/grounding`).
+
+The pinned git-cliff action renders the complete commit list from captured refs
+using the repository-owned template. Its range and version inputs are validated
+before invocation. Untrusted commit text and inspector summaries remain data,
+and do not enter an executable command string (`sdlc/policy/security-awareness`).
+The candidate owner combines automatic summaries with the generated commit notes
+and freezes the resulting section before lint and proof. Manual candidates use
+the generated notes alone. Version selection stays with the recorded decision;
+note generation does not reclassify the change.
+
+Owned release records pass through a forward migration boundary before domain
+use (`sdlc/policy/backward-compatibility-hygiene`). Historical evidence retains
+its original source, candidate, proof and decision identity. Migration establishes
+neither a new inspection nor authority to recreate a retired execution path.
+Published Git objects and tags stay immutable; in-memory normalization is
+separate from their original serialized evidence and integrity hashes.
 
 ### Credentials and inspection
 
@@ -107,20 +133,31 @@ restoration failure. Key changes and seeding use the same serialized stream.
 
 ## Primary flows
 
-### Ordinary attempt
+### Automatically assessed attempt
 
 1. Resolve any incomplete owned publication before capturing another baseline.
 2. Capture S and B. An unchanged normalized source finishes successfully.
 3. Prepare the compact inventory and public-contract comparison. Run Codex, then
    Claude only if Codex's inspection or credential settlement is unsuccessful.
    A valid complete no-release result finishes successfully.
-4. Prepare R using the selected assessment. Finalize version and lock coherence,
-   released manifests, and the cumulative published changelog before committing R.
-5. Run hosted lint on R and the full existing installer harness in a disposable
-   machine. Retain the candidate identity and evidence; clean up the machine.
+4. Generate complete commit notes with git-cliff and add the selected assessment's
+   summary. Prepare R with final version and lock coherence, released manifests,
+   and the cumulative published changelog before committing R.
+5. Run hosted lint and full hosted runtime acceptance on R, then the full
+   existing installer harness in a disposable machine. Retain the candidate identity and evidence; clean up the machine.
 6. A dry-run returns these results. Publication reconciles current H, atomically
    updates the tag and main, then creates the GitHub Release for R and attaches
    its provenance and proof references.
+
+### Explicit-version attempt
+
+A manual dispatch with an explicit valid newer version captures S and the
+completed baseline when present. It records the operator decision and generates
+the commit notes through the same git-cliff configuration, without invoking
+providers or adding an AI summary. Candidate preparation, lint, hosted runtime acceptance, full installer
+proof and publication consume the same identities as the automatic flow. A
+manual dry-run finishes at proof. Automatic publication activation does not
+supply or withhold authority for an explicit-version publication.
 
 ### Publication recovery
 
@@ -129,22 +166,21 @@ Recovery verifies the existing tag's candidate, restores its bound publication
 receipt and proof, and completes the same publication. It neither chooses another
 version nor interprets an unpublished tag as the completed baseline.
 
-### Initial baseline
+### Automatic publication activation
 
-The explicit bootstrap path supplies the initial version and current-state notes
-without claiming a historical inspector verdict. It uses the ordinary final
-candidate, lint, installer proof, and publication machinery. Bootstrap does not
-activate ordinary publication. A checked-in workflow activation setting starts
-disabled: scheduled attempts after bootstrap can inspect and prove a dry-run,
-but ordinary scheduled and manual publication remain inactive. The release
-maintainer enables ordinary publication only after verifying a successful full
-dry-run on a real releasable post-baseline interval. A no-change result does not
-satisfy this prerequisite. When that interval does not yet exist, activation
-remains pending. The activation change records the qualifying run and candidate;
-once enabled, ordinary attempts retain all candidate and proof gates.
+The checked-in automatic-publication setting gates automatically assessed
+publication. Scheduled attempts remain dry-runs until the release maintainer
+records a successful complete automatic-path validation over a real releasable
+interval. Manual version selection and no-change outcomes do not establish that
+validation. Every published candidate, from either decision path, still earns
+its own lint, hosted runtime acceptance and installer proof.
 
 ## Failure modes
 
+- Invalid or non-increasing manual versions fail before candidate publication;
+  an existing target tag belongs to publication recovery or is a conflict.
+- Note generation errors, incomplete output or size limits stop the candidate
+  rather than silently filtering its commit denominator.
 - Provider failure remains visible after successful fallback. An unexpected fault
   remains repair work; fallback does not erase it. With no complete valid report,
   the attempt cannot prepare an ordinary release candidate.
@@ -174,3 +210,5 @@ once enabled, ordinary attempts retain all candidate and proof gates.
 - docs/third-party/claude-code/restricted-inspection.md
 - docs/third-party/git/commit-identity-and-atomic-push.md
 - docs/third-party/uv/project-version-updates.md
+- docs/third-party/git-cliff/changelog-generation.md
+- docs/third-party/git-cliff-action/changelog-step.md

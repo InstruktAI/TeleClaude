@@ -10,17 +10,11 @@ visibility: internal
 The shared structured assessment returned by whichever provider completes release
 inspection. This schema describes the inspector's judgment; execution failures
 and provider availability are recorded by the invoking workflow separately.
-<!-- planned-change:release-manual-version-and-commit-notes -->
-
-Publication consumes only a valid, complete assessment under
-`local/projects/teleclaude/spec/feature/release/publication`.
-<!-- change:release-manual-version-and-commit-notes -->
 
 Automatically assessed publication consumes a valid, complete report under
 `local/projects/teleclaude/spec/feature/release/publication`. Its explicit-version
 path records the supplied decision independently and does not invoke this
 inspector contract.
-<!-- /planned-change:release-manual-version-and-commit-notes -->
 
 ## Canonical fields
 
@@ -90,12 +84,9 @@ incomplete assessment explains its gap in the rationale and supplies no
 publication authority. A successful fallback report remains associated with the
 prior provider's failure evidence; the report does not replace that evidence.
 
-<!-- planned:release-manual-version-and-commit-notes -->
-
 The report's release-notes text is the automatic release summary. The complete
 linked commit list is generated independently by the shared release-notes path.
 Explicit-version releases produce that deterministic list without an AI summary.
-<!-- /planned:release-manual-version-and-commit-notes -->
 
 ## See Also
 
