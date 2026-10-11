@@ -325,13 +325,16 @@ class GitHubArtifactClient:
         artifact_digest: str,
     ) -> ArtifactMetadata:
         """Reconcile action outputs with immutable current-attempt API metadata."""
+        uploaded_digest = _SHA256_PREFIX + artifact_digest
+        if _SHA256_PATTERN.fullmatch(uploaded_digest) is None:
+            raise GitHubArtifactError(_ARTIFACT_UPLOAD_UNCONFIRMED)
         workflow = self.get_workflow_attempt(expected)
         artifacts = self.list_artifacts_for_attempt(workflow)
         matches = [artifact for artifact in artifacts if artifact.id == artifact_id]
         if len(matches) != 1:
             raise GitHubArtifactError(_ARTIFACT_UPLOAD_UNCONFIRMED)
         artifact = matches[0]
-        if artifact.expired or artifact.name != artifact_name or artifact.digest != artifact_digest:
+        if artifact.expired or artifact.name != artifact_name or artifact.digest != uploaded_digest:
             raise GitHubArtifactError(_ARTIFACT_UPLOAD_UNCONFIRMED)
         return artifact
 

@@ -103,6 +103,7 @@ _CANDIDATE_CHECK_FILENAME = "candidate-check.json"
 _PROOF_LOG_FILENAME = "proof-log.txt"
 _SEED_CIPHERTEXT_FILENAME = "seed.age"
 _SEED_ID_FILENAME = "seed-operation.json"
+_SEED_ARTIFACT_NAME_KEY = "artifact_name"
 _DEFAULT_FAILURE = "A release stage failed before it produced a complete result."
 _SETUP_FAILURE = "The provider controller could not establish its declared boundary."
 _AUTH_FAILURE = "Codex authentication could not be restored or settled."
@@ -528,7 +529,7 @@ def seed_codex_auth(output_directory: Path, reseed: bool) -> tuple[str, bool]:
             {
                 "operation_id": operation_id,
                 "generation": envelope.generation,
-                "artifact_name": artifact_name,
+                _SEED_ARTIFACT_NAME_KEY: artifact_name,
             },
             ensure_ascii=True,
             indent=_JSON_INDENT,
@@ -549,9 +550,7 @@ def confirm_seed(output_directory: Path, artifact_id: int, digest: str) -> None:
     event = WorkflowEvent(os.environ[_GITHUB_EVENT_NAME])
     with GitHubArtifactClient(os.environ[_GH_TOKEN]) as client:
         expected = _expected_workflow(os.environ[_GITHUB_REPOSITORY], run_id, run_attempt, event)
-        artifact = client.confirm_uploaded_artifact(expected, artifact_id, seed_record["artifact_name"], digest)
-        if artifact.name != seed_record["artifact_name"] or artifact.digest != digest:
-            raise GitHubArtifactError(_INVALID_ARTIFACT)
+        client.confirm_uploaded_artifact(expected, artifact_id, seed_record[_SEED_ARTIFACT_NAME_KEY], digest)
 
 
 def confirm_uploaded_artifact(name: str, artifact_id: int, digest: str) -> None:
