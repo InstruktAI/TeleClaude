@@ -12,7 +12,7 @@ BUILD = "build"
 DESCRIPTION = "Build and publish the sandbox runner image."
 DOCKER = "docker"
 DOCKERFILE = "docker/sandbox-runner/Dockerfile"
-GITHUB_SHA = "GITHUB_SHA"
+HEAD_COMMIT = "HEAD_COMMIT"
 GITHUB_TOKEN = "GITHUB_TOKEN"
 IMAGE_NAME = "IMAGE_NAME"
 LATEST = "latest"
@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     image_name = required_env(IMAGE_NAME)
     actor = required_env(ACTOR)
     token = required_env(GITHUB_TOKEN)
-    sha = required_env(GITHUB_SHA)
+    sha = required_env(HEAD_COMMIT)
     tagged_image = image_name + ":" + sha
     latest_image = image_name + ":" + LATEST
     # Docker login's password-stdin protocol avoids exposing the token in argv.

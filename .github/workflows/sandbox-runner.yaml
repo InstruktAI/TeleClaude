@@ -21,21 +21,23 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      HEAD_COMMIT: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.HEAD_COMMIT }}
+          fetch-depth: 2
 
       - name: Check for relevant changes
         id: changes
         if: github.event_name != 'workflow_dispatch'
-        env:
-          HEAD_COMMIT: ${{ github.event.workflow_run.head_commit.id }}
         run: uv run python -m tools.ci.detect_sandbox_changes
 
       - name: Build and push image
         if: steps.changes.outputs.changed != 'false'
         env:
           ACTOR: ${{ github.actor }}
-          GITHUB_SHA: ${{ github.sha }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: uv run python -m tools.ci.publish_sandbox_image
