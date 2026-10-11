@@ -230,3 +230,6 @@ And old inferred-failure notices do not appear in the human conversation
   that turn after activity resumes.
 - A session with no supervising caller has no silence-assessment agent. This
   contract creates no replacement supervisor.
+- An observation claim precedes its acceptance into control delivery. A process
+  loss between those acts can leave the observation unreceived; the claim remains
+  spent. Accepted control payloads retain their own recovery contract.
