@@ -89,7 +89,7 @@ _PRINCIPAL_HOME_DIRECTORY = "home"
 _PRINCIPAL_TEMP_DIRECTORY = "tmp"
 _STATE_DIRECTORY = "state"
 _LAUNCHER_ARGUMENT = str(_LAUNCHER)
-_EMPTY_TEXT = ""
+_COMMA = ","
 _EMPTY_BYTES = b""
 _COLON = ":"
 _NO_PROCESS_STATUS = 1
@@ -311,7 +311,7 @@ def run_isolated_process(
         str(executable),
         *arguments,
     ]
-    payload = json.dumps(dict(environment), separators=(_EMPTY_TEXT, _COLON)).encode(_ENVIRONMENT_ENCODING)
+    payload = json.dumps(dict(environment), separators=(_COMMA, _COLON)).encode(_ENVIRONMENT_ENCODING)
     started = monotonic()
     process: subprocess.Popen[bytes] | None = None
     timed_out = False
