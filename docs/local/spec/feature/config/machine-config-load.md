@@ -244,6 +244,13 @@ Then the change is applied and teleclaude.config.validation.recovered is reporte
 
 ## Known caveats
 
+- **A null computer name is not an assigned identity.** An explicit null
+  `computer.name` becomes the string `"None"` through runtime text coercion,
+  while the declared configuration view reports the stored null. Schema-based
+  generation can emit that null when no name default is available. Successful
+  startup and health checks therefore do not establish that a computer has an
+  assigned name.
+
 - **Stored-file migration and candidate validation are distinct.** On initial
   load and reload, the stored document is brought to the current shape in
   memory by the configuration migration list before it reaches raw input
