@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 import fcntl
 import hashlib
+import http.client
 import json
 import math
 import os
 import platform
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -232,15 +234,9 @@ _STOP_COMMAND_TIMEOUT_SECONDS = 120
 _READINESS_WINDOW_SECONDS = 90
 _READINESS_POLL_INTERVAL_SECONDS = 1
 _HEALTH_OBSERVATION_TIMEOUT_SECONDS = 5
-_HEALTH_OBSERVATION_COMMAND = (
-    "curl",
-    "--silent",
-    "--show-error",
-    "--fail",
-    "--unix-socket",
-    "/tmp/teleclaude-api.sock",
-    "http://localhost/health",
-)
+_HEALTH_SOCKET_PATH = "/tmp/teleclaude-api.sock"
+_HEALTH_HTTP_REQUEST = b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+_HEALTH_RESPONSE_LIMIT_BYTES = 16384
 _HEALTH_PREPARATION_FIELD = "preparation"
 _HEALTH_PID_FIELD = "pid"
 _HEALTH_TOKEN_FIELD = "token"
@@ -1489,20 +1485,23 @@ def _run_readiness_check(resources: FullRuntimeResources, evidence: list[Command
     raise RuntimeError(_EXPECTED_READINESS_ERROR)
 
 
-def _read_daemon_instance(
-    resources: FullRuntimeResources, evidence: list[CommandEvidence], timeout_seconds: float
-) -> DaemonInstance | None:
+def _read_daemon_instance(socket_path: str, timeout_seconds: float) -> DaemonInstance | None:
     """Observe the public local health identity; a closed socket is a transition state."""
-    result = _record_external_command(
-        resources,
-        _HEALTH_OBSERVATION_COMMAND,
-        cwd=resources.source_root,
-        timeout_seconds=timeout_seconds,
-        evidence=evidence,
-    )
-    if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(timeout_seconds)
+            connection.connect(socket_path)
+            connection.sendall(_HEALTH_HTTP_REQUEST)
+            with http.client.HTTPResponse(connection) as response:
+                response.begin()
+                if response.status != http.HTTPStatus.OK:
+                    return None
+                body = response.read(_HEALTH_RESPONSE_LIMIT_BYTES + 1)
+    except (ConnectionError, FileNotFoundError, TimeoutError):
         return None
-    health = _mapping_value(_structured_value(result.stdout))
+    if len(body) > _HEALTH_RESPONSE_LIMIT_BYTES:
+        raise ValueError(_HEALTH_INSTANCE_INVALID)
+    health = _mapping_value(json.loads(body))
     preparation = _mapping_value(health.get(_HEALTH_PREPARATION_FIELD)) if health is not None else None
     if preparation is None:
         raise ValueError(_HEALTH_INSTANCE_INVALID)
@@ -1518,7 +1517,7 @@ def _await_config_restart(
     """Wait for a different process instance before applying the ordinary readiness gate."""
     deadline = time.monotonic() + _READINESS_WINDOW_SECONDS
     while (remaining := deadline - time.monotonic()) > 0:
-        instance = _read_daemon_instance(resources, evidence, min(_HEALTH_OBSERVATION_TIMEOUT_SECONDS, remaining))
+        instance = _read_daemon_instance(_HEALTH_SOCKET_PATH, min(_HEALTH_OBSERVATION_TIMEOUT_SECONDS, remaining))
         if instance is not None and instance != previous:
             _run_readiness_check(resources, evidence)
             return
@@ -1623,7 +1622,7 @@ def _full_configuration_change(resources: FullRuntimeResources, evidence: list[C
     resources.original_timezone = original_timezone
     resources.expected_timezone = timezone
     resources.unrelated_computer_role = unrelated_role
-    previous_instance = _read_daemon_instance(resources, evidence, _HEALTH_OBSERVATION_TIMEOUT_SECONDS)
+    previous_instance = _read_daemon_instance(_HEALTH_SOCKET_PATH, _HEALTH_OBSERVATION_TIMEOUT_SECONDS)
     if previous_instance is None:
         raise RuntimeError(_EXPECTED_READINESS_ERROR)
     adapter_patch: JSONObject = {
