@@ -25,7 +25,7 @@ from teleclaude.git import (
     hook_free_environment,
 )
 from teleclaude.git_tree import TreeSource, list_tree_paths, materialize_tree
-from teleclaude.paths import ConfigFileName, is_platform_home
+from teleclaude.paths import REPO_ROOT, ConfigFileName, is_platform_home
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.gate import (
     LintGateResult,
@@ -34,6 +34,11 @@ from teleclaude.quality.gate import (
     run_home_guardrail_gate,
     run_lint_gate,
     run_staged_declaration_gate,
+)
+from teleclaude.quality.runtime_acceptance import (
+    active_index_identity,
+    is_self_repository,
+    run_cold_commit_acceptance,
 )
 from teleclaude.quality.selection import (
     GradingHomeSelection,
@@ -190,11 +195,23 @@ def _run_commit_gate(project_root: Path, decision: GateDecision) -> int:
         print(_RESTAGE_INSTRUCTION, file=sys.stderr)
         return 1
 
-    snapshot_needed = any(_home_needs_snapshot(home) for home in homes)
+    self_repository = is_self_repository(project_root, REPO_ROOT)
+    snapshot_needed = self_repository or any(_home_needs_snapshot(home) for home in homes)
     content_context = materialize_tree(tree_source) if snapshot_needed else nullcontext(None)
     child_environment = hook_free_environment(project_root)
     platform_home_subject = is_platform_home(project_root)
     with content_context as content_root:
+        if self_repository:
+            if content_root is None:
+                raise ValueError(_ROOT_DECLARATION_MISSING)
+            source_revision, source_tree = active_index_identity(project_root)
+            acceptance_exit_code = run_cold_commit_acceptance(
+                content_root,
+                source_revision,
+                source_tree,
+            )
+            if acceptance_exit_code != 0:
+                return acceptance_exit_code
         failures = [
             _run_home_gate(
                 project_root,

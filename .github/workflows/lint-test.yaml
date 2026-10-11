@@ -34,9 +34,75 @@ jobs:
         run: telec code lint --all
         timeout-minutes: 5
 
+  runtime-acceptance:
+    name: Full CLI runtime acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.13.0'
+
+      - name: Resolve checked source identity
+        id: source
+        shell: bash
+        run: |
+          source_revision=$(git rev-parse HEAD)
+          source_tree=$(git rev-parse 'HEAD^{tree}')
+          echo "revision=$source_revision" >> "$GITHUB_OUTPUT"
+          echo "tree=$source_tree" >> "$GITHUB_OUTPUT"
+
+      - name: Run full disposable CLI runtime profile
+        id: runtime
+        timeout-minutes: 65
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          SOURCE_REVISION: ${{ steps.source.outputs.revision }}
+          SOURCE_TREE: ${{ steps.source.outputs.tree }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/runtime-acceptance"
+          uv run --no-project --python 3.12 python -P tools/ci/runtime_acceptance.py \
+            --profile full \
+            --root "$GITHUB_WORKSPACE" \
+            --source-revision "$SOURCE_REVISION" \
+            --source-tree "$SOURCE_TREE" \
+            --report "$RUNNER_TEMP/runtime-acceptance/report.json"
+
+      - name: Verify the checked candidate remained unchanged
+        if: always()
+        env:
+          SOURCE_REVISION: ${{ steps.source.outputs.revision }}
+          SOURCE_TREE: ${{ steps.source.outputs.tree }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_REVISION"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+          git diff --exit-code
+          git diff --cached --exit-code
+          test -z "$(git ls-files --others --exclude-standard)"
+
+      - name: Retain full runtime report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: runtime-acceptance-${{ github.sha }}
+          path: ${{ runner.temp }}/runtime-acceptance/report.json
+          if-no-files-found: warn
+          retention-days: 30
+
   dependabot-auto-merge:
     name: Dependabot auto-merge
-    needs: lint-test
+    needs: [lint-test, runtime-acceptance]
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
     permissions:

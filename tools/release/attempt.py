@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from collections.abc import Iterable
 from datetime import datetime
@@ -11,6 +13,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from teleclaude.git import GitCommandError, Repo
+from tools.ci.runtime_acceptance import validate_full_report_bytes
 
 _REMOTE_MAIN_COMMIT = "refs/remotes/origin/main^{commit}"
 _COMMIT_SUFFIX = "^{commit}"
@@ -146,6 +149,8 @@ class ProofIdentity(ImmutableRecord):
     lint_succeeded: bool
     installer_succeeded: bool
     evidence_sha256: str | None
+    runtime_acceptance_succeeded: bool = False
+    runtime_acceptance_report_sha256: str | None = None
 
 
 class PublicationReceipt(ImmutableRecord):
@@ -156,6 +161,80 @@ class PublicationReceipt(ImmutableRecord):
     state: PublicationState
     tag: str
     github_release_id: str | None
+
+
+_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
+_MAX_RUNTIME_REPORT_BYTES = 8 * 1024 * 1024
+_MAX_CANDIDATE_CHECK_BYTES = 64 * 1024
+
+
+def validate_runtime_acceptance_evidence(
+    candidate: CandidateIdentity,
+    proof: ProofIdentity | None,
+    candidate_check_data: bytes,
+    report_data: bytes,
+) -> str:
+    """Validate the candidate check and full report, returning the report digest."""
+    try:
+        if len(candidate_check_data) > _MAX_CANDIDATE_CHECK_BYTES or len(report_data) > _MAX_RUNTIME_REPORT_BYTES:
+            raise ValueError
+        candidate_check = json.loads(candidate_check_data)
+        report_digest = hashlib.sha256(report_data).hexdigest()
+        if (
+            not isinstance(candidate_check, dict)
+            or set(candidate_check)
+            != {
+                "candidate_sha",
+                "candidate_tree_sha",
+                "lint_succeeded",
+                "lint_log_sha256",
+                "runtime_acceptance_succeeded",
+                "runtime_acceptance_report_sha256",
+            }
+            or candidate_check["candidate_sha"] != candidate.candidate_sha
+            or candidate_check["candidate_tree_sha"] != candidate.candidate_tree_sha
+            or candidate_check["lint_succeeded"] is not True
+            or not isinstance(candidate_check["lint_log_sha256"], str)
+            or _SHA256_PATTERN.fullmatch(candidate_check["lint_log_sha256"]) is None
+            or candidate_check["runtime_acceptance_succeeded"] is not True
+            or candidate_check["runtime_acceptance_report_sha256"] != report_digest
+        ):
+            raise ValueError
+        validate_full_report_bytes(
+            report_data,
+            source_revision=candidate.candidate_sha,
+            source_tree=candidate.candidate_tree_sha,
+        )
+        if proof is not None and (
+            not proof.runtime_acceptance_succeeded or proof.runtime_acceptance_report_sha256 != report_digest
+        ):
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        raise ValueError(
+            "Full runtime acceptance is missing, incomplete, or mismatched; rerun acceptance and installer proof "
+            "against the original candidate."
+        ) from None
+    return report_digest
+
+
+def load_proof_identity(data: bytes) -> ProofIdentity:
+    """Forward-migrate a standalone proof, treating pre-acceptance proofs as absent evidence."""
+    payload = json.loads(data)
+    if not isinstance(payload, dict):
+        raise ValueError("The release proof record is invalid.")
+    payload.setdefault("runtime_acceptance_succeeded", False)
+    payload.setdefault("runtime_acceptance_report_sha256", None)
+    return ProofIdentity.model_validate(payload)
+
+
+def load_publication_receipt(data: bytes) -> PublicationReceipt:
+    """Forward-migrate a receipt and its nested proof at the single compatibility boundary."""
+    payload = json.loads(data)
+    if not isinstance(payload, dict) or not isinstance(payload.get("proof"), dict):
+        raise ValueError("The publication receipt is invalid.")
+    payload["proof"].setdefault("runtime_acceptance_succeeded", False)
+    payload["proof"].setdefault("runtime_acceptance_report_sha256", None)
+    return PublicationReceipt.model_validate_json(json.dumps(payload))
 
 
 def capture_attempt(

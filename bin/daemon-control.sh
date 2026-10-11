@@ -31,6 +31,12 @@ fi
 # install_services.sh, shared with bin/install.sh so the two cannot drift.
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/init/install_services.sh"
+CRON_TIMER_UNIT="${CRON_LABEL}.timer"
+CRON_SERVICE_UNIT="${CRON_LABEL}.service"
+_SYSTEMD_ACTIVE_STATE="active"
+_SYSTEMD_INACTIVE_STATE="inactive"
+_SYSTEMD_FAILED_STATE="failed"
+_SYSTEMD_UNKNOWN_STATE="unknown"
 
 # Configuration
 PID_FILE="$PROJECT_ROOT/teleclaude.pid"
@@ -595,6 +601,13 @@ start_daemon() {
             log_error "Redis is a hard dependency. Verify REDIS_URL points to a reachable server, then re-run 'make start' (see 'telec config wizard')"
             return 1
         fi
+        if [ "$PLATFORM" != "macos" ]; then
+            if ! _tc_sudo "enable and start the periodic job timer" systemctl enable --now "$CRON_TIMER_UNIT"; then
+                stop_startup_log_stream
+                log_error "Failed to activate the periodic job timer: $CRON_TIMER_UNIT"
+                return 1
+            fi
+        fi
         stop_startup_log_stream
         if [ -f "$PID_FILE" ]; then
             PID=$(cat "$PID_FILE")
@@ -743,6 +756,67 @@ signal_prepared_daemon() {
     fi
 }
 
+systemd_unit_active() {
+    local unit="$1"
+    local state=""
+    local exit_code=0
+    state="$(systemctl is-active "$unit" 2>/dev/null)" || exit_code=$?
+    if [ "$exit_code" -eq 0 ] && [ "$state" = "$_SYSTEMD_ACTIVE_STATE" ]; then
+        return 0
+    fi
+    case "$state" in
+        "$_SYSTEMD_INACTIVE_STATE"|"$_SYSTEMD_FAILED_STATE"|"$_SYSTEMD_UNKNOWN_STATE")
+            return 1
+            ;;
+        *)
+            log_error "Could not establish the active state of systemd unit $unit"
+            return 2
+            ;;
+    esac
+}
+
+stop_systemd_periodic_units() {
+    local timer_state=0
+    local service_state=0
+    local cleanup_failed=0
+    systemd_unit_active "$CRON_TIMER_UNIT" || timer_state=$?
+    systemd_unit_active "$CRON_SERVICE_UNIT" || service_state=$?
+    if [ "$timer_state" -gt 1 ] || [ "$service_state" -gt 1 ]; then
+        cleanup_failed=1
+    fi
+
+    if [ "$timer_state" -ne 1 ]; then
+        if ! _tc_sudo "stop the periodic job timer" systemctl stop "$CRON_TIMER_UNIT"; then
+            cleanup_failed=1
+        fi
+    fi
+
+    if [ "$service_state" -ne 1 ]; then
+        if ! _tc_sudo "stop the periodic job service" systemctl stop "$CRON_SERVICE_UNIT"; then
+            cleanup_failed=1
+        fi
+    fi
+
+    if systemctl is-enabled --quiet "$CRON_TIMER_UNIT"; then
+        if ! _tc_sudo "disable the periodic job timer" systemctl disable "$CRON_TIMER_UNIT"; then
+            cleanup_failed=1
+        fi
+    fi
+
+    timer_state=0
+    service_state=0
+    systemd_unit_active "$CRON_TIMER_UNIT" || timer_state=$?
+    systemd_unit_active "$CRON_SERVICE_UNIT" || service_state=$?
+    if [ "$timer_state" -ne 1 ] || [ "$service_state" -ne 1 ]; then
+        log_error "Periodic job units remain active after stop"
+        cleanup_failed=1
+    fi
+    if [ "$cleanup_failed" -ne 0 ]; then
+        return 1
+    fi
+    return 0
+}
+
 # Stop daemon via service manager
 stop_daemon() {
     log_info "Stopping TeleClaude daemon..."
@@ -751,6 +825,7 @@ stop_daemon() {
     local pid
     local entry
     local prepare_rc=0
+    local periodic_cleanup_failed=0
 
     prepare_daemon_for_shutdown || prepare_rc=$?
     if [ "$prepare_rc" -eq "$PREPARE_DEFERRED_RETURN" ]; then
@@ -761,6 +836,11 @@ stop_daemon() {
     if [ "$prepare_rc" -eq 1 ]; then
         log_error "Stop withheld: the daemon was left running"
         return 1
+    fi
+
+    if [ "$PLATFORM" != "macos" ] && ! stop_systemd_periodic_units; then
+        log_error "Periodic job unit cleanup failed; continuing daemon shutdown"
+        periodic_cleanup_failed=1
     fi
 
     if [ "$PLATFORM" = "macos" ]; then
@@ -796,7 +876,7 @@ stop_daemon() {
 
     if ! is_service_loaded; then
         log_warn "Service not loaded"
-        return 0
+        return "$periodic_cleanup_failed"
     fi
 
     pid="$(systemd_main_pid)"
@@ -821,6 +901,9 @@ stop_daemon() {
     fi
 
     log_info "Daemon stopped and verified (service unloaded)"
+    if [ "$periodic_cleanup_failed" -ne 0 ]; then
+        return 1
+    fi
 }
 
 # Check daemon status
@@ -856,7 +939,7 @@ status_daemon() {
             log_error "Service is not active: $SERVICE_STATUS"
             return 1
         fi
-        CRON_TIMER_STATUS=$(systemctl is-active teleclaude-cron.timer 2>/dev/null || echo "inactive")
+        CRON_TIMER_STATUS=$(systemctl is-active "$CRON_TIMER_UNIT" 2>/dev/null || echo "inactive")
         log_info "cron timer status: $CRON_TIMER_STATUS"
         if [ "$CRON_TIMER_STATUS" != "active" ]; then
             log_error "cron timer is not active: $CRON_TIMER_STATUS"

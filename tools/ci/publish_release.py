@@ -19,7 +19,14 @@ from pydantic import ValidationError
 
 from teleclaude.git import GitCommandError, Repo
 from tools.ci.gha import append_output, repo_root
-from tools.release.attempt import CandidateIdentity, ProofIdentity, PublicationReceipt, PublicationState
+from tools.release.attempt import (
+    CandidateIdentity,
+    ProofIdentity,
+    PublicationReceipt,
+    PublicationState,
+    load_proof_identity,
+    validate_runtime_acceptance_evidence,
+)
 from tools.release.github_artifacts import GitHubArtifactClient, GitHubArtifactError
 from tools.release.project_metadata import (
     normalize_release_owned_file,
@@ -59,7 +66,7 @@ _EVIDENCE_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 _EMPTY = ""
 _ERROR = "The proved release could not be published safely."
 _INPUT_INVALID = "The candidate, proof, or transfer artifact is incomplete or inconsistent."
-_PROOF_REQUIRED = "Publication requires successful lint and installer proof for this exact candidate."
+_PROOF_REQUIRED = "Publication requires successful lint, full runtime acceptance, and installer proof for this exact candidate; rerun proof against the original candidate."
 _TAG_CONFLICT = "The release tag already names a different candidate commit."
 _ATOMIC_PUSH_FAILED = "Atomic publication failed without a concurrent main advancement to reconcile."
 _RETRY_EXHAUSTED = "Main advanced repeatedly while publication was reconciled."
@@ -211,6 +218,8 @@ def publish_proved_candidate(
     bundle_path: Path,
     receipt_path: Path,
     github_token: str,
+    candidate_check_data: bytes,
+    runtime_report_data: bytes,
     *,
     github_transport: httpx.BaseTransport | None = None,
 ) -> PublicationReceipt:
@@ -219,6 +228,7 @@ def publish_proved_candidate(
         raise ValueError(_OUTPUT_EXISTS)
     if not github_token:
         raise ValueError(_INPUT_INVALID)
+    validate_runtime_acceptance_evidence(candidate, proof, candidate_check_data, runtime_report_data)
     _validate_proof(candidate, proof)
     repo = Repo(repository_root)
     verify_candidate_bundle(repository_root, candidate, bundle_path, github_token)
@@ -320,6 +330,9 @@ def _validate_proof(candidate: CandidateIdentity, proof: ProofIdentity) -> None:
         or _SHA_PATTERN.fullmatch(candidate.candidate_tree_sha) is None
         or not proof.lint_succeeded
         or not proof.installer_succeeded
+        or not proof.runtime_acceptance_succeeded
+        or proof.runtime_acceptance_report_sha256 is None
+        or _EVIDENCE_PATTERN.fullmatch(proof.runtime_acceptance_report_sha256) is None
         or proof.candidate_sha != candidate.candidate_sha
         or proof.candidate_tree_sha != candidate.candidate_tree_sha
         or proof.evidence_sha256 is None
@@ -503,17 +516,28 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Publish the exact proved candidate.")
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--proof", type=Path, required=True)
+    parser.add_argument("--candidate-check", type=Path, required=True)
+    parser.add_argument("--runtime-report", type=Path, required=True)
     parser.add_argument("--bundle", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         candidate = CandidateIdentity.model_validate_json(args.candidate.read_bytes())
-        proof = ProofIdentity.model_validate_json(args.proof.read_bytes())
+        proof = load_proof_identity(args.proof.read_bytes())
         token = os.environ.get(_TOKEN_VARIABLE, _EMPTY)
         repository = os.environ.get(_REPOSITORY_VARIABLE, _EMPTY)
         if not token or repository != candidate.attempt.repository:
             raise ValueError(_INPUT_INVALID)
-        publish_proved_candidate(repo_root(), candidate, proof, args.bundle, args.receipt, token)
+        publish_proved_candidate(
+            repo_root(),
+            candidate,
+            proof,
+            args.bundle,
+            args.receipt,
+            token,
+            args.candidate_check.read_bytes(),
+            args.runtime_report.read_bytes(),
+        )
     except (OSError, ValidationError, ValueError, RuntimeError, GitHubArtifactError) as error:
         print(str(error), file=sys.stderr)
         return 1

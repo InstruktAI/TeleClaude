@@ -85,6 +85,7 @@ if [ "$PLATFORM" = "macos" ]; then
     SERVICE_PATH="$HOME/Library/LaunchAgents/$SERVICE_LABEL.plist"
 else
     SERVICE_LABEL="teleclaude"
+    CRON_LABEL="teleclaude-cron"
     # bin/daemon-control.sh consumes SERVICE_PATH from this sourced module.
     # shellcheck disable=SC2034
     SERVICE_PATH="/etc/systemd/system/$SERVICE_LABEL.service"
@@ -359,7 +360,7 @@ EOF
 }
 
 install_systemd_cron_service() {
-    local service_name="teleclaude-cron"
+    local service_name="$CRON_LABEL"
     local service_file="/etc/systemd/system/${service_name}.service"
     local timer_file="/etc/systemd/system/${service_name}.timer"
     local service_template="$PROJECT_ROOT/templates/teleclaude-cron.service"

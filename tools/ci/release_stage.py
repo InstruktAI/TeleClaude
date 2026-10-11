@@ -31,6 +31,9 @@ from tools.release.attempt import (
     PublicationReceipt,
     PublicationState,
     load_attempt_identity,
+    load_proof_identity,
+    load_publication_receipt,
+    validate_runtime_acceptance_evidence,
 )
 from tools.release.claude_inspector import run_claude_inspection
 from tools.release.codex_auth import (
@@ -100,6 +103,7 @@ _CANDIDATE_FILENAME = "candidate-identity.json"
 _PROOF_FILENAME = "proof-identity.json"
 _BUNDLE_FILENAME = "candidate.bundle"
 _CANDIDATE_CHECK_FILENAME = "candidate-check.json"
+_RUNTIME_ACCEPTANCE_REPORT_FILENAME = "runtime-acceptance-report.json"
 _PROOF_LOG_FILENAME = "proof-log.txt"
 _PROOF_BUNDLE_FETCH = ("fetch", "--no-tags")
 _PROOF_BUNDLE_HEAD = "HEAD"
@@ -119,6 +123,7 @@ _TRUE = "true"
 _PROCESS_TIMEOUT = 0o600
 _MAX_PROOF_LOG_BYTES = 32 * 1024 * 1024
 _MAX_PROOF_LOG_FILE_BYTES = 8 * 1024 * 1024
+_MAX_RUNTIME_REPORT_BYTES = 8 * 1024 * 1024
 _RELEASE_CONTROLLER_ROOT = "teleclaude-release-controller"
 _CODEX_STATE_DIRECTORY = "codex"
 _CLAUDE_STATE_DIRECTORY = "claude"
@@ -603,7 +608,7 @@ def recover_publication(repository_root: Path, output_directory: Path, token: st
                         Path(download_root) / "receipt",
                         frozenset({_RECEIPT_FILENAME}),
                     )
-                    receipt = PublicationReceipt.model_validate_json(
+                    receipt = load_publication_receipt(
                         (downloaded.extracted_directory / _RECEIPT_FILENAME).read_bytes()
                     )
                 if receipt.state is PublicationState.PUBLISHING:
@@ -612,6 +617,11 @@ def recover_publication(repository_root: Path, output_directory: Path, token: st
         append_output("recovered_publication", _FALSE)
         return False
     for run_id, run_attempt, producer, receipt, artifacts in sorted(pending, key=lambda item: (item[0], item[1])):
+        if not receipt.proof.runtime_acceptance_succeeded or receipt.proof.runtime_acceptance_report_sha256 is None:
+            raise ValueError(
+                "This partial publication predates full runtime acceptance; rerun full runtime acceptance and "
+                "installer proof against the original candidate before retrying."
+            )
         artifact_map = {artifact.name: artifact for artifact in artifacts}
         candidate_name = _CANDIDATE_PREFIX + str(run_id) + "-" + str(run_attempt)
         proof_name = _PROOF_PREFIX + str(run_id) + "-" + str(run_attempt)
@@ -623,7 +633,14 @@ def recover_publication(repository_root: Path, output_directory: Path, token: st
                 producer,
                 candidate_name,
                 Path(download_root) / "candidate",
-                frozenset({_CANDIDATE_FILENAME, _BUNDLE_FILENAME, _CANDIDATE_CHECK_FILENAME}),
+                frozenset(
+                    {
+                        _CANDIDATE_FILENAME,
+                        _BUNDLE_FILENAME,
+                        _CANDIDATE_CHECK_FILENAME,
+                        _RUNTIME_ACCEPTANCE_REPORT_FILENAME,
+                    }
+                ),
             )
             proof_download = client.download_artifact(
                 artifact_map[proof_name],
@@ -635,8 +652,14 @@ def recover_publication(repository_root: Path, output_directory: Path, token: st
             candidate = CandidateIdentity.model_validate_json(
                 (candidate_download.extracted_directory / _CANDIDATE_FILENAME).read_bytes()
             )
-            proof = ProofIdentity.model_validate_json(
-                (proof_download.extracted_directory / _PROOF_FILENAME).read_bytes()
+            proof = load_proof_identity((proof_download.extracted_directory / _PROOF_FILENAME).read_bytes())
+            candidate_check = candidate_download.extracted_directory / _CANDIDATE_CHECK_FILENAME
+            acceptance_report = candidate_download.extracted_directory / _RUNTIME_ACCEPTANCE_REPORT_FILENAME
+            validate_runtime_acceptance_evidence(
+                candidate,
+                proof,
+                candidate_check.read_bytes(),
+                acceptance_report.read_bytes(),
             )
             if candidate != receipt.candidate or proof != receipt.proof:
                 raise GitHubArtifactError(_INVALID_ARTIFACT)
@@ -648,6 +671,8 @@ def recover_publication(repository_root: Path, output_directory: Path, token: st
                 candidate_download.extracted_directory / _BUNDLE_FILENAME,
                 recovery_receipt_path,
                 token,
+                candidate_check.read_bytes(),
+                acceptance_report.read_bytes(),
             )
         append_output("recovered_tag", receipt.tag)
     append_output("recovered_publication", _TRUE)
@@ -671,18 +696,45 @@ def prepare_proof_checkout(repository_root: Path, candidate_path: Path, bundle_p
     repo.git.checkout("--detach", candidate.candidate_sha)
 
 
-def record_candidate_check(candidate_path: Path, lint_log: Path, output_path: Path, lint_succeeded: bool) -> None:
-    """Bind the native lint result to the final candidate without changing it."""
+def record_candidate_check(
+    candidate_path: Path,
+    lint_log: Path,
+    runtime_report_path: Path,
+    output_path: Path,
+    lint_succeeded: bool,
+    runtime_succeeded: bool,
+) -> None:
+    """Bind native lint and complete runtime acceptance to the final candidate."""
     candidate = CandidateIdentity.model_validate_json(candidate_path.read_bytes())
     digest = _sha256_file(lint_log)
+    report_data = _read_bounded_file(runtime_report_path, _MAX_RUNTIME_REPORT_BYTES)
+    report_digest = hashlib.sha256(report_data).hexdigest()
+    if lint_succeeded and runtime_succeeded:
+        validate_runtime_acceptance_evidence(
+            candidate,
+            None,
+            json.dumps(
+                {
+                    "candidate_sha": candidate.candidate_sha,
+                    "candidate_tree_sha": candidate.candidate_tree_sha,
+                    "lint_succeeded": True,
+                    "lint_log_sha256": digest,
+                    "runtime_acceptance_succeeded": True,
+                    "runtime_acceptance_report_sha256": report_digest,
+                }
+            ).encode(_UTF8),
+            report_data,
+        )
     record = {
         "candidate_sha": candidate.candidate_sha,
         "candidate_tree_sha": candidate.candidate_tree_sha,
         "lint_succeeded": lint_succeeded,
         "lint_log_sha256": digest,
+        "runtime_acceptance_succeeded": runtime_succeeded,
+        "runtime_acceptance_report_sha256": report_digest,
     }
     output_path.write_text(json.dumps(record, ensure_ascii=True, indent=_JSON_INDENT) + _NEWLINE, encoding=_UTF8)
-    if not lint_succeeded:
+    if not lint_succeeded or not runtime_succeeded:
         raise RuntimeError(_DEFAULT_FAILURE)
 
 
@@ -690,28 +742,30 @@ def record_proof(
     candidate_path: Path,
     candidate_check_path: Path,
     harness_output_directory: Path,
+    runtime_report_path: Path,
     harness_exit_code: int,
     output_directory: Path,
 ) -> ProofIdentity:
     """Write exact candidate-bound installer proof plus bounded text evidence."""
     candidate = CandidateIdentity.model_validate_json(candidate_path.read_bytes())
-    check = json.loads(candidate_check_path.read_bytes())
-    if (
-        check.get("candidate_sha") != candidate.candidate_sha
-        or check.get("candidate_tree_sha") != candidate.candidate_tree_sha
-        or check.get("lint_succeeded") is not True
-    ):
-        raise ValueError(_INVALID_ARTIFACT)
+    report_data = _read_bounded_file(runtime_report_path, _MAX_RUNTIME_REPORT_BYTES)
+    report_digest = validate_runtime_acceptance_evidence(
+        candidate, None, candidate_check_path.read_bytes(), report_data
+    )
     output_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     log_path = output_directory / _PROOF_LOG_FILENAME
     _collect_harness_logs(harness_output_directory, log_path)
-    evidence_digest = _sha256_file(log_path)
+    evidence_digest = hashlib.sha256(
+        log_path.read_bytes() + b"\0" + _RUNTIME_ACCEPTANCE_REPORT_FILENAME.encode(_UTF8) + b"\0" + report_data
+    ).hexdigest()
     proof = ProofIdentity(
         candidate_sha=candidate.candidate_sha,
         candidate_tree_sha=candidate.candidate_tree_sha,
         lint_succeeded=True,
         installer_succeeded=harness_exit_code == 0,
         evidence_sha256=evidence_digest,
+        runtime_acceptance_succeeded=True,
+        runtime_acceptance_report_sha256=report_digest,
     )
     (output_directory / _PROOF_FILENAME).write_text(
         proof.model_dump_json(indent=_JSON_INDENT) + _NEWLINE,
@@ -794,6 +848,13 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: content.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _read_bounded_file(path: Path, maximum_bytes: int) -> bytes:
+    """Read one regular bounded artifact without following a symlink."""
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > maximum_bytes:
+        raise ValueError(_INVALID_ARTIFACT)
+    return path.read_bytes()
 
 
 def _collect_harness_logs(source: Path, destination: Path) -> None:
@@ -980,12 +1041,15 @@ def main(argv: list[str] | None = None) -> int:
     lint_record = commands.add_parser("record-candidate-check")
     lint_record.add_argument("--candidate", type=Path, required=True)
     lint_record.add_argument("--log", type=Path, required=True)
+    lint_record.add_argument("--runtime-report", type=Path, required=True)
     lint_record.add_argument("--output", type=Path, required=True)
     lint_record.add_argument("--success", action="store_true")
+    lint_record.add_argument("--runtime-success", action="store_true")
     record_proof_parser = commands.add_parser("record-proof")
     record_proof_parser.add_argument("--candidate", type=Path, required=True)
     record_proof_parser.add_argument("--candidate-check", type=Path, required=True)
     record_proof_parser.add_argument("--harness-output", type=Path, required=True)
+    record_proof_parser.add_argument("--runtime-report", type=Path, required=True)
     record_proof_parser.add_argument("--harness-exit-code", type=int, required=True)
     record_proof_parser.add_argument("--output-directory", type=Path, required=True)
     cleanup = commands.add_parser("cleanup-inspectors")
@@ -1022,9 +1086,16 @@ def _stage_handler(args: argparse.Namespace) -> Callable[[], object]:
         ),
         "recover-publication": lambda: recover_publication(repo_root(), args.output_directory, os.environ[_GH_TOKEN]),
         "prepare-proof-checkout": lambda: prepare_proof_checkout(Path.cwd(), args.candidate, args.bundle),
-        "record-candidate-check": lambda: record_candidate_check(args.candidate, args.log, args.output, args.success),
+        "record-candidate-check": lambda: record_candidate_check(
+            args.candidate, args.log, args.runtime_report, args.output, args.success, args.runtime_success
+        ),
         "record-proof": lambda: record_proof(
-            args.candidate, args.candidate_check, args.harness_output, args.harness_exit_code, args.output_directory
+            args.candidate,
+            args.candidate_check,
+            args.harness_output,
+            args.runtime_report,
+            args.harness_exit_code,
+            args.output_directory,
         ),
         "cleanup-inspectors": lambda: cleanup_inspectors(args.controller_root),
     }

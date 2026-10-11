@@ -3,17 +3,11 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import os
-import pty
 import re
-import select
-import shlex
 import shutil
-import struct
 import subprocess
 import tempfile
-import termios
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -21,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+
+from tools.ci.terminal import CommandResult, PersistentTerminal
 
 from .probes import GUEST_TELEC_RELATIVE_PATH, ProbeFailure, run_role_and_identity_probes
 
@@ -34,7 +30,6 @@ _ENV_BINARY = "/usr/bin/env"
 _TRUE_BINARY = "/usr/bin/true"
 _PRINTENV_BINARY = "/usr/bin/printenv"
 _BASH_BINARY = "/bin/bash"
-_PTY_SIZE_FORMAT = "HHHH"
 _TART_EXEC_COMMAND = "exec"
 _TART_RUN_COMMAND = "run"
 _TART_CLONE_COMMAND = "clone"
@@ -81,12 +76,9 @@ _VM_PREFIX_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
 _ERROR_REPLACE_MODE = "replace"
 _VM_NAME_FORMAT = "{prefix}{separator}{suffix}"
 _RUN_DIRECTORY_FORMAT = "{prefix}{suffix}"
-_EXIT_MARKER_FORMAT = "{prefix}{suffix}"
 _CLEANUP_DETAIL_FORMAT = "{stop_output} {cleanup_detail}"
 _GUEST_READINESS_DETAIL_FORMAT = "{detail} {output}"
 _OUTPUT_FILENAME_FORMAT = "{name}{suffix}"
-_BYTE_NEWLINE = b"\n"
-_EMPTY_BYTES = b""
 _EXIT_COMMAND = "exit"
 _SEED_DIRECTORY = "seed"
 _GUEST_HOME_PREFIX = "/Users/"
@@ -158,13 +150,7 @@ _TERMINAL_COMMAND_TIMEOUT_SECONDS = 120
 _LOG_COLLECTION_TIMEOUT_SECONDS = 180
 _CLEANUP_TIMEOUT_SECONDS = 120
 _LOG_LOOKBACK = "6h"
-_PTTY_ROWS = 40
-_PTTY_COLUMNS = 120
-_PTY_READ_CHUNK_SIZE = 65536
-_PTY_WAIT_POLL_SECONDS = 0.1
 _TIMEOUT_EXIT_CODE = 124
-_EXIT_MARKER_PREFIX = "_TC_BOOTSTRAP_EXIT_"
-_SHELL_COMMAND_FORMAT = '{command}; __tc_status=$?; printf "\\n{marker}%s\\n" "$__tc_status"'
 _TART_NOT_FOUND = "Tart is unavailable on this host."
 _TART_VERSION_UNREADABLE = "Could not read the Tart CLI version."
 _TART_VERSION_TOO_OLD = "Tart {version} is below the required minimum {minimum}."
@@ -220,14 +206,6 @@ class HarnessFailure(RuntimeError):
 
 
 @dataclass(frozen=True)
-class CommandResult:
-    """Captured result from one host or guest process."""
-
-    returncode: int
-    output: str
-
-
-@dataclass(frozen=True)
 class OwnerSeed:
     """Validated owner seed used only by the disposable VM."""
 
@@ -257,111 +235,25 @@ def _load_owner_seed() -> OwnerSeed:
     return OwnerSeed(name=name.strip(), email=email.strip())
 
 
-class GuestTerminal:
+class GuestTerminal(PersistentTerminal):
     """Keep one Tart guest login bound to one real guest terminal session."""
 
     def __init__(self, tart_path: str, vm_name: str, timeout_seconds: int) -> None:
-        self._tart_path = tart_path
-        self._vm_name = vm_name
-        self._timeout_seconds = timeout_seconds
-        self._process: subprocess.Popen[bytes] | None = None
-        self._master_fd: int | None = None
-        self._buffer = bytearray()
-
-    def __enter__(self) -> GuestTerminal:
-        master_fd, slave_fd = pty.openpty()
-        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack(_PTY_SIZE_FORMAT, _PTTY_ROWS, _PTTY_COLUMNS, 0, 0))
-        # Tart and its guest agent are external terminal APIs; a host PTY is required because Tart reads stdout size.
-        self._process = subprocess.Popen(
+        super().__init__(
             [
-                self._tart_path,
+                tart_path,
                 _TART_EXEC_COMMAND,
                 _TART_INPUT_OPTION,
                 _TART_TERMINAL_OPTION,
-                self._vm_name,
+                vm_name,
                 _BASH_BINARY,
                 _BASH_NO_PROFILE_OPTION,
                 _BASH_NO_RC_OPTION,
                 _INTERACTIVE_OPTION,
             ],
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            close_fds=True,
-            start_new_session=True,
+            environment=os.environ,
+            timeout_seconds=timeout_seconds,
         )
-        os.close(slave_fd)
-        self._master_fd = master_fd
-        flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
-        fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-        return self
-
-    def run(self, command: Sequence[str]) -> CommandResult:
-        if self._process is None or self._master_fd is None:
-            raise HarnessFailure(_GUEST_NOT_READY)
-        marker = _EXIT_MARKER_FORMAT.format(prefix=_EXIT_MARKER_PREFIX, suffix=uuid.uuid4().hex)
-        rendered = shlex.join(list(command))
-        shell_command = _SHELL_COMMAND_FORMAT.format(command=rendered, marker=marker)
-        os.write(self._master_fd, (shell_command + _NEWLINE).encode(_UTF8))
-        output, status = self._read_to_marker(marker)
-        return CommandResult(returncode=status, output=output)
-
-    def _read_to_marker(self, marker: str) -> tuple[str, int]:
-        assert self._master_fd is not None
-        assert self._process is not None
-        deadline = time.monotonic() + self._timeout_seconds
-        encoded_marker = marker.encode(_UTF8)
-        while time.monotonic() < deadline:
-            marker_index = self._buffer.rfind(encoded_marker)
-            if marker_index >= 0:
-                suffix = bytes(self._buffer[marker_index + len(encoded_marker) :])
-                status_line = suffix.splitlines()[0] if suffix.splitlines() else _EMPTY_BYTES
-                if status_line.strip().isdigit():
-                    output = bytes(self._buffer[:marker_index]).decode(_UTF8, errors=_ERROR_REPLACE_MODE)
-                    line_end = suffix.find(_BYTE_NEWLINE)
-                    self._buffer = bytearray(suffix[line_end + 1 :] if line_end >= 0 else _EMPTY_BYTES)
-                    return output, int(status_line.strip())
-            if self._process.poll() is not None:
-                raise HarnessFailure(_GUEST_NOT_READY)
-            ready, _, _ = select.select([self._master_fd], [], [], _PTY_WAIT_POLL_SECONDS)
-            if not ready:
-                continue
-            try:
-                chunk = os.read(self._master_fd, _PTY_READ_CHUNK_SIZE)
-            except BlockingIOError:
-                continue
-            except OSError:
-                break
-            if not chunk:
-                break
-            self._buffer.extend(chunk)
-        raise HarnessFailure(_GUEST_NOT_READY)
-
-    def close(self) -> None:
-        process = self._process
-        master_fd = self._master_fd
-        if process is not None and process.poll() is None and master_fd is not None:
-            try:
-                os.write(master_fd, (_EXIT_COMMAND + _NEWLINE).encode(_UTF8))
-            except OSError:
-                process.terminate()
-        if process is not None:
-            try:
-                process.wait(timeout=self._timeout_seconds)
-            except subprocess.TimeoutExpired:
-                process.terminate()
-                try:
-                    process.wait(timeout=self._timeout_seconds)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-        if master_fd is not None:
-            os.close(master_fd)
-        self._process = None
-        self._master_fd = None
-
-    def __exit__(self, *_: object) -> None:
-        self.close()
 
 
 class BootstrapHarness:
