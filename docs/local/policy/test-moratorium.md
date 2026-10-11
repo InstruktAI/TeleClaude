@@ -1,50 +1,36 @@
 ---
-description: The Python test corpus remains absent; a bounded black-box CLI acceptance harness is the sole authoring exception, alongside integrator judgment of runtime logs.
+description: Python verification permits one bounded black-box CLI acceptance harness, independent review, and integrator judgment of runtime logs.
 ---
 
 # Test Moratorium — Policy
 
 ## Rules
 
-- **The general Python test corpus and toolchain remain absent.** The CLI acceptance harness defined in Exceptions is the sole authoring allowance. Outside that allowance, adding a test file, a test dependency, or a test runner is a violation regardless of quality, size, or justification, and that includes markup-serialization snapshots (`toMatchSnapshot` over component trees) — a serialized render is the code restating itself.
-- **The live daemon supplies operational signals.** What the main-only restart action reports, and where post-restart health is judged, is owned by `local/projects/teleclaude/policy/daemon-availability`. After activation, the standing integrator reads the delivery's log window under `sdlc/procedure/lifecycle/integrate` and uses its judgment to investigate anomalies and fix forward. The log bug hunter remains a later anomaly backstop. A regular committer's validation and independent commit-review obligations remain governed by `general/policy/commits`.
+- **Python test authorship is limited to the CLI acceptance harness.** Exceptions defines its allowed scope. Outside that allowance, adding a test file, a test dependency, or a test runner is a violation regardless of quality, size, or justification, and that includes markup-serialization snapshots (`toMatchSnapshot` over component trees) — a serialized render is the code restating itself.
+- **The live daemon supplies operational signals.** What the main-only restart action reports, and where post-restart health is judged, is owned by `local/projects/teleclaude/policy/daemon-availability`. After activation, the standing integrator reads the delivery's log window under `sdlc/procedure/lifecycle/integrate` and uses its judgment to investigate anomalies and fix forward. The log bug hunter provides a later anomaly backstop. A regular committer's validation and independent commit-review obligations remain governed by `general/policy/commits`.
 - **The CLI help smoke runs in the worktree.** A CLI-touching builder exercises each affected help path once through its worktree's own `bin/telec`, and the independent reviewer repeats that targeted smoke the same way. The wrapper runs the worktree's code against the home repository clone the platform provisions with the worktree, and the global `telec` runs installed code against the live platform (`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`); neither agent assembles home files or sets the variable. A shared command-surface change may traverse its affected help paths in one batch of those wrapper calls; routine lint never performs or substitutes for this check. Throwaway in-session probes are permitted — driven the same way and deleted before commit. An agent never sets, exports, or removes `TELECLAUDE_HOME` or `HOME`, and never removes a directory named by a variable: a shell variable does not survive from one tool call to the next, so a home set in one call and removed in another resolves to the live home. This smoke covers behavior inside the CLI process; commands that write project state or act through the daemon are outside its scope.
-- **The `test` action is unbound, never removed.** The platform base registry keeps the `test` action; only this repository's `code` scope stops binding it. The unbind is expressed in this repository's own `teleclaude.yml`, and the platform base carries no `test` binding of its own, so no satellite project's contract changes.
+- **This repository does not bind the generic `test` action.** The platform base registry defines the action without a binding. Each repository owns its bindings through its own `teleclaude.yml`; satellite projects follow their own testing contracts.
 - **The moratorium expires when the Rust runtime supersedes v1.** The Rust runtime states its own testing doctrine; nothing in this policy constrains it.
 
 ## Rationale
 
-Why a self-authored check carries no information is `general/principle/verification-independence`, and is not restated here. Two things are specific to this repository.
+Verification uses a standard independent of the implementation under judgment
+(`general/principle/verification-independence`). Python runtime substitution can
+bypass the process boundaries where integration failures occur. The bounded
+harness exercises those boundaries with real CLI processes, daemon requests and
+persistent state, against independently reviewed public scenarios.
 
-An uneventful log window does not prove that every specified behavior occurred.
-That limit is accepted here: build review judges conformance to the specs, the
-logging policy exposes significant operations and failures, and the integrator
-judges anomalies after activation. The bounded CLI journeys add pre-delivery evidence for real process wiring and observable outcomes; they do not establish unvisited behavior. Breakage found later enters normal recovery
-and is fixed forward. Requiring live proof for each delivery would recreate the
-preparation work this ruling removes.
+An uneventful log window does not prove every specified behavior occurred.
+Build review judges conformance to the specifications, the logging policy
+exposes significant operations and failures, and the integrator judges anomalies
+after activation. The CLI journeys supply evidence for the behavior they
+exercise; unvisited behavior is outside that evidence.
 
-**The substrate makes the worthless path the cheapest one.** Python's runtime patching means faking a collaborator costs one line, so the cheapest route to a green test is a test that asserts nothing. The Rust runtime's corpus carries no mocks at all. That contrast reflects substrate and doctrine together — a different language, a stricter doctrine, and a younger codebase — not the language alone.
-
-### Measured evidence
-
-Every bug in the durable record — 167 of them, spanning 2026-03-31 to 2026-07-27 — was classified against a fixed rubric by five independent readers:
-
-| Finding                                                 | Count     |
-| ------------------------------------------------------- | --------- |
-| Catchable by no realistic pre-written agent test        | 122 (73%) |
-| Plainly catchable by a straightforward test             | 35 (21%)  |
-| Catchable only by booting heavy machinery               | 6 (4%)    |
-| Delivered items whose subject was the test suite itself | 12        |
-
-Failure classes: wiring 32%, logic 30%, state 13%, process 12%, race 8%. The verification budget was aimed at logic; 70% of failures were elsewhere.
-
-The control is built in: the 1312-test suite was fully in place while all 167 shipped, including every one of the 35 plainly catchable ones. Suite size is uncorrelated with defect capture in this codebase. Four diagnoses record an existing test _pinning the defect as correct_, so the suite entrenched wrong behavior rather than merely missing it.
-
-Method limits: one classifier vote per bug, and 36 were judged from bug reports rather than diagnosis artifacts. Two independent aggregations agreed within two percentage points.
-
-The 35 catchable defects are branch and table errors in first-party logic — precisely the class Rust's exhaustive matching and closed types make unrepresentable. They fund the Rust runtime's type discipline, not a Python suite that demonstrably did not catch them.
-
-Recovery cost is the other half of the case. An agent rewrites a module in minutes, so the refactoring-safety-net argument that funds a suite in human-paced development does not hold here. What insurance still pays for is failure that is both silent and irreversible. That class is served by the Rust runtime's invariant and architecture-fitness tests, not by Python restatements.
+Disposable runtime isolation protects the operator's configuration, credentials
+and services. Shared cold and full profiles concentrate verification on the
+named public journeys, while full installation proof covers the supported
+installation path. These boundaries keep the verification claim proportional to
+what actually executes.
 
 ## Scope
 
@@ -69,21 +55,21 @@ This repository only. Satellite projects keep their own testing contract, declar
   credentials, daemon or storage is used.
 - Python is preferred for harness orchestration, health observations, timeouts,
   cleanup and report handling, keeping shell orchestration from accumulating.
-  Real CLI journeys still invoke the public executables as subprocesses.
-  Public command-line tools, including `curl`, remain permitted when they serve the
+  Real CLI journeys invoke the public executables as subprocesses.
+  Public command-line tools, including `curl`, are permitted when they serve the
   boundary being verified; supporting HTTP reads may use a Python client.
   Tool choice preserves real invocation fidelity and bounded, diagnosable
   execution. The Python preference is not a categorical subprocess-tool ban.
 - The allowance includes only the harness, its scenario data, essential execution
-  dependencies, and its fast commit/full hosted-CI/release wiring. It does not
-  restore a general test corpus, the generic `test` binding, unit tests,
-  per-module checks, or markup snapshots. Existing full installation proof
-  remains required by the release contract.
+  dependencies, and its fast commit/full hosted-CI/release wiring. General-purpose
+  test corpora, the generic `test` binding, unit tests, per-module checks and markup
+  snapshots are outside that allowance. Full installation proof is required by
+  the release contract.
 - Scenario assertions derive from the public contracts and are independently
   reviewed before implementation. Any unexpected error or wrong observable
   result fails its journey, regardless of error class. Coverage claims name the
   journeys exercised; passing cannot imply that every command works.
-- Other verification needs remain changes to this policy rather than one-off
+- Other verification needs require changes to this policy rather than one-off
   additions to the corpus.
 
 ## See Also
