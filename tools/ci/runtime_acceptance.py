@@ -194,7 +194,7 @@ _EXPECTED_JOB_NEVER_RUN_ERROR = "The inert declared job did not report a never-r
 _EXPECTED_REFUSAL_STANDING_ERROR = "The non-administrator refusal did not name platform-administrator standing."
 _EXPECTED_INVALID_KEY_ERROR = "The schema refusal did not identify the submitted invalid key."
 _EXPECTED_PROJECT_LIST_ERROR = "The daemon project listing omitted the disposable project."
-_EXPECTED_COMPUTER_LIST_ERROR = "The daemon did not return the synthetic local computer."
+_EXPECTED_COMPUTER_LIST_ERROR = "The daemon did not return the declared local computer."
 _EXPECTED_READINESS_ERROR = "The supported lifecycle did not report a ready daemon in time."
 _FULL_INSTALL_ERROR = "The supported installer failed in the disposable runtime."
 _FULL_SERVICE_STOP_ERROR = "The supported lifecycle could not stop the disposable runtime."
@@ -1082,6 +1082,14 @@ def _computer_view(output: str) -> tuple[Mapping[str, object], str]:
     return computer, revision
 
 
+def _computer_identity(machine: Mapping[str, object]) -> Mapping[str, object]:
+    """Read identity fields inside the computer-kind machine document."""
+    computer = _mapping_value(machine.get(_CONFIG_COMPUTER_FIELD))
+    if computer is None:
+        raise ValueError(_FULL_CONFIG_SHAPE_INVALID)
+    return computer
+
+
 def _machine_state_view(output: str) -> tuple[JSONObject, str]:
     """Read the full declared machine view without its per-request metadata."""
     payload = _mapping_value(_structured_value(output))
@@ -1126,14 +1134,14 @@ def _project_list_contains(output: str, project_name: str, project_path: Path) -
     return False
 
 
-def _computer_list_contains(output: str) -> bool:
-    """Confirm a real daemon response includes the synthetic local computer."""
+def _computer_list_contains(output: str, expected_name: str) -> bool:
+    """Match the daemon's local identity against the independently read declaration."""
     payload = _structured_value(output)
     if not isinstance(payload, list):
         return False
     for item in payload:
         row = _mapping_value(item)
-        if row is not None and row.get(_COMPUTER_NAME_FIELD) == _SYNTHETIC_COMPUTER_NAME:
+        if row is not None and row.get(_COMPUTER_NAME_FIELD) == expected_name:
             return row.get(_COMPUTER_IS_LOCAL_FIELD) is True
     return False
 
@@ -1333,7 +1341,7 @@ def _restore_full_profile_changes(resources: FullRuntimeResources, evidence: lis
             restore: JSONObject = {}
             if (
                 resources.original_timezone is not None
-                and computer.get(_MACHINE_TIMEZONE_FIELD) != resources.original_timezone
+                and _computer_identity(computer).get(_MACHINE_TIMEZONE_FIELD) != resources.original_timezone
             ):
                 restore[_CONFIG_COMPUTER_FIELD] = {_MACHINE_TIMEZONE_FIELD: resources.original_timezone}
             for section_name, enabled in (resources.original_adapter_flags or {}).items():
@@ -1456,6 +1464,10 @@ def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[Comm
     )
     _require_terminal_success(login_status, login_output, evidence)
     _disable_external_adapters(resources, evidence)
+    machine, _, _ = _read_computer_config(resources, terminal, evidence)
+    expected_name = _computer_identity(machine).get(_MACHINE_NAME_FIELD)
+    if not isinstance(expected_name, str) or not expected_name:
+        raise ValueError(_FULL_CONFIG_SHAPE_INVALID)
     resources.start_attempted = True
     start_result = _record_external_command(
         resources,
@@ -1473,7 +1485,7 @@ def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[Comm
         evidence,
     )
     _require_terminal_success(computer_status, computer_output, evidence)
-    if not _computer_list_contains(computer_output):
+    if not _computer_list_contains(computer_output, expected_name):
         raise ValueError(_EXPECTED_COMPUTER_LIST_ERROR)
 
 
@@ -1503,6 +1515,7 @@ def _full_owner_identity(resources: FullRuntimeResources, evidence: list[Command
 def _full_configuration_change(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
     terminal = resources.open_admin_terminal()
     computer, revision, _ = _read_computer_config(resources, terminal, evidence)
+    computer = _computer_identity(computer)
     original_timezone = computer.get(_MACHINE_TIMEZONE_FIELD)
     if not isinstance(original_timezone, str):
         raise ValueError(_FULL_CONFIG_SHAPE_INVALID)
@@ -1523,6 +1536,7 @@ def _full_configuration_change(resources: FullRuntimeResources, evidence: list[C
     _patch_configuration(resources, terminal, _CONFIG_COMPUTER_PATCH_PREFIX, revision, patch, evidence)
     verified_terminal = resources.open_admin_terminal()
     verified, new_revision, _ = _read_computer_config(resources, verified_terminal, evidence)
+    verified = _computer_identity(verified)
     if verified.get(_MACHINE_TIMEZONE_FIELD) != timezone:
         raise ValueError(_EXPECTED_VALID_PATCH_ERROR)
     if verified.get(_MACHINE_NAME_FIELD) != unrelated_name:
@@ -1637,6 +1651,7 @@ def _full_restart_persistence(resources: FullRuntimeResources, evidence: list[Co
     _run_readiness_check(resources, evidence)
     terminal = resources.open_admin_terminal()
     computer, _, _ = _read_computer_config(resources, terminal, evidence)
+    computer = _computer_identity(computer)
     if computer.get(_MACHINE_TIMEZONE_FIELD) != resources.expected_timezone:
         raise ValueError(_FULL_STATE_CHANGED)
     if computer.get(_MACHINE_NAME_FIELD) != resources.unrelated_computer_name:
@@ -1683,7 +1698,7 @@ def _full_non_admin_refusal(resources: FullRuntimeResources, evidence: list[Comm
         raise ValueError(_EXPECTED_MEMBER_WHOAMI_ERROR)
     computer, revision, before_output = _read_computer_config(resources, admin_terminal, evidence)
     before_state, _ = _machine_state_view(before_output)
-    current_timezone = computer.get(_MACHINE_TIMEZONE_FIELD)
+    current_timezone = _computer_identity(computer).get(_MACHINE_TIMEZONE_FIELD)
     if not isinstance(current_timezone, str):
         raise ValueError(_FULL_CONFIG_SHAPE_INVALID)
     attempted_timezone = _TIMEZONE_EUROPE_AMSTERDAM if current_timezone == _TIMEZONE_UTC else _TIMEZONE_UTC
