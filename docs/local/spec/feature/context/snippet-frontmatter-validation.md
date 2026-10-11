@@ -304,6 +304,34 @@ Scenario Outline: The declared attendance is validated against the subscription
     | declares an attendance and no events                    | an attendance finding is reported for that file and the sync exits non-zero |
 ```
 
+<!-- planned:procedure-event-delivery -->
+
+#### UC-SFV10:
+
+```gherkin
+Scenario Outline: Event delivery declarations are validated structurally
+  Given an agent authors a procedure with <declaration>
+  When the agent validates its documentation
+  Then it receives <result>
+
+  Examples:
+    | declaration                                                    | result                                      |
+    | subscriptions and either supported delivery mode               | an accepted declaration                     |
+    | subscriptions and either boolean interruptibility value        | an accepted declaration                     |
+    | subscriptions and omitted delivery settings                    | an accepted declaration using the defaults  |
+    | subscriptions and an unsupported delivery mode                 | a finding identifying the invalid setting   |
+    | subscriptions and a non-boolean interruptibility value         | a finding identifying the invalid setting   |
+    | delivery settings without subscriptions                        | a finding identifying the misplaced setting |
+```
+
+Publication resolves the declaration defaults and publishes the effective
+delivery settings alongside the existing subscription facts. Field names,
+values, defaults, and implied required reads are owned by
+`general/spec/snippet-authoring-schema`; interpretation uses the same resolved
+declaration for publication, retrieval, and activation routing
+(`sdlc/principle/design-fundamentals`).
+<!-- /planned:procedure-event-delivery -->
+
 ### Cross-context references
 
 - workflow and integration own lifecycle state transitions and delivery-time

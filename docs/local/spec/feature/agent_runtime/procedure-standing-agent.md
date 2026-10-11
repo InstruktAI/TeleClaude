@@ -7,6 +7,8 @@ visibility: internal
 
 ## What it is
 
+<!-- planned-change:procedure-event-delivery -->
+
 A procedure that declares the events activating it owns one continuing agent per
 activation home, or, when it declares subject identity, one per subject of its
 events within that home. A home is a company, a person, or a project, named by
@@ -20,6 +22,24 @@ home. The first activation for an identity starts its agent; every later
 activation for the same identity is delivered to that agent, whether it is idle
 or in the middle of a turn. A subject-bound agent whose session has closed is
 revived with its own context before the activation is delivered to it.
+<!-- change:procedure-event-delivery -->
+
+A procedure that declares the events activating it owns one continuing agent per
+activation home, or, when it declares subject identity, one per subject of its
+events within that home. A home is a company, a person, or a project, named by
+its kind and its slug, or the platform itself for events that concern no
+registered home. By default the agent is identified by two facts: the
+procedure's existing canonical ID and the home whose work it carries. A
+procedure that declares subject identity adds a third: the subject its
+activating event is about, so each thing its events concern — a session, a
+todo, a job — has an agent of its own and no agent collects every subject in a
+home. The first activation for an identity starts its agent; every later
+activation for the same identity is queued for that agent and delivered at the
+boundaries its procedure declares under
+`local/projects/teleclaude/spec/feature/agent_runtime/procedure-event-delivery`.
+A subject-bound agent whose session has closed is
+revived with its own context before the activation is delivered to it.
+<!-- /planned-change:procedure-event-delivery -->
 
 The procedure's ID is the procedure's part of that identity. Its declared
 subscription patterns are its event membership and nothing more — there is no separate group identifier and no
@@ -92,6 +112,8 @@ person's folder carries no human identity and acts as no person.
 
 ### Use cases
 
+<!-- planned-change:procedure-event-delivery -->
+
 #### UC-PSA1: The first activation starts the procedure's standing agent
 
 ```gherkin
@@ -103,6 +125,22 @@ And it receives the triggering event as its first input, through the same delive
 And the event is not supplied as startup context
 ```
 
+<!-- change:procedure-event-delivery -->
+
+#### UC-PSA1:
+
+```gherkin
+Given no standing agent continues a procedure for a home on the computer that emitted the event
+When an activation for that procedure and home arrives there
+Then a standing agent is started in that home under the system principal
+And it receives the canonical brief loading the procedure and its effective required reads
+And its initial event is delivered as hook context under the procedure event-delivery contract
+```
+
+<!-- /planned-change:procedure-event-delivery -->
+
+<!-- planned-change:procedure-event-delivery -->
+
 #### UC-PSA2: A later activation reaches the agent already standing
 
 ```gherkin
@@ -112,6 +150,20 @@ Then the activation is delivered to that same agent
 And no second agent is started
 And delivery occurs whether that agent is idle or in the middle of a turn
 ```
+
+<!-- change:procedure-event-delivery -->
+
+#### UC-PSA2:
+
+```gherkin
+Given a standing agent continues a procedure for a home
+When a further activation for that procedure and home arrives
+Then that activation is queued for the same agent
+And it reaches the agent at an eligible boundary under the procedure's delivery declaration
+And no second agent is started
+```
+
+<!-- /planned-change:procedure-event-delivery -->
 
 #### UC-PSA3: Every declared event reaches the one standing agent
 

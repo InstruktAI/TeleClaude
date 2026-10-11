@@ -78,6 +78,34 @@ Classification (`id`/`type`/`scope`/`domain`) is read from the file path by the 
 
 Third-party docs under `docs/third-party/` or `~/.teleclaude/docs/third-party/` are indexed separately from taxonomy snippets. They author only `description`; their `id` and `scope` are derived from their path below the third-party root, and they no longer carry `type`.
 
+<!-- planned:procedure-event-delivery -->
+
+### Event delivery declarations
+
+A procedure declaring `subscriptions` may also declare:
+
+- `event_delivery`: `sequential` (default) or `batched`. This selects one oldest
+  pending event or the ordered pending set at each eligible delivery boundary.
+- `interruptible`: a boolean, default `false`. False admits activation events
+  only at initial activation and wake entry; true also admits them at supported
+  in-turn hook boundaries.
+
+These fields are valid only on subscribed procedures. Their values are
+independent: cardinality changes how many events are supplied, while
+interruptibility changes when they may arrive. Runtime owns delivery under
+`local/projects/teleclaude/spec/feature/agent_runtime/procedure-event-delivery`.
+
+The effective required reads of a subscribed procedure include
+`general/procedure/event-handling/overview`; an interruptible procedure also
+includes `general/procedure/event-handling/interruptible`. Authored required
+reads remain in the same graph, with recursive expansion and deduplication.
+The context publication and retrieval surfaces expose these effective
+dependencies under
+`local/projects/teleclaude/spec/feature/context/doc-snippet-three-phase-retrieval`.
+Both delivery cardinalities use the same handling prose
+(`general/principle/priming`).
+<!-- /planned:procedure-event-delivery -->
+
 Document structure:
 
 - H1 title with type suffix (e.g., `# Session Lifecycle — Design`).

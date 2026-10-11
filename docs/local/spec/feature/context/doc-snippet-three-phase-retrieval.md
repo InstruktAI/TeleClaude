@@ -234,6 +234,54 @@ And no content body or withheld notice is returned
 And the refusal is the same whether or not that person is declared
 ```
 
+<!-- planned:procedure-event-delivery -->
+
+#### UC-3PR16:
+
+```gherkin
+Scenario Outline: A procedure's delivery declaration composes its activation instructions
+  Given an agent loads a delivered subscribed procedure with <interruptibility>
+  When it requests the complete activation closure
+  Then the closure contains the procedure's authored dependencies and <shared instructions>
+  And each dependency is rendered once even when reachable through several paths
+  And the same dependencies apply for either event delivery cardinality
+
+  Examples:
+    | interruptibility       | shared instructions                                |
+    | interruption disabled  | the common event-handling procedure                |
+    | interruption enabled   | the common and interruptible event-handling procedures |
+```
+
+#### UC-3PR17:
+
+```gherkin
+Given an agent discovers a subscribed procedure and retrieves it without closure expansion
+When it inspects the procedure's effective required reads
+Then it can see the authored and declaration-implied dependencies
+And ordinary retrieval leaves their bodies for explicit follow-up
+And a procedure without subscriptions acquires no event-handling dependencies automatically
+```
+
+#### UC-3PR18:
+
+```gherkin
+Given a subscribed procedure requires shared instructions implied by its delivery declaration
+And those instructions are unavailable as eligible current content
+When an agent requests its activation closure
+Then the request fails visibly rather than claiming a complete instruction set
+And the failure identifies the unavailable dependency
+```
+
+The context owner composes one effective required-read graph from authored
+dependencies and the declaration-implied identities in
+`general/spec/snippet-authoring-schema`. Publication exposes that graph;
+ordinary retrieval lists its dependencies; activation closure expands it under
+the existing visibility and deduplication rules. A missing, withheld, or pending
+mandatory event-handling dependency makes the activation closure incomplete.
+The procedure and its required shared instructions become current together
+(`general/policy/documentation-discipline`, `general/principle/priming`).
+<!-- /planned:procedure-event-delivery -->
+
 ### Cross-context references
 
 - **identity** — the resolved caller: a person with their platform role and the
