@@ -83,6 +83,16 @@ before full installation proof. Publication requires both results for that
 candidate. The bounded journey allowance and its verification purpose are owned
 by `local/projects/teleclaude/policy/test-moratorium`.
 
+Acceptance evidence identifies the exact candidate and tree, the full profile,
+all required journey outcomes and cleanup. Its digest travels in the durable
+proof checked by publication and recovery, under
+`sdlc/policy/code-quality` and `sdlc/policy/backward-compatibility-hygiene`.
+Historical proofs remain readable with acceptance recorded as absent when it
+was never run; migration never manufactures success or changes their original
+evidence. Completed publications remain completed. An incomplete publication
+without acceptance evidence cannot resume publication until the full profile
+has been proved against its original candidate; its captured source is retained.
+
 <!-- /planned:cli-runtime-smoke-harness -->
 
 ### Publication and recovery
