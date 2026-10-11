@@ -12,12 +12,31 @@ domains never changes another publisher's configuration.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from teleclaude.config.loader import load_declared_project_config
 from teleclaude.config.schema import BusinessConfig
 from teleclaude.project_manifest import load_roots
 from teleclaude.project_root import declaration_root
+
+_RESOLUTION_SCOPE = "domain_business_resolution"
+_BUSINESS: ContextVar[dict[Path, BusinessConfig] | None] = ContextVar(_RESOLUTION_SCOPE, default=None)
+
+
+@contextmanager
+def domain_resolution() -> Iterator[None]:
+    """Reuse successful publisher declarations within one synchronous operation."""
+    if _BUSINESS.get() is not None:
+        yield
+        return
+    token = _BUSINESS.set({})
+    try:
+        yield
+    finally:
+        _BUSINESS.reset(token)
 
 
 def publishes_for_root(root: Path) -> set[str]:
@@ -54,8 +73,16 @@ def _business_for_root(root: Path) -> BusinessConfig | None:
     The declaration is read from the checkout that owns ``root``: a linked
     worktree carries a branch copy and is never authoritative for it.
     """
-    declared = load_declared_project_config(declaration_root(root))
-    return None if declared is None else declared.business
+    declarations = _BUSINESS.get()
+    key = declaration_root(root).expanduser().absolute()
+    if declarations is not None and key in declarations:
+        return declarations[key]
+    declared = load_declared_project_config(key)
+    if declared is None:
+        return None
+    if declarations is not None:
+        declarations[key] = declared.business
+    return declared.business
 
 
 def valid_domains() -> set[str]:
