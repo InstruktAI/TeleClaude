@@ -38,6 +38,7 @@ No row inherits, shadows, or falls back to another row. The selected YAML path d
 
 - Resolution walks mappings, lists, and string leaves recursively before schema validation.
 - Only `${NAME}` tokens participate. Substituted values are strings; the typed schema owns any later coercion.
+- The destination field's declared type determines scalar meaning after resolution. Boolean fields parse recognized boolean spellings by value, numeric fields use their declared numeric conversion, and text fields retain text. A value rejected by the destination type fails at the configuration boundary (`sdlc/policy/code-quality`).
 - A missing sibling `.env` is equivalent to an empty local environment: every whole-value reference is then absent.
 - Loading and resolving an overlay does not mutate the process environment.
 - A configuration file read from a committed snapshot rather than the working tree resolves from no environment file: a snapshot never carries a `.env` and receives none, so every whole-value reference in it is absent, and commit-time and publication checks judge the document alone.

@@ -46,11 +46,6 @@ def _flag(value: object) -> bool:
     return as_bool(_require_scalar(value))
 
 
-def _truthy(value: object) -> bool:
-    """Apply Python truthiness after the shared structural check."""
-    return bool(_require_scalar(value))
-
-
 def _optional_text(value: object) -> str | None:
     """Strip optional text and map empty results to None."""
     scalar = _require_scalar(value)
@@ -111,7 +106,6 @@ def _int_lenient(value: object) -> int:
 
 
 FLAG = Annotated[bool, BeforeValidator(_flag)]
-TRUTHY = Annotated[bool, BeforeValidator(_truthy)]
 OPT_TEXT = Annotated[str | None, BeforeValidator(_optional_text)]
 TRUTHY_TEXT = Annotated[str | None, BeforeValidator(_truthy_text)]
 TEXT = Annotated[str, BeforeValidator(_text)]

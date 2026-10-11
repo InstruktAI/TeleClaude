@@ -51,7 +51,6 @@ from teleclaude.config._coerce import (
     OPT_TEXT,
     SCALAR_INPUT,
     TEXT,
-    TRUTHY,
     TRUTHY_TEXT,
 )
 from teleclaude.config._remote_computers import RemoteComputerConfig
@@ -294,11 +293,11 @@ class ComputerConfig(ClosedModel):
     role: TEXT = Field(json_schema_extra={"tier": Tier.TUI})
     timezone: TEXT = Field(json_schema_extra={"tier": Tier.TUI})
     default_working_dir: TEXT = Field(json_schema_extra={"tier": Tier.INTERNAL})
-    is_master: TRUTHY = Field(json_schema_extra={"tier": Tier.TUI})
+    is_master: FLAG = Field(json_schema_extra={"tier": Tier.TUI})
     # Optional LAN address override; auto-detected when unset.
     host: TEXT | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})
     tmux_binary: TEXT = Field(default="tmux", json_schema_extra={"tier": Tier.INTERNAL})
-    is_ingress_node: TRUTHY = Field(default=False, json_schema_extra={"tier": Tier.TUI})
+    is_ingress_node: FLAG = Field(default=False, json_schema_extra={"tier": Tier.TUI})
 
     @model_validator(mode="before")
     @classmethod

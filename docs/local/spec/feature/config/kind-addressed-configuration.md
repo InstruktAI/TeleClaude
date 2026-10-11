@@ -123,6 +123,16 @@ not change a kind or instance by implication.
 
 ## Canonical fields
 
+### Read paths
+
+Dotted paths passed to `get` address the selected configuration document. The
+kind or instance in the command establishes the subject; a response envelope
+adds no field-path segment. A person subject retains its identity and settings
+sections because its declared view joins distinct documents. Selection retains
+the response envelope and revision. Existing envelope-prefixed paths remain
+accepted when no document-relative field resolves, with document-relative
+paths taking precedence.
+
 ### Use cases
 
 #### UC-KAC1: An agent addresses every configuration subject by kind

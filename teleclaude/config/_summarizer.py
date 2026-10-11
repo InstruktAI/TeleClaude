@@ -9,7 +9,7 @@ from typing import Annotated
 from pydantic import Field, field_validator, model_validator
 
 from teleclaude.closed_model import SENSITIVE, ClosedModel
-from teleclaude.config._coerce import TRUTHY, TRUTHY_TEXT
+from teleclaude.config._coerce import FLAG, TRUTHY_TEXT
 
 _PROVIDER_PRIORITY_PATH = "config.yml:summarizer.provider_priority"
 _UNKNOWN_PROVIDER_ERROR = "Invalid config key `{path}`: unknown provider(s) {unknown}. Allowed values: {allowed}."
@@ -32,7 +32,7 @@ class SummarizerProvider(StrEnum):
 class SummarizerLocalConfig(ClosedModel):
     """Local (OpenAI-compatible) summarizer provider, e.g. LM Studio."""
 
-    enabled: TRUTHY = False
+    enabled: FLAG = False
     base_url: Annotated[TRUTHY_TEXT, SENSITIVE] = "http://localhost:1234/v1"
     model: Annotated[TRUTHY_TEXT, SENSITIVE] = None
     api_key: Annotated[TRUTHY_TEXT, SENSITIVE] = None

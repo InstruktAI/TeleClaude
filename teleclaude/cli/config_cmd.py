@@ -390,7 +390,7 @@ def _handle_get(kind: str, subject_kind: ConfigSubjectKind, args: list[str], req
         if isinstance(computer_section, Mapping):
             sections[kind] = _withhold_inline_sensitive_machine_values(computer_section)
     merged: dict[str, object] = {**sections, **read_only}  # guard: loose-dict - heterogeneous rendered config view
-    rendered = _select_paths(merged, list(paths)) if paths else merged
+    rendered = _select_subject_paths(merged, kind, list(paths)) if paths else merged
     _render({**rendered, "revision": view.revision, "request_id": request_id}, output_format)
 
 
@@ -826,6 +826,26 @@ def _read_patch(
         print(_PATCH_MAPPING_ERROR)
         raise SystemExit(1)
     return {str(key): value for key, value in parsed.items()}
+
+
+def _select_subject_paths(
+    raw: Mapping[str, object], kind: str, paths: list[str]
+) -> dict[str, object]:  # guard: loose-dict - heterogeneous rendered config view
+    """Resolve document-relative paths before compatible envelope-prefixed paths."""
+    document = raw.get(kind)
+    if not isinstance(document, Mapping):
+        return _select_paths(raw, paths)
+    selected: dict[str, object] = {}  # guard: loose-dict - heterogeneous rendered config view
+    legacy_paths: list[str] = []
+    for path in paths:
+        try:
+            subtree = _extract_subtree(document, path)
+        except KeyError:
+            legacy_paths.append(path)
+        else:
+            _merge(selected, {kind: subtree})
+    _merge(selected, _select_paths(raw, legacy_paths))
+    return selected
 
 
 def _select_paths(

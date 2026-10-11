@@ -7,7 +7,7 @@ from typing import Self
 from pydantic import Field, TypeAdapter, ValidationInfo, field_validator, model_validator
 
 from teleclaude.closed_model import ClosedModel
-from teleclaude.config._coerce import FLAG, FLOAT_STRICT, INT_STRICT, TEXT, TRUTHY
+from teleclaude.config._coerce import FLAG, FLOAT_STRICT, INT_STRICT, TEXT
 from teleclaude.config.tiers import Tier
 
 _INVALID_SECTION_TEMPLATE = "Invalid config key `config.yml:{section}`: expected a mapping."
@@ -290,7 +290,7 @@ class DeploymentConfig(ClosedModel):
 class TerminalConfig(ClosedModel):
     """Terminal display settings."""
 
-    strip_ansi: TRUTHY = True
+    strip_ansi: FLAG = True
 
     @model_validator(mode="before")
     @classmethod
