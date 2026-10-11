@@ -1697,7 +1697,7 @@ def _full_jobs_surface(resources: FullRuntimeResources, evidence: list[CommandEv
         terminal,
         _CONFIG_PROJECT_PATCH_PREFIX + (resources.project_slug,),
         revision,
-        {_PROJECT_CONFIG_SECTION: {_PROJECT_CONFIG_JOBS_FIELD: jobs}},
+        {_PROJECT_CONFIG_JOBS_FIELD: jobs},
         evidence,
     )
     terminal_status, _ = _record_terminal_command(
