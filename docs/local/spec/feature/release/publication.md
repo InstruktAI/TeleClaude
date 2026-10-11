@@ -1,8 +1,8 @@
 ---
-description: Repository release publication binds an independent change assessment and full installer proof to one immutable candidate, with provider failover and visible failure evidence.
+description: Repository release publication binds an independent change assessment
+  and full installer proof to one immutable candidate, with provider failover and
+  visible failure evidence.
 visibility: internal
-delivered_by:
-  - release-pipeline-subscription-proof
 ---
 
 # Release Publication — Spec

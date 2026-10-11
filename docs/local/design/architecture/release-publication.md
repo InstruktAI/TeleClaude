@@ -1,8 +1,7 @@
 ---
-description: Immutable release candidates, independently advancing main, isolated subscription inspection, and recoverable publication state.
+description: Immutable release candidates, independently advancing main, isolated
+  subscription inspection, and recoverable publication state.
 visibility: internal
-delivered_by:
-  - release-pipeline-subscription-proof
 ---
 
 # Release Publication — Design

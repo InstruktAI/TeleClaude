@@ -1,20 +1,19 @@
 ---
-description: 'Standardized JSON schema for AI release inspector reports.'
-visibility: 'public'
+description: Structured assessment returned by the selected release inspector, including explicit assessment completeness.
+visibility: internal
 ---
 
 # Release Report Schema — Spec
 
 ## What it is
 
-Standardized JSON schema for AI Release Inspector reports. All AI Release Inspector lanes (Claude, Codex, Gemini) must produce this schema. This uniformity allows the Consensus Arbiter to process reports deterministically.
+The shared structured assessment returned by whichever provider completes release
+inspection. This schema describes the inspector's judgment; execution failures
+and provider availability are recorded by the invoking workflow separately.
+Publication consumes only a valid, complete assessment under
+`local/projects/teleclaude/spec/feature/release/publication`.
 
 ## Canonical fields
-
-- `classification`: semver classification — `patch`, `minor`, or `none`.
-- `rationale`: detailed reasoning for the classification.
-- `contract_changes`: array of surface change objects (surface, item, change_type, details).
-- `release_notes`: draft release notes for human and AI consumption.
 
 ### JSON Schema
 
@@ -23,7 +22,7 @@ Standardized JSON schema for AI Release Inspector reports. All AI Release Inspec
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "additionalProperties": false,
-  "required": ["classification", "rationale", "contract_changes", "release_notes"],
+  "required": ["classification", "rationale", "contract_changes", "release_notes", "assessment_complete"],
   "properties": {
     "classification": {
       "type": "string",
@@ -65,11 +64,23 @@ Standardized JSON schema for AI Release Inspector reports. All AI Release Inspec
     "release_notes": {
       "type": "string",
       "description": "Draft release notes for human and AI consumption."
+    },
+    "assessment_complete": {
+      "type": "boolean",
+      "description": "Whether the inspector completed the assessment of the supplied change interval."
     }
   }
 }
 ```
 
-### Usage
+### Consumption
 
-AI agents are prompted to return ONLY valid JSON matching this schema using the `run_once` pattern or a directed `run_job` completion.
+Validation checks the report's declared structure. Meaning and classification
+belong to the inspector (`general/principle/intelligence-boundaries`). An
+incomplete assessment explains its gap in the rationale and supplies no
+publication authority. A successful fallback report remains associated with the
+prior provider's failure evidence; the report does not replace that evidence.
+
+## See Also
+
+- docs/local/spec/release-inspector-prompt.md

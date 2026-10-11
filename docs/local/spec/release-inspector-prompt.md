@@ -1,54 +1,62 @@
 ---
-description: 'Canonical prompt for AI release inspectors.'
-visibility: 'public'
+description: Canonical release-inspector task and classification policy for bounded, evidence-based assessment by the selected subscription provider.
+visibility: internal
 ---
 
 # Release Inspector Prompt — Spec
 
 ## What it is
 
-Canonical prompt for AI release inspectors. Analyzes manifest diffs, commit logs, and diffstats to determine the semver release classification based on the project's public surface changes.
+The selected release inspector independently judges actual changes between a
+published baseline and a captured source revision. It applies the project's
+pre-major classification policy and produces the report consumed by release
+publication. Provider selection belongs to
+`local/projects/teleclaude/spec/feature/release/publication`.
 
 ## Canonical fields
 
-- `role`: Meticulous Release Inspector.
-- `input`: Manifest diff (CLI, events, config changes between releases), current manifests (full public surface), commit log (commitizen messages), diffstat (scope and blast radius).
-- `output`: valid JSON matching the release-report-schema.
-- `classification_policy`: Semver 0.x — Minor for any surface change, Patch for internal-only changes, None for non-functional changes.
+### Evidence contract
+
+The inspector receives the fixed baseline and source identities, released and
+current public-contract manifests, and a compact inventory of changed areas.
+Read-only repository access supplies focused source diffs and their consumers.
+Evidence is retrieved in bounded portions; the complete commit log, file list,
+or unified diff is not an initial prompt requirement.
+
+Commit subjects and change summaries guide navigation. Classification follows
+the actual change, independently of the author's label
+(`general/principle/grounding`). Grouping repeated resource changes retains their
+location, extent, and availability for inspection. The report states whether the
+assessment completed; missing coverage is never represented as a clean decision.
+
+### Classification policy
+
+- A public CLI, event, or configuration surface addition, modification, or removal
+  receives a minor classification under the pre-major version policy.
+- Functional changes confined to internal behavior receive a patch classification.
+- An interval with no functional or public-contract changes receives no release.
+
+The inspector reads source behavior and relevant consumers when the manifests
+alone do not establish impact. Purely generated release metadata is accounted for
+as such; functional changes in files that also carry release metadata remain
+part of the assessment.
 
 ### Prompt
 
 ```markdown
-# Role
+You are the release inspector for the supplied baseline and captured source.
 
-You are a Meticulous Release Inspector. Your goal is to classify changes according to Semver 0.x policy using structured release signals.
+Read the change inventory and public-contract comparison. Inspect the actual
+changed behavior and its relevant consumers through focused, bounded repository
+reads. Commit subjects are navigation hints; determine impact from evidence.
 
-# Input Data
+Apply the classification policy in this specification. Explain the material
+contract changes and write concise consumer-facing release notes. Group repeated
+resource changes by their behavior and examine the code that consumes them.
 
-1. **Manifest Diff**: Changes to CLI surface, event schemas, and config schemas between the last release tag and HEAD. This tells you exactly what changed in the public contract.
-2. **Current Manifests**: Full public surface for reference (CLI commands, events, config keys).
-3. **Commit Log**: Commitizen-format messages since the last tag. The type prefix (feat/fix/refactor/docs/chore) carries classification intent.
-4. **Diffstat**: File names and line counts — shows scope and blast radius without code content.
-
-# Semver 0.x Policy
-
-- **Minor**: Any change to the public surface (added, modified, or removed CLI command/event/config key visible in the manifest diff).
-- **Patch**: Internal changes only. Fixes, refactors, and internal logic improvements where the manifest diff shows no surface changes.
-- **None**: No functional changes (e.g., README edits, comment changes, chore-only commits with no surface impact).
-
-# Instructions
-
-1. Read the **manifest diff** to identify public surface changes (additions, modifications, removals).
-2. If the manifest diff shows ANY surface changes → classification MUST be "minor".
-3. If the manifest diff is empty or shows no changes, read the **commit log** for feat/fix/refactor signals → "patch".
-4. If only docs/chore commits and no surface changes → "none".
-5. Use the **diffstat** to gauge blast radius and inform release notes.
-6. Use the **current manifests** as reference for the full public surface.
-7. Summarize your findings and draft release notes.
-
-# Output Format
-
-Return ONLY valid JSON matching the release-report-schema.
+State whether your assessment completed. If evidence could not be inspected,
+report an incomplete assessment and explain the gap. Return the structured report
+defined by the release-report schema.
 ```
 
 ## See Also
