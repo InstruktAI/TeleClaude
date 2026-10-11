@@ -228,10 +228,20 @@ A person in the desk's scope answers by replying in the thread; the reply is del
 
 **Relay lifecycle:**
 
+<!-- planned-change:conversation-memory-continuity -->
+
 - Relay state persists for the lifetime of the session (7d max)
 - Multiple escalation/handback cycles can occur within one session
 - Each handback collects only messages since the previous handback (or relay start)
 - When the session dies (7d sweep), its relay state dies with it
+
+<!-- change:conversation-memory-continuity -->
+
+- Multiple escalation and handback cycles can occur within one conversation.
+- Each handback collects messages after its preceding handback or relay start.
+- Closing settles the active relay while retaining the conversation record.
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 ### Customer-Facing Agent Behavior
 
@@ -268,6 +278,8 @@ Memories are kept current by memory agents (`local/projects/teleclaude/spec/feat
 - `POST /api/memory/save` — add optional `identity_key` field
 - `GET /api/memory/search` — add optional `identity_key` query param
 - No `identity_key` → saved/queried as project-level memory (NULL)
+
+<!-- planned-change:conversation-memory-continuity -->
 
 ### Customer Session Lifecycle
 
@@ -352,6 +364,26 @@ sequenceDiagram
 - the relay's thread — the desk's escalation thread for this relay
 - `relay_started_at` — timestamp of current relay activation
 
+<!-- change:conversation-memory-continuity -->
+
+### Customer Session Lifecycle
+
+The adapter conversation retains its TeleClaude session and recorded native
+lineage. Idle maintenance uses the delivered interruptible compaction launch;
+confirmed completion closes the runtime immediately. Returning input resumes
+the same conversation under the existing confinement and queueing contracts
+(`local/projects/teleclaude/spec/feature/agent_runtime/conversation-continuity`).
+
+Closing releases execution resources while retaining identity and history.
+Removal is a soft deletion under
+`local/projects/teleclaude/spec/feature/agent_runtime/session-cleanup-and-reaping`.
+The mirror is the session-owned conversational projection; the extraction
+checkpoint belongs to that source rather than to the visitor's identity.
+
+<!-- /planned-change:conversation-memory-continuity -->
+
+<!-- planned-change:conversation-memory-continuity -->
+
 ### Post-Session Memory Extraction
 
 Memory extraction follows a conversation session's end. The session-ended event names the session, its home, and that it was a help-desk session; it wakes the desk memory procedure in the home that owns the desk. That procedure's agent is bound to the session: one memory agent per desk session, and the same agent is brought back when that session ends again after a revival. A person's own assistant sessions wake the person-memory procedure in their home, whose single standing agent keeps that person's memories. Both are procedure agents (`local/projects/teleclaude/design/architecture/procedure-activation`); no direct model API call is made.
@@ -387,6 +419,28 @@ sequenceDiagram
 2. **Business items** — what the conversation shows the home: feature requests, complaints, confusion, sentiment, competitive mentions; collected as prospects for later aggregation, never used as they are
 
 Neither records project knowledge or decisions (`local/projects/teleclaude/spec/domain/memory`). Namespaces, keys and subjects follow Identity-Scoped Memory.
+
+<!-- change:conversation-memory-continuity -->
+
+### Post-Session Memory Extraction
+
+The desk's eligible closure requests readiness of its conversation mirror.
+After coverage is confirmed, memory releases a bounded extraction to the desk's
+visitor-scoped procedure agent. The pipeline ownership and event relationships
+are `local/projects/teleclaude/design/architecture/conversation-memory-pipeline`.
+
+The specialized desk procedure reads the prepared conversational extract,
+updates memories within the visitor and desk scope, records business prospects
+for the desk owner, and explicitly completes source progress. Unfinished work
+remains available for later handling. Multiple source conversations for the
+same visitor and desk are serialized through the same responsibility.
+
+The person-home procedure serves personal memories across that person's PA
+conversations. These specialized briefs share memory judgment rather than a
+session-id-based executable workflow
+(`local/projects/teleclaude/spec/feature/memory/memory-curation`).
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 ### Business Insights
 
@@ -499,6 +553,8 @@ sequenceDiagram
     AI->>Customer: "Your billing has been corrected to $29. Is there anything else?"
 ```
 
+<!-- planned-change:conversation-memory-continuity -->
+
 ### Idle Compaction Cycle
 
 ```mermaid
@@ -538,6 +594,18 @@ sequenceDiagram
     end
     Note over Visitor,Maintenance: No maintenance input or output is delivered as visitor conversation
 ```
+
+<!-- change:conversation-memory-continuity -->
+
+### Idle Compaction Cycle
+
+The runtime's confirmed compaction completion proceeds directly to closure.
+Closure and mirror readiness then release memory extraction through
+`local/projects/teleclaude/design/architecture/conversation-memory-pipeline`.
+A returning visitor takes precedence over unfinished maintenance through the
+existing compaction cancellation and resumption contract.
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 ### Desk Category Reconciliation
 

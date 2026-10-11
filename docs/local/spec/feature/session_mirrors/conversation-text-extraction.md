@@ -27,6 +27,8 @@ after stripping and renders the remaining sequence as
 `[<timestamp>] <Role>: <text>` blocks joined by blank lines (or
 `<Role>: <text>` when the message carries no timestamp).
 
+<!-- planned-change:conversation-memory-continuity -->
+
 Before stripping, the extractor inspects the raw turns for the command
 that launched the session. A session dispatched through `sessions run`
 carries its launch command injected into the transcript, so that fact
@@ -46,6 +48,21 @@ Derived fields that come along with the text body:
 - `title` — when the detected command names a deployed artifact or a mapped lifecycle role, that command's wrapper heading (or the humanized command name when no heading is mapped) plus `: <slug>` when a slug was extracted; otherwise the first user message's stripped text truncated at the first newline and then to 120 characters with `...` when longer.
 - `timestamp_start` — the first surviving message's timestamp.
 - `timestamp_end` — the last surviving message's timestamp.
+
+<!-- change:conversation-memory-continuity -->
+
+Conversation content comes from the retained TeleClaude session's ordered
+transcript lineage through the shared conversation reader and projector. Each
+source is interpreted by its producing runtime. Launch classification, title
+and identity facts come from the owning session, as specified by
+`local/projects/teleclaude/spec/feature/session_mirrors/mirror-identity-enrichment`.
+
+The conversation's start and end coverage come from surviving conversational
+entries. Native transcript paths, entry identities and lineage position remain
+source provenance; compaction summaries and injected history are not fresh
+human exchanges.
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 An extraction that produces zero normalized messages writes no row and, in the
 worker path, records a tombstone. An existing mirror keeps its stored conversation
