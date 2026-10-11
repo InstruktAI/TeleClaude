@@ -100,10 +100,13 @@ material (`sdlc/policy/security-awareness`).
 Provider-private path resolution, containment and symlink checks, and exclusive
 directory/file creation run together under the privileged controller filesystem
 boundary. Descriptor-relative traversal refuses symlinks instead of requiring
-the controller UID to search provider-owned directories. Provider directories
-remain mode 0700; private files remain mode 0600, with read-only configuration
-files mode 0400. Temporary input files remain in controller-owned mode-0700
-staging and are removed after installation. Credential bytes never enter argv.
+the controller UID to search provider-owned directories. Provider-owned
+directories and private files exclude other unprivileged identities; installed
+configuration is owner-readable and read-only. `tools/release/inspector_fs.py`
+owns their permission declarations. Temporary input files stay in private,
+controller-owned staging and are removed after installation; staging permissions
+are owned by `install_principal_file` in
+`tools/release/isolated_inspection.py`. Credential bytes never enter argv.
 
 The isolated launcher consumes only the newline-delimited JSON environment frame
 from the stdin descriptor, without buffering subsequent bytes. After `execve`,
@@ -204,10 +207,11 @@ its own lint, hosted runtime acceptance and installer proof.
 - Provider failure remains visible after successful fallback. An unexpected fault
   remains repair work; fallback does not erase it. With no complete valid report,
   the attempt cannot prepare an ordinary release candidate.
-- Codex preparation and Claude setup/execution catches retain bounded diagnostic
-  evidence identifying the provider, phase, operation, exception type and any
-  available errno or native command status. They do not serialize exception text,
-  tracebacks, paths from exceptions, environment, argv or credential content.
+- The provider controller's covered exception handlers retain classified
+  diagnostics under the Inspector contract in
+  `local/projects/teleclaude/spec/feature/release/publication`.
+  Failures handled inside the Claude inspector adapter return generic diagnostic
+  text without supplying exception metadata to the controller's diagnostic writer.
 - Failed proof leaves publication untouched and retains the failure evidence.
 - A conflicting existing tag, unavailable proof receipt, unsupported atomic
   transport, or unresolved metadata conflict stops publication with its candidate

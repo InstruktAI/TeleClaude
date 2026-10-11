@@ -66,8 +66,9 @@ the evidence. Successful fallback does not erase an unexpected fault or discharg
 its repair; the release maintainer receives that failure as actionable diagnostic
 evidence. A valid no-release decision is terminal and selects no second inspector.
 
-Caught Codex preparation and Claude setup/execution failures reference a retained
-diagnostic file through the provider attempt's `diagnostic_path`. It identifies
+Exceptions caught by the `prepare_codex` or `run_claude` controller handlers in
+`tools/ci/release_stage.py` reference a retained diagnostic file through the
+provider attempt's `diagnostic_path`. It identifies
 the provider, explicit phase and operation, exception type, and available errno
 or native command status. Evidence contains no raw exception message, traceback,
 environment, argv, payload or credential content. A failure before provider
@@ -264,6 +265,10 @@ And the proved candidate changelog and published release use the same section
 
 ## Known caveats
 
+- The Claude inspector adapter's internal setup and process catches retain
+  generic diagnostic text. These returned failure outcomes do not carry
+  classified exception metadata into the controller handlers; their owner is
+  `run_claude_inspection` in `tools/release/claude_inspector.py`.
 - A fresh-machine proof on one operating system establishes neither another
   operating system's installation nor an upgrade from an earlier release.
 - A no-change dry-run establishes the no-release path; exercising later stages
