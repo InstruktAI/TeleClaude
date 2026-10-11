@@ -252,6 +252,8 @@ And no placeholder, empty value, or unopenable address stands in its place
 And the rest of that entry is unchanged
 ```
 
+<!-- planned-change:supervised-silence-observations -->
+
 #### UC-SL23: Only the declared runtime-start boundary establishes liveness
 
 ```gherkin
@@ -266,6 +268,26 @@ Then the child is reported live and remains supervised
 And headless or terminal sessions are not reactivated
 ```
 
+<!-- change:supervised-silence-observations -->
+
+#### UC-SL23: Only the declared runtime-start boundary establishes liveness
+
+```gherkin
+Given an orchestrating agent has started a child session
+And the child has not announced that its runtime started
+When the orchestrating agent reads the child session
+Then the child remains initializing with unknown agent activity
+And launch delivery, terminal readiness and generic timestamps do not establish runtime liveness
+And startup silence follows the supervisory silence observation contract
+When the child announces that its runtime started
+Then the child is reported live and remains supervised
+And a terminal session is not reactivated
+```
+
+<!-- /planned-change:supervised-silence-observations -->
+
+<!-- planned-change:supervised-silence-observations -->
+
 #### UC-SL29: A silent in-turn session becomes stalled
 
 ```
@@ -279,6 +301,22 @@ And the next normalized agent event sets the status that event maps to
 And a session with an open tool call stays `active` however long that tool runs
 And a session whose status is `idle`, `blocked`, or `unknown` is never evaluated by this watchdog
 ```
+
+<!-- change:supervised-silence-observations -->
+
+#### UC-SL29: Silence during an active turn preserves the recorded activity state
+
+```gherkin
+Given a supervising agent is waiting for work from an active child session
+And no native tool call reported by the child remains open
+When the child's native activity observation window elapses without another activity signal
+Then the supervising agent receives a silence observation under the supervisory silence observation contract
+And the child's recorded agent activity remains active
+And the observation does not declare that the turn failed
+And an idle, blocked or unknown child is not assessed under the active-turn silence rule
+```
+
+<!-- /planned-change:supervised-silence-observations -->
 
 #### UC-SL41: Agent status follows the normalized agent events
 
@@ -311,6 +349,8 @@ And it leaves `unknown` only on the first normalized agent event of that run
 And a restart or a revival is not such a start: each keeps the agent status the session's record holds (`local/projects/teleclaude/spec/feature/agent_runtime/agent-restart`, `local/projects/teleclaude/spec/feature/agent_runtime/session-revival`)
 ```
 
+<!-- planned-change:supervised-silence-observations -->
+
 #### UC-SL43: A start that never proves liveness becomes stalled
 
 ```
@@ -319,6 +359,21 @@ When 90 seconds pass without a normalized agent event
 Then the session's agent status becomes `stalled` with reason `no_start`
 And a later normalized agent event sets the status that event maps to
 ```
+
+<!-- change:supervised-silence-observations -->
+
+#### UC-SL43: Startup silence preserves unknown activity
+
+```gherkin
+Given a supervising agent dispatched initial work to a child session
+And the child has reported no native activity for that run
+When the startup observation window elapses
+Then the supervising agent receives a startup silence observation under the supervisory silence observation contract
+And the child's recorded agent activity remains unknown
+And an ordinary interactive session awaiting its first input receives no startup silence notification
+```
+
+<!-- /planned-change:supervised-silence-observations -->
 
 #### UC-SL51: Input waiting on a screen other than the composer makes the session blocked
 
@@ -383,6 +438,8 @@ And a session created before owners were recorded names its subject's owner afte
 
 #### UC-SL49:
 
+<!-- planned-change:supervised-silence-observations -->
+
 #### UC-SL33: A completed native command leaves the agent idle
 
 ```gherkin
@@ -393,6 +450,21 @@ Then the session reports idle
 And the accepted input remains visible in the session record
 And a silent agent turn still reports stalled after the platform's stall threshold
 ```
+
+<!-- change:supervised-silence-observations -->
+
+#### UC-SL33: A completed native command leaves the agent idle
+
+```gherkin
+Given a human operator sends a native command to an agent session
+And the native command completes without starting an agent turn
+When a supervising agent reads the session's activity
+Then the session reports idle
+And the accepted input remains visible in the session record
+And silence during an actual agent turn follows the supervisory silence observation contract
+```
+
+<!-- /planned-change:supervised-silence-observations -->
 
 #### UC-SL34: Failed automatic restoration reaches an owned terminal outcome
 
@@ -545,6 +617,12 @@ And a later initial message remains governed by its readiness and draft-preserva
 ```
 
 ### Cross-context references
+
+<!-- planned:supervised-silence-observations -->
+
+- **supervisory silence** — `local/projects/teleclaude/spec/feature/agent_runtime/supervisory-silence-observations` owns caller-only missing-signal observations and their assessment boundary.
+
+<!-- /planned:supervised-silence-observations -->
 
 - **daemon lifecycle** — owns admission and graceful draining of acknowledged
   startup work (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).

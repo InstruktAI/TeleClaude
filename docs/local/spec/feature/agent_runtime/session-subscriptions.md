@@ -273,6 +273,8 @@ When the target runs on a different computer
 Then the notification names that computer and every suggested command carries the matching computer selector
 ```
 
+<!-- planned-change:supervised-silence-observations -->
+
 #### UC-SS10: A session no distress-recipient is watching reports to its human-facing channel
 
 ```gherkin
@@ -287,6 +289,22 @@ When the target session enters a distress state
 Then the distress notification is delivered to its persistent subscribers only
 And the session's human-facing channel receives nothing from this mechanism
 ```
+
+<!-- change:supervised-silence-observations -->
+
+#### UC-SS10: Unwatched native distress keeps its human-facing notice
+
+```gherkin
+Given a target session has no live persistent supervising caller
+When the target reports a native failure or approval wait
+Then its existing human-facing distress notice is delivered
+And a platform silence observation produces no human-facing fallback
+When the target has a live persistent supervising caller
+Then its distress notification is delivered to its supervising caller through agent control delivery
+And the target's human-facing channel receives nothing from that mechanism
+```
+
+<!-- /planned-change:supervised-silence-observations -->
 
 #### UC-SS14
 
@@ -314,6 +332,12 @@ And the consumer adds no separate acknowledgement, retry, or duplicate-detection
 #### UC-SS17
 
 ### Cross-context references
+
+<!-- planned:supervised-silence-observations -->
+
+- **supervisory silence** — `local/projects/teleclaude/spec/feature/agent_runtime/supervisory-silence-observations` owns caller-only missing-signal observations and their assessment boundary.
+
+<!-- /planned:supervised-silence-observations -->
 
 - **identity** — listener registration is gated by caller identity binding (the caller's session id and host-pane reference from the caller identity). A request without a bound caller session (e.g., a TUI/tool client without identity headers) does not auto-register. The unsubscribe entry similarly resolves the caller from its clearance.
 - **workflow** — orchestrator agents that dispatch worker sessions are the dominant producer of listener records: every AI-to-AI session start auto-registers a persistent (non-one-shot) listener so the orchestrator hears its workers' stop events. The orchestrator/worker coordination contract relies on this.
