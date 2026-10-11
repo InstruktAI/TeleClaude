@@ -24,7 +24,7 @@ from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
 )
 from teleclaude.doc_body import PLANNED_BLOCK_RE, PLANNED_CHANGE_BLOCK_RE
-from teleclaude.docs_subscriptions import IndexKey
+from teleclaude.docs_subscriptions import IndexKey, required_event_handling_dependencies, resolve_delivery_settings
 from teleclaude.paths import ConfigFileName
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.slug import normalize_slug
@@ -125,6 +125,9 @@ class SnippetEntry(TypedDict):
     subscription_home: NotRequired[str]
     subscription_identity: NotRequired[str]
     subscription_attendance: NotRequired[str]
+    event_delivery: NotRequired[str]
+    interruptible: NotRequired[bool]
+    delivery_required_reads: NotRequired[list[str]]
 
 
 class IndexPayload(TypedDict):
@@ -178,6 +181,11 @@ def _copy_subscriptions_metadata(entry: SnippetEntry, metadata: Mapping[str, obj
     raw_subscription_attendance = metadata.get(IndexKey.SUBSCRIPTION_ATTENDANCE)
     if isinstance(raw_subscription_attendance, str):
         entry[IndexKey.SUBSCRIPTION_ATTENDANCE.value] = raw_subscription_attendance
+    delivery = resolve_delivery_settings(metadata)
+    if delivery is not None:
+        entry[IndexKey.EVENT_DELIVERY.value] = delivery.event_delivery.value
+        entry[IndexKey.INTERRUPTIBLE.value] = delivery.interruptible
+        entry[IndexKey.DELIVERY_REQUIRED_READS.value] = list(required_event_handling_dependencies(delivery))
 
 
 def _extract_description_from_md(file_path: Path) -> str:

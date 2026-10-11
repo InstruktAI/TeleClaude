@@ -48,6 +48,7 @@ from teleclaude.core.injected_text import (
     scan_injected_envelopes,
     semantic_envelope,
     visible_input_update,
+    wake_occurrence_key,
 )
 from teleclaude.core.models import (
     CleanupTrigger,
@@ -683,8 +684,14 @@ async def deliver_inbound(
     session_id = row["session_id"]
     message_text = row["content"]
     logger.debug("Delivering inbound row %d for session %s: %s...", row["id"], session_id, message_text[:50])
+    row_source_feature = InjectedTextSourceFeature(row["source_feature"])
+    row_text_kind = TranscriptEntryKind(row["text_kind"])
+    procedure_wake_occurrence_id = (
+        wake_occurrence_key(message_text) if row_text_kind is TranscriptEntryKind.PLATFORM_CONTROL else None
+    )
+    is_procedure_wake = row_source_feature is InjectedTextSourceFeature.PROCEDURE_ACTIVATION
     origin_metadata, command_input = _decode_inbound_origin_metadata(row), _decode_inbound_command_input(row)
-    authority = authority_for_source_feature(InjectedTextSourceFeature(row["source_feature"]))
+    authority = authority_for_source_feature(row_source_feature)
 
     session = await _deliverable_session(session_id)
 
@@ -738,6 +745,19 @@ async def deliver_inbound(
                 lifecycle_status=current.lifecycle_status, closed_at=current.closed_at
             ):
                 raise RuntimeError(_CLOSED_BEFORE_INJECTION_TEMPLATE.format(session_id=session_id))
+            if procedure_wake_occurrence_id is not None and (
+                is_procedure_wake
+                or await db.procedure_event_wake_matches(
+                    session_id=session_id,
+                    occurrence_id=procedure_wake_occurrence_id,
+                )
+            ):
+                if row["occurrence_key"] != procedure_wake_occurrence_id or not await db.admit_procedure_event_wake(
+                    session_id=session_id,
+                    occurrence_id=procedure_wake_occurrence_id,
+                    session=current,
+                ):
+                    return
             # A relaunch can be marked between the readiness check above and
             # ownership; the mark is read again now that no relaunch is mid-flight.
             if not relaunch_awaiting_readiness(session_id):
@@ -853,6 +873,15 @@ async def process_message(
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.NOT_FOUND)
     if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.CLOSED)
+    wake_key = wake_occurrence_key(cmd.text) if cmd.text_kind is TranscriptEntryKind.PLATFORM_CONTROL else None
+    wake_observed_inbound_id = await db.latest_inbound_row_id(session_id=session_id) if wake_key is not None else None
+    if wake_key is not None and is_agent_turn_running(
+        last_input_at=session.last_message_sent_at,
+        last_agent_stop_at=session.last_agent_stop_at,
+        last_agent_idle_at=session.last_agent_idle_at,
+    ):
+        await db.clear_procedure_event_wake_opportunity(session_id=session_id, occurrence_id=wake_key)
+        return
     if is_visitor_input(session, cmd.actor_id, cmd.caller_session_id) and await _diverted(session, cmd):
         return
     if not await _session_message_delivery_available(session):
@@ -890,6 +919,13 @@ async def process_message(
             origin_metadata=cmd.origin_metadata,
             command_input=command_input,
             caller_session_id=cmd.caller_session_id,
+        )
+        await db.record_procedure_event_wake_acceptance(
+            session_id=session_id,
+            occurrence_id=wake_key,
+            inbound_row_id=_row_id,
+            observed_inbound_id=wake_observed_inbound_id,
+            observed_session=session,
         )
 
     row_id = await get_inbound_queue_manager().enqueue(

@@ -5,7 +5,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from teleclaude.docs_subscriptions import IndexKey, SubscriptionAttendance, SubscriptionHomeKind, SubscriptionIdentity
+from teleclaude.docs_subscriptions import (
+    DeliveryDeclarationError,
+    IndexKey,
+    SubscriptionAttendance,
+    SubscriptionHomeKind,
+    SubscriptionIdentity,
+    resolve_delivery_settings,
+)
 from teleclaude.events.type_pattern import TypePattern, TypePatternError
 from teleclaude.resource_validation._models import _error
 from teleclaude.snippet_scope import SnippetScope
@@ -23,6 +30,8 @@ _SUBSCRIPTION_IDENTITY_UNEXPECTED_FINDING = "snippet_subscriptions_identity_unex
 _SUBSCRIPTION_IDENTITY_VALUE_FINDING = "snippet_subscriptions_identity_invalid_value"
 _SUBSCRIPTION_ATTENDANCE_UNEXPECTED_FINDING = "snippet_subscriptions_attendance_unexpected"
 _SUBSCRIPTION_ATTENDANCE_VALUE_FINDING = "snippet_subscriptions_attendance_invalid_value"
+_DELIVERY_SETTINGS_UNEXPECTED_FINDING = "snippet_subscriptions_delivery_unexpected"
+_DELIVERY_SETTINGS_VALUE_FINDING = "snippet_subscriptions_delivery_invalid_value"
 #: The tiers where a procedure's subscriptions are routed.
 _SUBSCRIPTION_ROUTED_SCOPES = frozenset({SnippetScope.GLOBAL, SnippetScope.COMPANY, SnippetScope.PERSON})
 #: The one home kind a procedure published in a home's own tier can answer.
@@ -107,6 +116,11 @@ def validate_subscriptions(
     declared_home = meta.get(_SUBSCRIPTION_HOME_FIELD)
     declared_identity = meta.get(IndexKey.SUBSCRIPTION_IDENTITY)
     declared_attendance = meta.get(IndexKey.SUBSCRIPTION_ATTENDANCE)
+    try:
+        resolve_delivery_settings(meta)
+    except DeliveryDeclarationError as exc:
+        finding = _DELIVERY_SETTINGS_UNEXPECTED_FINDING if exc.misplaced else _DELIVERY_SETTINGS_VALUE_FINDING
+        _error(finding, path=str(path), field=exc.field.value)
     if subscriptions is None:
         if declared_home is not None:
             _error(_SUBSCRIPTION_HOME_UNEXPECTED_FINDING, path=str(path))

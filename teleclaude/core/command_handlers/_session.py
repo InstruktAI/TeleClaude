@@ -3,7 +3,7 @@
 import asyncio
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import psutil
 from instrukt_ai_logging import get_logger
@@ -88,6 +88,11 @@ _LISTENER_REGISTRATION_SKIPPED_EVENT = "session_listener_registration_skipped"
 _LISTENER_REGISTRATION_FAILED_EVENT = "session_listener_registration_failed"
 _LISTENER_SKIP_REASON_STANDING_ROLE = "standing_role"
 _SESSION_SUBJECT_RESOLUTION_FAILED_EVENT = "session_config_subject_resolution_failed"
+_PROCEDURE_SUPPORT_INSTRUCTION_TEMPLATE = (
+    "\n\nBefore processing activation events, load any of these required-read procedures "
+    "that are not already included in the loaded closure: {required_reads}."
+)
+_PROCEDURE_SUPPORT_READ_SEPARATOR = ", "
 
 
 async def _read_todo_owner_principal(project_path: str, slug: str) -> str | None:
@@ -208,6 +213,9 @@ async def _resolve_launch_intent(
     if intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE and intent.message is not None:
         raw_startup_message = intent.message
         intent.message = prepare_startup_message(intent.message, cmd.command)
+        if cmd.procedure_delivery is not None and cmd.procedure_delivery.required_reads:
+            required_reads = _PROCEDURE_SUPPORT_READ_SEPARATOR.join(cmd.procedure_delivery.required_reads)
+            intent.message += _PROCEDURE_SUPPORT_INSTRUCTION_TEMPLATE.format(required_reads=required_reads)
         startup_reason = (
             AgentDispatchReason.CODEX_LOADER
             if intent.message != raw_startup_message
@@ -390,11 +398,9 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
 
     # A desk session records its confinement in the creating write, so no
     # delivery or bootstrap ever observes it without the stamp.
-    creation_metadata: JsonDict = (
-        {CONFINEMENT_SECTION: {CONFINEMENT_PROFILE_KEY: LaunchProfile.HELP_DESK.value}}
-        if session_kind is DispatchSessionKind.HELP_DESK
-        else {}
-    )
+    creation_metadata = cast(JsonDict, dict(cmd.origin_metadata or {}))
+    if session_kind is DispatchSessionKind.HELP_DESK:
+        creation_metadata[CONFINEMENT_SECTION] = {CONFINEMENT_PROFILE_KEY: LaunchProfile.HELP_DESK.value}
     # The endpoint is a root section beside the adapter sections, written with
     # the row, so every reader finds it through `EndpointStamp.from_session`.
     if cmd.endpoint is not None:
@@ -434,6 +440,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         native_log_file=cmd.native_log_file,
         origin_metadata=creation_metadata,
         startup_intent=None if cmd.headless else launch,
+        procedure_delivery=cmd.procedure_delivery,
         emit_session_started=False,
     )
 

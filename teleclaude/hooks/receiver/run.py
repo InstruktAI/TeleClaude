@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import sys
@@ -18,10 +17,8 @@ from uuid import uuid4
 import yaml
 from instrukt_ai_logging import configure_logging, get_logger
 from pydantic import JsonValue
-from sqlalchemy import update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm.attributes import QueryableAttribute
-from sqlmodel import Session as SqlSession
 from sqlmodel import select
 
 from teleclaude import paths as tc_paths
@@ -40,8 +37,14 @@ from teleclaude.core.events import (
     AgentHookEvents,
     AgentHookEventType,
 )
+from teleclaude.core.hook_delivery import (
+    HookResponseFlushError,
+    HookResponseWriteError,
+    emit_pending_control_payloads,
+    resolve_initial_procedure_entry_id,
+)
 from teleclaude.core.identity import NoIdentityCliCaller, derive_identity_key, memory_person_reach
-from teleclaude.core.injected_text import EnvelopeField, EnvelopeName, render_xml_envelope, semantic_envelope
+from teleclaude.core.injected_text import recognize_delivered_text, wake_occurrence_key
 from teleclaude.core.models import JsonDict, Session
 from teleclaude.core.organization import CompanyMembership, resolve_organization
 from teleclaude.core.session_status import AgentStatusReason
@@ -49,9 +52,6 @@ from teleclaude.git import GitCommandError
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters.base import HookAdapter, HookNormalizationReason, read_stdin_payload
 from teleclaude.hooks.adapters.contracts import (
-    ContinueWithContext,
-    ContinueWithReason,
-    DeliverContext,
     HookEmission,
     HookResponseFormat,
     HookResponseKind,
@@ -68,7 +68,6 @@ from teleclaude.hooks.edit_declarations import (
     hold_certain_edit,
     settle_certain_edit,
 )
-from teleclaude.hooks.main_db import main_sync_engine
 from teleclaude.hooks.receiver._tool_admission import native_tool_denial_for_source
 from teleclaude.hooks.receiver_args import parse_receiver_args
 from teleclaude.hooks.session_map import (
@@ -124,8 +123,6 @@ EVENT_HOOK_CONTEXT_EMITTED = "hook_context_emitted"
 EVENT_HOOK_PROFILE_SERIALIZED = "hook_profile_serialized"
 EVENT_HOOK_PROVIDER_RESPONSE_EMITTED = "hook_provider_response_emitted"
 EVENT_HOOK_OUTBOX_ENQUEUED = "hook_outbox_enqueued"
-EVENT_CONTROL_DELIVERY_TERMINAL = "control_delivery_batch_terminal"
-EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL = "control_delivery_hook_arrival"
 EVENT_CHECKPOINT_EVIDENCE_ADDRESS_RESOLVED = "checkpoint_evidence_address_resolved"
 _MEMORY_CALLER_RESOLUTION_FAILED = "memory_context_caller_resolution_failed"
 _MEMORY_SCOPE_RESOLUTION_FAILED = "memory_context_scope_resolution_failed"
@@ -241,27 +238,6 @@ class ReceiverDropReason(StrEnum):
     NATIVE_SUBAGENT_DENIED = "native_subagent_denied"
     SYSTEM_INJECTED_PROMPT = "system_injected_prompt"
     UNHANDLED_EVENT = "unhandled_event"
-
-
-class ControlDeliveryEligibility(StrEnum):
-    NOT_DELIVERY_BOUNDARY = "not_delivery_boundary"
-    NO_PENDING = "no_pending"
-    DRAINED = "drained"
-
-
-class ControlDeliveryTerminalReason(StrEnum):
-    OK = "ok"
-    WRITE_FAILED = "write_failed"
-    FLUSH_FAILED = "flush_failed"
-    ROWS_ABSENT = "rows_absent"
-
-
-class HookResponseWriteError(OSError):
-    """A provider response could not be written to stdout."""
-
-
-class HookResponseFlushError(OSError):
-    """A provider response was written but stdout could not be flushed."""
 
 
 class CheckpointEvidenceAddressSource(StrEnum):
@@ -1353,6 +1329,7 @@ def _handle_user_prompt_submit(
     session_id: str,
     raw_native_session_id: str | None,
     receiver_ingress_id: str,
+    initial_procedure_entry_id: str | None,
 ) -> bool:
     if event_type != AgentHookEvents.USER_PROMPT_SUBMIT:
         return False
@@ -1381,7 +1358,10 @@ def _handle_user_prompt_submit(
         )
         return False
     if _is_system_injected_user_prompt(agent, prompt_text):
-        if prompt_text == IDLE_WAKE_TEXT:
+        if prompt_text == IDLE_WAKE_TEXT or wake_occurrence_key(prompt_text) is not None:
+            _reset_checkpoint_flags(session_id)
+            return False
+        if initial_procedure_entry_id is not None:
             _reset_checkpoint_flags(session_id)
             return False
         logger.debug(
@@ -1479,155 +1459,6 @@ def _maybe_emit_checkpoint_response(
     return checkpoint_reason
 
 
-def _render_control_payload(row: db_models.ControlDelivery) -> str:
-    """Render one persisted semantic control payload at its hook boundary."""
-    if row.envelope_name is None:
-        return row.body
-    raw_fields = json.loads(row.envelope_fields_json or "{}")
-    if not isinstance(raw_fields, dict) or not all(isinstance(value, str) for value in raw_fields.values()):
-        raise ValueError("control payload has invalid semantic envelope fields")
-    fields = {EnvelopeField(name): value for name, value in raw_fields.items()}
-    return render_xml_envelope(semantic_envelope(EnvelopeName(row.envelope_name), fields=fields, body=row.body))
-
-
-def _emit_pending_control_payloads(
-    *,
-    adapter: HookAdapter,
-    raw_event_type: str,
-    session_id: str,
-    provider: str,
-    internal_event: str,
-    receiver_ingress_id: str,
-    checkpoint_reason: str | None = None,
-    startup_context: str | None = None,
-) -> bool:
-    """Drain one session's ordered control batch at an adapter-declared boundary."""
-    if raw_event_type not in adapter.delivery_events:
-        logger.info(
-            EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL,
-            session_id=session_id,
-            runtime=provider,
-            native_event=raw_event_type,
-            internal_event=internal_event,
-            eligibility=ControlDeliveryEligibility.NOT_DELIVERY_BOUNDARY,
-        )
-        return False
-
-    with SqlSession(main_sync_engine()) as db_session:
-        table = cast(Any, db_models.ControlDelivery).__table__
-        db_session.connection().exec_driver_sql("BEGIN IMMEDIATE")  # guard: raw-sql
-        rows = db_session.exec(
-            select(db_models.ControlDelivery)
-            .where(db_models.ControlDelivery.session_id == session_id)
-            .where(table.c.outcome.is_(None))
-            .order_by(table.c.id.asc())
-        ).all()
-        if not rows:
-            db_session.commit()
-            logger.info(
-                EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL,
-                session_id=session_id,
-                runtime=provider,
-                native_event=raw_event_type,
-                internal_event=internal_event,
-                eligibility=ControlDeliveryEligibility.NO_PENDING,
-            )
-            if startup_context is not None:
-                _emit_hook_emission(
-                    adapter.render_response(raw_event_type, DeliverContext(startup_context)),
-                    provider=provider,
-                    raw_event_type=raw_event_type,
-                    receiver_ingress_id=receiver_ingress_id,
-                    session_id=session_id,
-                )
-                return True
-            if checkpoint_reason is None:
-                return False
-            _emit_hook_emission(
-                adapter.render_response(raw_event_type, ContinueWithReason(checkpoint_reason)),
-                provider=provider,
-                raw_event_type=raw_event_type,
-                receiver_ingress_id=receiver_ingress_id,
-                session_id=session_id,
-            )
-            return True
-        row_ids = [row.id for row in rows if row.id is not None]
-        logger.info(
-            EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL,
-            session_id=session_id,
-            runtime=provider,
-            native_event=raw_event_type,
-            internal_event=internal_event,
-            eligibility=ControlDeliveryEligibility.DRAINED,
-        )
-        context = "\n\n".join(
-            part for part in (startup_context, *(_render_control_payload(row) for row in rows)) if part
-        )
-        intent = (
-            ContinueWithContext(checkpoint_reason, context)
-            if checkpoint_reason is not None
-            else DeliverContext(context)
-        )
-        emission = adapter.render_response(raw_event_type, intent)
-        payload = emission.payload
-        try:
-            _emit_hook_emission(
-                emission,
-                provider=provider,
-                raw_event_type=raw_event_type,
-                receiver_ingress_id=receiver_ingress_id,
-                session_id=session_id,
-            )
-        except (HookResponseWriteError, HookResponseFlushError) as exc:
-            terminal_outcome = db_models.ControlDeliveryOutcome.FAILED.value
-            db_session.exec(
-                update(table)
-                .where(table.c.session_id == session_id)
-                .where(table.c.id.in_(row_ids))
-                .where(table.c.outcome.is_(None))
-                .values(outcome=terminal_outcome, terminal_at=datetime.now(UTC).isoformat())
-            )
-            db_session.commit()
-            logger.info(
-                EVENT_CONTROL_DELIVERY_TERMINAL,
-                session_id=session_id,
-                row_ids=row_ids,
-                runtime=provider,
-                internal_event=internal_event,
-                body_digest=hashlib.sha256(payload.encode()).hexdigest(),
-                outcome="failed",
-                reason=(
-                    ControlDeliveryTerminalReason.FLUSH_FAILED
-                    if isinstance(exc, HookResponseFlushError)
-                    else ControlDeliveryTerminalReason.WRITE_FAILED
-                ),
-            )
-            raise
-        terminal_outcome = db_models.ControlDeliveryOutcome.DELIVERED.value
-        db_session.exec(
-            update(table)
-            .where(table.c.session_id == session_id)
-            .where(table.c.id.in_(row_ids))
-            .where(table.c.outcome.is_(None))
-            .values(outcome=terminal_outcome, terminal_at=datetime.now(UTC).isoformat())
-        )
-        db_session.commit()
-    logger.info(
-        EVENT_CONTROL_DELIVERY_TERMINAL,
-        receiver_ingress_id=receiver_ingress_id,
-        session_id=session_id,
-        raw_event=raw_event_type,
-        outcome=terminal_outcome,
-        row_ids=row_ids,
-        batch_size=len(row_ids),
-        runtime=provider,
-        internal_event=internal_event,
-        body_digest=hashlib.sha256(payload.encode()).hexdigest(),
-        reason=ControlDeliveryTerminalReason.OK,
-    )
-    return True
-
-
 def _maybe_emit_boundary_response(
     *,
     event_type: str,
@@ -1638,6 +1469,8 @@ def _maybe_emit_boundary_response(
     raw_event_type: str,
     receiver_ingress_id: str,
     startup_context: str | None,
+    initial_procedure_entry_id: str | None,
+    procedure_wake_occurrence_id: str | None,
 ) -> bool:
     """Prioritize checkpoint safety, then emit one pending control batch."""
     checkpoint_reason = _maybe_emit_checkpoint_response(
@@ -1649,13 +1482,26 @@ def _maybe_emit_boundary_response(
         raw_event_type=raw_event_type,
         receiver_ingress_id=receiver_ingress_id,
     )
-    return _emit_pending_control_payloads(
+
+    def write_emission(emission: HookEmission) -> None:
+        _emit_hook_emission(
+            emission,
+            provider=context.agent,
+            raw_event_type=raw_event_type,
+            receiver_ingress_id=receiver_ingress_id,
+            session_id=session_id,
+        )
+
+    return emit_pending_control_payloads(
         adapter=adapter,
         raw_event_type=raw_event_type,
         session_id=session_id,
         provider=context.agent,
         internal_event=event_type,
         receiver_ingress_id=receiver_ingress_id,
+        write_emission=write_emission,
+        initial_procedure_entry_id=initial_procedure_entry_id,
+        procedure_wake_occurrence_id=procedure_wake_occurrence_id,
         checkpoint_reason=checkpoint_reason,
         startup_context=startup_context,
     )
@@ -1678,6 +1524,18 @@ def _run_ordinary_hook_effects(
     """Run prompt, edit and control effects only for ordinary launches."""
     if launch_context is not None:
         return False, None
+    initial_procedure_entry_id: str | None = None
+    procedure_wake_occurrence_id: str | None = None
+    if event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
+        prompt_value = data.get(_PROMPT_FIELD)
+        prompt_text = unwrap_pasted_content(prompt_value) if isinstance(prompt_value, str) else ""
+        if _is_system_injected_user_prompt(agent, prompt_text):
+            canonical_prompt = recognize_delivered_text(prompt_text, AgentName.from_str(agent))
+            procedure_wake_occurrence_id = wake_occurrence_key(canonical_prompt)
+            initial_procedure_entry_id = resolve_initial_procedure_entry_id(
+                session_id=session_id,
+                prompt_text=canonical_prompt,
+            )
     if _handle_user_prompt_submit(
         event_type,
         data,
@@ -1685,6 +1543,7 @@ def _run_ordinary_hook_effects(
         session_id,
         raw_native_session_id,
         receiver_ingress_id,
+        initial_procedure_entry_id,
     ):
         return True, None
     _maybe_declare_certain_edit(
@@ -1710,6 +1569,8 @@ def _run_ordinary_hook_effects(
         raw_event_type=raw_event_type,
         receiver_ingress_id=receiver_ingress_id,
         startup_context=startup_context,
+        initial_procedure_entry_id=initial_procedure_entry_id,
+        procedure_wake_occurrence_id=procedure_wake_occurrence_id,
     )
     return response_emitted and event_type != AgentHookEvents.AGENT_SESSION_START, startup_context
 

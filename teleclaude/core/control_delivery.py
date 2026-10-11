@@ -18,15 +18,16 @@ from teleclaude.core.injected_text import (
     SemanticEnvelope,
     TranscriptEntryKind,
     render_bracket_envelope,
-    semantic_envelope,
+    wake_envelope,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.procedure_event_delivery import wake_procedure_events_if_pending
 from teleclaude.core.session_status import is_agent_turn_running
 from teleclaude.types.commands import ProcessMessageCommand
 
 logger = get_logger(__name__)
 
-IDLE_WAKE_TEXT = render_bracket_envelope(semantic_envelope(EnvelopeName.WAKE))
+IDLE_WAKE_TEXT = render_bracket_envelope(wake_envelope())
 
 _CONTROL_DELIVERY_PAYLOAD_SUPERSEDED_EVENT = "control_delivery_payload_superseded"
 _CONTROL_DELIVERY_TURN_END_WAKE_EVENT = "control_delivery_turn_end_wake"
@@ -140,6 +141,7 @@ async def wake_if_pending(*, session_id: str, boundary: TurnEndBoundary) -> None
     """
     pending = await db.get_pending_control_payloads(session_id=session_id)
     if not pending:
+        await wake_procedure_events_if_pending(session_id=session_id)
         return
     newest_row_id = pending[-1].id
     logger.info(
@@ -168,6 +170,7 @@ async def wake_if_pending(*, session_id: str, boundary: TurnEndBoundary) -> None
             wake_row_id=newest_row_id,
             reason=exc.reason.value,
         )
+    await wake_procedure_events_if_pending(session_id=session_id)
 
 
 async def _wake_for_payload(*, session_id: str, row_id: int, source_feature: InjectedTextSourceFeature) -> None:
@@ -176,7 +179,7 @@ async def _wake_for_payload(*, session_id: str, row_id: int, source_feature: Inj
     await get_command_service().process_message(
         ProcessMessageCommand(
             session_id=session_id,
-            text=IDLE_WAKE_TEXT,
+            text=render_bracket_envelope(wake_envelope(wake_key)),
             origin=InputOrigin.TERMINAL.value,
             text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
             source_feature=source_feature,

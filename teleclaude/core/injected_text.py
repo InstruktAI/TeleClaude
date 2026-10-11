@@ -211,6 +211,7 @@ _EMPTY_BRACKET_CLOSING = ""
 _CHECKPOINT_BRACKET_OPENING = "[TeleClaude Checkpoint]"
 _NOTIFICATION_BRACKET_OPENING = "[TeleClaude Notification]"
 _WAKE_BRACKET_OPENING = "[TeleClaude Wake]"
+_WAKE_BRACKET_OPENING_WITH_OCCURRENCE = "[TeleClaude Wake {occurrence_key}]"
 _RESTART_CONTINUATION_BRACKET_OPENING = "[TeleClaude Restart Continuation]"
 _HANDOFF_BRACKET_OPENING = "[TeleClaude Handoff]"
 _PEER_BRACKET_OPENING = "[Peer ({session_id} · {author_token} · {occurred_at})]"
@@ -234,7 +235,7 @@ _CALLER_IDENTITY_XML_TAG = "teleclaude-caller"
 _REMINDER_XML_TAG = "teleclaude-reminder"
 _CHECKPOINT_OPENING_RE = re.compile(re.escape(_CHECKPOINT_BRACKET_OPENING))
 _NOTIFICATION_OPENING_RE = re.compile(re.escape(_NOTIFICATION_BRACKET_OPENING))
-_WAKE_OPENING_RE = re.compile(re.escape(_WAKE_BRACKET_OPENING))
+_WAKE_OPENING_RE = re.compile(r"\[TeleClaude Wake(?: (?P<occurrence_key>[^\]\n]+))?\]")
 _RESTART_CONTINUATION_OPENING_RE = re.compile(re.escape(_RESTART_CONTINUATION_BRACKET_OPENING))
 _HANDOFF_OPENING_RE = re.compile(re.escape(_HANDOFF_BRACKET_OPENING))
 _PEER_OPENING_RE = re.compile(r"\[Peer \([^\]\n]+ · [^\]\n]+ · [^\]\n]+\)\]")
@@ -465,6 +466,12 @@ def semantic_envelope(
     return SemanticEnvelope(definition=ENVELOPE_REGISTRY[name], fields=fields, body=body)
 
 
+def wake_envelope(occurrence_key: str | None = None) -> SemanticEnvelope:
+    """Build the shared content-free wake envelope, optionally correlated to one opportunity."""
+    fields = {EnvelopeField.OCCURRENCE_KEY: occurrence_key} if occurrence_key is not None else _EMPTY_ENVELOPE_FIELDS
+    return semantic_envelope(EnvelopeName.WAKE, fields=fields)
+
+
 def _format_envelope_template(template: str, fields: Mapping[EnvelopeField, str]) -> str:
     """Render a registry-owned delimiter from typed header fields."""
     values = {field.value: value for field, value in fields.items()}
@@ -473,7 +480,17 @@ def _format_envelope_template(template: str, fields: Mapping[EnvelopeField, str]
 
 def envelope_bracket_opening(envelope: SemanticEnvelope) -> str:
     """Render the registry-owned opening delimiter for a semantic envelope."""
+    if envelope.definition.name is EnvelopeName.WAKE and EnvelopeField.OCCURRENCE_KEY in envelope.fields:
+        return _WAKE_BRACKET_OPENING_WITH_OCCURRENCE.format(
+            occurrence_key=envelope.fields[EnvelopeField.OCCURRENCE_KEY]
+        )
     return _format_envelope_template(envelope.definition.bracket_opening, envelope.fields)
+
+
+def wake_occurrence_key(opening: str) -> str | None:
+    """Read the correlation key from a canonical wake opening, when one is present."""
+    match = _WAKE_OPENING_RE.fullmatch(opening)
+    return match.group("occurrence_key") if match is not None else None
 
 
 def envelope_bracket_closing(envelope: SemanticEnvelope) -> str:
@@ -871,4 +888,6 @@ __all__ = [
     "visible_input_preview",
     "visible_input_update",
     "visible_user_segments",
+    "wake_envelope",
+    "wake_occurrence_key",
 ]

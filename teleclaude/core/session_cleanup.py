@@ -58,6 +58,8 @@ TMUX_SESSION_NAME_UNBOUND = ""
 _HOST_RELEASE_OBSERVATION_FAILED_EVENT = "session_host_release_observation_failed"
 _HOST_BINDING_RELEASE_FAILED_EVENT = "session_host_binding_release_failed"
 _HOST_BINDING_RELEASE_ROW_MISSING_REASON = "session row missing during host binding release"
+_PROCEDURE_EVENT_SESSION_CLOSED_REASON = "session_closed"
+_PROCEDURE_EVENT_SESSION_CLEANUP_EVENT = "procedure_event_session_cleanup"
 
 
 def host_pane_name(session_id: str) -> str:
@@ -137,6 +139,21 @@ async def _clear_session_reminders(session_id: str) -> None:
             error=str(exc),
             exc_info=True,
         )
+
+
+async def _suspend_procedure_events_on_session_close(session_id: str, *, delete_db: bool) -> None:
+    """Suspend responsibility work before close, retaining only live session state for revival."""
+    suspended_count = await db.suspend_procedure_events_for_session(
+        session_id=session_id,
+        reason=_PROCEDURE_EVENT_SESSION_CLOSED_REASON,
+    )
+    logger.info(
+        _PROCEDURE_EVENT_SESSION_CLEANUP_EVENT,
+        session_id=session_id,
+        suspended_count=suspended_count,
+    )
+    if delete_db:
+        await db.remove_procedure_event_delivery_session(session_id=session_id)
 
 
 def _is_uuid_name(value: str) -> bool:
@@ -520,6 +537,8 @@ async def _terminate_session_inner(
                     error=str(exc),
                     exc_info=True,
                 )
+
+        await _suspend_procedure_events_on_session_close(session.session_id, delete_db=delete_db)
 
         # Expire any pending inbound messages before marking the session closed. A close that keeps
         # the conversation leaves them queued: their delivery resumes the session.

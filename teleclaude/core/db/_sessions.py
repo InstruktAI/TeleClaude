@@ -15,6 +15,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.slug import replace_slug_token
 
+from ...types.commands import ProcedureSessionDeliveryInitialization
 from .. import db_models
 from ..events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
 from ..models import JsonDict, OriginRevivalContext, RelayStatus, Session, SessionField, SessionLaunchIntent
@@ -26,6 +27,7 @@ from ._agent_status import (
     AgentStatusPersistenceMixin,
     encode_open_tool_calls,
 )
+from ._control_delivery import initialize_procedure_delivery_in_transaction
 
 if TYPE_CHECKING:
     pass
@@ -103,6 +105,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
         native_log_file: str | None = None,
         origin_metadata: JsonDict | None = None,
         startup_intent: SessionLaunchIntent | None = None,
+        procedure_delivery: ProcedureSessionDeliveryInitialization | None = None,
         emit_session_started: bool = True,
     ) -> Session:
         """Create a new session.
@@ -232,6 +235,13 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
                         state=StartupHandoverState.ACCEPTED.value,
                         updated_at=now.isoformat(),
                     )
+                )
+            if procedure_delivery is not None:
+                await initialize_procedure_delivery_in_transaction(
+                    db_session,
+                    session_id=session.session_id,
+                    initialized_at=now.isoformat(),
+                    delivery=procedure_delivery,
                 )
             await db_session.commit()
 
@@ -983,18 +993,3 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             return [self._to_core_session(row) for row in result.all()]
-
-    async def get_active_sessions(self) -> list[Session]:
-        """Get all sessions ordered by last activity."""
-        stmt = (
-            select(db_models.Session)
-            .where(
-                db_models.Session.closed_at.is_(None),
-                db_models.Session.lifecycle_status == "active",
-            )
-            .order_by(db_models.Session.last_activity.desc())
-        )
-        async with self._session() as db_session:
-            result = await db_session.exec(stmt)
-            rows = result.all()
-            return [self._to_core_session(row) for row in rows]

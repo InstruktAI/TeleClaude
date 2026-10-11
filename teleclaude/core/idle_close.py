@@ -105,6 +105,7 @@ class NotDueReason(StrEnum):
     AGENT_NOT_IDLE = "agent_not_idle"
     INPUT_QUEUED = "input_queued"
     CONTROL_PENDING = "control_pending"
+    PROCEDURE_EVENTS_PENDING = "procedure_events_pending"
     COMPACTION_NOT_COMPLETED = "compaction_not_completed"
 
 
@@ -145,6 +146,8 @@ async def _not_due_reason(session: Session, now: datetime, *, require_idle_statu
         return NotDueReason.INPUT_QUEUED
     if await db.count_pending_control_payloads(session_id=session.session_id):
         return NotDueReason.CONTROL_PENDING
+    if await db.count_pending_procedure_events_for_session(session_id=session.session_id):
+        return NotDueReason.PROCEDURE_EVENTS_PENDING
     return None
 
 

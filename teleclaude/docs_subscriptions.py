@@ -17,6 +17,8 @@ _INDEX_FILE_NAME = "index.yaml"
 _COMPANY_SOURCE_PREFIX = "company:"
 _PERSON_SOURCE_PREFIX = "person:"
 _PROCEDURE_TYPE = "procedure"
+_EVENT_HANDLING_OVERVIEW_ID = "general/procedure/event-handling/overview"
+_EVENT_HANDLING_INTERRUPTIBLE_ID = "general/procedure/event-handling/interruptible"
 _UTF8 = "utf-8"
 _UNREADABLE_TIER_ERROR = (
     "Unreadable tier {scope!r} for subscribed procedure {procedure_id!r}. "
@@ -42,6 +44,7 @@ _TIER_KIND_MISMATCH_ERROR = (
     "Procedure {procedure_id!r} is published in a {tier} tier but answers {answered} events — "
     "refusing rather than widening reach."
 )
+_UNREADABLE_DELIVERY_SETTINGS_ERROR = "Unreadable event delivery settings for subscribed procedure {procedure_id!r}"
 
 
 class IndexKey(StrEnum):
@@ -57,6 +60,59 @@ class IndexKey(StrEnum):
     SUBSCRIPTION_HOME = "subscription_home"
     SUBSCRIPTION_IDENTITY = "subscription_identity"
     SUBSCRIPTION_ATTENDANCE = "subscription_attendance"
+    EVENT_DELIVERY = "event_delivery"
+    INTERRUPTIBLE = "interruptible"
+    DELIVERY_REQUIRED_READS = "delivery_required_reads"
+
+
+class EventDeliveryMode(StrEnum):
+    SEQUENTIAL = "sequential"
+    BATCHED = "batched"
+
+
+@dataclass(frozen=True)
+class ProcedureDeliverySettings:
+    event_delivery: EventDeliveryMode
+    interruptible: bool
+
+
+class DeliveryDeclarationError(ValueError):
+    def __init__(self, field: IndexKey, *, misplaced: bool = False) -> None:
+        self.field = field
+        self.misplaced = misplaced
+        super().__init__(field.value)
+
+
+def resolve_delivery_settings(metadata: Mapping[str, object]) -> ProcedureDeliverySettings | None:
+    """Resolve one subscribed procedure's delivery settings or reject its declaration."""
+    has_delivery_field = IndexKey.EVENT_DELIVERY in metadata or IndexKey.INTERRUPTIBLE in metadata
+    if metadata.get(IndexKey.SUBSCRIPTIONS) is None:
+        if has_delivery_field:
+            raise DeliveryDeclarationError(
+                IndexKey.EVENT_DELIVERY if IndexKey.EVENT_DELIVERY in metadata else IndexKey.INTERRUPTIBLE,
+                misplaced=True,
+            )
+        return None
+
+    raw_mode = metadata.get(IndexKey.EVENT_DELIVERY, EventDeliveryMode.SEQUENTIAL)
+    if not isinstance(raw_mode, str):
+        raise DeliveryDeclarationError(IndexKey.EVENT_DELIVERY)
+    try:
+        event_delivery = EventDeliveryMode(raw_mode)
+    except (TypeError, ValueError) as exc:
+        raise DeliveryDeclarationError(IndexKey.EVENT_DELIVERY) from exc
+
+    raw_interruptible = metadata.get(IndexKey.INTERRUPTIBLE, False)
+    if not isinstance(raw_interruptible, bool):
+        raise DeliveryDeclarationError(IndexKey.INTERRUPTIBLE)
+    return ProcedureDeliverySettings(event_delivery=event_delivery, interruptible=raw_interruptible)
+
+
+def required_event_handling_dependencies(settings: ProcedureDeliverySettings) -> tuple[str, ...]:
+    """Return context-owned shared instructions required by a delivery declaration."""
+    if settings.interruptible:
+        return (_EVENT_HANDLING_OVERVIEW_ID, _EVENT_HANDLING_INTERRUPTIBLE_ID)
+    return (_EVENT_HANDLING_OVERVIEW_ID,)
 
 
 class SubscriptionHomeKind(StrEnum):
@@ -118,6 +174,8 @@ class SubscriptionEntry:
     home_slug: str | None
     identity: SubscriptionIdentity
     attendance: SubscriptionAttendance
+    delivery: ProcedureDeliverySettings
+    required_reads: tuple[str, ...]
 
     def matches_type(self, event_type: str) -> bool:
         """Whether any declared pattern selects the event type."""
@@ -173,6 +231,9 @@ def _tier_reach(procedure_id: str, entry: Mapping[str, object]) -> tuple[Subscri
 def _subscription_entry(
     procedure_id: str, entry: Mapping[str, object], subscriptions: list[object]
 ) -> SubscriptionEntry:
+    delivery = resolve_delivery_settings({**entry, IndexKey.SUBSCRIPTIONS: subscriptions})
+    if delivery is None:
+        raise ValueError(_UNREADABLE_DELIVERY_SETTINGS_ERROR.format(procedure_id=procedure_id))
     try:
         home_kind = SubscriptionHomeKind(str(entry.get(IndexKey.SUBSCRIPTION_HOME)))
     except ValueError as exc:
@@ -205,6 +266,8 @@ def _subscription_entry(
         home_slug=home_slug,
         identity=identity,
         attendance=attendance,
+        delivery=delivery,
+        required_reads=required_event_handling_dependencies(delivery),
     )
 
 

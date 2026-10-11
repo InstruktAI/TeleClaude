@@ -64,6 +64,23 @@ _LOCALE_VARIABLE = "LANG"
 _PATH_VARIABLE = "PATH"
 _NO_COLOR_VARIABLE = "NO_COLOR"
 _CONFIG_FILENAME = "config.yml"
+_PROCEDURE_DELIVERY_FIXTURE = Path("tools/ci/fixtures/procedure_event_delivery.json")
+_PROCEDURE_FIXTURE_DIRECTORY = Path("docs/global/general/procedure/runtime-acceptance-event-delivery")
+_PROCEDURE_FIXTURE_INSTALL_MODULE = "teleclaude.entrypoints.install_publication"
+_PROCEDURE_FIXTURE_MISSING_DEPENDENCY_ERROR = "Unable to read eligible required-read snippet"
+_PROCEDURE_FIXTURE_COMMIT_MESSAGE = "test: publish disposable runtime acceptance procedure fixtures"
+_PROCEDURE_FIXTURE_GIT_AUTHOR = "Runtime Acceptance Fixture"
+_PROCEDURE_FIXTURE_GIT_EMAIL = "runtime-acceptance@example.invalid"
+_PROCEDURE_FIXTURE_CLONE_TIMEOUT_SECONDS = 60
+_PROCEDURE_FIXTURE_PUBLICATION_TIMEOUT_SECONDS = 120
+_PROCEDURE_FIXTURE_VALIDATION_TIMEOUT_SECONDS = 180
+_GIT_EXECUTABLE = "git"
+_DOCS_GET_COMMAND = ("docs", "get")
+_DOCS_CLOSURE_OPTION = "--closure"
+_CLI_SNIPPET_BLOCK_SEPARATOR = "\n---\n"
+_CLI_SNIPPET_ID_PREFIX = "id: "
+_PROCEDURE_CLOSURE_SEQUENTIAL = "sequential"
+_PROCEDURE_CLOSURE_BATCHED = "batched"
 _OWNER_ESTABLISHMENT_MODULE = "teleclaude.entrypoints.macos_setup"
 _CLI_EXECUTABLE = Path("bin") / "telec"
 _CLI_HELP_ARGUMENTS = ("--help",)
@@ -102,6 +119,8 @@ _SCENARIO_NON_ADMIN_REFUSAL = "UC-RA8"
 _SCENARIO_CLEANUP = "UC-RA9"
 _SCENARIO_CANDIDATE_IDENTITY = "UC-RA10"
 _SCENARIO_INVALID_CONFIG = "UC-RA11"
+_SCENARIO_PROCEDURE_CLOSURE = "UC-RA12"
+_SCENARIO_DELIVERY_VALIDATION = "UC-RA13"
 _COLD_PROFILE_SCENARIOS = (_SCENARIO_COLD,)
 _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_COLD,
@@ -115,6 +134,8 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_CLEANUP,
     _SCENARIO_CANDIDATE_IDENTITY,
     _SCENARIO_INVALID_CONFIG,
+    _SCENARIO_PROCEDURE_CLOSURE,
+    _SCENARIO_DELIVERY_VALIDATION,
 )
 _PROFILE_COLD = "cold"
 _PROFILE_FULL = "full"
@@ -1919,6 +1940,334 @@ def _full_candidate_identity(resources: FullRuntimeResources, evidence: list[Com
         raise ValueError(_FULL_CANDIDATE_IDENTITY_INVALID)
 
 
+def _procedure_fixture(resources: FullRuntimeResources) -> Mapping[str, object]:
+    """Load the scenario-owned source and normalized response contract."""
+    fixture_path = resources.source_root / _PROCEDURE_DELIVERY_FIXTURE
+    payload = json.loads(fixture_path.read_text(encoding=_UTF8))
+    fixture = _mapping_value(payload)
+    if fixture is None or _mapping_value(fixture.get("sources")) is None:
+        raise ValueError("The procedure event acceptance fixture is malformed.")
+    return fixture
+
+
+def _procedure_fixture_command(
+    resources: FullRuntimeResources,
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    evidence: list[CommandEvidence],
+    timeout_seconds: float = _FULL_COMMAND_TIMEOUT_SECONDS,
+) -> ProcessExecution:
+    """Run a bounded command against an isolated source fixture."""
+    return _record_external_command(resources, argv, cwd=cwd, timeout_seconds=timeout_seconds, evidence=evidence)
+
+
+def _procedure_fixture_success(
+    resources: FullRuntimeResources,
+    evidence: list[CommandEvidence],
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    timeout_seconds: float = _FULL_COMMAND_TIMEOUT_SECONDS,
+) -> ProcessExecution:
+    result = _procedure_fixture_command(resources, argv, cwd=cwd, evidence=evidence, timeout_seconds=timeout_seconds)
+    if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
+        detail = resources.sanitize(result.stderr or result.stdout or result.diagnostics)
+        raise RuntimeError(f"A procedure fixture command failed: {detail[:_DIAGNOSTIC_LIMIT]}")
+    return result
+
+
+def _create_procedure_fixture_checkout(
+    resources: FullRuntimeResources,
+    fixture_name: str,
+    evidence: list[CommandEvidence],
+) -> Path:
+    """Make a disposable source checkout whose committed docs use the regular publisher."""
+    checkout = resources.temporary_root / fixture_name
+    clone_argv = (
+        _GIT_EXECUTABLE,
+        "clone",
+        "--quiet",
+        "--shared",
+        str(resources.source_root),
+        str(checkout),
+    )
+    _procedure_fixture_success(
+        resources,
+        evidence,
+        clone_argv,
+        cwd=resources.temporary_root,
+        timeout_seconds=_PROCEDURE_FIXTURE_CLONE_TIMEOUT_SECONDS,
+    )
+    _procedure_fixture_success(
+        resources,
+        evidence,
+        (_GIT_EXECUTABLE, "config", "user.name", _PROCEDURE_FIXTURE_GIT_AUTHOR),
+        cwd=checkout,
+    )
+    _procedure_fixture_success(
+        resources,
+        evidence,
+        (_GIT_EXECUTABLE, "config", "user.email", _PROCEDURE_FIXTURE_GIT_EMAIL),
+        cwd=checkout,
+    )
+    return checkout
+
+
+def _write_procedure_fixture_sources(
+    checkout: Path,
+    fixture: Mapping[str, object],
+    *,
+    include_interruptible: bool,
+    include_invalid: bool = False,
+) -> None:
+    """Materialize only scenario-owned procedure sources into the disposable checkout."""
+    sources = _mapping_value(fixture.get("sources"))
+    if sources is None:
+        raise ValueError("The procedure event acceptance fixture has no sources.")
+    for relative_path, content in sources.items():
+        if not isinstance(content, str):
+            raise ValueError("The procedure event acceptance fixture contains an invalid source.")
+        if not include_interruptible and relative_path.endswith("/event-handling/interruptible.md"):
+            continue
+        if not include_invalid and "/invalid-" in relative_path:
+            continue
+        destination = checkout / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(content, encoding=_UTF8)
+
+
+def _commit_procedure_fixture(checkout: Path, resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Commit disposable authored documentation so installed-commit publication can consume it."""
+    _procedure_fixture_success(
+        resources,
+        evidence,
+        (_GIT_EXECUTABLE, "add", str(_PROCEDURE_FIXTURE_DIRECTORY), "docs/global/general/procedure/event-handling"),
+        cwd=checkout,
+    )
+    _procedure_fixture_success(
+        resources,
+        evidence,
+        (_GIT_EXECUTABLE, "commit", "--quiet", "-m", _PROCEDURE_FIXTURE_COMMIT_MESSAGE),
+        cwd=checkout,
+    )
+
+
+def _publish_procedure_fixture(
+    checkout: Path,
+    resources: FullRuntimeResources,
+    evidence: list[CommandEvidence],
+) -> ProcessExecution:
+    """Run the public install publication entry point for one committed fixture revision."""
+    return _procedure_fixture_command(
+        resources,
+        (
+            _UV_EXECUTABLE,
+            _UV_PROJECT_SUBCOMMAND,
+            "--directory",
+            str(resources.source_root),
+            _UV_NO_SYNC_OPTION,
+            _PYTHON_EXECUTABLE,
+            "-m",
+            _PROCEDURE_FIXTURE_INSTALL_MODULE,
+        ),
+        cwd=checkout,
+        evidence=evidence,
+        timeout_seconds=_PROCEDURE_FIXTURE_PUBLICATION_TIMEOUT_SECONDS,
+    )
+
+
+def _closure_block_ids(output: str) -> list[str]:
+    """Read the ordered IDs from the public CLI's normalized Markdown response blocks."""
+    blocks = output.split(_CLI_SNIPPET_BLOCK_SEPARATOR)
+    identifiers: list[str] = []
+    for block in blocks[1:]:
+        for line in block.splitlines():
+            if line.startswith(_CLI_SNIPPET_ID_PREFIX):
+                identifiers.append(line.removeprefix(_CLI_SNIPPET_ID_PREFIX))
+                break
+    return identifiers
+
+
+def _check_procedure_closure_snapshot(
+    output: str,
+    snapshot: Mapping[str, object],
+    fixture: Mapping[str, object],
+) -> None:
+    expected_ids = snapshot.get("included_ids")
+    if not isinstance(expected_ids, list) or not all(isinstance(item, str) for item in expected_ids):
+        raise ValueError("A procedure closure response snapshot is malformed.")
+    blocks = output.split(_CLI_SNIPPET_BLOCK_SEPARATOR)[1:]
+    actual_ids = _closure_block_ids(output)
+    if actual_ids != expected_ids:
+        raise ValueError(f"The public procedure closure did not match its ordered response snapshot: {actual_ids!r}")
+    sources = _mapping_value(fixture.get("sources"))
+    if sources is None:
+        raise ValueError("The procedure closure fixture has no authored body snapshots.")
+    expected_blocks: dict[str, str] = {}
+    for relative_path, content in sources.items():
+        if (
+            not isinstance(content, str)
+            or not relative_path.startswith("docs/global/")
+            or not relative_path.endswith(".md")
+        ):
+            continue
+        frontmatter = content.split("---\n", 2)
+        if len(frontmatter) != 3:
+            raise ValueError(f"The authored response snapshot has malformed frontmatter: {relative_path}")
+        description = next(
+            (
+                line.removeprefix("description: ")
+                for line in frontmatter[1].splitlines()
+                if line.startswith("description: ")
+            ),
+            None,
+        )
+        if not description:
+            raise ValueError(f"The authored response snapshot has no description: {relative_path}")
+        snippet_id = relative_path.removeprefix("docs/global/").removesuffix(".md")
+        expected_blocks[snippet_id] = (
+            f"id: {snippet_id}\ntype: procedure\ndomain: general\nscope: global\n"
+            f"description: {description}\n---\n{frontmatter[2]}"
+        )
+    for snippet_id, block in zip(actual_ids, blocks, strict=True):
+        if block.rstrip() != expected_blocks.get(snippet_id, "").rstrip():
+            raise ValueError(f"The normalized public response snapshot differs for {snippet_id}.")
+
+
+def _restore_procedure_fixture_publication(
+    resources: FullRuntimeResources,
+    evidence: list[CommandEvidence],
+) -> None:
+    """Restore this checkout's committed publication after disposable fixture assertions."""
+    result = _publish_procedure_fixture(resources.source_root, resources, evidence)
+    if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
+        detail = resources.sanitize(result.stderr or result.stdout or result.diagnostics)
+        raise RuntimeError(f"Could not restore the installed documentation generation: {detail[:_DIAGNOSTIC_LIMIT]}")
+
+
+def _full_procedure_closure(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    fixture = _procedure_fixture(resources)
+    closures = _mapping_value(fixture.get("closures"))
+    if closures is None:
+        raise ValueError("The procedure event acceptance fixture has no closure snapshots.")
+    checkout = _create_procedure_fixture_checkout(resources, "procedure-closure-fixture", evidence)
+    try:
+        _write_procedure_fixture_sources(checkout, fixture, include_interruptible=True)
+        _commit_procedure_fixture(checkout, resources, evidence)
+        lint = _procedure_fixture_success(
+            resources,
+            evidence,
+            (str(resources.source_root / _CLI_EXECUTABLE), "code", "lint", "--all"),
+            cwd=checkout,
+            timeout_seconds=_PROCEDURE_FIXTURE_VALIDATION_TIMEOUT_SECONDS,
+        )
+        if not lint.stdout.strip() and not lint.stderr.strip():
+            raise ValueError("The public documentation validation command returned no evidence.")
+        publication = _publish_procedure_fixture(checkout, resources, evidence)
+        if publication.exit_status != _PROCESS_SUCCESS or publication.diagnostics:
+            raise RuntimeError(
+                "The valid procedure fixture did not pass normal documentation publication: "
+                + resources.sanitize(publication.stderr or publication.stdout or publication.diagnostics)
+            )
+        for snapshot_name in (_PROCEDURE_CLOSURE_SEQUENTIAL, _PROCEDURE_CLOSURE_BATCHED):
+            snapshot = _mapping_value(closures.get(snapshot_name))
+            if snapshot is None or not isinstance(snapshot.get("id"), str):
+                raise ValueError(f"The {snapshot_name} closure response snapshot is malformed.")
+            result = _procedure_fixture_success(
+                resources,
+                evidence,
+                (
+                    str(resources.source_root / _CLI_EXECUTABLE),
+                    *_DOCS_GET_COMMAND,
+                    cast(str, snapshot["id"]),
+                    _DOCS_CLOSURE_OPTION,
+                ),
+                cwd=checkout,
+            )
+            _check_procedure_closure_snapshot(result.stdout, snapshot, fixture)
+
+        missing_id = fixture.get("missing_dependency")
+        if not isinstance(missing_id, str):
+            raise ValueError("The procedure event acceptance fixture has no missing dependency identity.")
+        (checkout / "docs/global/general/procedure/event-handling/interruptible.md").unlink()
+        _commit_procedure_fixture(checkout, resources, evidence)
+        publication = _publish_procedure_fixture(checkout, resources, evidence)
+        if publication.exit_status != _PROCESS_SUCCESS or publication.diagnostics:
+            raise RuntimeError("The intentionally incomplete dependency fixture could not be published.")
+        batched_snapshot = _mapping_value(closures.get(_PROCEDURE_CLOSURE_BATCHED))
+        if batched_snapshot is None or not isinstance(batched_snapshot.get("id"), str):
+            raise ValueError("The batched closure response snapshot is malformed.")
+        result = _procedure_fixture_command(
+            resources,
+            (
+                str(resources.source_root / _CLI_EXECUTABLE),
+                *_DOCS_GET_COMMAND,
+                cast(str, batched_snapshot["id"]),
+                _DOCS_CLOSURE_OPTION,
+            ),
+            cwd=checkout,
+            evidence=evidence,
+        )
+        if (
+            result.exit_status == _PROCESS_SUCCESS
+            or _PROCEDURE_FIXTURE_MISSING_DEPENDENCY_ERROR not in (result.stdout + result.stderr)
+            or missing_id not in (result.stdout + result.stderr)
+        ):
+            raise ValueError("The public closure accepted or misidentified a missing mandatory instruction.")
+    finally:
+        _restore_procedure_fixture_publication(resources, evidence)
+
+
+def _full_delivery_declaration_validation(
+    resources: FullRuntimeResources,
+    evidence: list[CommandEvidence],
+) -> None:
+    fixture = _procedure_fixture(resources)
+    invalid = _mapping_value(fixture.get("invalid"))
+    if invalid is None:
+        raise ValueError("The invalid procedure declaration fixture is malformed.")
+    invalid_ids = invalid.get("ids")
+    if not isinstance(invalid_ids, list) or not all(isinstance(item, str) for item in invalid_ids):
+        raise ValueError("The invalid procedure declaration identities are malformed.")
+    fields = invalid.get("fields")
+    if not isinstance(fields, list) or not all(isinstance(field, str) for field in fields):
+        raise ValueError("The invalid procedure declaration fields are malformed.")
+    checkout = _create_procedure_fixture_checkout(resources, "procedure-invalid-fixture", evidence)
+    try:
+        _write_procedure_fixture_sources(checkout, fixture, include_interruptible=True, include_invalid=True)
+        _commit_procedure_fixture(checkout, resources, evidence)
+        validation = _procedure_fixture_command(
+            resources,
+            (str(resources.source_root / _CLI_EXECUTABLE), "code", "lint", "--all"),
+            cwd=checkout,
+            evidence=evidence,
+            timeout_seconds=_PROCEDURE_FIXTURE_VALIDATION_TIMEOUT_SECONDS,
+        )
+        validation_text = validation.stdout + validation.stderr
+        if validation.exit_status == _PROCESS_SUCCESS or any(field not in validation_text for field in fields):
+            raise ValueError("Public documentation validation did not reject every invalid delivery field.")
+        publication = _publish_procedure_fixture(checkout, resources, evidence)
+        if publication.exit_status == _PROCESS_SUCCESS:
+            raise ValueError("Normal publication accepted an invalid procedure delivery declaration.")
+        for invalid_id in invalid_ids:
+            retrieval = _procedure_fixture_command(
+                resources,
+                (
+                    str(resources.source_root / _CLI_EXECUTABLE),
+                    *_DOCS_GET_COMMAND,
+                    invalid_id,
+                    _DOCS_CLOSURE_OPTION,
+                ),
+                cwd=checkout,
+                evidence=evidence,
+            )
+            if retrieval.exit_status == _PROCESS_SUCCESS:
+                raise ValueError("An invalid procedure declaration became active after publication was refused.")
+    finally:
+        _restore_procedure_fixture_publication(resources, evidence)
+
+
 def _cold_entrypoint_scenario(
     source_root: Path,
     child_environment: Mapping[str, str],
@@ -2066,6 +2415,12 @@ def run_profile(
                     ),
                     _SCENARIO_INVALID_CONFIG: _bind_full_scenario(
                         _SCENARIO_INVALID_CONFIG, resources, _full_unknown_key_refusal
+                    ),
+                    _SCENARIO_PROCEDURE_CLOSURE: _bind_full_scenario(
+                        _SCENARIO_PROCEDURE_CLOSURE, resources, _full_procedure_closure
+                    ),
+                    _SCENARIO_DELIVERY_VALIDATION: _bind_full_scenario(
+                        _SCENARIO_DELIVERY_VALIDATION, resources, _full_delivery_declaration_validation
                     ),
                 }
             )

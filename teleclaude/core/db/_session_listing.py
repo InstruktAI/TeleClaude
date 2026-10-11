@@ -44,6 +44,20 @@ type SessionRecordRead = SessionRecordFound | SessionRecordOutsideReach | Sessio
 class DbSessionListingMixin(DbBase):
     """Store queries dedicated to bounded session listings."""
 
+    async def get_active_sessions(self) -> list[Session]:
+        """Get active sessions ordered by last activity."""
+        statement = (
+            select(db_models.Session)
+            .where(
+                db_models.Session.closed_at.is_(None),
+                db_models.Session.lifecycle_status == "active",
+            )
+            .order_by(db_models.Session.last_activity.desc())
+        )
+        async with self._session() as db_session:
+            rows = (await db_session.exec(statement)).all()
+        return [self._to_core_session(row) for row in rows]
+
     async def select_sessions_for_listing(
         self,
         reach: Reach,

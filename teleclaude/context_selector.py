@@ -31,6 +31,7 @@ from teleclaude.docs_publishers import (
     DocsPublisherResolutionError,
     resolve_global_doc_source,
 )
+from teleclaude.docs_subscriptions import IndexKey, required_event_handling_dependencies, resolve_delivery_settings
 from teleclaude.domains import publishes_for_root, valid_domains
 from teleclaude.identity_reach import Reach, resolve_reach
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, REPO_ROOT, TELECLAUDE_HOME
@@ -172,6 +173,7 @@ class SnippetMeta:
     activation_trigger: str | None = None
     delivered_by: tuple[str, ...] = ()
     superseded_by: tuple[str, ...] = ()
+    delivery_required_reads: tuple[str, ...] = ()
 
 
 _UNKNOWN_SCOPE_RANK = len(SCOPE_ORDER)
@@ -306,6 +308,8 @@ def _load_baseline_ids(
 def _resolve_requires(
     selected_ids: Iterable[str],
     snippets: list[SnippetMeta],
+    *,
+    activation_closure: bool = False,
 ) -> list[SnippetMeta]:
     snippets_by_id = {s.snippet_id: s for s in snippets}
     snippets_by_path = {str(s.path): s for s in snippets}
@@ -344,6 +348,14 @@ def _resolve_requires(
                 continue
             if req_snippet:
                 stack.append(req_snippet)
+        for required_id in current.delivery_required_reads:
+            required_snippet = snippets_by_id.get(required_id)
+            if required_snippet is None or required_snippet.delivered_by:
+                if activation_closure:
+                    raise ActivationClosureError(ACTIVATION_CLOSURE_UNREADABLE_ERROR.format(required_id))
+                continue
+            if str(required_snippet.path) not in seen:
+                stack.append(required_snippet)
 
     resolved.sort(key=lambda s: (TAXONOMY_TYPES.index(s.snippet_type), _scope_rank(s.scope), s.snippet_id))
     return resolved
@@ -529,6 +541,13 @@ def _load_index(
                 if isinstance(raw_superseded_by, list) and all(isinstance(slug, str) for slug in raw_superseded_by)
                 else ()
             )
+            raw_delivery_required_reads = item.get(IndexKey.DELIVERY_REQUIRED_READS)
+            delivery_required_reads = (
+                tuple(raw_delivery_required_reads)
+                if isinstance(raw_delivery_required_reads, list)
+                and all(isinstance(snippet_id, str) for snippet_id in raw_delivery_required_reads)
+                else ()
+            )
             loaded_entries.append(
                 SnippetMeta(
                     snippet_id=snippet_id,
@@ -543,6 +562,7 @@ def _load_index(
                     activation_trigger=activation_trigger,
                     delivered_by=delivered_by,
                     superseded_by=superseded_by,
+                    delivery_required_reads=delivery_required_reads,
                 )
             )
         _index_cache[cache_key] = (mtime, loaded_entries)
@@ -564,6 +584,7 @@ def _load_index(
                 activation_trigger=snippet.activation_trigger,
                 delivered_by=snippet.delivered_by,
                 superseded_by=snippet.superseded_by,
+                delivery_required_reads=snippet.delivery_required_reads,
             )
         )
 
@@ -927,6 +948,7 @@ def _snippet_meta_from_file(
     activation_trigger = metadata.get("activation_trigger")
     raw_visibility = metadata.get("visibility")
     raw_delivered_by = metadata.get("delivered_by")
+    delivery = resolve_delivery_settings(metadata)
     delivered_by = (
         tuple(raw_delivered_by)
         if isinstance(raw_delivered_by, list) and all(isinstance(slug, str) for slug in raw_delivered_by)
@@ -944,6 +966,7 @@ def _snippet_meta_from_file(
         visibility=raw_visibility if isinstance(raw_visibility, str) else SNIPPET_VISIBILITY_INTERNAL,
         activation_trigger=activation_trigger if isinstance(activation_trigger, str) else None,
         delivered_by=delivered_by,
+        delivery_required_reads=(required_event_handling_dependencies(delivery) if delivery is not None else ()),
     )
 
 
@@ -1055,6 +1078,8 @@ def _render_phase2_taxonomy_bodies(
         if closure_root is None and snippet.snippet_id not in requested_set:
             continue
         if closure_root is not None and snippet.snippet_id != closure_root.snippet_id and snippet.delivered_by:
+            if snippet.snippet_id in closure_root.delivery_required_reads:
+                raise ActivationClosureError(ACTIVATION_CLOSURE_UNREADABLE_ERROR.format(snippet.snippet_id))
             continue
         body = _read_selected_snippet_body(
             snippet,
@@ -1576,7 +1601,7 @@ def build_context_output(  # TODO: refactor to reduce complexity
         )
         return f"ERROR: Unknown snippet IDs: {', '.join(unknown_ids)}"
 
-    resolved = _resolve_requires(taxonomy_ids, snippets)
+    resolved = _resolve_requires(taxonomy_ids, snippets, activation_closure=closure)
     _write_test_output(
         phase="phase2",
         areas=areas,

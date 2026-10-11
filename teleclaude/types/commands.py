@@ -10,7 +10,7 @@ from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import EndpointStamp, SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._types import JsonDict, JsonValue
-from teleclaude.docs_subscriptions import SubscriptionAttendance, SubscriptionIdentity
+from teleclaude.docs_subscriptions import EventDeliveryMode, SubscriptionAttendance, SubscriptionIdentity
 from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.media import MediaRef
 
@@ -113,6 +113,78 @@ class ProcedureActivationResult(TypedDict):
     outcome: ActivationOutcome
 
 
+class ProcedureDeliveryInitializationField(StrEnum):
+    PROCEDURE_ID = "procedure_id"
+    RESPONSIBILITY_KEY = "responsibility_key"
+    ACTIVATION_IDS = "activation_ids"
+    EVENT_DELIVERY = "event_delivery"
+    INTERRUPTIBLE = "interruptible"
+    INITIAL_ENTRY_ID = "initial_entry_id"
+    REQUIRED_READS = "required_reads"
+
+
+_INVALID_PROCEDURE_DELIVERY_READS = "procedure delivery initialization requires string read IDs"
+_INVALID_PROCEDURE_DELIVERY_VALUES = "procedure delivery initialization has invalid policy values"
+_INVALID_PROCEDURE_DELIVERY_IDENTITY = "procedure delivery initialization has invalid identity fields"
+
+
+@dataclass(frozen=True)
+class ProcedureSessionDeliveryInitialization:
+    """Initial delivery policy and inbox entry committed with a new procedure session."""
+
+    procedure_id: str
+    responsibility_key: str
+    activation_ids: tuple[str, ...]
+    event_delivery: EventDeliveryMode
+    interruptible: bool
+    initial_entry_id: str
+    required_reads: tuple[str, ...]
+
+    def to_dict(self) -> JsonDict:
+        return {
+            ProcedureDeliveryInitializationField.PROCEDURE_ID.value: self.procedure_id,
+            ProcedureDeliveryInitializationField.RESPONSIBILITY_KEY.value: self.responsibility_key,
+            ProcedureDeliveryInitializationField.ACTIVATION_IDS.value: list(self.activation_ids),
+            ProcedureDeliveryInitializationField.EVENT_DELIVERY.value: self.event_delivery.value,
+            ProcedureDeliveryInitializationField.INTERRUPTIBLE.value: self.interruptible,
+            ProcedureDeliveryInitializationField.INITIAL_ENTRY_ID.value: self.initial_entry_id,
+            ProcedureDeliveryInitializationField.REQUIRED_READS.value: list(self.required_reads),
+        }
+
+    @staticmethod
+    def from_dict(data: Mapping[str, object]) -> "ProcedureSessionDeliveryInitialization":
+        required_reads = data.get(ProcedureDeliveryInitializationField.REQUIRED_READS)
+        if not isinstance(required_reads, list) or not all(isinstance(item, str) for item in required_reads):
+            raise ValueError(_INVALID_PROCEDURE_DELIVERY_READS)
+        activation_ids = data.get(ProcedureDeliveryInitializationField.ACTIVATION_IDS)
+        if (
+            not isinstance(activation_ids, list)
+            or not activation_ids
+            or not all(isinstance(item, str) and item for item in activation_ids)
+        ):
+            raise ValueError(_INVALID_PROCEDURE_DELIVERY_IDENTITY)
+        raw_string_fields = (
+            ProcedureDeliveryInitializationField.PROCEDURE_ID,
+            ProcedureDeliveryInitializationField.RESPONSIBILITY_KEY,
+            ProcedureDeliveryInitializationField.INITIAL_ENTRY_ID,
+        )
+        if not all(isinstance(data.get(field), str) and data.get(field) for field in raw_string_fields):
+            raise ValueError(_INVALID_PROCEDURE_DELIVERY_IDENTITY)
+        event_delivery = data.get(ProcedureDeliveryInitializationField.EVENT_DELIVERY)
+        interruptible = data.get(ProcedureDeliveryInitializationField.INTERRUPTIBLE)
+        if not isinstance(event_delivery, str) or not isinstance(interruptible, bool):
+            raise ValueError(_INVALID_PROCEDURE_DELIVERY_VALUES)
+        return ProcedureSessionDeliveryInitialization(
+            procedure_id=cast(str, data[ProcedureDeliveryInitializationField.PROCEDURE_ID]),
+            responsibility_key=cast(str, data[ProcedureDeliveryInitializationField.RESPONSIBILITY_KEY]),
+            activation_ids=tuple(activation_ids),
+            event_delivery=EventDeliveryMode(event_delivery),
+            interruptible=interruptible,
+            initial_entry_id=cast(str, data[ProcedureDeliveryInitializationField.INITIAL_ENTRY_ID]),
+            required_reads=tuple(required_reads),
+        )
+
+
 @dataclass(kw_only=True)
 class InternalCommand:
     """Base class for all internal commands."""
@@ -153,6 +225,8 @@ class InternalCommand:
                 payload[name] = value.value
             elif name == "launch_intent":
                 payload[name] = cast("SessionLaunchIntent", value).to_dict()
+            elif isinstance(value, ProcedureSessionDeliveryInitialization):
+                payload[name] = value.to_dict()
             elif isinstance(value, CallerProvenance | EndpointStamp | MediaRef):
                 payload[name] = value.to_dict()
             elif isinstance(value, Mapping):
@@ -212,11 +286,14 @@ class CreateSessionCommand(InternalCommand):
     command_input_source_text: str | None = None
     endpoint: EndpointStamp | None = None
     unattended: bool = False
+    procedure_delivery: ProcedureSessionDeliveryInitialization | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
         if self.request_id is None:
             self.request_id = str(uuid4())
+        if self.procedure_delivery is not None and self.entry_point is not SessionEntryPoint.PROCEDURE_ACTIVATION:
+            raise ValueError("procedure delivery initialization requires a procedure activation session")
 
     def to_payload(self) -> dict[str, object]:
         args: list[str] = [self.initial_input] if self.initial_input else []
@@ -753,6 +830,8 @@ class ActivateProcedureCommand(InternalCommand):
     event_json: str
     identity: SubscriptionIdentity
     attendance: SubscriptionAttendance
+    event_delivery: EventDeliveryMode
+    interruptible: bool
 
     def __init__(
         self,
@@ -762,6 +841,8 @@ class ActivateProcedureCommand(InternalCommand):
         event_json: str,
         identity: SubscriptionIdentity = SubscriptionIdentity.HOME,
         attendance: SubscriptionAttendance = SubscriptionAttendance.ATTENDED,
+        event_delivery: EventDeliveryMode = EventDeliveryMode.SEQUENTIAL,
+        interruptible: bool = False,
         request_id: str | None = None,
     ):
         super().__init__(
@@ -776,6 +857,8 @@ class ActivateProcedureCommand(InternalCommand):
         self.event_json = event_json
         self.identity = identity
         self.attendance = attendance
+        self.event_delivery = event_delivery
+        self.interruptible = interruptible
 
     def to_payload(self) -> dict[str, object]:
         return {"session_id": "", "args": [self.procedure_id, self.home]}

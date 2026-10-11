@@ -401,6 +401,61 @@ class ControlDelivery(SQLModel, table=True):
     terminal_at: str | None = None
 
 
+class ProcedureEventDeliveryOutcome(StrEnum):
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    FAILED = "failed"
+    SUSPENDED = "suspended"
+
+
+class ProcedureEventInbox(SQLModel, table=True):
+    """One accepted procedure activation retained independently of session lifetime."""
+
+    __tablename__ = "procedure_event_inbox"
+    __table_args__ = {"extend_existing": True}
+
+    enqueue_order: int | None = Field(default=None, primary_key=True)
+    activation_id: str = Field(unique=True)
+    responsibility_key: str
+    procedure_id: str
+    home: str
+    subject: str | None = None
+    event_json: str
+    identity: str
+    attendance: str
+    event_delivery: str
+    interruptible: bool
+    assigned_session_id: str | None = None
+    outcome: str = ProcedureEventDeliveryOutcome.PENDING.value
+    outcome_reason: str | None = None
+    accepted_at: str
+    terminal_at: str | None = None
+
+
+class ProcedureEventDeliverySession(SQLModel, table=True):
+    """Initialized per-session delivery policy and hook-entry correlation facts."""
+
+    __tablename__ = "procedure_event_delivery_sessions"
+    __table_args__ = {"extend_existing": True}
+
+    session_id: str = Field(primary_key=True)
+    procedure_id: str
+    responsibility_key: str
+    event_delivery: str
+    interruptible: bool
+    initialized_at: str
+    initial_entry_id: str | None = None
+    initial_entry_consumed_at: str | None = None
+    active_run_id: str | None = None
+    consumed_entry_id: str | None = None
+    wake_occurrence_id: str | None = None
+    wake_accepted_occurrence_id: str | None = None
+    wake_observed_last_input_at: str | None = None
+    wake_observed_last_agent_stop_at: str | None = None
+    wake_observed_last_agent_idle_at: str | None = None
+    wake_observed_inbound_id: int | None = None
+
+
 class OutputGenerationRow(SQLModel, table=True):
     """output_generations table — one cut turn boundary for a session."""
 

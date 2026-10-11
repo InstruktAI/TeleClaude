@@ -9,7 +9,7 @@ from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import EndpointStamp, SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._types import JsonDict
-from teleclaude.docs_subscriptions import SubscriptionAttendance, SubscriptionIdentity
+from teleclaude.docs_subscriptions import EventDeliveryMode, SubscriptionAttendance, SubscriptionIdentity
 from teleclaude.types.commands import (
     ActivateProcedureCommand,
     CallerProvenance,
@@ -22,6 +22,7 @@ from teleclaude.types.commands import (
     HandoffAgentCommand,
     InternalCommand,
     KeysCommand,
+    ProcedureSessionDeliveryInitialization,
     ProcessMessageCommand,
     ResponseMode,
     RestartAgentCommand,
@@ -67,6 +68,7 @@ _WIRE_ENUM_FIELDS: Mapping[str, type[Enum]] = {
     "source_feature": InjectedTextSourceFeature,
     "identity": SubscriptionIdentity,
     "attendance": SubscriptionAttendance,
+    "event_delivery": EventDeliveryMode,
 }
 
 
@@ -90,6 +92,8 @@ def command_from_dict(data: JsonDict) -> InternalCommand:
             value = enum_type(raw_value)
         elif name == "launch_intent" and isinstance(raw_value, dict):
             value = SessionLaunchIntent.from_dict(raw_value)
+        elif name == "procedure_delivery" and isinstance(raw_value, dict):
+            value = ProcedureSessionDeliveryInitialization.from_dict(raw_value)
         elif name in {"origin_metadata", "data"} and isinstance(raw_value, dict):
             value = dict(raw_value)
         elif name == _ENDPOINT_FIELD and isinstance(raw_value, dict):

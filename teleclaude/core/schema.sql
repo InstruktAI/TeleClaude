@@ -225,6 +225,56 @@ CREATE INDEX IF NOT EXISTS idx_control_outbox_pending_session
     ON control_outbox(session_id, id)
     WHERE outcome IS NULL;
 
+-- Procedure activations retain responsibility-owned event work across session changes.
+CREATE TABLE IF NOT EXISTS procedure_event_inbox (
+    enqueue_order INTEGER PRIMARY KEY AUTOINCREMENT,
+    activation_id TEXT NOT NULL UNIQUE,
+    responsibility_key TEXT NOT NULL,
+    procedure_id TEXT NOT NULL,
+    home TEXT NOT NULL,
+    subject TEXT,
+    event_json TEXT NOT NULL,
+    identity TEXT NOT NULL CHECK(identity IN ('home', 'subject')),
+    attendance TEXT NOT NULL CHECK(attendance IN ('attended', 'unattended')),
+    event_delivery TEXT NOT NULL CHECK(event_delivery IN ('sequential', 'batched')),
+    interruptible INTEGER NOT NULL CHECK(interruptible IN (0, 1)),
+    assigned_session_id TEXT,
+    outcome TEXT NOT NULL DEFAULT 'pending' CHECK(outcome IN ('pending', 'delivered', 'failed', 'suspended')),
+    outcome_reason TEXT,
+    accepted_at TEXT NOT NULL,
+    terminal_at TEXT,
+    CHECK(
+        (outcome IN ('pending', 'suspended') AND terminal_at IS NULL)
+        OR (outcome IN ('delivered', 'failed') AND terminal_at IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_procedure_event_inbox_responsibility
+    ON procedure_event_inbox(responsibility_key, enqueue_order)
+    WHERE outcome IN ('pending', 'suspended');
+CREATE INDEX IF NOT EXISTS idx_procedure_event_inbox_assigned
+    ON procedure_event_inbox(assigned_session_id, enqueue_order)
+    WHERE outcome = 'pending';
+
+CREATE TABLE IF NOT EXISTS procedure_event_delivery_sessions (
+    session_id TEXT PRIMARY KEY,
+    procedure_id TEXT NOT NULL,
+    responsibility_key TEXT NOT NULL,
+    event_delivery TEXT NOT NULL CHECK(event_delivery IN ('sequential', 'batched')),
+    interruptible INTEGER NOT NULL CHECK(interruptible IN (0, 1)),
+    initialized_at TEXT NOT NULL,
+    initial_entry_id TEXT,
+    initial_entry_consumed_at TEXT,
+    active_run_id TEXT,
+    consumed_entry_id TEXT,
+    wake_occurrence_id TEXT,
+    wake_accepted_occurrence_id TEXT,
+    wake_observed_last_input_at TEXT,
+    wake_observed_last_agent_stop_at TEXT,
+    wake_observed_last_agent_idle_at TEXT,
+    wake_observed_inbound_id INTEGER
+);
+
 -- Pending message deletions (ephemeral UI message tracking)
 CREATE TABLE IF NOT EXISTS pending_message_deletions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
