@@ -95,6 +95,11 @@ independent: cardinality changes how many events are supplied, while
 interruptibility changes when they may arrive. The runtime enforces the declared
 delivery timing and cardinality.
 
+Delivery settings configure a procedure session at initialization and remain
+fixed for that session, including revival. Newly initialized successor sessions
+use the current declaration. Publication changes do not reconfigure a running
+agent beneath its assignment (`general/principle/trust-and-guardrails`).
+
 The effective required reads of a subscribed procedure include
 `general/procedure/event-handling/overview`; an interruptible procedure also
 includes `general/procedure/event-handling/interruptible`. Authored required

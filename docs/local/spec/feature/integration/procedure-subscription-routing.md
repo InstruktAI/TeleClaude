@@ -251,7 +251,6 @@ Scenario Outline: The declared attendance travels with every activation
 Given an agent author has published a subscribed procedure with a delivery policy
 When a matching event produces an activation
 Then an agent inspecting the activation sees the effective published delivery policy carried unchanged
-And the activation retains the same identity when that event is replayed
 ```
 
 Routing carries the delivery declaration resolved by context along with the

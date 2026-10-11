@@ -160,6 +160,40 @@ Then the command exits unsuccessfully and identifies the invalid key
 And a fresh authorized read reports the original configuration values and revision
 ```
 
+<!-- planned:procedure-event-delivery -->
+
+#### UC-RA12:
+
+This journey consumes the composed-instruction behavior in
+`local/projects/teleclaude/spec/feature/context/doc-snippet-three-phase-retrieval`.
+
+```gherkin
+Scenario Outline: The public closure request returns its declared instructions or refuses an incomplete result
+  Given an agent runs the full acceptance profile with <procedure>
+  When a fresh CLI process requests its complete activation closure
+  Then it observes <result>
+
+  Examples:
+    | procedure                                              | result                                                        |
+    | a disposable non-interruptible subscribed procedure     | authored and common instructions, each rendered once          |
+    | a disposable interruptible subscribed procedure         | authored, common, and interruption instructions, each once    |
+    | a disposable subscribed procedure missing mandatory instructions | a refusal identifying the unavailable instructions    |
+```
+
+#### UC-RA13:
+
+This journey consumes the delivery-declaration validation behavior in
+`local/projects/teleclaude/spec/feature/context/snippet-frontmatter-validation`.
+
+```gherkin
+Given an agent runs the full acceptance profile with disposable procedure source declarations
+When the normal documentation validation and publication path receives invalid delivery declarations
+Then publication is refused with a finding identifying each invalid declaration
+And none of those declarations becomes an active subscription
+```
+
+<!-- /planned:procedure-event-delivery -->
+
 ## Known caveats
 
 - These journeys establish their named observable behavior, not exhaustive CLI,

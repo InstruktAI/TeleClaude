@@ -20,12 +20,29 @@ cardinality; the common event-handling procedure governs how the agent handles
 each supplied event. A delivery boundary is a provider-supported hook that is
 eligible for this procedure's declared delivery policy.
 
+Delivery settings are established when a procedure session is initialized,
+as declared by `general/spec/snippet-authoring-schema`. Every event delivered
+by that session uses those settings, including events accepted under a later
+published declaration. The activation retains its accepted declaration as
+source evidence; revival retains the session's settings, while a newly created
+successor adopts the then-current declaration.
+
+The startup brief also identifies the shared handling procedures required by
+the session's fixed settings, using context's same dependency composition. The
+agent loads any of these not already included by its current procedure closure.
+This supplies the applicable instructions even if publication changes between
+session initialization and the procedure read. Settings persistence preserves
+no historical document generation (`general/principle/grounding`).
+
 The initial event is durably associated with the activation before bootstrap
 can offer the initial hook. That hook supplies event context alongside the
 canonical brief; event processing follows the brief's procedure load. A
 content-free wake produces each later idle delivery boundary. Activation data
 never occupies the composer or becomes an ordinary conversational prompt.
-Startup completion and event handoff remain distinguishable outcomes.
+Startup completion and event handoff remain distinguishable outcomes. A generic
+session-start hook that precedes the brief is not an initial activation entry;
+delivery is tied to the brief's actual entry. Repeated hooks belonging to that
+entry select no additional non-interruptible work.
 
 A non-interruptible procedure receives events at initial activation and explicit
 wake entry only. Events accepted during a run stay pending through tool hooks,
@@ -45,6 +62,14 @@ Event facts remain untrusted data inside the hook transport. Platform-authored
 assignment and delivery metadata carry their own provenance; neither encoding
 nor hook placement promotes event content to instructions
 (`general/policy/message-identity-headers`).
+
+Pending events belong to the continuing procedure responsibility. An explicit
+session close suspends their delivery without itself causing a revival. The
+next eligible continuation, including an ordinary revival or a later activation
+resolving a successor, reconciles retained events before newer work. Automatic
+idle cleanup accounts for pending procedure events so ordinary run completion
+still wakes deferred work without requiring another activation
+(`general/principle/trust-and-guardrails`).
 
 ## Canonical fields
 
@@ -146,6 +171,33 @@ And the procedure brief and loaded contract remain the source of its assignment
 And the native transcript preserves an inspectable distinction between the assignment and event data
 ```
 
+#### UC-PED10:
+
+```gherkin
+Scenario Outline: Initialization fixes an agent's delivery settings
+  Given an initialized procedure agent has established delivery settings
+  And its author publishes different delivery settings
+  When a later activation reaches <agent>
+  Then the activation retains the declaration under which it was accepted
+  And delivery uses <settings>
+
+  Examples:
+    | agent                    | settings                         |
+    | the existing agent       | its original settings            |
+    | the revived agent        | its original settings            |
+    | a newly created successor | the currently published settings |
+```
+
+#### UC-PED11:
+
+```gherkin
+Given a procedure agent is initialized to accept interjected events
+And the published declaration changes before it loads the procedure
+When the agent receives its startup brief
+Then the brief still requires the shared interruption-handling instructions
+And the agent loads those instructions before processing events
+```
+
 ### Cross-context references
 
 - Context owns the validated delivery declarations and effective required-read
@@ -167,3 +219,8 @@ And the native transcript preserves an inspectable distinction between the assig
 - A non-interruptible run can defer later events for its entire duration.
   Safety checkpoints and other control producers retain their own contracts;
   these declarations govern procedure activation events.
+- Published delivery-setting edits configure newly initialized agents; live
+  reconfiguration of an existing agent is outside this contract.
+- Explicitly closing a session can leave accepted work pending until its next
+  eligible continuation. Retained work remains visible and is not a delivery
+  failure merely because continuation has not yet occurred.
