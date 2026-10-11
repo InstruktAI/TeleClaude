@@ -16,6 +16,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -1485,19 +1486,49 @@ def _run_readiness_check(resources: FullRuntimeResources, evidence: list[Command
     raise RuntimeError(_EXPECTED_READINESS_ERROR)
 
 
-def _read_daemon_instance(socket_path: str, timeout_seconds: float) -> DaemonInstance | None:
-    """Observe the public local health identity; a closed socket is a transition state."""
+def _read_health_body(socket_path: str, timeout_seconds: float) -> bytes | None:
+    """Read bounded HTTP bytes with one deadline across connect, headers and body."""
+    expired = threading.Event()
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
             connection.settimeout(timeout_seconds)
-            connection.connect(socket_path)
-            connection.sendall(_HEALTH_HTTP_REQUEST)
-            with http.client.HTTPResponse(connection) as response:
-                response.begin()
-                if response.status != http.HTTPStatus.OK:
+
+            def expire() -> None:
+                expired.set()
+                try:
+                    connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    # Deadline expiry can race an unconnected or already-closed socket.
+                    pass
+
+            timer = threading.Timer(timeout_seconds, expire)
+            timer.start()
+            try:
+                connection.connect(socket_path)
+                if expired.is_set():
                     return None
-                body = response.read(_HEALTH_RESPONSE_LIMIT_BYTES + 1)
+                connection.sendall(_HEALTH_HTTP_REQUEST)
+                with http.client.HTTPResponse(connection) as response:
+                    response.begin()
+                    if response.status != http.HTTPStatus.OK:
+                        return None
+                    body = response.read(_HEALTH_RESPONSE_LIMIT_BYTES + 1)
+            finally:
+                timer.cancel()
+                timer.join()
     except (ConnectionError, FileNotFoundError, TimeoutError):
+        return None
+    except http.client.HTTPException:
+        if expired.is_set():
+            return None
+        raise
+    return None if expired.is_set() else body
+
+
+def _read_daemon_instance(socket_path: str, timeout_seconds: float) -> DaemonInstance | None:
+    """Observe the public local health identity; a closed socket is a transition state."""
+    body = _read_health_body(socket_path, timeout_seconds)
+    if body is None:
         return None
     if len(body) > _HEALTH_RESPONSE_LIMIT_BYTES:
         raise ValueError(_HEALTH_INSTANCE_INVALID)
