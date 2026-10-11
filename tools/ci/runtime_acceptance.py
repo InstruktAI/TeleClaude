@@ -176,7 +176,7 @@ _PROJECT_NAME_FIELD = "name"
 _COMPUTER_IS_LOCAL_FIELD = "is_local"
 _COMPUTER_NAME_FIELD = "name"
 _COMPUTER_STATUS_FIELD = "status"
-_COMPUTER_ONLINE_STATUS = "online"
+_READY_LOCAL_COMPUTER_SNAPSHOT = Path("snapshots") / "ready-local-computer.json"
 _ADMIN_TERMINAL_PURPOSE = "administrator"
 _MEMBER_TERMINAL_PURPOSE = "non-administrator"
 _PROJECT_CONFIG_REVISION_FIELD = "revision"
@@ -1168,13 +1168,20 @@ def _project_list_contains(output: str, project_name: str, project_path: Path) -
 
 def _computer_list_has_ready_local(output: str) -> bool:
     """Verify the public daemon response reports its local computer online."""
+    expected = _mapping_value(
+        json.loads((Path(__file__).parent / _READY_LOCAL_COMPUTER_SNAPSHOT).read_text(encoding=_UTF8))
+    )
     payload = _structured_value(output)
     if not isinstance(payload, list):
         return False
     for item in payload:
         row = _mapping_value(item)
         if row is not None and row.get(_COMPUTER_IS_LOCAL_FIELD) is True:
-            return row.get(_COMPUTER_STATUS_FIELD) == _COMPUTER_ONLINE_STATUS
+            actual = {
+                _COMPUTER_IS_LOCAL_FIELD: row.get(_COMPUTER_IS_LOCAL_FIELD),
+                _COMPUTER_STATUS_FIELD: row.get(_COMPUTER_STATUS_FIELD),
+            }
+            return actual == expected
     return False
 
 
