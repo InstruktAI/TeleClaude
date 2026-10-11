@@ -523,6 +523,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: false
+          download-from-astral-mirror: false
       - name: Install relocatable Python and proof controller dependencies
         run: |
           uv python install --no-bin "$PYTHON_VERSION"
