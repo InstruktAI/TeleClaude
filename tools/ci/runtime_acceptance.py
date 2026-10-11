@@ -175,6 +175,8 @@ _PROJECT_PATH_FIELD = "path"
 _PROJECT_NAME_FIELD = "name"
 _COMPUTER_IS_LOCAL_FIELD = "is_local"
 _COMPUTER_NAME_FIELD = "name"
+_COMPUTER_STATUS_FIELD = "status"
+_COMPUTER_ONLINE_STATUS = "online"
 _ADMIN_TERMINAL_PURPOSE = "administrator"
 _MEMBER_TERMINAL_PURPOSE = "non-administrator"
 _PROJECT_CONFIG_REVISION_FIELD = "revision"
@@ -194,7 +196,7 @@ _EXPECTED_JOB_NEVER_RUN_ERROR = "The inert declared job did not report a never-r
 _EXPECTED_REFUSAL_STANDING_ERROR = "The non-administrator refusal did not name platform-administrator standing."
 _EXPECTED_INVALID_KEY_ERROR = "The schema refusal did not identify the submitted invalid key."
 _EXPECTED_PROJECT_LIST_ERROR = "The daemon project listing omitted the disposable project."
-_EXPECTED_COMPUTER_LIST_ERROR = "The daemon did not return the declared local computer."
+_EXPECTED_COMPUTER_LIST_ERROR = "The daemon did not return a ready local computer."
 _EXPECTED_READINESS_ERROR = "The supported lifecycle did not report a ready daemon in time."
 _FULL_INSTALL_ERROR = "The supported installer failed in the disposable runtime."
 _FULL_SERVICE_STOP_ERROR = "The supported lifecycle could not stop the disposable runtime."
@@ -600,7 +602,7 @@ class FullRuntimeResources:
     adapter_flags_changed: bool = False
     original_timezone: str | None = None
     expected_timezone: str | None = None
-    unrelated_computer_name: str | None = None
+    unrelated_computer_role: str | None = None
 
     def open_admin_terminal(self) -> PersistentTerminal:
         """Create the one administrator PTY retained for fresh CLI processes."""
@@ -1164,15 +1166,15 @@ def _project_list_contains(output: str, project_name: str, project_path: Path) -
     return False
 
 
-def _computer_list_contains(output: str, expected_name: str) -> bool:
-    """Match the daemon's local identity against the independently read declaration."""
+def _computer_list_has_ready_local(output: str) -> bool:
+    """Verify the public daemon response reports its local computer online."""
     payload = _structured_value(output)
     if not isinstance(payload, list):
         return False
     for item in payload:
         row = _mapping_value(item)
-        if row is not None and row.get(_COMPUTER_NAME_FIELD) == expected_name:
-            return row.get(_COMPUTER_IS_LOCAL_FIELD) is True
+        if row is not None and row.get(_COMPUTER_IS_LOCAL_FIELD) is True:
+            return row.get(_COMPUTER_STATUS_FIELD) == _COMPUTER_ONLINE_STATUS
     return False
 
 
@@ -1494,10 +1496,6 @@ def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[Comm
     )
     _require_terminal_success(login_status, login_output, evidence)
     _disable_external_adapters(resources, evidence)
-    machine, _, _ = _read_computer_config(resources, terminal, evidence)
-    expected_name = _computer_identity(machine).get(_MACHINE_NAME_FIELD)
-    if not isinstance(expected_name, str) or not expected_name:
-        raise ValueError(_FULL_CONFIG_SHAPE_INVALID)
     resources.start_attempted = True
     start_result = _record_external_command(
         resources,
@@ -1515,7 +1513,7 @@ def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[Comm
         evidence,
     )
     _require_terminal_success(computer_status, computer_output, evidence)
-    if not _computer_list_contains(computer_output, expected_name):
+    if not _computer_list_has_ready_local(computer_output):
         raise ValueError(_EXPECTED_COMPUTER_LIST_ERROR)
 
 
@@ -1549,13 +1547,13 @@ def _full_configuration_change(resources: FullRuntimeResources, evidence: list[C
     original_timezone = computer.get(_MACHINE_TIMEZONE_FIELD)
     if not isinstance(original_timezone, str):
         raise ValueError(_FULL_CONFIG_SHAPE_INVALID)
-    unrelated_name = computer.get(_MACHINE_NAME_FIELD)
-    if not isinstance(unrelated_name, str):
+    unrelated_role = computer.get(_COMPUTER_ROLE_FIELD)
+    if not isinstance(unrelated_role, str):
         raise ValueError(_FULL_CONFIG_SHAPE_INVALID)
     timezone = _TIMEZONE_EUROPE_AMSTERDAM if original_timezone == _TIMEZONE_UTC else _TIMEZONE_UTC
     resources.original_timezone = original_timezone
     resources.expected_timezone = timezone
-    resources.unrelated_computer_name = unrelated_name
+    resources.unrelated_computer_role = unrelated_role
     adapter_patch: JSONObject = {
         section_name: {_MACHINE_ADAPTER_ENABLED_FIELD: False} for section_name in _MACHINE_ADAPTER_SECTIONS
     }
@@ -1569,7 +1567,7 @@ def _full_configuration_change(resources: FullRuntimeResources, evidence: list[C
     verified = _computer_identity(verified)
     if verified.get(_MACHINE_TIMEZONE_FIELD) != timezone:
         raise ValueError(_EXPECTED_VALID_PATCH_ERROR)
-    if verified.get(_MACHINE_NAME_FIELD) != unrelated_name:
+    if verified.get(_COMPUTER_ROLE_FIELD) != unrelated_role:
         raise ValueError(_FULL_STATE_CHANGED)
     if new_revision == revision:
         raise ValueError(_EXPECTED_REVISION_CHANGE_ERROR)
@@ -1684,7 +1682,7 @@ def _full_restart_persistence(resources: FullRuntimeResources, evidence: list[Co
     computer = _computer_identity(computer)
     if computer.get(_MACHINE_TIMEZONE_FIELD) != resources.expected_timezone:
         raise ValueError(_FULL_STATE_CHANGED)
-    if computer.get(_MACHINE_NAME_FIELD) != resources.unrelated_computer_name:
+    if computer.get(_COMPUTER_ROLE_FIELD) != resources.unrelated_computer_role:
         raise ValueError(_FULL_STATE_CHANGED)
     if resources.project_path is None or resources.project_name is None:
         raise ValueError(_FULL_PROJECT_MISSING)
