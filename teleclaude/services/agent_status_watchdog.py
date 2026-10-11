@@ -46,6 +46,7 @@ class AgentStatusNotifier(Protocol):
         self,
         target_session_id: str,
         notification_kind: NotificationKind,
+        *,
         source_computer: str | None = None,
         observation: AgentAttentionObservation | None = None,
         silence_observation: SilenceObservation | None = None,
