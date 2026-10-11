@@ -55,6 +55,12 @@ LAYOUT_MOVES: Final[tuple[tuple[PurePosixPath, PurePosixPath], ...]] = (
     (_RETIRED_AGENTS, PurePosixPath(_AGENTS_DIR, _LOCAL_HALF)),
 )
 _PUBLISHED_DOCS_PREFIX: Final = f"{_DOCS_DIR}/{_PUBLISHED_HALF}/"
+_RETIRED_DOCS_TOKEN: Final = str(_RETIRED_DOCS)
+_RETIRED_AGENTS_TOKEN: Final = str(_RETIRED_AGENTS)
+_UNQUALIFIED_PROJECT_TOKEN: Final = "project/"
+_SINGULAR_PERSON_TOKEN: Final = "person/"
+_SINGULAR_COMPANY_TOKEN: Final = "company/"
+_QUALIFIED_PROJECT_TOKEN: Final = "projects/"
 
 _TAXONOMY_ALTERNATION: Final = "|".join(sorted(TAXONOMY_TYPES))
 _RETIRED_DOCS_PATTERN: Final = re.compile(r"(?<![\w.-])docs/project(?=/|\b)")
@@ -250,23 +256,24 @@ def _identity_rules(
     registered_pattern: re.Pattern[str] | None,
     qualified_project_pattern: re.Pattern[str] | None,
 ) -> str:
-    if own_slug:
+    if own_slug and _UNQUALIFIED_PROJECT_TOKEN in text:
         text = _UNQUALIFIED_PROJECT_PATTERN.sub(
             lambda match: _PROJECT_IDENTITY_TEMPLATE.format(slug=own_slug, taxonomy=match.group(1)),
             text,
         )
-    text = _SINGULAR_TIER_PATTERN.sub(
-        lambda match: _TIER_IDENTITY_TEMPLATE.format(
-            prefix=_TIER_PREFIX_BY_SINGULAR[match.group(1)], owner=match.group(2), taxonomy=match.group(3)
-        ),
-        text,
-    )
+    if _SINGULAR_PERSON_TOKEN in text or _SINGULAR_COMPANY_TOKEN in text:
+        text = _SINGULAR_TIER_PATTERN.sub(
+            lambda match: _TIER_IDENTITY_TEMPLATE.format(
+                prefix=_TIER_PREFIX_BY_SINGULAR[match.group(1)], owner=match.group(2), taxonomy=match.group(3)
+            ),
+            text,
+        )
     if registered_pattern is not None:
         text = registered_pattern.sub(
             lambda match: _PROJECT_IDENTITY_TEMPLATE.format(slug=match.group(1), taxonomy=match.group(2)),
             text,
         )
-    if qualified_project_pattern is not None:
+    if qualified_project_pattern is not None and _QUALIFIED_PROJECT_TOKEN in text:
         text = qualified_project_pattern.sub(
             lambda match: _QUALIFIED_PROJECT_IDENTITY_TEMPLATE.format(slug=match.group(1), tail=match.group(2)),
             text,
@@ -275,8 +282,11 @@ def _identity_rules(
 
 
 def _path_rules(text: str) -> str:
-    text = _RETIRED_DOCS_PATTERN.sub(_LOCAL_DOCS_REPLACEMENT, text)
-    return _RETIRED_AGENTS_PATTERN.sub(_LOCAL_AGENTS_REPLACEMENT, text)
+    if _RETIRED_DOCS_TOKEN in text:
+        text = _RETIRED_DOCS_PATTERN.sub(_LOCAL_DOCS_REPLACEMENT, text)
+    if _RETIRED_AGENTS_TOKEN in text:
+        text = _RETIRED_AGENTS_PATTERN.sub(_LOCAL_AGENTS_REPLACEMENT, text)
+    return text
 
 
 def rewrite_layout_text(
