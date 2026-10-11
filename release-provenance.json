@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "attempt": {
+    "repository": "InstruktAI/TeleClaude",
+    "workflow_run_id": "38114218450",
+    "workflow_run_attempt": 1,
+    "source_sha": "c29802bd1159c0c0f045c774864c7c2ccd518c6b",
+    "baseline_tag": null,
+    "baseline_sha": null,
+    "bootstrap": true
+  },
+  "selected_provider": "bootstrap",
+  "assessment_sha256": "8b50975e533b526cb269a9ce6d2fc37f8f64602d93403975bad42a0efc7c5c09",
+  "codex_attempt": null,
+  "claude_attempt": null,
+  "bootstrap_notes_sha256": "8b50975e533b526cb269a9ce6d2fc37f8f64602d93403975bad42a0efc7c5c09"
+}

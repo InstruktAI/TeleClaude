@@ -12,10 +12,34 @@ List sessions (default: spawned by current, --all for all)
 
 **Flags:**
 
-- `--all`: Show all sessions
+- `--all`: Show all sessions, unattended procedure agents included
 - `--closed`: Include closed sessions
 - `--job`: Filter by job value
 - `--computer` (`-c`): Target computer (optional; defaults to local)
+
+**Notes:**
+
+- Procedure agents that run unattended are listed only with --all (or by session id).
+- An agent caller's default listing keeps its own children even with --job; `--all --job <procedure>` finds a procedure's agents.
+
+### `telec sessions show`
+
+Show one session's stored record (default: your own session)
+
+**Usage:** `telec sessions show [<session_id>|self] [--computer <host>] [--full]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+- `--full`: Show the complete stored record instead of the grouped detail
+
+**Notes:**
+
+- Default output groups the record as identity, origin, role, state, and wiring.
+- --full shows the complete stored record, decoded, without the last-output text, the accepted-input fingerprint, the help-desk relay exchange, and the agent-status counter.
+- A session is shown only when you could list it; `telec sessions list` shows what you can reach.
+- For what a session said, use `telec sessions tail <session_id>` or `telec history show`.
+- For the roster and a session's children, use `telec sessions list`.
 
 ### `telec sessions coordinate`
 
@@ -25,7 +49,7 @@ Adopt this session as the project's single coordinator (human-directed only; ref
 
 Start a new agent session
 
-**Usage:** `telec sessions start [--computer <host>] [--path <path>] [--agent <name>] [--mode <mode>] [--message <msg>] [--direct]`
+**Usage:** `telec sessions start [--computer <host>] [--path <path>] [--agent <name>] [--mode <mode>] [--message <msg>] [--direct] [--company <slug>]`
 
 **Flags:**
 
@@ -35,6 +59,7 @@ Start a new agent session
 - `--mode`: Thinking mode: fast, med, slow
 - `--message`: Initial message to send
 - `--direct`: Conversation mode: create direct link with caller and bypass listeners
+- `--company`: Company this session operates the business of
 
 **Notes:**
 
@@ -82,7 +107,7 @@ Get recent messages from a session's transcript
 
 Run a canonical command on a new agent session
 
-**Usage:** `telec sessions run [--command <cmd>] [--path <path>] [--args <val>] [--agent <name>] [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--additional-context <ctx>]`
+**Usage:** `telec sessions run [--command <cmd>] [--path <path>] [--args <val>] [--agent <name>] [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--additional-context <ctx>] [--company <slug>]`
 
 **Flags:**
 
@@ -94,12 +119,19 @@ Run a canonical command on a new agent session
 - `--computer` (`-c`): Target computer (optional; defaults to local)
 - `--subfolder`: Subdirectory within the project
 - `--additional-context`: Additional context for the worker, appended to startup message
+- `--company`: Company this session operates the business of
 
 **Notes:**
 
 - Creates a fresh session and runs the bare canonical command as the first agent message.
 - Worker lifecycle commands: build, review-build, finalize.
 - --detach: do not use unless explicitly instructed. Sanctioned only for a personal-assistant dispatching an orchestrator to a project. --detach disables notifications — you will not learn when the child finishes, so omit it whenever your next step depends on the result.
+
+### `telec sessions run-pa`
+
+Start the caller's personal assistant in their own workspace
+
+**Usage:** `telec sessions run-pa [<brief>]`
 
 ### `telec sessions revive`
 
@@ -180,7 +212,7 @@ Send a file to the session's user
 
 ### `telec sessions escalate`
 
-Escalate to an admin via Discord
+Escalate a help-desk visitor to everyone in the desk's scope in its escalation thread
 
 **Usage:** `telec sessions escalate [--customer <name>] [--reason <text>] [--summary <text>]`
 
@@ -188,7 +220,7 @@ Escalate to an admin via Discord
 
 - `--customer`: Customer name
 - `--reason`: Reason for escalation
-- `--summary`: Context summary for the admin
+- `--summary`: Context summary for the people notified
 
 ## `telec reminders`
 
@@ -232,7 +264,7 @@ List available computers (local + cached remote)
 
 ## `telec projects`
 
-Manage project inventory and onboarding
+Manage project inventory and plumbing
 
 ### `telec projects list`
 
@@ -243,60 +275,6 @@ List projects on local and remote computers
 **Flags:**
 
 - `--computer` (`-c`): Target computer (optional; defaults to local)
-
-### `telec projects init`
-
-Initialize project plumbing and sync artifacts
-
-**Notes:**
-
-- Sets up git hooks, syncs artifacts, and registers the project root.
-- AI-driven analysis lives in `telec projects {onboard,analyze,assess}`.
-
-### `telec projects converge`
-
-Converge plumbing for every registered root on this machine
-
-**Notes:**
-
-- Writes no tracked files.
-
-### `telec projects onboard`
-
-Full project bootstrap: init plumbing, then dispatch config assessment and doc-snippet analysis
-
-**Notes:**
-
-- Runs `telec projects init` synchronously, then dispatches `telec projects assess` and `telec projects analyze`.
-- AI sessions run concurrently in tmux after dispatch — monitor via `telec sessions list` according to heartbeat policy.
-
-### `telec projects analyze`
-
-Generate project doc snippets via AI analysis
-
-### `telec projects assess`
-
-Assess project quality tool configuration against blessed templates
-
-## `telec companies`
-
-Manage company onboarding
-
-### `telec companies onboard`
-
-Scaffold a company under ~/.teleclaude/companies, or dispatch doc-snippet analysis
-
-**Usage:** `telec companies onboard <name> [--slug <value>]`
-
-**Flags:**
-
-- `--slug`: Company slug (optional; derived from the name when omitted)
-
-**Notes:**
-
-- Scaffolds companies/<slug>/{inbox (git), docs/<taxonomy>, teleclaude.yml, meta.yaml, .env} synchronously.
-- Re-running reprocesses only changed inbox material (SHA-tracked in meta.yaml).
-- The analysis session runs concurrently in tmux after dispatch — monitor via `telec sessions list` according to heartbeat policy.
 
 ## `telec agents`
 
@@ -320,30 +298,6 @@ Set dispatch status for a specific agent
 - `--until`: ISO8601 UTC expiry for unavailable or degraded
 - `--clear`: Reset to available immediately
 
-## `telec channels`
-
-Manage internal Redis Stream channels
-
-### `telec channels list`
-
-List active channels
-
-**Usage:** `telec channels list [--project <name>]`
-
-**Flags:**
-
-- `--project`: Filter by project name
-
-### `telec channels publish`
-
-Publish a message to a channel
-
-**Usage:** `telec channels publish <channel> [--data <json>]`
-
-**Flags:**
-
-- `--data`: JSON payload to publish
-
 ## `telec operations`
 
 Inspect durable long-running operations
@@ -362,24 +316,15 @@ Fetch durable operation status by operation_id
 
 Print version, channel, and commit
 
-## `telec reload`
-
-Reload every running telec TUI so it picks up changed TUI code
-
-**Notes:**
-
-- Each running TUI records itself on start; this addresses those records.
-- A TUI restarts in place, keeping its pid, its tmux panes, and its view state.
-- Reports the pids reached, so a silent no-op is visible rather than assumed.
-
 ## `telec message`
 
-Send a message to a person by slug
+Send a message to a person
 
-**Usage:** `telec message <slug> <text> [--file <path>] [--subject <text>] [--channel <name>]`
+**Usage:** `telec message <text> [--recipient <slug>] [--file <path>] [--subject <text>] [--channel <name>]`
 
 **Flags:**
 
+- `--recipient`: Person slug; defaults to the caller's authority
 - `--file`: Path to a single file to attach (Telegram, Discord, email only)
 - `--subject`: Email subject line; ignored on channels without a subject concept
 - `--channel`: Override channel: telegram, discord, whatsapp, email
@@ -387,9 +332,10 @@ Send a message to a person by slug
 **Notes:**
 
 - Recipient-owned routing: defaults to the person's configured preferred_channel (email when unset).
+- Without --recipient, the recipient is the person the calling session runs under; system authority defaults to platform admins.
 - The message text is the file's caption on Telegram/Discord; on email it is the body and the file is an attachment.
 - A file directed at a WhatsApp delivery is an actionable error — WhatsApp has no media-send capability here.
-- Discover a person's slug via 'telec config people list'.
+- Discover a person's slug via 'telec config person list' to use with --recipient.
 
 ## `telec docs`
 
@@ -406,7 +352,7 @@ Query documentation snippets
 
 List snippet IDs and metadata (phase 1)
 
-**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec|adr>] [--domains <domain>] [--scope <global|project>] [--project <slug>] [--target <slug>]`
+**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <principle|concept|policy|procedure|design|spec|adr>] [--domains <domain>] [--scope <global|project|person|company>] [--project <slug>] [--person <slug>] [--company <slug>] [--local] [--target <slug>]`
 
 **Flags:**
 
@@ -414,8 +360,11 @@ List snippet IDs and metadata (phase 1)
 - `--third-party` (`-t`): Include third-party docs
 - `--areas` (`-a`): Filter by taxonomy type (principle|concept|policy|procedure|design|spec|adr); omit for all
 - `--domains` (`-d`): Filter by published domain; omit for all
-- `--scope`: Filter to global or project snippets (global|project)
-- `--project`: Filter to a registered project's snippets by slug
+- `--scope`: Filter by snippet kind (global|project|person|company); a no-op with --local
+- `--project`: Select the project's published snippets by slug
+- `--person`: Select the person's published snippets by slug
+- `--company`: Select the company's published snippets by slug
+- `--local`: Select local snippets from the named or landed home
 - `--target`: Filter to snippets delivered by slug
 
 **Notes:**
@@ -426,17 +375,37 @@ List snippet IDs and metadata (phase 1)
 
 Fetch full snippet content by ID (phase 2)
 
-**Usage:** `telec docs get <id> [id...] [--scope <global|project>] [--project <slug>] [--target <slug>]`
+**Usage:** `telec docs get <id> [id...] [--scope <global|project|person|company>] [--project <slug>] [--person <slug>] [--company <slug>] [--target <slug>]`
 
 **Flags:**
 
-- `--scope`: Filter to global or project snippets (global|project)
-- `--project`: Filter to a registered project's snippets by slug
+- `--scope`: Filter by snippet kind (global|project|person|company)
+- `--project`: Select the project's published snippets by slug
+- `--person`: Select the person's published snippets by slug
+- `--company`: Select the company's published snippets by slug
 - `--target`: Include the slug's planned sections and companion replacement body (default: strip all)
 
 ## `telec todo`
 
 Manage work items
+
+### `telec todo sync`
+
+Copy todo state to other computers
+
+**Usage:** `telec todo sync --project <slug>[,<slug>] --to <computer>[,<computer>]`
+
+**Flags:**
+
+- `--project`: Comma-separated project slugs whose todo state is copied
+- `--to`: Comma-separated target computer names
+
+**Notes:**
+
+- The origin's todo state replaces each target checkout's todo state; todo state is not merged.
+- The origin daemon does not need to run. The admin is responsible for stopping work on the origin before syncing.
+- The target database is checked for integrity after each copy; each project and target pair reports its own outcome.
+- The installer provisions sqlite3_rsync on every computer; run make install on both sides before syncing.
 
 ### `telec todo create`
 
@@ -448,7 +417,7 @@ Create a todo with substantive content
 
 - `--after`: Comma-separated dependency slugs
 - `--schedule`: Task-only schedule: ISO-8601 instant or cron:<minute hour day month weekday> (0/7=Sunday)
-- `--kind`: The work-unit's entry point into the lifecycle: feature|change|bug|task. Always set it when creating via the CLI — agents classify their own todos; omitting it is the TUI dump path only. --kind task is side-effect-only and never touches the repo (sdlc/spec/todo-kind-task) — code work is change/feature/bug.
+- `--kind`: The work-unit's entry point into the lifecycle: feature|change|bug|task. Required when creating a todo. --kind task is side-effect-only and never touches the repo (sdlc/spec/todo-kind-task) — code work is change/feature/bug.
 - `--approved`: Declares the pre-creation decisions were faced. Without it a complete creation request creates nothing and points to sdlc/policy/todo-creation-discipline.
 - `--icebox`: Create future todo parked in the icebox; does not auto-spawn
 - `--project-root` (`-p`): Target an explicit project root instead of the invocation cwd
@@ -460,12 +429,12 @@ Create a todo with substantive content
 
 - Creates the todo entry, canonical state, and stores content as the input artifact.
 - --human-involved requires a non-empty reason and resolves the record from observed recency: a stale declaration records false and the todo is still created. The reason is never stored; omission records false and does not affect later actions.
-- Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — in particular never instruct authoring an ADR or which snippets to write. Per sdlc/policy/preparation-artifact-quality (Input artifact quality): HOW is the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed by general/policy/adr-discipline (default none, never by process step). Any HOW or doc instruction left in content is an unverified hypothesis, not a directive. (--plan is the deliberate exception: its content is a complete implementation-plan, not an input.)
-- Use --icebox for valid future work. Hidden --hold is an exceptional brake for valid work awaiting an external gate; neither surface makes unfinished intent valid. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent's todo_state while preserving all its artifacts as frozen evidence, and is refused once the parent's lifecycle_phase has reached prepared or the work lane, so build, review, and finalize state is never shredded. Grouping also moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and delivered_by membership naming the parent is rewritten to that child and committed as part of the same transition.
-- ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI shortcut to skip classifying work you understand.
+- Content IS the input artifact — the author's INTENT: WHAT and WHY in operator language, affected surfaces, acceptance shape, brownfield grounding. HOW and doc routing are preparation's to derive. Per sdlc/policy/preparation-artifact-quality (Input artifact quality): HOW is the prepare phase's hypothesis to verify, doc routing is not the input's (general/policy/documentation-discipline), and an ADR is governed by general/policy/adr-discipline (default none, never by process step). Any HOW or doc instruction left in content is an unverified hypothesis, not a directive. (--plan is the deliberate exception: its content is a complete implementation-plan, not an input.)
+- Use --icebox for ideas and future work at any stage; an iced todo enters the lifecycle when unfrozen, once valid. Hidden --hold is an exceptional brake for valid work awaiting an external gate. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent's todo_state while preserving all its artifacts as frozen evidence, and is refused once the parent's lifecycle_phase has reached prepared or the work lane, so build, review, and finalize state is never shredded. Grouping also moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and delivered_by membership naming the parent is rewritten to that child and committed as part of the same transition.
+- The filer always supplies --kind, choosing one of the four lifecycle entry points.
 - --plan is valid with --kind change or --kind task.
-- Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.
-- Process changes are decided by humans (sdlc/policy/process-change-authority): when the intent implies a behavioral delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, lifecycle procedures, todo/state semantics), file it only on a human decision from the live conversation. Holding no such decision, do NOT file the todo: escalate the proposal to the human and go idle. The prepare orchestrator refuses process-change intents it cannot trace to a human decision.
+- Settled, bounded work is executed in context (sdlc/policy/todo-creation-discipline).
+- Process changes are agent-owned (sdlc/policy/process-change-authority): file them on the ordinary path; only a consequence on the closed list of general/policy/human-contract waits for the human.
 
 ### `telec todo list`
 
@@ -486,7 +455,7 @@ List todo entries (source of truth for todo status)
 
 **Notes:**
 
-- Output is sectioned into active/delivered/icebox/removed dependency trees.
+- Output is sectioned into active/delivered/icebox/removed trees; delivered history groups by membership and sorts newest first.
 - CONTRACT CHANGE: --json now emits a nested object keyed by section (active/delivered/icebox/removed), each a tree with `children`; previously a flat list. Empty todo list emits `{}`. Text output no longer appends a [status] suffix.
 - --include-delivered returns the full delivery history; scope it with --since.
 - --since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.
@@ -508,6 +477,10 @@ Soft-remove a todo: the durable record (todo entry + state + all artifacts and v
 **Flags:**
 
 - `--force`: Override live-work removal refusal
+
+**Notes:**
+
+- Returns an operation receipt without waiting; the outcome is delivered to the calling session and read with `telec operations get <operation_id>`.
 
 ### `telec todo freeze`
 
@@ -533,13 +506,14 @@ Move todo to delivered
 
 ### `telec todo update`
 
-Update a todo slug, dependencies, or kind
+Update a todo slug, group, dependencies, or kind
 
-**Usage:** `telec todo update <slug> [--slug <new>] [--after <dep>]... [--schedule <value>] [--kind <feature|change|bug|task>] [--hold --reason <text>] [--release] [--unclaim] [--force]`
+**Usage:** `telec todo update <slug> [--slug <new>] [--group <parent-slug>] [--after <dep>]... [--schedule <value>] [--kind <feature|change|bug|task>] [--hold --reason <text>] [--release] [--unclaim] [--force]`
 
 **Flags:**
 
 - `--slug`: New todo slug; delegates to the durable rename engine
+- `--group`: Move into this holder or pre-prepared todo; pass an empty value to remove the todo from its group
 - `--after`: Dependency slug(s); replaces the full set. CSV accepted: --after parent-a,parent-b. Repeated flags accepted for compatibility: --after parent-a --after parent-b. Use --after "" to clear all dependencies.
 - `--schedule`: Task-only schedule; pass an empty value to clear (cron weekday 0/7=Sunday)
 - `--kind`: New todo kind: feature|change|bug|task
@@ -551,12 +525,16 @@ Update a todo slug, dependencies, or kind
 
 **Notes:**
 
-- Mutates slug, deps, kind, or hold; --after replaces the full dependency set.
+- Mutates slug, group, deps, kind, or hold; --after replaces the full dependency set.
+- --group uses the same holder eligibility as create --group; pass an empty value to clear membership.
+- Group membership and an after dependency on the same holder or ancestor are mutually exclusive.
+- Agent callers may update only an unclaimed todo or one held by their claiming group; a live foreign claim is refused with the holder named.
 - Kind and slug changes are refused after build starts; --after remains allowed.
 - --hold requires --reason; --reason is refused without --hold, and --hold and --release are mutually exclusive.
 - --unclaim clears the caller-owned runner claim; --release only clears the dispatch brake.
 - --force only applies to kind orphan handling.
 - Combining --slug with other legs is staged, not a single atomic patch.
+- The --slug form returns an operation receipt without waiting; the outcome is delivered to the calling session and read with `telec operations get <operation_id>`.
 
 ### `telec todo prepare`
 
@@ -564,11 +542,19 @@ Run the Phase A (prepare) state machine
 
 **Usage:** `telec todo prepare <slug>`
 
+**Notes:**
+
+- Returns an operation receipt without waiting; the outcome is delivered to the calling session and read with `telec operations get <operation_id>`.
+
 ### `telec todo work`
 
 Run the Phase B (work) state machine
 
 **Usage:** `telec todo work [<slug>]`
+
+**Notes:**
+
+- Returns an operation receipt without waiting; the outcome is delivered to the calling session and read with `telec operations get <operation_id>`.
 
 ### `telec todo integrate`
 
@@ -579,6 +565,10 @@ Run the Phase C (integrate) state machine
 **Flags:**
 
 - `--abandon`: Park the current CONTENT_GATE_BLOCKED candidate as an ungroundable content-gate concern. The state machine resets the integration worktree to the frozen pre-merge SHA and parks — refused when the checkpoint is not at that phase.
+
+**Notes:**
+
+- Returns an operation receipt without waiting; the outcome is delivered to the calling session and read with `telec operations get <operation_id>`.
 
 ### `telec todo artifacts`
 
@@ -659,7 +649,7 @@ Restore a soft-removed todo
 
 Stamp a verdict or readiness marker into todo state
 
-**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--task-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--kind-assign <feature|change|bug|task> [<content>]] [--build-complete] [--finalize-ready] [--kickback --reason <reason>] [--task-outcome <success|error> [--reason <text>]] [--diagnosis-settled] [--diagnosis-unresolved --reason <reason>]`
+**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--task-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--build-complete] [--finalize-ready] [--kickback --reason <reason>] [--task-outcome <success|error> [--reason <text>]] [--diagnosis-settled] [--diagnosis-unresolved --reason <reason>]`
 
 **Flags:**
 
@@ -669,10 +659,9 @@ Stamp a verdict or readiness marker into todo state
 - `--task-approved`: Authorize the current task-plan for a task
 - `--architecture-skipped`: Skip architecture phase with a reason
 - `--drift-reviewed`: Record drift review: <artifact> <substantive|cosmetic> <reason>
-- `--kind-assign`: Assign kind and enter that kind's lifecycle entry phase: <feature|change|bug|task> [content]. task is side-effect-only and never touches the repo (sdlc/spec/todo-kind-task).
 - `--build-complete`: Record the worker's build-complete claim; gates run on the next telec todo work dispatch
 - `--finalize-ready`: Mark worktree as ready for finalize handoff
-- `--kickback`: Work-orchestrator-only: send an unbuildable todo back to plan drafting
+- `--kickback`: Work-orchestrator-only: send an unbuildable todo back to plan drafting; the platform then releases the claim and ends this work lane
 - `--reason`: Reason recorded to input (required with --kickback / --task-outcome error / --diagnosis-unresolved)
 - `--task-outcome`: Durable task firing outcome: success delivers/clears, error holds with --reason
 - `--diagnosis-settled`: Bug lane: record the diagnosis artifact's current digest as the settled cause; a later revision invalidates the stamp
@@ -692,16 +681,16 @@ Interrogate the pre-filing decisions before scaffolding a bug; a completed filin
 
 - `--slug`: Custom slug (default: auto-generated)
 - `--body`: Detailed description body for bug.md
-- `--project`: Project that owns the defective code (from trusted_dirs). Defaults to the invoking cwd — where the symptom was OBSERVED, which is often not where the code lives. Set it whenever the two differ.
+- `--project`: Project that owns the defective code (registry name or slug). Defaults to the invoking cwd — where the symptom was OBSERVED, which is often not where the code lives. Set it whenever the two differ.
 - `--human-involved`: Report a human's presence at this act, measured from their last input. The non-empty reason stays ephemeral; an observation outside the recency window records false without failing the act; omission records false and never inherits from another action.
 
 **Notes:**
 
-- An invocation carrying only the report payload does not file: it presents the required pre-filing decisions (fix-directly, duplication, ordering, validity and ownership) and only that output names how to complete the filing.
-- File against the project that OWNS the defective code, not the one you happen to be standing in. Platform behavior misbehaving inside a side project is a platform bug: pass --project so the orchestrator that picks it up can actually deliver the fix. A bug filed where the code does not live cannot be fixed there and gets re-filed later, carrying stale conclusions with it. When you cannot tell which project owns it, ask.
+- An invocation carrying only the report payload does not file: it presents the required pre-filing decisions (bug or change, fix-directly, duplication, ordering, validity and ownership) and only that output names how to complete the filing.
+- File against the project that OWNS the defective code, not the one you happen to be standing in. Platform behavior misbehaving inside a side project is a platform bug: pass --project so the orchestrator that picks it up can actually deliver the fix. A bug filed where the code does not live cannot be fixed there and gets re-filed later, carrying stale conclusions with it. A symptom that stops once the side project's own configuration matches a TeleClaude default (a .gitignore entry, a blessed template line) is the side project's to fix, there. When you cannot tell which project owns it, ask.
 - The filing surface interrogates for duplication up front (todo list, in-flight bug lanes, suppressions); diagnose remains the deeper same-defect dedup that can still retire a twin the up-front check missed.
-- Your reported todo may therefore still be removed as a duplicate at diagnose — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.
-- Report the OBSERVED wrong behavior, never a missing capability or a solution ('X has no way to do Y' is a fix wearing a symptom's clothes). A bug fix stays within the existing process contract (sdlc/policy/process-change-authority): when the defect seems to demand a behavioral delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, lifecycle procedures), do NOT file it as a bug — escalate the process proposal to the human instead.
+- Your reported todo may therefore still be removed as a duplicate at diagnose — that is expected dedup, not a dropped report. The surviving todo carries the fix.
+- A report names the observed wrong behavior; what is missing and how to fix it are preparation's to derive. A bug whose cause is a process defect may correct that defect within its symptom and causal scope (sdlc/policy/process-change-authority).
 - Require the observed symptom plus its trigger context verbatim in the description or --body: what happened, what was expected, and what preceded it. A report with no trigger context is unauditable later — this is the reporting invitation the schema alone cannot supply.
 
 ### `telec bugs list`
@@ -719,7 +708,7 @@ Register a known-issue suppression so the log bug hunter stops re-filing a triag
 - `--reason`: Human-readable justification (required)
 - `--match`: Match mode: substring (default, literal) or regex
 - `--disposition`: expected or wontfix (default: wontfix); record-only
-- `--project`: Project name (from trusted_dirs)
+- `--project`: Project name or slug from the project registry
 - `--source-bug`: Slug of the originating bug whose triage produced this suppression
 - `--expires`: Optional ISO-8601 expiry after which the suppression lapses
 
@@ -737,7 +726,7 @@ List the active known-issue suppressions for a project
 
 **Flags:**
 
-- `--project`: Project name (from trusted_dirs)
+- `--project`: Project name or slug from the project registry
 
 ### `telec bugs unsuppress`
 
@@ -747,7 +736,7 @@ Remove a known-issue suppression by id so its signal is eligible for filing agai
 
 **Flags:**
 
-- `--project`: Project name (from trusted_dirs)
+- `--project`: Project name or slug from the project registry
 
 ## `telec content`
 
@@ -763,12 +752,12 @@ Fire-and-forget content dump to publications inbox
 
 - `--slug`: Custom slug (default: auto-generated from text)
 - `--tags`: Comma-separated tags
-- `--author`: Author identity (default: terminal auth)
+- `--author`: Author identity (default: daemon-resolved principal)
 
 **Notes:**
 
 - Creates publications/inbox/YYYYMMDD-<slug>/ with content.md and meta.yaml.
-- Author defaults to terminal auth identity (telec auth whoami) or 'unknown'.
+- Author defaults to the principal the daemon resolves for the caller.
 - Emits a content.dumped notification event if the notification service is available.
 - Slug collision is handled automatically by appending a counter suffix.
 
@@ -776,11 +765,37 @@ Fire-and-forget content dump to publications inbox
 
 Recurring job commands
 
+### `telec jobs list`
+
+List jobs visible to the current project
+
+### `telec jobs status`
+
+Show runtime status for jobs visible to the current project
+
+### `telec jobs enable`
+
+Subscribe the current project to a published job
+
+**Usage:** `telec jobs enable <name>`
+
+### `telec jobs disable`
+
+Unsubscribe the current project from a published job
+
+**Usage:** `telec jobs disable <name>`
+
+### `telec jobs run`
+
+Run a job in the current project
+
+**Usage:** `telec jobs run <name>`
+
 ### `telec jobs report`
 
 Write a structured recurring job result record
 
-**Usage:** `telec jobs report <job_id> --success <true|false> --message <text> [--items-processed <n>] [--error <text> ...]`
+**Usage:** `telec jobs report <name> --success <true|false> --message <text> [--items-processed <n>] [--error <text> ...] [--state-json <object>]`
 
 **Flags:**
 
@@ -788,10 +803,12 @@ Write a structured recurring job result record
 - `--message`: Human-readable outcome summary
 - `--items-processed`: Count of processed items (default: 0)
 - `--error`: Error detail; repeat for multiple errors
+- `--state-json`: Opaque checkpoint replacement as a JSON object
 
 **Notes:**
 
-- job_id is the job's identity: an agent job's procedure snippet ID, or a script job's declared name. Validated against configured jobs; writes JSON under ~/.teleclaude/jobs/{job_id}/runs/.
+- The positional is the job's declared name and identity. Validated against configured jobs; writes the current record under state/runs/<project>/<name>.json.
+- --state-json replaces the opaque checkpoint object; omission preserves the previous checkpoint.
 - This command writes locally and does not call the daemon.
 
 ## `telec events`
@@ -800,13 +817,19 @@ Event catalog and platform commands
 
 ### `telec events list`
 
-List event schemas: type, level, domain, visibility, description, actionable
+List declared event types: name, version, what they are about, description
 
 **Usage:** `telec events list [--domain <name>]`
 
 **Flags:**
 
-- `--domain`: Filter by domain
+- `--domain`: Filter by owner: the first segment of the type name
+
+### `telec events schema`
+
+Show one event type's declaration: subject, home, related kinds, state, and data fields
+
+**Usage:** `telec events schema <event>`
 
 ## `telec signals`
 
@@ -868,7 +891,7 @@ Set terminal login identity for this TTY
 
 ### `telec auth whoami`
 
-Show terminal login identity for this TTY
+Show the identity carried by this session or terminal
 
 ### `telec auth logout`
 
@@ -878,118 +901,281 @@ Clear terminal login identity for this TTY
 
 Manage configuration
 
-### `telec config get`
+### `telec config computer`
 
-Get config values
+Machine configuration
 
-**Usage:** `telec config get [paths...] [--format <fmt>]`
+#### `telec config computer list`
+
+List computer subjects (singleton)
+
+#### `telec config computer get`
+
+Get the machine configuration
+
+**Usage:** `telec config computer get [paths...] [--format <fmt>]`
 
 **Flags:**
 
 - `--format` (`-f`): Output format: yaml or json
 
-### `telec config patch`
+#### `telec config computer init`
 
-Patch config values
+Converge the machine configuration without overwriting existing values
 
-**Usage:** `telec config patch [--yaml '...'] [--from-file <path>] [--format <fmt>]`
+#### `telec config computer patch`
+
+Patch the machine configuration
+
+**Usage:** `telec config computer patch --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>]`
 
 **Flags:**
 
+- `--revision`: The subject's revision read before this patch
 - `--yaml` (`-y`): Inline YAML patch
 - `--from-file`: Read patch YAML from this file path
 - `--format` (`-f`): Output format: yaml or json
 
-### `telec config validate`
+### `telec config global`
 
-Full validation
+Global configuration (cross-project overlay)
+
+#### `telec config global list`
+
+List global subjects (singleton)
+
+#### `telec config global get`
+
+Get the global configuration
+
+**Usage:** `telec config global get [paths...] [--format <fmt>]`
 
 **Flags:**
 
-- `--json`: Emit machine-readable JSON output
+- `--format` (`-f`): Output format: yaml or json
 
-### `telec config people`
+#### `telec config global init`
 
-Manage people
+Converge the global configuration without overwriting existing values
+
+#### `telec config global patch`
+
+Patch the global configuration
+
+**Usage:** `telec config global patch --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>]`
+
+**Flags:**
+
+- `--revision`: The subject's revision read before this patch
+- `--yaml` (`-y`): Inline YAML patch
+- `--from-file`: Read patch YAML from this file path
+- `--format` (`-f`): Output format: yaml or json
+
+### `telec config person`
+
+Person configuration (identity + settings)
 
 **Notes:**
 
-- To edit people's subscriptions, modify the person config: ~/.teleclaude/people/{name}/teleclaude.yml
-- --expertise JSON shape: {"<domain>": "<level>", "<domain>": {"<sub-area>": "<level>"}}. Levels: novice, intermediate, advanced, expert. Example: '{"python": "expert", "typescript": {"backend": "advanced", "frontend": "intermediate"}}'
+- Patch naming `organization` is always refused — it is a read-only projection.
 
-#### `telec config people list`
+#### `telec config person list`
 
-List people
+List registered person slugs
 
-**Flags:**
+#### `telec config person get`
 
-- `--json`: Emit machine-readable JSON output
+Get one person's configuration
 
-#### `telec config people show`
-
-Show a person's organizational memberships
-
-**Usage:** `telec config people show <name> [--json]`
+**Usage:** `telec config person get <slug> [paths...] [--format <fmt>]`
 
 **Flags:**
 
-- `--json`: Emit machine-readable JSON output
+- `--format` (`-f`): Output format: yaml or json
 
-#### `telec config people add`
+#### `telec config person init`
 
-Add a person
+Create or converge a person without overwriting existing values
 
-**Usage:** `telec config people add <name> --email <email> --role <role> [--expertise '<json>'] [--telegram-user <user>] [--telegram-id <id>] [--no-invite] [--json]`
+**Usage:** `telec config person init <name> --email <email> [--slug <slug>] [--role <role>] [--username <username>]`
 
 **Flags:**
 
 - `--email`: Person's email address
+- `--slug`: Person slug (optional; derived from the name when omitted)
 - `--role`: Person's role
 - `--username`: Person's username
-- `--expertise`: JSON expertise map: {"<domain>": "<level>", "<domain>": {"<sub-area>": "<level>"}}
-- `--telegram-user`: Telegram username
-- `--telegram-id`: Telegram numeric user id
-- `--no-invite`: Skip automatic invite generation
-- `--json`: Emit machine-readable JSON output
 
-#### `telec config people edit`
+#### `telec config person patch`
 
-Edit a person
+Patch one person's configuration, or remove the person
 
-**Usage:** `telec config people edit <name> [--email <email>] [--role <role>] [--company <slug>] [--company-role <admin|member>] [--remove-company <slug>] [--assign <project-slug>]... [--unassign <project-slug>]... [--expertise '<json>'] [--telegram-user <user>] [--telegram-id <id>] [--discord-voice-bot] [--json]`
+**Usage:** `telec config person patch <slug> --revision <rev> [--yaml '...' | --from-file <path>] [--remove] [--delete-dir] [--format <fmt>]`
 
 **Flags:**
 
-- `--email`: Person's email address
-- `--role`: Person's role
-- `--company`: Company membership to set
-- `--company-role`: Role held in the named company
-- `--remove-company`: Company membership to withdraw
-- `--assign`: Project assignment to add
-- `--unassign`: Project assignment to remove
-- `--username`: Person's username
-- `--expertise`: JSON expertise map: {"<domain>": "<level>", "<domain>": {"<sub-area>": "<level>"}}
-- `--telegram-user`: Telegram username
-- `--telegram-id`: Telegram numeric user id
-- `--discord-voice-bot`: Bind the active Discord bot credential to this person's voice configuration
-- `--json`: Emit machine-readable JSON output
-
-#### `telec config people remove`
-
-Remove a person
-
-**Usage:** `telec config people remove <name> [--delete-dir] [--json]`
-
-**Flags:**
-
+- `--revision`: The subject's revision read before this patch
+- `--yaml` (`-y`): Inline YAML patch
+- `--from-file`: Read patch YAML from this file path
+- `--remove`: Remove the addressed instance instead of patching it
 - `--delete-dir`: Also delete the person's directory under ~/.teleclaude/people
+- `--format` (`-f`): Output format: yaml or json
+
+#### `telec config person invite`
+
+Generate (or rotate) invite links for a person
+
+**Usage:** `telec config person invite <slug> [--json]`
+
+**Flags:**
+
 - `--json`: Emit machine-readable JSON output
 
-#### `telec config people invite`
+#### `telec config person discord-voice-bot`
 
-Generate invite links for a person
+Bind the active Discord bot credential to a person's voice configuration
 
-**Usage:** `telec config people invite <name> [--json]`
+**Usage:** `telec config person discord-voice-bot <slug> [--json]`
+
+**Flags:**
+
+- `--json`: Emit machine-readable JSON output
+
+### `telec config company`
+
+Company configuration (roster, projects)
+
+#### `telec config company list`
+
+List registered company slugs
+
+#### `telec config company get`
+
+Get one company's configuration
+
+**Usage:** `telec config company get <slug> [paths...] [--format <fmt>]`
+
+**Flags:**
+
+- `--format` (`-f`): Output format: yaml or json
+
+#### `telec config company init`
+
+Scaffold a company without overwriting existing values
+
+**Usage:** `telec config company init <name> [--slug <slug>]`
+
+**Flags:**
+
+- `--slug`: Company slug (optional; derived from the name when omitted)
+
+#### `telec config company patch`
+
+Patch one company's roster or fields
+
+**Usage:** `telec config company patch <slug> --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>]`
+
+**Flags:**
+
+- `--revision`: The subject's revision read before this patch
+- `--yaml` (`-y`): Inline YAML patch
+- `--from-file`: Read patch YAML from this file path
+- `--format` (`-f`): Output format: yaml or json
+
+#### `telec config company help-desk-links`
+
+Print the entry links of a company's help desk, hosted on the mesh master
+
+**Usage:** `telec config company help-desk-links <slug> [--json]`
+
+**Flags:**
+
+- `--json`: Emit machine-readable JSON output
+
+**Notes:**
+
+- Renders only on the mesh master and where the desk is enabled.
+
+### `telec config project`
+
+Project configuration
+
+#### `telec config project list`
+
+List registered project slugs
+
+#### `telec config project get`
+
+Get one project's configuration
+
+**Usage:** `telec config project get <slug> [paths...] [--format <fmt>]`
+
+**Flags:**
+
+- `--format` (`-f`): Output format: yaml or json
+
+#### `telec config project create`
+
+Create a new, empty project
+
+**Usage:** `telec config project create <name> [--company <slug> | --path <dir>]`
+
+**Flags:**
+
+- `--company`: Create the project in this company's home, owned by the company (company members)
+- `--path`: Create an ownerless platform project at this folder outside every home (platform administrators)
+
+**Notes:**
+
+- Without a flag the project lands in your own projects area, owned by you.
+- --company puts it in that company's projects area, owned by the company; any member of the company may. --path makes an ownerless platform project at a folder outside every home, for platform administrators; it never combines with --company.
+- The name is the project's identity: an invalid name, or one another project on this computer already holds, is refused before anything is written.
+- The project gets its own repository on main, declares its owner and declares no capabilities yet. Scaffold inside it, then run `telec config project adopt` there to declare them.
+
+#### `telec config project adopt`
+
+Register the folder you stand in as a project, where it is
+
+**Notes:**
+
+- Adopts the checkout that owns your current directory, or the directory itself when no repository holds it or only the global home's does.
+- Inside a home the project is owned by that home and gets its own repository if it has none; a different declared owner is refused. Outside every home the declared owner stays. No file is moved.
+- Writes nothing outside the project and the project registry.
+
+#### `telec config project patch`
+
+Patch one project's configuration
+
+**Usage:** `telec config project patch <slug> --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>]`
+
+**Flags:**
+
+- `--revision`: The subject's revision read before this patch
+- `--yaml` (`-y`): Inline YAML patch
+- `--from-file`: Read patch YAML from this file path
+- `--format` (`-f`): Output format: yaml or json
+
+**Notes:**
+
+- Writes the project's teleclaude.yml only — never commits.
+
+#### `telec config project help-desk-links`
+
+Print the entry links of a project's help desk, hosted on the mesh master
+
+**Usage:** `telec config project help-desk-links <slug> [--json]`
+
+**Flags:**
+
+- `--json`: Emit machine-readable JSON output
+
+**Notes:**
+
+- Renders only on the mesh master and where the desk is enabled.
+
+### `telec config validate`
+
+Full validation
 
 **Flags:**
 
@@ -1012,14 +1198,6 @@ List environment variables
 Set environment variables
 
 **Usage:** `telec config env set <KEY=VALUE> ... [--json]`
-
-**Flags:**
-
-- `--json`: Emit machine-readable JSON output
-
-### `telec config notify`
-
-Toggle notification settings
 
 **Flags:**
 
@@ -1081,7 +1259,7 @@ Show full transcript for a session
 
 ## `telec memories`
 
-Read or remove durable personal-preference observations about the human. Memories capture meta-level things about who the human is — their relational stance, values, communication style, vision — never coding norms, architectural decisions, or operational gotchas (those live in policies, principles, and addenda). Memories are written exclusively by the session memory extraction agent (the memory scraper, invoked via /extract-memory); other agents must never create them.
+Read or remove durable observations about people. Memories capture meta-level things about who a person is — their relational stance, values, communication style, vision — never coding norms, architectural decisions, or operational gotchas (those live in policies, principles, and addenda). Memories are kept current by the memory agents a conversation session's end starts; other agents must never create them.
 
 ### `telec memories list`
 
@@ -1113,6 +1291,69 @@ Delete a personal-preference observation by ID (typically run by the human while
 
 **Usage:** `telec memories delete <id>`
 
+### `telec memories scope`
+
+Show the scope a conversation session defines for curation: its person, memory namespace, read point, current memories and, for a desk, the prospects already recorded.
+
+**Usage:** `telec memories scope --session <session_id>`
+
+**Flags:**
+
+- `--session` (`-s`): The conversation session whose memories are curated
+
+### `telec memories add`
+
+Add a current memory about the session's person.
+
+**Usage:** `telec memories add --session <session_id> --type <type> <text>`
+
+**Flags:**
+
+- `--session` (`-s`): The conversation session whose memories are curated
+- `--type`: Observation type
+
+### `telec memories update`
+
+Replace the statement of a current memory in the session's scope.
+
+**Usage:** `telec memories update <id> --session <session_id> <text>`
+
+**Flags:**
+
+- `--session` (`-s`): The conversation session whose memories are curated
+
+### `telec memories retire`
+
+Retire a current memory in the session's scope: it leaves use and stays recorded.
+
+**Usage:** `telec memories retire <id> --session <session_id>`
+
+**Flags:**
+
+- `--session` (`-s`): The conversation session whose memories are curated
+
+### `telec memories prospect`
+
+Collect a business item from a desk conversation as a prospect for the home that owns the desk.
+
+**Usage:** `telec memories prospect --session <session_id> --type <type> <text>`
+
+**Flags:**
+
+- `--session` (`-s`): The conversation session whose memories are curated
+- `--type`: Observation type
+
+### `telec memories advance`
+
+Advance a conversation session's read point to the newest entry read; it never moves backwards.
+
+**Usage:** `telec memories advance --session <session_id> --to <timestamp>`
+
+**Flags:**
+
+- `--session` (`-s`): The conversation session whose memories are curated
+- `--to`: Timestamp (ISO8601) of the newest conversation entry read
+
 ### `telec memories timeline`
 
 Show personal-preference observations around an anchor ID.
@@ -1131,8 +1372,9 @@ Code quality and commit tools
 
 **Notes:**
 
-- lint, test, format, install, blueprint, and owners require the code capability.
-- add and commit remain available when either code or docs is subscribed.
+- test, format, install, and blueprint require the code capability.
+- lint is available where code or docs is enabled; each check family follows its owning home's configuration.
+- add, commit, and owners remain available when either code or docs is subscribed.
 
 ### `telec code blueprint`
 
@@ -1147,11 +1389,11 @@ Print the blast-radius dependents of changed files
 **Notes:**
 
 - Maps each changed file to its symbols, runs a transitive reverse dependency traversal over the Blueprint, and prints the union of dependents with file:line.
-- When the Blueprint is missing or stale (manifest baseline != current main), prints a fallback notice and exits 0 — fall back to manual exploration; blast-radius is never silently skipped.
+- Waits briefly for recorded Blueprint maintenance when committed main has advanced. If no complete generation matching committed main can be established, prints unavailability and its recovery command; it never returns stale dependents as a current answer.
 
 ### `telec code lint`
 
-Run native make lint plus TeleClaude guardrails
+Run checks selected by each owning home's configuration
 
 **Flags:**
 
@@ -1174,21 +1416,6 @@ Run native make format
 
 - `--all`: Format all configured sources, skip workspace scoping
 
-### `telec code install`
-
-Run native make install
-
-### `telec code owners`
-
-Resolve live-session ownership for supplied dirty paths
-
-**Usage:** `telec code owners <path> [<path> ...]`
-
-**Notes:**
-
-- Accepts the complete already-aged dirty blocking set; the command performs no age logic.
-- Prints one path-keyed JSON object; each value is the list of every live session that declared that path (no tiebreak), or null when no live session declared it.
-
 ### `telec code add`
 
 Declare files for the next commit (stages NEW, unmerged, or partial-staged tracked)
@@ -1198,13 +1425,22 @@ Declare files for the next commit (stages NEW, unmerged, or partial-staged track
 **Notes:**
 
 - Sealed equivalent of 'git add' for the three cases git's data model genuinely requires staging:
-- (1) NEW (untracked) files — must enter the index before commit pathspec can match.
-- (2) Unmerged-index files (post-conflict) — must be marked resolved before commit.
-- (3) Partial-staged tracked files (staged hunks + later working-tree delta) — must be fully (re)staged so the pathspec commit does not silently sweep in unstaged hunks. The partial-staging guard in `telec code commit` directs agents here for recovery.
-- Every successful call declares its paths to session-scoping. Modified-tracked files that are NOT partial-staged don't need staging — pathspec commits them straight from the working tree.
+-   (1) NEW (untracked) files — must enter the index before commit pathspec can match.
+-   (2) Unmerged-index files (post-conflict) — must be marked resolved before commit.
+-   (3) Partial-staged tracked files (staged hunks + later working-tree delta) — must be fully (re)staged so the pathspec commit does not silently sweep in unstaged hunks. The partial-staging guard in `telec code commit` directs agents here for recovery.
+- A successful call from inside the session's checkout declares its paths to session-scoping. Invoked from a different repository it stages as usual, declares nothing, and reports the paths as not declared. Modified-tracked files that are NOT partial-staged don't need staging — pathspec commits them straight from the working tree.
 - A clean tracked path or a path that does not exist yet is declared the same way — declaring is bookkeeping for work about to start, not a claim about current git state, so declaring ahead of the first touch always succeeds.
 - NEW files in scope are NOT auto-committed; this is the explicit declaration step. Without it, untracked files stay untracked (safety net for temp/scratch artifacts the agent may have created incidentally).
 - Alternative one-shot form: telec code commit --approved '<msg>' --include <path>.
+
+### `telec code owners`
+
+Print live declaration owners for every dirty path in the canonical checkout
+
+**Notes:**
+
+- Prints one path-keyed JSON object for every dirty path of the project's canonical checkout.
+- A value lists the live sessions that declared the path, or null when no live session declared it.
 
 ### `telec code commit`
 
@@ -1229,3 +1465,44 @@ Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git for
 - Without --approved on main: prints commit-first and review-routing guidance and exits.
 - Pathspec = workspace scope plus --include paths, or exactly --only paths. Anything else in the index (foreign stage) is left untouched — there is no env-var bypass.
 - The commit author is stamped as the resolved agent's bot identity (git --author); the message gains the branding line, Session:, and Human-Involved: — no Co-Authored-By trailer is ever added.
+- In a todo worktree, a successful commit also publishes the branch to origin; a failed publish leaves the commit in place.
+
+### `telec code stamp`
+
+Record a commit-review outcome on commits that landed on main
+
+**Usage:** `telec code stamp <sha>[,<sha>...] --verdict approve|request_changes [--reason <text>]`
+
+**Flags:**
+
+- `--verdict`: Outcome recorded on each commit: approve | request_changes
+- `--reason`: Why the stamp was given; the author's discard of a candidate that owes no review names it here
+
+**Notes:**
+
+- A commit reviewer stamps its verdict on exactly the SHAs it reviewed. The author stamps approve with a reason on a review candidate that owes no review; discarding is not reviewing.
+- The stamp lands in the review state of the todo whose lifecycle claim the stamping session, or the session that started it, holds; with no claim in that chain it lands on no todo.
+- The record names the stamping session and the reason, so a discard stays distinguishable from a reviewer's verdict. A later stamp on a SHA supersedes the earlier one.
+- A stamp covering a session's commits discharges that session's post-commit review prompt, whether the reviewer or the author gave it.
+- Every SHA must be a commit reachable from main; otherwise nothing is recorded.
+
+## `telec sync`
+
+Run this root's maintenance on demand: the fallback for commit-boundary maintenance
+
+**Usage:** `telec sync [--list]`
+
+**Flags:**
+
+- `--list`: Show the steps a run would perform and run nothing
+
+**Notes:**
+
+- Use it when commit-boundary maintenance did not run, or ran and left the root wrong: it performs every step the root's registry declares, in declared order, and reports each step's outcome as it completes.
+- A failed step does not stop the later ones; the command exits non-zero when any step failed.
+- Restarts, reloads and service deployment are never performed. When one is owed, the run ends by naming it and the command that performs it, and says so when it cannot tell.
+- Uncommitted edits are named first, with the sessions holding them. Publication uses committed main state only; the other steps read the checkout as it stands.
+- Runs only from the canonical checkout on main, in a directory holding its own teleclaude.yml; elsewhere it refuses and names where to run it.
+- A step that an earlier commit-boundary run recorded as failed is named with its replay command; the standing integrator owns that replay.
+- With --list, it prints the steps a run would perform and runs nothing.
+

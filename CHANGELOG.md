@@ -4,34 +4,13 @@ All notable changes to TeleClaude are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.7.0] - 2026-10-11
 
-### Changed
+This release establishes a current-state baseline. It does not claim a complete historical compatibility audit.
 
-- **`telec projects init`** (renamed from `telec init`) is now plumbing-only. The AI-driven project enrichment (doc-snippet generation and quality-config assessment) previously dispatched automatically at the end of `init` has moved to a dedicated, user-invoked command group.
+Initial current-state baseline for the rebuilt release pipeline. This release certifies the captured source through final-candidate lint and the complete disposable macOS installer harness. It establishes the comparison baseline for subsequent releases; it does not claim an exhaustive assessment of the historical interval since v0.6.1.
 
-### Added
-
-- **`telec projects onboard`** — full project bootstrap: runs `telec projects init` synchronously, then dispatches the config-assessment and doc-snippet-analysis agent sessions.
-- **`telec projects analyze`** — generate project doc snippets via AI analysis.
-- **`telec projects assess`** — assess project quality tool configuration against blessed templates.
-
-### Removed
-
-- **CLI:** `telec bugs create <description>` has been removed. Callers now receive an unknown `bugs`
-  subcommand error with a non-zero exit; use the canonical `telec bugs report <description>` command
-  instead, which also supports `--body`. Affected callers are ad-hoc scripts or external automation
-  that used the retired alias; no in-repo callers remain. Roll back by restoring the removed
-  `CommandDef`, handler, dispatch branch, generated manifest section, and pending doc companions.
-- The interactive enrichment prompt at the end of project init. CI and non-TTY callers no longer have agent sessions spawned as a side effect of plumbing.
-
-### Renamed (CLI commands and agent artifacts)
-
-- `telec init` → `telec projects init`
-- `/telec-init-analyze` → `/projects-analyze`
-- `/telec-init-assess-config` → `/projects-assess-config`
-
-Internal markers (`generated_by: telec-init` frontmatter, `.telec-init-meta.yaml` filename) are unchanged for backward compatibility with existing analyzed projects.
+**Full diff:** [v0.6.1...v0.7.0](https://github.com/InstruktAI/TeleClaude/compare/v0.6.1...v0.7.0)
 
 ## [0.6.1] - 2026-04-18
 
@@ -135,7 +114,7 @@ Internal markers (`generated_by: telec-init` frontmatter, `.telec-init-meta.yaml
 - **chiptunes:** SID music player with HVSC song duration lookup and fade-out
 - **chiptunes:** Stop button, dislike button for filtering unwanted songs
 - **lint:** Scoped lint, test, and type-check to session-touched files in agent sessions
-- **cli:** Draft and prepped todo creation modes through explicit kind values
+- **cli:** `--draft` and `--prepped` flags for `telec todo dump`
 - **cli:** Register `todo read/write/stamp/artifacts` in CLI surface
 - **adapters:** GFM markdown split engine and flavor-routed overflow for long messages
 - **listeners:** One-shot listener support with auto-registration on plain send
@@ -150,14 +129,14 @@ Internal markers (`generated_by: telec-init` frontmatter, `.telec-init-meta.yaml
 - **db:** Unified SQLite access behind shared SQLAlchemy connection factory
 - **jobs:** Project backup cron job for todo DB snapshot and S3 upload
 - **services:** v2 service-oriented architecture scaffolding
-- **events:** Route todo creation events by kind via lifecycle router cartridge
+- **events:** Route `todo_dumped` by kind via lifecycle router cartridge
 - **todo-watcher:** OS-managed todo file watchers
 - **docs:** Untrack `index.yaml` files — treat as generated artifacts
 - **history:** Role-aware session history
 
 ### Changed
 
-- **storage:** Migrate state machine from `todos/` filesystem to `.teleclaude/todos.db`
+- **storage:** Migrate state machine from `todos/` filesystem to `todos.db`
 - **storage:** Remove `roadmap.yaml`, `icebox.yaml`, and `delivered.yaml` — all in DB now
 - **state-machine:** Per-step prerequisites and DB-native `mark_phase`
 - **edge-http:** Move internal callers to HTTP edge layer
@@ -200,7 +179,7 @@ Internal markers (`generated_by: telec-init` frontmatter, `.telec-init-meta.yaml
 - **chiptunes:** Reset position on track advance, skip CIA-timer tracks, fix prebuffer
 - **chiptunes:** Fade AFTER listed duration, use SID's default subtune for duration
 - **cli:** Ignore stale temp identity in `tc_tui` sessions
-- **api:** Add global exception handler, fix todo content-creation route 500
+- **api:** Add global exception handler, fix `todo_dump` 500
 - **regression:** Restore project config, doc snippets, and guardrails after blind merge
 - **worktrees:** Remove symlink approach — workers need real tracked dirs
 - **mirrors:** Fully separate mirrors from main database
