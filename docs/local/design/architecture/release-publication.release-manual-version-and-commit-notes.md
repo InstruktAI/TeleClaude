@@ -22,7 +22,7 @@ consumes the installer and update contracts through their existing boundaries.
   provider failure, with every attempted provider's outcome retained.
 - Preparation produces a final candidate and an incremental Git bundle, together
   with source, baseline, tree, version, and artifact identities.
-- Verification produces lint and disposable-machine proof bound to the candidate.
+- Verification produces lint, hosted runtime acceptance and disposable-machine installation proof bound to the candidate.
 - Publication produces the exact candidate tag, its GitHub Release, retained
   evidence, and a mainline metadata reconciliation when main has advanced.
 - A manually supplied version produces an operator-decided candidate through
@@ -143,8 +143,8 @@ restoration failure. Key changes and seeding use the same serialized stream.
 4. Generate complete commit notes with git-cliff and add the selected assessment's
    summary. Prepare R with final version and lock coherence, released manifests,
    and the cumulative published changelog before committing R.
-5. Run hosted lint on R and the full existing installer harness in a disposable
-   machine. Retain the candidate identity and evidence; clean up the machine.
+5. Run hosted lint and full hosted runtime acceptance on R, then the full
+   existing installer harness in a disposable machine. Retain the candidate identity and evidence; clean up the machine.
 6. A dry-run returns these results. Publication reconciles current H, atomically
    updates the tag and main, then creates the GitHub Release for R and attaches
    its provenance and proof references.
@@ -154,7 +154,7 @@ restoration failure. Key changes and seeding use the same serialized stream.
 A manual dispatch with an explicit valid newer version captures S and the
 completed baseline when present. It records the operator decision and generates
 the commit notes through the same git-cliff configuration, without invoking
-providers or adding an AI summary. Candidate preparation, lint, full installer
+providers or adding an AI summary. Candidate preparation, lint, hosted runtime acceptance, full installer
 proof and publication consume the same identities as the automatic flow. A
 manual dry-run finishes at proof. Automatic publication activation does not
 supply or withhold authority for an explicit-version publication.
@@ -173,7 +173,7 @@ publication. Scheduled attempts remain dry-runs until the release maintainer
 records a successful complete automatic-path validation over a real releasable
 interval. Manual version selection and no-change outcomes do not establish that
 validation. Every published candidate, from either decision path, still earns
-its own lint and installer proof.
+its own lint, hosted runtime acceptance and installer proof.
 
 ## Failure modes
 
