@@ -74,8 +74,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: uv run python -m tools.ci.release_stage recover-publication --output-directory "$RUNNER_TEMP/release-recovery"
+      - name: Detect retained recovery files
+        id: recovery_files
+        if: always()
+        shell: bash
+        run: |
+          if compgen -G "$RUNNER_TEMP/release-recovery/recovered-*.json" > /dev/null; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Retain recovered publication receipts
-        if: ${{ always() && hashFiles(format('{0}/release-recovery/recovered-*.json', runner.temp)) != '' }}
+        if: ${{ always() && steps.recovery_files.outputs.present == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-recovery-${{ github.run_id }}-${{ github.run_attempt }}
@@ -314,7 +322,7 @@ jobs:
           --provider codex
           --path "$RUNNER_TEMP/release-analysis/codex-result/codex-attempt.json"
       - name: Ensure typed Claude outcome exists when attempted
-        if: ${{ always() && steps.claude_run.outcome != 'skipped' && hashFiles(format('{0}/release-analysis/claude/claude-attempt.json', runner.temp)) == '' }}
+        if: ${{ always() && steps.claude_run.outcome != 'skipped' }}
         run: >-
           uv run python -m tools.ci.release_stage ensure-provider-attempt
           --provider claude
@@ -467,8 +475,16 @@ jobs:
           echo "exit_code=$result" >> "$GITHUB_OUTPUT"
           if [ "$result" -eq 0 ] && [ -z "$(git status --porcelain)" ]; then exit 0; fi
           exit 1
+      - name: Detect retained candidate files
+        id: candidate_files
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/release-candidate/candidate-identity.json" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Bind lint result to the committed candidate
-        if: ${{ always() && hashFiles(format('{0}/release-candidate/candidate-identity.json', runner.temp)) != '' }}
+        if: ${{ always() && steps.candidate_files.outputs.present == 'true' }}
         env:
           LINT_SUCCEEDED: ${{ steps.lint.outcome == 'success' }}
         run: |
@@ -477,7 +493,7 @@ jobs:
           uv run python -m tools.ci.release_stage record-candidate-check "${args[@]}"
       - name: Upload immutable candidate and lint result
         id: candidate_upload
-        if: ${{ always() && hashFiles(format('{0}/release-candidate/candidate-identity.json', runner.temp)) != '' }}
+        if: ${{ always() && steps.candidate_files.outputs.present == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-candidate-${{ github.run_id }}-${{ github.run_attempt }}
@@ -568,9 +584,17 @@ jobs:
           --harness-output "$RUNNER_TEMP/release-proof"
           --harness-exit-code "$HARNESS_EXIT_CODE"
           --output-directory "$RUNNER_TEMP/release-proof/artifacts"
+      - name: Detect retained proof files
+        id: proof_files
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/release-proof/artifacts/proof-identity.json" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Upload installer logs and proof receipt
         id: proof_upload
-        if: ${{ always() && hashFiles(format('{0}/release-proof/artifacts/proof-identity.json', runner.temp)) != '' }}
+        if: ${{ always() && steps.proof_files.outputs.present == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-proof-${{ github.run_id }}-${{ github.run_attempt }}
@@ -650,9 +674,17 @@ jobs:
           --proof "$RUNNER_TEMP/proof/files/proof-identity.json"
           --bundle "$RUNNER_TEMP/candidate/files/candidate.bundle"
           --receipt "$RUNNER_TEMP/release-publication/publication-receipt.json"
+      - name: Detect retained publication files
+        id: publication_files
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/release-publication/publication-receipt.json" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Retain the partial or completed publication receipt
         id: publication_upload
-        if: ${{ always() && hashFiles(format('{0}/release-publication/publication-receipt.json', runner.temp)) != '' }}
+        if: ${{ always() && steps.publication_files.outputs.present == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-publication-${{ github.run_id }}-${{ github.run_attempt }}
