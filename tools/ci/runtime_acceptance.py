@@ -231,6 +231,21 @@ _RESTART_COMMAND_TIMEOUT_SECONDS = 300
 _STOP_COMMAND_TIMEOUT_SECONDS = 120
 _READINESS_WINDOW_SECONDS = 90
 _READINESS_POLL_INTERVAL_SECONDS = 1
+_HEALTH_OBSERVATION_TIMEOUT_SECONDS = 5
+_HEALTH_OBSERVATION_COMMAND = (
+    "curl",
+    "--silent",
+    "--show-error",
+    "--fail",
+    "--unix-socket",
+    "/tmp/teleclaude-api.sock",
+    "http://localhost/health",
+)
+_HEALTH_PREPARATION_FIELD = "preparation"
+_HEALTH_PID_FIELD = "pid"
+_HEALTH_TOKEN_FIELD = "token"
+_HEALTH_INSTANCE_INVALID = "The public health response lacks a valid daemon instance."
+_HEALTH_INSTANCE_UNCHANGED = "The configuration change did not produce a ready replacement daemon in time."
 _OWNER_SEED_NAME = "runtime-acceptance-owner"
 _OWNER_SEED_EMAIL = "runtime-acceptance-owner@probe.invalid"
 _OWNER_SEED_SLUG = "runtime-acceptance-owner"
@@ -407,6 +422,14 @@ class CommandEvidence:
     stdout: str = _EMPTY
     stderr: str = _EMPTY
     diagnostics: str = _EMPTY
+
+
+@dataclass(frozen=True)
+class DaemonInstance:
+    """Public process identity observed before and after a configuration restart."""
+
+    pid: int
+    token: str
 
 
 @dataclass(frozen=True)
@@ -1466,6 +1489,45 @@ def _run_readiness_check(resources: FullRuntimeResources, evidence: list[Command
     raise RuntimeError(_EXPECTED_READINESS_ERROR)
 
 
+def _read_daemon_instance(
+    resources: FullRuntimeResources, evidence: list[CommandEvidence], timeout_seconds: float
+) -> DaemonInstance | None:
+    """Observe the public local health identity; a closed socket is a transition state."""
+    result = _record_external_command(
+        resources,
+        _HEALTH_OBSERVATION_COMMAND,
+        cwd=resources.source_root,
+        timeout_seconds=timeout_seconds,
+        evidence=evidence,
+    )
+    if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
+        return None
+    health = _mapping_value(_structured_value(result.stdout))
+    preparation = _mapping_value(health.get(_HEALTH_PREPARATION_FIELD)) if health is not None else None
+    if preparation is None:
+        raise ValueError(_HEALTH_INSTANCE_INVALID)
+    pid, token = preparation.get(_HEALTH_PID_FIELD), preparation.get(_HEALTH_TOKEN_FIELD)
+    if type(pid) is not int or pid <= 0 or not isinstance(token, str) or not token:
+        raise ValueError(_HEALTH_INSTANCE_INVALID)
+    return DaemonInstance(pid, token)
+
+
+def _await_config_restart(
+    resources: FullRuntimeResources, evidence: list[CommandEvidence], previous: DaemonInstance
+) -> None:
+    """Wait for a different process instance before applying the ordinary readiness gate."""
+    deadline = time.monotonic() + _READINESS_WINDOW_SECONDS
+    while (remaining := deadline - time.monotonic()) > 0:
+        instance = _read_daemon_instance(resources, evidence, min(_HEALTH_OBSERVATION_TIMEOUT_SECONDS, remaining))
+        if instance is not None and instance != previous:
+            _run_readiness_check(resources, evidence)
+            return
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(_READINESS_POLL_INTERVAL_SECONDS, remaining))
+    raise RuntimeError(_HEALTH_INSTANCE_UNCHANGED)
+
+
 def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
     resources.install_attempted = True
     installer_environment = dict(resources.environment)
@@ -1561,6 +1623,9 @@ def _full_configuration_change(resources: FullRuntimeResources, evidence: list[C
     resources.original_timezone = original_timezone
     resources.expected_timezone = timezone
     resources.unrelated_computer_role = unrelated_role
+    previous_instance = _read_daemon_instance(resources, evidence, _HEALTH_OBSERVATION_TIMEOUT_SECONDS)
+    if previous_instance is None:
+        raise RuntimeError(_EXPECTED_READINESS_ERROR)
     adapter_patch: JSONObject = {
         section_name: {_MACHINE_ADAPTER_ENABLED_FIELD: False} for section_name in _MACHINE_ADAPTER_SECTIONS
     }
@@ -1578,6 +1643,7 @@ def _full_configuration_change(resources: FullRuntimeResources, evidence: list[C
         raise ValueError(_FULL_STATE_CHANGED)
     if new_revision == revision:
         raise ValueError(_EXPECTED_REVISION_CHANGE_ERROR)
+    _await_config_restart(resources, evidence, previous_instance)
 
 
 def _full_project_registration(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
