@@ -164,10 +164,6 @@ _JOB_LINE_SEPARATOR = ": "
 _JOB_FIELD_SEPARATOR = "; "
 _JOB_VALUE_SEPARATOR = "="
 _JOB_STATUS_FIELDS = frozenset({_JOB_STATUS_LAST_RUN_FIELD, _JOB_STATUS_STATE_FIELD, _JOB_STATUS_NEXT_DUE_FIELD})
-_REFUSAL_PREFIX = "Error: refused — "
-_REQUIRED_STANDING_LABEL = "required standing: "
-_REFUSAL_REASON_SEPARATOR = " ("
-_PLATFORM_ADMINISTRATOR_STANDING = "platform_administrator"
 _PYDANTIC_TYPE_MARKER = "[type="
 _PYDANTIC_METADATA_SEPARATOR = ","
 _PYDANTIC_EXTRA_FORBIDDEN = "extra_forbidden"
@@ -180,6 +176,7 @@ _COMPUTER_IS_LOCAL_FIELD = "is_local"
 _COMPUTER_NAME_FIELD = "name"
 _COMPUTER_STATUS_FIELD = "status"
 _READY_LOCAL_COMPUTER_SNAPSHOT = Path("snapshots") / "ready-local-computer.json"
+_MEMBER_PATCH_REFUSAL_SNAPSHOT = Path("snapshots") / "member-computer-patch-refusal.txt"
 _ADMIN_TERMINAL_PURPOSE = "administrator"
 _MEMBER_TERMINAL_PURPOSE = "non-administrator"
 _PROJECT_CONFIG_REVISION_FIELD = "revision"
@@ -196,7 +193,7 @@ _EXPECTED_OWNER_WHOAMI_ERROR = "The fresh CLI process did not report the seeded 
 _EXPECTED_MEMBER_WHOAMI_ERROR = "The member terminal did not report the seeded non-administrator identity."
 _EXPECTED_JOB_DISCOVERY_ERROR = "The inert declared job did not appear exactly once in its public list."
 _EXPECTED_JOB_NEVER_RUN_ERROR = "The inert declared job did not report a never-run status."
-_EXPECTED_REFUSAL_STANDING_ERROR = "The non-administrator refusal did not name platform-administrator standing."
+_EXPECTED_COMMAND_REFUSAL_ERROR = "The member patch did not return the expected command-clearance refusal: {output}"
 _EXPECTED_INVALID_KEY_ERROR = "The schema refusal did not identify the submitted invalid key."
 _EXPECTED_PROJECT_LIST_ERROR = "The daemon project listing omitted the disposable project."
 _EXPECTED_COMPUTER_LIST_ERROR = "The daemon did not return a ready local computer."
@@ -1274,16 +1271,11 @@ def _parse_job_status_rows(output: str) -> tuple[JobStatusRow, ...] | None:
     return tuple(rows)
 
 
-def _parse_required_standing(output: str) -> str | None:
-    """Extract the standing field from the public config-refusal envelope."""
-    for line in output.splitlines():
-        prefix, separator, remainder = line.partition(_REQUIRED_STANDING_LABEL)
-        if not separator or prefix != _REFUSAL_PREFIX:
-            continue
-        standing, reason_separator, _reason = remainder.partition(_REFUSAL_REASON_SEPARATOR)
-        if reason_separator and standing:
-            return standing
-    return None
+def _member_patch_refusal_matches(output: str) -> bool:
+    """Compare the real member/operation denial with its public-output snapshot."""
+    expected = (Path(__file__).parent / _MEMBER_PATCH_REFUSAL_SNAPSHOT).read_text(encoding=_UTF8)
+    observed = _LINE_BREAK.join(output.splitlines()).strip() + _LINE_BREAK
+    return observed == expected
 
 
 def _parse_extra_forbidden_locations(output: str) -> tuple[str, ...] | None:
@@ -1847,12 +1839,13 @@ def _full_non_admin_refusal(resources: FullRuntimeResources, evidence: list[Comm
     )
     if refusal_status in (_PROCESS_SUCCESS, None) or not refusal_output.strip():
         raise ValueError(_EXPECTED_REFUSAL_ERROR)
-    if _parse_required_standing(refusal_output) != _PLATFORM_ADMINISTRATOR_STANDING:
-        raise ValueError(_EXPECTED_REFUSAL_STANDING_ERROR)
+    expected_refusal = _member_patch_refusal_matches(refusal_output)
     _, after_revision, after_output = _read_computer_config(resources, admin_terminal, evidence)
     after_state, _ = _machine_state_view(after_output)
     if after_revision != revision or after_state != before_state:
         raise ValueError(_EXPECTED_STATE_PRESERVATION_ERROR)
+    if not expected_refusal:
+        raise ValueError(_EXPECTED_COMMAND_REFUSAL_ERROR.format(output=resources.sanitize(refusal_output)))
 
 
 def _full_unknown_key_refusal(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:

@@ -1,0 +1,1 @@
+Error: permission denied — role 'member' is not permitted to call config computer patch

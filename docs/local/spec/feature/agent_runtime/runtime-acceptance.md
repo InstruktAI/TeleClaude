@@ -112,14 +112,16 @@ And the restarted runtime answers requests within the readiness budget
 
 #### UC-RA8: A caller without administrator standing cannot change machine configuration
 
-This journey consumes the computer-write standing and unchanged-state contract
-in `local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`.
+This journey consumes the role-and-operation refusal contract in
+`local/projects/teleclaude/spec/feature/identity/command-clearance` and the
+computer-write authority contract in
+`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`.
 
 ```gherkin
 Given an agent runs the refusal journey with a registered person lacking platform administrator standing
 And that person has authenticated through their own terminal
 When the person attempts a machine-configuration patch through the public CLI
-Then the command refuses the write and names the required standing
+Then the command refuses the write and identifies the caller role and requested operation
 And an administrator reading the configuration afterwards observes the original values and revision
 ```
 
