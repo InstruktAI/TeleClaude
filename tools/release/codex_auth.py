@@ -54,7 +54,6 @@ _BACKSLASH_REPLACE = "backslashreplace"
 _SHA256_PREFIX = "sha256:"
 _AGE_RECIPIENT_PATTERN = re.compile(r"age1[a-z0-9]{20,200}\Z")
 _ARTIFACT_DIGEST_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
-_HEX_DIGEST_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 _AUTH_ARTIFACT_PATTERN = re.compile(
     r"codex-auth-state-(?P<phase>begun|settled|seeded)-g(?P<generation>[0-9]+)"
     r"(?:-seed-(?P<seed>[A-Za-z0-9_-]{1,64}))?-attempt-(?P<run>[0-9]+)-(?P<attempt>[0-9]+)\Z"
@@ -276,7 +275,7 @@ def artifact_reference_for_upload(
         or coordinates.phase is not AuthArtifactPhase.BEGUN
         or artifact.digest is None
         or _ARTIFACT_DIGEST_PATTERN.fullmatch(artifact.digest) is None
-        or _HEX_DIGEST_PATTERN.fullmatch(age_recipient_sha256) is None
+        or _ARTIFACT_DIGEST_PATTERN.fullmatch(age_recipient_sha256) is None
     ):
         raise RuntimeError(_AUTH_STATE_INVALID)
     return ArtifactReference(
