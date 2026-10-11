@@ -187,21 +187,6 @@ And the revived session's lifecycle status and the first input after revival fol
 And the response payload reports a successful create with session id, host-pane reference, and agent
 ```
 
-<!-- planned-change:supervised-silence-observations -->
-
-#### UC-SR10: A revived agent keeps its status until it acts
-
-```gherkin
-Given a session whose agent status is <status> with its reason and the moment it was entered, which closing the session left as they were
-When the session is revived
-Then its agent status, reason and entered moment are unchanged, as after a restart
-And revival delivers no input to the agent, starts no turn and starts no `no_start` window
-And a freshly-minted revival row, which has no status before revival, stays `unknown` with no entered moment until its first normalized agent event and is never marked `stalled` with reason `no_start`
-And otherwise the status moves as for a session that was never closed: on a normalized agent event, such as the one the first input delivered to the revived agent produces, and by the liveness rules in `local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`: UC-SL43 for an `unknown` kept from an earlier start that never reported, and UC-SL29 for a kept `active`
-```
-
-<!-- change:supervised-silence-observations -->
-
 #### UC-SR10: A revived agent keeps its status until it acts
 
 ```gherkin
@@ -213,8 +198,6 @@ And a newly adopted conversation remains unknown until its first native activity
 And any outstanding silence observation remains governed by its owning run or turn and current supervising caller
 And the revival does not turn elapsed silence into a failure verdict
 ```
-
-<!-- /planned-change:supervised-silence-observations -->
 
 #### UC-SR7 — Revival preserves generation and delivery identity across native-session replacement
 
@@ -240,11 +223,7 @@ And the resumed agent receives the resulting turn in the restored conversation
 
 ### Cross-context references
 
-<!-- planned:supervised-silence-observations -->
-
 - **supervisory silence** — `local/projects/teleclaude/spec/feature/agent_runtime/supervisory-silence-observations` owns caller-only missing-signal observations and their assessment boundary.
-
-<!-- /planned:supervised-silence-observations -->
 
 - **identity** — the client clears the revive before sending it (`feature/identity/command-clearance`) and the request carries the caller it resolved; the caller's session id, email, and origin metadata are stamped onto any freshly-minted session row as initiator session id and terminal-origin metadata.
 - **config** — per-agent enablement (invoked transitively by the restart-agent flow) is checked against configuration; the project registry's entries (`local/projects/teleclaude/spec/feature/config/project-registry`) are what a recovered working directory is split against.

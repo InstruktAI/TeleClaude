@@ -1,8 +1,7 @@
 ---
-description: Caller-only observations of missing native startup or in-turn activity, preserving runtime status and agent-owned assessment.
+description: Caller-only observations of missing native startup or in-turn activity,
+  preserving runtime status and agent-owned assessment.
 visibility: internal
-delivered_by:
-  - supervised-silence-observations
 ---
 
 # Supervisory Silence Observations — Spec
