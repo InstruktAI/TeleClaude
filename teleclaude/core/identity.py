@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.agent_registry import AgentName
 from teleclaude.caller_identity import (
     SYSTEM_PRINCIPAL_PREFIX,
     RoleResolver,
@@ -56,7 +57,6 @@ from teleclaude.constants import (
     HUMAN_ROLE_CUSTOMER,
     HUMAN_ROLES,
 )
-from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageAuthorKind, Session, SessionEntryPoint
 from teleclaude.identity_reach import Reach, resolve_reach, visitor_reach
