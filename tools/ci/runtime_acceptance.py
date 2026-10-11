@@ -17,7 +17,7 @@ import tempfile
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from types import FrameType
@@ -350,6 +350,8 @@ _COMPUTER_TIMEZONE_FIELD = "timezone"
 _COMPUTER_WORKING_DIRECTORY_FIELD = "default_working_dir"
 _COMPUTER_MASTER_FIELD = "is_master"
 _COMPUTER_HOST_FIELD = "host"
+_RUNNER_IDENTITY_FIELDS = frozenset({_COMPUTER_NAME_FIELD, _COMPUTER_USER_FIELD, _COMPUTER_HOST_FIELD})
+_REDACTED_RUNNER_IDENTITY = "<runner-identity>"
 _COMPUTER_INGRESS_FIELD = "is_ingress_node"
 _AGENT_ENABLED_FIELD = "enabled"
 _COMPUTER_ROLE_DEFAULT = "general"
@@ -961,7 +963,7 @@ def _record_terminal_command(
             )
         )
         return None, exc.output
-    sanitized_output = resources.sanitize(result.output)
+    sanitized_output = resources.sanitize(_terminal_diagnostic_output(result.output))
     evidence.append(
         CommandEvidence(
             argv=tuple(resources.sanitize(value) for value in argv_tuple),
@@ -1024,7 +1026,12 @@ def _capture_scenario(
         scenario_id=scenario_id,
         status=status,
         duration_seconds=time.monotonic() - started,
-        commands=tuple(evidence),
+        commands=tuple(
+            command
+            if status is ScenarioStatus.FAILED and index == len(evidence) - 1
+            else replace(command, stdout=_EMPTY)
+            for index, command in enumerate(evidence)
+        ),
         diagnostics=diagnostics,
     )
 
@@ -1067,6 +1074,29 @@ def _mapping_value(value: object) -> Mapping[str, object] | None:
         return None
     if any(not isinstance(key, str) for key in value):
         return None
+    return value
+
+
+def _terminal_diagnostic_output(output: str) -> str:
+    """Keep public result structure without the disposable runner's identity values."""
+    payload = _structured_value(output)
+    if payload is None:
+        return output
+    return json.dumps(_redact_runner_identity(payload), ensure_ascii=True)
+
+
+def _redact_runner_identity(value: object) -> object:
+    """Redact identity leaves in public computer and configuration result objects."""
+    mapping = _mapping_value(value)
+    if mapping is not None:
+        return {
+            key: _REDACTED_RUNNER_IDENTITY
+            if key in _RUNNER_IDENTITY_FIELDS and isinstance(item, str)
+            else _redact_runner_identity(item)
+            for key, item in mapping.items()
+        }
+    if isinstance(value, list):
+        return [_redact_runner_identity(item) for item in value]
     return value
 
 
