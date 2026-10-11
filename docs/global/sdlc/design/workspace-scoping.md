@@ -189,10 +189,19 @@ answer from session history.
    own.
 9. **`make test` is never file-scoped.** The spec-anchored model has no 1:1
    source→test map, so `telec code test` delegates to `make test` with no scope.
-10. **Both legs fail the command.** `telec code lint` runs the native `make lint`
-    leg first (ruff `--fix` may edit), then the guardrails lane; it exits
-    non-zero if either leg fails. `make lint` carries no guardrails; the
-    guardrails lane carries no native tools.
+10. **Preparation precedes concurrent checking; both legs block.** Any scoped
+    formatting and staged-content materialization finish before lint reads the
+    selected inputs. Formatting and dependency preparation belong to their
+    separate Make targets under `sdlc/design/project-toolchain`; native lint
+    checks the prepared sources without rewriting them. Native lint and the
+    guardrails lane may overlap, and independent guardrail stages use bounded
+    concurrency. Owning homes complete one at a time. Selected roots, paths,
+    capabilities and environments remain attached to their checks. All selected
+    checks finish before success is reported; either leg's failure blocks, with
+    failure selection in declared order rather than completion order.
+    Cancellation and unexpected failure join running checks and reap their
+    command groups before releasing grading resources. `make lint` carries no
+    guardrails; the guardrails lane carries no native tools.
 11. **File-scoped vs full-run lives behind each check.** On file-scoped runs
     the make leg gets a NUL-delimited `FILES_FROM` and TeleClaude's checks get
     the scoped paths. A full run collects the homes in the repository's
@@ -229,8 +238,9 @@ answer from session history.
 ```
 telec code lint (no args, worktree detected)
   → resolve dirty paths once
-  → make lint FILES_FROM=<nul tempfile of existing dirty paths>   (native leg)
-  → guardrails lane over the same dirty paths                     (policy leg)
+  → make format FILES_FROM=<nul tempfile of existing dirty paths>
+  → concurrently: make lint FILES_FROM=<nul tempfile> + guardrails over the same paths
+  → join the checks and report their ordered outcomes
 ```
 
 ```
@@ -255,7 +265,9 @@ telec code lint (no args, not a worktree, session identity present)
   → resolve dirty paths once
   → intersect dirty files with the session's live declarations
   → validate paths
-  → make lint FILES_FROM=<nul tempfile of scoped paths>  +  guardrails lane <scoped>
+  → make format FILES_FROM=<nul tempfile of scoped paths>
+  → concurrently: make lint FILES_FROM=<nul tempfile> + guardrails lane <scoped>
+  → join the checks and report their ordered outcomes
 ```
 
 ```
@@ -282,7 +294,9 @@ telec code lint (no args, not a worktree, no session identity)
 ```
 telec code lint <files...>
   → skip scoping; validate paths
-  → make lint FILES_FROM=<nul tempfile of provided files>  +  guardrails lane <files>
+  → make format FILES_FROM=<nul tempfile of provided files>
+  → concurrently: make lint FILES_FROM=<nul tempfile> + guardrails lane <files>
+  → join the checks and report their ordered outcomes
 ```
 
 ### Hook gate flow
@@ -292,7 +306,8 @@ git commit (raw, or invoked by telec code commit)
   → .git/hooks/pre-commit → telec code pre-commit
   → partial-staging check: exits non-zero if staged + unstaged overlap detected
   → lint the staged file set with the checks each path's owning home carries
-    (formatting checked, never rewritten; documentation and agent-artifact
+    (independent checks may overlap after preparation; formatting checked,
+    never rewritten; documentation and agent-artifact
     validators read the staged content against the rest of each owning home
     as committed; the native leg runs on disk over the staged files)
   → exits non-zero on any finding; git produces no commit
@@ -306,6 +321,7 @@ telec code lint --all   (or CI, no-session shared branch)
   → per home, over its files git does not ignore: the checks its capabilities carry
     (code → make lint at the home root plus TeleClaude's code rules;
      docs → snippet validation; agents → artifact validation)
+  → homes complete sequentially; independent read-only checks overlap and are joined
   → a home that carries no capability is not checked
 ```
 
