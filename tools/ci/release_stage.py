@@ -101,6 +101,9 @@ _PROOF_FILENAME = "proof-identity.json"
 _BUNDLE_FILENAME = "candidate.bundle"
 _CANDIDATE_CHECK_FILENAME = "candidate-check.json"
 _PROOF_LOG_FILENAME = "proof-log.txt"
+_PROOF_BUNDLE_FETCH = ("fetch", "--no-tags")
+_PROOF_BUNDLE_HEAD = "HEAD"
+_FETCHED_CANDIDATE_REF = "FETCH_HEAD"
 _SEED_CIPHERTEXT_FILENAME = "seed.age"
 _SEED_ID_FILENAME = "seed-operation.json"
 _SEED_ARTIFACT_NAME_KEY = "artifact_name"
@@ -658,8 +661,8 @@ def prepare_proof_checkout(repository_root: Path, candidate_path: Path, bundle_p
         raise ValueError(_INVALID_ARTIFACT)
     repo = Repo(repository_root)
     _run_git(repository_root, "bundle", "verify", str(bundle_path))
-    _run_git(repository_root, "fetch", "--no-tags", str(bundle_path), "HEAD:refs/release/candidate")
-    commit = repo.commit("refs/release/candidate")
+    _run_git(repository_root, *_PROOF_BUNDLE_FETCH, str(bundle_path), _PROOF_BUNDLE_HEAD)
+    commit = repo.commit(_FETCHED_CANDIDATE_REF)
     if commit.hexsha != candidate.candidate_sha or commit.tree.hexsha != candidate.candidate_tree_sha:
         raise ValueError(_INVALID_ARTIFACT)
     if len(commit.parents) != 1 or commit.parents[0].hexsha != candidate.attempt.source_sha:
