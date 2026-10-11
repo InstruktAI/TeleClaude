@@ -91,6 +91,12 @@ separate from their original serialized evidence and integrity hashes.
 
 ### Credentials and inspection
 
+The trusted controller supplies the resolved job temporary parent for both
+controller-root creation and cleanup. Controller roots are proper resolved
+descendants of that parent; creation rejects an existing root, and both paths
+reject symlink roots. Cleanup verifies the root boundary before deleting provider
+material (`sdlc/policy/security-awareness`).
+
 The trusted controller owns credentials, persistence, and artifact transport.
 The inspector runs under a separate unprivileged identity with read-only source
 access and provider-native tool permissions. Its tool processes cannot read the

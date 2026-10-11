@@ -18,7 +18,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from teleclaude.git import Repo
-from tools.ci.gha import append_output, repo_root
+from tools.ci.gha import append_output, repo_root, required_env
 from tools.ci.publish_release import publish_proved_candidate
 from tools.ci.read_inspector_report import InspectorSelection, select_inspector_report
 from tools.release.attempt import (
@@ -66,6 +66,7 @@ from tools.release.isolated_inspection import (
     read_principal_file,
     remove_controller_root,
     remove_principal_tree,
+    validate_controller_root,
 )
 
 _UTF8 = "utf-8"
@@ -194,6 +195,11 @@ def _expected_workflow(repository: str, run_id: str, run_attempt: int, event: Wo
     )
 
 
+def _job_temporary_parent() -> Path:
+    """Resolve the hosted job's temporary directory as the controller's path authority."""
+    return Path(required_env(_RUNNER_TEMP)).resolve()
+
+
 def prepare_codex(attempt_path: Path, evidence_directory: Path, state_directory: Path, result_directory: Path) -> bool:
     """Restore the current managed login and upload its begin checkpoint before Codex starts."""
     repository = os.environ.get(_GITHUB_REPOSITORY, _EMPTY)
@@ -201,14 +207,15 @@ def prepare_codex(attempt_path: Path, evidence_directory: Path, state_directory:
     run_attempt = int(os.environ.get(_GITHUB_RUN_ATTEMPT, "0"))
     token = os.environ.get(_GH_TOKEN, _EMPTY)
     identity = os.environ.get(_AGE_IDENTITY, _EMPTY)
-    controller_root = Path(os.environ.get(_RUNNER_TEMP, "/tmp")) / _RELEASE_CONTROLLER_ROOT
+    temporary_parent = _job_temporary_parent()
+    controller_root = temporary_parent / _RELEASE_CONTROLLER_ROOT
     state_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     output_root = result_directory.parent
     output_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     try:
         if not token or not identity or not run_id.isdigit() or run_attempt < 1:
             raise ValueError(_AUTH_FAILURE)
-        create_controller_root(controller_root)
+        create_controller_root(controller_root, temporary_parent=temporary_parent)
         principal_home, principal_temp, principal_state = create_principal_layout(InspectorRole.CODEX, controller_root)
         codex_home = create_principal_directory(
             InspectorRole.CODEX, controller_root, principal_state / _CODEX_AUTH_HOME
@@ -405,14 +412,16 @@ def confirm_codex_settled(result_directory: Path, state_directory: Path) -> bool
 def run_claude(evidence_directory: Path, output_directory: Path) -> bool:
     """Run one native restricted Claude fallback over the same immutable evidence."""
     output_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    controller_root = Path(os.environ[_RUNNER_TEMP]) / _RELEASE_CONTROLLER_ROOT
+    temporary_parent = _job_temporary_parent()
+    controller_root = temporary_parent / _RELEASE_CONTROLLER_ROOT
     try:
         executable_text = shutil.which("claude")
         oauth_token = os.environ.get(_CLAUDE_TOKEN, _EMPTY)
         if executable_text is None or not oauth_token:
             raise ValueError(_SETUP_FAILURE)
+        validate_controller_root(controller_root, temporary_parent=temporary_parent)
         if not controller_root.exists():
-            create_controller_root(controller_root)
+            create_controller_root(controller_root, temporary_parent=temporary_parent)
         principal_home, principal_temp, principal_state = create_principal_layout(InspectorRole.CLAUDE, controller_root)
         claude_config = create_principal_directory(
             InspectorRole.CLAUDE,
@@ -501,8 +510,9 @@ def seed_codex_auth(output_directory: Path, reseed: bool) -> tuple[str, bool]:
     output_directory.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     if output_directory.exists() or output_directory.is_symlink():
         raise ValueError(_INVALID_SEED)
-    controller_root = Path(os.environ[_RUNNER_TEMP]) / _RELEASE_CONTROLLER_ROOT
-    create_controller_root(controller_root)
+    temporary_parent = _job_temporary_parent()
+    controller_root = temporary_parent / _RELEASE_CONTROLLER_ROOT
+    create_controller_root(controller_root, temporary_parent=temporary_parent)
     with GitHubArtifactClient(token) as client:
         expected = _expected_workflow(
             repository,
@@ -782,12 +792,14 @@ def record_proof(
 
 def cleanup_inspectors(controller_root: Path) -> None:
     """Remove per-provider files only after both isolated process boundaries are closed."""
+    temporary_parent = _job_temporary_parent()
+    validate_controller_root(controller_root, temporary_parent=temporary_parent)
     for role in (InspectorRole.CODEX, InspectorRole.CLAUDE):
         target = controller_root / role.value
         if target.exists() and not target.is_symlink():
             remove_principal_tree(role, controller_root, target)
     if controller_root.exists():
-        remove_controller_root(controller_root)
+        remove_controller_root(controller_root, temporary_parent=temporary_parent)
 
 
 def _read_principal_auth(state: CodexControllerState) -> bytes:

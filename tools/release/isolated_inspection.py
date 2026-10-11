@@ -87,7 +87,6 @@ _PRIVATE_PATH_INVALID = "A private inspector path is outside its caller-owned te
 _PRIVATE_PATH_EXISTS = "A private inspector path must not exist before creation."
 _PRIVATE_FILE_TOO_LARGE = "The private inspector file exceeds its configured size limit."
 _CONTROLLER_STAGING_DIRECTORY = "inspector-controller-staging"
-_TEMPORARY_PARENT = Path(tempfile.gettempdir()).resolve()
 _PRINCIPAL_HOME_DIRECTORY = "home"
 _PRINCIPAL_TEMP_DIRECTORY = "tmp"
 _STATE_DIRECTORY = "state"
@@ -184,15 +183,18 @@ def create_principal_directory(role: InspectorRole, root: Path, directory: Path)
     return directory
 
 
-def create_controller_root(root: Path) -> Path:
-    """Create the private controller parent that contains isolated UID state and staging files."""
+def validate_controller_root(root: Path, *, temporary_parent: Path) -> None:
+    """Require a non-symlink controller root within the caller's resolved temporary parent."""
     resolved = root.resolve()
-    if (
-        root.exists()
-        or root.is_symlink()
-        or not resolved.is_relative_to(_TEMPORARY_PARENT)
-        or resolved == _TEMPORARY_PARENT
-    ):
+    parent = temporary_parent.resolve()
+    if not resolved.is_relative_to(parent) or resolved == parent or root.is_symlink():
+        raise ValueError(_PRIVATE_PATH_INVALID)
+
+
+def create_controller_root(root: Path, *, temporary_parent: Path) -> Path:
+    """Create the private controller parent that contains isolated UID state and staging files."""
+    validate_controller_root(root, temporary_parent=temporary_parent)
+    if root.exists():
         raise ValueError(_PRIVATE_PATH_INVALID)
     root.mkdir(mode=_PRIVATE_ROOT_INITIAL_MODE, parents=True)
     root.chmod(_CONTROLLER_ROOT_MODE)
@@ -386,11 +388,9 @@ def remove_principal_tree(role: InspectorRole, root: Path, target: Path) -> None
         raise RuntimeError(_INSPECTOR_COMMAND_FAILED)
 
 
-def remove_controller_root(root: Path) -> None:
+def remove_controller_root(root: Path, *, temporary_parent: Path) -> None:
     """Remove the now-empty controller root after isolated principals are removed."""
-    resolved = root.resolve()
-    if not resolved.is_relative_to(_TEMPORARY_PARENT) or resolved == _TEMPORARY_PARENT or root.is_symlink():
-        raise ValueError(_PRIVATE_PATH_INVALID)
+    validate_controller_root(root, temporary_parent=temporary_parent)
     shutil.rmtree(root)
 
 
