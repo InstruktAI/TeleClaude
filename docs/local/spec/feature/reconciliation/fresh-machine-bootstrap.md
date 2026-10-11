@@ -202,14 +202,14 @@ Then the home serves the documentation and agent artifacts committed at that rel
 
 #### UC-FMB15: Installation exposes time spent in its stages
 
-Following `sdlc/policy/logging`:
+Following `sdlc/policy/observability`:
 
 ```gherkin
 Given installation runs in full, CI or dependency-only mode
-When an installation stage starts
-Then the install log records its name and start
-And completion records its elapsed seconds
-And interruption or failure leaves the start without a completion
+And TELECLAUDE_LOG_LEVEL is DEBUG or TRACE
+When an installation stage completes
+Then the install log records one structured DEBUG completion with its name and elapsed seconds
+And the default INFO level omits stage timing records
 And stage ordering and existing failure handling are preserved
 ```
 

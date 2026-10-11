@@ -94,14 +94,23 @@ log() {
 
 # Run in the caller's shell so exported bootstrap paths remain available.
 # Keep the command outside a conditional: testing its status would disable
-# errexit inside the function. An incomplete stage retains just its start log.
+# errexit inside the function. Failed stages keep their original error handling.
 run_install_stage() {
     local stage="$1"
     shift
     local started=$SECONDS
-    log "INSTALL_STAGE stage=$stage event=started"
     "$@"
-    log "INSTALL_STAGE stage=$stage event=completed duration_s=$((SECONDS - started))"
+    log_install_stage "$stage" "$((SECONDS - started))"
+}
+
+# Shell-native structured formatting avoids starting Python for each stage.
+log_install_stage() {
+    case "${TELECLAUDE_LOG_LEVEL:-INFO}" in
+        DEBUG|TRACE|debug|trace)
+            printf 'time=%s level=DEBUG event=install_stage_completed stage=%s duration_s=%s\n' \
+                "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$1" "$2" >> "$LOG_FILE"
+            ;;
+    esac
 }
 
 print_success() {
