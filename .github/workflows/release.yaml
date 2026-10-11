@@ -517,14 +517,17 @@ jobs:
           ref: ${{ needs.release-analysis.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Install pinned uv for the self-hosted proof controller
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
+          version: ${{ env.UV_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Install pinned uv and proof controller dependencies
+          enable-cache: false
+      - name: Install relocatable Python and proof controller dependencies
         run: |
-          python -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
+          uv python install --no-bin "$PYTHON_VERSION"
           uv sync --frozen --group dev --no-install-project
-          python3 tools/ci/export_env.py --path "$GITHUB_WORKSPACE/bin"
+          uv run python tools/ci/export_env.py --path "$GITHUB_WORKSPACE/bin"
       - name: Download exact candidate artifact
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -536,6 +539,7 @@ jobs:
           --destination "$RUNNER_TEMP/release-candidate-download"
           --files candidate.bundle candidate-identity.json candidate-check.json
       - name: Keep captured source as local main and select candidate
+        id: proof_checkout
         run: >-
           uv run python -m tools.ci.release_stage prepare-proof-checkout
           --candidate "$RUNNER_TEMP/release-candidate-download/files/candidate-identity.json"
@@ -553,7 +557,7 @@ jobs:
           exit "$result"
       - name: Record candidate-bound installer proof and logs
         id: record_proof
-        if: always()
+        if: ${{ always() && steps.proof_checkout.outcome == 'success' }}
         env:
           HARNESS_EXIT_CODE: ${{ steps.tart.outputs.exit_code || '1' }}
         run: >-
