@@ -24,6 +24,7 @@ from teleclaude.config._environment import (
     read_environment_file,
 )
 from teleclaude.config.declaration import render_declared_config
+from teleclaude.config.errors import ConfigLoadError, describe_load_error
 from teleclaude.config.generation import ensure_machine_config
 from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.loader import (
@@ -615,6 +616,8 @@ def _patch_computer(
         # The computer view already excludes `kind` (`_computer_view_from`), so a patch
         # naming it is the same refusal every other kind gives a projected section.
         raise ReadOnlyProjection(str(exc)) from exc
+    except ConfigLoadError as exc:
+        raise InvalidCandidate(describe_load_error(exc)) from exc
     return _computer_view(result)
 
 

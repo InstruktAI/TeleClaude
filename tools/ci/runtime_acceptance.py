@@ -164,9 +164,6 @@ _JOB_LINE_SEPARATOR = ": "
 _JOB_FIELD_SEPARATOR = "; "
 _JOB_VALUE_SEPARATOR = "="
 _JOB_STATUS_FIELDS = frozenset({_JOB_STATUS_LAST_RUN_FIELD, _JOB_STATUS_STATE_FIELD, _JOB_STATUS_NEXT_DUE_FIELD})
-_PYDANTIC_TYPE_MARKER = "[type="
-_PYDANTIC_METADATA_SEPARATOR = ","
-_PYDANTIC_EXTRA_FORBIDDEN = "extra_forbidden"
 _ROLE_SECTION = "roles"
 _ROLE_PLATFORM_FIELD = "platform"
 _PROJECTS_RESPONSE_FIELD = "projects"
@@ -177,6 +174,10 @@ _COMPUTER_NAME_FIELD = "name"
 _COMPUTER_STATUS_FIELD = "status"
 _READY_LOCAL_COMPUTER_SNAPSHOT = Path("snapshots") / "ready-local-computer.json"
 _MEMBER_PATCH_REFUSAL_SNAPSHOT = Path("snapshots") / "member-computer-patch-refusal.txt"
+_INVALID_PATCH_REFUSAL_SNAPSHOT = Path("snapshots") / "invalid-computer-patch-refusal.txt"
+_REFUSAL_REQUEST_PREFIX = " (request "
+_REFUSAL_REQUEST_END = ")"
+_REFUSAL_REQUEST_PLACEHOLDER = "<request-id>"
 _ADMIN_TERMINAL_PURPOSE = "administrator"
 _MEMBER_TERMINAL_PURPOSE = "non-administrator"
 _PROJECT_CONFIG_REVISION_FIELD = "revision"
@@ -194,7 +195,10 @@ _EXPECTED_MEMBER_WHOAMI_ERROR = "The member terminal did not report the seeded n
 _EXPECTED_JOB_DISCOVERY_ERROR = "The inert declared job did not appear exactly once in its public list."
 _EXPECTED_JOB_NEVER_RUN_ERROR = "The inert declared job did not report a never-run status."
 _EXPECTED_COMMAND_REFUSAL_ERROR = "The member patch did not return the expected command-clearance refusal: {output}"
-_EXPECTED_INVALID_KEY_ERROR = "The schema refusal did not identify the submitted invalid key."
+_EXPECTED_INVALID_KEY_ERROR = "The schema refusal did not match its safe public-output snapshot: {output}"
+_INVALID_REFUSAL_SNAPSHOT_MISSING = (
+    "The invalid-patch public-output snapshot has not been captured from a disposable runtime."
+)
 _EXPECTED_PROJECT_LIST_ERROR = "The daemon project listing omitted the disposable project."
 _EXPECTED_COMPUTER_LIST_ERROR = "The daemon did not return a ready local computer."
 _EXPECTED_READINESS_ERROR = "The supported lifecycle did not report a ready daemon in time."
@@ -1278,24 +1282,23 @@ def _member_patch_refusal_matches(output: str) -> bool:
     return observed == expected
 
 
-def _parse_extra_forbidden_locations(output: str) -> tuple[str, ...] | None:
-    """Read location/type pairs from the public Pydantic schema-error detail."""
-    lines = output.splitlines()
-    locations: list[str] = []
-    for index, line in enumerate(lines):
-        _message, marker, metadata = line.partition(_PYDANTIC_TYPE_MARKER)
-        if not marker:
-            continue
-        error_type, separator, _remaining_metadata = metadata.partition(_PYDANTIC_METADATA_SEPARATOR)
-        if not separator or error_type != _PYDANTIC_EXTRA_FORBIDDEN:
-            continue
-        if index == 0:
-            return None
-        location = lines[index - 1].strip()
-        if not location:
-            return None
-        locations.append(location)
-    return tuple(locations)
+def _invalid_patch_refusal_matches(resources: FullRuntimeResources, output: str) -> bool:
+    """Compare complete safe refusal prose, normalizing only runtime paths and request identity."""
+    snapshot_path = Path(__file__).parent / _INVALID_PATCH_REFUSAL_SNAPSHOT
+    if not snapshot_path.is_file():
+        raise ValueError(_INVALID_REFUSAL_SNAPSHOT_MISSING)
+    expected = snapshot_path.read_text(encoding=_UTF8)
+    observed = _LINE_BREAK.join(resources.sanitize(output).splitlines()).strip()
+    description, marker, request = observed.rpartition(_REFUSAL_REQUEST_PREFIX)
+    if marker and request.endswith(_REFUSAL_REQUEST_END):
+        identifier = request.removesuffix(_REFUSAL_REQUEST_END)
+        try:
+            canonical_identifier = str(uuid.UUID(identifier))
+        except ValueError:
+            canonical_identifier = _EMPTY
+        if identifier == canonical_identifier:
+            observed = description + marker + _REFUSAL_REQUEST_PLACEHOLDER + _REFUSAL_REQUEST_END
+    return observed + _LINE_BREAK == expected
 
 
 def _require_process_success(result: ProcessExecution) -> None:
@@ -1864,14 +1867,14 @@ def _full_unknown_key_refusal(resources: FullRuntimeResources, evidence: list[Co
         ),
         evidence,
     )
-    if refusal_status in (_PROCESS_SUCCESS, None) or not refusal_output.strip():
-        raise ValueError(_EXPECTED_REFUSAL_ERROR)
-    if _parse_extra_forbidden_locations(refusal_output) != (_INVALID_MACHINE_KEY,):
-        raise ValueError(_EXPECTED_INVALID_KEY_ERROR)
     _, after_revision, after_output = _read_computer_config(resources, terminal, evidence)
     after_state, _ = _machine_state_view(after_output)
     if after_revision != revision or after_state != before_state:
         raise ValueError(_EXPECTED_STATE_PRESERVATION_ERROR)
+    if refusal_status in (_PROCESS_SUCCESS, None) or not refusal_output.strip():
+        raise ValueError(_EXPECTED_REFUSAL_ERROR)
+    if not _invalid_patch_refusal_matches(resources, refusal_output):
+        raise ValueError(_EXPECTED_INVALID_KEY_ERROR.format(output=resources.sanitize(refusal_output)))
 
 
 def _full_failure_cleanup_probe(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:

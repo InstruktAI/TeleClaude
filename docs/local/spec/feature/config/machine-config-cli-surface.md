@@ -21,6 +21,12 @@ holds its lock across reading, stale-revision comparison, mutation, complete
 candidate validation, and atomic replacement. A rejected candidate leaves the
 committed file unchanged.
 
+Candidate-validation failures are handled refusals: the config resource reports
+an invalid candidate, and the CLI prints a safe description naming the source
+file and failing field or dotted key path. The description contains no submitted
+values or exception traceback, consistent with safe external diagnostics
+(`sdlc/policy/security-awareness`).
+
 `telec config validate` remains an explicit diagnostic across configured
 subjects. It does not mutate configuration and is not part of a successful
 patch flow. The configuration wizard remains an explicit interactive setup
@@ -55,7 +61,8 @@ And it supplies a revision that identifies the committed state read
 Given the committed machine configuration is valid
 And an agent submits a patch that violates its typed schema
 When the config owner evaluates the candidate
-Then the candidate is rejected with the schema error
+Then the candidate is rejected with a handled schema-error description naming the source file and failing field or key path
+And the description exposes no submitted values or exception traceback
 And the command exits non-zero
 And the committed machine configuration is unchanged
 ```
