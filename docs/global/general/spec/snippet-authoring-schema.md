@@ -92,16 +92,15 @@ A procedure declaring `subscriptions` may also declare:
 
 These fields are valid only on subscribed procedures. Their values are
 independent: cardinality changes how many events are supplied, while
-interruptibility changes when they may arrive. Runtime owns delivery under
-`local/projects/teleclaude/spec/feature/agent_runtime/procedure-event-delivery`.
+interruptibility changes when they may arrive. The runtime enforces the declared
+delivery timing and cardinality.
 
 The effective required reads of a subscribed procedure include
 `general/procedure/event-handling/overview`; an interruptible procedure also
 includes `general/procedure/event-handling/interruptible`. Authored required
 reads remain in the same graph, with recursive expansion and deduplication.
 The context publication and retrieval surfaces expose these effective
-dependencies under
-`local/projects/teleclaude/spec/feature/context/doc-snippet-three-phase-retrieval`.
+dependencies.
 Both delivery cardinalities use the same handling prose
 (`general/principle/priming`).
 <!-- /planned:procedure-event-delivery -->

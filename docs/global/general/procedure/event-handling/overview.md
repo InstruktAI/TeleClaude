@@ -6,6 +6,11 @@ delivered_by:
 
 # Event Handling — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/general/principle/grounding.md
+- @~/.teleclaude/docs/general/policy/human-contract.md
+
 ## Goal
 
 Carry a subscribed procedure's responsibility through each activation, with the
@@ -54,8 +59,3 @@ domain state, and `general/policy/human-contract` to the scope of the work.
   procedure's recovery path and retain its completion criteria.
 - After resumption, recover from durable progress and current evidence before
   repeating an effect.
-
-## See Also
-
-- ~/.teleclaude/docs/general/principle/grounding.md
-- ~/.teleclaude/docs/general/policy/human-contract.md

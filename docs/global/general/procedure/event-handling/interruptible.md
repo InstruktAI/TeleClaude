@@ -9,6 +9,7 @@ delivered_by:
 ## Required reads
 
 - @~/.teleclaude/docs/general/procedure/event-handling/overview.md
+- @~/.teleclaude/docs/general/principle/attunement.md
 
 ## Goal
 
@@ -46,8 +47,3 @@ arrives during its execution, applying `general/principle/grounding` and
   the governing procedure's recovery path with the affected work unfinished.
 - Restore the current assignment and outstanding obligations from durable
   evidence when context is lost.
-
-## See Also
-
-- ~/.teleclaude/docs/general/principle/grounding.md
-- ~/.teleclaude/docs/general/principle/attunement.md
