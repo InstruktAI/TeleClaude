@@ -275,9 +275,9 @@ async def _guard_reviewer_start(
 
     Dispatches on the two subject-identity forms named in
     ``@input#r1`` (fix-commit-review-reuse-is-prose-only-nothin): a slug-bound
-    reviewer (``/review-build``, ``/review-plan``,
-    ``/review-architecture``) is keyed by exact ``(project, slug, command)``;
-    commit review (``/review-commits``, no todo slug) is keyed by
+    reviewer (``sdlc/review-build``, ``sdlc/review-plan``,
+    ``sdlc/review-architecture``) is keyed by exact ``(project, slug, command)``;
+    commit review (``sdlc/review-commits``, no todo slug) is keyed by
     ``(project, driver, command, thinking mode)`` — mode is part of that
     subject because doc-hygiene and code review use different thinking modes,
     and a mode-blind subject refuses the cheap lane as a duplicate of the

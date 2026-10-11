@@ -65,7 +65,7 @@ def _has_evidence(timeline: TurnTimeline, substrings: list[str]) -> bool:
 def _has_review_dispatch_evidence(timeline: TurnTimeline, live_reviewer_ids: frozenset[str]) -> bool:
     """Return True when the commit(s) were dispatched to a reviewer this cycle.
 
-    Recognizes a fresh ``/review-commits`` run, and a ``telec sessions send``
+    Recognizes a fresh ``sdlc/review-commits`` run, and a ``telec sessions send``
     addressed to one of this session's live commit reviewers. The send is
     identified by its target session, never by its message text.
     """
@@ -293,7 +293,7 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
     if evidence == "telec sessions restart":
         return head == "telec" and "sessions" in rest and "restart" in rest
     if evidence == SlashCommand.REVIEW_COMMITS.value:
-        # Only a real dispatch: `telec sessions run --command review-commits`,
+        # Only a real dispatch: `telec sessions run --command sdlc/review-commits`,
         # with the command name as the value of --command (not merely mentioned).
         # A bare, unqualified token still resolves to this same command until the
         # documentation sweep lands, so both forms count as evidence here.

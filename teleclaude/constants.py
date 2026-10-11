@@ -108,14 +108,14 @@ class DriverLaunchClass(StrEnum):
     A create door always writes a new session row, so the guard keys on what the
     requested launch IS — classified from its slash command:
 
-    - ``ORCHESTRATOR``: a lifecycle orchestrator driver (``/prepare``,
-      ``/work``). Refused against ANY live holder, caller-independent — a
+    - ``ORCHESTRATOR``: a lifecycle orchestrator driver (``sdlc/prepare``,
+      ``sdlc/work``). Refused against ANY live holder, caller-independent — a
       second orchestrator row for a driven slug is never legitimate.
-    - ``TASK_LANE``: the task-lane driver (``/run-task``). Refused against a
+    - ``TASK_LANE``: the task-lane driver (``sdlc/run-task``). Refused against a
       live ``active_runner`` for the slug.
-    - ``REVIEWER``: a reviewer worker (``/review-build``,
-      ``/review-plan``, ``/review-architecture``,
-      ``/review-commits``). Refused against a live reviewer already open
+    - ``REVIEWER``: a reviewer worker (``sdlc/review-build``,
+      ``sdlc/review-plan``, ``sdlc/review-architecture``,
+      ``sdlc/review-commits``). Refused against a live reviewer already open
       for the same review subject — a reviewer's output is a verdict, and a
       second concurrent instance produces a contradictory one rather than a
       legitimate concurrent mutation.

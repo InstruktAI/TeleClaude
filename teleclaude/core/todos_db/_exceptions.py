@@ -145,9 +145,9 @@ class RemoveRefusedLiveWork(OperationFailure):
 class ReviewerConflictErrorPayload(OperationErrorPayload):
     """Structured reviewer-conflict payload for any reviewer-conflict subject.
 
-    Applies to every slug-bound reviewer (``/review-build``,
-    ``/review-plan``, ``/review-architecture``) as well as the
-    slugless commit-review subject (``/review-commits``).
+    Applies to every slug-bound reviewer (``sdlc/review-build``,
+    ``sdlc/review-plan``, ``sdlc/review-architecture``) as well as the
+    slugless commit-review subject (``sdlc/review-commits``).
     """
 
     subject: str
