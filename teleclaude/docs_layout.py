@@ -58,23 +58,29 @@ _PUBLISHED_DOCS_PREFIX: Final = f"{_DOCS_DIR}/{_PUBLISHED_HALF}/"
 _RETIRED_DOCS_TOKEN: Final = str(_RETIRED_DOCS)
 _RETIRED_AGENTS_TOKEN: Final = str(_RETIRED_AGENTS)
 _UNQUALIFIED_PROJECT_TOKEN: Final = "project/"
-_SINGULAR_PERSON_TOKEN: Final = "person/"
-_SINGULAR_COMPANY_TOKEN: Final = "company/"
+_TIER_PREFIX_BY_SINGULAR: Final[dict[str, str]] = {"person": "people", "company": "companies"}
+_SINGULAR_TIER_TOKENS: Final = tuple(f"{prefix}/" for prefix in _TIER_PREFIX_BY_SINGULAR)
 _QUALIFIED_PROJECT_TOKEN: Final = "projects/"
 
 _TAXONOMY_ALTERNATION: Final = "|".join(sorted(TAXONOMY_TYPES))
-_RETIRED_DOCS_PATTERN: Final = re.compile(r"(?<![\w.-])docs/project(?=/|\b)")
-_RETIRED_AGENTS_PATTERN: Final = re.compile(r"(?<![\w.-])agents/project(?=/|\b)")
+_RETIRED_DOCS_PATTERN: Final = re.compile(rf"(?<![\w.-]){re.escape(_RETIRED_DOCS_TOKEN)}(?=/|\b)")
+_RETIRED_AGENTS_PATTERN: Final = re.compile(rf"(?<![\w.-]){re.escape(_RETIRED_AGENTS_TOKEN)}(?=/|\b)")
 _LOCAL_DOCS_REPLACEMENT: Final = "docs/local"
 _LOCAL_AGENTS_REPLACEMENT: Final = "agents/local"
-_UNQUALIFIED_PROJECT_PATTERN: Final = re.compile(rf"(?<![\w./-])project/({_TAXONOMY_ALTERNATION})/")
+_UNQUALIFIED_PROJECT_PATTERN: Final = re.compile(
+    rf"(?<![\w./-]){re.escape(_UNQUALIFIED_PROJECT_TOKEN)}({_TAXONOMY_ALTERNATION})/"
+)
 _PROJECT_IDENTITY_TEMPLATE: Final = "local/projects/{slug}/{taxonomy}/"
 _QUALIFIED_PROJECT_IDENTITY_TEMPLATE: Final = "local/projects/{slug}/{tail}"
-_SINGULAR_TIER_PATTERN: Final = re.compile(rf"(?<![\w./-])(person|company)/([a-z0-9-]+)/({_TAXONOMY_ALTERNATION})/")
-_TIER_PREFIX_BY_SINGULAR: Final[dict[str, str]] = {"person": "people", "company": "companies"}
+_SINGULAR_TIER_PATTERN: Final = re.compile(
+    rf"(?<![\w./-])({'|'.join(re.escape(prefix) for prefix in _TIER_PREFIX_BY_SINGULAR)})/"
+    rf"([a-z0-9-]+)/({_TAXONOMY_ALTERNATION})/"
+)
 _TIER_IDENTITY_TEMPLATE: Final = "{prefix}/{owner}/{taxonomy}/"
 _REGISTERED_SLUG_PATTERN_TEMPLATE: Final = r"(?<![\w./-])({slugs})/({taxonomies})/"
-_QUALIFIED_PROJECT_PATTERN_TEMPLATE: Final = r"(?<![\w./-])projects/({slugs})/((?:{taxonomies}/)|…)"
+_QUALIFIED_PROJECT_PATTERN_TEMPLATE: Final = (
+    rf"(?<![\w./-]){re.escape(_QUALIFIED_PROJECT_TOKEN)}({{slugs}})/((?:{{taxonomies}}/)|…)"
+)
 _REGEX_ALTERNATION_SEPARATOR: Final = "|"
 _PROJECT_IDENTITY_PLACEHOLDERS: Final = ("<slug>", "{slug}", "{project}")
 _MARKDOWN_SUFFIX: Final = ".md"
@@ -261,7 +267,7 @@ def _identity_rules(
             lambda match: _PROJECT_IDENTITY_TEMPLATE.format(slug=own_slug, taxonomy=match.group(1)),
             text,
         )
-    if _SINGULAR_PERSON_TOKEN in text or _SINGULAR_COMPANY_TOKEN in text:
+    if any(token in text for token in _SINGULAR_TIER_TOKENS):
         text = _SINGULAR_TIER_PATTERN.sub(
             lambda match: _TIER_IDENTITY_TEMPLATE.format(
                 prefix=_TIER_PREFIX_BY_SINGULAR[match.group(1)], owner=match.group(2), taxonomy=match.group(3)

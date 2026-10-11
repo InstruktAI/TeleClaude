@@ -15,6 +15,7 @@ NC='\033[0m'
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_FILE="${INSTALL_DIR}/install.log"
+readonly INSTALL_LOG_LEVEL="${TELECLAUDE_LOG_LEVEL:-INFO}"
 
 # Runtime config lives under TELECLAUDE_HOME; the repo ships only the blueprint.
 TELECLAUDE_HOME="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
@@ -105,7 +106,7 @@ run_install_stage() {
 
 # Shell-native structured formatting avoids starting Python for each stage.
 log_install_stage() {
-    case "${TELECLAUDE_LOG_LEVEL:-INFO}" in
+    case "$INSTALL_LOG_LEVEL" in
         DEBUG|TRACE|debug|trace)
             printf 'time=%s level=DEBUG event=install_stage_completed stage=%s duration_s=%s\n' \
                 "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$1" "$2" >> "$LOG_FILE"
