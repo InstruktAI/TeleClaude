@@ -75,6 +75,11 @@ environment, argv, payload or credential content. A failure before provider
 launch leaves the provider `exit_code` null; a setup command's status is
 diagnostic metadata, not a provider exit code.
 
+When Claude exits unsuccessfully without a parseable event result, its attempt
+references retained sanitized stderr. Sanitized stdout remains available as event
+evidence, including an empty stream. Diagnostic sanitization and output bounds
+remain owned by the inspector adapter and isolated process boundary.
+
 The selected inspector receives a compact change inventory and public-contract
 comparison and can retrieve focused source evidence in bounded portions. Grouped
 resource changes remain discoverable. The inspector declares whether assessment

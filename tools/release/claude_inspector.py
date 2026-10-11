@@ -384,13 +384,18 @@ def _interpret_result(
         response = _parse_stream_result(process.stdout, private_paths[0])
     except (ValidationError, _ClaudeStreamOutputError):
         if process.return_code != 0:
+            diagnostic = _write_diagnostic(
+                result_directory,
+                _CLAUDE_STDERR_FILENAME,
+                _safe_diagnostic(process.stderr, oauth_token, private_paths),
+            )
             return _failed_result(
                 ProviderFailure.EXECUTION,
                 process.return_code,
                 False,
                 _DIAGNOSTIC_EXECUTION,
                 result_directory,
-                event_log,
+                diagnostic,
             )
         return _invalid_report(process, oauth_token, result_directory, private_paths)
     if response.subtype == _STRUCTURED_RETRY_FAILURE:
