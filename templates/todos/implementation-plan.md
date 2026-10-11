@@ -29,7 +29,7 @@
 
 ### Task 2.2: Quality Checks
 
-- [ ] Run `make lint`
+- [ ] Run `telec code lint` for the change scope
 - [ ] Verify no unchecked implementation tasks remain
 
 ---

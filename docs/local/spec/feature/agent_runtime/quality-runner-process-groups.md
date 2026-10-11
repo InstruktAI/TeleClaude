@@ -59,7 +59,8 @@ Given a quality gate runs the guardrail lane
 When a stage returns or raises an exception
 Then a completion record names the stage, outcome, monotonic elapsed milliseconds, opaque execution-root id, process id, and lane-run id
 And no raw execution-root path is written in the stage records
-And successful completion is logged at DEBUG and unsuccessful completion at ERROR
+And successful completion is logged at DEBUG and failed completion at ERROR
+And caller cancellation is recorded at DEBUG and propagates
 And stage entry is available at TRACE, including in-process source validation
 And the original return or exception still determines the gate outcome
 And records are emitted per stage rather than per candidate file
@@ -97,6 +98,40 @@ When Pyright checks the configured sources
 Then it uses two analyzer workers with the existing source selection and diagnostic options
 And a scoped Python file analysis retains its existing invocation
 And the shared command runner owns and reaps the worker processes
+```
+
+#### UC-CQD8: Independent lint checks overlap after preparation
+
+```gherkin
+Given lint has resolved its owning homes, selected paths and check families
+And any formatting and staged-content preparation has completed
+When a home requires native checks and guardrails
+Then those read-only lanes may execute concurrently
+And independent guardrail stages use bounded concurrency
+And each selected check executes once with its original root, environment and scope
+And owning homes are completed one at a time
+And findings remain blocking with failure selection in declared check order
+```
+
+#### UC-CQD9: Concurrent lint retains process ownership through interruption
+
+```gherkin
+Given a lint invocation has concurrent checks running or waiting
+When the caller cancels or the coordinating process receives a termination signal
+Then the checks share the caller's cancellation request
+And every started command group is reaped before control returns
+And an outer checkout-grading wrapper allows its nested command owner to complete escalation before killing the wrapper
+And temporary grading environments remain alive until their checks finish
+And the original cancellation or unexpected failure propagates
+```
+
+#### UC-CQD10: Native Python lint uses the prepared environment
+
+```gherkin
+Given the project's Python environment has been prepared
+When its native lint recipe starts read-only checks
+Then its Python tool invocations do not synchronize dependencies
+And concurrent validators use that prepared environment
 ```
 
 ## Known caveats

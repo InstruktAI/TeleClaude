@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from enum import StrEnum
+from functools import partial
 from pathlib import Path
 
 import yaml
@@ -26,6 +28,7 @@ from teleclaude.git_tree import TreeSource, list_tree_paths, materialize_tree
 from teleclaude.paths import ConfigFileName, is_platform_home
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.gate import (
+    LintGateResult,
     QualityCheckFamily,
     QualityGateLeg,
     run_home_guardrail_gate,
@@ -38,6 +41,7 @@ from teleclaude.quality.selection import (
     resolve_repository_grading_root,
     select_grading_homes,
 )
+from teleclaude.runtime.command_runner import run_concurrent_operations
 
 _CACHED = "--cached"
 _NAME_STATUS = "--name-status"
@@ -299,43 +303,51 @@ def _run_home_gate(
     child_environment: dict[str, str],
 ) -> int:
     """Run native and guardrail checks for one selected home."""
-    first_failure = 0
     native_paths = sorted(
         home.grading_root.relative_path(change.path)
         for change in home.changes
         if change.status in _STAGED_ACMR_STATUSES
     )
-    if QualityGateLeg.NATIVE in home.legs and native_paths:
-        native_result = run_lint_gate(
-            home.root,
-            None,
-            native_paths,
-            _FORMAT_SCOPED,
-            child_environment,
-            selection=frozenset({QualityGateLeg.NATIVE}),
-            request_subject_checkout_grading=True,
-        )
-        first_failure = _record_gate_result(native_result.exit_code, native_result.failure_reason, first_failure)
 
-    if QualityGateLeg.GUARDRAILS not in home.legs:
-        return first_failure
-    changed_paths = [change.path for change in home.changes if change.status in _STAGED_ACMR_STATUSES]
-    deletion_tree_paths = (
-        tree_paths if any(change.status is StagedPathStatus.DELETED for change in home.changes) else []
-    )
-    guardrail_result = run_home_guardrail_gate(
-        project_root,
-        home.grading_root.root,
-        changed_paths,
-        deletion_tree_paths,
-        child_environment,
-        check_families=home.families,
-        content_root=content_root,
-        platform_home_subject=platform_home_subject,
-    )
-    if guardrail_result is None:
-        return first_failure
-    return _record_gate_result(guardrail_result.exit_code, guardrail_result.failure_reason, first_failure)
+    operations: list[Callable[[], LintGateResult | None]] = []
+    if QualityGateLeg.NATIVE in home.legs and native_paths:
+        operations.append(
+            partial(
+                run_lint_gate,
+                home.root,
+                None,
+                native_paths,
+                _FORMAT_SCOPED,
+                child_environment,
+                selection=frozenset({QualityGateLeg.NATIVE}),
+                request_subject_checkout_grading=True,
+            )
+        )
+
+    if QualityGateLeg.GUARDRAILS in home.legs:
+        changed_paths = [change.path for change in home.changes if change.status in _STAGED_ACMR_STATUSES]
+        deletion_tree_paths = (
+            tree_paths if any(change.status is StagedPathStatus.DELETED for change in home.changes) else []
+        )
+        operations.append(
+            partial(
+                run_home_guardrail_gate,
+                project_root,
+                home.grading_root.root,
+                changed_paths,
+                deletion_tree_paths,
+                child_environment,
+                check_families=home.families,
+                content_root=content_root,
+                platform_home_subject=platform_home_subject,
+            )
+        )
+
+    first_failure = 0
+    for result in run_concurrent_operations(operations):
+        if result is not None:
+            first_failure = _record_gate_result(result.exit_code, result.failure_reason, first_failure)
+    return first_failure
 
 
 def _record_gate_result(exit_code: int, reason: str | None, first_failure: int) -> int:

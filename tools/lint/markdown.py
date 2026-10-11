@@ -16,8 +16,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-import frontmatter
-
 # Allow repo imports for shared validation utilities.
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -26,6 +24,7 @@ if str(REPO_ROOT) not in sys.path:
 from teleclaude.docs_publishers import DocsPublisherResolutionError, publisher_resolution
 from teleclaude.paths import is_platform_home
 from teleclaude.resource_validation import _error, clear_errors, get_errors, validate_all_snippets
+from teleclaude.resource_validation._markdown import markdown_read_scope, parse_markdown, read_markdown
 
 # Directories to scan for markdown files
 MARKDOWN_DIRS = [
@@ -215,7 +214,7 @@ def _validate_files(file_paths: list[Path], repo_root: Path) -> list[str]:
     all_errors: list[str] = []
     for file_path in file_paths:
         try:
-            text = file_path.read_text(encoding="utf-8")
+            text = read_markdown(file_path)
         except Exception as exc:
             all_errors.append(f"{file_path}: Failed to read file: {exc}")
             continue
@@ -225,7 +224,7 @@ def _validate_files(file_paths: list[Path], repo_root: Path) -> list[str]:
 
         if text.lstrip().startswith("---") and not _is_agent_artifact(file_path, repo_root):
             try:
-                post = frontmatter.loads(text)
+                post = parse_markdown(text)
                 metadata: Mapping[str, object] = post.metadata or {}
                 if "baseline" not in str(file_path) and metadata:
                     frontmatter_errors = _validate_frontmatter(file_path, metadata)
@@ -292,6 +291,12 @@ def _parse_arguments(argv: list[str]) -> _Arguments:
 
 
 def main() -> int:
+    """Run all Markdown predicates against one invocation's source images."""
+    with markdown_read_scope():
+        return _main()
+
+
+def _main() -> int:
     """Run markdown validation.
 
     When file paths are provided as argv, validates only those files (scoped).

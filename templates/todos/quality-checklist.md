@@ -13,7 +13,7 @@ Ownership:
 - [ ] Requirements implemented according to scope
 - [ ] Implementation-plan task checkboxes all `[x]`
 - [ ] Tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
+- [ ] Lint passes for the change scope (`telec code lint`)
 - [ ] No silent deferrals in implementation plan
 - [ ] Code committed
 - [ ] User-facing verification evidence recorded

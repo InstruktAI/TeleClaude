@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import sys
 import tempfile
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import partial
 from pathlib import Path
 
 import yaml
@@ -44,7 +45,7 @@ from teleclaude.quality.selection import (
     select_quality_check_families,
     select_quality_gate_legs,
 )
-from teleclaude.runtime.command_runner import run_process_group_command
+from teleclaude.runtime.command_runner import run_concurrent_operations, run_process_group_command
 from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
@@ -196,24 +197,29 @@ def run_lint_gate(
     # A native-only selection runs in-process, exactly as before.
     if decision is CheckoutGradingDecision.SUBJECT_CHECKOUT and QualityGateLeg.GUARDRAILS in selection:
         with subject_checkout_grading_environment(execution_root, base_env=child_env) as grading_env:
-            native_exit_code, _ = _run_in_process_legs(
-                execution_root,
-                files,
-                format_scoped,
-                grading_env,
-                selection & frozenset({QualityGateLeg.NATIVE}),
-                check_families=check_families,
-                full_run=full_run,
+            run_native = QualityGateLeg.NATIVE in selection
+            if run_native and format_scoped and files is not None:
+                run_make_target(_MAKE_FORMAT_TARGET, execution_root, files=files, child_env=grading_env)
+            operations: list[Callable[[], int]] = []
+            if run_native:
+                operations.append(
+                    partial(run_make_target, _MAKE_LINT_TARGET, execution_root, files=files, child_env=grading_env)
+                )
+            operations.append(
+                partial(
+                    run_subject_checkout_guardrails,
+                    execution_root,
+                    files,
+                    grading_env,
+                    content_root=content_root,
+                    platform_home_subject=platform_home_subject,
+                    check_families=check_families,
+                    full_run=full_run,
+                )
             )
-            guardrails_exit_code = run_subject_checkout_guardrails(
-                execution_root,
-                files,
-                grading_env,
-                content_root=content_root,
-                platform_home_subject=platform_home_subject,
-                check_families=check_families,
-                full_run=full_run,
-            )
+            exit_codes = run_concurrent_operations(operations)
+            native_exit_code = exit_codes[0] if run_native else None
+            guardrails_exit_code = exit_codes[-1]
         result = LintGateResult(
             outcome=(
                 LintGateOutcome.PASSED
@@ -329,18 +335,13 @@ def _run_in_process_legs(
     check_families: frozenset[QualityCheckFamily] = frozenset(QualityCheckFamily),
     full_run: bool = False,
 ) -> tuple[int | None, int | None]:
-    """Run the native and guardrails legs in this process, exactly as before."""
+    """Complete formatting, then overlap the selected read-only legs."""
     run_native = QualityGateLeg.NATIVE in selection
     run_guardrails = QualityGateLeg.GUARDRAILS in selection
     if run_native and format_scoped and files is not None:
         run_make_target(_MAKE_FORMAT_TARGET, execution_root, files=files, child_env=child_env)
 
-    native_exit_code = (
-        run_make_target(_MAKE_LINT_TARGET, execution_root, files=files, child_env=child_env) if run_native else None
-    )
-    guardrails_exit_code: int | None = None
-    if run_guardrails:
-        guardrails_exit_code = 0
+    def guardrails() -> int:
         try:
             LintRunner(
                 project_root=execution_root,
@@ -350,8 +351,16 @@ def _run_in_process_legs(
                 check_families=check_families,
             ).run(files=files, run_all=full_run or files is None)
         except SystemExit as exc:
-            guardrails_exit_code = _system_exit_code(exc)
-    return native_exit_code, guardrails_exit_code
+            return _system_exit_code(exc)
+        return 0
+
+    operations: list[Callable[[], int]] = []
+    if run_native:
+        operations.append(partial(run_make_target, _MAKE_LINT_TARGET, execution_root, files=files, child_env=child_env))
+    if run_guardrails:
+        operations.append(guardrails)
+    exit_codes = iter(run_concurrent_operations(operations))
+    return next(exit_codes) if run_native else None, next(exit_codes) if run_guardrails else None
 
 
 def _build_in_process_result(

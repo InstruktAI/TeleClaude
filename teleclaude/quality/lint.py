@@ -1,7 +1,7 @@
 """Lint runner and pipeline — the ``telec code lint`` implementation.
 
-Orchestrates context-aware file scoping and deterministic pipeline
-execution for language-aware linting. See design doc
+Orchestrates context-aware file scoping, concurrent checks and ordered
+outcomes for language-aware linting. See design doc
 ``sdlc/design/workspace-scoping`` for the scoping
 contract: worktrees use dirty existing files, shared branches session-scope,
 explicit files bypass scoping.
@@ -10,11 +10,11 @@ explicit files bypass scoping.
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
@@ -43,6 +43,11 @@ from teleclaude.quality.selection import (
     resolve_repository_grading_root,
 )
 from teleclaude.resource_validation import validate_all_artifacts, validate_jobs_config
+from teleclaude.runtime.command_runner import (
+    ProcessGroupCancellationRequested,
+    run_concurrent_operations,
+    run_process_group_command,
+)
 
 __all__ = [
     "GuardrailsLane",
@@ -60,18 +65,20 @@ _GUARDRAIL_STAGE_FINISHED_EVENT = "quality_guardrail_stage_finished"
 _CONTENT_ROOT_FLAG = "--content-root"
 _PLATFORM_HOME_SUBJECT_FLAG = "--platform-home-subject"
 _SKIP_SNIPPETS_FLAG = "--skip-snippets"
-_NO_FILES_FLAG = "--no-files"
 _FULL_RUN_FLAG = "--full-run"
 _CONTENT_ROOT_FULL_RUN_ERROR = "A content-root validation must be path-scoped."
 _CONTENT_ROOT_GRADING_ROOT_MISSING_ERROR = "Candidate validation has no readable repository grading root."
 _EMPTY_STRING = ""
+_EXIT_MESSAGE_TEMPLATE = "{message}\n"
+_TOOL_FAILED_MESSAGE = "%s failed (exit %d)"
 
 
 class _GuardrailStageOutcome(StrEnum):
-    """Completion outcomes observed without changing a stage's control flow."""
+    """Completion outcomes for one selected validation stage."""
 
     PASSED = "passed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 # ---------------------------------------------------------------------------
@@ -125,10 +132,10 @@ def _run_tool(
     env = dict(child_env) if child_env is not None else hook_free_environment(project_root)
     existing_pythonpath = env.get("PYTHONPATH")
     env["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else str(REPO_ROOT)
-    result = subprocess.run(cmd, cwd=str(project_root), env=env, check=False)
-    if result.returncode != 0:
-        logger.error("%s failed (exit %d)", step_name, result.returncode)
-        raise SystemExit(result.returncode)
+    result = run_process_group_command(cmd, project_root, env)
+    if result.exit_code != 0:
+        logger.error(_TOOL_FAILED_MESSAGE, step_name, result.exit_code)
+        raise SystemExit(result.exit_code)
 
 
 @dataclass
@@ -178,10 +185,9 @@ class _MarkdownStep:
             cmd = [_bundled_python(), script]
             cmd.append(_FULL_RUN_FLAG)
             md = markdown_files(targets)
-            if md:
-                cmd.extend(md)
-            else:
-                cmd.append(_NO_FILES_FLAG)
+            if not md:
+                return
+            cmd.extend(md)
         else:
             md = markdown_files(targets)
             if not md:
@@ -390,12 +396,12 @@ class _ForbidTsUnitTestsStep:
 
 
 # ---------------------------------------------------------------------------
-# Pipeline — deterministic step ordering
+# Pipeline — declared result ordering
 # ---------------------------------------------------------------------------
 
 
 class GuardrailsLane:
-    """Capability-selected policy checks with deterministic step ordering.
+    """Capability-selected policy checks with deterministic result ordering.
 
     Steps are accessible via the ``steps`` attribute and each exposes a
     ``name`` for diagnostics and a ``run(targets)`` method.
@@ -445,7 +451,7 @@ class GuardrailsLane:
 
 
 # ---------------------------------------------------------------------------
-# Module-level run_pipeline — called by LintRunner, mockable by tests
+# Module-level run_pipeline — called by LintRunner
 # ---------------------------------------------------------------------------
 
 
@@ -471,34 +477,50 @@ def run_pipeline(
     run_id = uuid4().hex
     pid = os.getpid()
     execution_root_id = sha256(os.fsencode(project_root.resolve())).hexdigest()
-    for step in pipeline.steps:
-        started = perf_counter()
-        outcome = _GuardrailStageOutcome.FAILED
-        logger.trace(
-            _GUARDRAIL_STAGE_STARTED_EVENT,
+    exit_codes = run_concurrent_operations(
+        [partial(_run_step, step, targets, run_id, pid, execution_root_id) for step in pipeline.steps]
+    )
+    if failed := next((code for code in exit_codes if code != 0), None):
+        raise SystemExit(failed)
+
+
+def _run_step(step: PipelineStep, targets: list[str], run_id: str, pid: int, execution_root_id: str) -> int:
+    """Record one stage and return its exit status in the declared-order result set."""
+    started = perf_counter()
+    outcome = _GuardrailStageOutcome.FAILED
+    logger.trace(
+        _GUARDRAIL_STAGE_STARTED_EVENT,
+        stage=step.name,
+        run_id=run_id,
+        pid=pid,
+        execution_root_id=execution_root_id,
+    )
+    try:
+        step.run(targets)
+        outcome = _GuardrailStageOutcome.PASSED
+        return 0
+    except ProcessGroupCancellationRequested:
+        outcome = _GuardrailStageOutcome.CANCELLED
+        raise
+    except SystemExit as exc:
+        if exc.code is None or exc.code == 0:
+            outcome = _GuardrailStageOutcome.PASSED
+            return 0
+        if isinstance(exc.code, int):
+            return exc.code
+        sys.stderr.write(_EXIT_MESSAGE_TEMPLATE.format(message=exc.code))
+        return 1
+    finally:
+        log = logger.error if outcome is _GuardrailStageOutcome.FAILED else logger.debug
+        log(
+            _GUARDRAIL_STAGE_FINISHED_EVENT,
             stage=step.name,
+            outcome=outcome,
+            duration_ms=round((perf_counter() - started) * 1000),
             run_id=run_id,
             pid=pid,
             execution_root_id=execution_root_id,
         )
-        try:
-            step.run(targets)
-            outcome = _GuardrailStageOutcome.PASSED
-        except SystemExit as exc:
-            if exc.code is None or exc.code == 0:
-                outcome = _GuardrailStageOutcome.PASSED
-            raise
-        finally:
-            log = logger.debug if outcome is _GuardrailStageOutcome.PASSED else logger.error
-            log(
-                _GUARDRAIL_STAGE_FINISHED_EVENT,
-                stage=step.name,
-                outcome=outcome,
-                duration_ms=round((perf_counter() - started) * 1000),
-                run_id=run_id,
-                pid=pid,
-                execution_root_id=execution_root_id,
-            )
 
 
 # ---------------------------------------------------------------------------

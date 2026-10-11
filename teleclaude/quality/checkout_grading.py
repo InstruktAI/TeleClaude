@@ -187,7 +187,7 @@ def _run_subject_checkout_entry(
         str(execution_root),
     ]
     command.extend(arguments)
-    return run_process_group_command(command, execution_root, entry_env).exit_code
+    return run_process_group_command(command, execution_root, entry_env, nested_runner=True).exit_code
 
 
 __all__ = [

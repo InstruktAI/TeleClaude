@@ -488,6 +488,7 @@ main() {
             echo "✓ Code formatted"
             ;;
         lint)
+            export UV_NO_SYNC=1
             echo "Running lint checks..."
             if [ "$SCOPED" -eq 0 ]; then lint_full; else lint_scoped; fi
             echo "✓ Lint checks passed"

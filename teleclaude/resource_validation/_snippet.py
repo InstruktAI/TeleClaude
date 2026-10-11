@@ -6,8 +6,6 @@ import re
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 
-import frontmatter
-
 from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
     TYPE_SUFFIX,
@@ -21,6 +19,7 @@ from teleclaude.resource_validation._activation import (
     validate_activation_trigger,
     validate_subscriptions,
 )
+from teleclaude.resource_validation._markdown import markdown_read_scope, parse_markdown, read_markdown
 from teleclaude.resource_validation._markers import (
     validate_marker_structure,
     validate_planned_change_markers,
@@ -288,7 +287,7 @@ def validate_snippet(
     has_frontmatter = content.lstrip().startswith("---")
     if has_frontmatter:
         try:
-            post = frontmatter.loads(content)
+            post = parse_markdown(content)
             meta: Mapping[str, object] = post.metadata or {}
             body = post.content
         except Exception:  # pylint: disable=broad-exception-caught
@@ -326,7 +325,7 @@ def validate_snippet(
 def _validate_baseline_index(path: Path, content: str, project_root: Path, *, domains: set[str]) -> None:
     if content.lstrip().startswith("---"):
         try:
-            post = frontmatter.loads(content)
+            post = parse_markdown(content)
             content = post.content
         except Exception:  # pylint: disable=broad-exception-caught
             pass
@@ -647,7 +646,7 @@ def validate_third_party_doc(path: Path, content: str, project_root: Path) -> No
         return
     if content.lstrip().startswith("---"):
         try:
-            post = frontmatter.loads(content)
+            post = parse_markdown(content)
             meta: Mapping[str, object] = post.metadata or {}
             body = post.content
         except Exception:  # pylint: disable=broad-exception-caught
@@ -677,7 +676,7 @@ def validate_third_party_docs(project_root: Path) -> None:
         if path.name in _THIRD_PARTY_INDEX_NAMES:
             continue
         try:
-            text = path.read_text(encoding="utf-8")
+            text = read_markdown(path)
         except OSError as exc:
             _error("third_party_read_failed", path=str(path), error=str(exc))
             continue
@@ -704,7 +703,7 @@ def _domain_baseline_ids(domain: str, project_root: Path) -> set[str]:
         return set()
     domains = load_domains(project_root)
     ids: set[str] = set()
-    for ref in _BASELINE_REF_RE.findall(baseline.read_text(encoding="utf-8")):
+    for ref in _BASELINE_REF_RE.findall(read_markdown(baseline)):
         resolved = resolve_ref_path(ref, root_path=project_root, current_path=baseline)
         if resolved and resolved.exists():
             classification, _ = derive_snippet_classification(resolved, project_root=project_root, domains=domains)
@@ -716,7 +715,7 @@ def _domain_baseline_ids(domain: str, project_root: Path) -> set[str]:
 def _iter_reachable_refs(start: Path, project_root: Path, seen: set[Path]) -> Iterator[tuple[str, Path]]:
     """Yield (snippet_id, containing_file) for every snippet transitively @-referenced from start."""
     try:
-        text = start.read_text(encoding="utf-8")
+        text = read_markdown(start)
     except OSError:
         return
     domains = load_domains(project_root)
@@ -744,7 +743,7 @@ def _validate_baseline_dedup(project_root: Path, *, paths: list[Path] | None = N
             if path.name == "index.yaml" or is_excluded_snippet_path(path, snippets_root):
                 continue
             try:
-                text = path.read_text(encoding="utf-8")
+                text = read_markdown(path)
             except OSError:
                 continue
             classification, _ = derive_snippet_classification(path, project_root=project_root, domains=domains)
@@ -813,7 +812,7 @@ def _validate_scoped_paths(
             continue
         if _is_third_party_doc(path, project_root):
             try:
-                text = path.read_text(encoding="utf-8")
+                text = read_markdown(path)
             except OSError as exc:
                 _error("snippet_read_failed", path=str(path), error=str(exc))
                 continue
@@ -831,7 +830,7 @@ def _validate_scoped_paths(
             if is_excluded_snippet_path(path, containing_root):
                 continue
             try:
-                text = path.read_text(encoding="utf-8")
+                text = read_markdown(path)
             except OSError as exc:
                 _error("snippet_read_failed", path=str(path), error=str(exc))
                 continue
@@ -843,7 +842,7 @@ def _validate_scoped_paths(
         if is_excluded_snippet_path(path, tier_root / _DOCS_DIRNAME):
             continue
         try:
-            text = path.read_text(encoding="utf-8")
+            text = read_markdown(path)
         except OSError as exc:
             _error("snippet_read_failed", path=str(path), error=str(exc))
             continue
@@ -870,7 +869,7 @@ def _validate_tier_roots(
             if _BASELINE_SEGMENT in path.relative_to(tier_docs_root).parent.parts:
                 continue
             try:
-                text = path.read_text(encoding="utf-8")
+                text = read_markdown(path)
             except OSError as exc:
                 _error("snippet_read_failed", path=str(path), error=str(exc))
                 continue
@@ -901,7 +900,7 @@ def validate_all_snippets(
     lint; every other repository's run passes none, so a malformed or
     uncommitted home tier file never reaches an unrelated repository's run.
     """
-    with project_slug_resolution():
+    with project_slug_resolution(), markdown_read_scope():
         _validate_all_snippets(project_root, paths=paths, tier_home=tier_home, full_run=full_run)
 
 
@@ -946,7 +945,7 @@ def _validate_all_snippets(
             if not include_baseline and "baseline" in str(path):
                 continue
             try:
-                text = path.read_text(encoding="utf-8")
+                text = read_markdown(path)
             except OSError as exc:
                 _error("snippet_read_failed", path=str(path), error=str(exc))
                 continue

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 from teleclaude.capabilities import resolve_tier_permissions
@@ -30,6 +32,7 @@ from teleclaude.quality.scope import (
     resolve_workspace_scope_resolution,
     validate_scoped_paths,
 )
+from teleclaude.runtime.command_runner import run_concurrent_operations
 
 _EMPTY_SCOPE_ERROR = (
     "ERROR: none of your declared paths are dirty, so there is nothing in your scope. "
@@ -43,6 +46,7 @@ _FULL_LINT_UNBORN_HEAD = (
 )
 _ROOT_HOME = Path(".")
 _GIT_DIRECTORY = ".git"
+_MAKE_FORMAT_TARGET = "format"
 
 
 def handle_lint(args: list[str]) -> None:
@@ -85,21 +89,25 @@ def _run_scoped_lint_gates(project_root: Path, paths: list[str]) -> list[LintGat
         if not legs:
             continue
         home_paths = [owner.relative_path(path) for path in repository_paths]
+        operations: list[Callable[[], LintGateResult]] = []
         if QualityGateLeg.NATIVE in legs:
-            results.append(
-                run_lint_gate(
+            run_make_target(_MAKE_FORMAT_TARGET, home_root, files=home_paths)
+            operations.append(
+                partial(
+                    run_lint_gate,
                     home_root,
                     None,
                     home_paths,
-                    True,
+                    False,
                     None,
                     selection=frozenset({QualityGateLeg.NATIVE}),
                     request_subject_checkout_grading=True,
                 )
             )
         if QualityGateLeg.GUARDRAILS in legs:
-            results.append(
-                run_lint_gate(
+            operations.append(
+                partial(
+                    run_lint_gate,
                     project_root,
                     None,
                     repository_paths,
@@ -111,6 +119,7 @@ def _run_scoped_lint_gates(project_root: Path, paths: list[str]) -> list[LintGat
                     platform_home_subject=is_platform_home(project_root),
                 )
             )
+        results.extend(run_concurrent_operations(operations))
     return results
 
 
@@ -147,9 +156,11 @@ def _run_full_lint_gates(project_root: Path) -> list[LintGateResult]:
             home_paths = sorted(set(grouped_inventory.get(owner, [])))
             execution_root = project_root
 
+        operations: list[Callable[[], LintGateResult]] = []
         if QualityGateLeg.NATIVE in legs:
-            results.append(
-                run_lint_gate(
+            operations.append(
+                partial(
+                    run_lint_gate,
                     home_root,
                     None,
                     None,
@@ -160,8 +171,9 @@ def _run_full_lint_gates(project_root: Path) -> list[LintGateResult]:
                 )
             )
         if QualityGateLeg.GUARDRAILS in legs:
-            results.append(
-                run_lint_gate(
+            operations.append(
+                partial(
+                    run_lint_gate,
                     execution_root,
                     None,
                     home_paths,
@@ -174,6 +186,7 @@ def _run_full_lint_gates(project_root: Path) -> list[LintGateResult]:
                     platform_home_subject=is_platform_home(execution_root),
                 )
             )
+        results.extend(run_concurrent_operations(operations))
     return results
 
 

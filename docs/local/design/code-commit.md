@@ -50,7 +50,9 @@ carrying neither is not, and nothing is applied in its place.
 **Which checks run** follows what the tier carries, never where its root sits.
 The project's native toolchain leg runs where the tier carries `code`.
 TeleClaude's guardrails lane runs wherever the gate runs. A tier carrying both
-runs both, and their order is unchanged.
+runs both after staged-content preparation; the read-only legs may overlap,
+with bounded concurrency and deterministic failure selection under
+`local/projects/teleclaude/spec/feature/agent_runtime/quality-runner-process-groups`.
 
 The platform home, and the person and company homes inside it, participate in
 documentation and carry no project subscriptions. They are gated, they run the
