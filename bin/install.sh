@@ -92,6 +92,18 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
 }
 
+# Run in the caller's shell so exported bootstrap paths remain available.
+# Keep the command outside a conditional: testing its status would disable
+# errexit inside the function. An incomplete stage retains just its start log.
+run_install_stage() {
+    local stage="$1"
+    shift
+    local started=$SECONDS
+    log "INSTALL_STAGE stage=$stage event=started"
+    "$@"
+    log "INSTALL_STAGE stage=$stage event=completed duration_s=$((SECONDS - started))"
+}
+
 print_success() {
     echo -e "${GREEN}✓${NC} $1"
     log "SUCCESS: $1"
@@ -1608,75 +1620,75 @@ main() {
     log "Install started in $INSTALL_DIR"
 
     if [ "$DEPS_ONLY_MODE" = true ]; then
-        install_deps_only
+        run_install_stage install_deps_only install_deps_only
         print_header "Install Complete"
         print_success "Project dependencies installed"
         log "Deps-only install completed"
         return 0
     fi
 
-    detect_os
+    run_install_stage detect_os detect_os
     if [ "$CI_MODE" = false ]; then
-        preflight_macos
+        run_install_stage preflight_macos preflight_macos
     fi
-    check_python
-    check_node
+    run_install_stage check_python check_python
+    run_install_stage check_node check_node
 
-    install_system_deps
-    install_python_deps
+    run_install_stage install_system_deps install_system_deps
+    run_install_stage install_python_deps install_python_deps
     if [ "$CI_MODE" = false ]; then
-        run_owner_establishment decide
-        run_environment_defaults
+        run_install_stage owner_decide run_owner_establishment decide
+        run_install_stage run_environment_defaults run_environment_defaults
     fi
-    ensure_config_yml
-    install_blueprint_engine
+    run_install_stage ensure_config_yml ensure_config_yml
+    run_install_stage install_blueprint_engine install_blueprint_engine
     if [ "$CI_MODE" = false ]; then
-        install_log_runtime
+        run_install_stage install_log_runtime install_log_runtime
     fi
-    setup_corepack
-    setup_prettier
-    install_voice_bridge
+    run_install_stage setup_corepack setup_corepack
+    run_install_stage setup_prettier setup_prettier
+    run_install_stage install_voice_bridge install_voice_bridge
     # Agent CLI enablement/install resolves from config and can invoke external
     # installers against the host; CI never needs it (this repository has no
     # test lane that exercises it).
     if [ "$CI_MODE" = false ]; then
-        setup_agents_interactive
+        run_install_stage setup_agents_interactive setup_agents_interactive
     fi
-    ensure_teleclaude_yaml
-    migrate_config_documents
-    discard_declaration_views
-    validate_config
+    run_install_stage ensure_teleclaude_yaml ensure_teleclaude_yaml
+    run_install_stage migrate_config_documents migrate_config_documents
+    run_install_stage discard_declaration_views discard_declaration_views
+    run_install_stage validate_config validate_config
     if [ "$CI_MODE" = false ]; then
-        run_owner_establishment establish
+        run_install_stage owner_establish run_owner_establishment establish
     fi
-    install_global_cli
-    _ensure_local_bin_on_path
+    run_install_stage install_global_cli install_global_cli
+    run_install_stage _ensure_local_bin_on_path _ensure_local_bin_on_path
 
     if [ "$CI_MODE" = false ]; then
-        run_macos_launcher_identity
-        install_macos_tmux_server
-        install_service
-        withdraw_docs_watch_service
+        run_install_stage run_macos_launcher_identity run_macos_launcher_identity
+        run_install_stage install_macos_tmux_server install_macos_tmux_server
+        run_install_stage install_service install_service
+        run_install_stage withdraw_docs_watch_service withdraw_docs_watch_service
     fi
 
-    setup_mcp_config
+    run_install_stage setup_mcp_config setup_mcp_config
     if [ "$CI_MODE" = false ]; then
-        configure_agent_cli
-        activate_home_repository
-        publish_installed_commit
-        publish_config_schemas
+        run_install_stage configure_agent_cli configure_agent_cli
+        run_install_stage activate_home_repository activate_home_repository
+        run_install_stage publish_installed_commit publish_installed_commit
+        run_install_stage publish_config_schemas publish_config_schemas
     fi
-    converge_plumbing
+    run_install_stage converge_plumbing converge_plumbing
     if [ "$CI_MODE" = false ]; then
-        converge_docs_layout
-        link_shared_scripts
+        run_install_stage converge_docs_layout converge_docs_layout
+        run_install_stage link_shared_scripts link_shared_scripts
     fi
 
     print_header "Install Complete"
     print_success "Binaries, Python dependencies, and machine-global tooling installed"
 
     if [ "$CI_MODE" = false ]; then
-        run_macos_permissions_probe
+        run_install_stage run_macos_permissions_probe run_macos_permissions_probe
     fi
 
     log "Install completed"

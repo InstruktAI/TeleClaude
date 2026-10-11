@@ -200,6 +200,19 @@ When installation runs from a checkout of a release tag
 Then the home serves the documentation and agent artifacts committed at that release
 ```
 
+#### UC-FMB15: Installation exposes time spent in its stages
+
+Following `sdlc/policy/logging`:
+
+```gherkin
+Given installation runs in full, CI or dependency-only mode
+When an installation stage starts
+Then the install log records its name and start
+And completion records its elapsed seconds
+And interruption or failure leaves the start without a completion
+And stage ordering and existing failure handling are preserved
+```
+
 ### Cross-context references
 
 - **config** — the person registry the owner seed is checked against and
