@@ -967,7 +967,7 @@ def _record_terminal_command(
             argv=tuple(resources.sanitize(value) for value in argv_tuple),
             exit_status=result.returncode,
             duration_seconds=time.monotonic() - started,
-            stdout=sanitized_output[:_DIAGNOSTIC_LIMIT] if result.returncode != _PROCESS_SUCCESS else _EMPTY,
+            stdout=sanitized_output[:_DIAGNOSTIC_LIMIT],
         )
     )
     return result.returncode, result.output
