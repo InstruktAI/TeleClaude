@@ -70,7 +70,7 @@ This repository only. Satellite projects keep their own testing contract, declar
 - Python is preferred for harness orchestration, health observations, timeouts,
   cleanup and report handling, keeping shell orchestration from accumulating.
   Real CLI journeys still invoke the public executables as subprocesses.
-  Command-line tools, including `curl`, remain permitted when they serve the
+  Public command-line tools, including `curl`, remain permitted when they serve the
   boundary being verified; supporting HTTP reads may use a Python client.
   Tool choice preserves real invocation fidelity and bounded, diagnosable
   execution. The Python preference is not a categorical subprocess-tool ban.
