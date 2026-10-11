@@ -1051,7 +1051,8 @@ def _capture_scenario(
         duration_seconds=time.monotonic() - started,
         commands=tuple(
             command
-            if status is ScenarioStatus.FAILED and index == len(evidence) - 1
+            if status is ScenarioStatus.FAILED
+            and (index == len(evidence) - 1 or command.exit_status != _PROCESS_SUCCESS or command.diagnostics)
             else replace(command, stdout=_EMPTY)
             for index, command in enumerate(evidence)
         ),
@@ -1296,7 +1297,7 @@ def _invalid_patch_refusal_matches(resources: FullRuntimeResources, output: str)
             canonical_identifier = str(uuid.UUID(identifier))
         except ValueError:
             canonical_identifier = _EMPTY
-        if identifier == canonical_identifier:
+        if canonical_identifier and identifier == canonical_identifier:
             observed = description + marker + _REFUSAL_REQUEST_PLACEHOLDER + _REFUSAL_REQUEST_END
     return observed + _LINE_BREAK == expected
 
