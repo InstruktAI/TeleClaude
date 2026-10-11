@@ -547,23 +547,23 @@ jobs:
           --name "release-candidate-${{ github.run_id }}-${{ github.run_attempt }}"
           --artifact-id "${{ needs.candidate.outputs.artifact_id }}"
           --digest "${{ needs.candidate.outputs.artifact_digest }}"
-          --destination "$RUNNER_TEMP/release-candidate-download"
+          --destination "$RUNNER_TEMP/release-candidate-download-${{ github.run_id }}-${{ github.run_attempt }}"
           --files candidate.bundle candidate-identity.json candidate-check.json
       - name: Keep captured source as local main and select candidate
         id: proof_checkout
         run: >-
           uv run python -m tools.ci.release_stage prepare-proof-checkout
-          --candidate "$RUNNER_TEMP/release-candidate-download/files/candidate-identity.json"
-          --bundle "$RUNNER_TEMP/release-candidate-download/files/candidate.bundle"
+          --candidate "$RUNNER_TEMP/release-candidate-download-${{ github.run_id }}-${{ github.run_attempt }}/files/candidate-identity.json"
+          --bundle "$RUNNER_TEMP/release-candidate-download-${{ github.run_id }}-${{ github.run_attempt }}/files/candidate.bundle"
       - name: Run the existing complete installer harness
         id: tart
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/release-proof/harness"
+          mkdir -p "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/harness"
           set +e
-          uv run python -m tools.ci.bootstrap --output-dir "$RUNNER_TEMP/release-proof/harness" > "$RUNNER_TEMP/release-proof/installer-harness.txt" 2>&1
+          uv run python -m tools.ci.bootstrap --output-dir "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/harness" > "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/installer-harness.txt" 2>&1
           result=$?
-          cat "$RUNNER_TEMP/release-proof/installer-harness.txt"
+          cat "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/installer-harness.txt"
           echo "exit_code=$result" >> "$GITHUB_OUTPUT"
           exit "$result"
       - name: Record candidate-bound installer proof and logs
@@ -573,16 +573,16 @@ jobs:
           HARNESS_EXIT_CODE: ${{ steps.tart.outputs.exit_code || '1' }}
         run: >-
           uv run python -m tools.ci.release_stage record-proof
-          --candidate "$RUNNER_TEMP/release-candidate-download/files/candidate-identity.json"
-          --candidate-check "$RUNNER_TEMP/release-candidate-download/files/candidate-check.json"
-          --harness-output "$RUNNER_TEMP/release-proof"
+          --candidate "$RUNNER_TEMP/release-candidate-download-${{ github.run_id }}-${{ github.run_attempt }}/files/candidate-identity.json"
+          --candidate-check "$RUNNER_TEMP/release-candidate-download-${{ github.run_id }}-${{ github.run_attempt }}/files/candidate-check.json"
+          --harness-output "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}"
           --harness-exit-code "$HARNESS_EXIT_CODE"
-          --output-directory "$RUNNER_TEMP/release-proof/artifacts"
+          --output-directory "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/artifacts"
       - name: Detect retained proof files
         id: proof_files
         if: always()
         shell: bash
-        run: tools/ci/detect_release_artifacts.sh file "$RUNNER_TEMP/release-proof/artifacts/proof-identity.json"
+        run: tools/ci/detect_release_artifacts.sh file "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/artifacts/proof-identity.json"
       - name: Upload installer logs and proof receipt
         id: proof_upload
         if: ${{ always() && steps.proof_files.outputs.present == 'true' }}
@@ -590,8 +590,8 @@ jobs:
         with:
           name: release-proof-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/release-proof/artifacts/proof-identity.json
-            ${{ runner.temp }}/release-proof/artifacts/proof-log.txt
+            ${{ runner.temp }}/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/artifacts/proof-identity.json
+            ${{ runner.temp }}/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/artifacts/proof-log.txt
           if-no-files-found: error
           retention-days: 90
       - name: Confirm proof artifact identity
