@@ -458,6 +458,8 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
    - Personal: the visitor's name, company, role, preferences, communication style, open questions, relationship history
    - Business: feature requests, complaints, confusion points, sentiment, competitive mentions, pricing discussions
 
+<!-- planned-change:conversation-memory-continuity -->
+
 ## Invariants
 
 1. **Single memory store**: Identity-scoped memories live in the same `memory_observations` table. No separate tables or databases per identity.
@@ -495,6 +497,48 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 17. **Each desk is seen only by its scope**: a desk's sessions and escalations appear only in that desk's own Discord category, visible only to the desk's scope through per-person overwrites; no shared surface carries them.
 
 18. **Customers read public documentation only**: a customer's desk agent reads its desk's reach at public depth, and no desk master inlines its home's internal documentation.
+
+<!-- change:conversation-memory-continuity -->
+
+## Invariants
+
+1. **Single memory store**: Identity-scoped memories live in the same `memory_observations` table. No separate tables or databases per identity.
+
+2. **NULL means shared**: `identity_key IS NULL` means the memory belongs to the project, visible to all sessions in that project. This is the default behavior, preserving backward compatibility.
+
+3. **Identity key is opaque**: The memory system does not parse identity keys. It stores and matches them as strings. Format convention is `{platform}:{platform_user_id}` but the store doesn't enforce this.
+
+4. **Identity key is derived**: The `identity_key` is derived from origin metadata at query time, not stored as a denormalized column on the session.
+
+5. **Compaction keeps the conversation readable**: the session-owned mirror retains the conversational lineage independently of the agent's compacted working context. Memory extraction reads the mirror's prepared source revision (`local/projects/teleclaude/spec/feature/session_mirrors/mirror-identity-enrichment`).
+
+6. **Help desks are folders of their homes**: A help desk is never a repository of its own. Scaffolding is idempotent: the operator brain is seeded only while absent, the ignore declaration converges to its kind's template, and nothing the template does not carry is touched.
+
+7. **A desk exists only where its home enables it**: no machine-wide desk location exists. A desk's folder follows from its home, and a home without `help_desk.enabled` has no desk.
+
+8. **Extraction has source-owned progress**: the memory worker reads the unprocessed stretch of the session-owned mirror and completes progress after applying its changes. Progress and failure recovery follow `local/projects/teleclaude/spec/feature/memory/memory-curation`.
+
+9. **Entry names an endpoint exactly**: an identifier either resolves to an endpoint the receiving computer can serve, or the person gets the neutral reply. No identifier is interpreted as a nearby one, and no miss reveals which organisations exist.
+
+10. **Closing spares resources, never the conversation**: confirmed idle compaction closes the runtime, and mirror readiness releases memory extraction. Returning input continues the same conversation (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-continuity`).
+
+11. **Relay is session-scoped**: closing settles the active relay through the session lifecycle while the conversation record and its history remain retained.
+
+12. **Relay diverts, not duplicates**: When relay is active, visitor messages go to the escalation thread ONLY, not to both thread and agent, whichever adapter they use. The agent session is fully paused during relay.
+
+13. **Handback collects incrementally**: Each handback collects messages since the previous handback (or since relay activation). Multiple escalation/handback cycles within one session each get a clean context window.
+
+14. **Escalation is a help-desk act aimed at the desk's scope**: `telec sessions escalate` is accepted only from a session in a help desk; it opens a thread in that desk's escalations forum and notifies everyone in the desk's scope.
+
+15. **One binding per conversation**: a conversation reaches its session — on a per-computer adapter found by origin metadata, elsewhere through the mesh master's durable record; an entry makes the person's own session at its endpoint the conversation's session, continuing or reviving it, so the latest entry wins.
+
+16. **One authority per conversation, one host per desk**: a conversation on a per-computer bot is decided by that computer; where every computer receives inbound messages, the mesh master alone decides. Every desk runs on the master. Without the master nothing routes on the shared adapters; the only answer is the temporarily-unavailable reply.
+
+17. **Each desk is seen only by its scope**: a desk's sessions and escalations appear only in that desk's own Discord category, visible only to the desk's scope through per-person overwrites; no shared surface carries them.
+
+18. **Customers read public documentation only**: a customer's desk agent reads its desk's reach at public depth, and no desk master inlines its home's internal documentation.
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 ## Primary Flows
 
@@ -661,6 +705,8 @@ sequenceDiagram
 
 ## Failure Modes
 
+<!-- planned-change:conversation-memory-continuity -->
+
 | Scenario                                                                                    | Behavior                                                       | Recovery                                                                                                                                             |
 | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key                 | Personal memories not injected; the agent handles without context                                                                                    |
@@ -672,6 +718,22 @@ sequenceDiagram
 | Compaction does not finish                                                                  | The session stays open, not compacted                          | A later pass retries; the session is never closed uncompacted                                                                                        |
 | Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)                       | Most recent memories prioritized                                                                                                                     |
 | Session transcript unavailable to the memory agent                                          | Nothing read; read point not advanced                          | A later activation for the session retries                                                                                                           |
+
+<!-- change:conversation-memory-continuity -->
+
+| Scenario                                                                                    | Behavior                                                      | Recovery                                                                                                  |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key                | Personal memories not injected; the agent handles without context                                         |
+| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                                 | The visitor uses a working desk link                                                                      |
+| A desk identifier sent to a computer's own bot when that computer is not the master         | Neutral reply                                                 | Desk links are rendered on the master, naming its bot                                                     |
+| The entered desk's home is not on the master                                                | Neutral reply, no session                                     | Make the desk's home present on the master                                                                |
+| A restricted session names no enabled desk                                                  | Session creation is refused                                   | The core resolves an endpoint first or sends the neutral reply                                            |
+| A memory agent fails or stops                                                               | Completed writes remain; extraction progress stays unfinished | A later handling reads the pending mirror stretch and compares with current records before completing it  |
+| Compaction does not finish                                                                  | The session stays open, not compacted                         | A later pass retries; the session is never closed uncompacted                                             |
+| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)                      | Most recent memories prioritized                                                                          |
+| Conversation mirror coverage is incomplete                                                  | Extraction remains pending with its source coverage           | Successful mirror refresh or reconciliation releases the captured extraction once coverage is established |
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 **Escalation failure modes:**
 
