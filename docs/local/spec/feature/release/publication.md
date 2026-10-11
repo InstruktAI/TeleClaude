@@ -66,6 +66,14 @@ the evidence. Successful fallback does not erase an unexpected fault or discharg
 its repair; the release maintainer receives that failure as actionable diagnostic
 evidence. A valid no-release decision is terminal and selects no second inspector.
 
+Caught Codex preparation and Claude setup/execution failures reference a retained
+diagnostic file through the provider attempt's `diagnostic_path`. It identifies
+the provider, explicit phase and operation, exception type, and available errno
+or native command status. Evidence contains no raw exception message, traceback,
+environment, argv, payload or credential content. A failure before provider
+launch leaves the provider `exit_code` absent; a setup command's status is
+diagnostic metadata, not a provider exit code.
+
 The selected inspector receives a compact change inventory and public-contract
 comparison and can retrieve focused source evidence in bounded portions. Grouped
 resource changes remain discoverable. The inspector declares whether assessment

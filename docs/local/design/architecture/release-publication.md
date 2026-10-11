@@ -97,6 +97,14 @@ descendants of that parent; creation rejects an existing root, and both paths
 reject symlink roots. Cleanup verifies the root boundary before deleting provider
 material (`sdlc/policy/security-awareness`).
 
+Provider-private path resolution, containment and symlink checks, and exclusive
+directory/file creation run together under the privileged controller filesystem
+boundary. Descriptor-relative traversal refuses symlinks instead of requiring
+the controller UID to search provider-owned directories. Provider directories
+remain mode 0700; private files remain mode 0600, with read-only configuration
+files mode 0444. Temporary input files remain in controller-owned mode-0700
+staging and are removed after installation. Credential bytes never enter argv.
+
 The trusted controller owns credentials, persistence, and artifact transport.
 The inspector runs under a separate unprivileged identity with read-only source
 access and provider-native tool permissions. Its tool processes cannot read the
@@ -190,6 +198,10 @@ its own lint, hosted runtime acceptance and installer proof.
 - Provider failure remains visible after successful fallback. An unexpected fault
   remains repair work; fallback does not erase it. With no complete valid report,
   the attempt cannot prepare an ordinary release candidate.
+- Codex preparation and Claude setup/execution catches retain bounded diagnostic
+  evidence identifying the provider, phase, operation, exception type and any
+  available errno or native command status. They do not serialize exception text,
+  tracebacks, paths from exceptions, environment, argv or credential content.
 - Failed proof leaves publication untouched and retains the failure evidence.
 - A conflicting existing tag, unavailable proof receipt, unsupported atomic
   transport, or unresolved metadata conflict stops publication with its candidate

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable
+from enum import StrEnum
 from pathlib import Path
 
 import httpx
@@ -57,9 +58,11 @@ from tools.release.github_artifacts import (
     WorkflowAttempt,
     WorkflowEvent,
 )
+from tools.release.inspector_fs import FilesystemOperation
 from tools.release.isolated_inspection import (
     InspectorBoundaryError,
     InspectorRole,
+    InspectorSetupError,
     create_controller_root,
     create_principal_directory,
     create_principal_layout,
@@ -133,6 +136,44 @@ _CLAUDE_CONFIG_HOME = "claude-config"
 _ARTIFACT_MANIFEST_FILENAME = "artifact-manifest.json"
 _ARTIFACT_MANIFEST_SCHEMA = 1
 _ARTIFACT_MANIFEST_HASH_OUTPUT = "artifact_manifest_sha256"
+_SETUP_DIAGNOSTIC_FILENAME = "provider-setup-diagnostic.json"
+
+
+class ProviderPhase(StrEnum):
+    """The controller phase in which a caught provider failure occurred."""
+
+    PREPARATION = "preparation"
+    INSPECTION = "inspection"
+
+
+class ProviderOperation(StrEnum):
+    """Bounded operations whose setup failures must remain actionable."""
+
+    VALIDATE_INPUT = "validate_input"
+    CONTROLLER_ROOT = "controller_root"
+    PROVIDER_LAYOUT = "provider_layout"
+    PROVIDER_STATE_DIRECTORY = "provider_state_directory"
+    ATTEMPT_IDENTITY = "attempt_identity"
+    WORKFLOW_IDENTITY = "workflow_identity"
+    RESTORE_AUTH = "restore_auth"
+    BEGIN_CHECKPOINT = "begin_checkpoint"
+    WRITE_STATE = "write_state"
+    INSPECT = "inspect"
+    WRITE_RESULT = "write_result"
+
+
+class ProviderSetupDiagnostic(BaseModel):
+    """Allowlisted failure evidence; raw exception data and credentials never enter it."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    provider: ProviderName
+    phase: ProviderPhase
+    operation: ProviderOperation
+    exception_type: str
+    errno: int | None
+    native_status: int | None
+    filesystem_operation: FilesystemOperation | None
 
 
 class CodexControllerState(BaseModel):
@@ -212,15 +253,21 @@ def prepare_codex(attempt_path: Path, evidence_directory: Path, state_directory:
     state_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     output_root = result_directory.parent
     output_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    operation = ProviderOperation.VALIDATE_INPUT
     try:
         if not token or not identity or not run_id.isdigit() or run_attempt < 1:
             raise ValueError(_AUTH_FAILURE)
+        operation = ProviderOperation.CONTROLLER_ROOT
         create_controller_root(controller_root, temporary_parent=temporary_parent)
+        operation = ProviderOperation.PROVIDER_LAYOUT
         principal_home, principal_temp, principal_state = create_principal_layout(InspectorRole.CODEX, controller_root)
+        operation = ProviderOperation.PROVIDER_STATE_DIRECTORY
         codex_home = create_principal_directory(
             InspectorRole.CODEX, controller_root, principal_state / _CODEX_AUTH_HOME
         )
+        operation = ProviderOperation.ATTEMPT_IDENTITY
         load_attempt_identity(attempt_path)
+        operation = ProviderOperation.WORKFLOW_IDENTITY
         expected = _expected_workflow(
             repository,
             run_id,
@@ -229,9 +276,12 @@ def prepare_codex(attempt_path: Path, evidence_directory: Path, state_directory:
         )
         with GitHubArtifactClient(token) as client:
             workflow = client.get_workflow_attempt(expected)
+            operation = ProviderOperation.RESTORE_AUTH
             restored = restore_latest_auth_state(client, repository, identity, controller_root, codex_home)
+            operation = ProviderOperation.BEGIN_CHECKPOINT
             begin_directory = output_root / "codex-begun"
             lease = write_begin_checkpoint(workflow, repository, restored.artifact, begin_directory)
+        operation = ProviderOperation.WRITE_STATE
         state = CodexControllerState(
             attempt_path=attempt_path.resolve(),
             controller_root=controller_root,
@@ -257,8 +307,13 @@ def prepare_codex(attempt_path: Path, evidence_directory: Path, state_directory:
         append_output("codex_begin_name", lease.artifact_name)
         append_output("codex_prepared", _TRUE)
         return True
-    except (OSError, RuntimeError, ValueError, ValidationError, GitHubArtifactError):
-        _write_attempt_failure(result_directory / _CODEX_ATTEMPT_FILENAME, ProviderFailure.AUTH_SETTLEMENT)
+    except (OSError, RuntimeError, ValueError, ValidationError, GitHubArtifactError) as error:
+        diagnostic = _write_provider_setup_diagnostic(
+            result_directory, ProviderName.CODEX, ProviderPhase.PREPARATION, operation, error
+        )
+        _write_attempt_failure(
+            result_directory / _CODEX_ATTEMPT_FILENAME, ProviderFailure.AUTH_SETTLEMENT, diagnostic_path=diagnostic
+        )
         append_output("codex_begin_name", _EMPTY)
         append_output("codex_prepared", _FALSE)
         return False
@@ -414,21 +469,28 @@ def run_claude(evidence_directory: Path, output_directory: Path) -> bool:
     output_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     temporary_parent = _job_temporary_parent()
     controller_root = temporary_parent / _RELEASE_CONTROLLER_ROOT
+    phase = ProviderPhase.PREPARATION
+    operation = ProviderOperation.VALIDATE_INPUT
     try:
         executable_text = shutil.which("claude")
         oauth_token = os.environ.get(_CLAUDE_TOKEN, _EMPTY)
         if executable_text is None or not oauth_token:
             raise ValueError(_SETUP_FAILURE)
+        operation = ProviderOperation.CONTROLLER_ROOT
         validate_controller_root(controller_root, temporary_parent=temporary_parent)
         if not controller_root.exists():
             create_controller_root(controller_root, temporary_parent=temporary_parent)
+        operation = ProviderOperation.PROVIDER_LAYOUT
         principal_home, principal_temp, principal_state = create_principal_layout(InspectorRole.CLAUDE, controller_root)
+        operation = ProviderOperation.PROVIDER_STATE_DIRECTORY
         claude_config = create_principal_directory(
             InspectorRole.CLAUDE,
             controller_root,
             principal_state / _CLAUDE_CONFIG_HOME,
         )
         result_directory = output_directory / "claude-result"
+        phase = ProviderPhase.INSPECTION
+        operation = ProviderOperation.INSPECT
         result = run_claude_inspection(
             Path(executable_text),
             evidence_directory,
@@ -440,6 +502,7 @@ def run_claude(evidence_directory: Path, output_directory: Path) -> bool:
             oauth_token,
             900,
         )
+        operation = ProviderOperation.WRITE_RESULT
         _write_attempt(output_directory / _CLAUDE_ATTEMPT_FILENAME, result.attempt)
         if result.report is not None:
             (output_directory / _CLAUDE_REPORT_FILENAME).write_text(
@@ -450,9 +513,13 @@ def run_claude(evidence_directory: Path, output_directory: Path) -> bool:
         return result.attempt.outcome is ProviderOutcome.SUCCEEDED
     except InspectorBoundaryError:
         raise
-    except (OSError, RuntimeError, ValueError):
+    except (OSError, RuntimeError, ValueError) as error:
+        diagnostic = _write_provider_setup_diagnostic(output_directory, ProviderName.CLAUDE, phase, operation, error)
         _write_attempt_failure(
-            output_directory / _CLAUDE_ATTEMPT_FILENAME, ProviderFailure.EXECUTION, ProviderName.CLAUDE
+            output_directory / _CLAUDE_ATTEMPT_FILENAME,
+            ProviderFailure.EXECUTION,
+            ProviderName.CLAUDE,
+            diagnostic_path=diagnostic,
         )
         append_output("claude_success", _FALSE)
         return False
@@ -815,6 +882,8 @@ def _write_attempt_failure(
     path: Path,
     failure: ProviderFailure,
     provider: ProviderName = ProviderName.CODEX,
+    *,
+    diagnostic_path: str | None = None,
 ) -> None:
     _write_attempt(
         path,
@@ -827,9 +896,34 @@ def _write_attempt_failure(
             auth_settlement_failed=provider is ProviderName.CODEX,
             exit_code=None,
             timed_out=False,
-            diagnostic_path=None,
+            diagnostic_path=diagnostic_path,
         ),
     )
+
+
+def _write_provider_setup_diagnostic(
+    directory: Path,
+    provider: ProviderName,
+    phase: ProviderPhase,
+    operation: ProviderOperation,
+    error: Exception,
+) -> str:
+    """Retain only classified setup metadata, never message, traceback or exception payloads."""
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    setup_error = error if isinstance(error, InspectorSetupError) else None
+    diagnostic = ProviderSetupDiagnostic(
+        provider=provider,
+        phase=phase,
+        operation=operation,
+        exception_type=setup_error.exception_type if setup_error else type(error).__name__,
+        errno=setup_error.errno if setup_error else error.errno if isinstance(error, OSError) else None,
+        native_status=setup_error.native_status if setup_error else None,
+        filesystem_operation=setup_error.filesystem_operation if setup_error else None,
+    )
+    path = directory / _SETUP_DIAGNOSTIC_FILENAME
+    path.write_text(diagnostic.model_dump_json(indent=_JSON_INDENT) + _NEWLINE, encoding=_UTF8)
+    path.chmod(0o600)
+    return str(path)
 
 
 def ensure_provider_attempt(path: Path, provider: ProviderName) -> None:

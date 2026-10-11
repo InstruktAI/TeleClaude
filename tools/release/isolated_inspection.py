@@ -18,9 +18,10 @@ from time import monotonic
 
 from pydantic import BaseModel, ConfigDict
 
+from tools.release.inspector_fs import FilesystemOperation
+
 _LINUX_SYSTEM = "Linux"
 _SUDO_BINARY = "sudo"
-_INSTALL_BINARY = "install"
 _PKILL_BINARY = "pkill"
 _PGREP_BINARY = "pgrep"
 _PYTHON_BINARY = "python3"
@@ -45,16 +46,14 @@ _USER_ENVIRONMENT_KEYS = frozenset({"HOME", "PATH", "TMPDIR", "LANG", "LC_ALL"})
 _CODEX_ENVIRONMENT_KEYS = frozenset({"CODEX_HOME"})
 _CLAUDE_ENVIRONMENT_KEYS = frozenset({"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN"})
 _LAUNCHER = Path(__file__).with_name("inspector_exec.py")
+_FILESYSTEM_HELPER = Path(__file__).with_name("inspector_fs.py")
 _LAUNCHER_PAYLOAD_SEPARATOR = b"\n"
 _ENVIRONMENT_ENCODING = "utf-8"
 _SUDO_NONINTERACTIVE = "-n"
 _SUDO_USER_FLAG = "-u"
 _SUDO_SEPARATOR = "--"
-_INSTALL_DIRECTORY_FLAG = "-d"
-_INSTALL_OWNER_FLAG = "-o"
-_INSTALL_GROUP_FLAG = "-g"
-_INSTALL_MODE_FLAG = "-m"
-_PRIVATE_DIRECTORY_MODE = "700"
+_FILESYSTEM_SOURCE_OPTION = "--source"
+_FILESYSTEM_MODE_OPTION = "--mode"
 _PRIVATE_FILE_MODE = "600"
 _READ_ONLY_DIRECTORY_MODE = 0o555
 _READ_ONLY_FILE_MODE = 0o444
@@ -84,7 +83,6 @@ _INSPECTOR_COMMAND_FAILED = "The isolated inspector process could not be started
 _INSPECTOR_TIMED_OUT = "The isolated inspector exceeded its execution deadline."
 _INSPECTOR_OUTPUT_LIMIT = "The isolated inspector exceeded its output bound."
 _PRIVATE_PATH_INVALID = "A private inspector path is outside its caller-owned temporary root."
-_PRIVATE_PATH_EXISTS = "A private inspector path must not exist before creation."
 _PRIVATE_FILE_TOO_LARGE = "The private inspector file exceeds its configured size limit."
 _CONTROLLER_STAGING_DIRECTORY = "inspector-controller-staging"
 _PRINCIPAL_HOME_DIRECTORY = "home"
@@ -94,7 +92,6 @@ _LAUNCHER_ARGUMENT = str(_LAUNCHER)
 _EMPTY_TEXT = ""
 _EMPTY_BYTES = b""
 _COLON = ":"
-_OCTAL_BASE = 8
 _NO_PROCESS_STATUS = 1
 _PROCESS_FOUND_STATUS = 0
 _PRIVATE_FILE_MODE_INT = 0o600
@@ -124,6 +121,33 @@ class IsolatedProcessResult(BaseModel):
 
 class InspectorBoundaryError(RuntimeError):
     """A process or credential boundary could not be proven closed."""
+
+
+class FilesystemFailure(BaseModel):
+    """Secret-free failure metadata emitted by the privileged filesystem helper."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    exception_type: str
+    errno: int | None
+
+
+class InspectorSetupError(RuntimeError):
+    """A controller command failed with bounded, message-free native evidence."""
+
+    def __init__(
+        self,
+        *,
+        exception_type: str,
+        errno: int | None = None,
+        native_status: int | None = None,
+        filesystem_operation: FilesystemOperation | None = None,
+    ) -> None:
+        super().__init__(_INSPECTOR_COMMAND_FAILED)
+        self.exception_type = exception_type
+        self.errno = errno
+        self.native_status = native_status
+        self.filesystem_operation = filesystem_operation
 
 
 def ensure_inspector_principal(role: InspectorRole) -> pwd.struct_passwd:
@@ -156,30 +180,7 @@ def ensure_inspector_principal(role: InspectorRole) -> pwd.struct_passwd:
 def create_principal_directory(role: InspectorRole, root: Path, directory: Path) -> Path:
     """Create a mode-0700 directory owned by the selected isolated provider identity."""
     account = ensure_inspector_principal(role)
-    root_path = root.resolve()
-    if not root_path.is_dir() or root_path.is_symlink():
-        raise ValueError(_PRIVATE_PATH_INVALID)
-    root.chmod(_CONTROLLER_ROOT_MODE)
-    if not directory.resolve().is_relative_to(root_path) or directory.resolve() == root_path:
-        raise ValueError(_PRIVATE_PATH_INVALID)
-    if directory.exists() or directory.is_symlink():
-        raise ValueError(_PRIVATE_PATH_EXISTS)
-    installer = _system_binary(_INSTALL_BINARY)
-    result = _run_controller_command(
-        [
-            installer,
-            _INSTALL_DIRECTORY_FLAG,
-            _INSTALL_OWNER_FLAG,
-            account.pw_name,
-            _INSTALL_GROUP_FLAG,
-            grp.getgrgid(account.pw_gid).gr_name,
-            _INSTALL_MODE_FLAG,
-            _PRIVATE_DIRECTORY_MODE,
-            str(directory),
-        ]
-    )
-    if result.returncode != 0:
-        raise RuntimeError(_INSPECTOR_COMMAND_FAILED)
+    _run_filesystem_operation(FilesystemOperation.CREATE_DIRECTORY, root, directory, account.pw_uid, account.pw_gid)
     return directory
 
 
@@ -224,10 +225,6 @@ def install_principal_file(
     account = ensure_inspector_principal(role)
     if len(content) > max_bytes:
         raise ValueError(_PRIVATE_FILE_TOO_LARGE)
-    if destination.exists() or destination.is_symlink():
-        raise ValueError(_PRIVATE_PATH_EXISTS)
-    if not destination.resolve().is_relative_to(temporary_root.resolve()):
-        raise ValueError(_PRIVATE_PATH_INVALID)
     staging = temporary_root / _CONTROLLER_STAGING_DIRECTORY
     if staging.exists() and (staging.is_symlink() or not staging.is_dir()):
         raise ValueError(_PRIVATE_PATH_INVALID)
@@ -237,22 +234,14 @@ def install_principal_file(
         staging_path = Path(source.name)
     os.chmod(staging_path, _PRIVATE_FILE_MODE_INT)
     try:
-        installer = _system_binary(_INSTALL_BINARY)
-        result = _run_controller_command(
-            [
-                installer,
-                _INSTALL_OWNER_FLAG,
-                account.pw_name,
-                _INSTALL_GROUP_FLAG,
-                grp.getgrgid(account.pw_gid).gr_name,
-                _INSTALL_MODE_FLAG,
-                mode,
-                str(staging_path),
-                str(destination),
-            ]
+        _run_filesystem_operation(
+            FilesystemOperation.INSTALL_FILE,
+            temporary_root,
+            destination,
+            account.pw_uid,
+            account.pw_gid,
+            (_FILESYSTEM_SOURCE_OPTION, str(staging_path), _FILESYSTEM_MODE_OPTION, mode),
         )
-        if result.returncode != 0:
-            raise RuntimeError(_INSPECTOR_COMMAND_FAILED)
     finally:
         staging_path.unlink(missing_ok=True)
 
@@ -427,8 +416,38 @@ def _run_controller_command(arguments: Sequence[str]) -> subprocess.CompletedPro
             check=False,
             timeout=_CONTROLLER_COMMAND_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        raise RuntimeError(_INSPECTOR_COMMAND_FAILED) from None
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise InspectorSetupError(
+            exception_type=type(error).__name__, errno=error.errno if isinstance(error, OSError) else None
+        ) from None
+
+
+def _run_filesystem_operation(
+    operation: FilesystemOperation,
+    root: Path,
+    target: Path,
+    uid: int,
+    gid: int,
+    options: Sequence[str] = (),
+) -> None:
+    """Check and mutate private paths within the same privileged process, never the controller UID."""
+    python = _system_binary(_PYTHON_BINARY)
+    result = _run_controller_command(
+        [python, str(_FILESYSTEM_HELPER), operation, str(root), str(target), str(uid), str(gid), *options]
+    )
+    if result.returncode != 0:
+        try:
+            failure = FilesystemFailure.model_validate_json(result.stdout)
+        except ValueError:
+            raise InspectorSetupError(
+                exception_type=RuntimeError.__name__, native_status=result.returncode, filesystem_operation=operation
+            ) from None
+        raise InspectorSetupError(
+            exception_type=failure.exception_type,
+            errno=failure.errno,
+            native_status=result.returncode,
+            filesystem_operation=operation,
+        ) from None
 
 
 def _terminate_process_tree(process: subprocess.Popen[bytes], username: str) -> tuple[bytes, bytes]:
