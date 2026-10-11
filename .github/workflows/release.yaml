@@ -114,8 +114,11 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
           uv sync --frozen --group dev --no-install-project
-          go install filippo.io/age/cmd/age@v1.3.2
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          go install "filippo.io/age/cmd/...@${AGE_VERSION}"
+          age_bin_dir="$(go env GOPATH)/bin"
+          "$age_bin_dir/age" --version
+          "$age_bin_dir/age-keygen" --version
+          echo "$age_bin_dir" >> "$GITHUB_PATH"
       - name: Validate and materialize explicit encrypted seed
         id: seed
         env:
@@ -234,8 +237,11 @@ jobs:
         if: ${{ steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
         run: |
           npm install --global --no-audit --no-fund "@openai/codex@$CODEX_CLI_VERSION" "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
-          go install filippo.io/age/cmd/age@v1.3.2
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          go install "filippo.io/age/cmd/...@${AGE_VERSION}"
+          age_bin_dir="$(go env GOPATH)/bin"
+          "$age_bin_dir/age" --version
+          "$age_bin_dir/age-keygen" --version
+          echo "$age_bin_dir" >> "$GITHUB_PATH"
           codex --version
           claude --version
       - name: Restore Codex state and write begin checkpoint
