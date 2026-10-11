@@ -1,7 +1,6 @@
 ---
-description: Procedure activation briefs establish the assignment while durable events enter through hooks at the procedure's declared delivery boundaries and cardinality.
-delivered_by:
-  - procedure-event-delivery
+description: Procedure activation briefs establish the assignment while durable events
+  enter through hooks at the procedure's declared delivery boundaries and cardinality.
 ---
 
 # Procedure Event Delivery — Spec

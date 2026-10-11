@@ -1,7 +1,6 @@
 ---
-description: Execute each supplied activation event under the loaded procedure, carrying its scope, evidence requirements, and completion criteria through every activation.
-delivered_by:
-  - procedure-event-delivery
+description: Execute each supplied activation event under the loaded procedure, carrying
+  its scope, evidence requirements, and completion criteria through every activation.
 ---
 
 # Event Handling — Procedure

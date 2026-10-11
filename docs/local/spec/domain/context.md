@@ -113,8 +113,6 @@ any location.
   subscriptions, and published with the procedure's other subscription facts
   for `integration` to carry into each activation.
 
-<!-- planned:procedure-event-delivery -->
-
 - **Also owns (procedure delivery declarations):** validation and publication
   of the delivery settings declared beside subscriptions, their effective
   defaults, and the declaration-implied required-read graph composed with
@@ -125,8 +123,6 @@ any location.
   `local/projects/teleclaude/spec/feature/context/doc-snippet-three-phase-retrieval`).
   Runtime consumes those published facts and owns when and how many events
   reach an agent; context supplies instructions and does not decide event work.
-
-<!-- /planned:procedure-event-delivery -->
 
 ### Use cases (index of feature specs)
 

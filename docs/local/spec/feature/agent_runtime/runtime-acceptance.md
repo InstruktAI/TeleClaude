@@ -160,8 +160,6 @@ Then the command exits unsuccessfully and identifies the invalid key
 And a fresh authorized read reports the original configuration values and revision
 ```
 
-<!-- planned:procedure-event-delivery -->
-
 #### UC-RA12:
 
 This journey consumes the composed-instruction behavior in
@@ -191,8 +189,6 @@ When the normal documentation validation and publication path receives invalid d
 Then publication is refused with a finding identifying each invalid declaration
 And none of those declarations becomes an active subscription
 ```
-
-<!-- /planned:procedure-event-delivery -->
 
 ## Known caveats
 

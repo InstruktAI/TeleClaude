@@ -234,8 +234,6 @@ And no content body or withheld notice is returned
 And the refusal is the same whether or not that person is declared
 ```
 
-<!-- planned:procedure-event-delivery -->
-
 #### UC-3PR16:
 
 ```gherkin
@@ -280,7 +278,6 @@ the existing visibility and deduplication rules. A missing, withheld, or pending
 mandatory event-handling dependency makes the activation closure incomplete.
 The procedure and its required shared instructions become current together
 (`general/policy/documentation-discipline`, `general/principle/priming`).
-<!-- /planned:procedure-event-delivery -->
 
 ### Cross-context references
 

@@ -78,8 +78,6 @@ Classification (`id`/`type`/`scope`/`domain`) is read from the file path by the 
 
 Third-party docs under `docs/third-party/` or `~/.teleclaude/docs/third-party/` are indexed separately from taxonomy snippets. They author only `description`; their `id` and `scope` are derived from their path below the third-party root, and they no longer carry `type`.
 
-<!-- planned:procedure-event-delivery -->
-
 ### Event delivery declarations
 
 A procedure declaring `subscriptions` may also declare:
@@ -108,7 +106,6 @@ The context publication and retrieval surfaces expose these effective
 dependencies.
 Both delivery cardinalities use the same handling prose
 (`general/principle/priming`).
-<!-- /planned:procedure-event-delivery -->
 
 Document structure:
 

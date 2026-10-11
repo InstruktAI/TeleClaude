@@ -34,8 +34,6 @@ handoff is never retried and never returns to pending. Human-facing surfaces
 render none of this traffic; conversational messages between agents and humans
 do not ride this surface.
 
-<!-- planned:procedure-event-delivery -->
-
 Procedure activation events use this hook transport with the eligibility and
 cardinality contract owned by
 `local/projects/teleclaude/spec/feature/agent_runtime/procedure-event-delivery`.
@@ -46,7 +44,6 @@ when other control traffic is drained. Closing a session releases its transport
 records only after pending procedure work is accounted for by the continuing
 responsibility or an explicit terminal failure. Event data retains its untrusted
 provenance inside the transport (`general/policy/message-identity-headers`).
-<!-- /planned:procedure-event-delivery -->
 
 ## Canonical fields
 
@@ -191,8 +188,6 @@ And no input from a human or another session is needed for it to arrive
 And a payload still pending when a turn ends in a provider failure or a native idle is woken in the same way
 ```
 
-<!-- planned:procedure-event-delivery -->
-
 #### UC-CDL12:
 
 ```gherkin
@@ -211,8 +206,6 @@ When the hook handoff succeeds or fails
 Then only that selection reaches the corresponding terminal delivery outcome
 And unselected events remain pending for their own eligible boundary
 ```
-
-<!-- /planned:procedure-event-delivery -->
 
 ## Known caveats
 

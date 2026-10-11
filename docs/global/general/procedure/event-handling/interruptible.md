@@ -1,7 +1,7 @@
 ---
-description: Incorporate activation events interjected during a running procedure by rechecking affected assumptions and accounting for the current and newly supplied work.
-delivered_by:
-  - procedure-event-delivery
+description: Incorporate activation events interjected during a running procedure
+  by rechecking affected assumptions and accounting for the current and newly supplied
+  work.
 ---
 
 # Interruptible Event Handling — Procedure

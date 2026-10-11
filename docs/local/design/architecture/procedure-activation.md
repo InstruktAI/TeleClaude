@@ -129,20 +129,6 @@ rule it relies on is stated by its owner:
   is possible; the same per-procedure-and-home serialization covers every
   subject in the home.
 
-<!-- planned-change:procedure-event-delivery -->
-
-- **One thin command starts every activated agent.** The generic
-  procedure-activation command carries the procedure's identity and the home,
-  runs in that home, and loads the procedure with its required reads as the
-  agent's complete instruction set. It says nothing about lifecycle or about
-  later events; the loaded procedure owns both.
-- **One delivery path for events.** The triggering event reaches a new agent as
-  its first input, through the session-input delivery that wakes an existing
-  agent. No event travels as additional startup context, and the event, data
-  included, is delivered as untrusted data.
-
-<!-- change:procedure-event-delivery -->
-
 - **One thin command starts every activated agent.** The canonical command
   loader supplies the procedure identity and home and requests the procedure's
   effective required-read closure. Context composes the shared handling
@@ -162,8 +148,6 @@ rule it relies on is stated by its owner:
   eligibility and selection. The general event-handling procedures instruct the
   agent's handling, with the same common prose for either cardinality
   (`sdlc/principle/design-fundamentals`, `general/principle/priming`).
-
-<!-- /planned-change:procedure-event-delivery -->
 
 - **Company is explicit.** A session has a company only when created with
   `--company`, started from a session that has one, or activated for a company
@@ -206,26 +190,6 @@ rule it relies on is stated by its owner:
 
 ### Reused mechanisms
 
-<!-- planned-change:procedure-event-delivery -->
-
-| Step                                     | Existing mechanism                                                                      | Relation                                                                                                                   |
-| ---------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Event reaches the consumer               | The consumer runtime on the platform event stream                                       | Reused: activation is one consumer, interested in every type, its own computer's events, and known homes                   |
-| Source, subject, and home travel with it | Event envelope attributes set by the producer                                           | Reused unchanged                                                                                                           |
-| Repeat suppression per event             | The consumer runtime's duplicate protection by event id                                 | Reused unchanged                                                                                                           |
-| Pattern matching and validation          | The event catalog's type-pattern matcher                                                | Reused at declaration, publication, and matching                                                                           |
-| Subscription becomes matchable           | Publication index read                                                                  | Adapted: entries carry patterns, the declared home kind, and the publishing tier; re-read when the published index changes |
-| Start or wake crosses into the runtime   | Local command dispatch with a durable operation receipt                                 | Adapted: the request identity is derived from the event, procedure, and home instead of minted per submission              |
-| Find or create the standing agent        | Inbound resolve-or-create seam used by WhatsApp and Discord                             | Adapted: serialized per procedure and home                                                                                 |
-| Locate the home                          | Registered company, person, and project folders; the platform's own checkout            | Reused through `config`'s answer and the platform checkout's existing owner                                                |
-| Start                                    | Canonical command-session dispatch, as the scheduled-job runner's generic command uses  | Reused with a sibling generic command carrying procedure and home                                                          |
-| Event delivery on start and wake         | Session-input delivery                                                                  | Reused; its occurrence is the activation's identity, so a replay is absorbed                                               |
-| Outcome record                           | Durable operation outcomes, receipt-first                                               | Reused: the procedure-activation completed/failed event pair                                                               |
-| Company on the session                   | Session record                                                                          | Reused for a company home                                                                                                  |
-| Company for tools inside the session     | Caller resolution from the session identity document's session id (`telec auth whoami`) | Reused unchanged                                                                                                           |
-
-<!-- change:procedure-event-delivery -->
-
 | Step                                     | Existing mechanism                                                                      | Relation                                                                                                                   |
 | ---------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | Event reaches the consumer               | The consumer runtime on the platform event stream                                       | Reused: activation is one consumer, interested in every type, its own computer's events, and known homes                   |
@@ -242,38 +206,7 @@ rule it relies on is stated by its owner:
 | Company on the session                   | Session record                                                                          | Reused for a company home                                                                                                  |
 | Company for tools inside the session     | Caller resolution from the session identity document's session id (`telec auth whoami`) | Reused unchanged                                                                                                           |
 
-<!-- /planned-change:procedure-event-delivery -->
-
 ### Activation
-
-<!-- planned-change:procedure-event-delivery -->
-
-```mermaid
-sequenceDiagram
-    participant Prod as Event producer (emitting computer)
-    participant Str as Platform event stream
-    participant Rt as Consumer runtime (each computer)
-    participant Act as Procedure activation consumer (integration)
-    participant Op as Durable operation
-    participant AR as Activation runner (agent_runtime)
-
-    Prod->>Str: event with source, origin and subject
-    Str->>Rt: event, read by every computer
-    Note over Rt: hand on only when the source is this computer, the origin is known, and the id is not yet handled
-    Rt->>Act: event
-    Act->>Act: match published subscriptions by type pattern, origin kind, and tier
-    Act->>Op: submit one activation per match, keyed by event, procedure, and home
-    Act-->>Rt: handled (or failed, retried, then parked)
-    Op->>AR: activate(procedure, home, event)
-    AR->>AR: resolve, serialized per procedure and home
-    alt none running
-        AR->>AR: dispatch the generic command in the home, system principal, company set for a company home
-    end
-    AR->>AR: deliver the event as input to the agent, keyed by the activation
-    AR->>Op: complete, or fail with reason
-```
-
-<!-- change:procedure-event-delivery -->
 
 ```mermaid
 sequenceDiagram
@@ -301,8 +234,6 @@ sequenceDiagram
     end
     AR->>Op: complete, or fail with reason
 ```
-
-<!-- /planned-change:procedure-event-delivery -->
 
 ### Subject-bound resolution
 

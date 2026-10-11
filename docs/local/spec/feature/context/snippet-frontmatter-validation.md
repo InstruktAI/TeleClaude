@@ -304,8 +304,6 @@ Scenario Outline: The declared attendance is validated against the subscription
     | declares an attendance and no events                    | an attendance finding is reported for that file and the sync exits non-zero |
 ```
 
-<!-- planned:procedure-event-delivery -->
-
 #### UC-SFV10:
 
 ```gherkin
@@ -330,7 +328,6 @@ values, defaults, and implied required reads are owned by
 `general/spec/snippet-authoring-schema`; interpretation uses the same resolved
 declaration for publication, retrieval, and activation routing
 (`sdlc/principle/design-fundamentals`).
-<!-- /planned:procedure-event-delivery -->
 
 ### Cross-context references
 

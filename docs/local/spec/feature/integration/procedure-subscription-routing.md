@@ -243,8 +243,6 @@ Scenario Outline: The declared attendance travels with every activation
     | declares the unattended attendance   | an unattended agent    |
 ```
 
-<!-- planned:procedure-event-delivery -->
-
 #### UC-PSR19:
 
 ```gherkin
@@ -259,8 +257,6 @@ activation command and owns delivery under
 `local/projects/teleclaude/spec/feature/agent_runtime/procedure-event-delivery`.
 This keeps declaration interpretation with its owner
 (`sdlc/policy/domain-ownership`).
-
-<!-- /planned:procedure-event-delivery -->
 
 ### Cross-context references
 
