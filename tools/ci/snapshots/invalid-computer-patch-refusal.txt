@@ -1,0 +1,1 @@
+Error: Configuration <runtime-home>/.teleclaude/config.yml does not load: runtime_acceptance_undeclared_key: Extra inputs are not permitted (request <request-id>)
