@@ -35,6 +35,19 @@ store query runs. Results sort by `timestamp_start` falling back to
 
 ## Canonical fields
 
+<!-- planned:conversation-memory-continuity -->
+
+### Session-owned search results
+
+Search indexes the complete mirror owned by a TeleClaude session. Matching
+several source segments returns one conversation result. Existing agent and
+source selectors read source provenance without multiplying that result.
+Native references remain source aliases under
+`local/projects/teleclaude/spec/feature/session_mirrors/session-id-namespaces`.
+Existing history reach and worker/subagent selection rules remain applicable.
+
+<!-- /planned:conversation-memory-continuity -->
+
 ### Use cases
 
 #### Term composition and full-text match
@@ -116,6 +129,8 @@ And the call returns an empty result set
 
 #### UC-HCS-8: A result line states the namespace of the id it prints
 
+<!-- planned-change:conversation-memory-continuity -->
+
 ```
 Given a search result for a mirror attributed to a TeleClaude session
 Then the row prints that session's TeleClaude id, labelled as such
@@ -125,6 +140,20 @@ Then the row prints the agent-native id, labelled as such
 And every row carries the full project path, an agent name, and a UTC timestamp to the second
 And a matched snippet is rendered on one line, with newlines replaced by spaces
 ```
+
+<!-- change:conversation-memory-continuity -->
+
+```
+Given a search result for a mirror attributed to a TeleClaude session
+Then the row prints that session's TeleClaude id, labelled as such
+And this holds across the session's full transcript chain and after runtime closure or soft deletion
+Given a search result for a mirror no session is attributed to
+Then the row prints the agent-native id, labelled as such
+And every row carries the full project path, an agent name, and a UTC timestamp to the second
+And a matched snippet is rendered on one line, with newlines replaced by spaces
+```
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 #### UC-HCS-11: Identity and project filters, inherited from the retired listing verb
 
@@ -166,6 +195,8 @@ And no display formatting — labels, padding, elision — appears in the machin
 
 #### UC-HCS-12: History search returns canonical semantic conversations
 
+<!-- planned-change:conversation-memory-continuity -->
+
 ```gherkin
 Given stored mirrors contain authored conversation alongside runtime-provided startup context
 And more than one stored mirror rendering represents the same agent-native conversation
@@ -180,6 +211,25 @@ And the result displays the TeleClaude session UUID that most recently worked on
 And the legacy mirror identity is reconciled from its transcript and cannot be restored by a subsequent stale producer write
 And a conversation with no TeleClaude association retains its labelled agent-native identifier
 ```
+
+<!-- change:conversation-memory-continuity -->
+
+```gherkin
+Given stored mirrors contain authored conversation alongside runtime-provided startup context
+And more than one stored mirror rendering represents the same agent-native conversation
+And more than one TeleClaude session record is associated with that conversation
+And a mirror written during a producer upgrade carries a legacy non-UUID identity
+When an operator searches historical conversations with a result limit
+Then terms occurring only in runtime-provided context do not make a conversation match
+And each TeleClaude conversation contributes exactly one result across its native transcript lineage
+And duplicate renderings are collapsed before the result limit is applied
+And the canonical result page is ordered by conversation recency after collapsing duplicates
+And the result displays the retained TeleClaude conversation identity
+And the legacy mirror identity is reconciled from its transcript and cannot be restored by a subsequent stale producer write
+And a conversation with no TeleClaude association retains its labelled agent-native identifier
+```
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 #### UC-HCS-13: Quoted dash-leading search text
 

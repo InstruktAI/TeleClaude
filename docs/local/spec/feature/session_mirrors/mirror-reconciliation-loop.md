@@ -11,6 +11,8 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:conversation-memory-continuity -->
+
 Mirror creation through the event-driven path can miss transcripts —
 service restarts, hook drops, or fresh installs all leave gaps. A
 background worker fills those gaps. The worker is started by the
@@ -26,6 +28,26 @@ transcript file is newer than the stored record (or when no record exists
 yet). Tombstones for known-empty transcripts short-circuit the rebuild
 (see `empty-transcript-tombstone`).
 
+<!-- change:conversation-memory-continuity -->
+
+Mirror creation through the event-driven path can miss transcripts —
+service restarts, hook drops, or fresh installs all leave gaps. A
+background worker fills those gaps. The worker is started by the
+session_mirrors service on boot and ticks every five minutes (300
+seconds). Each pass loads the mirror store's last known state once and
+enumerates transcript files under the per-agent session roots. A known
+mirror with current derivation rules whose write timestamp covers the file's
+mtime is counted as unchanged before its transcript is opened for admission
+classification. New, changed, and derivation-stale candidates pass through
+the per-runtime subagent and headless exclusion rules before generation.
+The worker resolves changed transcript candidates to retained TeleClaude
+sessions and groups them before refreshing each session-owned mirror once.
+New source content, a missing mirror, or a changed lineage makes that
+conversation eligible for refresh. Tombstones for known-empty transcripts short-circuit the rebuild
+(see `empty-transcript-tombstone`).
+
+<!-- /planned-change:conversation-memory-continuity -->
+
 The worker emits one structured log line per pass with discovered /
 processed / failed / skipped_unchanged counters, the pass duration, and
 the store's write-ahead-log size before and after the pass. Per-transcript
@@ -33,6 +55,23 @@ exceptions are caught and logged at error level; the pass continues with
 the next transcript.
 
 ## Canonical fields
+
+<!-- planned:conversation-memory-continuity -->
+
+### Conversation work and readiness
+
+The existing timer and discovery select refresh work. One TeleClaude session is
+the work unit, and its complete lineage goes to the shared conversation
+projector. Per-source file observations remain freshness and provenance facts;
+they do not select independent conversation rows. Generation follows
+`local/projects/teleclaude/spec/feature/session_mirrors/mirror-identity-enrichment`.
+
+Closure requests the same refresh capability for a captured source boundary.
+Confirmed coverage reports readiness even when no text rewrite was needed.
+Later successful reconciliation can satisfy pending closure work. A failed or
+partial read preserves stored conversation and reports its incomplete coverage.
+
+<!-- /planned:conversation-memory-continuity -->
 
 ### Use cases
 

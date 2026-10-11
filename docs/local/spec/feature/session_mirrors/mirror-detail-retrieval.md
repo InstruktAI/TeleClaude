@@ -33,6 +33,20 @@ conversation body in full.
 
 ## Canonical fields
 
+<!-- planned:conversation-memory-continuity -->
+
+### Conversation and source selection
+
+The TeleClaude id selects one session-owned conversation mirror, including every
+retained transcript source in lineage order. The source reader and projector are
+shared with session tailing; history rendering keeps the conversation-only
+policy. Native references remain source-retrieval aliases under
+`local/projects/teleclaude/spec/feature/session_mirrors/session-id-namespaces`.
+Coverage describes the complete requested conversation and reports missing
+source material explicitly.
+
+<!-- /planned:conversation-memory-continuity -->
+
 ### Use cases
 
 #### UC-MDR-4: Exact identifier matching
@@ -144,6 +158,8 @@ And no conversation, header, or transcript is printed
 
 #### UC-MDR-7: A TeleClaude id reaches its session's conversation through the recorded attribution
 
+<!-- planned-change:conversation-memory-continuity -->
+
 ```
 Given an operator runs `telec history show <session-id>` with the TeleClaude id of a session that has attributed mirrors
 When the history detail capability resolves the lookup within the caller's history scope
@@ -151,6 +167,18 @@ Then it renders the mirror of the session's latest transcript in its chain
 And it does so whether or not the session record still exists
 And the header names both the TeleClaude id and that transcript's agent-native id
 ```
+
+<!-- change:conversation-memory-continuity -->
+
+```
+Given an operator runs `telec history show <session-id>` with the TeleClaude id of a session that has attributed mirrors
+When the history detail capability resolves the lookup within the caller's history scope
+Then it renders the complete ordered conversational mirror of that TeleClaude session
+And it does so after runtime closure or soft deletion of the retained session record
+And the response identifies the TeleClaude conversation and the native sources in its lineage
+```
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 ## Known caveats
 

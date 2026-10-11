@@ -1,5 +1,5 @@
 ---
-description: 'Event-driven mirror refresh. The agent-stop lifecycle signal dispatches through a processor registry that calls the mirror extractor for the affected session. Closing a session triggers no mirror write; the reconciliation loop records its final state. Processors run concurrently and failures are isolated.'
+description: Event-driven mirror refresh through agent lifecycle signals and reconciliation.
 visibility: 'public'
 ---
 
@@ -21,10 +21,22 @@ to every registered processor. A single default processor is registered at
 service boot; it resolves session context, validates that the transcript belongs
 to a canonical per-agent session root, and invokes mirror generation.
 
+<!-- planned-change:conversation-memory-continuity -->
+
 Closing a session adds no conversation, so the session-closed signal triggers no
 mirror write. The reconciliation loop mirrors every transcript that changed,
 including a closed session's final turn, and records the session's close
 (`mirror-reconciliation-loop`, `mirror-identity-enrichment`).
+
+<!-- change:conversation-memory-continuity -->
+
+Closing a session requests readiness of its session-owned mirror for the final
+conversation boundary. The existing refresh capability confirms coverage,
+refreshing only when needed, and reports readiness for an unchanged mirror too.
+Reconciliation remains the recovery path for a failed refresh. The existing
+agent-stop path and periodic cadence remain in place.
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 The dispatcher runs all processors in parallel with per-processor error
 isolation so one failing processor cannot block the others.
@@ -54,6 +66,8 @@ And no mirror processor is dispatched for that session
 
 #### Default processor session-context resolution
 
+<!-- planned-change:conversation-memory-continuity -->
+
 ```
 Given a mirror event with session_id S and possibly no transcript_path
 When the default processor runs
@@ -61,6 +75,18 @@ Then session context is resolved by session_id (and by transcript_path when pres
 And if no session record is found the processor logs at debug level and returns without invoking mirror generation
 And the effective transcript_path is taken from the event, falling back to the context's transcript_path
 ```
+
+<!-- change:conversation-memory-continuity -->
+
+```
+Given a mirror event with session_id S and possibly no transcript_path
+When the default processor runs
+Then session context is resolved by session_id (and by transcript_path when present)
+And if no session record is found the processor logs at debug level and returns without invoking mirror generation
+And the owning session's complete transcript lineage supplies the refresh input
+```
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 #### Guard: subagent transcripts
 
@@ -94,6 +120,8 @@ In both cases mirror generation is NOT invoked
 
 #### Mirror-generation invocation enrichment
 
+<!-- planned-change:conversation-memory-continuity -->
+
 ```
 Given the guards pass
 When the default processor invokes mirror generation
@@ -101,6 +129,18 @@ Then native_session_id is the native session id extracted from the transcript pa
 And source_identity is the canonical identity derived from the transcript path and agent
 And the resolved session context is passed whole, so the mirror records the same identity facts and session attribution the reconciliation loop records, per `mirror-identity-enrichment`
 ```
+
+<!-- change:conversation-memory-continuity -->
+
+```
+Given the guards pass
+When the default processor invokes mirror generation
+Then the owning TeleClaude session identifies the conversation mirror
+And native identities and source paths remain provenance within its lineage
+And the resolved session context is passed whole, so the mirror records the same identity facts and session attribution the reconciliation loop records, per `mirror-identity-enrichment`
+```
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 #### Parallel dispatch and failure isolation
 
@@ -120,6 +160,8 @@ When the second registration runs
 Then it is a no-op (the processor is not added a second time)
 ```
 
+<!-- planned-change:conversation-memory-continuity -->
+
 #### UC-SEMF-4: Closing a session writes no mirror by itself
 
 ```
@@ -129,7 +171,23 @@ Then no mirror is written in response to that signal
 And the reconciliation loop's next pass records the session's final conversation and its close, whether or not the transcript changed after its last write
 ```
 
+<!-- change:conversation-memory-continuity -->
+
+#### UC-SEMF-4:
+
+```
+Given an operator's session has closed
+When closure post-processing requests its conversation mirror
+Then readiness is reported only after coverage includes the closed conversation
+And an already-current mirror satisfies readiness without a text rewrite
+And a failed refresh remains visible and can recover through reconciliation
+```
+
+<!-- /planned-change:conversation-memory-continuity -->
+
 ## Known caveats
+
+<!-- planned-change:conversation-memory-continuity -->
 
 - The agent-stop path runs AFTER the agent_runtime coordinator's per-event
   handling returns. A long-running coordinator step delays the mirror
@@ -145,3 +203,22 @@ And the reconciliation loop's next pass records the session's final conversation
   re-registering.
 - A closed session's final turn and close time reach its mirror within one
   reconciliation interval, not at the moment of close.
+
+<!-- change:conversation-memory-continuity -->
+
+- The agent-stop path runs AFTER the agent_runtime coordinator's per-event
+  handling returns. A long-running coordinator step delays the mirror
+  refresh.
+- Older agent-stop payloads may not carry a `transcript_path`. The
+  default processor tolerates the absence and falls back to the upstream
+  session-record lookup.
+- The default processor applies the same per-runtime subagent rule that
+  transcript discovery applies, so a subagent transcript that reaches this
+  fanout is skipped before mirror generation rather than mirrored.
+- The default processor invokes mirror generation against the canonical
+  mirror store and cannot be pointed at an alternate store without
+  re-registering.
+- Closure and mirror readiness are distinct outcomes. Consumers await the
+  covered revision rather than assuming elapsed time proves freshness.
+
+<!-- /planned-change:conversation-memory-continuity -->

@@ -117,6 +117,28 @@ Discord, and who sees them, is owned by
   `telec config project help-desk-links <slug>`, one per adapter configured
   there that carries desk identifiers.
 
+<!-- planned:conversation-memory-continuity -->
+
+### Conversation identity and retention
+
+The TeleClaude session is the durable continuation record. Returning adapter
+input reuses the binding for that adapter conversation and endpoint, including
+closed sessions. Discovery without an existing binding chooses the most recently
+created eligible matching conversation. Background activity does not change
+that ordering. Simultaneous first inputs use the existing serialized
+resolve-or-create boundary (`sdlc/policy/code-quality-practices`).
+
+An explicit new personal-assistant conversation has its own TeleClaude session
+and does not replace an adapter entry point's continuing conversation. Multiple
+PA conversations are allowed. Conversation lookup is adapter-specific even when
+identity resolves several linked adapters to the same registered person.
+
+Native transcript references remain on the session's existing lineage. Closing
+releases execution resources while retaining that record. Soft deletion hides a
+record from ordinary selection without discarding its history or relationships.
+
+<!-- /planned:conversation-memory-continuity -->
+
 ### Use cases
 
 #### UC-CE1: A help-desk identifier opens a session at that desk
@@ -402,6 +424,30 @@ Scenario Outline: <case>
     | desk identifier | a company whose help desk is enabled on the master        | that desk's identifier          | they receive the neutral reply and their next direct message reaches their own assistant |
     | earlier binding | their direct message was bound to a session at that desk  | a message without an identifier | the message reaches their own assistant and not the desk session              |
 ```
+
+<!-- planned:conversation-memory-continuity -->
+
+#### UC-CE27:
+
+```gherkin
+Given a human has a continuing assistant at an adapter entry point
+And the human starts a separate personal-assistant conversation
+When the human next writes through the original entry point
+Then that input continues the entry point's original conversation
+And the separate conversation remains independently selectable
+```
+
+#### UC-CE28:
+
+```gherkin
+Given several historical conversations match one human's adapter identity and selected endpoint
+And no current conversation binding selects one
+When the human enters that endpoint
+Then the most recently created eligible matching conversation is continued
+And unrelated endpoints, worker runs and soft-deleted conversations are not selected
+```
+
+<!-- /planned:conversation-memory-continuity -->
 
 ### Cross-context references
 

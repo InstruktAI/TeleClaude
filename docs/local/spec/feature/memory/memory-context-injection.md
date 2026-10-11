@@ -9,7 +9,22 @@ visibility: 'public'
 
 The memory context generator turns a project's recent observations into a Markdown block that is prepended to each new agent session's startup context. The session-start consumer in `agent_runtime` requests the block from the `memory` service for the resolved project (optionally scoped by identity) and includes the rendered string in the session's initial context. The pipeline fetches the most-recent observations for the project, orders them newest-first, and renders them as a `# Memory Context` Markdown section with a summary index table and per-observation detail blocks.
 
+<!-- planned-change:conversation-memory-continuity -->
+
 For a help-desk session the resolved project is the desk's own memory namespace and the identity scope is its visitor's (`local/projects/teleclaude/design/architecture/help-desk-platform`, Identity-Scoped Memory); for any other session the project is its working folder's. Only current memories are rendered: a retired memory or a business prospect never reaches startup context (`local/projects/teleclaude/spec/feature/memory/memory-curation` UC-MC3).
+
+<!-- change:conversation-memory-continuity -->
+
+For a help-desk conversation, scope is the resolved visitor and desk. For a
+human personal-assistant conversation, it is the registered person's personal
+scope, including separately started PA conversations. Identity resolution and
+`local/projects/teleclaude/spec/feature/memory/memory-curation` own these values.
+Only current attributed memories of that identity and scope are rendered.
+Retired memories, prospects and unresolved legacy observations stay outside
+automatic personal and visitor context. Other session kinds retain their
+existing context behavior.
+
+<!-- /planned-change:conversation-memory-continuity -->
 
 ## Canonical fields
 
