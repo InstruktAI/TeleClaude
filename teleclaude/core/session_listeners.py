@@ -1,13 +1,8 @@
-"""Session listeners for PUB-SUB notification on Stop events.
+"""Durable caller subscriptions and control notifications for agent sessions.
 
-When an AI starts or sends a message to another session, it can register a listener.
-When the target session stops, ALL listeners fire and notify their callers via tmux injection.
-Listeners are one-shot (removed after firing) and session-scoped (cleaned up when caller exits).
-
-Multiple callers can wait for the same target session (e.g., 4 AI workers waiting for a dependency).
-Only one listener per caller-target pair is allowed (deduped by caller, not by target).
-
-Storage is SQLite-backed so listeners survive daemon restarts.
+Session starts establish persistent subscriptions; ordinary session messages
+request one reply. Caller-target pairs survive daemon restarts and are removed
+when a session ends or its caller unsubscribes.
 """
 
 import json
@@ -20,6 +15,7 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config._models import AGENT_NO_SIGNAL_TIMEOUT_S, AGENT_NO_START_TIMEOUT_S
+from teleclaude.config.machine import config
 from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import db
@@ -28,7 +24,9 @@ from teleclaude.core.events import AgentAttentionObservation
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.injected_text import EnvelopeName, occurrence_fields, semantic_envelope
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
-from teleclaude.core.session_status import AgentStatusReason, is_session_terminal
+from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue, is_session_terminal
+from teleclaude.core.supervisory_silence import SilenceObservation, SilenceObservationKind
+from teleclaude.core.tmux_bridge import session_exists
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -65,6 +63,18 @@ _PARENT_INFERRED_STALL_NOTIFICATION_TEMPLATE = (
     "Assess its current state and recover within your mandate. "
     "Use telec sessions tail {target_session_id} --pane{computer_selector} to inspect."
 )
+_PARENT_SILENCE_OBSERVATION_TEMPLATE = (
+    "Session{location_part}{title_part} has not reported {signal}. {window_statement}Pane evidence: {evidence}. "
+    "Assess its current state within your mandate. "
+    "Inspect with {inspection_reference}{computer_selector}."
+)
+_SILENCE_WINDOW_STATEMENT_TEMPLATE = (
+    "The observation window was {window} seconds ({timeout_owner}; clock evidence {clock_evidence_at}). "
+)
+_SILENCE_WINDOW_UNAVAILABLE_STATEMENT = "Run and clock details are unavailable. "
+_SILENCE_LEGACY_WINDOW_STATEMENT_TEMPLATE = (
+    "A prior peer reported its configured {window} window; run and clock details are unavailable. "
+)
 _INFERRED_STALL_HUMAN_NOTIFICATION_TEMPLATE = (
     "Session{location_part}{title_part} stalled: {evidence}. "
     "Use telec sessions tail {target_session_id}{computer_selector} to inspect."
@@ -96,6 +106,12 @@ _ATTENTION_EVIDENCE_DETAILS_KEY = "details"
 _ATTENTION_EVIDENCE_OBSERVED_AT_KEY = "observed_at"
 _ATTENTION_EVIDENCE_INGRESS_ID_KEY = "ingress_id"
 _ATTENTION_EVIDENCE_UNAVAILABLE = "unavailable"
+_SILENCE_STARTUP_SIGNAL = "startup activity"
+_SILENCE_ACTIVE_TURN_SIGNAL = "agent activity"
+_SILENCE_SIGNAL_BY_KIND = {
+    SilenceObservationKind.STARTUP: _SILENCE_STARTUP_SIGNAL,
+    SilenceObservationKind.ACTIVE_TURN: _SILENCE_ACTIVE_TURN_SIGNAL,
+}
 INFERRED_STALL_EVIDENCE_METADATA_KEY: Final[Literal["inferred_stall_evidence"]] = "inferred_stall_evidence"
 INFERRED_STALL_REASON_FIELD = "reason"
 INFERRED_STALL_PANE_TAIL_FIELD = "pane_tail"
@@ -113,6 +129,7 @@ _INFERRED_STALL_TIMEOUTS: dict[AgentStatusReason, str] = {
     AgentStatusReason.NO_START: f"{AGENT_NO_START_TIMEOUT_S}s",
 }
 _NOTIFY_LISTENERS_LOG = "Notify listeners: target=%s callers=%s kind=%s"
+_SILENCE_LISTENER_DELIVERY_REJECTED_EVENT = "silence_observation_listener_delivery_rejected"
 
 
 @dataclass
@@ -124,6 +141,8 @@ class SessionListener:
     caller_tmux_session: str  # Tmux session name for injection
     registered_at: datetime
     one_shot: bool = False  # Remove after first fire
+    caller_computer: str | None = None
+    startup_run_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -140,6 +159,7 @@ class NotificationKind(StrEnum):
     TURN_END = "turn_end"
     BLOCKED = "blocked"
     TURN_FAILED = "turn_failed"
+    SILENCE_OBSERVATION = "silence_observation"
 
 
 @dataclass(frozen=True)
@@ -203,6 +223,7 @@ async def register_listener(
     caller_session_id: str,
     caller_tmux_session: str,
     one_shot: bool = False,
+    caller_computer: str | None = None,
 ) -> bool:
     """Register a listener for a target session's Stop event.
 
@@ -222,6 +243,7 @@ async def register_listener(
         caller_session_id=caller_session_id,
         caller_tmux_session=caller_tmux_session,
         one_shot=one_shot,
+        caller_computer=caller_computer,
     )
 
     if is_new:
@@ -245,6 +267,59 @@ async def register_listener(
         )
 
     return is_new
+
+
+async def establish_supervision(
+    target_session_id: str,
+    caller_session_id: str,
+    caller_tmux_session: str,
+    *,
+    caller_computer: str,
+    startup_work_expected: bool,
+) -> bool:
+    """Establish persistent supervision after validating its current caller surface."""
+    if target_session_id == caller_session_id:
+        return False
+    target = await db.get_session(target_session_id)
+    if target is None or is_session_terminal(lifecycle_status=target.lifecycle_status, closed_at=target.closed_at):
+        return False
+    if caller_computer == config.computer.name:
+        caller = await db.get_session(caller_session_id)
+        if (
+            caller is None
+            or is_session_terminal(lifecycle_status=caller.lifecycle_status, closed_at=caller.closed_at)
+            or not caller.tmux_session_name
+            or not await session_exists(caller.tmux_session_name, log_missing=False)
+        ):
+            return False
+        caller_tmux_session = caller.tmux_session_name
+        caller_computer = caller.computer_name
+    elif not caller_computer:
+        return False
+
+    startup_run_id = (
+        target.runtime_run_id
+        if startup_work_expected and target.agent_status is AgentStatusValue.UNKNOWN and target.runtime_run_id
+        else None
+    )
+    await db.establish_supervision(
+        target_session_id,
+        caller_session_id,
+        caller_tmux_session,
+        caller_computer=caller_computer,
+        startup_run_id=startup_run_id,
+    )
+    return True
+
+
+async def record_startup_work_accepted(target_session_id: str, caller_session_id: str | None) -> bool:
+    """Bind an accepted initial message to its caller's persistent relationship."""
+    if caller_session_id is None:
+        return False
+    target = await db.get_session(target_session_id)
+    if target is None or target.runtime_run_id is None:
+        return False
+    return await db.record_startup_work_accepted(target_session_id, caller_session_id, target.runtime_run_id)
 
 
 async def unregister_listener(target_session_id: str, caller_session_id: str) -> bool:
@@ -286,6 +361,8 @@ async def get_listeners(target_session_id: str) -> list[SessionListener]:
             caller_tmux_session=row.caller_tmux_session,
             registered_at=datetime.fromisoformat(row.registered_at),
             one_shot=row.one_shot,
+            caller_computer=row.caller_computer,
+            startup_run_id=row.startup_run_id,
         )
         for row in rows
     ]
@@ -310,6 +387,8 @@ async def pop_listeners(target_session_id: str) -> list[SessionListener]:
             caller_tmux_session=row.caller_tmux_session,
             registered_at=datetime.fromisoformat(row.registered_at),
             one_shot=row.one_shot,
+            caller_computer=row.caller_computer,
+            startup_run_id=row.startup_run_id,
         )
         for row in rows
     ]
@@ -356,6 +435,8 @@ async def get_all_listeners() -> dict[str, list[SessionListener]]:
             caller_tmux_session=row.caller_tmux_session,
             registered_at=datetime.fromisoformat(row.registered_at),
             one_shot=row.one_shot,
+            caller_computer=row.caller_computer,
+            startup_run_id=row.startup_run_id,
         )
         result.setdefault(row.target_session_id, []).append(listener)
     return result
@@ -371,6 +452,8 @@ async def get_listeners_for_caller(caller_session_id: str) -> list[SessionListen
             caller_tmux_session=row.caller_tmux_session,
             registered_at=datetime.fromisoformat(row.registered_at),
             one_shot=row.one_shot,
+            caller_computer=row.caller_computer,
+            startup_run_id=row.startup_run_id,
         )
         for row in rows
     ]
@@ -418,6 +501,7 @@ async def _notify_listeners(
     occurrence_key: str,
     notification_kind: NotificationKind,
     occurred_at: datetime | None,
+    listeners: list[SessionListener] | None = None,
 ) -> set[str]:
     """Internal: notify all listeners with a pre-built message.
 
@@ -428,7 +512,19 @@ async def _notify_listeners(
     Returns:
         Number of listeners successfully notified
     """
-    listeners = await get_listeners(target_session_id)
+    listeners = listeners if listeners is not None else await get_listeners(target_session_id)
+    if notification_kind is NotificationKind.SILENCE_OBSERVATION:
+        current_listeners = await get_listeners(target_session_id)
+        current_pairs = {
+            (listener.caller_session_id, listener.caller_computer)
+            for listener in current_listeners
+            if not listener.one_shot
+        }
+        listeners = [
+            listener
+            for listener in listeners
+            if (listener.caller_session_id, listener.caller_computer) in current_pairs
+        ]
     if not listeners:
         logger.debug("No listeners for session %s", target_session_id)
         return set()
@@ -443,6 +539,20 @@ async def _notify_listeners(
     for listener in listeners:
         if notification_kind is not NotificationKind.TURN_END and listener.one_shot:
             continue
+        caller_computer = listener.caller_computer or config.computer.name
+        if caller_computer != config.computer.name:
+            continue
+        if notification_kind is NotificationKind.SILENCE_OBSERVATION:
+            if listener.caller_session_id == target_session_id:
+                continue
+            caller = await db.get_session(listener.caller_session_id)
+            if (
+                caller is None
+                or is_session_terminal(lifecycle_status=caller.lifecycle_status, closed_at=caller.closed_at)
+                or not caller.tmux_session_name
+                or not await session_exists(caller.tmux_session_name, log_missing=False)
+            ):
+                continue
         # Suppress delivery while the caller holds an active direct link with the
         # target. The active-conversation channel supersedes passive notification
         # for the duration of the link. The listener row is preserved — delivery
@@ -473,8 +583,16 @@ async def _notify_listeners(
             )
             logger.info("Notified caller %s", listener.caller_session_id)
             reached.add(listener.caller_session_id)
-        except SessionMessageRejectedError:
-            logger.warning("Failed to notify caller %s", listener.caller_session_id)
+        except SessionMessageRejectedError as exc:
+            if notification_kind is NotificationKind.SILENCE_OBSERVATION:
+                logger.warning(
+                    _SILENCE_LISTENER_DELIVERY_REJECTED_EVENT,
+                    target_session_id=target_session_id,
+                    caller_session_id=listener.caller_session_id,
+                    reason=exc.reason,
+                )
+            else:
+                logger.warning("Failed to notify caller %s", listener.caller_session_id)
         if notification_kind is NotificationKind.TURN_END and listener.one_shot:
             await db.unregister_listener(
                 target_session_id=target_session_id,
@@ -580,10 +698,37 @@ def _parent_attention_message(
     inferred_stall_evidence: InferredStallEvidence | None = None,
     delivery_block_evidence: DeliveryBlockEvidence | None = None,
     startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None = None,
+    silence_observation: SilenceObservation | None = None,
 ) -> str:
     """Format parent-only guidance around labelled native or daemon-observed evidence."""
     title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
     locality = _notification_locality(computer)
+    if silence_observation is not None:
+        if (
+            silence_observation.window_s is not None
+            and silence_observation.timeout_owner is not None
+            and silence_observation.clock_evidence_at is not None
+        ):
+            window_statement = _SILENCE_WINDOW_STATEMENT_TEMPLATE.format(
+                window=silence_observation.window_s,
+                timeout_owner=silence_observation.timeout_owner.value,
+                clock_evidence_at=silence_observation.clock_evidence_at.isoformat(),
+            )
+        elif silence_observation.legacy_window_label is not None:
+            window_statement = _SILENCE_LEGACY_WINDOW_STATEMENT_TEMPLATE.format(
+                window=silence_observation.legacy_window_label
+            )
+        else:
+            window_statement = _SILENCE_WINDOW_UNAVAILABLE_STATEMENT
+        return _PARENT_SILENCE_OBSERVATION_TEMPLATE.format(
+            location_part=locality.location_part,
+            title_part=title_part,
+            signal=_SILENCE_SIGNAL_BY_KIND[silence_observation.kind],
+            window_statement=window_statement,
+            evidence=silence_observation.pane_tail or _ATTENTION_EVIDENCE_UNAVAILABLE,
+            inspection_reference=silence_observation.inspection_reference,
+            computer_selector=locality.computer_selector,
+        )
     if inferred_stall_evidence is not None:
         template = _PARENT_INFERRED_STALL_NOTIFICATION_TEMPLATE
         evidence = _inferred_stall_summary(inferred_stall_evidence)
@@ -647,19 +792,23 @@ async def notify_distress(
     inferred_stall_evidence: InferredStallEvidence | None = None,
     delivery_block_evidence: DeliveryBlockEvidence | None = None,
     startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None = None,
+    silence_observation: SilenceObservation | None = None,
+    silence_audience: list[SessionListener] | None = None,
     occurrence_key: str | None = None,
     occurred_at: datetime | None,
 ) -> set[str]:
     """Notify persistent listeners of one attention occurrence."""
+    message_computer = LOCAL_COMPUTER if silence_observation is not None else computer
     message = _parent_attention_message(
         target_session_id,
-        computer,
+        message_computer,
         title,
         notification_kind,
         observation,
         inferred_stall_evidence,
         delivery_block_evidence,
         startup_delivery_uncertain_evidence,
+        silence_observation,
     )
     reached = await _notify_listeners(
         target_session_id,
@@ -667,6 +816,7 @@ async def notify_distress(
         occurrence_key=occurrence_key or uuid4().hex,
         notification_kind=notification_kind,
         occurred_at=occurred_at,
+        listeners=silence_audience,
     )
     return reached
 
@@ -761,12 +911,25 @@ async def deliver_remote_distress_notification(
     inferred_stall_evidence: InferredStallEvidence | None = None,
     delivery_block_evidence: DeliveryBlockEvidence | None = None,
     startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None = None,
+    silence_observation: SilenceObservation | None = None,
     *,
     occurred_at: datetime | None,
 ) -> bool:
     """Deliver a forwarded distress notification directly to the remote caller."""
+    if notification_kind is NotificationKind.SILENCE_OBSERVATION and (
+        silence_observation is None
+        or silence_observation.target_session_id != target_session_id
+        or silence_observation.target_computer != computer
+    ):
+        return False
     caller = await db.get_session(caller_session_id)
-    if caller is None:
+    if caller is None or caller_session_id == target_session_id:
+        return False
+    if silence_observation is not None and (
+        is_session_terminal(lifecycle_status=caller.lifecycle_status, closed_at=caller.closed_at)
+        or not caller.tmux_session_name
+        or not await session_exists(caller.tmux_session_name, log_missing=False)
+    ):
         return False
     message = _parent_attention_message(
         target_session_id,
@@ -777,6 +940,7 @@ async def deliver_remote_distress_notification(
         inferred_stall_evidence,
         delivery_block_evidence,
         startup_delivery_uncertain_evidence,
+        silence_observation,
     )
     try:
         await handoff_control_payload(

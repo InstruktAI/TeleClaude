@@ -286,6 +286,7 @@ class AgentCoordinator(
         tool_call_id: str | None = None,
         tool_batch_resolved: bool = False,
         blocked_reason: AgentStatusReason | None = None,
+        new_turn: bool = False,
     ) -> AgentStatusTransition | None:
         """Apply one normalized event using the receiver's observation time."""
         received_at = parse_iso_datetime(payload.raw.get(_RECEIVED_AT_FIELD)) or datetime.now(UTC)
@@ -297,6 +298,7 @@ class AgentCoordinator(
                 tool_call_id=tool_call_id,
                 tool_batch_resolved=tool_batch_resolved,
                 blocked_reason=blocked_reason,
+                new_turn=new_turn,
             ),
             at=received_at,
         )
@@ -597,8 +599,7 @@ class AgentCoordinator(
             logger.debug("Checkpoint prompt detected, skipping user input persistence for session %s", session_id)
             return
 
-        # A real prompt starts a new turn and re-opens all notification outcomes.
-        await db.clear_turn_notifications(session_id)
+        await self._apply_agent_status(context, payload, new_turn=True)
         logger.info("turn_notification_gate_cleared", session_id=session_id)
 
         # Snapshot HEAD as the turn-start anchor for scoped path resolution.
@@ -651,7 +652,6 @@ class AgentCoordinator(
 
         if session.lifecycle_status != "headless" and terminal_origin_recorded:
             self._emit_accepted_status_event(session_id)
-        await self._apply_agent_status(context, payload)
 
     async def handle_agent_stop(self, context: AgentEventContext) -> None:
         """Handle stop event - Agent session stopped.

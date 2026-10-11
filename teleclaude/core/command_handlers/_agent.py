@@ -379,7 +379,12 @@ async def start_agent(
     await db.update_session(session.session_id, **updates)
 
     run_started_at = datetime.now(UTC)
-    await transition_agent_status(db, session.session_id, AgentRunStart(), at=run_started_at)
+    await transition_agent_status(
+        db,
+        session.session_id,
+        AgentRunStart(startup_work_expected=initial_prompt is not None),
+        at=run_started_at,
+    )
     await execute_terminal_command(session.session_id, command_str, None, True)
     emit_agent_launch_started(session_id=session.session_id, agent=agent_name)
 

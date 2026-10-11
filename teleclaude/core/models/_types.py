@@ -103,6 +103,7 @@ class SessionOriginMetadata(TypedDict):
     whatsapp: NotRequired[dict[str, object] | None]  # guard: loose-dict
     redis: NotRequired[dict[str, object] | None]  # guard: loose-dict
     attention_observation: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote distress evidence
+    silence_observation: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote silence evidence
     inferred_stall_evidence: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote watchdog evidence
     delivery_block_evidence: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote delivery evidence
     startup_delivery_uncertain_evidence: NotRequired[dict[str, object] | None]  # guard: loose-dict - remote evidence

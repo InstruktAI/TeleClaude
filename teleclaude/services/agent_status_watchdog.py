@@ -11,20 +11,11 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.machine import config
 from teleclaude.core import tmux_bridge
-from teleclaude.core.agent_status import (
-    INFERRED_STALL_RULES,
-    AgentStatusIntegrityError,
-    InferredStallVerdict,
-    transition_agent_status,
-)
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentAttentionObservation
-from teleclaude.core.session_listeners import (
-    InferredStallEvidence,
-    NotificationKind,
-    build_inferred_stall_evidence,
-)
-from teleclaude.core.session_status import AgentStatusReason, TurnNotificationRecord
+from teleclaude.core.session_listeners import NotificationKind, SessionListener
+from teleclaude.core.silence_audience import resolve_silence_audience
+from teleclaude.core.supervisory_silence import SILENCE_RULES, SilenceClaim, SilenceObservation, SilenceRule
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -33,16 +24,19 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 AGENT_STATUS_WATCHDOG_INTERVAL_S = 10.0
 _AGENT_STATUS_WATCHDOG_TASK_NAME = "agent-status-watchdog"
-_CATCH_UP_ROW_LABEL = "catch_up_notification"
 _WATCHDOG_ROW_FAILED_EVENT = "agent_status_watchdog_row_failed"
 _WATCHDOG_NOTIFICATION_NOT_DELIVERED_EVENT = "agent_status_watchdog_notification_not_delivered"
+_INSPECTION_REFERENCE_TEMPLATE = "telec sessions tail {target_session_id} --pane"
+_SILENCE_OCCURRENCE_KEY_TEMPLATE = "silence:{run_id}:{turn_id}:{kind}"
+_EMPTY_SILENCE_TURN_ID = "-"
+_SILENCE_DELIVERY_GENERATION_MOVED = "generation_moved"
+_SILENCE_DELIVERY_AUDIENCE_REVOKED = "audience_revoked"
 
 
 class WatchdogScanPhase(StrEnum):
     """One isolated phase of an agent-status watchdog scan."""
 
-    CATCH_UP = "catch_up"
-    VERDICT = "verdict"
+    CLAIM = "claim"
 
 
 class AgentStatusNotifier(Protocol):
@@ -54,7 +48,9 @@ class AgentStatusNotifier(Protocol):
         notification_kind: NotificationKind,
         source_computer: str | None = None,
         observation: AgentAttentionObservation | None = None,
-        inferred_stall_evidence: InferredStallEvidence | None = None,
+        silence_observation: SilenceObservation | None = None,
+        occurrence_key: str | None = None,
+        silence_audience: list[SessionListener] | None = None,
     ) -> bool: ...
 
 
@@ -77,78 +73,110 @@ async def _capture_pane_tail(session: Session) -> str | None:
     return pane_tail or None
 
 
-async def _notify_inferred_stall(
+async def _notify_silence_observation(
     coordinator: AgentStatusNotifier,
     session: Session,
-    reason: AgentStatusReason,
-    pane_tail: str | None,
+    rule: SilenceRule,
+    claim: SilenceClaim,
+    audience: list[SessionListener],
 ) -> None:
-    evidence = build_inferred_stall_evidence(reason, pane_tail)
+    pane_tail = await _capture_pane_tail(session)
+    current_session = await db.get_session(session.session_id)
+    if (
+        current_session is None
+        or current_session.runtime_run_id != claim.run_id
+        or current_session.runtime_turn_id != claim.turn_id
+    ):
+        logger.info(
+            _WATCHDOG_NOTIFICATION_NOT_DELIVERED_EVENT,
+            session_id=session.session_id,
+            kind=claim.kind.value,
+            reason=_SILENCE_DELIVERY_GENERATION_MOVED,
+        )
+        return
+    current_audience = await resolve_silence_audience(session.session_id)
+    current_pairs = {(listener.caller_session_id, listener.caller_computer) for listener in current_audience}
+    audience = [
+        listener for listener in audience if (listener.caller_session_id, listener.caller_computer) in current_pairs
+    ]
+    if not audience:
+        logger.info(
+            _WATCHDOG_NOTIFICATION_NOT_DELIVERED_EVENT,
+            session_id=session.session_id,
+            kind=claim.kind.value,
+            reason=_SILENCE_DELIVERY_AUDIENCE_REVOKED,
+        )
+        return
+    observation = SilenceObservation(
+        target_session_id=session.session_id,
+        target_computer=config.computer.name,
+        runtime=session.active_agent,
+        run_id=claim.run_id,
+        turn_id=claim.turn_id,
+        kind=claim.kind,
+        observed_at=claim.observed_at,
+        clock_evidence_at=claim.clock_evidence_at,
+        window_s=rule.window_s,
+        silence_clock=rule.silence_clock,
+        timeout_owner=rule.timeout_owner,
+        pane_tail=pane_tail,
+        pane_available=pane_tail is not None,
+        inspection_reference=_INSPECTION_REFERENCE_TEMPLATE.format(target_session_id=session.session_id),
+    )
+    occurrence_key = _SILENCE_OCCURRENCE_KEY_TEMPLATE.format(
+        run_id=claim.run_id,
+        turn_id=claim.turn_id or _EMPTY_SILENCE_TURN_ID,
+        kind=claim.kind.value,
+    )
     delivered = await coordinator._notify_session_distress(
         session.session_id,
-        NotificationKind.TURN_FAILED,
+        NotificationKind.SILENCE_OBSERVATION,
         source_computer=config.computer.name,
-        inferred_stall_evidence=evidence,
+        silence_observation=observation,
+        occurrence_key=occurrence_key,
+        silence_audience=audience,
     )
     if not delivered:
         logger.warning(
             _WATCHDOG_NOTIFICATION_NOT_DELIVERED_EVENT,
             session_id=session.session_id,
-            reason=reason.value,
+            kind=claim.kind.value,
         )
 
 
-async def _deliver_unclaimed_stall_notifications(coordinator: AgentStatusNotifier) -> None:
-    for session_id in await db.list_inferred_stall_ids():
-        try:
-            session = await db.get_session(session_id)
-            if session is None:
-                raise AgentStatusIntegrityError(session_id, _CATCH_UP_ROW_LABEL, 0)
-            reason = session.agent_status_reason
-            if reason not in {rule.reason for rule in INFERRED_STALL_RULES}:
-                continue
-            if reason is None:
-                continue
-            if TurnNotificationRecord.INFERRED_STALL in session.turn_notifications_sent:
-                continue
-            pane_tail = await _capture_pane_tail(session) if reason is AgentStatusReason.NO_START else None
-            await _notify_inferred_stall(coordinator, session, reason, pane_tail)
-        except Exception as exc:
-            logger.exception(
-                _WATCHDOG_ROW_FAILED_EVENT,
-                session_id=session_id,
-                phase=WatchdogScanPhase.CATCH_UP.value,
-                reason=str(exc),
-            )
-
-
-async def _apply_inferred_stall_verdicts(coordinator: AgentStatusNotifier, *, at: datetime) -> int:
-    applied_count = 0
-    for rule in INFERRED_STALL_RULES:
-        for session_id in await db.list_inferred_stall_candidates(rule, at=at):
+async def _claim_silence_observations(coordinator: AgentStatusNotifier, *, at: datetime) -> int:
+    claimed_count = 0
+    for rule in SILENCE_RULES:
+        for session_id in await db.list_silence_observation_candidates(rule, at=at):
             try:
-                transition = await transition_agent_status(
-                    db,
-                    session_id,
-                    InferredStallVerdict(rule),
-                    at=at,
-                )
-                if transition is None:
+                audience = await resolve_silence_audience(session_id)
+                if not audience:
                     continue
-                applied_count += 1
+                claim = await db.claim_silence_observation(session_id, rule, at=at)
+                if claim is None:
+                    continue
+                claimed_count += 1
                 session = await db.get_session(session_id)
-                if session is None:
-                    raise AgentStatusIntegrityError(session_id, rule.reason.value, 0)
-                pane_tail = await _capture_pane_tail(session) if rule.reason is AgentStatusReason.NO_START else None
-                await _notify_inferred_stall(coordinator, session, rule.reason, pane_tail)
+                if (
+                    session is None
+                    or session.runtime_run_id != claim.run_id
+                    or session.runtime_turn_id != claim.turn_id
+                ):
+                    logger.warning(
+                        _WATCHDOG_NOTIFICATION_NOT_DELIVERED_EVENT,
+                        session_id=session_id,
+                        kind=rule.kind.value,
+                    )
+                    continue
+                await _notify_silence_observation(coordinator, session, rule, claim, audience)
             except Exception as exc:
                 logger.exception(
                     _WATCHDOG_ROW_FAILED_EVENT,
                     session_id=session_id,
-                    phase=WatchdogScanPhase.VERDICT.value,
+                    phase=WatchdogScanPhase.CLAIM.value,
                     reason=str(exc),
                 )
-    return applied_count
+    return claimed_count
 
 
 async def scan_agent_status_once(
@@ -156,10 +184,9 @@ async def scan_agent_status_once(
     *,
     now: datetime | None = None,
 ) -> int:
-    """Catch up old notifications, then apply current stall verdicts per row."""
+    """Claim and deliver current missing-signal observations per target."""
     observed_at = now or datetime.now(UTC)
-    await _deliver_unclaimed_stall_notifications(coordinator)
-    return await _apply_inferred_stall_verdicts(coordinator, at=observed_at)
+    return await _claim_silence_observations(coordinator, at=observed_at)
 
 
 async def run_agent_status_watchdog(

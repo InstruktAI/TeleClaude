@@ -477,6 +477,7 @@ async def _create_session_response(
         {
             "skip_listener_registration": request.skip_listener_registration,
             "initiator_session_id": initiator_session_id,
+            "startup_work_expected": bool(request.direct and identity.session_id and request.message),
             "initial_input": initial_input,
             "title": request.title,
             "command": infer_command_from_message(request.message),
@@ -922,6 +923,7 @@ async def send_message_endpoint(
                     caller_session_id=identity.session_id,
                     caller_tmux_session=caller_session.tmux_session_name,
                     one_shot=True,
+                    caller_computer=caller_session.computer_name,
                 )
             except Exception:
                 logger.debug(

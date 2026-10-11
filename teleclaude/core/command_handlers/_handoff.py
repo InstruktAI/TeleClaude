@@ -123,7 +123,12 @@ async def execute_handoff(
         handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, on_ready)
         try:
             run_started_at = datetime.now(UTC)
-            await transition_agent_status(db, current.session_id, AgentRunStart(), at=run_started_at)
+            await transition_agent_status(
+                db,
+                current.session_id,
+                AgentRunStart(startup_work_expected=bool(startup_message)),
+                at=run_started_at,
+            )
             if not await execute_terminal_command(current.session_id, successor_command, None, True):
                 raise RuntimeError(f"Handoff launch failed for session {current.session_id}")
             await await_agent_readiness(

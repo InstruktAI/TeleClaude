@@ -124,6 +124,7 @@ class CommandMapper:
                     skip_listener_registration=skip_listener_registration,
                     initiator_session_id=initiator_session_id,
                     initiator_computer=config.computer.name if initiator_session_id else None,
+                    startup_work_expected=bool(payload.get("startup_work_expected", False)),
                     command=command,
                     working_slug=working_slug,
                     command_input_mode=command_input_mode,

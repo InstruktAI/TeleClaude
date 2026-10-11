@@ -56,7 +56,7 @@ from teleclaude.core.models._adapter import UNATTENDED_SECTION, unattended_stamp
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.session_cleanup import host_pane_name, terminate_session
 from teleclaude.core.session_company import record_session_company_resolved
-from teleclaude.core.session_listeners import register_listener
+from teleclaude.core.session_listeners import establish_supervision
 from teleclaude.core.session_listing import SessionListingSelection
 from teleclaude.core.session_startup_message import prepare_startup_message
 from teleclaude.core.session_title import compose_command_session_title
@@ -438,17 +438,26 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     )
 
     record_session_company_resolved(cmd.request_id, session.session_id, company, company_source, initiator_session_id)
-    # AI-to-AI starts should register a one-shot stop listener so the initiator
-    # receives completion notifications for the spawned child session.
+    # An undetached AI-to-AI start establishes persistent supervision.
     if initiator_session_id and initiator_session_id != session_id and not cmd.skip_listener_registration:
         caller_tmux = parent_session.tmux_session_name if parent_session else None
-        if caller_tmux:
+        caller_computer = initiator_computer or config.computer.name
+        if caller_tmux or caller_computer != config.computer.name:
             try:
-                await register_listener(
+                established = await establish_supervision(
                     target_session_id=session_id,
                     caller_session_id=initiator_session_id,
-                    caller_tmux_session=caller_tmux,
+                    caller_tmux_session=caller_tmux or "",
+                    caller_computer=caller_computer,
+                    startup_work_expected=bool(cmd.initial_input or cmd.startup_work_expected),
                 )
+                if not established:
+                    logger.debug(
+                        _LISTENER_REGISTRATION_SKIPPED_EVENT,
+                        caller_session_id=initiator_session_id,
+                        target_session_id=session_id,
+                        reason="caller_unavailable",
+                    )
             except RuntimeError:
                 logger.debug(
                     _LISTENER_REGISTRATION_SKIPPED_EVENT,

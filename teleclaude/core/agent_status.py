@@ -6,15 +6,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol, assert_never
+from uuid import uuid4
 
-from teleclaude.config._models import AGENT_NO_SIGNAL_TIMEOUT_S, AGENT_NO_START_TIMEOUT_S
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import AgentHookEvents, SessionStatusContext, TeleClaudeEvents
 from teleclaude.core.session_status import (
     TERMINAL_LIFECYCLE_STATUSES,
     AgentStatusReason,
     AgentStatusValue,
-    TurnNotificationRecord,
 )
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.events.envelope import EventVisibility
@@ -28,7 +27,6 @@ _BLOCKED_REASON_REQUIRED_ERROR = "agent_blocked requires a supported blocked rea
 _STATUS_TARGET_LABEL = "%s->%s"
 _RUN_START_LABEL = "agent_run_start"
 _DELIVERY_BLOCK_LABEL = "delivery_observed_block"
-_INFERRED_STALL_LABEL = "inferred_stall:%s"
 _MAX_VERSION_ATTEMPTS = 3
 
 
@@ -46,45 +44,6 @@ class AgentStatusContentionError(RuntimeError):
         super().__init__(_CONTENTION_ERROR_MESSAGE % (session_id, attempted_transition))
 
 
-class SilenceClock(StrEnum):
-    """Timestamp source used by one inferred-stall rule."""
-
-    LAST_SIGNAL = "last_signal"
-    STATUS_ENTERED = "status_entered"
-
-
-@dataclass(frozen=True)
-class InferredStallRule:
-    """One persisted status and its complete silence-verdict conditions."""
-
-    reason: AgentStatusReason
-    status: AgentStatusValue
-    window_s: float
-    silence_clock: SilenceClock
-    tool_calls_must_be_closed: bool
-    agent_must_be_assigned: bool
-
-
-INFERRED_STALL_RULES = (
-    InferredStallRule(
-        reason=AgentStatusReason.NO_SIGNAL,
-        status=AgentStatusValue.ACTIVE,
-        window_s=AGENT_NO_SIGNAL_TIMEOUT_S,
-        silence_clock=SilenceClock.LAST_SIGNAL,
-        tool_calls_must_be_closed=True,
-        agent_must_be_assigned=False,
-    ),
-    InferredStallRule(
-        reason=AgentStatusReason.NO_START,
-        status=AgentStatusValue.UNKNOWN,
-        window_s=AGENT_NO_START_TIMEOUT_S,
-        silence_clock=SilenceClock.STATUS_ENTERED,
-        tool_calls_must_be_closed=False,
-        agent_must_be_assigned=True,
-    ),
-)
-
-
 @dataclass(frozen=True)
 class AgentEventCause:
     """Normalized event and event-specific evidence for a status transition."""
@@ -93,18 +52,16 @@ class AgentEventCause:
     tool_call_id: str | None = None
     tool_batch_resolved: bool = False
     blocked_reason: AgentStatusReason | None = None
+    new_turn: bool = False
+    turn_id: str | None = None
 
 
 @dataclass(frozen=True)
 class AgentRunStart:
     """Cause representing a process run starting for the session."""
 
-
-@dataclass(frozen=True)
-class InferredStallVerdict:
-    """Cause representing one rule's inferred-stall verdict."""
-
-    rule: InferredStallRule
+    startup_work_expected: bool = False
+    run_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -116,7 +73,7 @@ class DeliveryObservedBlock:
     """
 
 
-type AgentStatusCause = AgentEventCause | AgentRunStart | InferredStallVerdict | DeliveryObservedBlock
+type AgentStatusCause = AgentEventCause | AgentRunStart | DeliveryObservedBlock
 
 
 class AgentStatusCommit(StrEnum):
@@ -125,13 +82,6 @@ class AgentStatusCommit(StrEnum):
     COMMITTED = "committed"
     VERSION_MOVED = "version_moved"
     SESSION_TERMINAL = "session_terminal"
-
-
-@dataclass(frozen=True)
-class CommittedStall:
-    """Fields returned from a committed inferred-stall transition."""
-
-    runtime_activity_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -158,17 +108,9 @@ class AgentStatusStore(Protocol):
         since: datetime | None,
         runtime_activity_at: datetime | None,
         open_tool_calls: frozenset[str],
+        runtime_run_id: str | None,
+        runtime_turn_id: str | None,
     ) -> AgentStatusCommit: ...
-
-    async def commit_inferred_stall(
-        self,
-        session_id: str,
-        rule: InferredStallRule,
-        *,
-        at: datetime,
-    ) -> CommittedStall | None: ...
-
-    async def release_turn_notification(self, session_id: str, record: TurnNotificationRecord) -> None: ...
 
 
 AgentStatusRule = tuple[AgentStatusValue, AgentStatusReason | None]
@@ -199,8 +141,6 @@ def _attempted_transition(cause: AgentStatusCause, status: AgentStatusValue) -> 
     match cause:
         case AgentRunStart():
             cause_name = _RUN_START_LABEL
-        case InferredStallVerdict():
-            cause_name = _INFERRED_STALL_LABEL % cause.rule.reason.value
         case DeliveryObservedBlock():
             cause_name = _DELIVERY_BLOCK_LABEL
         case AgentEventCause():
@@ -214,10 +154,18 @@ def _next_status_record(
     session: Session,
     cause: AgentEventCause | AgentRunStart | DeliveryObservedBlock,
     at: datetime,
-) -> tuple[AgentStatusValue, AgentStatusReason | None, datetime | None, datetime | None, frozenset[str]]:
+) -> tuple[
+    AgentStatusValue,
+    AgentStatusReason | None,
+    datetime | None,
+    datetime | None,
+    frozenset[str],
+    str | None,
+    str | None,
+]:
     match cause:
         case AgentRunStart():
-            return AgentStatusValue.UNKNOWN, None, at, None, frozenset()
+            return AgentStatusValue.UNKNOWN, None, at, None, frozenset(), cause.run_id, None
         case DeliveryObservedBlock():
             return _delivery_block_record(session, at)
         case AgentEventCause():
@@ -229,20 +177,44 @@ def _next_status_record(
 def _delivery_block_record(
     session: Session,
     at: datetime,
-) -> tuple[AgentStatusValue, AgentStatusReason | None, datetime | None, datetime | None, frozenset[str]]:
+) -> tuple[
+    AgentStatusValue,
+    AgentStatusReason | None,
+    datetime | None,
+    datetime | None,
+    frozenset[str],
+    str | None,
+    str | None,
+]:
     """Enter ``blocked`` / ``needs_input``; the runtime did nothing, so its activity and tool calls stay as they were."""
     status = AgentStatusValue.BLOCKED
     reason = AgentStatusReason.NEEDS_INPUT
     status_changed = session.agent_status is not status or session.agent_status_reason is not reason
     since = at if status_changed else session.agent_status_since
-    return status, reason, since, session.runtime_activity_at, frozenset(session.open_tool_calls)
+    return (
+        status,
+        reason,
+        since,
+        session.runtime_activity_at,
+        frozenset(session.open_tool_calls),
+        session.runtime_run_id,
+        session.runtime_turn_id,
+    )
 
 
 def _event_status_record(
     session: Session,
     cause: AgentEventCause,
     at: datetime,
-) -> tuple[AgentStatusValue, AgentStatusReason | None, datetime | None, datetime | None, frozenset[str]]:
+) -> tuple[
+    AgentStatusValue,
+    AgentStatusReason | None,
+    datetime | None,
+    datetime | None,
+    frozenset[str],
+    str | None,
+    str | None,
+]:
     status, reason = AGENT_STATUS_RULES[cause.event]
     if cause.event is AgentHookEvents.AGENT_BLOCKED:
         reason = cause.blocked_reason
@@ -260,7 +232,15 @@ def _event_status_record(
     runtime_activity_at = at if current_activity is None or at > current_activity else current_activity
     status_changed = session.agent_status is not status or session.agent_status_reason is not reason
     since = at if status_changed else session.agent_status_since
-    return status, reason, since, runtime_activity_at, frozenset(open_tool_calls)
+    return (
+        status,
+        reason,
+        since,
+        runtime_activity_at,
+        frozenset(open_tool_calls),
+        session.runtime_run_id,
+        cause.turn_id if cause.new_turn else session.runtime_turn_id,
+    )
 
 
 async def transition_agent_status(
@@ -270,16 +250,20 @@ async def transition_agent_status(
     *,
     at: datetime,
 ) -> AgentStatusTransition | None:
-    """Apply one event, run-start, delivery-observed block, or inferred-stall transition through its owner."""
+    """Apply one normalized activity, run-start, or delivery-observed block through its owner."""
+    if isinstance(cause, AgentRunStart) and cause.run_id is None:
+        cause = AgentRunStart(startup_work_expected=cause.startup_work_expected, run_id=str(uuid4()))
+    if isinstance(cause, AgentEventCause) and cause.new_turn and cause.turn_id is None:
+        cause = AgentEventCause(
+            event=cause.event,
+            tool_call_id=cause.tool_call_id,
+            tool_batch_resolved=cause.tool_batch_resolved,
+            blocked_reason=cause.blocked_reason,
+            new_turn=True,
+            turn_id=str(uuid4()),
+        )
     match cause:
-        case InferredStallVerdict():
-            committed = await store.commit_inferred_stall(session_id, cause.rule, at=at)
-            if committed is None:
-                return None
-            _publish_status(session_id, AgentStatusValue.STALLED, cause.rule.reason, at, committed.runtime_activity_at)
-            return AgentStatusTransition(previous=cause.rule.status, entered=AgentStatusValue.STALLED)
         case AgentRunStart():
-            await store.release_turn_notification(session_id, TurnNotificationRecord.INFERRED_STALL)
             target_status = AgentStatusValue.UNKNOWN
         case DeliveryObservedBlock():
             target_status = AgentStatusValue.BLOCKED
@@ -293,14 +277,37 @@ async def transition_agent_status(
         case _:
             assert_never(cause)
     attempted_transition = _attempted_transition(cause, target_status)
+    initial_generation_loaded = False
+    initial_run_id: str | None = None
+    initial_turn_id: str | None = None
     for _ in range(_MAX_VERSION_ATTEMPTS):
         session = await store.get_session(session_id)
         if session is None:
             raise AgentStatusIntegrityError(session_id, attempted_transition, 0)
         if session.closed_at is not None or session.lifecycle_status in TERMINAL_LIFECYCLE_STATUSES:
             return None
+        if not initial_generation_loaded:
+            initial_generation_loaded = True
+            initial_run_id = session.runtime_run_id
+            initial_turn_id = session.runtime_turn_id
+        elif isinstance(cause, AgentRunStart) and session.runtime_run_id != initial_run_id:
+            return None
+        elif (
+            isinstance(cause, AgentEventCause)
+            and cause.new_turn
+            and (session.runtime_run_id != initial_run_id or session.runtime_turn_id != initial_turn_id)
+        ):
+            return None
 
-        status, reason, since, runtime_activity_at, open_tool_calls = _next_status_record(session, cause, at)
+        (
+            status,
+            reason,
+            since,
+            runtime_activity_at,
+            open_tool_calls,
+            runtime_run_id,
+            runtime_turn_id,
+        ) = _next_status_record(session, cause, at)
 
         changed = (
             session.agent_status is not status
@@ -308,6 +315,8 @@ async def transition_agent_status(
             or session.agent_status_since != since
             or session.runtime_activity_at != runtime_activity_at
             or session.open_tool_calls != open_tool_calls
+            or session.runtime_run_id != runtime_run_id
+            or session.runtime_turn_id != runtime_turn_id
         )
         if not changed:
             return None
@@ -320,6 +329,8 @@ async def transition_agent_status(
             since=since,
             runtime_activity_at=runtime_activity_at,
             open_tool_calls=open_tool_calls,
+            runtime_run_id=runtime_run_id,
+            runtime_turn_id=runtime_turn_id,
         )
         if result is AgentStatusCommit.VERSION_MOVED:
             continue

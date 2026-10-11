@@ -56,6 +56,8 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     tui_capture_started: int | None = 0
     lifecycle_status: str | None = "initializing"
     runtime_start_observed: bool | None = False
+    runtime_run_id: str | None = None
+    runtime_turn_id: str | None = None
     runtime_activity_at: datetime | None = None
     agent_status: str = "unknown"
     agent_status_reason: str = ""
@@ -567,6 +569,8 @@ class SessionListenerRow(SQLModel, table=True):
     caller_tmux_session: str
     registered_at: str
     one_shot: bool = False
+    caller_computer: str | None = None
+    startup_run_id: str | None = None
 
 
 class ConversationLinkRow(SQLModel, table=True):

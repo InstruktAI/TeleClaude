@@ -13,6 +13,7 @@ INTERACTIVE_COMMAND_INPUT_FEATURE_ID = "project/spec/feature/agent_runtime/inter
 HANDOFF_AGENT_FEATURE_ID = "project/spec/feature/agent_runtime/agent-handoff"
 SESSION_OBSERVED_STOP_FEATURE_ID = "project/spec/feature/integration/discord-personal-voice-conversation"
 STORED_AGENT_STATUS_FEATURE_ID = "project/spec/feature/agent_runtime/session-lifecycle"
+SUPERVISORY_SILENCE_OBSERVATIONS_FEATURE_ID = "project/spec/feature/agent_runtime/supervisory-silence-observations"
 CONVERSATION_ENTRY_FEATURE_ID = "projects/teleclaude/spec/feature/agent_runtime/conversation-entry"
 INCIDENT_ALERTS_FEATURE_ID = "projects/teleclaude/spec/feature/integration/incident-alerts"
 
@@ -122,6 +123,10 @@ DEFAULT_FEATURE_ID_REGISTRY = FeatureIDRegistry.from_entries(
         FeatureID(
             identifier=STORED_AGENT_STATUS_FEATURE_ID,
             mark=FeatureMark.IGNORABLE,
+        ),
+        FeatureID(
+            identifier=SUPERVISORY_SILENCE_OBSERVATIONS_FEATURE_ID,
+            mark=FeatureMark.MUST_NEGOTIATE,
         ),
         FeatureID(
             identifier=CONVERSATION_ENTRY_FEATURE_ID,

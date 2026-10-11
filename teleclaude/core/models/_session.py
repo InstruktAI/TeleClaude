@@ -269,6 +269,8 @@ class SessionField(Enum):
     LAST_AGENT_IDLE_AT = "last_agent_idle_at"
     LIFECYCLE_STATUS = "lifecycle_status"
     RUNTIME_ACTIVITY_AT = "runtime_activity_at"
+    RUNTIME_RUN_ID = "runtime_run_id"
+    RUNTIME_TURN_ID = "runtime_turn_id"
     AGENT_STATUS = "agent_status"
     AGENT_STATUS_REASON = "agent_status_reason"
     AGENT_STATUS_SINCE = "agent_status_since"
@@ -419,6 +421,8 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     principal: str | None = None
     lifecycle_status: str = "initializing"
     runtime_start_observed: bool = False
+    runtime_run_id: str | None = None
+    runtime_turn_id: str | None = None
     runtime_activity_at: datetime | None = None
     agent_status: AgentStatusValue = AgentStatusValue.UNKNOWN
     agent_status_reason: AgentStatusReason | None = None
@@ -670,6 +674,12 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             human_role=_get_optional_str("human_role"),
             lifecycle_status=str(data.get("lifecycle_status") or "initializing"),
             runtime_start_observed=bool(data.get("runtime_start_observed", False)),
+            runtime_run_id=str(data[SessionField.RUNTIME_RUN_ID.value])
+            if data.get(SessionField.RUNTIME_RUN_ID.value)
+            else None,
+            runtime_turn_id=str(data[SessionField.RUNTIME_TURN_ID.value])
+            if data.get(SessionField.RUNTIME_TURN_ID.value)
+            else None,
             runtime_activity_at=parse_iso_datetime(data["runtime_activity_at"])
             if isinstance(data.get("runtime_activity_at"), str)
             else None,

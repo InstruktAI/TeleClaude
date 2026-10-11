@@ -9,18 +9,17 @@ from typing import Protocol, TypedDict, cast
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy import func, or_, select, text, update
+from sqlalchemy.orm import aliased
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
+from teleclaude.config.machine import config
 from teleclaude.core import db_models
 from teleclaude.core.agent_status import (
-    INFERRED_STALL_RULES,
+    AgentEventCause,
+    AgentRunStart,
     AgentStatusCause,
     AgentStatusCommit,
     AgentStatusIntegrityError,
-    CommittedStall,
-    InferredStallRule,
-    InferredStallVerdict,
-    SilenceClock,
     _attempted_transition,
 )
 from teleclaude.core.event_bus import event_bus
@@ -31,6 +30,12 @@ from teleclaude.core.session_status import (
     AgentStatusReason,
     AgentStatusValue,
     TurnNotificationRecord,
+)
+from teleclaude.core.supervisory_silence import (
+    SilenceClaim,
+    SilenceClock,
+    SilenceObservationKind,
+    SilenceRule,
 )
 from teleclaude.events.envelope import EventVisibility
 
@@ -49,25 +54,6 @@ WHERE session_id = :session_id
 RETURNING turn_notifications_sent
 """
 _SELECT_TURN_NOTIFICATIONS_SQL = "SELECT turn_notifications_sent FROM sessions WHERE session_id = :session_id"
-_SELECT_SESSION_EXISTENCE_SQL = "SELECT session_id FROM sessions WHERE session_id = :session_id"
-_RELEASE_NOTIFICATION_SQL = """
-UPDATE sessions
-SET turn_notifications_sent = COALESCE(
-    (SELECT json_group_array(value) FROM json_each(sessions.turn_notifications_sent)
-     WHERE value != :record), '[]'
-)
-WHERE session_id = :session_id
-    AND EXISTS (
-        SELECT 1 FROM json_each(sessions.turn_notifications_sent)
-        WHERE value = :record
-    )
-RETURNING turn_notifications_sent
-"""
-_CLEAR_NOTIFICATIONS_SQL = (
-    "UPDATE sessions SET turn_notifications_sent = '[]' "
-    "WHERE session_id = :session_id AND turn_notifications_sent != '[]' "
-    "RETURNING turn_notifications_sent"
-)
 _SESSION_ID_PARAMETER = "session_id"
 _RECORD_PARAMETER = "record"
 _TERMINAL_PARAMETER = "terminal"
@@ -76,9 +62,10 @@ _TERMINAL_FAILED_PARAMETER = "terminal_failed"
 _MULTIPLE_CLAIM_ROWS_ERROR = "claim_turn_notification updated multiple rows for session %s"
 _MISSING_CLAIM_SESSION_ERROR = "claim_turn_notification found no session %s"
 _AGENT_STATUS_ROW_COUNT_ERROR = "Agent status transition %s for session %s affected %s rows"
-_INFERRED_STALL_COMMITTED_EVENT = "agent_status_inferred_stall_committed"
-_INFERRED_STALL_RULE_MOVED_EVENT = "agent_status_inferred_stall_rule_no_longer_holds"
 _EMPTY_TEXT = ""
+_EMPTY_JSON_ARRAY = "[]"
+_SILENCE_CLAIM_CONFLICT_EVENT = "silence_observation_claim_rejected"
+_SILENCE_OBSERVATION_CLAIMED_EVENT = "silence_observation_claimed"
 
 logger = get_logger(__name__)
 
@@ -123,12 +110,8 @@ class _AgentStatusUpdatedFields(TypedDict):
     agent_status_since: datetime | None
     runtime_activity_at: datetime | None
     open_tool_calls: list[str]
-
-
-class _InferredStallUpdatedFields(TypedDict):
-    agent_status: str
-    agent_status_reason: str
-    agent_status_since: datetime
+    runtime_run_id: str | None
+    runtime_turn_id: str | None
 
 
 def _emit_turn_notifications_updated(session_id: str, records: frozenset[TurnNotificationRecord]) -> None:
@@ -150,6 +133,8 @@ def _emit_agent_status_updated(
     since: datetime | None,
     runtime_activity_at: datetime | None,
     open_tool_calls: frozenset[str],
+    runtime_run_id: str | None,
+    runtime_turn_id: str | None,
 ) -> None:
     updated_fields = _AgentStatusUpdatedFields(
         agent_status=status.value,
@@ -157,24 +142,8 @@ def _emit_agent_status_updated(
         agent_status_since=since,
         runtime_activity_at=runtime_activity_at,
         open_tool_calls=sorted(open_tool_calls),
-    )
-    event_bus.emit(
-        TeleClaudeEvents.SESSION_UPDATED,
-        SessionUpdatedContext(session_id=session_id, updated_fields=updated_fields),
-        visibility=EventVisibility.CLUSTER,
-    )
-
-
-def _emit_inferred_stall_updated(
-    session_id: str,
-    *,
-    reason: AgentStatusReason,
-    since: datetime,
-) -> None:
-    updated_fields = _InferredStallUpdatedFields(
-        agent_status=AgentStatusValue.STALLED.value,
-        agent_status_reason=reason.value,
-        agent_status_since=since,
+        runtime_run_id=runtime_run_id,
+        runtime_turn_id=runtime_turn_id,
     )
     event_bus.emit(
         TeleClaudeEvents.SESSION_UPDATED,
@@ -191,17 +160,18 @@ def _session_open() -> object:
     )
 
 
-def _inferred_stall_predicate(
-    rule: InferredStallRule,
+def _silence_observation_predicate(
+    rule: SilenceRule,
     cutoff: datetime,
-    *,
-    include_tool_call_guard: bool = True,
 ) -> object:
     predicate = [
         _session_open(),
         db_models.Session.agent_status == rule.status.value,
+        db_models.Session.runtime_run_id.is_not(None),
     ]
-    if rule.tool_calls_must_be_closed and include_tool_call_guard:
+    if rule.kind is SilenceObservationKind.ACTIVE_TURN:
+        predicate.append(db_models.Session.runtime_turn_id.is_not(None))
+    if rule.tool_calls_must_be_closed:
         predicate.append(func.json_array_length(db_models.Session.open_tool_calls) == 0)
     if rule.agent_must_be_assigned:
         predicate.extend(
@@ -210,6 +180,31 @@ def _inferred_stall_predicate(
                 db_models.Session.active_agent != _EMPTY_TEXT,
             ]
         )
+    listener_query = select(db_models.SessionListenerRow.caller_session_id).where(
+        db_models.SessionListenerRow.target_session_id == db_models.Session.session_id,
+        db_models.SessionListenerRow.caller_session_id != db_models.Session.session_id,
+        db_models.SessionListenerRow.one_shot.is_(False),
+    )
+    if rule.kind is SilenceObservationKind.STARTUP:
+        listener_query = listener_query.where(
+            db_models.SessionListenerRow.startup_run_id == db_models.Session.runtime_run_id
+        )
+    caller_session = aliased(db_models.Session)
+    local_caller = select(caller_session.session_id).where(
+        caller_session.session_id == db_models.SessionListenerRow.caller_session_id,
+        caller_session.closed_at.is_(None),
+        or_(
+            caller_session.lifecycle_status.is_(None),
+            caller_session.lifecycle_status.not_in(tuple(status.value for status in TERMINAL_LIFECYCLE_STATUSES)),
+        ),
+        caller_session.tmux_session_name.is_not(None),
+        caller_session.tmux_session_name != _EMPTY_TEXT,
+    )
+    remote_caller = db_models.SessionListenerRow.caller_computer.is_not(None) & (
+        db_models.SessionListenerRow.caller_computer != config.computer.name
+    )
+    listener_query = listener_query.where(or_(local_caller.exists(), remote_caller))
+    predicate.append(listener_query.exists())
     cutoff_julian = func.julianday(cutoff.astimezone(UTC).isoformat())
     if rule.silence_clock is SilenceClock.LAST_SIGNAL:
         runtime_julian = func.julianday(db_models.Session.runtime_activity_at)
@@ -259,49 +254,6 @@ class AgentStatusPersistenceMixin:
                 raise AgentStatusIntegrityError(session_id, record.value, 0)
             return False, decode_turn_notifications(stored[0], session_id=session_id)
 
-    async def release_turn_notification(self, session_id: str, record: TurnNotificationRecord) -> None:
-        """Atomically remove one notification record from the current turn."""
-        statement = text(_RELEASE_NOTIFICATION_SQL)  # guard: raw-sql - one statement preserves concurrent claims
-        async with cast(_AgentStatusDatabase, self)._session() as db_session:
-            result = await db_session.execute(
-                statement,
-                {_SESSION_ID_PARAMETER: session_id, _RECORD_PARAMETER: record.value},
-            )
-            rows = result.all()
-            await db_session.commit()
-            if len(rows) > 1:
-                raise AgentStatusIntegrityError(session_id, record.value, len(rows))
-            if not rows:
-                existing = await db_session.execute(
-                    text(_SELECT_TURN_NOTIFICATIONS_SQL),
-                    {_SESSION_ID_PARAMETER: session_id},
-                )
-                stored = existing.first()
-                if stored is None:
-                    raise AgentStatusIntegrityError(session_id, record.value, 0)
-                decode_turn_notifications(stored[0], session_id=session_id)
-                return
-        _emit_turn_notifications_updated(session_id, decode_turn_notifications(rows[0][0], session_id=session_id))
-
-    async def clear_turn_notifications(self, session_id: str) -> None:
-        """Atomically clear all notification records when a new user turn begins."""
-        statement = text(_CLEAR_NOTIFICATIONS_SQL)  # guard: raw-sql - the field is owned by this persistence seam
-        async with cast(_AgentStatusDatabase, self)._session() as db_session:
-            result = await db_session.execute(statement, {_SESSION_ID_PARAMETER: session_id})
-            rows = result.all()
-            await db_session.commit()
-            if len(rows) > 1:
-                raise AgentStatusIntegrityError(session_id, SessionField.TURN_NOTIFICATIONS_SENT.value, len(rows))
-            if not rows:
-                existing = await db_session.execute(
-                    text(_SELECT_SESSION_EXISTENCE_SQL),
-                    {_SESSION_ID_PARAMETER: session_id},
-                )
-                if existing.first() is None:
-                    raise AgentStatusIntegrityError(session_id, SessionField.TURN_NOTIFICATIONS_SENT.value, 0)
-                return
-        _emit_turn_notifications_updated(session_id, frozenset())
-
     async def commit_agent_status(
         self,
         session_id: str,
@@ -313,9 +265,14 @@ class AgentStatusPersistenceMixin:
         since: datetime | None,
         runtime_activity_at: datetime | None,
         open_tool_calls: frozenset[str],
+        runtime_run_id: str | None,
+        runtime_turn_id: str | None,
     ) -> AgentStatusCommit:
         """Commit a full status record only if its version and lifecycle still match."""
         attempted_transition = _attempted_transition(cause, status)
+        reset_notifications = isinstance(cause, AgentRunStart) or (
+            isinstance(cause, AgentEventCause) and cause.new_turn
+        )
         statement = (
             update(db_models.Session)
             .where(
@@ -329,6 +286,11 @@ class AgentStatusPersistenceMixin:
                 agent_status_since=since,
                 runtime_activity_at=runtime_activity_at,
                 open_tool_calls=encode_open_tool_calls(open_tool_calls),
+                runtime_run_id=runtime_run_id,
+                runtime_turn_id=runtime_turn_id,
+                turn_notifications_sent=(
+                    _EMPTY_JSON_ARRAY if reset_notifications else db_models.Session.turn_notifications_sent
+                ),
                 agent_status_version=db_models.Session.agent_status_version + 1,
             )
             .returning(db_models.Session.session_id)
@@ -336,10 +298,21 @@ class AgentStatusPersistenceMixin:
         async with cast(_AgentStatusDatabase, self)._session() as db_session:
             result = await db_session.exec(statement)
             rows = result.all()
+            if rows and isinstance(cause, AgentRunStart):
+                await db_session.exec(
+                    update(db_models.SessionListenerRow)
+                    .where(
+                        db_models.SessionListenerRow.target_session_id == session_id,
+                        db_models.SessionListenerRow.one_shot.is_(False),
+                    )
+                    .values(startup_run_id=runtime_run_id if cause.startup_work_expected else None)
+                )
             await db_session.commit()
             if len(rows) > 1:
                 raise AgentStatusIntegrityError(session_id, attempted_transition, len(rows))
             if rows:
+                if reset_notifications:
+                    _emit_turn_notifications_updated(session_id, frozenset())
                 _emit_agent_status_updated(
                     session_id,
                     status=status,
@@ -347,6 +320,8 @@ class AgentStatusPersistenceMixin:
                     since=since,
                     runtime_activity_at=runtime_activity_at,
                     open_tool_calls=open_tool_calls,
+                    runtime_run_id=runtime_run_id,
+                    runtime_turn_id=runtime_turn_id,
                 )
                 return AgentStatusCommit.COMMITTED
             result = await db_session.exec(
@@ -363,67 +338,90 @@ class AgentStatusPersistenceMixin:
             return AgentStatusCommit.SESSION_TERMINAL
         return AgentStatusCommit.VERSION_MOVED
 
-    async def list_inferred_stall_candidates(self, rule: InferredStallRule, *, at: datetime) -> list[str]:
-        """List ids matching scalar rule clauses; the guarded write remains authoritative."""
+    async def list_silence_observation_candidates(self, rule: SilenceRule, *, at: datetime) -> list[str]:
+        """List targets matching the current run, activity, and supervisor relationship."""
         cutoff = at - timedelta(seconds=rule.window_s)
-        statement = select(db_models.Session.session_id).where(
-            *_inferred_stall_predicate(rule, cutoff, include_tool_call_guard=False)
-        )
+        statement = select(db_models.Session.session_id).where(*_silence_observation_predicate(rule, cutoff))
         async with cast(_AgentStatusDatabase, self)._session() as db_session:
             result = await db_session.exec(statement)
             return list(result.scalars().all())
 
-    async def commit_inferred_stall(
+    async def claim_silence_observation(
         self,
         session_id: str,
-        rule: InferredStallRule,
+        rule: SilenceRule,
         *,
         at: datetime,
-    ) -> CommittedStall | None:
-        """Commit a stall only while its complete rule still holds for this row."""
+    ) -> SilenceClaim | None:
+        """Claim one current run/turn observation without changing recorded activity."""
         cutoff = at - timedelta(seconds=rule.window_s)
-        attempted_transition = _attempted_transition(InferredStallVerdict(rule), AgentStatusValue.STALLED)
+        unclaimed = text(
+            "NOT EXISTS (SELECT 1 FROM json_each(sessions.turn_notifications_sent) WHERE value = :silence_claim)"
+        ).bindparams(silence_claim=TurnNotificationRecord.INFERRED_STALL.value)
         statement = (
             update(db_models.Session)
             .where(
                 db_models.Session.session_id == session_id,
-                *_inferred_stall_predicate(rule, cutoff),
+                *_silence_observation_predicate(rule, cutoff),
+                unclaimed,
             )
             .values(
-                agent_status=AgentStatusValue.STALLED.value,
-                agent_status_reason=rule.reason.value,
-                agent_status_since=at,
+                turn_notifications_sent=func.json_insert(
+                    db_models.Session.turn_notifications_sent,
+                    "$[#]",
+                    TurnNotificationRecord.INFERRED_STALL.value,
+                ),
                 agent_status_version=db_models.Session.agent_status_version + 1,
             )
-            .returning(db_models.Session.runtime_activity_at)
+            .returning(
+                db_models.Session.runtime_run_id,
+                db_models.Session.runtime_turn_id,
+                db_models.Session.runtime_activity_at,
+                db_models.Session.agent_status_since,
+                db_models.Session.turn_notifications_sent,
+            )
         )
         async with cast(_AgentStatusDatabase, self)._session() as db_session:
             result = await db_session.exec(statement)
             rows = result.all()
             await db_session.commit()
             if len(rows) > 1:
-                raise AgentStatusIntegrityError(session_id, attempted_transition, len(rows))
-            if rows:
-                _emit_inferred_stall_updated(session_id, reason=rule.reason, since=at)
-                logger.info(_INFERRED_STALL_COMMITTED_EVENT, session_id=session_id, reason=rule.reason.value)
-                return CommittedStall(runtime_activity_at=rows[0][0])
-            result = await db_session.exec(
-                select(db_models.Session.session_id).where(db_models.Session.session_id == session_id)
-            )
-            exists = result.first()
-        if exists is None:
-            raise AgentStatusIntegrityError(session_id, attempted_transition, 0)
-        logger.debug(_INFERRED_STALL_RULE_MOVED_EVENT, session_id=session_id, reason=rule.reason.value)
-        return None
-
-    async def list_inferred_stall_ids(self) -> list[str]:
-        """List open inferred stalls whose notification claim may need catch-up."""
-        reasons = tuple(rule.reason.value for rule in INFERRED_STALL_RULES)
-        statement = select(db_models.Session.session_id).where(
-            _session_open(),
-            db_models.Session.agent_status == AgentStatusValue.STALLED.value,
-            db_models.Session.agent_status_reason.in_(reasons),
+                raise AgentStatusIntegrityError(session_id, rule.kind.value, len(rows))
+            if not rows:
+                logger.debug(_SILENCE_CLAIM_CONFLICT_EVENT, session_id=session_id, kind=rule.kind.value)
+                return None
+        runtime_run_id, runtime_turn_id, runtime_activity_at, status_since, raw_notifications = rows[0]
+        if not isinstance(runtime_run_id, str) or not runtime_run_id:
+            raise AgentStatusIntegrityError(session_id, rule.kind.value, 0)
+        clock_evidence_at = (
+            runtime_activity_at
+            if rule.silence_clock is SilenceClock.LAST_SIGNAL
+            and runtime_activity_at is not None
+            and (status_since is None or runtime_activity_at >= status_since)
+            else status_since
         )
-        async with cast(_AgentStatusDatabase, self)._session() as db_session:
-            result = await db_session.exec(statement)
-            return list(result.scalars().all())
+        if clock_evidence_at is None:
+            raise AgentStatusIntegrityError(session_id, rule.kind.value, 0)
+        if clock_evidence_at.tzinfo is None:
+            clock_evidence_at = clock_evidence_at.replace(tzinfo=UTC)
+        else:
+            clock_evidence_at = clock_evidence_at.astimezone(UTC)
+        _emit_turn_notifications_updated(
+            session_id,
+            decode_turn_notifications(raw_notifications, session_id=session_id),
+        )
+        logger.info(
+            _SILENCE_OBSERVATION_CLAIMED_EVENT,
+            session_id=session_id,
+            run_id=runtime_run_id,
+            turn_id=runtime_turn_id,
+            kind=rule.kind.value,
+        )
+        return SilenceClaim(
+            target_session_id=session_id,
+            run_id=runtime_run_id,
+            turn_id=runtime_turn_id,
+            kind=rule.kind,
+            observed_at=at,
+            clock_evidence_at=clock_evidence_at,
+        )

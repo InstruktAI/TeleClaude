@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from teleclaude.core.session_status import (
-    AgentStatusReason,
     AgentStatusValue,
     SessionLifecycleStatus,
     is_session_terminal,
@@ -14,10 +13,6 @@ from teleclaude.core.session_status import (
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
-
-
-_READINESS_INVESTIGATION_ATTENTION = "readiness_investigation"
-_READINESS_INVESTIGATION_PROCEDURE = "general/procedure/orchestration#agent-degradation-handling"
 
 
 def project_peer_agent_status(status: AgentStatusValue) -> AgentStatusValue:
@@ -40,12 +35,4 @@ def project_readiness_fields(
     initializing_for_seconds = None
     if session.lifecycle_status == SessionLifecycleStatus.INITIALIZING and session.created_at is not None:
         initializing_for_seconds = int((now - session.created_at).total_seconds())
-    attention = None
-    procedure = None
-    if (
-        read_session_agent_status(session) is AgentStatusValue.STALLED
-        and session.agent_status_reason is AgentStatusReason.NO_START
-    ):
-        attention = _READINESS_INVESTIGATION_ATTENTION
-        procedure = _READINESS_INVESTIGATION_PROCEDURE
-    return initializing_for_seconds, attention, procedure
+    return initializing_for_seconds, None, None

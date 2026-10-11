@@ -41,6 +41,8 @@ _AGENT_STATUS_OWNED_FIELDS = frozenset(
         "agent_status",
         "agent_status_reason",
         SessionField.AGENT_STATUS_SINCE.value,
+        SessionField.RUNTIME_RUN_ID.value,
+        SessionField.RUNTIME_TURN_ID.value,
         "runtime_activity_at",
         SessionField.OPEN_TOOL_CALLS.value,
         SessionField.AGENT_STATUS_VERSION.value,

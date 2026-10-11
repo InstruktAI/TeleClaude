@@ -35,6 +35,10 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.models import JsonDict, RedisInboundMessage
 from teleclaude.core.operation_outcome_delivery import deliver_remote_operation_outcome
+from teleclaude.core.reconciliation import (
+    DEFAULT_FEATURE_ID_REGISTRY,
+    SUPERVISORY_SILENCE_OBSERVATIONS_FEATURE_ID,
+)
 from teleclaude.core.relayed_intake import (
     RelayedReadNotFound,
     RelayRead,
@@ -59,6 +63,12 @@ from teleclaude.core.session_listeners import (
 )
 from teleclaude.core.session_status import AgentStatusReason
 from teleclaude.core.shutdown_drain import ShutdownRefusal
+from teleclaude.core.supervisory_silence import (
+    SilenceClock,
+    SilenceObservation,
+    SilenceObservationKind,
+    SilenceTimeoutOwner,
+)
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.history.service import HistoryRelayCommand
 
@@ -116,6 +126,34 @@ _ATTENTION_NATIVE_EVENT_KEY = "native_event"
 _ATTENTION_DETAILS_KEY = "details"
 _ATTENTION_OBSERVED_AT_KEY = "observed_at"
 _ATTENTION_INGRESS_ID_KEY = "ingress_id"
+_SILENCE_OBSERVATION_METADATA_KEY = "silence_observation"
+_SILENCE_TARGET_SESSION_ID_KEY = "target_session_id"
+_SILENCE_TARGET_COMPUTER_KEY = "target_computer"
+_SILENCE_RUNTIME_KEY = "runtime"
+_SILENCE_RUN_ID_KEY = "run_id"
+_SILENCE_TURN_ID_KEY = "turn_id"
+_SILENCE_KIND_KEY = "kind"
+_SILENCE_OBSERVED_AT_KEY = "observed_at"
+_SILENCE_CLOCK_EVIDENCE_AT_KEY = "clock_evidence_at"
+_SILENCE_WINDOW_KEY = "window_s"
+_SILENCE_CLOCK_KEY = "silence_clock"
+_SILENCE_TIMEOUT_OWNER_KEY = "timeout_owner"
+_SILENCE_PANE_TAIL_KEY = "pane_tail"
+_SILENCE_PANE_AVAILABLE_KEY = "pane_available"
+_SILENCE_INSPECTION_REFERENCE_KEY = "inspection_reference"
+_LEGACY_SILENCE_KIND_BY_REASON = {
+    AgentStatusReason.NO_START: SilenceObservationKind.STARTUP,
+    AgentStatusReason.NO_SIGNAL: SilenceObservationKind.ACTIVE_TURN,
+}
+_LEGACY_SILENCE_CLOCK_BY_KIND = {
+    SilenceObservationKind.STARTUP: SilenceClock.STATUS_ENTERED,
+    SilenceObservationKind.ACTIVE_TURN: SilenceClock.LAST_SIGNAL,
+}
+_LEGACY_SILENCE_TIMEOUT_OWNER_BY_KIND = {
+    SilenceObservationKind.STARTUP: SilenceTimeoutOwner.STARTUP,
+    SilenceObservationKind.ACTIVE_TURN: SilenceTimeoutOwner.ACTIVE_TURN,
+}
+_LEGACY_SILENCE_INSPECTION_REFERENCE_TEMPLATE = "telec sessions tail {target_session_id} --pane"
 _UNKNOWN_STOP_NOTIFICATION_VARIANT_EVENT = "unknown_stop_notification_variant"
 _INVALID_STOP_NOTIFICATION_VARIANT_ERROR = "invalid stop notification variant"
 _INVALID_STOP_NOTIFICATION_VARIANT_RESPONSE: JsonDict = {
@@ -159,6 +197,95 @@ def _attention_observation_from_metadata(metadata: JsonDict | None) -> AgentAtte
         details=MappingProxyType(dict(details)) if isinstance(details, dict) else MappingProxyType({}),
         observed_at=parse_iso_datetime(raw_observation.get(_ATTENTION_OBSERVED_AT_KEY)),
         ingress_id=_optional_string(raw_observation.get(_ATTENTION_INGRESS_ID_KEY)),
+    )
+
+
+def _silence_observation_from_metadata(metadata: JsonDict | None) -> SilenceObservation | None:
+    """Decode typed missing-signal evidence from the additive remote payload."""
+    if metadata is None:
+        return None
+    raw_observation = metadata.get(_SILENCE_OBSERVATION_METADATA_KEY)
+    if not isinstance(raw_observation, dict):
+        return None
+    target_session_id = _optional_string(raw_observation.get(_SILENCE_TARGET_SESSION_ID_KEY))
+    target_computer = _optional_string(raw_observation.get(_SILENCE_TARGET_COMPUTER_KEY))
+    run_id = _optional_string(raw_observation.get(_SILENCE_RUN_ID_KEY))
+    inspection_reference = _optional_string(raw_observation.get(_SILENCE_INSPECTION_REFERENCE_KEY))
+    observed_at = parse_iso_datetime(raw_observation.get(_SILENCE_OBSERVED_AT_KEY))
+    clock_evidence_at = parse_iso_datetime(raw_observation.get(_SILENCE_CLOCK_EVIDENCE_AT_KEY))
+    raw_kind = raw_observation.get(_SILENCE_KIND_KEY)
+    raw_clock = raw_observation.get(_SILENCE_CLOCK_KEY)
+    raw_timeout_owner = raw_observation.get(_SILENCE_TIMEOUT_OWNER_KEY)
+    raw_window = raw_observation.get(_SILENCE_WINDOW_KEY)
+    raw_pane_tail = raw_observation.get(_SILENCE_PANE_TAIL_KEY)
+    raw_pane_available = raw_observation.get(_SILENCE_PANE_AVAILABLE_KEY)
+    raw_runtime = raw_observation.get(_SILENCE_RUNTIME_KEY)
+    raw_turn_id = raw_observation.get(_SILENCE_TURN_ID_KEY)
+    if (
+        target_session_id is None
+        or target_computer is None
+        or inspection_reference is None
+        or not isinstance(raw_kind, str)
+        or not isinstance(raw_clock, str)
+        or (raw_timeout_owner is not None and not isinstance(raw_timeout_owner, str))
+        or (raw_window is not None and (isinstance(raw_window, bool) or not isinstance(raw_window, int | float)))
+        or not isinstance(raw_pane_available, bool)
+        or (raw_pane_tail is not None and not isinstance(raw_pane_tail, str))
+        or (raw_runtime is not None and not isinstance(raw_runtime, str))
+        or (raw_turn_id is not None and not isinstance(raw_turn_id, str))
+    ):
+        return None
+    try:
+        kind = SilenceObservationKind(raw_kind)
+        silence_clock = SilenceClock(raw_clock)
+        timeout_owner = SilenceTimeoutOwner(raw_timeout_owner) if raw_timeout_owner is not None else None
+    except ValueError:
+        return None
+    return SilenceObservation(
+        target_session_id=target_session_id,
+        target_computer=target_computer,
+        runtime=raw_runtime,
+        run_id=run_id,
+        turn_id=raw_turn_id,
+        kind=kind,
+        observed_at=observed_at,
+        clock_evidence_at=clock_evidence_at,
+        window_s=float(raw_window) if raw_window is not None else None,
+        silence_clock=silence_clock,
+        timeout_owner=timeout_owner,
+        pane_tail=raw_pane_tail,
+        pane_available=raw_pane_available,
+        inspection_reference=inspection_reference,
+    )
+
+
+def _legacy_silence_observation(
+    target_session_id: str,
+    target_computer: str,
+    evidence: InferredStallEvidence,
+    observed_at: datetime | None,
+) -> SilenceObservation | None:
+    """Convert old inferred-silence wire evidence without inventing run or clock facts."""
+    kind = _LEGACY_SILENCE_KIND_BY_REASON.get(evidence.reason)
+    if kind is None:
+        return None
+    pane_tail = evidence.pane_tail
+    return SilenceObservation(
+        target_session_id=target_session_id,
+        target_computer=target_computer,
+        runtime=None,
+        run_id=None,
+        turn_id=None,
+        kind=kind,
+        observed_at=observed_at,
+        clock_evidence_at=None,
+        window_s=None,
+        silence_clock=_LEGACY_SILENCE_CLOCK_BY_KIND[kind],
+        timeout_owner=_LEGACY_SILENCE_TIMEOUT_OWNER_BY_KIND[kind],
+        pane_tail=pane_tail,
+        pane_available=pane_tail is not None,
+        inspection_reference=_LEGACY_SILENCE_INSPECTION_REFERENCE_TEMPLATE.format(target_session_id=target_session_id),
+        legacy_window_label=evidence.timeout,
     )
 
 
@@ -511,6 +638,24 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                     title = base64.b64decode(title_b64).decode()
                 except _DECODE_EXCEPTIONS:
                     return {"status": "error", "error": "invalid distress notification title"}
+            occurred_at = _wire_moment_arg(args, _DISTRESS_NOTIFICATION_OCCURRED_AT_INDEX)
+            inferred_stall_evidence = _inferred_stall_evidence_from_metadata(origin_metadata)
+            silence_observation = _silence_observation_from_metadata(origin_metadata)
+            if (
+                notification_kind is NotificationKind.TURN_FAILED
+                and inferred_stall_evidence is not None
+                and silence_observation is None
+                and DEFAULT_FEATURE_ID_REGISTRY.carries(SUPERVISORY_SILENCE_OBSERVATIONS_FEATURE_ID)
+            ):
+                silence_observation = _legacy_silence_observation(
+                    target_session_id,
+                    source_computer,
+                    inferred_stall_evidence,
+                    occurred_at,
+                )
+                if silence_observation is not None:
+                    notification_kind = NotificationKind.SILENCE_OBSERVATION
+                    inferred_stall_evidence = None
             delivered = await deliver_remote_distress_notification(
                 caller_session_id,
                 target_session_id,
@@ -519,10 +664,11 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 title,
                 occurrence_key,
                 _attention_observation_from_metadata(origin_metadata),
-                _inferred_stall_evidence_from_metadata(origin_metadata),
+                inferred_stall_evidence,
                 _delivery_block_evidence_from_metadata(origin_metadata),
                 _startup_delivery_uncertain_evidence_from_metadata(origin_metadata),
-                occurred_at=_wire_moment_arg(args, _DISTRESS_NOTIFICATION_OCCURRED_AT_INDEX),
+                silence_observation,
+                occurred_at=occurred_at,
             )
             return {"status": "success", "data": {"delivered": delivered}}
 

@@ -60,6 +60,7 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_cleanup import is_legacy_restricted_session
 from teleclaude.core.session_compaction import session_compaction_owner
 from teleclaude.core.session_idle_compaction import live_idle_close
+from teleclaude.core.session_listeners import record_startup_work_accepted
 from teleclaude.core.session_revival import revive_session
 from teleclaude.core.session_runtime_gate import (
     clear_relaunch_awaiting_readiness,
@@ -288,6 +289,7 @@ async def _record_accepted_input_metadata(
     message_text: str,
     origin_metadata: Mapping[str, object] | None,
     command_input: _InboundCommandInput | None,
+    caller_session_id: str | None,
 ) -> None:
     """Persist the accepted-input fields owned by the core acceptance boundary."""
     await db.update_session(
@@ -302,6 +304,7 @@ async def _record_accepted_input_metadata(
     )
     if origin_metadata:
         await db.update_origin_metadata(session_id, origin, dict(origin_metadata))
+    await record_startup_work_accepted(session_id, caller_session_id)
 
 
 def _accepted_input_fields_match(session: Session, *, origin: str, message_text: str) -> bool:
@@ -344,6 +347,7 @@ async def _ensure_inbound_acceptance_metadata(
             message_text=message_text,
             origin_metadata=origin_metadata,
             command_input=command_input,
+            caller_session_id=row.get("caller_session_id"),
         )
         return
 
@@ -885,6 +889,7 @@ async def process_message(
             message_text=content,
             origin_metadata=cmd.origin_metadata,
             command_input=command_input,
+            caller_session_id=cmd.caller_session_id,
         )
 
     row_id = await get_inbound_queue_manager().enqueue(

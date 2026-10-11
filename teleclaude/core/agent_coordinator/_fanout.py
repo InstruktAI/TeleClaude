@@ -4,17 +4,21 @@ import base64
 import json
 import random
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING, Final, Literal, cast
 from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
+from redis.exceptions import RedisError
 
 from teleclaude.config.machine import config
 from teleclaude.constants import LOCAL_COMPUTER, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentAttentionObservation
+from teleclaude.core.inbound.fleet import FleetView, observe_fleet
 from teleclaude.core.models import MessageMetadata, Session, SessionOriginMetadata
+from teleclaude.core.reconciliation import SUPERVISORY_SILENCE_OBSERVATIONS_FEATURE_ID
 from teleclaude.core.session_listeners import (
     DELIVERY_BLOCK_EVIDENCE_METADATA_KEY,
     DELIVERY_BLOCK_PANE_TAIL_FIELD,
@@ -25,6 +29,7 @@ from teleclaude.core.session_listeners import (
     DeliveryBlockEvidence,
     InferredStallEvidence,
     NotificationKind,
+    SessionListener,
     StartupDeliveryUncertainEvidence,
     StopNotificationVariant,
     notify_distress,
@@ -35,6 +40,7 @@ from teleclaude.core.session_output import StopOutputKind, StopOutputResult, cla
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.core.session_status import TurnNotificationRecord
 from teleclaude.core.summarizer import summarize_agent_output
+from teleclaude.core.supervisory_silence import SilenceObservation
 from teleclaude.tts.manager import TTSManager
 from teleclaude.utils.transcript import extract_stop_agent_message
 
@@ -54,10 +60,36 @@ _ATTENTION_NATIVE_EVENT_KEY = "native_event"
 _ATTENTION_DETAILS_KEY = "details"
 _ATTENTION_OBSERVED_AT_KEY = "observed_at"
 _ATTENTION_INGRESS_ID_KEY = "ingress_id"
+_SILENCE_OBSERVATION_METADATA_KEY: Final[Literal["silence_observation"]] = "silence_observation"
+_SILENCE_TARGET_SESSION_ID_KEY = "target_session_id"
+_SILENCE_TARGET_COMPUTER_KEY = "target_computer"
+_SILENCE_RUNTIME_KEY = "runtime"
+_SILENCE_RUN_ID_KEY = "run_id"
+_SILENCE_TURN_ID_KEY = "turn_id"
+_SILENCE_KIND_KEY = "kind"
+_SILENCE_OBSERVED_AT_KEY = "observed_at"
+_SILENCE_CLOCK_EVIDENCE_AT_KEY = "clock_evidence_at"
+_SILENCE_WINDOW_KEY = "window_s"
+_SILENCE_CLOCK_KEY = "silence_clock"
+_SILENCE_TIMEOUT_OWNER_KEY = "timeout_owner"
+_SILENCE_PANE_TAIL_KEY = "pane_tail"
+_SILENCE_PANE_AVAILABLE_KEY = "pane_available"
+_SILENCE_INSPECTION_REFERENCE_KEY = "inspection_reference"
 _DISTRESS_OUTCOME_SUBSCRIBER_DELIVERY = "subscriber_delivery"
 _DISTRESS_OUTCOME_HUMAN_FALLBACK = "human_fallback"
 _DISTRESS_OUTCOME_NO_FALLBACK = "no_fallback"
 _DISTRESS_NO_FALLBACK_BLOCKED_ALREADY_OBSERVED = "blocked_already_observed_this_turn"
+_SILENCE_REMOTE_DELIVERY_OUTCOME_EVENT = "silence_observation_remote_delivery_outcome"
+_SILENCE_REMOTE_CAPABILITY_UNAVAILABLE_EVENT = "silence_observation_remote_capability_unavailable"
+_SILENCE_PEER_CAPABILITY_MISSING = "feature_not_advertised"
+_SILENCE_PEER_VIEW_UNAVAILABLE = "peer_view_unavailable"
+
+
+class _SilenceDeliveryOutcome(StrEnum):
+    """Outcome of one remote silence-observation handoff."""
+
+    ACCEPTED = "accepted"
+    UNAVAILABLE = "unavailable"
 
 
 def _wire_moment(value: datetime | None) -> str:
@@ -70,6 +102,7 @@ def _attention_observation_metadata(
     inferred_stall_evidence: InferredStallEvidence | None,
     delivery_block_evidence: DeliveryBlockEvidence | None,
     startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None,
+    silence_observation: SilenceObservation | None = None,
 ) -> SessionOriginMetadata:
     """Serialize native or daemon-observed evidence for the remote parent path."""
     metadata: SessionOriginMetadata = cast(SessionOriginMetadata, {})
@@ -92,6 +125,29 @@ def _attention_observation_metadata(
         }
     if startup_delivery_uncertain_evidence is not None:
         metadata[STARTUP_DELIVERY_UNCERTAIN_EVIDENCE_METADATA_KEY] = {}
+    if silence_observation is not None:
+        metadata[_SILENCE_OBSERVATION_METADATA_KEY] = {
+            _SILENCE_TARGET_SESSION_ID_KEY: silence_observation.target_session_id,
+            _SILENCE_TARGET_COMPUTER_KEY: silence_observation.target_computer,
+            _SILENCE_RUNTIME_KEY: silence_observation.runtime,
+            _SILENCE_RUN_ID_KEY: silence_observation.run_id,
+            _SILENCE_TURN_ID_KEY: silence_observation.turn_id,
+            _SILENCE_KIND_KEY: silence_observation.kind.value,
+            _SILENCE_OBSERVED_AT_KEY: (
+                silence_observation.observed_at.isoformat() if silence_observation.observed_at else None
+            ),
+            _SILENCE_CLOCK_EVIDENCE_AT_KEY: (
+                silence_observation.clock_evidence_at.isoformat() if silence_observation.clock_evidence_at else None
+            ),
+            _SILENCE_WINDOW_KEY: silence_observation.window_s,
+            _SILENCE_CLOCK_KEY: silence_observation.silence_clock.value,
+            _SILENCE_TIMEOUT_OWNER_KEY: (
+                silence_observation.timeout_owner.value if silence_observation.timeout_owner else None
+            ),
+            _SILENCE_PANE_TAIL_KEY: silence_observation.pane_tail,
+            _SILENCE_PANE_AVAILABLE_KEY: silence_observation.pane_available,
+            _SILENCE_INSPECTION_REFERENCE_KEY: silence_observation.inspection_reference,
+        }
     return metadata
 
 
@@ -201,6 +257,8 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         delivery_block_evidence: DeliveryBlockEvidence | None = None,
         startup_delivery_uncertain_evidence: StartupDeliveryUncertainEvidence | None = None,
         occurrence_key: str | None = None,
+        silence_observation: SilenceObservation | None = None,
+        silence_audience: list[SessionListener] | None = None,
     ) -> bool:
         """Notify parents while retaining terminal and fallback slot semantics.
 
@@ -213,6 +271,8 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         """
         blocked_claimed = True
         if startup_delivery_uncertain_evidence is not None:
+            pass
+        elif silence_observation is not None:
             pass
         elif inferred_stall_evidence is None:
             record = (
@@ -254,7 +314,13 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         )
         # A native observation carries the moment it was observed; an inferred
         # stall or delivery block occurs at the moment it is inferred.
-        occurred_at = observation.observed_at if observation is not None else datetime.now(UTC)
+        occurred_at = (
+            observation.observed_at
+            if observation is not None
+            else silence_observation.observed_at
+            if silence_observation is not None
+            else datetime.now(UTC)
+        )
         reached = await notify_distress(
             target_session_id,
             computer,
@@ -264,23 +330,36 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             inferred_stall_evidence=inferred_stall_evidence,
             delivery_block_evidence=delivery_block_evidence,
             startup_delivery_uncertain_evidence=startup_delivery_uncertain_evidence,
+            silence_observation=silence_observation,
+            silence_audience=silence_audience,
             occurrence_key=occurrence_key,
             occurred_at=occurred_at,
         )
-        remote_reached = await self._forward_distress_to_initiator(
-            session,
-            notification_kind,
-            computer,
-            title,
-            observation=observation,
-            inferred_stall_evidence=inferred_stall_evidence,
-            delivery_block_evidence=delivery_block_evidence,
-            startup_delivery_uncertain_evidence=startup_delivery_uncertain_evidence,
-            occurrence_key=occurrence_key,
-            occurred_at=occurred_at,
-        )
+        if silence_observation is not None:
+            remote_reached = await self._forward_silence_observation(
+                silence_audience or [],
+                target_session_id=target_session_id,
+                computer=computer,
+                title=title,
+                observation=silence_observation,
+                occurrence_key=occurrence_key,
+                occurred_at=occurred_at,
+            )
+        else:
+            remote_reached = await self._forward_distress_to_initiator(
+                session,
+                notification_kind,
+                computer,
+                title,
+                observation=observation,
+                inferred_stall_evidence=inferred_stall_evidence,
+                delivery_block_evidence=delivery_block_evidence,
+                startup_delivery_uncertain_evidence=startup_delivery_uncertain_evidence,
+                occurrence_key=occurrence_key,
+                occurred_at=occurred_at,
+            )
         fallback_delivered = False
-        fallback_eligible = (
+        fallback_eligible = silence_observation is None and (
             inferred_stall_evidence is not None or notification_kind is not NotificationKind.BLOCKED or blocked_claimed
         )
         if fallback_eligible and not reached and not remote_reached:
@@ -378,6 +457,117 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             delivered=result,
         )
         return result
+
+    async def _forward_silence_observation(
+        self,
+        audience: list[SessionListener],
+        *,
+        target_session_id: str,
+        computer: str,
+        title: str | None,
+        observation: SilenceObservation,
+        occurrence_key: str | None,
+        occurred_at: datetime | None,
+    ) -> bool:
+        """Forward a silence observation only to remote persistent callers in its resolved audience."""
+        remote_reached = False
+        encoded_title = base64.b64encode(title.encode()).decode() if title else _WIRE_ABSENT
+        current_listeners = await db.get_listeners_for_target(target_session_id)
+        current_pairs = {
+            (listener.caller_session_id, listener.caller_computer)
+            for listener in current_listeners
+            if not listener.one_shot
+        }
+        remote_audience = [
+            listener
+            for listener in audience
+            if (listener.caller_computer or config.computer.name) != config.computer.name
+            and (listener.caller_session_id, listener.caller_computer) in current_pairs
+        ]
+        fleet_view: FleetView | None = None
+        if remote_audience:
+            try:
+                fleet_view = await observe_fleet(self.client)
+            except (OSError, RedisError, RuntimeError) as exc:
+                logger.warning(
+                    _SILENCE_REMOTE_CAPABILITY_UNAVAILABLE_EVENT,
+                    target_session_id=target_session_id,
+                    reason=type(exc).__name__,
+                )
+        metadata = MessageMetadata(
+            origin_metadata=_attention_observation_metadata(
+                None,
+                None,
+                None,
+                None,
+                observation,
+            )
+        )
+        for listener in audience:
+            caller_computer = listener.caller_computer or config.computer.name
+            if (
+                caller_computer == config.computer.name
+                or (listener.caller_session_id, listener.caller_computer) not in current_pairs
+            ):
+                continue
+            peer = (
+                next(
+                    (member for member in fleet_view.peers if member.name == caller_computer),
+                    None,
+                )
+                if fleet_view is not None
+                else None
+            )
+            if peer is None or SUPERVISORY_SILENCE_OBSERVATIONS_FEATURE_ID not in peer.capability_set:
+                logger.info(
+                    _SILENCE_REMOTE_DELIVERY_OUTCOME_EVENT,
+                    target_session_id=target_session_id,
+                    caller_session_id=listener.caller_session_id,
+                    computer=caller_computer,
+                    outcome=_SilenceDeliveryOutcome.UNAVAILABLE,
+                    reason=_SILENCE_PEER_CAPABILITY_MISSING
+                    if fleet_view is not None
+                    else _SILENCE_PEER_VIEW_UNAVAILABLE,
+                )
+                continue
+            try:
+                request_id = await self.client.send_request(
+                    caller_computer,
+                    _DISTRESS_COMMAND.format(
+                        session_id=target_session_id,
+                        computer=computer,
+                        caller=listener.caller_session_id,
+                        kind=NotificationKind.SILENCE_OBSERVATION,
+                        title=encoded_title,
+                        occurrence=occurrence_key or uuid4().hex,
+                        occurred_at=_wire_moment(occurred_at),
+                    ),
+                    metadata,
+                    principal=SYSTEM_DAEMON_PRINCIPAL,
+                )
+                response = json.loads(await self.client.read_response(request_id, target_computer=caller_computer))
+                response_data = response.get("data") if isinstance(response, dict) else None
+                delivered = response_data.get("delivered") if isinstance(response_data, dict) else None
+                outcome = _SilenceDeliveryOutcome.ACCEPTED if delivered is True else _SilenceDeliveryOutcome.UNAVAILABLE
+                logger.info(
+                    _SILENCE_REMOTE_DELIVERY_OUTCOME_EVENT,
+                    target_session_id=target_session_id,
+                    caller_session_id=listener.caller_session_id,
+                    computer=caller_computer,
+                    outcome=outcome,
+                )
+                remote_reached = remote_reached or delivered is True
+            except (OSError, RuntimeError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+                logger.info(
+                    _SILENCE_REMOTE_DELIVERY_OUTCOME_EVENT,
+                    target_session_id=target_session_id,
+                    caller_session_id=listener.caller_session_id,
+                    computer=caller_computer,
+                    outcome=_SilenceDeliveryOutcome.UNAVAILABLE,
+                    reason=type(exc).__name__,
+                )
+                continue
+        return remote_reached
 
     async def _forward_stop_to_initiator(
         self, session_id: str, variant: StopNotificationVariant, *, occurred_at: datetime | None

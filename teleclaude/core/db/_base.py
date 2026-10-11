@@ -158,6 +158,8 @@ class DbBase:
             created_at=DbBase._coerce_datetime(row.created_at),
             last_activity=DbBase._coerce_datetime(row.last_activity),
             runtime_start_observed=bool(getattr(row, "runtime_start_observed", False)),
+            runtime_run_id=getattr(row, "runtime_run_id", None),
+            runtime_turn_id=getattr(row, "runtime_turn_id", None),
             runtime_activity_at=DbBase._coerce_datetime(getattr(row, "runtime_activity_at", None)),
             agent_status=AgentStatusValue(row.agent_status),
             agent_status_reason=AgentStatusReason(row.agent_status_reason) if row.agent_status_reason else None,

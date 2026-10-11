@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     working_slug TEXT,
     lifecycle_status TEXT DEFAULT 'initializing',
     runtime_start_observed INTEGER DEFAULT 0,
+    runtime_run_id TEXT,
+    runtime_turn_id TEXT,
     runtime_activity_at TIMESTAMP,
     agent_status TEXT NOT NULL DEFAULT 'unknown',
     agent_status_reason TEXT NOT NULL DEFAULT '',
@@ -93,6 +95,8 @@ CREATE TABLE IF NOT EXISTS session_listeners (
     caller_tmux_session TEXT NOT NULL,
     registered_at TEXT NOT NULL,
     one_shot INTEGER NOT NULL DEFAULT 0,
+    caller_computer TEXT,
+    startup_run_id TEXT,
     PRIMARY KEY (target_session_id, caller_session_id)
 );
 
