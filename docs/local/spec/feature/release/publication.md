@@ -40,8 +40,10 @@ An explicit version on a manually dispatched release or dry-run selects the
 operator-decided path. It accepts a stable semantic version newer than the
 completed baseline, with an unused target tag. It captures remote main after
 serialization, and records the supplied version and workflow request as the
-release decision. This path runs without an inspector or AI summary. It is
-repeatable for subsequent releases and can establish an initial baseline when
+release decision. The supplied version bypasses AI version selection; it does
+not suppress an AI release summary. The attempt requests a summary when a
+provider can supply one and falls back to deterministic commit notes when no
+valid summary is available. It is repeatable for subsequent releases and can establish an initial baseline when
 no completed release exists (`general/policy/human-contract`). An explicit
 version can release the captured source even when it has no new functional
 changes; the version decision is the operator's.
@@ -60,12 +62,20 @@ provider is attempted once. An execution error, invalid report, or incomplete
 assessment is an unsuccessful inspection. If neither provider returns a valid,
 complete report, the attempt ends without publication.
 
+Explicit-version attempts use the same provider order and isolation to request
+an optional, evidence-grounded release summary. This task does not select or
+override the supplied version and does not claim a completed automatic version
+assessment. Provider unavailability, invalid output or an unsuccessful summary
+attempt remains visible but does not prevent the explicit-version path from
+using deterministic notes. A first release can summarize its captured history
+without requiring a previous release baseline.
+
 Source, baseline and bounded evidence are frozen once before inspection. Codex
 and its fallback run on separate fresh GitHub-hosted Ubuntu jobs, each installing
 only its pinned native client and owning its cleanup. A primary job failure or
 missing artifact permits independent fallback without claiming a client exit or
-credential settlement that was not observed. Explicit-version and no-change
-attempts bypass both providers. Eligible Codex success requires a complete report
+credential settlement that was not observed. Automatic no-change attempts
+bypass both providers. Eligible Codex success requires a complete report
 and confirmed durable post-run auth; runner loss leaves auth uncertainty intact.
 
 Native clients run under the runner identity with explicit clean environments
@@ -148,7 +158,10 @@ Conventional-commit parsing, category filters and summary generation do not
 remove commits from that list (`general/principle/grounding`).
 
 Automatic releases add the selected inspector's concise consumer-facing summary.
-Manual releases contain the deterministic commit notes without an AI summary.
+Explicit-version releases also add an evidence-grounded AI summary when one is
+available. If neither provider supplies a valid summary, their deterministic
+commit notes remain publishable with the supplied version and full candidate
+proof. Summary generation cannot change that version or omit commits.
 The same generated section is committed into the candidate's cumulative
 changelog before verification and copied into its GitHub release body. Note
 rendering failures and output limits are visible failures; completeness is never
@@ -294,7 +307,9 @@ And automatic activation requires retained evidence of its successful full dry-r
 ```gherkin
 Given a release operator supplies a valid newer semantic version for remote main
 When the manually dispatched attempt captures its source
-Then no AI inspection or AI summary is requested
+Then the supplied version bypasses AI version selection
+And an evidence-grounded AI summary is requested when a provider can supply one
+And unavailable AI summary leaves deterministic commit notes as the fallback
 And the supplied version is bound to the final candidate
 And publication requires successful lint and full installer proof of that candidate
 And a later explicit version can use the same path for a subsequent release
@@ -307,8 +322,20 @@ Given a release operator has a captured source and its completed baseline
 When notes are generated for an automatic or manually versioned candidate
 Then every commit in that interval has its subject and commit link in the notes
 And automatic notes also contain the selected inspector summary
-And manual notes contain no AI summary
+And manual notes also contain an AI summary when one is available
+And unavailable AI summary does not omit commits from manual notes
 And the proved candidate changelog and published release use the same section
+```
+
+#### UC-RP10: Explicit-version publication remains available without AI
+
+```gherkin
+Given a release operator supplies a valid explicit version
+And neither provider can supply a valid release summary
+When the captured candidate passes its required verification
+Then publication can use the supplied version and complete deterministic notes
+And unsuccessful summary attempts remain visible
+And no automatic version assessment is fabricated
 ```
 
 ### Cross-context references
