@@ -20,6 +20,56 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final, Literal, TypedDict, cast
 
+
+class NativeSyscall(StrEnum):
+    """Closed set of native operations permitted in retained trace metadata."""
+
+    EXECVE = "execve"
+    EXECVEAT = "execveat"
+    CLONE = "clone"
+    CLONE3 = "clone3"
+    FORK = "fork"
+    VFORK = "vfork"
+    UNSHARE = "unshare"
+    SETNS = "setns"
+    PRCTL = "prctl"
+    CAPGET = "capget"
+    CAPSET = "capset"
+    SOCKET = "socket"
+    SENDMSG = "sendmsg"
+    IOCTL = "ioctl"
+
+
+class NativeErrno(StrEnum):
+    """Recognized errno dispositions; unrecognized native errors remain unspecified."""
+
+    EACCES = "EACCES"
+    EPERM = "EPERM"
+    EINVAL = "EINVAL"
+    ENOSYS = "ENOSYS"
+    ENOENT = "ENOENT"
+    EIO = "EIO"
+    ENOSPC = "ENOSPC"
+    EAGAIN = "EAGAIN"
+    ENOMEM = "ENOMEM"
+    EBADF = "EBADF"
+    EFAULT = "EFAULT"
+    EOPNOTSUPP = "EOPNOTSUPP"
+
+
+class DiagnosticGap(StrEnum):
+    """Shared closed vocabulary for unavailable owned sandbox observations."""
+
+    STRACE = "trusted_strace_unavailable"
+    AUDIT = "correlated_kernel_audit_not_collected"
+    PROCESS = "fast_or_inaccessible_process_metadata_may_be_absent"
+    UID = "provider_uid_metadata_unavailable"
+    POLICY = "effective_native_policy_not_observed"
+    HELPER = "selected_helper_identity_or_version_not_observed"
+    OWNER = "namespace_owner_uid_not_collected"
+    PLATFORM = "platform_metadata_incomplete"
+
+
 SANDBOX_ARGUMENTS = (
     "sandbox",
     "--profile",
@@ -55,24 +105,7 @@ _UNSIGNED_INT = "I"
 _NS_GET_OWNER_UID = 0xB704
 _HEX = re.compile(r"[0-9a-fA-F]{1,32}")
 _INTEGER = re.compile(r"[0-9]{1,20}")
-_SYSCALLS = frozenset(
-    {
-        "execve",
-        "execveat",
-        "clone",
-        "clone3",
-        "fork",
-        "vfork",
-        "unshare",
-        "setns",
-        "prctl",
-        "capget",
-        "capset",
-        "socket",
-        "sendmsg",
-        "ioctl",
-    }
-)
+_SYSCALLS = frozenset(NativeSyscall)
 _TRACE_SELECTION = "trace=" + ",".join(sorted(_SYSCALLS))
 _TRACE_FLAGS = ("-f", "-qq", "-e", _TRACE_SELECTION, "-e", "raw=all", "-o")
 _SYSCALL_RESULT = re.compile(r"(?:(\d+)\s+)?([a-z][a-z0-9_]*)\(.*\)\s+=\s+(-?\d+|0x[0-9a-f]+)(?:\s+([A-Z][A-Z0-9_]+))?")
@@ -112,18 +145,9 @@ _NETWORK = "network"
 _FILESYSTEM = "file_system"
 _ENTRIES = "entries"
 _ACCESS = "access"
-_MANAGED = "managed"
-_RESTRICTED = "restricted"
-_UNRESTRICTED = "unrestricted"
-_DISABLED = "disabled"
-_EXTERNAL = "external"
-_ENABLED = "enabled"
 _READ = "read"
 _WRITE = "write"
 _DENY = "deny"
-_STRACE_MISSING = "trusted_strace_unavailable"
-_AUDIT_GAP = "correlated_kernel_audit_not_collected"
-_HELPER_GAP = "fast_or_inaccessible_process_metadata_may_be_absent"
 _INVALID = "Sandbox diagnostic request refused."
 _REQUEST_KEYS = frozenset({"namespace", "owner_uid", "device", "inode", "claim"})
 _REQUEST_NAMESPACE: Final = "namespace"
@@ -141,22 +165,7 @@ _POLL_INTERVAL = 0.005
 _TRACE_PREFIX = "sandbox-numeric-trace-"
 _EXCEPTION_KEY = "exception_type"
 _ERRNO_KEY = "errno"
-_KNOWN_ERRORS = frozenset(
-    {
-        "EACCES",
-        "EPERM",
-        "EINVAL",
-        "ENOSYS",
-        "ENOENT",
-        "EIO",
-        "ENOSPC",
-        "EAGAIN",
-        "ENOMEM",
-        "EBADF",
-        "EFAULT",
-        "EOPNOTSUPP",
-    }
-)
+_KNOWN_ERRORS = frozenset(NativeErrno)
 
 
 class TraceRequest(TypedDict):
@@ -250,8 +259,8 @@ class SyscallFacts:
     """Numeric raw tracing supplies outcomes without argument or output bodies."""
 
     pid: int | None
-    syscall: str
-    errno: str | None
+    syscall: NativeSyscall
+    errno: NativeErrno | None
     failed: bool
     occurrences: int
 
@@ -267,7 +276,7 @@ class TraceFacts:
     strace_sha256: str | None = None
     processes: list[ProcessFacts] = field(default_factory=list)
     syscalls: list[SyscallFacts] = field(default_factory=list)
-    gaps: list[str] = field(default_factory=lambda: [_AUDIT_GAP, _HELPER_GAP])
+    gaps: list[DiagnosticGap] = field(default_factory=lambda: [DiagnosticGap.AUDIT, DiagnosticGap.PROCESS])
 
 
 def _hash(content: bytes) -> str:
@@ -345,7 +354,7 @@ def _policy(path: Path) -> PolicyFacts | None:
         if not isinstance(payload, dict):
             return None
         enforcement = payload.get(_POLICY_TYPE)
-        if enforcement not in {_MANAGED, _DISABLED, _EXTERNAL}:
+        if enforcement not in frozenset(Enforcement):
             return None
         network = payload.get(_NETWORK)
         filesystem = payload.get(_FILESYSTEM)
@@ -357,8 +366,8 @@ def _policy(path: Path) -> PolicyFacts | None:
         return PolicyFacts(
             _hash(content),
             Enforcement(enforcement),
-            NetworkPolicy(network) if network in {_RESTRICTED, _ENABLED} else None,
-            FileSystemPolicy(kind) if kind in {_RESTRICTED, _UNRESTRICTED} else None,
+            NetworkPolicy(network) if network in frozenset(NetworkPolicy) else None,
+            FileSystemPolicy(kind) if kind in frozenset(FileSystemPolicy) else None,
             modes.count(_READ),
             modes.count(_WRITE),
             modes.count(_DENY),
@@ -512,13 +521,13 @@ _CHILDREN = "children"
 
 def _trace_outcomes(content: bytes) -> list[SyscallFacts]:
     """Ignore everything except allowlisted syscall names and canonical errno dispositions."""
-    counts: dict[tuple[int | None, str, str | None, bool], int] = {}
+    counts: dict[tuple[int | None, NativeSyscall, NativeErrno | None, bool], int] = {}
     for line in content.decode(_UTF8, errors=_DECODE_ERRORS).splitlines():
         match = _SYSCALL_RESULT.match(line.strip())
         if match is None or match[2] not in _SYSCALLS:
             continue
-        errno = match[4] if match[4] in _KNOWN_ERRORS else None
-        key = (int(match[1]) if match[1] else None, match[2], errno, match[3].startswith(_MINUS))
+        errno = NativeErrno(match[4]) if match[4] in _KNOWN_ERRORS else None
+        key = (int(match[1]) if match[1] else None, NativeSyscall(match[2]), errno, match[3].startswith(_MINUS))
         counts[key] = counts.get(key, 0) + 1
     return [
         SyscallFacts(pid, name, error, failed, count)
@@ -537,7 +546,7 @@ def trace_probe() -> TraceFacts:
     """Trace one fixed sandbox command as its actual UID; retain no raw output or arguments."""
     namespace, _ = _request()
     if not _STRACE.exists():
-        return TraceFacts(gaps=[_STRACE_MISSING, _AUDIT_GAP, _HELPER_GAP])
+        return TraceFacts(gaps=[DiagnosticGap.STRACE, DiagnosticGap.AUDIT, DiagnosticGap.PROCESS])
     metadata = _STRACE.stat()
     if metadata.st_uid != 0 or metadata.st_mode & 0o022 or not stat.S_ISREG(metadata.st_mode):
         raise ValueError(_INVALID)

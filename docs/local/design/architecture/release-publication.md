@@ -113,7 +113,9 @@ ancestry. Runtime paths and private layouts travel explicitly to both adapters.
 
 Before credential restoration or an auth-use checkpoint, a separate Python CI
 preflight runs the pinned Codex native sandbox with the same named permission
-profile, managed requirements and `/bin/true` under the dedicated UID. It first
+profile and managed requirements under the dedicated UID. The fixed,
+credential-free probe command is owned by `SANDBOX_ARGUMENTS` in
+`tools/release/inspector_sandbox.py`. It first
 runs without tracing; a failure permits at most one narrow diagnostic trace.
 The retained, typed evidence contains only allowlisted platform/process facts,
 observed executable identities, native syscall outcomes and output hashes.

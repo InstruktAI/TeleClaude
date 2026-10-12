@@ -10,6 +10,7 @@ import platform
 import re
 import subprocess
 import sys
+from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
@@ -23,7 +24,14 @@ from tools.release.inspector_bootstrap import (
     load_bootstrap,
     verify_provider_paths,
 )
-from tools.release.inspector_sandbox import SANDBOX_ARGUMENTS, SNAPSHOT_OPTION, TRACE_OPTION, ProcessFacts, TraceFacts
+from tools.release.inspector_sandbox import (
+    SANDBOX_ARGUMENTS,
+    SNAPSHOT_OPTION,
+    TRACE_OPTION,
+    DiagnosticGap,
+    ProcessFacts,
+    TraceFacts,
+)
 from tools.release.isolated_inspection import (
     InspectorBoundaryError,
     InspectorRole,
@@ -62,16 +70,8 @@ _EMPTY = b""
 _TIMEOUT = 60
 _MAX_METADATA = 1024 * 1024
 _METADATA_FAILED = "Sandbox metadata is unavailable or invalid."
-_UID_GAP = "provider_uid_metadata_unavailable"
-_POLICY_GAP = "effective_native_policy_not_observed"
-_HELPER_GAP = "selected_helper_identity_or_version_not_observed"
-_OWNER_GAP = "namespace_owner_uid_not_collected"
-_PLATFORM_GAP = "platform_metadata_incomplete"
 _PROBE_FAILURE = "native_sandbox_initialization"
 _LSM_PATH = Path("/sys/kernel/security/lsm")
-_LSMS = frozenset(
-    {"capability", "landlock", "lockdown", "yama", "apparmor", "bpf", "selinux", "smack", "tomoyo", "integrity"}
-)
 _SYSCTLS = {
     "apparmor_restrict_unprivileged_userns": Path("/proc/sys/kernel/apparmor_restrict_unprivileged_userns"),
     "unprivileged_userns_clone": Path("/proc/sys/kernel/unprivileged_userns_clone"),
@@ -81,7 +81,6 @@ _SAFE_VERSION = re.compile(r"[A-Za-z0-9_.+\-]{1,128}")
 _COMMA = ","
 _IMAGE_OS = "ImageOS"
 _IMAGE_VERSION = "ImageVersion"
-_RUNNER_IMAGES = frozenset({"ubuntu20", "ubuntu22", "ubuntu24"})
 _RUNNER_VERSION = re.compile(r"[0-9]{8}\.[0-9]{1,4}\.[0-9]{1,4}")
 _REQUEST_NAMESPACE = "namespace"
 _REQUEST_UID = "owner_uid"
@@ -94,6 +93,33 @@ _KILL = "/bin/kill"
 _KILL_SIGNAL = "-KILL"
 _OPTION_END = "--"
 _GROUP_PREFIX = "-"
+
+
+class LsmIdentity(StrEnum):
+    """Public kernel LSM identities recognized by the diagnostic collector."""
+
+    CAPABILITY = "capability"
+    LANDLOCK = "landlock"
+    LOCKDOWN = "lockdown"
+    YAMA = "yama"
+    APPARMOR = "apparmor"
+    BPF = "bpf"
+    SELINUX = "selinux"
+    SMACK = "smack"
+    TOMOYO = "tomoyo"
+    INTEGRITY = "integrity"
+
+
+class RunnerImage(StrEnum):
+    """Fixed public hosted image identities, excluding arbitrary environment text."""
+
+    UBUNTU20 = "ubuntu20"
+    UBUNTU22 = "ubuntu22"
+    UBUNTU24 = "ubuntu24"
+
+
+_LSMS = frozenset(LsmIdentity)
+_RUNNER_IMAGES = frozenset(RunnerImage)
 
 
 class ProbeResult(BaseModel):
@@ -115,9 +141,9 @@ class SandboxDiagnostic(BaseModel):
     pinned_version: str | None = None
     kernel_release: str | None = None
     architecture: str | None = None
-    runner_image: str | None = None
+    runner_image: RunnerImage | None = None
     runner_image_version: str | None = None
-    active_lsms: list[str] = []
+    active_lsms: list[LsmIdentity] = []
     namespace_sysctls: dict[str, int] = {}
     provider_context: ProcessFacts | None = None
     control: ProbeResult | None = None
@@ -125,7 +151,7 @@ class SandboxDiagnostic(BaseModel):
     exception_type: str | None = None
     errno: int | None = None
     native_status: int | None = None
-    gaps: list[str] = [_OWNER_GAP, _POLICY_GAP, _HELPER_GAP]
+    gaps: list[DiagnosticGap] = [DiagnosticGap.OWNER, DiagnosticGap.POLICY, DiagnosticGap.HELPER]
 
 
 def _hash(content: bytes) -> str:
@@ -141,19 +167,21 @@ def _safe_version(value: str) -> str | None:
 def _platform() -> SandboxDiagnostic:
     """Read public kernel and fixed sysctl facts; inaccessible facts remain missing."""
     sysctls: dict[str, int] = {}
-    lsms: list[str] = []
-    gaps = [_OWNER_GAP, _POLICY_GAP, _HELPER_GAP]
+    lsms: list[LsmIdentity] = []
+    gaps = [DiagnosticGap.OWNER, DiagnosticGap.POLICY, DiagnosticGap.HELPER]
     for key, path in _SYSCTLS.items():
         try:
             text = path.read_text(encoding=_UTF8).strip()
             if text.isdecimal() and len(text) <= 20:
                 sysctls[key] = int(text)
         except OSError:
-            gaps.append(_PLATFORM_GAP)
+            gaps.append(DiagnosticGap.PLATFORM)
     try:
-        lsms = [value for value in _LSM_PATH.read_text(encoding=_UTF8).strip().split(_COMMA) if value in _LSMS]
+        lsms = [
+            LsmIdentity(value) for value in _LSM_PATH.read_text(encoding=_UTF8).strip().split(_COMMA) if value in _LSMS
+        ]
     except OSError:
-        gaps.append(_PLATFORM_GAP)
+        gaps.append(DiagnosticGap.PLATFORM)
     return SandboxDiagnostic(
         kernel_release=_safe_version(platform.release()),
         architecture=_safe_version(platform.machine()),
@@ -165,10 +193,10 @@ def _platform() -> SandboxDiagnostic:
     )
 
 
-def _runner_image() -> str | None:
+def _runner_image() -> RunnerImage | None:
     """Recognize only fixed public runner image names, never arbitrary environment text."""
     value = os.environ.get(_IMAGE_OS)
-    return value if value in _RUNNER_IMAGES else None
+    return RunnerImage(value) if value in _RUNNER_IMAGES else None
 
 
 def _runner_version() -> str | None:
@@ -257,7 +285,7 @@ def preflight(receipt: Path, output_directory: Path) -> bool:
                 update={_CONTEXT: TypeAdapter(ProcessFacts).validate_json(context.stdout, strict=True)}
             )
         else:
-            diagnostic = diagnostic.model_copy(update={_GAPS: diagnostic.gaps + [_UID_GAP]})
+            diagnostic = diagnostic.model_copy(update={_GAPS: diagnostic.gaps + [DiagnosticGap.UID]})
         control = run_isolated_process(
             InspectorRole.CODEX,
             bootstrap.executable(InspectorRole.CODEX),
