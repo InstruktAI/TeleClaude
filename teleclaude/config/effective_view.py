@@ -207,7 +207,7 @@ def _typed_field(
 ) -> object:
     for model in models:
         if isinstance(key, str) and key in model.model_fields:
-            return _typed_scalars(value, model.model_fields[key].annotation, path)
+            return _typed_scalars(value, model.model_fields[key].rebuild_annotation(), path)
     return _typed_scalars(value, object, path)
 
 

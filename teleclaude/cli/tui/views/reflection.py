@@ -24,6 +24,7 @@ from teleclaude.config.tiers import (
 from teleclaude.config.validation import required_field_names
 
 _UNSET_VALUE: Final = ""
+_KEY_SEPARATOR: Final = "."
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ class ReflectedField:
     requiring_services: tuple[str, ...] = ()
     required: bool = False
     sensitive: bool = False  # The schema declares the field SENSITIVE; its value is masked when shown
+    declared_type: Any = None  # The field's full declared annotation, conversion rules included
 
 
 def resolve_env_placeholders(
@@ -84,7 +86,11 @@ def resolve_env_placeholders(
             field.value = (
                 _UNSET_VALUE
                 if resolved is None
-                else typed_value(resolved, field.field_type, tuple(field.key.split(".")))
+                else typed_value(
+                    resolved,
+                    field.declared_type if field.declared_type is not None else field.field_type,
+                    tuple(field.key.split(_KEY_SEPARATOR)),
+                )
             )
 
 
@@ -155,6 +161,7 @@ def _reflect_field(
     description: str | None,
     effective: Tier,
     sensitive: bool = False,
+    declared: Any = None,
 ) -> list[ReflectedField]:
     """Recurse into a nested struct/dict/list, or emit a single leaf field.
 
@@ -209,6 +216,7 @@ def _reflect_field(
             owning_source=owning_source,
             required=full_key.rsplit(".", 1)[-1] in required_field_names(full_key.split(".", 1)[0]),
             sensitive=sensitive,
+            declared_type=declared,
         )
     ]
 
@@ -232,6 +240,7 @@ def _reflect_type(
                     field_info.description or "",
                     effective,
                     field_is_sensitive(field_info),
+                    field_info.rebuild_annotation(),
                 )
             )
     return fields
@@ -269,6 +278,7 @@ def reflect_schema(
                     field_info.description or "",
                     effective,
                     field_is_sensitive(field_info),
+                    field_info.rebuild_annotation(),
                 )
             )
 
