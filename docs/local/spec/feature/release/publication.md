@@ -36,6 +36,20 @@ The workflow makes each stage's result and its evidence address visible.
 
 ### Release decision
 
+<!-- planned-change:release-explicit-version-ai-summary -->
+
+An explicit version on a manually dispatched release or dry-run selects the
+operator-decided path. It accepts a stable semantic version newer than the
+completed baseline, with an unused target tag. It captures remote main after
+serialization, and records the supplied version and workflow request as the
+release decision. This path runs without an inspector or AI summary. It is
+repeatable for subsequent releases and can establish an initial baseline when
+no completed release exists (`general/policy/human-contract`). An explicit
+version can release the captured source even when it has no new functional
+changes; the version decision is the operator's.
+
+<!-- change:release-explicit-version-ai-summary -->
+
 An explicit version on a manually dispatched release or dry-run selects the
 operator-decided path. It accepts a stable semantic version newer than the
 completed baseline, with an unused target tag. It captures remote main after
@@ -47,6 +61,8 @@ valid summary is available. It is repeatable for subsequent releases and can est
 no completed release exists (`general/policy/human-contract`). An explicit
 version can release the captured source even when it has no new functional
 changes; the version decision is the operator's.
+
+<!-- /planned-change:release-explicit-version-ai-summary -->
 
 A request without an explicit version selects automatic assessment. Its
 no-change and no-release outcomes finish successfully before candidate creation.
@@ -62,6 +78,8 @@ provider is attempted once. An execution error, invalid report, or incomplete
 assessment is an unsuccessful inspection. If neither provider returns a valid,
 complete report, the attempt ends without publication.
 
+<!-- planned:release-explicit-version-ai-summary -->
+
 Explicit-version attempts use the same provider order and isolation to request
 an optional, evidence-grounded release summary. This task does not select or
 override the supplied version and does not claim a completed automatic version
@@ -70,6 +88,20 @@ attempt remains visible but does not prevent the explicit-version path from
 using deterministic notes. A first release can summarize its captured history
 without requiring a previous release baseline.
 
+<!-- /planned:release-explicit-version-ai-summary -->
+
+<!-- planned-change:release-explicit-version-ai-summary -->
+
+Source, baseline and bounded evidence are frozen once before inspection. Codex
+and its fallback run on separate fresh GitHub-hosted Ubuntu jobs, each installing
+only its pinned native client and owning its cleanup. A primary job failure or
+missing artifact permits independent fallback without claiming a client exit or
+credential settlement that was not observed. Explicit-version and no-change
+attempts bypass both providers. Eligible Codex success requires a complete report
+and confirmed durable post-run auth; runner loss leaves auth uncertainty intact.
+
+<!-- change:release-explicit-version-ai-summary -->
+
 Source, baseline and bounded evidence are frozen once before inspection. Codex
 and its fallback run on separate fresh GitHub-hosted Ubuntu jobs, each installing
 only its pinned native client and owning its cleanup. A primary job failure or
@@ -77,6 +109,8 @@ missing artifact permits independent fallback without claiming a client exit or
 credential settlement that was not observed. Automatic no-change attempts
 bypass both providers. Eligible Codex success requires a complete report
 and confirmed durable post-run auth; runner loss leaves auth uncertainty intact.
+
+<!-- /planned-change:release-explicit-version-ai-summary -->
 
 Native clients run under the runner identity with explicit clean environments
 and private auth/controller state outside immutable evidence. Native filesystem,
@@ -157,6 +191,18 @@ abbreviated SHA, its subject and a comparison link when a baseline exists.
 Conventional-commit parsing, category filters and summary generation do not
 remove commits from that list (`general/principle/grounding`).
 
+<!-- planned-change:release-explicit-version-ai-summary -->
+
+Automatic releases add the selected inspector's concise consumer-facing summary.
+Manual releases contain the deterministic commit notes without an AI summary.
+The same generated section is committed into the candidate's cumulative
+changelog before verification and copied into its GitHub release body. Note
+rendering failures and output limits are visible failures; completeness is never
+represented by silently dropping commits. The workflow and git-cliff
+configuration own the pinned implementation and rendering template.
+
+<!-- change:release-explicit-version-ai-summary -->
+
 Automatic releases add the selected inspector's concise consumer-facing summary.
 Explicit-version releases also add an evidence-grounded AI summary when one is
 available. If neither provider supplies a valid summary, their deterministic
@@ -167,6 +213,8 @@ changelog before verification and copied into its GitHub release body. Note
 rendering failures and output limits are visible failures; completeness is never
 represented by silently dropping commits. The workflow and git-cliff
 configuration own the pinned implementation and rendering template.
+
+<!-- /planned-change:release-explicit-version-ai-summary -->
 
 ### Candidate and proof
 
@@ -304,6 +352,19 @@ And automatic activation requires retained evidence of its successful full dry-r
 
 #### UC-RP8: An explicit version supplies a repeatable manual release decision
 
+<!-- planned-change:release-explicit-version-ai-summary -->
+
+```gherkin
+Given a release operator supplies a valid newer semantic version for remote main
+When the manually dispatched attempt captures its source
+Then no AI inspection or AI summary is requested
+And the supplied version is bound to the final candidate
+And publication requires successful lint and full installer proof of that candidate
+And a later explicit version can use the same path for a subsequent release
+```
+
+<!-- change:release-explicit-version-ai-summary -->
+
 ```gherkin
 Given a release operator supplies a valid newer semantic version for remote main
 When the manually dispatched attempt captures its source
@@ -315,7 +376,22 @@ And publication requires successful lint and full installer proof of that candid
 And a later explicit version can use the same path for a subsequent release
 ```
 
+<!-- /planned-change:release-explicit-version-ai-summary -->
+
 #### UC-RP9: Both release paths retain the complete commit list
+
+<!-- planned-change:release-explicit-version-ai-summary -->
+
+```gherkin
+Given a release operator has a captured source and its completed baseline
+When notes are generated for an automatic or manually versioned candidate
+Then every commit in that interval has its subject and commit link in the notes
+And automatic notes also contain the selected inspector summary
+And manual notes contain no AI summary
+And the proved candidate changelog and published release use the same section
+```
+
+<!-- change:release-explicit-version-ai-summary -->
 
 ```gherkin
 Given a release operator has a captured source and its completed baseline
@@ -327,6 +403,10 @@ And unavailable AI summary does not omit commits from manual notes
 And the proved candidate changelog and published release use the same section
 ```
 
+<!-- /planned-change:release-explicit-version-ai-summary -->
+
+<!-- planned:release-explicit-version-ai-summary -->
+
 #### UC-RP10: Explicit-version publication remains available without AI
 
 ```gherkin
@@ -337,6 +417,8 @@ Then publication can use the supplied version and complete deterministic notes
 And unsuccessful summary attempts remain visible
 And no automatic version assessment is fabricated
 ```
+
+<!-- /planned:release-explicit-version-ai-summary -->
 
 ### Cross-context references
 
