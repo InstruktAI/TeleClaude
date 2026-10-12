@@ -221,6 +221,7 @@ async def _deliver_media(session: Session, phone_number: str, message_id: str, m
             message_id=message_id or None,
             actor_id=_ACTOR_ID_TEMPLATE.format(phone_number=phone_number),
             actor_name=phone_number,
+            source_message_id=message_id or None,
         )
         await _dispatch_whatsapp_command(
             session=session,
@@ -237,6 +238,7 @@ async def _deliver_media(session: Session, phone_number: str, message_id: str, m
         file_size=local_path.stat().st_size,
         origin=InputOrigin.WHATSAPP.value,
         actor_id=_ACTOR_ID_TEMPLATE.format(phone_number=phone_number),
+        source_message_id=message_id or None,
     )
     await _dispatch_whatsapp_command(
         session=session,

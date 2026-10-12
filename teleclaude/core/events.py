@@ -423,17 +423,6 @@ class MessageEventContext:
 
 
 @dataclass(frozen=True)
-class FileEventContext:
-    """Context for file upload events."""
-
-    session_id: str
-    file_path: str = ""
-    filename: str = ""
-    caption: str | None = None
-    file_size: int = 0
-
-
-@dataclass(frozen=True)
 class VoiceEventContext:
     """Context for voice message events."""
 
@@ -448,6 +437,7 @@ class VoiceEventContext:
     actor_avatar_url: str | None = None
     voice_transcription_id: int | None = None
     notice_message_id: str | None = None
+    source_message_id: str | None = None
 
 
 @dataclass(frozen=True)

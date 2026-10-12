@@ -15,6 +15,9 @@ by what the person sent and nothing else:
   when it was closed;
 - a conversation that carries no desk entry (Discord) never enters a desk: a
   desk identifier there is a miss, and a desk session is not its session;
+- a turn on a designated channel (a shared channel the adapter provisioned for
+  one registered person) enters that person's assistant only from that person,
+  by the same rules as any registered person's message without an identifier;
 - every miss gets the one neutral reply, at most once per cooldown window.
 
 On a per-computer adapter (Telegram) the session is the binding and this
@@ -33,6 +36,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
 from teleclaude.core.agent_dispatch import AgentDispatchFailure
+from teleclaude.core.conversation_close import CloseOutcome
 from teleclaude.core.db import ConversationBinding
 from teleclaude.core.endpoints import (
     DeskIdentifier,
@@ -42,11 +46,20 @@ from teleclaude.core.endpoints import (
     local_desk_endpoint,
 )
 from teleclaude.core.inbound.conversation_env import ConversationEnvironment, default_conversation_environment
+from teleclaude.core.inbound.designated import AdoptionVerdict, assess_adoption
 from teleclaude.core.inbound.fleet import FleetView
-from teleclaude.core.inbound.models import BindOutcome, ConversationTurn, EntryGesture, TurnModality, is_superseded
+from teleclaude.core.inbound.models import (
+    BindOutcome,
+    ConversationRef,
+    ConversationTurn,
+    EntryGesture,
+    TurnModality,
+    is_superseded,
+)
 from teleclaude.core.models import (
     ENDPOINT_SECTION,
     AgentDispatchMode,
+    EndpointKind,
     EndpointStamp,
     EndpointStampField,
     Session,
@@ -84,6 +97,11 @@ class ConversationDecision(StrEnum):
     ENTRY_NOT_HOSTED_HERE = "conversation_entry_not_hosted_here"
     ENTRY_REFUSED = "conversation_entry_refused"
     ENTRY_DESK_NOT_CARRIED = "conversation_entry_desk_not_carried"
+    DESIGNATION_REFUSED = "conversation_designation_refused"
+    ENDPOINT_ADOPTED = "conversation_endpoint_adopted"
+    ADOPTION_UNRESOLVED = "conversation_adoption_unresolved"
+    COMPETITOR_RETIRED = "conversation_competitor_retired"
+    COMPETITOR_DEFERRED = "conversation_competitor_deferred"
     TURN_DELIVERED = "conversation_turn_delivered"
     TURN_REVIVED = "conversation_turn_revived"
     TURN_OWN_ASSISTANT = "conversation_turn_own_assistant"
@@ -116,8 +134,12 @@ class _Latest:
     endpoint: EndpointStamp | None
 
 
+def _log_conversation(decision: ConversationDecision, conversation: ConversationRef, **fields: object) -> None:
+    logger.info(decision, origin=conversation.origin.value, conversation=conversation.hashed_key, **fields)
+
+
 def _log(decision: ConversationDecision, turn: ConversationTurn, **fields: object) -> None:
-    logger.info(decision, origin=turn.conversation.origin.value, conversation=turn.conversation.hashed_key, **fields)
+    _log_conversation(decision, turn.conversation, **fields)
 
 
 def _lookup_value(key: str) -> int | str:
@@ -270,16 +292,52 @@ def _is_continuable_record(session: Session) -> bool:
     return session.deleted_at is None and not (session.system_role or session.initiator_session_id or session.job)
 
 
+def _carries_no_endpoint(conversation: ConversationRef, session: Session) -> bool:
+    """Whether a session is a continuable record of the conversation that was created without an endpoint."""
+    return (
+        EndpointStamp.from_session(session) is None and _is_continuable_record(session) and conversation.admits(session)
+    )
+
+
+def _adoptable_for(
+    conversation: ConversationRef, env: ConversationEnvironment, session: Session, person_slug: str
+) -> bool:
+    """Whether a session without an endpoint may be adopted as ``person_slug``'s assistant conversation."""
+    return (
+        _carries_no_endpoint(conversation, session)
+        and assess_adoption(session, person_slug, env) is AdoptionVerdict.ADOPTABLE
+    )
+
+
+def _report_unresolved_adoption(
+    conversation: ConversationRef, env: ConversationEnvironment, session: Session, person_slug: str
+) -> None:
+    """Report a retained record of the conversation whose recorded facts disagree with the person's assistant.
+
+    The record is left as it is; no endpoint or participant is inferred for it.
+    """
+    verdict = assess_adoption(session, person_slug, env)
+    if verdict is not AdoptionVerdict.ADOPTABLE:
+        _log_conversation(
+            ConversationDecision.ADOPTION_UNRESOLVED, conversation, session_id=session.session_id, fact=verdict.value
+        )
+
+
 def _can_be_conversation_session(turn: ConversationTurn, session: Session, env: ConversationEnvironment) -> bool:
     """Whether a session of the conversation's key could be its session on this computer.
 
     The adapter admits it and no later entry took the conversation from it; it is
     a continuable record, open or closed and carrying the endpoint it was created at, and it is
-    not a desk this computer does not host.
+    not a desk this computer does not host. A record created without an endpoint is one too
+    while it is open, or when the registered sender may adopt it as their assistant conversation.
     """
     if not _is_continuable_record(session) or not turn.conversation.admits(session) or is_superseded(session):
         return False
     stamp = EndpointStamp.from_session(session)
+    if stamp is None:
+        person_slug = _registered_person(turn, env)
+        if person_slug is not None and _adoptable_for(turn.conversation, env, session, person_slug):
+            return True
     return not _hidden_on_this_computer(stamp, env) and (stamp is not None or _is_open(session))
 
 
@@ -297,35 +355,41 @@ async def _latest_per_computer(turn: ConversationTurn, env: ConversationEnvironm
         _lookup_value(conversation.key),
         include_closed=True,
     )
+    person_slug = _registered_person(turn, env)
     for session in sessions:
         if _can_be_conversation_session(turn, session, env):
             return _Latest(session, EndpointStamp.from_session(session))
+        if person_slug is not None and _carries_no_endpoint(conversation, session):
+            _report_unresolved_adoption(conversation, env, session, person_slug)
     return None
 
 
-async def _latest_shared(turn: ConversationTurn, env: ConversationEnvironment) -> _Latest | None:
+async def _latest_shared(conversation: ConversationRef, env: ConversationEnvironment) -> _Latest | None:
     """The session the master's record binds the conversation to; a binding whose session is gone is dropped."""
-    conversation = turn.conversation
     binding = await env.db.get_conversation_binding(conversation.origin.value, conversation.key_field, conversation.key)
     if binding is None:
         return None
     session = await env.db.get_session(binding.session_id)
     if session is None or session.deleted_at is not None:
         await env.db.delete_conversation_binding(conversation.origin.value, conversation.key_field, conversation.key)
-        _log(ConversationDecision.BINDING_DROPPED, turn, session_id=binding.session_id)
+        _log_conversation(ConversationDecision.BINDING_DROPPED, conversation, session_id=binding.session_id)
         return None
     return _Latest(session, binding.endpoint)
 
 
 async def _latest(turn: ConversationTurn, env: ConversationEnvironment) -> _Latest | None:
     if turn.conversation.reaches_every_computer:
-        return await _latest_shared(turn, env)
+        return await _latest_shared(turn.conversation, env)
     return await _latest_per_computer(turn, env)
 
 
-async def _newest_at(turn: ConversationTurn, env: ConversationEnvironment, endpoint: Endpoint) -> Session | None:
-    """The conversation's newest session at ``endpoint``, closed ones included."""
-    conversation = turn.conversation
+async def _newest_at(conversation: ConversationRef, env: ConversationEnvironment, endpoint: Endpoint) -> Session | None:
+    """The conversation's newest session at ``endpoint``, closed ones included.
+
+    A person's assistant endpoint is also reached by a record created without an endpoint that
+    the person may adopt. Both kinds compete on creation time alone, so carrying a stamp never
+    outranks being newer.
+    """
     wanted = endpoint.to_stamp()
     sessions = await env.db.get_sessions_by_origin_metadata(
         conversation.origin.value,
@@ -335,13 +399,16 @@ async def _newest_at(turn: ConversationTurn, env: ConversationEnvironment, endpo
     )
     for session in sessions:
         stamp = EndpointStamp.from_session(session)
-        if (
-            stamp is not None
-            and _is_continuable_record(session)
-            and conversation.admits(session)
-            and _names_same_endpoint(stamp, wanted)
-        ):
+        if stamp is not None:
+            if _is_continuable_record(session) and conversation.admits(session) and _names_same_endpoint(stamp, wanted):
+                return session
+            continue
+        if wanted.kind is not EndpointKind.ASSISTANT or wanted.person is None:
+            continue
+        if _adoptable_for(conversation, env, session, wanted.person):
             return session
+        if _carries_no_endpoint(conversation, session):
+            _report_unresolved_adoption(conversation, env, session, wanted.person)
     return None
 
 
@@ -355,10 +422,56 @@ def _names_same_endpoint(stamp: EndpointStamp, wanted: EndpointStamp) -> bool:
     )
 
 
-async def _supersede(turn: ConversationTurn, env: ConversationEnvironment, session_id: str) -> None:
+async def _supersede(conversation: ConversationRef, env: ConversationEnvironment, session_id: str) -> None:
     """Take the conversation away from an earlier session; the session itself keeps running."""
     await env.db.update_origin_metadata(session_id, ENDPOINT_SECTION, {EndpointStampField.SUPERSEDED_AT: env.now_iso()})
-    _log(ConversationDecision.ENTRY_SUPERSEDED, turn, session_id=session_id)
+    _log_conversation(ConversationDecision.ENTRY_SUPERSEDED, conversation, session_id=session_id)
+
+
+async def _record_endpoint(
+    conversation: ConversationRef, env: ConversationEnvironment, endpoint: Endpoint, session: Session
+) -> Session:
+    """Record ``endpoint`` on a retained session created without one; its identity and lineage are untouched.
+
+    Adoption requests no compaction, close or extraction: the session becomes the endpoint's
+    conversation and nothing else about it changes.
+    """
+    if EndpointStamp.from_session(session) is not None:
+        return session
+    await env.db.update_origin_metadata(session.session_id, ENDPOINT_SECTION, dict(endpoint.to_stamp().to_dict()))
+    _log_conversation(
+        ConversationDecision.ENDPOINT_ADOPTED, conversation, session_id=session.session_id, endpoint=endpoint.kind.value
+    )
+    return await env.db.get_session(session.session_id) or session
+
+
+async def _bind_shared(
+    conversation: ConversationRef,
+    env: ConversationEnvironment,
+    endpoint: Endpoint,
+    session_id: str,
+    *,
+    was_superseded: bool,
+) -> None:
+    """Record the master's binding of a shared conversation to a session and take it from the earlier one."""
+    if was_superseded:
+        await env.db.update_origin_metadata(session_id, ENDPOINT_SECTION, {EndpointStampField.SUPERSEDED_AT: None})
+    previous = await env.db.get_conversation_binding(
+        conversation.origin.value, conversation.key_field, conversation.key
+    )
+    await env.db.put_conversation_binding(
+        ConversationBinding(
+            origin=conversation.origin.value,
+            key_field=conversation.key_field,
+            conversation_key=conversation.key,
+            session_id=session_id,
+            endpoint=endpoint.to_stamp(),
+            entered_at=env.now_iso(),
+        )
+    )
+    _log_conversation(ConversationDecision.BINDING_RECORDED, conversation, session_id=session_id)
+    if previous is not None and previous.session_id != session_id:
+        await _supersede(conversation, env, previous.session_id)
 
 
 async def _adopt(
@@ -366,32 +479,17 @@ async def _adopt(
 ) -> None:
     """Make a session the conversation's session and take the conversation from the earlier one."""
     conversation = turn.conversation
+    if conversation.reaches_every_computer:
+        await _bind_shared(conversation, env, endpoint, session_id, was_superseded=was_superseded)
+        return
     if was_superseded:
         await env.db.update_origin_metadata(session_id, ENDPOINT_SECTION, {EndpointStampField.SUPERSEDED_AT: None})
-    if conversation.reaches_every_computer:
-        previous = await env.db.get_conversation_binding(
-            conversation.origin.value, conversation.key_field, conversation.key
-        )
-        await env.db.put_conversation_binding(
-            ConversationBinding(
-                origin=conversation.origin.value,
-                key_field=conversation.key_field,
-                conversation_key=conversation.key,
-                session_id=session_id,
-                endpoint=endpoint.to_stamp(),
-                entered_at=env.now_iso(),
-            )
-        )
-        _log(ConversationDecision.BINDING_RECORDED, turn, session_id=session_id)
-        if previous is not None and previous.session_id != session_id:
-            await _supersede(turn, env, previous.session_id)
-        return
     sessions = await env.db.get_sessions_by_origin_metadata(
         conversation.origin.value, conversation.key_field, _lookup_value(conversation.key), include_closed=True
     )
     for other in sessions:
         if other.session_id != session_id and _can_be_conversation_session(turn, other, env):
-            await _supersede(turn, env, other.session_id)
+            await _supersede(conversation, env, other.session_id)
 
 
 # --- endpoints a turn reaches ----------------------------------------------------------------
@@ -433,9 +531,10 @@ async def _reach(turn: ConversationTurn, env: ConversationEnvironment, endpoint:
     The reached session becomes the conversation's session; when it cannot be
     revived the conversation keeps what it had.
     """
-    existing = await _newest_at(turn, env, endpoint)
-    if existing is None:
+    found = await _newest_at(turn.conversation, env, endpoint)
+    if found is None:
         return await _start_at(turn, env, endpoint)
+    existing = await _record_endpoint(turn.conversation, env, endpoint, found)
     session = existing
     if _is_open(existing):
         _log(ConversationDecision.ENTRY_CONTINUED, turn, session_id=existing.session_id, endpoint=endpoint.kind.value)
@@ -477,6 +576,17 @@ async def _enter_by_invite(
     return outcome
 
 
+async def _adopt_retained(turn: ConversationTurn, env: ConversationEnvironment, session: Session) -> Session:
+    """Adopt the conversation's session as its registered sender's assistant when it may be, else leave it."""
+    person_slug = _registered_person(turn, env)
+    if person_slug is None or not _adoptable_for(turn.conversation, env, session, person_slug):
+        return session
+    endpoint = _own_assistant(env, person_slug)
+    adopted = await _record_endpoint(turn.conversation, env, endpoint, session)
+    await _adopt(turn, env, endpoint, adopted.session_id, was_superseded=False)
+    return adopted
+
+
 async def _ordinary_turn(turn: ConversationTurn, env: ConversationEnvironment) -> ConversationOutcome:
     """A turn without an identifier: the conversation's session, else a registered person's own assistant."""
     latest = await _latest(turn, env)
@@ -484,6 +594,8 @@ async def _ordinary_turn(turn: ConversationTurn, env: ConversationEnvironment) -
         latest = None
     if latest is not None:
         session = latest.session
+        if latest.endpoint is None:
+            session = await _adopt_retained(turn, env, session)
         if not _is_open(session):
             revived = await _revive(turn, env, session)
             if revived is None:
@@ -500,7 +612,21 @@ async def _ordinary_turn(turn: ConversationTurn, env: ConversationEnvironment) -
     return outcome
 
 
+async def _designated_turn(turn: ConversationTurn, env: ConversationEnvironment) -> ConversationOutcome:
+    """A turn on a designated channel: only the registered person the channel serves enters their assistant.
+
+    A sender who resolves to another person, to no registered person, or to a person without
+    an assistant gets the neutral reply, and no session is reached or created.
+    """
+    if _registered_person(turn, env) != turn.designated_person:
+        _log(ConversationDecision.DESIGNATION_REFUSED, turn)
+        return await _miss(turn, env)
+    return await _ordinary_turn(turn, env)
+
+
 async def _decide(turn: ConversationTurn, env: ConversationEnvironment, fleet: FleetView | None) -> ConversationOutcome:
+    if turn.designated_person is not None:
+        return await _designated_turn(turn, env)
     gesture = turn.gesture
     if gesture is EntryGesture.UNRESOLVABLE:
         return await _miss(turn, env)
@@ -524,10 +650,97 @@ async def _decide(turn: ConversationTurn, env: ConversationEnvironment, fleet: F
     return await _ordinary_turn(turn, env)
 
 
+# --- one owner per shared designated channel -----------------------------------------------------
+
+
+async def _retire_competitors(
+    conversation: ConversationRef, env: ConversationEnvironment, *, keep_session_id: str | None
+) -> None:
+    """Close this computer's open sessions of a shared designated channel other than the one that owns it.
+
+    A session closes once its accepted work has settled, through the lifecycle's own close; one
+    whose work has not settled stays open and is tried again at the channel's next use. Nothing
+    is deleted or merged: a retired record keeps its identity, transcript lineage and memory provenance.
+    """
+    sessions = await env.db.get_sessions_by_origin_metadata(
+        conversation.origin.value, conversation.key_field, _lookup_value(conversation.key)
+    )
+    for session in sessions:
+        if (
+            session.session_id == keep_session_id
+            or not _is_continuable_record(session)
+            or not conversation.admits(session)
+            or not _is_open(session)
+        ):
+            continue
+        admission = await env.retire_session(session.session_id)
+        retired = admission.outcome is CloseOutcome.CLOSED
+        _log_conversation(
+            ConversationDecision.COMPETITOR_RETIRED if retired else ConversationDecision.COMPETITOR_DEFERRED,
+            conversation,
+            session_id=session.session_id,
+            reason=admission.reason.value if admission.reason is not None else admission.outcome.value,
+        )
+
+
+async def _bound_session_id(conversation: ConversationRef, env: ConversationEnvironment) -> str | None:
+    binding = await env.db.get_conversation_binding(conversation.origin.value, conversation.key_field, conversation.key)
+    return binding.session_id if binding is not None else None
+
+
+async def _reconcile_binding(
+    conversation: ConversationRef, env: ConversationEnvironment, person_slug: str
+) -> str | None:
+    """Bind a shared designated channel to its newest eligible retained session; the bound session, if any.
+
+    An existing binding wins. Adoption only records the endpoint and the binding: it revives,
+    compacts and closes nothing, and it creates no session.
+    """
+    bound = await _latest_shared(conversation, env)
+    if bound is not None:
+        return bound.session.session_id
+    endpoint = _own_assistant(env, person_slug)
+    found = await _newest_at(conversation, env, endpoint)
+    if found is None:
+        return None
+    adopted = await _record_endpoint(conversation, env, endpoint, found)
+    await _bind_shared(conversation, env, endpoint, adopted.session_id, was_superseded=is_superseded(found))
+    return adopted.session_id
+
+
+async def reconcile_designated_conversation(
+    conversation: ConversationRef, person_slug: str, env: ConversationEnvironment | None = None
+) -> None:
+    """Make a shared designated channel's retained conversation one, with this computer's competitors retired.
+
+    On the routing master the channel's binding is settled first: an existing binding wins, else
+    the newest eligible retained session is adopted and bound. Every computer then retires its
+    own open sessions of the channel other than the bound one, so only the master's session
+    still answers there. A master with no bound session retires nothing, since no session owns
+    the channel yet. With no routing master nothing changes: the unavailable rule answers.
+    """
+    environment = env if env is not None else default_conversation_environment()
+    fleet = await environment.observe_fleet()
+    router = fleet.routing_master(conversation.origin)
+    if router is None:
+        return
+    async with environment.locks.hold(conversation.hashed_key):
+        if router.name != environment.host:
+            await _retire_competitors(conversation, environment, keep_session_id=None)
+            return
+        bound_session_id = await _reconcile_binding(conversation, environment, person_slug)
+        if bound_session_id is not None:
+            await _retire_competitors(conversation, environment, keep_session_id=bound_session_id)
+
+
 async def handle_conversation_turn(
     turn: ConversationTurn, env: ConversationEnvironment | None = None
 ) -> ConversationOutcome:
-    """Decide one inbound conversation turn: enter an endpoint, reach the latest session, or miss."""
+    """Decide one inbound conversation turn: enter an endpoint, reach the latest session, or miss.
+
+    On a shared designated channel every computer then retires its own competing sessions, so
+    the master's bound session is the only one that answers.
+    """
     environment = env if env is not None else default_conversation_environment()
     conversation = turn.conversation
     if not conversation.reaches_every_computer:
@@ -539,11 +752,19 @@ async def handle_conversation_turn(
         if fleet.unavailable_replier(conversation.origin) == environment.host:
             return await _unavailable(turn, environment)
         return ConversationOutcome.NOT_ROUTED_HERE
+    designated = turn.designated_person is not None
     if router.name != environment.host:
         logger.debug(ConversationDecision.TURN_NOT_MASTER, origin=conversation.origin.value, master=router.name)
+        if designated:
+            async with environment.locks.hold(conversation.hashed_key):
+                await _retire_competitors(conversation, environment, keep_session_id=None)
         return ConversationOutcome.NOT_ROUTED_HERE
     async with environment.locks.hold(conversation.hashed_key):
-        return await _decide(turn, environment, fleet)
+        outcome = await _decide(turn, environment, fleet)
+        bound_session_id = await _bound_session_id(conversation, environment) if designated else None
+        if bound_session_id is not None:
+            await _retire_competitors(conversation, environment, keep_session_id=bound_session_id)
+        return outcome
 
 
 __all__ = [
@@ -555,4 +776,5 @@ __all__ = [
     "ConversationDecision",
     "ConversationOutcome",
     "handle_conversation_turn",
+    "reconcile_designated_conversation",
 ]

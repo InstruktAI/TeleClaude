@@ -32,6 +32,7 @@ from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.delivery import Destination
+from teleclaude.core.file_handler import sanitize_filename
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.inbound import InboundSessionPolicy, resolve_binding_key, resolve_or_create_bound_session
 from teleclaude.core.models import (
@@ -46,8 +47,6 @@ from teleclaude.core.models import (
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.core.shutdown_drain import ShutdownRefusal
-from teleclaude.invite import scaffold_personal_workspace
-from teleclaude.slug import normalize_slug
 from teleclaude.types.commands import (
     CreateSessionCommand,
     HandleFileCommand,
@@ -80,6 +79,9 @@ _FAILED_AGENT_TEMPLATE = "Failed to start {agent_name}."
 _EMPTY_VALUE = ""
 _UNKNOWN_FORUM = "unknown"
 _NO_SESSION_PROJECT_EVENT = "discord_session_creation_no_project"
+_PART_IDENTITY_TEMPLATE = "{message_id}:{part_id}"
+# Each audio attachment of a message is downloaded to a file of its own while it awaits transcription.
+_VOICE_TEMP_FILE_TEMPLATE = "voice_{part}{ext}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,6 +192,17 @@ class InputHandlersMixin:
         output_dir.mkdir(parents=True, exist_ok=True)
         return filename, output_dir / filename, is_image
 
+    @staticmethod
+    def _attachment_part_identity(message: object, attachment: object, index: int) -> str | None:
+        """The provider identity of one attachment of a message: the message id completed by the attachment's own.
+
+        A message's parts are not duplicates of each other, and a redelivered message deduplicates per part.
+        """
+        message_id = str(getattr(message, "id", _NO_TEXT)).strip()
+        if not message_id:
+            return None
+        return _PART_IDENTITY_TEMPLATE.format(message_id=message_id, part_id=getattr(attachment, "id", None) or index)
+
     async def _process_attachment(
         self,
         session: Session,
@@ -197,6 +210,7 @@ class InputHandlersMixin:
         index: int,
         caption: str | None,
         actor_id: str | None,
+        source_message_id: str | None = None,
     ) -> None:
         """Save one Discord attachment and dispatch it through the command service."""
         filename, file_path, is_image = self._prepare_attachment_target(session, attachment, index)
@@ -211,6 +225,7 @@ class InputHandlersMixin:
                 caption=caption if index == 0 else None,
                 origin=InputOrigin.DISCORD.value,
                 actor_id=actor_id,
+                source_message_id=source_message_id,
             )
         )
 
@@ -236,21 +251,6 @@ class InputHandlersMixin:
         context: _SessionCreationContext,
     ) -> str | None:
         """Resolve the project path a new session is created in; ``None`` when the message names no project."""
-        if context.forum_type == "team":
-            user_id = str(getattr(getattr(message, "author", None), "id", ""))
-            identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
-
-            if identity.person_name:
-                person_slug = identity.person_slug or normalize_slug(identity.person_name)
-                return str(scaffold_personal_workspace(person_slug))
-            if context.project_path is None:
-                return None
-            # Ensure a deterministic workspace path exists for legacy team channels.
-            workspace_path = Path(context.project_path)
-            if not workspace_path.exists():
-                workspace_path.mkdir(parents=True, exist_ok=True)
-            return context.project_path
-
         forum_id, _ = self._extract_channel_ids(message)
         forum_project_path = self._resolve_project_from_forum(forum_id) if forum_id is not None else None
         return forum_project_path or context.project_path
@@ -289,7 +289,7 @@ class InputHandlersMixin:
     # =========================================================================
 
     async def _handle_voice_attachment(self, message: object, attachment: object) -> None:
-        """Download a voice/audio attachment and dispatch it for transcription."""
+        """Resolve the message's session through the legacy resolver, then dispatch the voice attachment."""
         recoverable_errors = self._discord_errors()
         try:
             session = await self._resolve_or_create_session(message)
@@ -298,8 +298,13 @@ class InputHandlersMixin:
             return
         if not session:
             return
+        await self._dispatch_voice_attachment(session, message, attachment)
 
+    async def _dispatch_voice_attachment(self, session: Session, message: object, attachment: object) -> None:
+        """Download a voice/audio attachment and dispatch it for transcription to ``session``."""
+        recoverable_errors = self._discord_errors()
         message_id = str(getattr(message, "id", ""))
+        part_identity = self._attachment_part_identity(message, attachment, 0)
 
         # Derive file extension from the attachment filename or default to .ogg
         filename = getattr(attachment, "filename", None) or "voice.ogg"
@@ -307,7 +312,9 @@ class InputHandlersMixin:
 
         temp_dir = Path(tempfile.gettempdir()) / "teleclaude_voice"
         temp_dir.mkdir(exist_ok=True)
-        temp_file_path = temp_dir / f"voice_{message_id}{ext}"
+        temp_file_path = temp_dir / _VOICE_TEMP_FILE_TEMPLATE.format(
+            part=sanitize_filename(part_identity or message_id), ext=ext
+        )
 
         try:
             save_fn = self._async_callable(getattr(attachment, "save", None), label="Discord attachment save")
@@ -346,6 +353,7 @@ class InputHandlersMixin:
                     str(getattr(getattr(message, "author", None), "id", "unknown")),
                 ),
                 actor_avatar_url=self._discord_actor_avatar_url(getattr(message, "author", None)),
+                source_message_id=part_identity,
             )
             registry = getattr(self, "task_registry", None)
             if registry is None:
@@ -359,7 +367,7 @@ class InputHandlersMixin:
             logger.error("Failed to process Discord voice message: %s", error_msg, exc_info=True)
 
     async def _handle_file_attachments(self, message: object, attachments: list[object]) -> None:
-        """Download file/image attachments and dispatch them for processing."""
+        """Resolve the message's session through the legacy resolver, then dispatch the file attachments."""
         recoverable_errors = self._discord_errors()
         try:
             session = await self._resolve_or_create_session(message)
@@ -368,6 +376,11 @@ class InputHandlersMixin:
             return
         if not session:
             return
+        await self._dispatch_file_attachments(session, message, attachments)
+
+    async def _dispatch_file_attachments(self, session: Session, message: object, attachments: list[object]) -> None:
+        """Download file/image attachments and dispatch them for processing to ``session``."""
+        recoverable_errors = self._discord_errors()
 
         # Get text caption for the first attachment only (to avoid duplication)
         caption = getattr(message, "content", None)
@@ -378,7 +391,14 @@ class InputHandlersMixin:
 
         for index, attachment in enumerate(attachments):
             try:
-                await self._process_attachment(session, attachment, index, caption, sender_key)
+                await self._process_attachment(
+                    session,
+                    attachment,
+                    index,
+                    caption,
+                    sender_key,
+                    self._attachment_part_identity(message, attachment, index),
+                )
             except ShutdownRefusal:
                 await self.answer_shutdown_refusal(session.session_id)  # type: ignore[attr-defined]
                 return

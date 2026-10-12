@@ -70,6 +70,8 @@ _VOICE_TEMP_DIR = "teleclaude_voice"
 _VOICE_FILE_TEMPLATE = "voice_{message_id}.ogg"
 _VOICE_TASK_TEMPLATE = "voice-{message_id}"
 _ACTOR_ID_TEMPLATE = "telegram:{user_id}"
+# A Telegram message id is unique only within its chat, so the sender's id completes the part identity.
+_SOURCE_PART_TEMPLATE = "{user_id}:{message_id}"
 _TASK_REGISTRY_ATTR = "task_registry"
 _NO_TASK_REGISTRY_ERROR = "Telegram voice handling requires task_registry"
 _VOICE_INPUT_FAILED_EVENT = "telegram_voice_input_failed"
@@ -305,6 +307,7 @@ class InputHandlersMixin:
                     actor_name=(
                         user.username or user.full_name or user.first_name or _ACTOR_ID_TEMPLATE.format(user_id=user.id)
                     ),
+                    source_message_id=_SOURCE_PART_TEMPLATE.format(user_id=user.id, message_id=message.message_id),
                 )
                 registry = getattr(self, _TASK_REGISTRY_ATTR, None)
                 if registry is None:
@@ -382,6 +385,7 @@ class InputHandlersMixin:
         incoming_file = file_obj
         incoming_type = file_type
         sender_key = resolve_binding_key(InputOrigin.TELEGRAM.value, {_USER_ID_FIELD: str(update.effective_user.id)})
+        source_part = _SOURCE_PART_TEMPLATE.format(user_id=update.effective_user.id, message_id=message.message_id)
 
         async def _deliver_file(session: Session) -> None:
             decision.bind_session(session)
@@ -415,6 +419,7 @@ class InputHandlersMixin:
                         file_size=incoming_file.file_size if incoming_file.file_size is not None else 0,
                         origin=InputOrigin.TELEGRAM.value,
                         actor_id=sender_key,
+                        source_message_id=source_part,
                     )
                 )
                 decision.accept()

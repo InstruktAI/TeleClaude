@@ -224,15 +224,11 @@ class ChannelOperationsMixin:
         """Determine forum type and project path for an incoming message.
 
         Returns (forum_type, project_path) where forum_type is one of:
-        'project', 'all_sessions', 'team', 'unknown'. An unknown forum names no
-        project path.
+        'project', 'all_sessions', 'unknown'. An unknown forum names no project path.
+        A Team assistant channel is a conversation channel and never reaches this resolver.
         """
         channel = getattr(message, "channel", None)
         channel_id = self._parse_optional_int(getattr(channel, "id", None))
-
-        # Team text channel — route to the person's folder
-        if channel_id is not None and channel_id in self._team_channel_map:
-            return "team", self._team_channel_map[channel_id]
 
         # Prefer explicit parent_id attribute, then parent.id, then channel.id
         parent_id = self._parse_optional_int(getattr(channel, "parent_id", None))

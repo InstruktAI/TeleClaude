@@ -10,6 +10,7 @@ Refactored to be adapter-agnostic utility that accepts generic callbacks.
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -24,7 +25,6 @@ from teleclaude.constants import (
     VOICE_TRANSCRIPTION_STATE_SUCCEEDED,
     VOICE_TRANSCRIPTION_TIMEOUT_S,
 )
-from teleclaude.core import tmux_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.identity import get_identity_resolver
@@ -37,6 +37,22 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 DEFAULT_TRANSCRIBE_LANGUAGE = "en"
+_DELIVERY_FAILED_NOTICE = "❌ Voice message could not be delivered: {reason}"
+
+
+@dataclass(frozen=True)
+class TranscribedVoice:
+    """A voice message's transcript, ready to be accepted as the conversation's input.
+
+    ``transcription_id`` names the durable transcription record, which stays recoverable until
+    the transcript has been accepted (``accept_voice``) or its delivery has failed (``fail_voice_delivery``).
+    The audio is kept until then, so a stop before settlement can re-transcribe the message.
+    """
+
+    text: str
+    transcription_id: int | None
+    audio_path: str
+
 
 # ============================================================================
 # LOW-LEVEL: STT Backend Chain
@@ -267,14 +283,22 @@ async def handle_voice(
     send_message: Callable[[str, str, MessageMetadata], Awaitable[str | None]],
     edit_message: Callable[[str, str, str, MessageMetadata], Awaitable[bool]] | None = None,
     delete_message: Callable[[str, str], Awaitable[None]] | None = None,
-) -> str | None:
-    """Handle voice message (adapter-agnostic utility).
+) -> TranscribedVoice | None:
+    """Transcribe a voice message for a session (adapter-agnostic utility).
+
+    The audio is transcribed whether or not the session's process is running: its transcript
+    enters the session through the durable inbound queue, which waits for the session to be
+    ready. The transcription record stays recoverable until the caller settles it with
+    ``accept_voice`` or ``fail_voice_delivery``.
 
     Args:
         session_id: Session ID
         audio_path: Path to downloaded audio file
         context: Typed voice event context
         send_message: Async function to send UI notices (session_id, message, metadata)
+
+    Returns:
+        The transcript awaiting acceptance, or ``None`` when the message could not be transcribed.
     """
     logger.info("=== DAEMON HANDLE_VOICE CALLED ===")
     logger.info("Session ID: %s", session_id)
@@ -286,24 +310,6 @@ async def handle_voice(
     session = await db.get_session(session_id)
     if not session:
         logger.warning("Session %s not found", session_id)
-        return None
-
-    # Check if a process is currently running (foreground command != shell)
-    is_process_running = await tmux_bridge.is_process_running(session.tmux_session_name)
-
-    # Reject voice messages if no active process to send them to
-    if not is_process_running:
-        await send_message(
-            session_id,
-            "🎤 Voice input requires an active process (e.g., claude, vim)",
-            MessageMetadata(parse_mode=None),
-        )
-        # Clean up temp file
-        try:
-            Path(audio_path).unlink()
-            logger.debug("Cleaned up voice file (rejected - no active process): %s", audio_path)
-        except Exception as e:
-            logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
         return None
 
     # Voice message accepted - transcribe and forward through message pipeline.
@@ -325,6 +331,7 @@ async def handle_voice(
             actor_avatar_url=str(actor_avatar_url) if actor_avatar_url is not None else None,
             duration=duration,
             language=DEFAULT_TRANSCRIBE_LANGUAGE,
+            source_message_id=_voice_context_str(context, "source_message_id"),
         )
     else:
         transcription = await db.get_voice_transcription(recovered_transcription_id)
@@ -381,14 +388,8 @@ async def handle_voice(
             )
         raise
 
-    # Clean up temp file
-    try:
-        Path(audio_path).unlink()
-        logger.debug("Cleaned up voice file: %s", audio_path)
-    except Exception as e:
-        logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
-
     if not text:
+        _remove_voice_audio(audio_path)
         failure_message = "❌ Transcription failed. Please try again."
         if error_reason:
             failure_message = f"❌ Transcription failed: {error_reason}"
@@ -410,10 +411,6 @@ async def handle_voice(
         )
         return None
 
-    if transcription.id is not None:
-        await db.update_voice_transcription_state(transcription.id, VOICE_TRANSCRIPTION_STATE_SUCCEEDED)
-        voice_state = VOICE_TRANSCRIPTION_STATE_SUCCEEDED
-
     # Resolve the existing placeholder with the transcribed text.
     transcription_metadata = MessageMetadata(
         parse_mode=None,
@@ -423,7 +420,7 @@ async def handle_voice(
     )
     if not _apply_transcription_reflection_metadata(transcription_metadata, session, context):
         logger.debug("Transcribed voice input for session %s without UI transcription display", session_id)
-        return text
+        return TranscribedVoice(text=text, transcription_id=transcription.id, audio_path=audio_path)
 
     await _resolve_voice_notice(
         session_id=session_id,
@@ -436,4 +433,39 @@ async def handle_voice(
     )
 
     logger.debug("Transcribed voice input for session %s: %s", session_id, text)
-    return text
+    return TranscribedVoice(text=text, transcription_id=transcription.id, audio_path=audio_path)
+
+
+def _remove_voice_audio(audio_path: str) -> None:
+    """Delete a voice message's temporary audio once nothing can need it again."""
+    try:
+        Path(audio_path).unlink()
+        logger.debug("Cleaned up voice file: %s", audio_path)
+    except Exception as e:
+        logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
+
+
+async def accept_voice(transcribed: TranscribedVoice) -> None:
+    """Settle a transcription whose transcript the inbound queue has accepted; nothing retries it.
+
+    The audio goes after the record is settled, so a stop in between leaves recoverable audio, not a lost message.
+    """
+    if transcribed.transcription_id is not None:
+        await db.update_voice_transcription_state(transcribed.transcription_id, VOICE_TRANSCRIPTION_STATE_SUCCEEDED)
+    _remove_voice_audio(transcribed.audio_path)
+
+
+async def fail_voice_delivery(
+    transcribed: TranscribedVoice,
+    *,
+    session_id: str,
+    reason: str,
+    send_message: Callable[[str, str, MessageMetadata], Awaitable[str | None]],
+) -> None:
+    """Settle a transcription whose transcript the session refused, and tell the sender."""
+    if transcribed.transcription_id is not None:
+        await db.update_voice_transcription_state(
+            transcribed.transcription_id, VOICE_TRANSCRIPTION_STATE_FAILED, last_error=reason
+        )
+    _remove_voice_audio(transcribed.audio_path)
+    await send_message(session_id, _DELIVERY_FAILED_NOTICE.format(reason=reason), MessageMetadata(parse_mode=None))

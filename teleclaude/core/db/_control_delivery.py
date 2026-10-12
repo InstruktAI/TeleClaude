@@ -19,7 +19,7 @@ from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.models import Session
 from teleclaude.core.session_status import AgentStatusValue, is_agent_turn_running
 from teleclaude.docs_subscriptions import EventDeliveryMode, SubscriptionAttendance, SubscriptionIdentity
-from teleclaude.types.commands import ProcedureSessionDeliveryInitialization
+from teleclaude.types.procedure_delivery import ProcedureSessionDeliveryInitialization
 
 _PROCEDURE_EVENT_MISSING_ERROR = "initial procedure event was not accepted before session creation"
 _PROCEDURE_ACTIVATION_REPLAY_CONFLICT = "procedure activation identity was reused with different accepted facts"

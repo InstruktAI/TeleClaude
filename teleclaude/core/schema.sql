@@ -506,6 +506,7 @@ CREATE TABLE IF NOT EXISTS voice_transcriptions (
     actor_avatar_url TEXT,
     duration REAL,
     language TEXT,
+    source_message_id TEXT,
     state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending', 'in_progress', 'succeeded', 'failed', 'interrupted')),
     attempts INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,

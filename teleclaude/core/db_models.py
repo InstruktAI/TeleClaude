@@ -125,6 +125,7 @@ class VoiceTranscription(SQLModel, table=True):
     actor_avatar_url: str | None = None
     duration: float | None = None
     language: str | None = None
+    source_message_id: str | None = None
     state: str = "pending"
     attempts: int = 0
     last_error: str | None = None

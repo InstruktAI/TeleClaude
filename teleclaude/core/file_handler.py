@@ -1,47 +1,16 @@
-"""File upload handling for tmux sessions.
+"""File upload handling for sessions.
 
-Provides file upload functionality:
-- Download files to persistent session storage
-- Detect Agent and format paths appropriately
-- Send file paths to tmux for processing
-
-Extracted as adapter-agnostic utility following voice_message_handler.py pattern.
+A file reaches a session as ordinary input: the uploaded file's absolute path, as the file
+mention an agent understands, followed by the sender's caption. The command handler accepts
+that text through the durable inbound queue, which owns when it is delivered.
 """
 
 import re
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from instrukt_ai_logging import get_logger
+from teleclaude.core.models import Session
 
-from teleclaude.core import tmux_bridge, tmux_io
-from teleclaude.core.agents import is_agent_title
-from teleclaude.core.db import db
-from teleclaude.core.events import FileEventContext
-from teleclaude.core.injected_text import InjectedInputAuthority
-from teleclaude.core.models import MessageMetadata
-from teleclaude.core.session_utils import resolve_working_dir
-
-logger = get_logger(__name__)
-
-
-async def _get_live_output_message_id(session: object) -> str | None:
-    """Read the origin lane's platform message id from its current generation receipt.
-
-    Reads through the generation/receipt mechanism (Task 3/5), not the
-    origin-metadata field acceptance used to clear (Task 9 retires that
-    clear): the receipt is scoped to the session's current bound generation,
-    so this never reads a stale id left over from a turn the daemon has
-    already moved past.
-    """
-    origin = getattr(session, "last_input_origin", None)
-    session_id = getattr(session, "session_id", None)
-    if not isinstance(origin, str) or not origin.strip() or not isinstance(session_id, str):
-        return None
-    handle = await db.get_generation_handle(session_id=session_id, consumer=origin.strip())
-    if handle is None:
-        return None
-    return handle.receipt_platform_message_id
+_AGENT_FILE_MENTION_PREFIX = "@"
 
 
 def sanitize_filename(filename: str) -> str:
@@ -58,125 +27,14 @@ def sanitize_filename(filename: str) -> str:
     return safe if safe else "file"
 
 
-async def is_agent_running(tmux_session_name: str) -> bool:
-    """Detect if any known agent is running in the tmux session.
+def format_file_input(session: Session, file_path: str, caption: str | None) -> str:
+    """The input text an uploaded file becomes for a session.
 
-    Strategy: Check pane title for "claude" keyword
-
-    Args:
-        tmux_session_name: Name of tmux session
-
-    Returns:
-        True if Claude Code detected, False otherwise
+    The absolute path is mentioned as an agent's file reference when the session runs an agent
+    and as a plain path otherwise. A caption follows it.
     """
-    try:
-        output = await tmux_bridge.get_pane_title(tmux_session_name)
-        if not output:
-            return False
-
-        return is_agent_title(output)
-
-    except Exception as e:
-        logger.warning("Failed to detect Claude Code in session %s: %s", tmux_session_name, e)
-        return False
-
-
-async def handle_file(
-    session_id: str,
-    file_path: str,
-    filename: str,
-    context: FileEventContext,
-    send_message: Callable[[str, str, MessageMetadata], Awaitable[str | None]],
-) -> None:
-    """Handle file upload (adapter-agnostic utility).
-
-    Args:
-        session_id: Session ID
-        file_path: Path to downloaded file
-        filename: Original filename
-        context: Typed file event context
-        send_message: Async function to send UI notices (session_id, message, metadata)
-    """
-    logger.info("=== FILE HANDLER CALLED ===")
-    logger.info("Session ID: %s", session_id)
-    logger.info("File path: %s", file_path)
-    logger.info("Filename: %s", filename)
-
-    session = await db.get_session(session_id)
-    if not session:
-        logger.warning("Session %s not found", session_id)
-        return
-
-    is_process_running = await tmux_bridge.is_process_running(session.tmux_session_name)
-
-    if not is_process_running:
-        await send_message(
-            session_id,
-            f"📎 File upload requires an active process. File saved: {filename}",
-            MessageMetadata(),
-        )
-        return
-
-    current_message_id = await _get_live_output_message_id(session)
-    if current_message_id is None:
-        logger.warning("No output message yet for session %s, polling may have just started", session_id)
-        await send_message(
-            session_id,
-            f"⚠️ File upload unavailable - output message not ready yet. File saved: {filename}",
-            MessageMetadata(),
-        )
-        return
-
-    agent_running = await is_agent_running(session.tmux_session_name)
-
-    # Build input text with absolute file path (remote AIs need full path)
     absolute_path = Path(file_path).resolve()
-    if agent_running:
-        input_text = f"@{absolute_path}"
-        logger.info("Claude Code detected - sending file with @ prefix: %s", input_text)
-    else:
-        input_text = str(absolute_path)
-        logger.info("Generic process detected - sending plain path: %s", input_text)
-
-    # Append caption text if present
-    if context.caption and context.caption.strip():
-        input_text = f"{input_text} {context.caption.strip()}"
-        logger.info("Appending caption to file input: %s", context.caption.strip()[:50])
-
-    active_agent = session.active_agent
-    working_dir = resolve_working_dir(session.project_path, session.subdir)
-    success = await tmux_io.process_text(
-        session,
-        input_text,
-        active_agent=active_agent,
-        working_dir=working_dir,
-        authority=InjectedInputAuthority.INTERFACE,
-    )
-
-    if not success:
-        logger.error("Failed to send file path to session %s", session_id)
-        await send_message(
-            session_id,
-            "❌ Failed to send file to tmux",
-            MessageMetadata(),
-        )
-        return
-
-    await db.update_last_activity(session_id)
-
-    # Send feedback with plain text (no Markdown parsing)
-    if context.file_size > 0:
-        file_size_mb = context.file_size / 1_048_576
-        await send_message(
-            session_id,
-            f"📎 File uploaded: {filename} ({file_size_mb:.2f} MB)",
-            MessageMetadata(),
-        )
-    else:
-        await send_message(
-            session_id,
-            f"📎 File uploaded: {filename}",
-            MessageMetadata(),
-        )
-
-    logger.info("File path sent to session %s, existing poll will capture output", session_id)
+    input_text = f"{_AGENT_FILE_MENTION_PREFIX}{absolute_path}" if session.active_agent else str(absolute_path)
+    if caption and caption.strip():
+        return f"{input_text} {caption.strip()}"
+    return input_text

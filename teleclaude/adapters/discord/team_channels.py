@@ -12,7 +12,10 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord._channel_lookup import find_existing_text_channel_id
 from teleclaude.cli.config_handlers import get_person_config
-from teleclaude.paths import PEOPLE_DIR
+from teleclaude.core.inbound import ConversationRef
+from teleclaude.core.inbound.conversation import reconcile_designated_conversation
+from teleclaude.core.inbound.models import DISCORD_DM_KEY_FIELD
+from teleclaude.core.origins import InputOrigin
 from teleclaude.slug import normalize_slug
 
 if TYPE_CHECKING:
@@ -29,6 +32,17 @@ except ImportError:
     pass
 else:
     discord_operation_exceptions = (DiscordException,) + discord_operation_exceptions
+
+
+def team_channel_conversation(channel_id: int) -> ConversationRef:
+    """The conversation a Team channel is: shared by every computer, keyed on the channel, carrying no desk entry."""
+    return ConversationRef(
+        origin=InputOrigin.DISCORD,
+        key_field=DISCORD_DM_KEY_FIELD,
+        key=str(channel_id),
+        reaches_every_computer=True,
+        carries_desk_entry=False,
+    )
 
 
 def base_private_overwrites(
@@ -63,7 +77,7 @@ class TeamChannelsMixin:
     Required host attributes:
     - _client: DiscordClientLike | None
     - _discord: ModuleType
-    - _team_channel_map: dict[int, str]
+    - _team_channel_map: dict[int, str]  (channel id -> slug of the person it was provisioned for)
     - _parse_optional_int(value) -> int | None
     - _require_async_callable(fn, *, label) -> Callable
     - _get_channel(channel_id) -> object | None (async)
@@ -127,14 +141,27 @@ class TeamChannelsMixin:
                 guild, category, slug, discord_user_id, create=create
             )
             if ch_id is not None:
-                person_folder = str(PEOPLE_DIR / slug)
-                self._team_channel_map[ch_id] = person_folder
+                self._team_channel_map[ch_id] = slug
                 logger.info("Team channel mapped: %s -> channel_id=%d discord_user=%s", name, ch_id, discord_user_id)
             else:
                 logger.warning("Team channel not found/created for person %s (slug=%s)", name, slug)
             # Ensure permissions are correct on existing channels too
             if ch_id is not None and discord_user_id is not None:
                 await self._ensure_channel_private(ch_id, guild, discord_user_id)
+
+    async def _reconcile_team_channels(self) -> None:
+        """Settle each provisioned Team channel's conversation: adoption on the master, cutover on every computer.
+
+        Provisioning supplies the channel-to-person association that designates a channel; the core
+        owns what follows from it. One channel failing to reconcile leaves the others reconciled.
+        """
+        for channel_id, person_slug in self._team_channel_map.items():
+            try:
+                await reconcile_designated_conversation(team_channel_conversation(channel_id), person_slug)
+            # Reconciliation is best-effort at startup: its failure must not abort adapter readiness,
+            # and the channel's next use reconciles it again.
+            except Exception as exc:
+                logger.warning("Team channel %d reconciliation failed: %s", channel_id, exc, exc_info=True)
 
     # guard: loose-dict-func - kwargs is a heterogeneous discord.py channel create dict;
     # a TypedDict would need discord-py types

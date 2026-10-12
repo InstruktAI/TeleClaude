@@ -26,7 +26,6 @@ from teleclaude.adapters.discord.session_launcher import (
 from teleclaude.config.machine import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.db import db
-from teleclaude.core.endpoints import parse_entry_identifier
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     ProjectRefreshTrigger,
@@ -36,21 +35,11 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.help_desk_relay import answer_in_thread
 from teleclaude.core.inbound import (
-    BindOutcome,
-    ConversationRef,
-    ConversationTurn,
-    EntryGesture,
-    TurnCreation,
-    TurnModality,
     resolve_binding_key,
 )
-from teleclaude.core.inbound.conversation import handle_conversation_turn
-from teleclaude.core.inbound.models import DISCORD_DM_KEY_FIELD
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import (
-    DiscordMetadataField,
     Session,
-    SessionEntryPoint,
 )
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.events.envelope import EventVisibility
@@ -63,30 +52,21 @@ import asyncio
 from datetime import datetime
 
 from teleclaude.caller_identity import PersonCliCaller, RoleResolver, SessionOf
-from teleclaude.cli.config_handlers import get_person_config
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.identity import (
-    DiscordAvatarBindingOutcome,
-    DiscordAvatarBindingReason,
     IdentityContext,
     get_identity_resolver,
-    observe_discord_avatar_binding,
     session_person_role,
 )
 from teleclaude.core.origins import InputOrigin
-from teleclaude.invite import bind_discord_credentials
 from teleclaude.types.commands import ProcessMessageCommand
 
 logger = get_logger(__name__)
 
 _DATA_FIELD = "data"
 _CUSTOM_ID_FIELD = "custom_id"
-_DM_USER_ID_FIELD = "user_id"
-_DM_DISCORD_USER_ID_FIELD = "discord_user_id"
-_DM_PLATFORM_FIELD = "platform"
-_PROCESS_MESSAGE_EVENT = "process_message"
 # The attributes of a discord.py message this module reads.
 _AUTHOR_ATTR = "author"
 _CHANNEL_ATTR = "channel"
@@ -128,11 +108,13 @@ class GatewayHandlersMixin:
     - _require_async_callable(fn, *, label) -> Callable
     - _parse_optional_int(value) -> int | None
     - _ensure_discord_infrastructure() (async)
+    - _reconcile_team_channels() (async)
     - _build_session_launcher_view(forum_id) -> object
     - _post_or_update_launcher(forum_id) (async)
     - _handle_launcher_click(interaction, agent_name, launcher_forum_id) (async)
     - _register_session_launcher_view(forum_id, message_id) -> bool
     - _handle_discord_dm(message) (async)
+    - _handle_team_channel_message(message, channel_id, person_slug) (async)
     - _is_managed_message(message) -> bool
     - _is_bot_message(message) -> bool
     - _is_customer_session(session) -> bool
@@ -182,6 +164,8 @@ class GatewayHandlersMixin:
 
         async def _ensure_discord_infrastructure(self) -> None: ...
 
+        async def _reconcile_team_channels(self) -> None: ...
+
         async def _handle_projects_changed(self, _event: str, context: ProjectsChangedContext) -> None: ...
 
         def _request_desk_reconcile(self) -> None: ...
@@ -193,6 +177,8 @@ class GatewayHandlersMixin:
         async def _resolve_launcher_interaction_source(self, interaction: object) -> LauncherInteractionSource: ...
 
         async def _handle_discord_dm(self, message: object) -> None: ...
+
+        async def _handle_team_channel_message(self, message: object, channel_id: int, person_slug: str) -> None: ...
 
         def _is_managed_message(self, message: object) -> bool: ...
 
@@ -386,6 +372,8 @@ class GatewayHandlersMixin:
         except Exception as exc:
             logger.warning("Discord infrastructure provisioning failed: %s", exc, exc_info=True)
 
+        await self._reconcile_team_channels()
+
         if self._tree is not None and self._guild_id is not None:
             sync_fn = getattr(self._tree, "sync", None)
             object_cls = getattr(self._discord, "Object", None)
@@ -426,118 +414,6 @@ class GatewayHandlersMixin:
     # =========================================================================
     # on_message
     # =========================================================================
-
-    async def _handle_discord_dm(self, message: object) -> None:
-        """Hand one direct message to the conversation seam: an identifier is an entry, else an ordinary turn."""
-        author = getattr(message, "author", None)
-        if not author:
-            return
-
-        user_id = str(getattr(author, "id", ""))
-        text = getattr(message, "content", None)
-        if not isinstance(text, str) or not text.strip():
-            return
-        text = text.strip()
-        channel = getattr(message, _CHANNEL_ATTR, None)
-        dm_channel_id = self._parse_optional_int(getattr(channel, _ID_ATTR, None))
-        if dm_channel_id is None:
-            return
-        identifier = parse_entry_identifier(text)
-        message_id = str(getattr(message, _ID_ATTR, _NO_TEXT)).strip()
-        actor_id = resolve_binding_key(InputOrigin.DISCORD.value, {_DM_USER_ID_FIELD: user_id})
-        sender = get_identity_resolver().resolve(
-            InputOrigin.DISCORD.value, {_DM_USER_ID_FIELD: user_id, _DM_DISCORD_USER_ID_FIELD: user_id}
-        )
-        actor_name = (sender.person_name or _NO_TEXT).strip() or self._discord_actor_name(author, user_id)
-        actor_avatar_url = self._discord_actor_avatar_url(author)
-
-        def _command(session_id: str, sender_role: str | None) -> ProcessMessageCommand:
-            return ProcessMessageCommand(
-                session_id=session_id,
-                text=text,
-                origin=InputOrigin.DISCORD.value,
-                text_kind=TranscriptEntryKind.ORDINARY,
-                source_feature=InjectedTextSourceFeature.DISCORD,
-                occurrence_key=message_id or None,
-                actor_id=actor_id,
-                actor_name=actor_name,
-                actor_avatar_url=actor_avatar_url,
-                source_message_id=message_id or None,
-                source_channel_id=str(dm_channel_id),
-                command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
-                sender_human_role=sender_role,
-            )
-
-        async def _deliver(session: Session) -> None:
-            cmd = _command(session.session_id, sender_role_for_session(sender, session))
-            metadata = self._metadata(  # type: ignore[attr-defined]
-                platform_message_id=message_id or None,
-                actor_id=actor_id,
-                actor_name=actor_name,
-                actor_avatar_url=actor_avatar_url,
-            )
-            await self._dispatch_command(  # type: ignore[attr-defined]
-                session,
-                message_id or None,
-                metadata,
-                _PROCESS_MESSAGE_EVENT,
-                cmd.to_payload(),
-                lambda: get_command_service().process_message(cmd),
-            )
-
-        async def _reply(reply_text: str) -> None:
-            if channel is not None:
-                await channel.send(reply_text)
-
-        async def _bind(person_slug: str) -> BindOutcome:
-            return self._bind_discord_invite(message, user_id, person_slug)
-
-        await handle_conversation_turn(
-            ConversationTurn(
-                conversation=ConversationRef(
-                    origin=InputOrigin.DISCORD,
-                    key_field=DISCORD_DM_KEY_FIELD,
-                    key=str(dm_channel_id),
-                    reaches_every_computer=True,
-                    carries_desk_entry=False,
-                ),
-                sender=sender,
-                text=text,
-                gesture=EntryGesture.IDENTIFIER if identifier is not None else EntryGesture.NONE,
-                identifier=identifier,
-                creation=TurnCreation(
-                    entry_point=SessionEntryPoint.DISCORD,
-                    origin_metadata={
-                        _DM_USER_ID_FIELD: user_id,
-                        _DM_DISCORD_USER_ID_FIELD: user_id,
-                        _DM_PLATFORM_FIELD: InputOrigin.DISCORD.value,
-                        DiscordMetadataField.CHANNEL_ID.value: dm_channel_id,
-                    },
-                    command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
-                ),
-                deliver=_deliver,
-                reply=_reply,
-                bind_invite=_bind,
-                modality=TurnModality.TEXT,
-            )
-        )
-
-    def _bind_discord_invite(self, message: object, user_id: str, person_slug: str) -> BindOutcome:
-        """Bind the Discord account to the invited person, unless another account holds the invitation."""
-        person_config = get_person_config(person_slug)
-        bound = person_config.creds.discord.user_id if person_config.creds.discord else None
-        if bound:
-            return BindOutcome.ACCEPTED if bound == user_id else BindOutcome.CONFLICT
-        avatar_url = self._discord_actor_avatar_url(getattr(message, _AUTHOR_ATTR, None))
-        binding_id = str(getattr(message, _ID_ATTR, _NO_TEXT)).strip()
-        observe_discord_avatar_binding(
-            binding_id=binding_id,
-            outcome=DiscordAvatarBindingOutcome.ACCEPTED,
-            reason=DiscordAvatarBindingReason.UNBOUND_INVITE,
-            avatar_present=avatar_url is not None,
-        )
-        bind_discord_credentials(person_slug, user_id, avatar_url=avatar_url, binding_id=binding_id)
-        return BindOutcome.ACCEPTED
 
     async def _handle_on_message(self, message: object) -> None:
         author = getattr(message, "author", None)
@@ -585,6 +461,13 @@ class GatewayHandlersMixin:
                 parent_id,
                 len(self._team_channel_map),
             )
+            return
+
+        # A provisioned Team channel is a designated conversation channel: its messages are conversation turns.
+        team_channel_id = self._parse_optional_int(getattr(channel, _ID_ATTR, None))
+        team_person = self._team_channel_map.get(team_channel_id) if team_channel_id is not None else None
+        if team_channel_id is not None and team_person is not None:
+            await self._handle_team_channel_message(message, team_channel_id, team_person)
             return
 
         # Voice/audio attachment — handle before the text guard

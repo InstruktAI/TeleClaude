@@ -61,7 +61,6 @@ from teleclaude.types.commands import (
     HandoffAgentCommand,
     InternalCommand,
     KeysCommand,
-    ProcedureActivationResult,
     ProcessMessageCommand,
     RestartAgentCommand,
     RestartAgentResult,
@@ -73,6 +72,7 @@ from teleclaude.types.commands import (
     SystemCommand,
     UnsubscribeSessionCommand,
 )
+from teleclaude.types.procedure_delivery import ProcedureActivationResult
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient

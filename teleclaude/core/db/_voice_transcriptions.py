@@ -57,6 +57,7 @@ class DbVoiceTranscriptionsMixin:
         actor_avatar_url: str | None = None,
         duration: float | None = None,
         language: str | None = None,
+        source_message_id: str | None = None,
     ) -> db_models.VoiceTranscription:
         """Insert a durable voice transcription row in pending state."""
         now = _voice_now_iso()
@@ -71,6 +72,7 @@ class DbVoiceTranscriptionsMixin:
             actor_avatar_url=actor_avatar_url,
             duration=duration,
             language=language,
+            source_message_id=source_message_id,
             state=VOICE_TRANSCRIPTION_STATE_PENDING,
             attempts=0,
             created_at=now,

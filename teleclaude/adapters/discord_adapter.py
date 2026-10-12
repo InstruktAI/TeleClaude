@@ -21,6 +21,7 @@ from teleclaude.adapters.discord import (
     MessageOperationsMixin,
 )
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
+from teleclaude.adapters.discord.conversation_turns import ConversationTurnsMixin
 from teleclaude.adapters.discord.escalation_threads import EscalationThreadsMixin
 from teleclaude.adapters.discord.help_desk_categories import DeskForums, HelpDeskCategoriesMixin
 from teleclaude.adapters.discord.listen_control import ListenHereView
@@ -89,6 +90,7 @@ class DiscordClientLike(Protocol):
 class DiscordAdapter(
     ChannelOperationsMixin,
     GatewayHandlersMixin,
+    ConversationTurnsMixin,
     EscalationThreadsMixin,
     InfrastructureMixin,
     HelpDeskCategoriesMixin,
@@ -181,7 +183,7 @@ class DiscordAdapter(
         self._registered_launcher_message_ids: set[int] = set()
         # forum-channel-id -> webhook cache for actor-based reflection delivery
         self._reflection_webhook_cache: dict[int, object] = {}
-        # team channel ID -> person's home folder path
+        # team channel ID -> slug of the registered person the channel was provisioned for
         self._team_channel_map: dict[int, str] = {}
         # desk entry identifier -> the desk's forums, rebuilt after each desk reconciliation pass
         self._desk_forums: dict[str, DeskForums] = {}

@@ -56,6 +56,7 @@ KEY_COMMANDS = {
 
 _ORIGIN_PAYLOAD_KEY = "origin"
 _ACTOR_ID_PAYLOAD_KEY = "actor_id"
+_SOURCE_MESSAGE_ID_PAYLOAD_KEY = "source_message_id"
 _SOURCE_FEATURE_BY_ORIGIN = {
     InputOrigin.TELEGRAM.value: InjectedTextSourceFeature.TELEGRAM,
     InputOrigin.DISCORD.value: InjectedTextSourceFeature.DISCORD,
@@ -234,6 +235,7 @@ class CommandMapper:
                     origin_metadata=metadata.origin_metadata,
                     voice_transcription_id=payload_transcription_id,
                     notice_message_id=payload_notice_message_id or None,
+                    source_message_id=cast(str | None, payload.get(_SOURCE_MESSAGE_ID_PAYLOAD_KEY)),
                 ),
                 computer,
             )
@@ -248,6 +250,7 @@ class CommandMapper:
                     file_size=cast(int, payload.get("file_size", 0)),
                     origin=cast(str | None, payload.get(_ORIGIN_PAYLOAD_KEY)) or metadata.origin,
                     actor_id=cast(str | None, payload.get(_ACTOR_ID_PAYLOAD_KEY)) or metadata.actor_id,
+                    source_message_id=cast(str | None, payload.get(_SOURCE_MESSAGE_ID_PAYLOAD_KEY)),
                 ),
                 computer,
             )

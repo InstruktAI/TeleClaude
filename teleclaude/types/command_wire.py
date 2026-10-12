@@ -22,7 +22,6 @@ from teleclaude.types.commands import (
     HandoffAgentCommand,
     InternalCommand,
     KeysCommand,
-    ProcedureSessionDeliveryInitialization,
     ProcessMessageCommand,
     ResponseMode,
     RestartAgentCommand,
@@ -35,6 +34,7 @@ from teleclaude.types.commands import (
     UnsubscribeSessionCommand,
 )
 from teleclaude.types.media import MediaRef
+from teleclaude.types.procedure_delivery import ProcedureSessionDeliveryInitialization
 
 # The nested wire blocks a command carries as typed values.
 _ENDPOINT_FIELD = "endpoint"

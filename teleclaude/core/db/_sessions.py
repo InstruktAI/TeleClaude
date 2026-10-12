@@ -14,7 +14,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.slug import replace_slug_token
 
-from ...types.commands import ProcedureSessionDeliveryInitialization
+from ...types.procedure_delivery import ProcedureSessionDeliveryInitialization
 from .. import db_models
 from ..events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
 from ..models import JsonDict, OriginRevivalContext, RelayStatus, Session, SessionField, SessionLaunchIntent

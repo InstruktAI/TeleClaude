@@ -148,6 +148,11 @@ class ConversationTurn:
     The adapter carries the identifier and supplies its own delivery, reply
     and invitation binding; it decides nothing. ``deliver`` runs the adapter's
     dispatch of this message into a session on this computer.
+
+    ``designated_person`` is the registered person a channel the adapter
+    provisioned serves, for adapters whose conversation is a shared channel
+    rather than one person's private chat. A designated turn carries no entry
+    identifier, and the core admits it only from that person.
     """
 
     conversation: ConversationRef
@@ -160,6 +165,7 @@ class ConversationTurn:
     bind_invite: Callable[[str], Awaitable[BindOutcome]]
     identifier: EntryIdentifier | None = None
     modality: TurnModality = TurnModality.TEXT
+    designated_person: str | None = None
 
 
 __all__ = [

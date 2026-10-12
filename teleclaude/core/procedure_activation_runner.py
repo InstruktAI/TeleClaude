@@ -63,10 +63,9 @@ from teleclaude.docs_subscriptions import (
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.paths import REPO_ROOT
 from teleclaude.types.activation_home import ActivationHome
-from teleclaude.types.commands import (
-    ActivateProcedureCommand,
+from teleclaude.types.commands import ActivateProcedureCommand, CreateSessionCommand
+from teleclaude.types.procedure_delivery import (
     ActivationOutcome,
-    CreateSessionCommand,
     ProcedureActivationResult,
     ProcedureSessionDeliveryInitialization,
 )

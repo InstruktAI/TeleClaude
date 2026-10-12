@@ -22,8 +22,8 @@ from teleclaude.core.command_input import (
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import AgentReadyContext, FileEventContext, TeleClaudeEvents, VoiceEventContext
-from teleclaude.core.file_handler import handle_file as handle_file_upload
+from teleclaude.core.events import AgentReadyContext, TeleClaudeEvents, VoiceEventContext
+from teleclaude.core.file_handler import format_file_input
 from teleclaude.core.help_desk_relay import (
     RelayDeliveryFailed,
     divert_visitor_file,
@@ -38,6 +38,7 @@ from teleclaude.core.inbound_errors import (
 )
 from teleclaude.core.inbound_media import fetch_media_ref
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
+from teleclaude.core.inbound_types import InboundMessageType
 from teleclaude.core.injected_text import (
     EnvelopeName,
     InjectedTextSourceFeature,
@@ -453,6 +454,7 @@ async def handle_voice(
         actor_avatar_url=cmd.actor_avatar_url,
         voice_transcription_id=cmd.voice_transcription_id,
         notice_message_id=cmd.notice_message_id,
+        source_message_id=cmd.source_message_id,
     )
 
     transcribed = await voice_message_handler.handle_voice(
@@ -463,75 +465,90 @@ async def handle_voice(
         edit_message=_edit_status,
         delete_message=_delete_feedback,
     )
-    if not transcribed:
+    if transcribed is None:
         return
 
     await _delete_feedback(cmd.session_id, cmd.message_id or "")
 
-    logger.debug("Forwarding transcribed voice to agent: %s...", transcribed[:50])
+    logger.debug("Forwarding transcribed voice to agent: %s...", transcribed.text[:50])
 
-    await process_message(
-        ProcessMessageCommand(
-            session_id=cmd.session_id,
-            text=transcribed,
-            origin=cmd.origin or InputOrigin.TERMINAL.value,
-            text_kind=TranscriptEntryKind.ORDINARY,
-            source_feature=InjectedTextSourceFeature.VOICE,
-            occurrence_key=str(cmd.voice_transcription_id) if cmd.voice_transcription_id is not None else None,
-            actor_id=cmd.actor_id,
-            actor_name=cmd.actor_name,
-            actor_avatar_url=cmd.actor_avatar_url,
-            origin_metadata=cmd.origin_metadata,
-        ),
-        client,
-        start_polling,
+    transcript_command = ProcessMessageCommand(
+        session_id=cmd.session_id,
+        text=transcribed.text,
+        origin=cmd.origin or InputOrigin.TERMINAL.value,
+        text_kind=TranscriptEntryKind.ORDINARY,
+        source_feature=InjectedTextSourceFeature.VOICE,
+        occurrence_key=str(transcribed.transcription_id) if transcribed.transcription_id is not None else None,
+        actor_id=cmd.actor_id,
+        actor_name=cmd.actor_name,
+        actor_avatar_url=cmd.actor_avatar_url,
+        origin_metadata=cmd.origin_metadata,
+        source_message_id=cmd.source_message_id,
     )
+    try:
+        await accept_inbound_message(transcript_command, message_type=InboundMessageType.VOICE)
+    except SessionMessageRejectedError as exc:
+        await voice_message_handler.fail_voice_delivery(
+            transcribed, session_id=cmd.session_id, reason=str(exc), send_message=_send_status
+        )
+        raise
+    await voice_message_handler.accept_voice(transcribed)
+
+
+_FILE_SOURCE_FEATURE_BY_ORIGIN: Mapping[str, InjectedTextSourceFeature] = {
+    InputOrigin.TELEGRAM.value: InjectedTextSourceFeature.TELEGRAM,
+    InputOrigin.DISCORD.value: InjectedTextSourceFeature.DISCORD,
+    InputOrigin.WHATSAPP.value: InjectedTextSourceFeature.WHATSAPP,
+}
+_FILE_UPLOADED_NOTICE = "📎 File uploaded: {filename}"
+_FILE_UPLOADED_SIZED_NOTICE = "📎 File uploaded: {filename} ({size_mb:.2f} MB)"
+_BYTES_PER_MB = 1_048_576
+_FILE_ORIGIN_UNSUPPORTED_TEMPLATE = "File input from origin {origin!r} has no conversation adapter producer"
 
 
 async def handle_file(
     cmd: HandleFileCommand,
     client: "AdapterClient",
 ) -> None:
-    """Handle file upload for a session."""
+    """Accept a file upload as the session's input, delivered through the durable inbound queue.
+
+    The queue holds the upload until the session can receive it, so a file sent to a session
+    that is still starting, in idle maintenance, or idle-closed waits and keeps its place in
+    the order instead of being refused.
+    """
     if cmd.media_ref is not None:
         fetched = await fetch_media_ref(cmd.media_ref, cmd.session_id)
         cmd.file_path, cmd.filename, cmd.file_size = str(fetched), fetched.name, fetched.stat().st_size
-    relaying = await db.get_session(cmd.session_id)
-    if relaying is not None and is_visitor_input(relaying, cmd.actor_id, None):
-        if await divert_visitor_file(relaying, cmd.filename):
-            return
+    session = await db.get_session(cmd.session_id)
+    if session is None:
+        raise SessionMessageRejectedError(session_id=cmd.session_id, reason=SessionMessageRejectionReason.NOT_FOUND)
+    if is_visitor_input(session, cmd.actor_id, None) and await divert_visitor_file(session, cmd.filename):
+        return
+    source_feature = _FILE_SOURCE_FEATURE_BY_ORIGIN.get(cmd.origin or "")
+    if source_feature is None:
+        raise ValueError(_FILE_ORIGIN_UNSUPPORTED_TEMPLATE.format(origin=cmd.origin))
 
-    async def _send_notice(
-        session_id: str,
-        message: str,
-        metadata: MessageMetadata,
-    ) -> str | None:
-        session = await db.get_session(session_id)
-        if not session:
-            logger.warning("Session %s not found for file notice", session_id)
-            return None
-        return await client.send_message(
-            session,
-            message,
-            metadata=metadata,
-            cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
-        )
-
-    context = FileEventContext(
-        session_id=cmd.session_id,
-        file_path=cmd.file_path,
-        filename=cmd.filename,
-        caption=cmd.caption,
-        file_size=cmd.file_size,
+    accepted = await accept_inbound_message(
+        ProcessMessageCommand(
+            session_id=cmd.session_id,
+            text=format_file_input(session, cmd.file_path, cmd.caption),
+            origin=cmd.origin or "",
+            text_kind=TranscriptEntryKind.ORDINARY,
+            source_feature=source_feature,
+            occurrence_key=cmd.source_message_id,
+            actor_id=cmd.actor_id,
+            source_message_id=cmd.source_message_id,
+        ),
+        message_type=InboundMessageType.FILE,
     )
-
-    await handle_file_upload(
-        session_id=cmd.session_id,
-        file_path=cmd.file_path,
-        filename=cmd.filename,
-        context=context,
-        send_message=_send_notice,
+    if accepted is None:
+        return
+    notice = (
+        _FILE_UPLOADED_SIZED_NOTICE.format(filename=cmd.filename, size_mb=cmd.file_size / _BYTES_PER_MB)
+        if cmd.file_size > 0
+        else _FILE_UPLOADED_NOTICE.format(filename=cmd.filename)
     )
+    await client.send_message(session, notice, metadata=MessageMetadata(), cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
 
 def _startup_pending(session: Session) -> bool:
@@ -864,7 +881,17 @@ async def process_message(
 ) -> None:
     """Enqueue an incoming user message for durable delivery to the session."""
     del client, start_polling
+    await accept_inbound_message(cmd)
 
+
+async def accept_inbound_message(
+    cmd: ProcessMessageCommand, *, message_type: InboundMessageType = InboundMessageType.TEXT
+) -> int | None:
+    """Accept input for a session into the durable inbound queue; the accepted row, or ``None``.
+
+    ``None`` is a message the queue already holds, or one whose delivery needs nothing: either
+    way the input is accepted. ``message_type`` records what kind of input the text is.
+    """
     session_id = cmd.session_id
     logger.debug("Enqueueing message for session %s: %s...", session_id, cmd.text[:50])
 
@@ -881,9 +908,9 @@ async def process_message(
         last_agent_idle_at=session.last_agent_idle_at,
     ):
         await db.clear_procedure_event_wake_opportunity(session_id=session_id, occurrence_id=wake_key)
-        return
+        return None
     if is_visitor_input(session, cmd.actor_id, cmd.caller_session_id) and await _diverted(session, cmd):
-        return
+        return None
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.UNAVAILABLE)
 
@@ -932,6 +959,7 @@ async def process_message(
         session_id=session_id,
         origin=origin,
         content=content,
+        message_type=message_type.value,
         text_kind=cmd.text_kind,
         source_feature=cmd.source_feature,
         occurrence_key=cmd.occurrence_key,
@@ -962,3 +990,4 @@ async def process_message(
             target_session_id=session_id,
             response_boundary=True,
         )
+    return row_id

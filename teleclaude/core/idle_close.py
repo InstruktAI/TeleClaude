@@ -31,13 +31,13 @@ from teleclaude.core.agent_startup_delivery import (
     deliver_startup_message,
 )
 from teleclaude.core.agents import get_compaction_agent_command
+from teleclaude.core.conversation_close import CloseOutcome, NotDueReason, close_when_settled, unsettled_reason
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import AgentReadyContext, TeleClaudeEvents
 from teleclaude.core.injected_text import InjectedInputAuthority
-from teleclaude.core.models import RelayStatus, Session
+from teleclaude.core.models import Session
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
-from teleclaude.core.session_cleanup import terminate_session
 from teleclaude.core.session_compaction import (
     CompactionAttempt,
     CompactionStage,
@@ -52,7 +52,6 @@ from teleclaude.core.session_idle_compaction import (
     CONVERSATION_IDLE_THRESHOLD,
     compaction_completed,
 )
-from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_revival import session_is_resumable
 from teleclaude.core.session_runtime_gate import (
     RuntimeMutationInProgress,
@@ -60,7 +59,7 @@ from teleclaude.core.session_runtime_gate import (
     mark_relaunch_awaiting_readiness,
     session_runtime_owner,
 )
-from teleclaude.core.session_status import AgentStatusValue, SessionLifecycleStatus, is_agent_turn_running
+from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.tmux_io import UserTurnDeliveryOutcome
 from teleclaude.core.voice_assignment import get_voice_env_vars
@@ -94,21 +93,6 @@ class IdleStep(StrEnum):
     CLOSE = "close"
 
 
-class NotDueReason(StrEnum):
-    """Why a conversation session is not due for the next step of its idle cycle."""
-
-    NOT_ACTIVE = "not_active"
-    NOT_RESUMABLE = "not_resumable"
-    RECENT_INPUT = "recent_input"
-    RELAY_ACTIVE = "relay_active"
-    TURN_RUNNING = "turn_running"
-    AGENT_NOT_IDLE = "agent_not_idle"
-    INPUT_QUEUED = "input_queued"
-    CONTROL_PENDING = "control_pending"
-    PROCEDURE_EVENTS_PENDING = "procedure_events_pending"
-    COMPACTION_NOT_COMPLETED = "compaction_not_completed"
-
-
 def compaction_command(session: Session) -> str | None:
     """The command that compacts the session's agent, or ``None`` when its agent declares none."""
     if not session.active_agent:
@@ -122,8 +106,8 @@ def compaction_command(session: Session) -> str | None:
 async def _not_due_reason(session: Session, now: datetime, *, require_idle_status: bool) -> NotDueReason | None:
     """Why the session is not due, or ``None`` when it is.
 
-    The agent's idle status is required to ask for a compaction and not to close
-    afterwards, because the compaction itself moves the status.
+    A session is due once its person has been away for the idle threshold and its accepted work
+    has settled (``unsettled_reason``).
     """
     if session.closed_at is not None:
         return NotDueReason.NOT_ACTIVE
@@ -132,23 +116,7 @@ async def _not_due_reason(session: Session, now: datetime, *, require_idle_statu
     last_input = last_input_at(session)
     if last_input is None or now - last_input < CONVERSATION_IDLE_THRESHOLD:
         return NotDueReason.RECENT_INPUT
-    if session.relay_status == RelayStatus.ACTIVE:
-        return NotDueReason.RELAY_ACTIVE
-    if is_agent_turn_running(
-        last_input_at=session.last_message_sent_at,
-        last_agent_stop_at=session.last_agent_stop_at,
-        last_agent_idle_at=session.last_agent_idle_at,
-    ):
-        return NotDueReason.TURN_RUNNING
-    if require_idle_status and session.agent_status is not AgentStatusValue.IDLE:
-        return NotDueReason.AGENT_NOT_IDLE
-    if await db.has_queued_inbound(session.session_id):
-        return NotDueReason.INPUT_QUEUED
-    if await db.count_pending_control_payloads(session_id=session.session_id):
-        return NotDueReason.CONTROL_PENDING
-    if await db.count_pending_procedure_events_for_session(session_id=session.session_id):
-        return NotDueReason.PROCEDURE_EVENTS_PENDING
-    return None
+    return await unsettled_reason(session, require_idle_status=require_idle_status)
 
 
 async def _launch_temporary_compaction_runtime(
@@ -230,38 +198,30 @@ async def close_completed_conversation(
     conversation seam does the same for a turn it routes to the closing session.
     """
     session_id = session.session_id
-    async with session_runtime_owner(session_id):
-        fresh = await db.get_session(session_id)
-        if fresh is None or fresh.lifecycle_status != SessionLifecycleStatus.ACTIVE:
-            return
+
+    async def _compaction_completed(fresh: Session) -> bool:
+        return compaction_owner.active_attempt(fresh) is not None and compaction_completed(fresh)
+
+    async def _settle_compaction(fresh: Session) -> None:
         attempt = compaction_owner.active_attempt(fresh)
-        if attempt is None or not compaction_completed(fresh):
-            return
-        if await _due_to_close(fresh) is not None:
-            return
-        await db.update_session(session_id, idle_closed_at=datetime.now(UTC).isoformat())
-        await transition_session(
-            db,
-            session_id,
-            LifecycleTransition(SessionLifecycleStatus.CLOSING, LifecycleTransitionReason.CLOSE_STARTED),
-        )
-        started = await db.get_session(session_id)
-        reason = None if started is None else await _due_to_close(started)
-        if reason is not None:
-            await transition_session(
-                db,
-                session_id,
-                LifecycleTransition(SessionLifecycleStatus.ACTIVE, LifecycleTransitionReason.CLOSE_FAILED),
-            )
-            await db.update_session(session_id, idle_closed_at=None)
-            logger.info(_CLOSE_CALLED_OFF_EVENT, session_id=session_id, reason=reason.value)
-            return
-        terminated = await terminate_session(session_id, client, reason=IDLE_CLOSE_REASON, expire_inbound=False)
-        if not terminated:
-            logger.warning(_CLOSE_NOT_PERFORMED_EVENT, session_id=session_id)
-            return
-        await compaction_owner.settle(fresh, attempt.attempt_id)
+        if attempt is not None:
+            await compaction_owner.settle(fresh, attempt.attempt_id)
         await db.update_session(session_id, idle_compaction_completed_at=None)
+
+    admission = await close_when_settled(
+        session_id,
+        client,
+        close_reason=IDLE_CLOSE_REASON,
+        blocker=_due_to_close,
+        mark_idle_closed=True,
+        admit=_compaction_completed,
+        after_closed=_settle_compaction,
+    )
+    if admission.outcome is CloseOutcome.CALLED_OFF and admission.reason is not None:
+        logger.info(_CLOSE_CALLED_OFF_EVENT, session_id=session_id, reason=admission.reason.value)
+    elif admission.outcome is CloseOutcome.NOT_PERFORMED:
+        logger.warning(_CLOSE_NOT_PERFORMED_EVENT, session_id=session_id)
+    elif admission.outcome is CloseOutcome.CLOSED:
         logger.info(_CLOSED_EVENT, session_id=session_id, agent=session.active_agent)
 
 

@@ -13,16 +13,25 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from teleclaude.caller_identity import PersonCliCaller, RoleResolver, ThisComputer
+from teleclaude.caller_identity import (
+    PersonCliCaller,
+    RoleResolver,
+    SessionIdentityError,
+    ThisComputer,
+    caller_from_principal,
+    resolve_session_principal,
+)
 from teleclaude.cli.config_handlers import get_global_config
 from teleclaude.config.invitations import find_person_by_invite_token
 from teleclaude.config.machine import config
 from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.conversation_close import CloseAdmission, retire_session
 from teleclaude.core.db import Db, db
 from teleclaude.core.endpoints import LIVE_ROOTS, DeskRoots
 from teleclaude.core.identity import IdentityContext
 from teleclaude.core.inbound.fleet import FleetView, observe_fleet
 from teleclaude.core.inbound.gates import ConversationLocks, CooldownGate
+from teleclaude.core.models import Session
 from teleclaude.core.session_revival import revive_session
 from teleclaude.invite import scaffold_personal_workspace
 from teleclaude.types.commands import CreateSessionCommand
@@ -48,6 +57,8 @@ class ConversationEnvironment:
     person_workspace: Callable[[str], Path]
     find_invite: Callable[[str], str | None]
     display_name: Callable[[str], str]
+    session_person: Callable[[Session], str | None]
+    retire_session: Callable[[str], Awaitable[CloseAdmission]]
     now_iso: Callable[[], str] = utc_now_iso
     neutral_gate: CooldownGate = field(default_factory=CooldownGate)
     unavailable_gate: CooldownGate = field(default_factory=CooldownGate)
@@ -71,6 +82,20 @@ def _effective_role_here(sender: IdentityContext) -> str:
 def _invite_holder(token: str) -> str | None:
     found = find_person_by_invite_token(token)
     return found[0] if found is not None else None
+
+
+async def _retire_session_here(session_id: str) -> CloseAdmission:
+    return await retire_session(session_id, get_command_service().client)
+
+
+def _session_person_here(session: Session) -> str | None:
+    """The registered person a session's recorded human principal resolves to, or ``None``."""
+    try:
+        principal, _role = resolve_session_principal(session)
+    except SessionIdentityError:
+        return None
+    caller = caller_from_principal(principal)
+    return caller.person_slug if isinstance(caller, PersonCliCaller) else None
 
 
 def _person_display_name(person_slug: str) -> str:
@@ -97,6 +122,8 @@ def default_conversation_environment() -> ConversationEnvironment:
             person_workspace=scaffold_personal_workspace,
             find_invite=_invite_holder,
             display_name=_person_display_name,
+            session_person=_session_person_here,
+            retire_session=_retire_session_here,
         )
         _ENVIRONMENT_SLOT[_DEFAULT_ENVIRONMENT_KEY] = environment
     return environment

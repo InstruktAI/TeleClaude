@@ -102,6 +102,7 @@ async def _recover_voice_transcription_row(
             actor_avatar_url=refreshed.actor_avatar_url,
             voice_transcription_id=refreshed.id,
             notice_message_id=refreshed.notice_message_id,
+            source_message_id=refreshed.source_message_id,
         )
     )
     return True
