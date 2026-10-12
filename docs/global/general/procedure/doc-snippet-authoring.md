@@ -147,9 +147,11 @@ tooling.
     decides whether a snippet should exist; this step governs every region you
     write, including a pending block inside an existing snippet. Before
     committing, hold each changed region against the anti-patterns in
-    `general/policy/snippet-value-contract`: a value, path, filename, or
-    example whose owner is code, configuration, a schema, or another snippet
-    is replaced by the owner's name or id.
+    `general/policy/snippet-value-contract`: a value, path, filename, example,
+    rule, or scenario whose owner is code, configuration, a schema, or another
+    snippet is replaced by the owner's name or id; a region that re-observes
+    another context's decision through this snippet's surface is consumer
+    restatement and is not written.
 
 ## Outputs
 

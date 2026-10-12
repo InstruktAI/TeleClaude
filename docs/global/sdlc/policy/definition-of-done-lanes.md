@@ -602,7 +602,22 @@ own trigger below, additionally flag the coherence anti-patterns
    true of it before clearing this item. A rule already stated in
    `general/policy/leadership` or `general/policy/human-contract` reappearing
    in full elsewhere, with or without an inaccurate citation attached, is this
-   finding, not a style note.
+   finding, not a style note. In a feature or domain spec this item's
+   commonest form is **consumer restatement**: a use case, paragraph, or "or
+   on another computer" variant whose `Then` clauses, read without actor and
+   surface words, assert outcomes another context's spec decides
+   (`general/policy/snippet-value-contract`, Consumer restatement). Open the
+   owning context's spec — live, and pending via
+   `telec docs get <id> --target <slug>`; an owner that is pending still
+   exists — and apply the test: delete each `Then` clause the owner decides;
+   what remains is this context's rule or nothing. The closure is removal (a
+   live id retires per `sdlc/procedure/feature-spec-authoring`; a pending
+   block is deleted) or a one-sentence pointer with the owner's id. The
+   reviewer never requests that a consumer's use case be extended, completed,
+   or made symmetric with the owner's rule; such a request assigns another
+   context's behavior to the artifact under review
+   (`sdlc/policy/preparation-artifact-quality`, §Evidence does not reallocate
+   ownership) and is itself a defective finding.
 6. **Section echo** — a required section restating another section of the same
    snippet, most often Enforcement re-listing Rules as "X is a violation," or
    Rationale restating a rule instead of naming the invariant it protects.
@@ -677,6 +692,10 @@ Severity guidance:
 - Duplication without a citation, or a new/changed citation whose gist
   misrepresents or misidentifies its owner, introduced or left uncorrected by
   this change, where the owning snippet already exists → **Important**.
+- Consumer restatement — a use case, clause, or variant re-observing another
+  context's decision — introduced or left uncorrected by this change →
+  **Important**; a remediation that elaborates it instead of removing or
+  pointing is a new **Important** finding.
 - Layer bleed or Section echo introduced by this change → **Important**.
 - New baseline-listed content that is Manual-in-the-baseline → **Important**,
   with the correct-shape note (move to an on-demand snippet, cite from the

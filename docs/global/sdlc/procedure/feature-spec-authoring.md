@@ -41,7 +41,12 @@ adapter, transport, scheduler, and runtime host do not choose the owner. A
 cross-context journey decomposes into owner-local behavioral contracts;
 architecture design may coordinate their relationship but never becomes a
 shared owner. If no single owner can be named, stop authoring and resolve
-the boundary first.
+the boundary first. Ownership is decided per use case, not once per spec: a
+spec correctly placed under its context still admits no scenario whose
+predicate another context decides. Before authoring a scenario, read the spec
+of every context whose outcome its `Then` clauses assert —
+`telec docs index --local --areas spec`, then `telec docs get <id>`, with
+`--target <slug>` when the owner is pending.
 
 2. **Type every actor by facing.** Each scenario names who experiences the
    behavior, and the actor's kind is explicit from the scenario language: a
@@ -81,10 +86,18 @@ the boundary first.
 6. **Gate volume by falsifiability, not by count.** One use case states one
    falsifiable behavioral rule with one facing and one trigger class. Data
    variations are examples or a scenario outline inside that use case, never
-   sibling use cases. Duplicate predicates collapse into one. A mega-scenario
-   whose `Then` clauses assert unrelated rules splits. There is no numeric
-   cap; the prepare lanes prune scenario floods by these rules, not by
-   arithmetic.
+   sibling use cases. Duplicate predicates collapse into one — across the
+   corpus, not within one spec. Two scenarios whose `Then` clauses, read
+   without actor and surface words, state one rule are one rule, and it lives
+   in the owning context's spec; a different facing, entry point, transport, or
+   computer does not individuate it. A scenario that survives only by
+   asserting another context's outcome is consumer restatement
+   (`general/policy/snippet-value-contract`) and is not authored; this
+   context's contribution is one sentence in its prose with the owner's id, or
+   its own use case whose `Then` clauses assert only what this context decides.
+   A mega-scenario whose `Then` clauses assert unrelated rules splits. There is
+   no numeric cap; the prepare lanes prune scenario floods by these rules, not
+   by arithmetic.
 
 7. **Mark pending behavior honestly.** A scenario describing behavior the
    system does not yet exhibit is authored in present tense as the future
@@ -114,6 +127,14 @@ the boundary first.
 - A spec asserting behavior the live system demonstrably lacks: wrap the
   broken contract in a planned marker bound to the todo that will deliver it,
   or correct the text to current truth — a stale current spec is a defect.
+- An existing use case whose `Then` clauses all assert another context's
+  decisions: retire it under step 5 — the header stays with no Gherkin block —
+  and add at most one sentence to the spec's prose naming this context's own
+  contribution with the owner's id. A `Then` clause asserting another
+  context's outcome inside an otherwise owned use case is deleted, not
+  rewritten. A pending scenario of this shape is deleted with its planned
+  block, and its id is not reused. The consumer's scenario is never extended
+  toward the owner's rule to make it complete.
 
 ## Discipline
 
@@ -125,6 +146,11 @@ detail and restate the sentence in behavior terms. When unsure whether a
 change is semantic or merely wording, ask whether
 anything bound to the old sentence would now judge differently; if yes, it is
 semantic.
+
+The third failure is a spec that grows by re-observing other contexts' rules
+through its own surface. When a `Then` reads "executes there", "reaches the
+operator", "is refused by", "is authorized by", ask which context decides that;
+if not this one, the clause goes and the owner is cited.
 
 ## See Also
 

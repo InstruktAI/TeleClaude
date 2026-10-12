@@ -48,7 +48,8 @@ The default is **skip unless justified**, not "produce when applicable."
   or YAML document, a generated file's contents, captured command output — is
   value-copying of the whole shape at once: name the schema or source that owns
   it instead.
-- **Duplication.** Repeating content already present in a global snippet.
+- **Duplication.** Repeating content already present in another snippet,
+  global or local.
   Every normative rule has exactly one owning snippet; every other snippet
   cites it with a gist and the owner's id
   (`general/policy/referencing-doc-snippets`). This holds between two
@@ -59,6 +60,23 @@ The default is **skip unless justified**, not "produce when applicable."
   the review lane, the check — and never re-lists the Rules as "X is a
   violation"; when reviewers applying the Rules is the whole mechanism, one line
   says so. Rationale names the invariant a rule protects, never the rule again.
+- **Consumer restatement.** A use case, paragraph, or clause whose predicate
+  another bounded context decides, re-observed through this context's surface:
+  the same rule under a different actor, entry point, transport, or location
+  ("…or on another computer"; "when done from a row it executes there and the
+  refusal reaches the operator"). The test is mechanical. Delete every `Then`
+  clause, or every sentence, whose outcome another context's spec owns — actor
+  and surface words (operator, view, row, pane, command, adapter, computer,
+  relay) are not the predicate. If nothing remains, the use case is removed and
+  the owner is cited once in prose. If something remains — a gesture, what the
+  request carries, what this surface shows — it is this context's rule: it
+  stands as a use case only when it is falsifiable without the owner's outcome
+  in its `Then` clauses, and otherwise is at most one sentence with the owner's
+  id (`general/policy/referencing-doc-snippets`). Which context decides is
+  `sdlc/policy/domain-ownership`'s question; a different facing never makes an
+  owned predicate a new one. The owner's rule may itself be pending:
+  `telec docs index` shows it with its slug suffix and
+  `telec docs get <id> --target <slug>` renders it.
 - **Layer bleed.** A principle carrying enforcement-grade clauses, or a policy
   carrying procedure mechanics. A principle states a disposition, its reasons,
   and its tensions; the policy that operationalizes it owns the rules; the
@@ -124,13 +142,14 @@ Every statement an author wants to add is owned by one party, and the owner
 decides where it lives. A statement that mixes owners is split before it is
 placed.
 
-| Kind of statement              | Owner and home                                                                                               |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| A guarantee of our surface     | The domain's spec for that surface, verified by its feature spec                                             |
-| Behavior of a third party      | The vendor's source or documentation, cited by the procedure that depends on it                              |
-| An operating safeguard         | A procedure: an atom when several scenarios share it, a step when one does                                   |
-| A tenant or company preference | The company's configuration and knowledge, never a global snippet                                            |
-| A deployment fact              | The project that owns the deployment; a procedure names the capability it needs, not the version that has it |
+| Kind of statement                                                       | Owner and home                                                                                                                      |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| A guarantee of our surface                                              | The domain's spec for that surface, verified by its feature spec                                                                    |
+| Behavior of a third party                                               | The vendor's source or documentation, cited by the procedure that depends on it                                                     |
+| An operating safeguard                                                  | A procedure: an atom when several scenarios share it, a step when one does                                                          |
+| A tenant or company preference                                          | The company's configuration and knowledge, never a global snippet                                                                   |
+| A deployment fact                                                       | The project that owns the deployment; a procedure names the capability it needs, not the version that has it                        |
+| An outcome another context decides, seen through this context's surface | The deciding context's spec; this context's spec carries at most one sentence naming what it alone contributes, with the owner's id |
 
 A spec states what our surface delivers now. Intended behavior it does not yet
 deliver is carried only in a pending section under its delivering slug.
@@ -223,6 +242,12 @@ accretes: the same boundary ends up worded several ways across several
 snippets, a reader reconciles the variants as if they were distinct rules, and
 pruning one copy silently deletes whatever nuance only that copy carried. One
 owner per rule makes pruning safe — removing a citation never removes the rule.
+
+A rule re-observed through a second surface reads as a second rule with its
+own actor, so neither author nor reviewer sees a copy; only the `Then` clauses,
+read without surface words, show that the deciding party is elsewhere. Every
+such copy is a fence a test could bind to the owner's current wording, and a
+change at the owner leaves every copy stale.
 
 ## Scope
 

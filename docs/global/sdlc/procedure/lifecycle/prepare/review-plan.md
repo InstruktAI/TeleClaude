@@ -340,7 +340,11 @@ to pre-satisfy:
   behavioral delta with neither a snippet update nor an explicit
   `doc_impact_none: <reason>` is a Requirement-Violation (blocking), not a soft
   finding. The reviewer does not approve the plan until the delta is reflected
-  or justified. A third disposition is
+  or justified. For each prepare-authored pending feature-spec region, apply
+  the owner-local rule (`sdlc/policy/preparation-artifact-quality`,
+  §Acceptance scenario quality): a scenario or clause whose predicate another
+  context decides is an Important finding whose closure is removal or a
+  one-sentence pointer to the owner. A third disposition is
   `doc_deferred: <holding-slug> — <inline-snippet-reference>#<section>`. Accept
   it only when the named region on `main` is enclosed by that slug's pending
   marker, that slug is already in this todo's `after` set, the inline reference
@@ -471,6 +475,11 @@ Severity tiers and verdict arithmetic are owned by
   not a finding. Drop it.
 - **Severity-softening to reach approve.** Words like "minor", "cosmetic",
   or "nice to have" are demotion language. Stop, re-cite, re-evaluate.
+- **Symmetry demands on a consumer spec.** A finding that asks a consumer
+  context's use case to be extended to mirror an owner's rule assigns the
+  owner's behavior to the artifact under review
+  (`sdlc/policy/preparation-artifact-quality`, §Evidence does not reallocate
+  ownership). Drop it; the valid finding, if any, is the restatement itself.
 - **Scope-enlarging findings.** A finding cites a contract the plan's current
   text violates. A finding that prescribes functionality, instrumentation,
   provisioning paths, or subsystems beyond the approved intent artifact is not

@@ -318,6 +318,14 @@ assign another context's behavior to the artifact under review. Remediation
 re-checks both scope authority and domain ownership before changing an upstream
 artifact.
 
+In the document layer the same bound holds for findings on feature and domain
+specs: a finding never asks a consumer context's use case to be extended,
+completed, or made symmetric with the owner's rule. A use case or clause whose
+predicate another context decides closes by removal or by a one-sentence
+pointer to the owner (`general/policy/snippet-value-contract`, Consumer
+restatement); a remediation that elaborates the duplicate instead is a new
+finding against the remediation, not a closure.
+
 ### PRD quality
 
 The PRD states what and why, never how. It is a product contract whose natural
@@ -479,6 +487,12 @@ files or executable tests during prepare. Quality rules:
   side effects), not implementation structure. A scenario that asserts a
   specific internal function call is implementation leakage. Every scenario
   sentence survives any behavior-preserving refactor.
+- **Owner-local**: every `Then` clause asserts a decision the spec's own
+  context owns. A clause asserting another context's outcome, or a scenario
+  that exists only to re-observe another context's rule through this
+  context's surface, is consumer restatement
+  (`general/policy/snippet-value-contract`) and is removed before review, with
+  the owner cited once by id.
 - **Forbidden assertion targets**: scenarios must not prescribe logger-call,
   log-level, metric/trace, config/model/native-shape, private-helper,
   constructor-wiring, or mock-call-echo assertions. Logs are diagnostic evidence,

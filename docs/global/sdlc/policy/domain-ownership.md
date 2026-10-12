@@ -23,9 +23,16 @@ them, even when expressed as one-time readiness or migration work rather than
 runtime code.
 
 The owner defines the rule once behind its published contract. Consumers may
-invoke, translate, observe, or cache that contract while preserving its source
-of truth. They never restate, specialize, validate, default, or recover the
-owner's rule in a way that creates a second decision point.
+invoke, translate, observe, or cache that contract at runtime while preserving
+its source of truth. They never restate, specialize, validate, default, or
+recover the owner's rule in a way that creates a second decision point. The
+document layer is bound the same way: a consumer context's feature or domain
+spec states only the decisions that context owns — what it requests, what its
+request carries, what its surface shows — and cites the owner by id for every
+outcome the owner decides. Observing the owner's outcome through the consumer's
+surface is not a decision of the consumer and earns no use case, paragraph, or
+variant in the consumer's spec (`general/policy/snippet-value-contract`,
+Consumer restatement).
 
 ### Domain ownership and layer placement are independent coordinates
 
@@ -88,6 +95,11 @@ domain specs, architecture, plans, and reviews in sdlc work.
   domain spec for each task.
 - Builders stop and return a plan or architecture that places a rule outside its
   owner; they do not implement it and defer the cleanup.
+- Feature-spec and domain-spec review treats a use case or clause whose
+  predicate another context decides as duplicated owner policy. Its closure is
+  removal or a one-sentence pointer to the owner, never elaboration
+  (`sdlc/policy/preparation-artifact-quality`, §Evidence does not reallocate
+  ownership).
 - Review treats a duplicated domain decision, direct access around an owner's
   contract, or behavior implemented in the wrong context as Critical.
 - Types, package visibility, import rules, and storage APIs enforce boundaries
