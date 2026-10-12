@@ -14,7 +14,7 @@ visibility: public
 
 The surface for managing the live dimension of an `agent_runtime` Session: creating one (allocating a session id, an associated host pane, and a principal binding), listing what currently exists (subject to role-based visibility), and explicitly ending one (a request to transition to `closed`).
 
-Three operations form the surface: create-session, list-sessions, and end-session. The TUI invokes them via the `telec sessions start`, `telec sessions list`, and `telec sessions end` CLI verbs respectively. Local creation is backed by the in-process command service; remote creation dispatches a new-session request to the target computer and returns the peer-owned session transport fields.
+Three operations form the surface: create-session, list-sessions, and end-session. The TUI invokes them via the `telec sessions start`, `telec sessions list`, and `telec sessions end` CLI verbs respectively. Local creation is backed by the in-process command service.
 
 Termination accepted by the service is a request, not a finished close: the end-session call is accepted asynchronously and delegates the actual cleanup to the cleanup module (see `session-cleanup-and-reaping`). The `agent_runtime.session.started` event is emitted when the session has booted; consumers subscribe to that to learn when the new session is live.
 
@@ -109,13 +109,9 @@ And when no agent in that order is available no session is created
 ```
 Given the request specifies `computer = <remote>`
 When the local agent_runtime service receives the create-session request
-Then it dispatches a new-session request to the target computer over the inter-computer transport
-And the dispatch forwards the initiating client's origin and session creation context in the command payload; the relay separately carries the caller's principal for authorization on the target, which resolves the new session's person role from its own registry and project scope
+Then the dispatch forwards the initiating client's origin and session creation context in the command payload
 And the originating computer travels as the transport initiator, never as origin
-And the target agent_runtime service creates the session on its own host-pane layer
 And the response carries the remote session id, host-pane reference, computer reference, and resolved agent
-And if the target returns an error envelope, an upstream error is surfaced
-And if the target does not respond, a timeout error is surfaced
 ```
 
 #### UC-SL24: Startup message is accepted by the live prompt
@@ -231,7 +227,6 @@ Scenario Outline: The default listing leaves an unattended procedure agent out
     | with all sessions requested                    | listed     |
     | with all sessions and the procedure's job      | listed     |
     | with the session's id requested                | listed     |
-    | against another computer, with no selection    | not listed |
 ```
 
 #### UC-SL22: Listing closed sessions — agent status projection
@@ -543,7 +538,6 @@ When the person lists this computer's sessions, including with --all
 Then every listed session recorded a subject their reach admits — a project they are assigned to or own, every project of a company they administer, their company homes, or their own home — or was recorded under their own principal
 And no session outside that reach, and no session that recorded no subject or an unknown one, is listed unless it is recorded under their own principal
 And sessions other computers share with this one are listed when the person's reach admits their subject through the owner they carry, or they are recorded under the person's principal
-And a listing that names another computer is answered by that computer with the sessions the person's reach admits there
 And a platform administrator's listing is unchanged
 ```
 
