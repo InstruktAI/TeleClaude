@@ -146,9 +146,11 @@ owning computer reconstructs the request and runs it through its own API boundar
 the response crosses back on the one-shot response stream. The transport carries no
 per-route vocabulary and no read-specific command set for API-originated work.
 
-The relay is a negotiated capability. A computer advertises it in the capability set
-its heartbeat carries, and sends a relay command only to a peer that advertises it; a
-peer that does not is refused before anything is sent, naming the computer.
+A computer advertises the relay in the capability set its heartbeat carries. A peer
+without it rejects the relay command as a command it does not know, and the relaying
+computer reports that peer as running a build without the relay. A relay command
+carries a deadline, and a computer that reads it from its stream after that deadline
+refuses it without running it.
 
 <!-- /planned:relay-computer-addressed-requests -->
 
