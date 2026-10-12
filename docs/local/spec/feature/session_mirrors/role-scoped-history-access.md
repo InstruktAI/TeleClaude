@@ -186,5 +186,3 @@ And another person sees it only when their own reach admits that project
   — and has no subject.
 - The mirror record's `visibility` value is stored but grants nothing: no scope
   reads it.
-- A peer applies this same reach to the identity relayed with a remote search (see
-  `feature/session_mirrors/cross-computer-history-federation`).

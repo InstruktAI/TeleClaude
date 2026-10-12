@@ -102,11 +102,6 @@ Given the caller opts in to worker sessions on the local path
 When a search executes
 Then the is_worker predicate is not applied and worker mirrors are eligible alongside every other mirror
 And every other filter — agent, role band, limit — applies unchanged
-
-Given the caller combines the worker opt-in with a remote computer filter
-When the search is dispatched
-Then the opt-in travels with the relay command like any other filter
-And each peer applies its own role band before returning worker rows
 ```
 
 #### Recency ordering and missing-store tolerance
