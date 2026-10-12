@@ -7,7 +7,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.tts import backends
+from teleclaude.tts.backends import registry
 
 logger = get_logger(__name__)
 
@@ -45,7 +45,7 @@ def run_tts_with_lock(
                     extra={"session_id": session_id},
                 )
 
-                backend = backends.get_backend(service_name)
+                backend = registry.get_backend(service_name)
                 if not backend:
                     logger.debug(
                         f"Backend not available: {service_name}",

@@ -25,6 +25,7 @@ from teleclaude.config.loader import load_global_config
 from teleclaude.config.machine import config
 from teleclaude.config.notification_interests import new_person_document
 from teleclaude.config.schema import ConfigKind, DiscordCreds
+from teleclaude.config.validation import is_section_available
 from teleclaude.core.identity import (
     DiscordAvatarBindingOutcome,
     DiscordAvatarBindingReason,
@@ -45,24 +46,28 @@ _TEMPLATES_DIR = _PROJECT_ROOT / "templates" / "emails"
 _LINK_BOT_UNRESOLVED_EVENT = "help_desk_link_bot_unresolved"
 _TELEGRAM_ADAPTER = "telegram"
 _DISCORD_ADAPTER = "discord"
+_WHATSAPP_ADAPTER = "whatsapp"
+_EMAIL_ADAPTER = "email"
 _NO_LIVE_MASTER_REFUSAL = "invitations are issued on the mesh master, and no master is live"
 _CONFLICTING_MASTERS_REFUSAL = (
     "invitations are issued on the mesh master, and several computers declare themselves master: {computers}"
 )
 _NOT_THE_OWNER_REFUSAL = "invitations are issued on the mesh master {owner}, and this computer is {computer}"
 _COMPUTER_SEPARATOR = ", "
+_TELEGRAM_GET_ME_URL = "https://api.telegram.org/bot{token}/getMe"
+_AUTHORIZATION_HEADER = "Authorization"
+_DISCORD_BOT_AUTHORIZATION = "Bot {token}"
+_TELEGRAM_RESOLVE_FAILED_LOG = "Failed to resolve Telegram bot username: %s"
+_DISCORD_RESOLVE_FAILED_LOG = "Failed to resolve Discord bot user ID: %s"
+_INVITE_EMAIL_FAILED_LOG = "Failed to send invite email: %s"
 
 
 # --- Bot Resolution ---
 
 
-async def resolve_telegram_bot_username() -> str:
-    """Resolve Telegram bot username from token via getMe API."""
-    token = config.telegram.bot_token
-    if not token:
-        raise ValueError("telegram.bot_token is not configured")
-
-    url = f"https://api.telegram.org/bot{token}/getMe"
+async def resolve_telegram_bot_username(bot_token: str) -> str:
+    """Resolve Telegram bot username from the bot token via getMe API."""
+    url = _TELEGRAM_GET_ME_URL.format(token=bot_token)
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(url)
@@ -78,14 +83,10 @@ async def resolve_telegram_bot_username() -> str:
             raise ValueError(f"Failed to resolve Telegram bot username: {e}") from e
 
 
-async def resolve_discord_bot_user_id() -> str:
-    """Resolve Discord bot user ID from token via GET /users/@me."""
-    token = config.discord.token
-    if not token:
-        raise ValueError("discord.token is not configured")
-
+async def resolve_discord_bot_user_id(bot_token: str) -> str:
+    """Resolve Discord bot user ID from the bot token via GET /users/@me."""
     url = "https://discord.com/api/v10/users/@me"
-    headers = {"Authorization": f"Bot {token}"}
+    headers = {_AUTHORIZATION_HEADER: _DISCORD_BOT_AUTHORIZATION.format(token=bot_token)}
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(url, headers=headers)
@@ -97,6 +98,21 @@ async def resolve_discord_bot_user_id() -> str:
             return user_id  # type: ignore[no-any-return]
         except httpx.HTTPError as e:
             raise ValueError(f"Failed to resolve Discord bot user ID: {e}") from e
+
+
+def _available_telegram_token() -> str | None:
+    """The Telegram bot token when Telegram is available on this computer, else None."""
+    return config.telegram.bot_token if is_section_available(_TELEGRAM_ADAPTER, config.telegram) else None
+
+
+def _available_discord_token() -> str | None:
+    """The Discord bot token when Discord is available on this computer, else None."""
+    return config.discord.token if is_section_available(_DISCORD_ADAPTER, config.discord) else None
+
+
+def _available_whatsapp_number() -> str | None:
+    """The WhatsApp business number when WhatsApp is available on this computer, else None."""
+    return config.whatsapp.business_number if is_section_available(_WHATSAPP_ADAPTER, config.whatsapp) else None
 
 
 # --- Deep Link Generation ---
@@ -142,12 +158,13 @@ async def render_help_desk_links(identifier: str, *, telegram_allowed: bool) -> 
     link either.
     """
     telegram_username: str | None = None
-    if telegram_allowed:
+    telegram_token = _available_telegram_token()
+    if telegram_allowed and telegram_token is not None:
         try:
-            telegram_username = await resolve_telegram_bot_username()
+            telegram_username = await resolve_telegram_bot_username(telegram_token)
         except ValueError as e:
             logger.warning(_LINK_BOT_UNRESOLVED_EVENT, adapter=_TELEGRAM_ADAPTER, error=str(e))
-    links = generate_invite_links(identifier, telegram_username, None, config.whatsapp.business_number)
+    links = generate_invite_links(identifier, telegram_username, None, _available_whatsapp_number())
     return {adapter: link for adapter, link in links.items() if adapter != _DISCORD_ADAPTER}
 
 
@@ -230,7 +247,7 @@ async def send_invite_email(
         sender_name: Sign-off name
 
     Raises:
-        RuntimeError: If email is disabled/unconfigured (see send_email's gate) or delivery fails.
+        RuntimeError: If delivery fails.
     """
     # Load templates
     html_template_path = _TEMPLATES_DIR / "member-invite.html"
@@ -282,7 +299,7 @@ async def send_invite_email(
 
     # Send email
     subject = f"Welcome to {org_name} — Your Personal AI Assistant"
-    await send_email(email, subject, html_body, text_body)
+    await send_email(email, subject, html_body, text_body, email_config=config.email)
     logger.info("Invite email sent")
 
 
@@ -323,14 +340,16 @@ def admit_invitation_here(fleet: FleetView) -> None:
 class InviteOutcome:
     """The result of issuing one person's invitation.
 
-    ``unavailable_providers`` names each configured provider whose public endpoint could not be
-    resolved, so its missing link is distinguishable from a provider that is not configured.
+    ``unavailable_providers`` names each enabled provider whose public endpoint could not be
+    resolved, so its missing link is distinguishable from a provider that is not enabled.
+    ``email_enabled`` is false when email is not enabled here, so no email was attempted.
     """
 
     name: str
     email: str
     links: dict[str, str | None]
     email_sent: bool
+    email_enabled: bool
     unavailable_providers: tuple[str, ...] = ()
 
 
@@ -357,32 +376,40 @@ def invite_person(slug: str) -> InviteOutcome:
         discord_bot_id: str | None = None
         unavailable: list[str] = []
 
-        try:
-            telegram_username = await resolve_telegram_bot_username()
-        except ValueError as e:
-            logger.warning("Failed to resolve Telegram bot username: %s", e)
-            if config.telegram.bot_token:
+        telegram_token = _available_telegram_token()
+        if telegram_token is not None:
+            try:
+                telegram_username = await resolve_telegram_bot_username(telegram_token)
+            except ValueError as e:
+                logger.warning(_TELEGRAM_RESOLVE_FAILED_LOG, e)
                 unavailable.append(_TELEGRAM_ADAPTER)
 
-        try:
-            discord_bot_id = await resolve_discord_bot_user_id()
-        except ValueError as e:
-            logger.warning("Failed to resolve Discord bot user ID: %s", e)
-            if config.discord.token:
+        discord_token = _available_discord_token()
+        if discord_token is not None:
+            try:
+                discord_bot_id = await resolve_discord_bot_user_id(discord_token)
+            except ValueError as e:
+                logger.warning(_DISCORD_RESOLVE_FAILED_LOG, e)
                 unavailable.append(_DISCORD_ADAPTER)
 
-        whatsapp_number = config.whatsapp.business_number
-        links = generate_invite_links(token, telegram_username, discord_bot_id, whatsapp_number)
+        links = generate_invite_links(token, telegram_username, discord_bot_id, _available_whatsapp_number())
 
-        try:
-            await send_invite_email(name, email, links)
-            email_sent = True
-        except Exception as e:
-            logger.warning("Failed to send invite email: %s", e)
-            email_sent = False
+        email_enabled = is_section_available(_EMAIL_ADAPTER, config.email)
+        email_sent = False
+        if email_enabled:
+            try:
+                await send_invite_email(name, email, links)
+                email_sent = True
+            except Exception as e:
+                logger.warning(_INVITE_EMAIL_FAILED_LOG, e)
 
         return InviteOutcome(
-            name=name, email=email, links=links, email_sent=email_sent, unavailable_providers=tuple(unavailable)
+            name=name,
+            email=email,
+            links=links,
+            email_sent=email_sent,
+            email_enabled=email_enabled,
+            unavailable_providers=tuple(unavailable),
         )
 
     return asyncio.run(_run_invite())

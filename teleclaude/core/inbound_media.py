@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from teleclaude.config.machine import config
+from teleclaude.config.validation import is_section_available
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError, SessionMessageRejectionReason
 from teleclaude.core.session_status import is_session_terminal
@@ -32,8 +33,8 @@ _MIME_PARAMETER_SEPARATOR = ";"
 _TIMESTAMP_FORMAT = "%Y%m%d%H%M%S"
 _MEDIA_ID_PREFIX_LENGTH = 12
 _FILENAME_TEMPLATE = "{sender}_{timestamp}_{media_id}{extension}"
-_ACCESS_TOKEN_REQUIRED_ERROR = "WHATSAPP_ACCESS_TOKEN is required to download media"
 _UNSUPPORTED_PROVIDER_ERROR = "No media fetch for provider {provider}"
+_WHATSAPP_SECTION = "whatsapp"
 
 
 def is_voice_event(event_type: str) -> bool:
@@ -67,17 +68,21 @@ def _media_extension(mime_type: str | None) -> str:
     return mimetypes.guess_extension(base_mime_type) or _UNKNOWN_EXTENSION
 
 
+def available_whatsapp_access_token() -> str | None:
+    """The WhatsApp access token when WhatsApp is available on this computer, else None."""
+    return config.whatsapp.access_token if is_section_available(_WHATSAPP_SECTION, config.whatsapp) else None
+
+
 async def download_whatsapp_media(
     media_id: str,
     mime_type: str | None,
     sender: str,
     *,
+    access_token: str,
     session_id: str,
     event_type: str,
 ) -> Path:
     """Download inbound WhatsApp media into the session's upload directory and return its path."""
-    if not config.whatsapp.access_token:
-        raise RuntimeError(_ACCESS_TOKEN_REQUIRED_ERROR)
     media_dir = get_session_output_dir(session_id) / _media_subdir(event_type, mime_type)
     media_dir.mkdir(parents=True, exist_ok=True)
     output_path = media_dir / _FILENAME_TEMPLATE.format(
@@ -89,7 +94,7 @@ async def download_whatsapp_media(
     output_path.write_bytes(
         await fetch_whatsapp_media_bytes(
             media_id,
-            access_token=config.whatsapp.access_token,
+            access_token=access_token,
             api_version=config.whatsapp.api_version,
         )
     )
@@ -109,15 +114,17 @@ async def fetch_media_ref(media_ref: MediaRef, session_id: str) -> Path:
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.NOT_FOUND)
     if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
         raise SessionMessageRejectedError(session_id=session_id, reason=SessionMessageRejectionReason.CLOSED)
-    if media_ref.provider is MediaProvider.WHATSAPP:
+    whatsapp_access_token = available_whatsapp_access_token()
+    if media_ref.provider is MediaProvider.WHATSAPP and whatsapp_access_token is not None:
         return await download_whatsapp_media(
             media_ref.media_id,
             media_ref.mime_type,
             media_ref.sender,
+            access_token=whatsapp_access_token,
             session_id=session_id,
             event_type=media_ref.event_type,
         )
     raise ValueError(_UNSUPPORTED_PROVIDER_ERROR.format(provider=media_ref.provider.value))
 
 
-__all__ = ["download_whatsapp_media", "fetch_media_ref", "is_voice_event"]
+__all__ = ["available_whatsapp_access_token", "download_whatsapp_media", "fetch_media_ref", "is_voice_event"]

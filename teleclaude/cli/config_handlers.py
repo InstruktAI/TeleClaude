@@ -43,7 +43,7 @@ from teleclaude.config.person_secrets import (
 )
 from teleclaude.config.registered_homes import live_tier_declarations
 from teleclaude.config.schema import GlobalConfig, PersonConfig
-from teleclaude.config.surface import machine_config_surface
+from teleclaude.config.surface import machine_config_surface, master_scoped_sections
 from teleclaude.config.validation import missing_enabled_service_fields, missing_required_fields
 from teleclaude.domains import valid_domains
 from teleclaude.mcp.registry import load_effective_registry
@@ -57,6 +57,8 @@ _PERSON_MCP_SECRET_MANAGEMENT_FAILED = "Personal MCP secret management failed"
 _INTEREST_FAULT_SUGGESTION = "Check the notifications block in {path}"
 _ADOPT_UNDECLARED_PROJECT = "Run from {path}: telec config project adopt"
 _READINESS_AREA = "computer readiness"
+_MASTER_SCOPE_AREA = "master-scoped sections"
+_MASTER_SCOPE_NOTE = "{section}: master-scoped, not applicable on this computer"
 _READINESS_SUGGESTION = "Set each named value in the environment file beside its declaration on this computer."
 
 
@@ -93,6 +95,7 @@ class ValidationResult:
     passed: bool
     errors: list[str] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
 
 # --- Reading ---
@@ -281,6 +284,15 @@ def validate_all() -> list[ValidationResult]:
         )
     else:
         results.append(ValidationResult(area="config credentials", passed=True))
+
+    if app_config is not None and not app_config.computer.is_master:
+        results.append(
+            ValidationResult(
+                area=_MASTER_SCOPE_AREA,
+                passed=True,
+                notes=[_MASTER_SCOPE_NOTE.format(section=section) for section in master_scoped_sections()],
+            )
+        )
 
     return results
 

@@ -24,6 +24,11 @@ from teleclaude.types.todo_kind import TODO_KIND_USAGE, TodoKind
 _TODO_KIND_FIELD = "kind"
 _SESSION_SUBJECT_OWNER_FIELD = "subject_owner"
 _TODO_KIND_REQUIRED_ERROR = f"kind is required; valid kinds: {TODO_KIND_USAGE}"
+PEOPLE_API_PREFIX = "/api/people"
+PERSON_MESSAGE_ROUTE = "/message"
+PERSON_MESSAGE_PATH = PEOPLE_API_PREFIX + PERSON_MESSAGE_ROUTE
+_CARRIED_FILE_INCOMPLETE_ERROR = "A carried file names both file_name and file_content_b64, or neither."
+_CARRIED_FILE_AND_PATH_ERROR = "A request names a file by path or carries its content, not both."
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionSnapshot
@@ -501,7 +506,13 @@ class PersonMessageResponse(BaseModel):
 
 
 class PersonMessageRequest(BaseModel):
-    """Request body for POST /api/people/message."""
+    """Request body for POST /api/people/message.
+
+    ``file`` names a path on the computer that runs the request. A request another computer carries
+    to the master cannot name a path there, so it carries the file's name and content
+    (``file_name``, ``file_content_b64``) and the originating session's Discord backlink
+    (``origin_backlink_url``) instead; both are set only by the requesting computer's daemon.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -510,6 +521,17 @@ class PersonMessageRequest(BaseModel):
     file: str | None = None
     subject: str | None = None
     channel: MessagingChannel | None = None
+    file_name: str | None = Field(default=None, min_length=1)
+    file_content_b64: str | None = None
+    origin_backlink_url: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _carried_file_is_whole(self) -> "PersonMessageRequest":
+        if (self.file_name is None) != (self.file_content_b64 is None):
+            raise ValueError(_CARRIED_FILE_INCOMPLETE_ERROR)
+        if self.file is not None and self.file_content_b64 is not None:
+            raise ValueError(_CARRIED_FILE_AND_PATH_ERROR)
+        return self
 
 
 # WebSocket Event DTOs

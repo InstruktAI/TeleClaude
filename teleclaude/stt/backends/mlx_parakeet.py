@@ -23,6 +23,7 @@ logger = get_logger(__name__)
 
 DEFAULT_MODEL = "mlx-community/parakeet-tdt-0.6b-v3"
 PARAKEET_SERVICE = "parakeet"
+_UNRESOLVED_MODEL_REF = ""
 
 
 class MLXParakeetBackend:
@@ -30,13 +31,23 @@ class MLXParakeetBackend:
 
     def __init__(self) -> None:
         self._model = None
-        self._model_ref = self._resolve_model_ref()
-        self._cli_bin = self._resolve_cli_bin()
+        self._model_ref = _UNRESOLVED_MODEL_REF
+        self._cli_bin: str | None = None
+        self._prepared = False
         self._model_lock = Lock()
-        self._validate_config()
+
+    def _prepare(self) -> None:
+        """Resolve the service's model and CLI binary on first use and validate the model reference."""
+        with self._model_lock:
+            if self._prepared:
+                return
+            self._model_ref = self._resolve_model_ref()
+            self._cli_bin = self._resolve_cli_bin()
+            self._validate_config()
+            self._prepared = True
 
     def _validate_config(self) -> None:
-        """Validate model ref at startup: local paths must exist, HF IDs are accepted as-is."""
+        """Validate the model ref: local paths must exist, HF IDs are accepted as-is."""
         if is_local_path(self._model_ref):
             path = Path(self._model_ref)
             if not path.exists():
@@ -133,6 +144,7 @@ class MLXParakeetBackend:
         if not audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
 
+        await asyncio.to_thread(self._prepare)
         if not await asyncio.to_thread(self._ensure_model):
             raise RuntimeError("Parakeet STT unavailable")
 

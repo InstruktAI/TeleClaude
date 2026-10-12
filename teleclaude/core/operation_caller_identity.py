@@ -56,6 +56,11 @@ def get_relayed_caller() -> RelayedCaller | None:
 
 
 def relayed_caller_computer(caller_session_id: str | None) -> str | None:
-    """The computer holding ``caller_session_id`` when the request being run was carried here from it."""
+    """The computer holding ``caller_session_id`` when the request being run was carried here from it.
+
+    A request carried without a caller session names no caller session to locate.
+    """
     relayed = _relayed_caller.get()
-    return relayed.computer if relayed is not None and relayed.session_id == caller_session_id else None
+    if relayed is None or caller_session_id is None:
+        return None
+    return relayed.computer if relayed.session_id == caller_session_id else None

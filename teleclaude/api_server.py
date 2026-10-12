@@ -55,7 +55,6 @@ from teleclaude.api.config_routes import router as config_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
 from teleclaude.api.ingress_listener import WebhookIngressListener
 from teleclaude.api.operations_routes import router as operations_router
-from teleclaude.api.relay_boundary import configure as configure_relay_boundary
 from teleclaude.api.relay_boundary import relay_boundary
 from teleclaude.api.shutdown_refusal import STATE_CHANGING_METHODS, shutdown_refusal_response
 from teleclaude.api.todo_artifact_routes import router as todo_artifact_router
@@ -105,6 +104,7 @@ from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.relay_carrier import configure as configure_relay_carrier
 from teleclaude.core.relayed_request import configure as configure_relayed_request
 from teleclaude.core.session_lifecycle import LifecycleTransitionReason
 from teleclaude.core.shutdown_drain import CONTINUATION_HEADER, ShutdownRefusal, get_shutdown_drain
@@ -171,7 +171,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 stop_timeout_s=API_STOP_TIMEOUT_S,
             )
         self._setup_routes()
-        configure_relay_boundary(client=client)
+        configure_relay_carrier(client)
         configure_relayed_request(self.app)
 
         # --- Route modules ---

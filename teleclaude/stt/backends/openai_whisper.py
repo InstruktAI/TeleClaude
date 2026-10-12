@@ -9,6 +9,8 @@ from teleclaude.config.machine import config
 
 logger = get_logger(__name__)
 
+OPENAI_SERVICE = "openai"
+
 
 class OpenAIWhisperBackend:
     """Cloud STT using OpenAI Whisper API."""
@@ -20,9 +22,9 @@ class OpenAIWhisperBackend:
         """Lazy-init the OpenAI client on first use."""
         if self._client is not None:
             return True
-        services = config.stt.services if config.stt else None
-        service = services.get("openai") if services else None
-        api_key = service.api_key if service else None
+        stt = config.stt
+        service = (stt.services or {}).get(OPENAI_SERVICE) if stt is not None and stt.enabled else None
+        api_key = service.api_key if service is not None and service.enabled else None
         if not api_key:
             logger.debug("OpenAI Whisper STT unavailable: stt.services.openai.api_key not set")
             return False

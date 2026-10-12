@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import UnionType
@@ -10,15 +11,21 @@ from typing import Any, Union, get_args, get_origin
 from pydantic.fields import FieldInfo
 
 from teleclaude.closed_model import ClosedModel, field_is_sensitive
+from teleclaude.config._coerce import declares_true
 from teleclaude.config._models import TeleclaudeConfig
 from teleclaude.config.tiers import (
     UNGOVERNED_BODY_METADATA_KEY,
+    Scope,
     Tier,
+    effective_scope,
     effective_tier,
+    pydantic_field_scope,
     pydantic_field_tier,
     pydantic_field_ungoverned_body,
 )
 
+_COMPUTER_SECTION = "computer"
+_IS_MASTER_FIELD = "is_master"
 _PATH_SEPARATOR = "."
 _ENVIRONMENT_SEPARATOR = "_"
 
@@ -29,6 +36,7 @@ class ConfigSurfaceDescriptor:
 
     path: tuple[str, ...]
     tier: Tier
+    scope: Scope
     sensitive: bool
     environment_name: str | None
 
@@ -45,27 +53,48 @@ def environment_name_for_path(path: tuple[str, ...]) -> str:
 
 def machine_config_surface() -> tuple[ConfigSurfaceDescriptor, ...]:
     """Return every statically declared machine-config leaf and its effective metadata."""
-    return tuple(_walk_schema(TeleclaudeConfig, Tier.INTERNAL))
+    return tuple(_walk_schema(TeleclaudeConfig, Tier.INTERNAL, Scope.LOCAL))
+
+
+def master_scoped_sections() -> tuple[str, ...]:
+    """Return the top-level machine-config sections that are meaningful only on the master."""
+    declared = (
+        name
+        for name, field_info in TeleclaudeConfig.model_fields.items()
+        if pydantic_field_scope(field_info) is Scope.MASTER
+    )
+    return tuple(declared)
+
+
+def sections_outside_scope(raw: Mapping[object, object]) -> tuple[str, ...]:
+    """Return the master-scoped sections that do not apply to the computer ``raw`` describes."""
+    computer = raw.get(_COMPUTER_SECTION)
+    is_master = isinstance(computer, Mapping) and declares_true(computer.get(_IS_MASTER_FIELD))
+    return () if is_master else master_scoped_sections()
 
 
 def _walk_schema(
-    struct_type: type[ClosedModel], inherited_tier: Tier, prefix: tuple[str, ...] = ()
+    struct_type: type[ClosedModel],
+    inherited_tier: Tier,
+    inherited_scope: Scope,
+    prefix: tuple[str, ...] = (),
 ) -> list[ConfigSurfaceDescriptor]:
     """Walk schema-declared leaves, rejecting structured bodies without an owner declaration."""
     descriptors: list[ConfigSurfaceDescriptor] = []
     for name, field_info in struct_type.model_fields.items():
         path = (*prefix, name)
         tier = effective_tier(pydantic_field_tier(field_info), inherited_tier)
+        scope = effective_scope(pydantic_field_scope(field_info), inherited_scope)
         annotation = field_info.annotation
         nested = nested_model(annotation)
         if nested is not None:
-            descriptors.extend(_walk_schema(nested, tier, path))
+            descriptors.extend(_walk_schema(nested, tier, scope, path))
             continue
         enum_mapping = _enum_mapping(annotation)
         if enum_mapping is not None:
             key_type, member_type = enum_mapping
             for key in key_type:
-                descriptors.extend(_walk_schema(member_type, tier, (*path, key.value)))
+                descriptors.extend(_walk_schema(member_type, tier, scope, (*path, key.value)))
             continue
         structured_member = _structured_container_member(annotation)
         if structured_member is not None:
@@ -75,6 +104,7 @@ def _walk_schema(
             ConfigSurfaceDescriptor(
                 path=path,
                 tier=tier,
+                scope=scope,
                 sensitive=sensitive,
                 environment_name=environment_name_for_path(path) if sensitive else None,
             )

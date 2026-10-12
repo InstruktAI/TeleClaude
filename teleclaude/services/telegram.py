@@ -9,7 +9,6 @@ from pathlib import Path
 import httpx
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config.machine import config
 from teleclaude.services.provider_observation import (
     Provider,
     ProviderOutcome,
@@ -45,14 +44,16 @@ async def send_telegram_dm(
     content: str,
     file: str | None = None,
     timeout_s: float = 10.0,
+    *,
+    bot_token: str | None,
 ) -> str:
-    """Send a Telegram message or document directly by chat_id."""
+    """Send a Telegram message or document directly by chat_id, authenticating with ``bot_token``."""
     operation_id = new_operation_id()
     observe_provider(Provider.TELEGRAM, ProviderOutcome.ACCEPTED, operation_id)
     terminal_observed = False
     client_cleanup_completed = False
     try:
-        token = config.telegram.bot_token
+        token = bot_token
         if not token:
             observe_provider(Provider.TELEGRAM, ProviderOutcome.MISSING_CONFIG, operation_id)
             terminal_observed = True

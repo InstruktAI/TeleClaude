@@ -102,6 +102,7 @@ from teleclaude.config.roster import (
     validate_roster_candidate,
 )
 from teleclaude.config.schema import CompanyConfig, ConfigKind, GlobalConfig, ProjectConfig
+from teleclaude.config.surface import sections_outside_scope
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.file_transaction import file_transaction
@@ -115,6 +116,7 @@ _SLUG_KEY = "slug"
 _NAME_KEY = "name"
 _PEOPLE_KEY = "people"
 _COMPUTER_SECTION = "computer"
+_MASTER_SCOPED_NOT_APPLICABLE = "master_scoped_not_applicable"
 _GLOBAL_SECTION = "global"
 _IDENTITY_SECTION = "identity"
 _SETTINGS_SECTION = "settings"
@@ -182,6 +184,12 @@ def _computer_source() -> Path:
     return config_path
 
 
+def _computer_read_only(raw: Mapping[object, object]) -> dict[str, object]:  # guard: loose-dict - projected sections
+    """Name the master-scoped sections that do not apply here, beside the document and never in it."""
+    outside = sections_outside_scope(raw)
+    return {_MASTER_SCOPED_NOT_APPLICABLE: list(outside)} if outside else {}
+
+
 def _computer_view_from(raw: Mapping[object, object], revision: str) -> SubjectView:
     sections: dict[str, object] = {  # guard: loose-dict - raw YAML config
         str(key): value for key, value in raw.items() if key not in {_KIND_KEY, _SCHEMA_VERSION_KEY}
@@ -190,7 +198,7 @@ def _computer_view_from(raw: Mapping[object, object], revision: str) -> SubjectV
         ref=SubjectRef(ConfigSubjectKind.COMPUTER),
         sources=(_computer_source(),),
         sections={_COMPUTER_SECTION: sections},
-        read_only={},
+        read_only=_computer_read_only(raw),
         revision=revision,
     )
 

@@ -85,7 +85,8 @@ from teleclaude.config._runtime_models import (
     WorkflowRunnerMode as WorkflowRunnerMode,
 )
 from teleclaude.config._summarizer import SummarizerConfig
-from teleclaude.config.tiers import Tier
+from teleclaude.config.effective_enabled import settle_effective_enabled
+from teleclaude.config.tiers import GOVERNS_SECTION_METADATA_KEY, SCOPE_METADATA_KEY, Scope, Tier
 
 
 class ConfigValidationIssue(NamedTuple):
@@ -410,8 +411,6 @@ class TelegramConfig(ClosedModel):
 
     enabled: FLAG = False
     bot_token: Annotated[OPT_TEXT, SENSITIVE] = None
-    alert_username: Annotated[OPT_TEXT, SENSITIVE] = None
-    alert_chat_id: Annotated[OPT_TEXT, SENSITIVE] = None
     qos: TelegramQoSConfig = Field(default_factory=TelegramQoSConfig, json_schema_extra={"tier": Tier.INTERNAL})
 
     @model_validator(mode="before")
@@ -564,7 +563,9 @@ class TTSEventConfig(ClosedModel):
 class TTSConfig(ClosedModel):
     """Text-to-speech configuration. Operator-facing — the wizard renders its leaves."""
 
-    enabled: FLAG = Field(json_schema_extra={"tier": Tier.TUI})
+    # The boot value of the runtime host-playback toggle, not the section's switch: each
+    # service and event beneath is governed by its own flag.
+    enabled: FLAG = Field(json_schema_extra={"tier": Tier.TUI, GOVERNS_SECTION_METADATA_KEY: False})
     service_priority: list[str] | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})
     events: dict[str, TTSEventConfig] | None = Field(
         default=None,
@@ -692,14 +693,18 @@ class TeleclaudeConfig(ClosedModel):
     daemon: DaemonConfig = Field(json_schema_extra={"tier": Tier.TUI})
     redis: RedisConfig = Field(json_schema_extra={"tier": Tier.TUI})
     event_reliability: EventReliabilityConfig = Field(json_schema_extra={"tier": Tier.INTERNAL})
-    telegram: TelegramConfig = Field(json_schema_extra={"tier": Tier.TUI})
+    telegram: TelegramConfig = Field(json_schema_extra={"tier": Tier.TUI, SCOPE_METADATA_KEY: Scope.MASTER})
     discord: DiscordConfig = Field(json_schema_extra={"tier": Tier.TUI})
     creds: CredsConfig = Field(json_schema_extra={"tier": Tier.INTERNAL})
     agents: dict[AgentName, AgentConfig] = Field(json_schema_extra={"tier": Tier.PUBLIC})
     default_agent: AgentName = Field(json_schema_extra={"tier": Tier.PUBLIC})
     terminal: TerminalConfig = Field(json_schema_extra={"tier": Tier.INTERNAL})
-    whatsapp: WhatsAppConfig = Field(default_factory=WhatsAppConfig, json_schema_extra={"tier": Tier.TUI})
-    email: EmailConfig = Field(default_factory=EmailConfig, json_schema_extra={"tier": Tier.TUI})
+    whatsapp: WhatsAppConfig = Field(
+        default_factory=WhatsAppConfig, json_schema_extra={"tier": Tier.TUI, SCOPE_METADATA_KEY: Scope.MASTER}
+    )
+    email: EmailConfig = Field(
+        default_factory=EmailConfig, json_schema_extra={"tier": Tier.TUI, SCOPE_METADATA_KEY: Scope.MASTER}
+    )
     backup: BackupConfig = Field(default_factory=BackupConfig, json_schema_extra={"tier": Tier.TUI})
     tts: TTSConfig | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})
     stt: STTConfig | None = Field(default=None, json_schema_extra={"tier": Tier.TUI})
@@ -756,6 +761,11 @@ class TeleclaudeConfig(ClosedModel):
                 continue
             return True
         return False
+
+    @model_validator(mode="after")
+    def _settle_effective_enabled(self) -> Self:
+        settle_effective_enabled(self, is_master=self.computer.is_master)
+        return self
 
     @model_validator(mode="wrap")
     @classmethod
