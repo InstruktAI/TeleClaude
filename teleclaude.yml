@@ -283,6 +283,7 @@ jobs:
       - claude
       - gemini
     thinking_mode: med
+    enabled: ${TELECLAUDE_JOB_LOGBUGHUNTER_ENABLED}
 code:
   enabled: true
 docs:
