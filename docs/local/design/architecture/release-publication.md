@@ -142,6 +142,8 @@ access and provider-native tool permissions. Its tool processes cannot read the
 authentication cache or controller state, reach control credentials, or write
 the source. The Codex client retains its native authentication and refresh
 capability outside its command sandbox.
+The adapter selects Codex's native non-interactive `exec` command before its
+inspection flags; command selection and its permission profile stay explicit.
 
 Claude receives the prepared prompt bytes through stdin, separate from CLI
 options. Leading dashes and source frontmatter remain prompt data. The isolated

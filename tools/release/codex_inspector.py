@@ -51,6 +51,7 @@ _TOML_VAR_RUN_DENY = '"/var/run" = "deny"'
 _TOML_READ_PERMISSION = "read"
 _TOML_DENY_PERMISSION = "deny"
 _TOML_NETWORK_DISABLED = "enabled = false"
+_CODEX_EXEC_COMMAND = "exec"
 _CODEX_EPHEMERAL_FLAG = "--ephemeral"
 _CODEX_STRICT_CONFIG_FLAG = "--strict-config"
 _CODEX_SKIP_REPOSITORY_FLAG = "--skip-git-repo-check"
@@ -136,6 +137,7 @@ def run_codex_inspection(
         _LC_ALL_ENVIRONMENT: _LANGUAGE_VALUE,
     }
     arguments = (
+        _CODEX_EXEC_COMMAND,
         _CODEX_EPHEMERAL_FLAG,
         _CODEX_STRICT_CONFIG_FLAG,
         _CODEX_SKIP_REPOSITORY_FLAG,
