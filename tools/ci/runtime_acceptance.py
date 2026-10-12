@@ -74,6 +74,8 @@ _PROCEDURE_FIXTURE_GIT_EMAIL = "runtime-acceptance@example.invalid"
 _PROCEDURE_FIXTURE_CLONE_TIMEOUT_SECONDS = 60
 _PROCEDURE_FIXTURE_PUBLICATION_TIMEOUT_SECONDS = 120
 _PROCEDURE_FIXTURE_VALIDATION_TIMEOUT_SECONDS = 180
+_PROCEDURE_FIXTURE_ENVIRONMENT = Path(".venv")
+_PROCEDURE_FIXTURE_ENVIRONMENT_MISSING = "The checked source dependency environment is unavailable for its fixture."
 _GIT_EXECUTABLE = "git"
 _DOCS_GET_COMMAND = ("docs", "get")
 _DOCS_CLOSURE_OPTION = "--closure"
@@ -2066,6 +2068,10 @@ def _create_procedure_fixture_checkout(
         cwd=resources.temporary_root,
         timeout_seconds=_PROCEDURE_FIXTURE_CLONE_TIMEOUT_SECONDS,
     )
+    dependency_environment = resources.source_root / _PROCEDURE_FIXTURE_ENVIRONMENT
+    if not (dependency_environment / _PYTHON_ENVIRONMENT_EXECUTABLE).is_file():
+        raise RuntimeError(_PROCEDURE_FIXTURE_ENVIRONMENT_MISSING)
+    (checkout / _PROCEDURE_FIXTURE_ENVIRONMENT).symlink_to(dependency_environment, target_is_directory=True)
     _procedure_fixture_success(
         resources,
         evidence,
@@ -2131,7 +2137,7 @@ def _publish_procedure_fixture(
         (
             _UV_EXECUTABLE,
             _UV_PROJECT_SUBCOMMAND,
-            "--directory",
+            _UV_PROJECT_OPTION,
             str(resources.source_root),
             _UV_NO_SYNC_OPTION,
             _PYTHON_EXECUTABLE,
@@ -2193,6 +2199,7 @@ def _check_procedure_closure_snapshot(
         if not description:
             raise ValueError(f"The authored response snapshot has no description: {relative_path}")
         snippet_id = relative_path.removeprefix("docs/global/").removesuffix(".md")
+        frontmatter[2] = frontmatter[2].lstrip(_LINE_BREAK)
         expected_blocks[snippet_id] = (
             f"id: {snippet_id}\ntype: procedure\ndomain: general\nscope: global\n"
             f"description: {description}\n---\n{frontmatter[2]}"
