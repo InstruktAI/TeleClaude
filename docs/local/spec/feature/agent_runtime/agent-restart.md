@@ -145,24 +145,7 @@ And an error event is emitted (sourced from agent restart) and a failure-marker 
 
 #### UC-AR5: Restart a session owned by a remote computer
 
-```
-Given a session is owned by a remote computer
-When a caller asks to restart its agent and names the owning computer
-Then the restart is dispatched to the owning computer and runs against that computer's ledger
-And the agent process is replaced on the owning computer exactly as for a local restart
-And the owning computer persists the operation row, runs the restart, and emits its outcome event there
-And the receipt the caller receives names that computer, so the caller reads the record where it lives
-And the outcome notification crosses back to the caller's computer, which wakes the caller session locally
-And no restart is attempted against the local computer, which does not own the session
-```
-
 #### UC-AR20: Restart refuses a remote session when its owner is omitted
-
-```
-Given a caller asks to restart a session but names no owning computer for a session this computer does not own
-When the restart request is resolved
-Then the request is refused with a "session not found" error rather than silently executing locally
-```
 
 #### UC-AR6: Kill-side restart abort notifies the operator
 
