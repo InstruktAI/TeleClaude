@@ -39,7 +39,8 @@ caller the way every operation outcome does
 **A computer that cannot take the request says so.** An addressed computer that
 is offline, unknown, or running a version that cannot carry the request produces
 an error that names the computer and the reason — an offline computer as one that
-did not answer — and nothing runs anywhere.
+did not answer — and nothing runs anywhere: an offline computer refuses the request
+when it reads it after the request's deadline.
 
 **Outside the rule.** A request about the caller's own session or about the
 daemon itself names no computer. Commands that act on the invoking checkout —

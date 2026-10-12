@@ -189,8 +189,8 @@ receipt that crossed back from another computer is read and followed there.
   (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`).
 - **The request names its computer in one place.** The computer a request addresses is
   its `computer` query parameter, on every route alike. Session creation and run also
-  accept it in their body, as they always have, and the boundary reads it there too, so
-  a client that still sends it that way crosses the same way. A route whose object is the
+  accept it in their body, and the boundary reads it there too, so a request carrying
+  it that way crosses the same way. A route whose object is the
   caller's own session, or this daemon itself, names no computer.
 - **Dispatch is computer-aware.** An adapter-originated command carries `computer`, the
   computer that owns the object it operates on. When it is unset or names the local
@@ -342,14 +342,18 @@ clearance there — crosses back as that route's own status and work feedback.
   running a version without the relay rejects the relay command itself as one it does
   not know, and the relaying computer reports it as running a build without the relay.
   A computer that does not answer within the relay timeout is reported as not having
-  answered. Each reaches the caller as a work refusal that names the computer and the
+  answered. An offline computer runs nothing: it refuses the request when it reads it
+  after the deadline. A computer that took the request before the deadline and
+  answered too late leaves acceptance unknown, as any failure after sending does. Each reaches the caller as a work refusal that names the computer and the
   reason, and nothing is executed locally in its place.
 - **The relayed request arrives after its deadline.** Every relay command carries a
   deadline; a computer that takes it later — after coming back from being offline —
   refuses it and runs nothing, so a request its caller was told had failed never runs.
-- **A relayed request names no command.** A request carrying a person or agent
-  principal and no command is malformed; the owning computer refuses it, naming the
-  missing command, and runs nothing. A system principal carries no person band.
+- **A relayed request names no command.** A request carrying no command whose kind is
+  one of the relayed acts (`RelayedAct` in `teleclaude/caller_identity.py`) is relayed
+  as that act. Any other request carrying a person or agent principal and no command
+  is malformed; the owning computer refuses it, naming the missing command, and runs
+  nothing. A system principal carries no person band.
 - **The addressed computer refuses the caller.** The person band the owning computer
   resolves for the relayed principal decides; its refusal crosses back as the response,
   and the relaying computer records nothing as done.
