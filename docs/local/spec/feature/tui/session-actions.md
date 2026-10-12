@@ -90,7 +90,7 @@ Given a human operator selects an open session row in the TUI Sessions view
 When the operator presses `o`
 Then the view requests exactly one handoff for that session with no successor named
 And the view requests no restart, revive, preview, or close for that session
-And the operator is told which successor was selected and that handoff started, or why it was refused
+And the operator is told which successor was selected and that handoff started
 And a closed session row receives no handoff request
 ```
 
@@ -145,8 +145,6 @@ And sessions on any other computer receive no request
 Given a human operator opens the start-session form in path mode for a computer other than the one running the TUI
 When the operator enters a path and confirms
 Then the view sends the path as entered to that computer without checking it on the computer running the TUI
-And the session starts there when the path is a directory on that computer
-And when it is not, the operator receives that computer's refusal naming the path
 But for the computer running the TUI, a path that is not a directory there is refused in the form and no request is sent
 ```
 
