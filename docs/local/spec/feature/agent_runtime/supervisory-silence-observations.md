@@ -77,8 +77,7 @@ recovered native evidence.
 
 ### Cross-computer compatibility
 
-Remote peers advertise this observation contract through the existing fleet
-capability mechanism. An unsupported destination is recorded as unavailable for
+An unsupported destination is recorded as unavailable for
 neutral delivery. An observation is never recoded as a confirmed failure to
 make an older peer accept it. Capable receivers consume legacy silence
 evidence as observations while legacy wire values remain accepted.
@@ -167,17 +166,6 @@ And a fresh run or real new prompt opens the next observation opportunity
 ```
 
 #### UC-SSO7: A remote supervisor retains control of its subscription
-
-```gherkin
-Given a supervising agent dispatched initial work to a child on another computer
-And both computers support supervisory silence observations
-When the child satisfies a silence observation condition
-Then the caller receives the same neutral evidence as for a local child
-And the observation names the child's computer and a routed inspection reference
-And an active direct conversation does not suppress it
-When that caller unsubscribes
-Then subsequent silence observations do not reach it
-```
 
 #### UC-SSO8: Version skew preserves the meaning of evidence
 
