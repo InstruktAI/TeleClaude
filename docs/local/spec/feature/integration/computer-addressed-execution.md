@@ -22,16 +22,9 @@ that computer and runs there through the same route a request made on that
 computer runs through. A request that names this computer, or none, runs here.
 No command opts into this, so a newly added command cannot miss it.
 
-**Authenticated once, decided by the owner.** The caller is authenticated and
-cleared once, at the edge that serves it; the request carries the caller's
-principal and nothing else about who they are. The owning computer resolves that
-principal's roles from its own registry and configuration, applies the command's
-person band and the object's rules, judges the object from its own state, and
-answers with its own result or refusal
+**Decided by the owner.** Whether the caller may perform the command is
+decided by the owning computer from the caller's principal
 (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
-No login or session on the owning computer is needed or consulted. The relaying
-computer neither pre-authorizes nor substitutes; it executes nothing locally in
-the owner's place.
 
 **Nothing is lost on the way back.** The caller receives the owning computer's
 response as that computer produced it: a read's content, a receipt that names
@@ -50,6 +43,9 @@ code, formatting, and registering the folder they are invoked in as a project â€
 run where they are invoked. A configuration command acts on state a computer
 owns and accepts the computer like every other command. Connection projection
 and bootstrap reads serve the daemon's consolidated view and name no computer.
+Opening or closing a direct conversation with a session on another computer is
+not carried to that computer
+(`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`).
 
 ## Canonical fields
 
@@ -73,7 +69,6 @@ Given a human operator addresses an action to a todo on another computer
 And that todo's state does not allow the action
 When the action reaches the other computer
 Then the operator receives the other computer's refusal, with its explanation and the way forward
-And the refusal is presented as a work refusal, not recorded as a technical fault
 ```
 
 #### UC-CAE3: A receipt-backed operation addressed to another computer is owned there
@@ -83,21 +78,7 @@ Given an agent session addresses a lifecycle operation to a todo on another comp
 When the other computer accepts the operation
 Then the agent receives that computer's receipt, which names that computer
 And the operation runs, is recorded, and reaches its terminal state on that computer
-And the operation's outcome is delivered to the agent's session the way every operation outcome is
 And the agent reads the operation's record on the computer the receipt names
-```
-
-#### UC-CAE4: The owning computer decides the person band from the relayed principal
-
-```gherkin
-Given a person authenticated at a terminal on one computer and holding no login on another
-And that person holds a role on the other computer that admits an action there
-When the person addresses the action to the other computer
-Then the other computer admits it from the person's principal and the role it resolves for them
-And no login on the other computer is asked for
-When the same person addresses an action the role they hold there does not admit
-Then the other computer refuses it, naming the role it resolved
-And no role the person holds on their own computer is consulted by the other computer
 ```
 
 #### UC-CAE5: An addressed computer that cannot take the request produces a named error
