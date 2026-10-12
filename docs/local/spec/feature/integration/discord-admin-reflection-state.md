@@ -471,6 +471,10 @@ And peers may read and retain their local mappings without changing the provider
 
 <!-- change:master-conversation-entry -->
 
+- Shared provider writes follow each computer's own master declaration. While
+  more than one live computer declares itself master, each of them writes the
+  shared containers and their permission overwrites.
+
 <!-- /planned-change:master-conversation-entry -->
 
 - Discord permissions can prevent cleanup of duplicate or stale provider

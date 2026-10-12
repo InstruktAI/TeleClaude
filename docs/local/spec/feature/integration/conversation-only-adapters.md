@@ -16,11 +16,12 @@ Discord alone carries the operator console and admin controls.
 
 ### Receiver ownership
 
-Telegram's inbound receiver starts only on the unique master selected by the
-existing fleet ownership contract, including when a peer has Telegram enabled
+Telegram's inbound receiver starts only on a computer whose configuration
+declares it the mesh master, including when a non-master has Telegram enabled
 in its local configuration. A non-master does not claim Telegram updates or
-perform conversation-entry side effects. WhatsApp receivers and Discord's
-conversational surfaces submit input only under the owner decision in
+perform conversation-entry side effects. Every conversational surface, the
+master's Telegram receiver included, submits input only under the owner
+decision in
 `local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`.
 
 Discord's computer-owned operator surfaces remain active on their owning
@@ -104,3 +105,13 @@ And conversational ownership does not transfer its forums to another computer
   operator-console controls.
 - Person-addressed outbound notifications use the messaging-provider contract,
   not the conversation adapter, and are unchanged by this capability.
+
+<!-- planned:master-conversation-entry -->
+
+- While more than one live computer declares itself master, each of them starts
+  its Telegram receiver, but conversation entry has no owner
+  (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
+  Telegram updates those receivers claim during the conflict go unanswered and
+  are not replayed.
+
+<!-- /planned:master-conversation-entry -->

@@ -149,6 +149,10 @@ And every non-master remains silent even when its local lookup has no session
 
 <!-- change:master-conversation-entry -->
 
+- Command-tree publication follows each computer's own master declaration.
+  While more than one live computer declares itself master, each of them
+  publishes the guild command tree.
+
 <!-- /planned-change:master-conversation-entry -->
 
 - Discord may deliver one application interaction to multiple concurrent gateway
