@@ -71,8 +71,9 @@ session's role and its help-desk confinement in
    reports belong to platform scope, so only a platform role reaches them.
 8. **Agents carry the person, not a role copy.** A session acting for a person
    is judged by that person's effective role for the object it acts on. An
-   agent's system role still narrows what it may do and never widens the
-   person's role.
+   agent's system role narrows commands executed on its own computer and never
+   widens the person's role. Requests addressed to another computer follow
+   invariant 9.
 9. **The computer holding the object decides.** A command that acts on an
    object another computer holds — a session running there, a session to start
    there, an operation it owns — is authorized on that computer, the person band
@@ -84,11 +85,9 @@ session's role and its help-desk confinement in
    (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
    The target resolves that principal's roles from its own person registry,
    company rosters, and project registry; a role or scope carried with the
-   request is never an input. The caller's computer decides only what it alone
-   holds about its own caller: that the caller is identified, that a session
-   caller's system role is admitted by the command's agent band (invariant 8),
-   and that the caller's dispatch chain permits the act; each narrows and none
-   widens. A listing or search that names another computer is answered there the
+   request is never an input. The caller is authenticated at the edge; the
+   sending computer relays the request without applying role or dispatch-chain
+   authorization. A listing or search that names another computer is answered there the
    same way: that computer returns only what the caller's reach admits there
    (invariant 10). Records a computer receives from its peers without a request
    — replicated session records, relayed events — carry their subject and the

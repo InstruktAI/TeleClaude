@@ -155,13 +155,12 @@ the client sends any request:
   company rosters when the command runs, so a changed role applies from the
   session's next command, and a gate grants a session no role its principal does
   not resolve to; a session acting for a person is also bounded by that role,
-- every request a `telec` command sends to the daemon is cleared as that command,
-  against its verb band (`local/projects/teleclaude/design/cli-authorization-matrix`), once, before
-  the first request leaves the process that runs it; the TUI clears each action
-  against the verb of the command that action performs; for a command that acts
-  on an object another computer holds, that clearance establishes the caller's
-  identity and, for a session caller, the command's agent band, and the computer
-  holding the object decides the person band
+- a `telec` command executing locally is cleared against its verb band
+  (`local/projects/teleclaude/design/cli-authorization-matrix`) once, before the
+  first request leaves its process; a command addressed to another computer
+  authenticates its caller at the edge and is relayed without sender-side
+  authorization. The owning computer authorizes the relayed principal.
+  The TUI follows the same boundary for each action
   (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
 - a caller that resolves to no person and no system principal is refused before
   any request is sent; a role outside the band is refused with the not-permitted
