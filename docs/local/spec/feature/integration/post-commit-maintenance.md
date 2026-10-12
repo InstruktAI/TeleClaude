@@ -101,6 +101,10 @@ contract governs only what happens when maintenance runs.
   owed action set, the hook records each owed action durably, starts a one-shot
   drain contender, and returns without waiting for action completion. A later
   commit adds its own owed records while an earlier drain is running.
+  A successful post-merge handoff prints a concise terminal notice that automatic
+  maintenance has started in the background, may take some time, and needs no
+  manual installation. No start notice is printed when no work is owed or the
+  background process could not be started.
 - **Per-action state.** Each gitignored record is keyed by the activated tip
   and action id and retains the pre-activation revision and queued time. A
   confirmed success removes its record. A terminal failure remains marked
@@ -231,6 +235,7 @@ And the advanced committed change owes deterministic maintenance
 When the canonical-root advancement completes
 Then its maintenance is recorded and starts without an agent instruction
 And the Git operation returns before long-running maintenance finishes
+And the terminal reports that automatic maintenance has started in the background, may take some time, and needs no manual installation
 And each action eventually has a structured terminal outcome
 But the integration worktree performs no maintenance action
 ```
