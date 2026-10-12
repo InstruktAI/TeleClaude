@@ -112,7 +112,6 @@ Then the subscribing session is notified that the turn finished
 And the notification states that the turn ended with `NOOP`
 And the notification carries no instruction to inspect the target
 And a subscription registered for a single reply is spent by that notification
-And an initiator on another computer is told of the same turn end
 
 Given a subscribed agent session holds no live conversation with the target it subscribed to
 When that target finishes a turn with any other authored output, or one not yet readable when the turn stops
@@ -250,7 +249,6 @@ And the caller does not receive a clean turn-end notification as the account of 
 Given a caller on one computer is subscribed to a target session running on another
 When the target session enters a distress state
 Then the caller receives the same distress notification it would receive for a target on its own computer
-And the notification names the computer the target runs on
 ```
 
 #### UC-SS8: An active direct conversation link does not withhold distress
