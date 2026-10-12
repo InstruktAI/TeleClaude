@@ -80,8 +80,15 @@ PARENT_DIRECTORY_MARKER = ".."
 BASELINE_PROMPT_PREFIX = "Baseline commit: "
 SOURCE_PROMPT_PREFIX = "Captured source commit: "
 READ_PROMPT_PREFIX = "Read "
-MANIFEST_PROMPT_LINE = "Read the generated source and baseline manifest comparison in the evidence index."
-INDEX_PROMPT_SUFFIX = " first. It contains the complete changed-path denominator and every indexed diff segment."
+MANIFEST_PROMPT_LINE = (
+    f"Compare the separate files under {PUBLIC_CONTRACTS_DIRECTORY_NAME}/{BASELINE_DIRECTORY_NAME} and "
+    f"{PUBLIC_CONTRACTS_DIRECTORY_NAME}/{SOURCE_CONTRACT_DIRECTORY_NAME} in bounded reads. "
+    "The evidence index supplies their comparison metadata."
+)
+INDEX_PROMPT_SUFFIX = (
+    " in bounded portions to account for changed areas and locate focused source/diff evidence. "
+    "It retains the complete changed-path denominator and every indexed segment; those segments are not a reading checklist."
+)
 SOURCE_TREE_PROMPT_PREFIX = "The captured source tree is available under "
 SOURCE_TREE_PROMPT_SUFFIX = " for consumer inspection."
 SEGMENT_PROMPT = (
@@ -89,7 +96,10 @@ SEGMENT_PROMPT = (
 )
 DELETED_TEXT_PROMPT = "Deleted text content is present in its indexed diff segments. Binary changes remain fully listed by path and status."
 SCHEMA_PROMPT_PREFIX = "Return JSON matching "
-SCHEMA_PROMPT_SUFFIX = ". Set assessment_complete only when the complete interval was assessed."
+SCHEMA_PROMPT_SUFFIX = (
+    ". Set assessment_complete only when the interval's grouped material-impact assessment completed; "
+    "an established version tier alone does not complete unresolved consumer-impact coverage."
+)
 PUBLIC_CONTRACT_HEADING = "# Public contract comparison"
 INDEX_HEADING = "# Evidence index"
 SCHEMA_HEADING = "# Report schema"
