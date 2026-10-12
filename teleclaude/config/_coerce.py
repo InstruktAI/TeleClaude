@@ -34,6 +34,13 @@ def as_bool(value: object, *, default: bool = False) -> bool:
     raise ValueError("Invalid boolean config value (expected true/false)")
 
 
+def declares_true(value: object) -> bool:
+    """Whether a raw config value reads as true, treating anything unparseable as not true."""
+    if isinstance(value, bool):
+        return value
+    return isinstance(value, str) and value.strip().lower() in _TRUE_TOKENS
+
+
 def _require_scalar(value: object) -> object:
     """Reject containers before a scalar coercion rule runs."""
     if isinstance(value, (Mapping, list)):

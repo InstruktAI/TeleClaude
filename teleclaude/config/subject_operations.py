@@ -50,6 +50,7 @@ from teleclaude.config.resources import (
 )
 from teleclaude.config.revision import StaleRevision
 from teleclaude.config.roster import RosterRefused
+from teleclaude.config.validation import is_section_available
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.configuration_clearance import (
@@ -93,9 +94,14 @@ _DESK_NOT_ON_MASTER = "help desks run on the mesh master, and this computer is n
 _FLEET_UNOBSERVABLE = "cannot observe the fleet: {error}"
 _FLEET_LAGGING = "help-desk entry is not served until every computer runs it; lagging: {computers}"
 _LIST_SEPARATOR = ", "
-_NO_TOKEN = ""
+_DISCORD_SECTION = "discord"
+_DISCORD_NOT_ENABLED = "Discord is not enabled on this computer, so there is no bot to bind a voice bot to."
 # The invitation answer's field naming each configured provider whose endpoint could not be resolved.
 INVITE_UNAVAILABLE_PROVIDERS_KEY = "unavailable_providers"
+# The invitation answer's field saying whether email is enabled on the computer that issued it.
+INVITE_EMAIL_ENABLED_KEY = "email_enabled"
+# The validation answer's field carrying a result row's informational notes.
+VALIDATE_NOTES_KEY = "notes"
 _PROJECT_SECTION = "project"
 _JOBS_SECTION = "jobs"
 _INVALID_PROJECT_SECTION = "Project subject has no writable project section"
@@ -403,6 +409,7 @@ async def _invite(standing: ConfigurationStanding, request: ConfigRequest) -> Co
             "email": outcome.email,
             "links": outcome.links,
             "email_sent": outcome.email_sent,
+            INVITE_EMAIL_ENABLED_KEY: outcome.email_enabled,
             INVITE_UNAVAILABLE_PROVIDERS_KEY: list(outcome.unavailable_providers),
         }
     )
@@ -413,10 +420,11 @@ async def _discord_voice_bot(standing: ConfigurationStanding, request: ConfigReq
     if refused is not None:
         return refused
     assert request.instance is not None
+    discord_token = config.discord.token
+    if discord_token is None or not is_section_available(_DISCORD_SECTION, config.discord):
+        return ConfigOutcome(failure=ConfigFailure(kind=ConfigFailureKind.REFUSED, message=_DISCORD_NOT_ENABLED))
     try:
-        result = await asyncio.to_thread(
-            configure_person_discord_voice_bot, request.instance, config.discord.token or _NO_TOKEN
-        )
+        result = await asyncio.to_thread(configure_person_discord_voice_bot, request.instance, discord_token)
     except (OSError, ValueError) as error:
         return _failed(ConfigFailureKind.INVALID, error)
     return _done({"environment_secured": result.environment_secured})
@@ -450,7 +458,13 @@ async def _validate(_standing: ConfigurationStanding, _request: ConfigRequest) -
     return _done(
         {
             "results": [
-                {"area": item.area, "passed": item.passed, "errors": item.errors, "suggestions": item.suggestions}
+                {
+                    "area": item.area,
+                    "passed": item.passed,
+                    "errors": item.errors,
+                    "suggestions": item.suggestions,
+                    VALIDATE_NOTES_KEY: item.notes,
+                }
                 for item in results
             ]
         }

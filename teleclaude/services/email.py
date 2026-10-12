@@ -15,8 +15,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config.machine import config
-from teleclaude.config.validation import is_section_available
+from teleclaude.config._models import EmailConfig
 from teleclaude.services.provider_observation import (
     Provider,
     ProviderOutcome,
@@ -42,13 +41,15 @@ async def send_email(
     html_body: str,
     text_body: str | None = None,
     attachment: str | None = None,
+    *,
+    email_config: EmailConfig,
 ) -> None:
-    """Send email via the configured SMTP relay, optionally with one file attached.
+    """Send email via the SMTP relay ``email_config`` names, optionally with one file attached.
 
-    Credentials and sender identity come from the typed email config section.
+    Credentials and sender identity come from the typed email section the caller passes.
 
     Raises:
-        RuntimeError: If email is disabled/unconfigured, or SMTP delivery fails
+        RuntimeError: If SMTP delivery fails
         FileNotFoundError: If ``attachment`` is set and the path does not exist
         ValueError: If ``attachment`` is set and the path is not a regular file
     """
@@ -57,11 +58,6 @@ async def send_email(
     terminal_observed = False
     client_cleanup_completed = False
     try:
-        if not is_section_available("email", getattr(config, "email", None)):
-            observe_provider(Provider.EMAIL, ProviderOutcome.MISSING_CONFIG, operation_id)
-            terminal_observed = True
-            raise RuntimeError("Email is disabled or not configured (set email.enabled and its SMTP fields)")
-
         attachment_path: Path | None = None
         if attachment:
             attachment_path = Path(attachment)
@@ -70,7 +66,6 @@ async def send_email(
             if not attachment_path.is_file():
                 raise ValueError(f"Not a file: {attachment}")
 
-        email_config = config.email
         smtp_user = email_config.smtp_username or ""
         smtp_pass = email_config.smtp_key or ""
         email_from = email_config.email_from or ""

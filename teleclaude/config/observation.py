@@ -8,6 +8,8 @@ from typing import TypedDict
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config._environment import whole_reference_name
+from teleclaude.config._models import TeleclaudeConfig
+from teleclaude.config.surface import master_scoped_sections
 from teleclaude.config.validation import is_section_available, missing_required_fields
 
 logger = get_logger(__name__)
@@ -77,13 +79,12 @@ SOURCE_ABSENT = "absent"
 SOURCE_LITERAL = "literal"
 SOURCE_PLACEHOLDER = "placeholder"
 AVAILABILITY_DISABLED = "disabled"
+AVAILABILITY_MASTER_SCOPED = "master_scoped"
 AVAILABILITY_AVAILABLE = "available"
 AVAILABILITY_UNAVAILABLE = "unavailable"
 MISSING_REQUIRED_FIELD = "missing_required_field"
 CONFIG_SOURCE_PATHS = (
     ("telegram", "bot_token"),
-    ("telegram", "alert_username"),
-    ("telegram", "alert_chat_id"),
     ("discord", "token"),
     ("discord", "guild_id"),
     ("whatsapp", "phone_number_id"),
@@ -127,14 +128,17 @@ def credential_field_sources(raw: object) -> dict[str, str]:
     return {".".join(path): _source_kind(_nested_value(raw, path)) for path in CONFIG_SOURCE_PATHS}
 
 
-def credential_section_availability(resolved: object) -> dict[str, SectionAvailability]:
+def credential_section_availability(resolved: TeleclaudeConfig) -> dict[str, SectionAvailability]:
     """Project enabled and required-field availability from the typed aggregate."""
     projection: dict[str, SectionAvailability] = {}
+    master_scoped = () if resolved.computer.is_master else master_scoped_sections()
     for section_name in ("telegram", "discord", "whatsapp", "email"):
         section = getattr(resolved, section_name)
         enabled = section.enabled
         missing = missing_required_fields(section_name, section)
-        if not enabled:
+        if section_name in master_scoped:
+            availability = AVAILABILITY_MASTER_SCOPED
+        elif not enabled:
             availability = AVAILABILITY_DISABLED
         elif is_section_available(section_name, section):
             availability = AVAILABILITY_AVAILABLE

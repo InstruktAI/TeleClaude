@@ -18,7 +18,7 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _maybe_show_help
 from teleclaude.cli.telec.surface import CONFIG_ENV_LIST, CONFIG_ENV_SET, CONFIG_VALIDATE
-from teleclaude.config.subject_operations import ConfigRequest, ConfigVerb
+from teleclaude.config.subject_operations import VALIDATE_NOTES_KEY, ConfigRequest, ConfigVerb
 
 
 def handle_config_cli(args: list[str]) -> None:
@@ -105,6 +105,8 @@ def _env_set(pairs: list[str], use_json: bool) -> None:
 
 # --- Validate ---
 
+_NOTE_LINE = "    Note: {note}"
+
 
 def handle_validate(args: list[str]) -> None:
     parsed = parse_command_args(CONFIG_VALIDATE, args)
@@ -124,6 +126,8 @@ def handle_validate(args: list[str]) -> None:
                 print(f"    Error: {error}")
             for suggestion in result["suggestions"]:
                 print(f"    Fix: {suggestion}")
+            for note in result[VALIDATE_NOTES_KEY]:
+                print(_NOTE_LINE.format(note=note))
 
         if not all_passed:
             raise SystemExit(1)

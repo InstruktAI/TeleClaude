@@ -65,6 +65,7 @@ from teleclaude.config.loader import find_person_config_path
 from teleclaude.config.machine_config_mutation import inspect_machine_config
 from teleclaude.config.machine_environment import machine_runtime_environment
 from teleclaude.config.person_secrets import PersonSecretStorageError
+from teleclaude.config.surface import sections_outside_scope
 from teleclaude.config.tiers import Tier
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, ConfigFileName
@@ -72,6 +73,10 @@ from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, ConfigFileNam
 __all__ = ["ConfigContent", "ConfigView"]
 
 logger = get_logger(__name__)
+
+_TELEGRAM_SECTION = "telegram"
+_WHATSAPP_SECTION = "whatsapp"
+_EMAIL_SECTION = "email"
 
 
 def _default_section(name: str) -> dict[str, Any]:  # guard: loose-dict - DEFAULT_CONFIG holds the untyped YAML defaults
@@ -397,6 +402,7 @@ class ConfigContent(
         self._people_data: list[PersonEntry] = []
         self._validation_results: list[ValidationResult] = []
         self._adapter_sections: list[AdapterSectionProjection] = []
+        self._outside_scope: tuple[str, ...] = ()
         self._cursor_by_context: dict[str, int] = {}
         self._editing_var_name: str | None = None
         self._edit_buffer = ""
@@ -508,14 +514,22 @@ class ConfigContent(
             return fields
 
         if tab == Subtab.ADAPTERS:
-            telegram_data = self._raw_config.get("telegram", {})
-            merged_telegram = deep_merge(_default_section("telegram"), telegram_data)
-            telegram_fields = set(TelegramConfig.model_fields)
-            filtered_telegram = {k: v for k, v in merged_telegram.items() if k in telegram_fields}
-            telegram_obj = TelegramConfig.model_construct(**filtered_telegram)
-            fields = reflect_schema(
-                telegram_obj, prefix="telegram", section="Telegram", owning_source="machine", inherited_tier=Tier.TUI
-            )
+            fields: list[ReflectedField] = []
+            if _TELEGRAM_SECTION not in self._outside_scope:
+                telegram_data = self._raw_config.get("telegram", {})
+                merged_telegram = deep_merge(_default_section("telegram"), telegram_data)
+                telegram_fields = set(TelegramConfig.model_fields)
+                filtered_telegram = {k: v for k, v in merged_telegram.items() if k in telegram_fields}
+                telegram_obj = TelegramConfig.model_construct(**filtered_telegram)
+                fields.extend(
+                    reflect_schema(
+                        telegram_obj,
+                        prefix="telegram",
+                        section="Telegram",
+                        owning_source="machine",
+                        inherited_tier=Tier.TUI,
+                    )
+                )
 
             discord_data = self._raw_config.get("discord", {})
             merged_discord = deep_merge(_default_section("discord"), discord_data)
@@ -528,20 +542,21 @@ class ConfigContent(
                 )
             )
 
-            whatsapp_data = self._raw_config.get("whatsapp", {})
-            merged_whatsapp = deep_merge(_default_section("whatsapp"), whatsapp_data)
-            whatsapp_fields = set(WhatsAppConfig.model_fields)
-            filtered_whatsapp = {k: v for k, v in merged_whatsapp.items() if k in whatsapp_fields}
-            whatsapp_obj = WhatsAppConfig.model_construct(**filtered_whatsapp)
-            fields.extend(
-                reflect_schema(
-                    whatsapp_obj,
-                    prefix="whatsapp",
-                    section="WhatsApp",
-                    owning_source="machine",
-                    inherited_tier=Tier.TUI,
+            if _WHATSAPP_SECTION not in self._outside_scope:
+                whatsapp_data = self._raw_config.get("whatsapp", {})
+                merged_whatsapp = deep_merge(_default_section("whatsapp"), whatsapp_data)
+                whatsapp_fields = set(WhatsAppConfig.model_fields)
+                filtered_whatsapp = {k: v for k, v in merged_whatsapp.items() if k in whatsapp_fields}
+                whatsapp_obj = WhatsAppConfig.model_construct(**filtered_whatsapp)
+                fields.extend(
+                    reflect_schema(
+                        whatsapp_obj,
+                        prefix="whatsapp",
+                        section="WhatsApp",
+                        owning_source="machine",
+                        inherited_tier=Tier.TUI,
+                    )
                 )
-            )
             return fields
 
         if tab == Subtab.PROVIDERS:
@@ -553,17 +568,18 @@ class ConfigContent(
             fields = reflect_schema(
                 backup_obj, prefix="backup", section="Providers", owning_source="machine", inherited_tier=Tier.TUI
             )
-            email_data = self._raw_config.get("email", {})
-            merged_email = deep_merge(_default_section("email"), email_data)
-            email_fields = set(EmailConfig.model_fields)
-            email_obj = EmailConfig.model_construct(
-                **{key: value for key, value in merged_email.items() if key in email_fields}
-            )
-            fields.extend(
-                reflect_schema(
-                    email_obj, prefix="email", section="Email", owning_source="machine", inherited_tier=Tier.TUI
+            if _EMAIL_SECTION not in self._outside_scope:
+                email_data = self._raw_config.get("email", {})
+                merged_email = deep_merge(_default_section("email"), email_data)
+                email_fields = set(EmailConfig.model_fields)
+                email_obj = EmailConfig.model_construct(
+                    **{key: value for key, value in merged_email.items() if key in email_fields}
                 )
-            )
+                fields.extend(
+                    reflect_schema(
+                        email_obj, prefix="email", section="Email", owning_source="machine", inherited_tier=Tier.TUI
+                    )
+                )
             return fields
 
         if tab == Subtab.SUMMARIZER:
@@ -716,9 +732,10 @@ class ConfigContent(
             self._raw_config = {}
             self._status_message = f"Failed to load config.yml: {exc}"
             self._status_is_error = True
+        self._outside_scope = sections_outside_scope(self._raw_config)
 
         try:
-            self._env_data = check_env_vars()
+            self._env_data = [status for status in check_env_vars() if status.info.adapter not in self._outside_scope]
         except Exception as exc:
             self._env_data = []
             self._status_message = f"Failed to load env vars: {exc}"

@@ -22,7 +22,6 @@ from __future__ import annotations
 import base64
 import json
 import re
-import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from http import HTTPMethod, HTTPStatus
@@ -41,19 +40,18 @@ from teleclaude.api.work_feedback import declared_refusal_response
 from teleclaude.caller_identity import RelayedAct, cleared_command_path
 from teleclaude.config.machine import config
 from teleclaude.core.command_dispatch import (
-    RELAY_REQUEST_TIMEOUT_S,
     RelayFailure,
     RemoteDispatchError,
     RemoteDispatchReason,
-    dispatch_command,
     is_remote_target,
 )
 from teleclaude.core.command_service import dispatch_privilege_refusal
 from teleclaude.core.operation_caller_identity import get_relayed_caller
-from teleclaude.types.commands import CommandType, RelayedResponse, RelayRequestCommand
+from teleclaude.core.relay_carrier import carry_request
+from teleclaude.types.commands import CommandType, RelayedResponse
 
 if TYPE_CHECKING:
-    from teleclaude.core.adapter_client import AdapterClient
+    pass
 
 logger = get_logger(__name__)
 
@@ -68,9 +66,6 @@ _UNKNOWN_COMPUTER_DETAIL = "{computer} is unknown to {local}; the request was no
 _NESTED_RELAY_DETAIL = "a request carried here runs here; it names {computer}, and is not carried on."
 _TRANSPORT_UNAVAILABLE_DETAIL = "the request to {computer} could not be sent: {error}"
 _INVALID_RESPONSE_DETAIL = "{computer} answered the carried request with a response this computer cannot read."
-_SENT_EVENT = "relay_request_sent"
-_ANSWERED_EVENT = "relay_request_answered"
-_FAILED_EVENT = "relay_request_failed"
 
 
 @dataclass(frozen=True)
@@ -105,21 +100,6 @@ _DIRECT_CONVERSATION_ROUTES: Final = (
     (HTTPMethod.POST.value, re.compile(r"^/sessions/[^/]+/message$")),
 )
 _RUN_SESSION_ROUTE: Final = (HTTPMethod.POST.value, "/sessions/run")
-
-
-@dataclass
-class _BoundaryState:
-    """The transport the boundary carries requests over."""
-
-    client: AdapterClient | None = None
-
-
-_STATE = _BoundaryState()
-
-
-def configure(client: AdapterClient | None) -> None:
-    """Wire the transport client; called from APIServer."""
-    _STATE.client = client
 
 
 def is_known_computer(computer: str) -> bool:
@@ -249,43 +229,29 @@ async def _carry(request: Request, target: str, identity: CallerIdentity, raw_bo
         return relay_failure_response(unknown_computer_failure(target))
 
     cleared = _cleared_command(request, identity)
-    command = RelayRequestCommand(
-        computer=target,
-        method=request.method,
-        path=request.url.path,
-        deadline_at=time.time() + RELAY_REQUEST_TIMEOUT_S,
-        query=[[name, value] for name, value in request.query_params.multi_items()],
-        body_b64=base64.b64encode(raw_body).decode(),
-        content_type=request.headers.get(_CONTENT_TYPE_HEADER),
-        caller_session_id=identity.session_id or None,
-        caller_computer=config.computer.name if identity.session_id else None,
-        cleared_command=cleared_command_path(cleared) if cleared else None,
-    )
-    logger.info(
-        _SENT_EVENT,
-        computer=target,
-        method=command.method,
-        path=command.path,
-        command=command.cleared_command,
-        caller_session_id=command.caller_session_id,
-    )
     try:
-        result = await dispatch_command(_STATE.client, command, principal=principal)
+        result = await carry_request(
+            destination=target,
+            method=request.method,
+            path=request.url.path,
+            query=[[name, value] for name, value in request.query_params.multi_items()],
+            body=raw_body,
+            content_type=request.headers.get(_CONTENT_TYPE_HEADER),
+            principal=principal,
+            caller_session_id=identity.session_id or None,
+            cleared_command=cleared_command_path(cleared) if cleared else None,
+        )
     except RelayFailure as failure:
-        logger.warning(_FAILED_EVENT, computer=target, reason=failure.reason.value, error=str(failure))
         return relay_failure_response(failure)
     except RemoteDispatchError as error:
-        logger.warning(_FAILED_EVENT, computer=target, reason=error.reason.value, error=str(error))
         return relay_failure_response(
             RelayFailure(
                 computer=target, command=CommandType.RELAY_REQUEST.value, reason=error.reason, detail=str(error)
             )
         )
     except (RuntimeError, ValueError) as error:
-        logger.warning(_FAILED_EVENT, computer=target, error=str(error))
         detail = _TRANSPORT_UNAVAILABLE_DETAIL.format(computer=target, error=error)
         return JSONResponse(status_code=HTTPStatus.SERVICE_UNAVAILABLE, content={_DETAIL_FIELD: detail})
-    logger.info(_ANSWERED_EVENT, computer=target, method=command.method, path=command.path)
     return _relayed_response(result, target)
 
 

@@ -17,6 +17,7 @@ import httpx
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.machine import config
+from teleclaude.config.validation import is_section_available
 from teleclaude.services.provider_observation import (
     Provider,
     ProviderOutcome,
@@ -27,6 +28,7 @@ from teleclaude.services.provider_observation import (
 
 logger = get_logger(__name__)
 
+DISCORD_SECTION = "discord"
 DISCORD_MAX_MESSAGE_LENGTH = 2000
 DISCORD_API_BASE = "https://discord.com/api/v10"
 DISCORD_JUMP_URL_BASE = "https://discord.com/channels"
@@ -47,6 +49,8 @@ def _resolve_jump_url_guild_segment(guild_id: int | None, *, is_thread: bool) ->
         return str(guild_id)
     if not is_thread:
         return DISCORD_DIRECT_MESSAGE_GUILD_SEGMENT
+    if not is_section_available(DISCORD_SECTION, config.discord):
+        return None
     configured_guild_id = config.discord.guild_id
     return str(configured_guild_id) if configured_guild_id is not None else None
 
@@ -100,8 +104,12 @@ async def send_discord_dm(
     content: str,
     file: str | None = None,
     timeout_s: float = 10.0,
+    *,
+    bot_token: str | None,
 ) -> str:
     """Send a Discord DM to a user by their Discord user ID, optionally with one file attached.
+
+    The message is sent as the bot that ``bot_token`` authenticates.
 
     Creates a direct-message channel and sends the message or attached file.
     """
@@ -110,7 +118,7 @@ async def send_discord_dm(
     terminal_observed = False
     client_cleanup_completed = False
     try:
-        token = config.discord.token
+        token = bot_token
         if not token:
             observe_provider(Provider.DISCORD, ProviderOutcome.MISSING_CONFIG, operation_id)
             terminal_observed = True

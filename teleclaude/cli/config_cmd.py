@@ -56,6 +56,7 @@ from teleclaude.cli.telec.surface import (
 from teleclaude.config.project_subject_init import adopt_project_subject
 from teleclaude.config.resource_contract import InvalidCandidate, PartialCommitFailure, SubjectNotFound, SubjectView
 from teleclaude.config.subject_operations import (
+    INVITE_EMAIL_ENABLED_KEY,
     INVITE_UNAVAILABLE_PROVIDERS_KEY,
     ConfigFailureKind,
     ConfigOutcome,
@@ -115,6 +116,12 @@ _LINKS_IDENTIFIER_KEY = "identifier"
 _LINKS_KEY = "links"
 _LINKS_REQUEST_ID_KEY = "request_id"
 _INVITE_FLEET_UNOBSERVABLE = "cannot observe the fleet to find the invitation owner: {error}"
+_EMAIL_DELIVERY_FAILED = "email not delivered"
+_LINK_ROW_SEPARATOR = "\n"
+_LINK_ROW = "  {platform}: {url}"
+_INVITE_SHARE_LINKS = "Invite for {name}: {reason} — share these links directly:\n{relay}"
+_INVITE_NO_LINKS = "Invite for {name}: {reason} and no invite links could be generated."
+_EMAIL_NOT_ENABLED = "no email sent, email is not enabled on this computer"
 _UNAVAILABLE_PROVIDERS_LINE = "Unavailable for this invitation: {providers}"
 _PROVIDER_SEPARATOR = ", "
 _NO_LINKS_LINE = "No entry links could be generated for {identifier}."
@@ -551,11 +558,14 @@ def _handle_invite(args: list[str], request_id: str) -> None:
         print(f"Invite sent to {outcome['email']} for {name}{_REQUEST_SUFFIX.format(request_id=request_id)}")
     else:
         available = {platform: url for platform, url in links.items() if url}
+        reason = _EMAIL_DELIVERY_FAILED if outcome[INVITE_EMAIL_ENABLED_KEY] else _EMAIL_NOT_ENABLED
         if available:
-            relay = "\n".join(f"  {platform}: {url}" for platform, url in available.items())
-            print(f"Invite for {name}: email not delivered — share these links directly:\n{relay}")
+            relay = _LINK_ROW_SEPARATOR.join(
+                _LINK_ROW.format(platform=platform, url=url) for platform, url in available.items()
+            )
+            print(_INVITE_SHARE_LINKS.format(name=name, reason=reason, relay=relay))
         else:
-            print(f"Invite for {name}: email not delivered and no invite links could be generated.")
+            print(_INVITE_NO_LINKS.format(name=name, reason=reason))
     unavailable = cast(list[str], outcome.get(INVITE_UNAVAILABLE_PROVIDERS_KEY) or [])
     if unavailable:
         print(_UNAVAILABLE_PROVIDERS_LINE.format(providers=_PROVIDER_SEPARATOR.join(unavailable)))

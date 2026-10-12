@@ -26,6 +26,7 @@ from teleclaude.config.migrations import (
     v019_retire_hook_subscriptions,
     v020_retire_channel_subscriptions,
     v021_declare_maintenance_activation,
+    v022_retire_telegram_alert_fields,
 )
 
 STEPS: Final = (
@@ -50,4 +51,5 @@ STEPS: Final = (
     v019_retire_hook_subscriptions,
     v020_retire_channel_subscriptions,
     v021_declare_maintenance_activation,
+    v022_retire_telegram_alert_fields,
 )

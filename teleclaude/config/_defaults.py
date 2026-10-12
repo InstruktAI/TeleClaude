@@ -83,8 +83,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
     "telegram": {
         "enabled": False,
         "bot_token": None,
-        "alert_username": None,
-        "alert_chat_id": None,
     },
     "discord": {
         "enabled": False,

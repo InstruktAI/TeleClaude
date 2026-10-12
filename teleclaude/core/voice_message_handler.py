@@ -60,23 +60,23 @@ class TranscribedVoice:
 
 
 def _get_service_chain() -> list[tuple[str, STTBackend]]:
-    """Build ordered list of STT backends from config priority."""
-    stt_cfg = config.stt
-    if stt_cfg and stt_cfg.enabled and stt_cfg.service_priority:
-        chain = []
-        for name in stt_cfg.service_priority:
-            # Check if service is enabled in config
-            if stt_cfg.services:
-                service_cfg = stt_cfg.services.get(name)
-                if service_cfg and not service_cfg.enabled:
-                    continue
-            backend = BACKENDS.get(name)
-            if backend:
-                chain.append((name, backend))
-        return chain
+    """Build the ordered STT backend chain from the section's effective ``enabled`` and its priority.
 
-    # Default fallback: all registered backends
-    return list(BACKENDS.items())
+    A disabled ``stt`` section has an empty chain. Otherwise a backend joins the chain
+    unless its service is configured and not enabled.
+    """
+    stt_cfg = config.stt
+    if stt_cfg is None or not stt_cfg.enabled:
+        return []
+    chain: list[tuple[str, STTBackend]] = []
+    for name in stt_cfg.service_priority or BACKENDS.keys():
+        service_cfg = (stt_cfg.services or {}).get(name)
+        if service_cfg is not None and not service_cfg.enabled:
+            continue
+        backend = BACKENDS.get(name)
+        if backend:
+            chain.append((name, backend))
+    return chain
 
 
 def init_voice_handler() -> None:

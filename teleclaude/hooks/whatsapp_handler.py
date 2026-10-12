@@ -30,7 +30,7 @@ from teleclaude.core.inbound import (
 )
 from teleclaude.core.inbound.conversation import handle_conversation_turn
 from teleclaude.core.inbound.models import WHATSAPP_KEY_FIELD
-from teleclaude.core.inbound_media import download_whatsapp_media, is_voice_event
+from teleclaude.core.inbound_media import available_whatsapp_access_token, download_whatsapp_media, is_voice_event
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import MessageMetadata, Session, SessionEntryPoint
 from teleclaude.core.origins import InputOrigin
@@ -59,6 +59,7 @@ _ACTOR_NAME_PAYLOAD_KEY = "actor_name"
 _ACTOR_AVATAR_URL_PAYLOAD_KEY = "actor_avatar_url"
 _MISSING_PHONE_EVENT = "whatsapp_event_missing_phone_number"
 _ADAPTER_DISABLED_EVENT = "whatsapp_event_adapter_disabled"
+_MEDIA_UNAVAILABLE_EVENT = "whatsapp_media_credentials_unavailable"
 _REPLY_FAILED_EVENT = "whatsapp_conversation_reply_failed"
 _REPLY_PURPOSE = "reply"
 _INBOUND_PURPOSE = "inbound"
@@ -206,10 +207,15 @@ async def _deliver_text(session: Session, phone_number: str, message_id: str, te
 
 
 async def _deliver_media(session: Session, phone_number: str, message_id: str, media_ref: MediaRef) -> None:
+    access_token = available_whatsapp_access_token()
+    if access_token is None:
+        logger.warning(_MEDIA_UNAVAILABLE_EVENT)
+        return
     local_path = await download_whatsapp_media(
         media_ref.media_id,
         media_ref.mime_type,
         phone_number,
+        access_token=access_token,
         session_id=session.session_id,
         event_type=media_ref.event_type,
     )
@@ -286,6 +292,7 @@ async def handle_whatsapp_event(event: HookEvent, contract: Contract) -> None:
         return
     if not config.whatsapp.enabled:
         logger.info(_ADAPTER_DISABLED_EVENT, purpose=_INBOUND_PURPOSE)
+        return
     message_id = _property_text(event, _MESSAGE_ID_PROPERTY)
     is_text = event.type == _TEXT_EVENT_TYPE
     text = _property_text(event, _TEXT_PROPERTY) if is_text else _NO_TEXT

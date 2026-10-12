@@ -15,8 +15,8 @@ from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.core.voice_assignment import VoiceConfig
-from teleclaude.tts import backends
 from teleclaude.tts.audio_focus import AudioFocusCoordinator
+from teleclaude.tts.backends import registry
 from teleclaude.tts.queue_runner import run_tts_with_lock_async
 from teleclaude.tts.render_cache import RenderCacheKey, dir_for, lookup
 
@@ -164,7 +164,7 @@ class TTSManager:
                 logger.info(_VOICE_REPLY_SERVICE_SKIPPED_EVENT, service=service_name, reason="no_room_voice")
                 continue
 
-            backend = backends.get_backend(service_name)
+            backend = registry.get_backend(service_name)
             if not backend or not getattr(backend, "can_render", False):
                 logger.info(_VOICE_REPLY_SERVICE_SKIPPED_EVENT, service=service_name, reason="cannot_render")
                 continue
