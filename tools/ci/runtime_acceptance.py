@@ -76,6 +76,7 @@ _PROCEDURE_FIXTURE_PUBLICATION_TIMEOUT_SECONDS = 120
 _PROCEDURE_FIXTURE_VALIDATION_TIMEOUT_SECONDS = 180
 _PROCEDURE_FIXTURE_ENVIRONMENT = Path(".venv")
 _PROCEDURE_FIXTURE_ENVIRONMENT_MISSING = "The checked source dependency environment is unavailable for its fixture."
+_PROCEDURE_FIXTURE_TERMINAL_LINE_ENDING = "\r\n"
 _GIT_EXECUTABLE = "git"
 _DOCS_GET_COMMAND = ("docs", "get")
 _DOCS_CLOSURE_OPTION = "--closure"
@@ -2028,7 +2029,41 @@ def _procedure_fixture_command(
     timeout_seconds: float = _FULL_COMMAND_TIMEOUT_SECONDS,
 ) -> ProcessExecution:
     """Run a bounded command against an isolated source fixture."""
+    if argv and argv[0] == str(resources.source_root / _CLI_EXECUTABLE) and tuple(argv[1:3]) == _DOCS_GET_COMMAND:
+        return _procedure_fixture_authenticated_read(resources, argv, cwd=cwd, evidence=evidence)
     return _record_external_command(resources, argv, cwd=cwd, timeout_seconds=timeout_seconds, evidence=evidence)
+
+
+def _procedure_fixture_authenticated_read(
+    resources: FullRuntimeResources,
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    evidence: list[CommandEvidence],
+) -> ProcessExecution:
+    """Keep the public owner's existing login on its real PTY while reading fixture docs."""
+    terminal = resources.open_admin_terminal()
+    started = time.monotonic()
+    try:
+        status, output = _record_terminal_command(resources, terminal, (_SHELL_CHANGE_DIRECTORY, str(cwd)), evidence)
+        _require_terminal_exit(status, evidence)
+        if status != _PROCESS_SUCCESS:
+            raise RuntimeError(_FULL_TERMINAL_SETUP_ERROR)
+        status, output = _record_terminal_command(resources, terminal, argv, evidence)
+        return ProcessExecution(
+            exit_status=status if status is not None else _PROCESS_FAILURE,
+            stdout=output.replace(_PROCEDURE_FIXTURE_TERMINAL_LINE_ENDING, _LINE_BREAK),
+            stderr=_EMPTY,
+            duration_seconds=time.monotonic() - started,
+            diagnostics=_PROCESS_TIMEOUT_DETAIL if status is None else _EMPTY,
+        )
+    finally:
+        status, output = _record_terminal_command(
+            resources, terminal, (_SHELL_CHANGE_DIRECTORY, str(resources.source_root)), evidence
+        )
+        _require_terminal_exit(status, evidence)
+        if status != _PROCESS_SUCCESS:
+            raise RuntimeError(_FULL_TERMINAL_SETUP_ERROR)
 
 
 def _procedure_fixture_success(
