@@ -47,7 +47,11 @@ from teleclaude.core.next_machine.manual_start import (
 from teleclaude.core.next_machine.prepare import next_prepare
 from teleclaude.core.next_machine.slug_resolution import resolve_holder_children_db
 from teleclaude.core.next_machine.work import next_work
-from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
+from teleclaude.core.operation_caller_identity import (
+    relayed_caller_computer,
+    reset_caller_session_id,
+    set_caller_session_id,
+)
 from teleclaude.core.operation_follow_through import follow_through_scope
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
 from teleclaude.core.operations._command_outcome import command_result_outcome
@@ -72,6 +76,7 @@ from teleclaude.core.operations._kinds import (
     OPERATION_KIND_TODO_WORK,
 )
 from teleclaude.core.operations._outcome import OperationCompletion
+from teleclaude.core.operations._receipt import recovery_command
 from teleclaude.core.operations._relayed_ownership import was_started_by_principal
 from teleclaude.core.operations.todo_identity import (
     pin_operation_todo_identity,
@@ -478,6 +483,8 @@ class OperationsService:
         command-backed operation's real target (its command's own session id)
         from another's.
         """
+        # A caller session on the computer whose request was carried here has its outcome delivered there.
+        caller_computer = caller_computer or relayed_caller_computer(caller_session_id)
         lock = await self._get_submit_lock(
             kind=kind,
             caller_session_id=caller_session_id,
@@ -962,12 +969,12 @@ class OperationsService:
             "state": operation.state,
             "poll_after_ms": self._poll_after_ms if operation.state in NONTERMINAL_OPERATION_STATES else 0,
             "status_path": f"/operations/{operation.operation_id}",
-            "recovery_command": f"telec operations get {operation.operation_id}",
+            "recovery_command": recovery_command(operation.operation_id),
+            "computer": config.computer.name,
         }
         events = _OUTCOME_EVENTS.get(operation.kind)
         if events is not None:
             payload["success_event"], payload["failure_event"] = events
-            payload["computer"] = config.computer.name
         if operation.slug is not None:
             payload["slug"] = operation.slug
         if operation.progress_phase:

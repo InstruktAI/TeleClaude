@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal, Protocol, assert_never
@@ -33,6 +33,7 @@ from teleclaude.types.creation_record import EntryPoint
 HUMAN_PRINCIPAL_PREFIX = "human:"
 SYSTEM_PRINCIPAL_PREFIX = "system:"
 VISITOR_PRINCIPAL_PREFIX = "visitor:"
+TELEC_COMMAND_PREFIX = "telec "
 
 
 class SessionIdentityError(ValueError):
@@ -432,6 +433,7 @@ _CARRIED_IDENTITY_HEADERS = (
     ("email", "x-caller-email"),
     ("entry_point", "x-caller-entry-point"),
     ("company", "x-caller-company"),
+    ("command", "x-caller-command"),
 )
 
 
@@ -446,6 +448,11 @@ class CarriedIdentity:
     email: str | None = None
     entry_point: str | None = None
     company: str | None = None
+    command: str | None = None
+
+    def with_command(self, command_path: str | None) -> CarriedIdentity:
+        """Carry the CLI command the caller was cleared as; absent when no command was cleared."""
+        return replace(self, command=cleared_command_path(command_path) if command_path else None)
 
     @classmethod
     def from_cli_identity(cls, identity: CliResolvedIdentityFields) -> CarriedIdentity:
@@ -673,6 +680,12 @@ def session_act_exception(
     if act is SessionAct.END and caller_initiator_session_id is not None:
         return None
     return True
+
+
+def cleared_command_path(command_path: str) -> str:
+    """The canonical wire form of a CLI command path a caller was cleared as."""
+    path = command_path.strip()
+    return path if path.startswith(TELEC_COMMAND_PREFIX) else f"{TELEC_COMMAND_PREFIX}{path}"
 
 
 def human_principal_for_email(email: str) -> str:

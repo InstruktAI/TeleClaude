@@ -24,6 +24,7 @@ FLAG_PROJECT_ROOT = "--project-root"
 FLAG_ARTIFACT_SLUG = "--artifact-slug"
 FLAG_ARTIFACT_NAME = "--artifact-name"
 FLAG_ARTIFACT_TODO_ID = "--artifact-todo-id"
+FLAG_ARTIFACT_COMPUTER = "--artifact-computer"
 FLAG_VIEW = "--view"
 FLAG_THEME = "--theme"
 
@@ -37,6 +38,7 @@ _EDITOR_MODULE_RE = re.compile(re.escape(FLAG_MODULE) + r"\s+" + re.escape(EDITO
 __all__ = [
     "DOC_PANE_PREFIX",
     "EDITOR_MODULE",
+    "FLAG_ARTIFACT_COMPUTER",
     "FLAG_ARTIFACT_NAME",
     "FLAG_ARTIFACT_SLUG",
     "FLAG_ARTIFACT_TODO_ID",
@@ -50,12 +52,20 @@ __all__ = [
 ]
 
 
-def artifact_doc_id(project_path: str, slug: str, artifact_name: str, *, todo_id: str | None = None) -> str:
-    """Build the stable document id for a todo artifact."""
+def artifact_doc_id(
+    project_path: str,
+    slug: str,
+    artifact_name: str,
+    *,
+    todo_id: str | None = None,
+    computer: str | None = None,
+) -> str:
+    """Build the stable document id for a todo artifact; an artifact another computer holds names that computer."""
     identity = (
         (project_path, slug, todo_id, artifact_name) if todo_id is not None else (project_path, slug, artifact_name)
     )
-    return _DOC_ID_SEPARATOR.join((_DOC_ID_PREFIX, *identity))
+    owner = (computer,) if computer is not None else ()
+    return _DOC_ID_SEPARATOR.join((_DOC_ID_PREFIX, *owner, *identity))
 
 
 def doc_pane_key(doc_id: str) -> str:
@@ -85,11 +95,12 @@ def parse_doc_pane_command(command: str) -> DocPreviewState | None:
     slug = _flag_value(tokens, FLAG_ARTIFACT_SLUG)
     artifact_name = _flag_value(tokens, FLAG_ARTIFACT_NAME)
     todo_id = _flag_value(tokens, FLAG_ARTIFACT_TODO_ID)
+    computer = _flag_value(tokens, FLAG_ARTIFACT_COMPUTER)
     if not project_path or not slug or not artifact_name:
         return None
     filename = artifact_display_filename(artifact_name)
     return DocPreviewState(
-        doc_id=artifact_doc_id(project_path, slug, artifact_name, todo_id=todo_id),
+        doc_id=artifact_doc_id(project_path, slug, artifact_name, todo_id=todo_id, computer=computer),
         command=unwrapped,
         title=filename if FLAG_VIEW in tokens else _EDIT_TITLE % filename,
     )

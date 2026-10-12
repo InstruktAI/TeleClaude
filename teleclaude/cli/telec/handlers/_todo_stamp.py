@@ -6,11 +6,11 @@ import json as _json
 from typing import TypedDict
 
 from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.addressing import project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs, parse_command_args
 from teleclaude.cli.telec.surface import TODO_STAMP
 from teleclaude.cli.telec.surface_types import Flag
 from teleclaude.cli.tool_client import print_json, tool_api_call
-from teleclaude.paths import invocation_cwd
 
 __all__ = ["_handle_todo_stamp"]
 _MISSING_STAMP_FLAG_MESSAGE = (
@@ -60,7 +60,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
         "stamp_type": stamp_type,
         "value": value or "",
         "phase": phase,
-        "cwd": str(invocation_cwd()),
+        "cwd": project_reference(),
     }
     response = tool_api_call("POST", "/todos/stamp", json_body=body)
     if isinstance(response, dict) and response.get("status") == "ok":

@@ -49,17 +49,21 @@ from teleclaude.api.auth import (
     carried_caller_session_id,
     principal_for_carried_caller,
 )
+from teleclaude.api.bugs_routes import router as bugs_router
 from teleclaude.api.commit_review_stamp_routes import router as commit_review_stamp_router
+from teleclaude.api.config_routes import router as config_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
 from teleclaude.api.ingress_listener import WebhookIngressListener
-from teleclaude.api.operations_routes import configure as configure_operations_routes
 from teleclaude.api.operations_routes import router as operations_router
+from teleclaude.api.relay_boundary import configure as configure_relay_boundary
+from teleclaude.api.relay_boundary import relay_boundary
 from teleclaude.api.shutdown_refusal import STATE_CHANGING_METHODS, shutdown_refusal_response
 from teleclaude.api.todo_artifact_routes import router as todo_artifact_router
 from teleclaude.api.todo_by_id_routes import router as todo_by_id_router
 from teleclaude.api.todo_routes import router as todo_router
+from teleclaude.api.todo_slug_routes import router as todo_slug_router
 from teleclaude.api.todo_stamp_routes import router as todo_stamp_router
-from teleclaude.api.work_feedback import DeclaredWorkRefusal
+from teleclaude.api.work_feedback import DeclaredWorkRefusal, declared_refusal_response
 from teleclaude.api.ws_constants import API_WS_PING_INTERVAL_S, API_WS_PING_TIMEOUT_S
 from teleclaude.api.ws_mixin import _WebSocketMixin
 from teleclaude.api.ws_options import (
@@ -101,6 +105,7 @@ from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.relayed_request import configure as configure_relayed_request
 from teleclaude.core.session_lifecycle import LifecycleTransitionReason
 from teleclaude.core.shutdown_drain import CONTINUATION_HEADER, ShutdownRefusal, get_shutdown_drain
 from teleclaude.hooks.inbound import INBOUND_PATH_PREFIX
@@ -166,14 +171,14 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 stop_timeout_s=API_STOP_TIMEOUT_S,
             )
         self._setup_routes()
+        configure_relay_boundary(client=client)
+        configure_relayed_request(self.app)
 
         # --- Route modules ---
         sessions_routes.configure(client=client, cache=cache, reminder_service=reminder_service)
         session_inspection_routes.configure(client=client, cache=cache)
         reminders_routes.configure(reminder_service)
         sessions_actions_routes.configure(client=client)
-        configure_operations_routes(client=client)
-        history_routes.configure(client=client)
         readiness_routes.configure(client=client)
         computers_routes.configure(cache=cache)
         projects_routes.configure(cache=cache, refresh_local_projects=refresh_local_projects)
@@ -202,6 +207,9 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(operations_router)
 
         self.app.include_router(todo_router)
+        self.app.include_router(todo_slug_router)
+        self.app.include_router(bugs_router)
+        self.app.include_router(config_router)
         self.app.include_router(todo_by_id_router)
         self.app.include_router(todo_artifact_router)
         self.app.include_router(todo_stamp_router)
@@ -480,6 +488,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
     def _setup_routes(self) -> None:
         """Set up core HTTP endpoints (middleware, health, auth, todos, WebSocket)."""
 
+        # Registered before request tracking so the boundary runs inside it: a draining
+        # computer refuses a state-changing request before it is carried anywhere.
+        self.app.middleware("http")(relay_boundary)
+
         @self.app.exception_handler(Exception)
         async def _unhandled_exception(request, exc):  # type: ignore[no-untyped-def]
             """Last-resort handler: log full traceback, return generic 500 to client."""
@@ -500,9 +512,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         @self.app.exception_handler(DeclaredWorkRefusal)
         async def _declared_work_refusal(request, exc):  # type: ignore[no-untyped-def]
             """Preserve the HTTP refusal contract while carrying its explicit work message."""
-            return JSONResponse(
+            return declared_refusal_response(
                 status_code=exc.status_code,
-                content={"detail": exc.detail, "work_feedback": exc.work_feedback},
+                detail=exc.detail,
+                work_feedback=exc.work_feedback,
                 headers=exc.headers,
             )
 

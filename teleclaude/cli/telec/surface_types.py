@@ -178,6 +178,7 @@ class CommandDef(_CommandPresentation):
     auth: CommandAuth | None = None
     literal_dash_tokens: bool = False  # accept undeclared dash-leading tokens as operands (see history search)
     desk: bool = False  # safe for a confined help-desk session; the desk allow list and desk visitor admission read it
+    addressed_at_boundary: bool = False  # the daemon boundary carries --computer; handlers never see it
 
     @property
     def visible_flags(self) -> list[Flag]:

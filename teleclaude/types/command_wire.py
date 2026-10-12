@@ -23,6 +23,7 @@ from teleclaude.types.commands import (
     InternalCommand,
     KeysCommand,
     ProcessMessageCommand,
+    RelayRequestCommand,
     ResponseMode,
     RestartAgentCommand,
     ResumeAgentCommand,
@@ -58,6 +59,7 @@ COMMAND_CLASS_BY_TYPE: dict[CommandType, type[InternalCommand]] = {
     CommandType.SYSTEM: SystemCommand,
     CommandType.SET_VOICE_FOCUS: SetVoiceFocusCommand,
     CommandType.ACTIVATE_PROCEDURE: ActivateProcedureCommand,
+    CommandType.RELAY_REQUEST: RelayRequestCommand,
 }
 
 _WIRE_ENUM_FIELDS: Mapping[str, type[Enum]] = {

@@ -64,6 +64,7 @@ from teleclaude.types.commands import (
     CreateSessionCommand,
     InternalCommand,
     ProcessMessageCommand,
+    RelayRequestCommand,
 )
 from teleclaude.utils.transcript_discovery import SessionId
 
@@ -150,6 +151,7 @@ def act_for_command(command: InternalCommand) -> RelayedAct | None:
             | CommandType.SYSTEM
             | CommandType.SET_VOICE_FOCUS
             | CommandType.ACTIVATE_PROCEDURE
+            | CommandType.RELAY_REQUEST
         ):
             return None
         case _:
@@ -193,6 +195,9 @@ async def dispatch_relayed_command(
     command.request_id = request_id
     command.relayed_principal = None
     command.relayed_principal = principal
+    if isinstance(command, RelayRequestCommand):
+        # A relayed API request is admitted by its own handler, at the scope of the object it addresses.
+        return await execute_command_envelope(command, source_computer=source_computer)
     caller = caller_from_principal(principal)
     resolver = RoleResolver()
     act = act_for_command(command)

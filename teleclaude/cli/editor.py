@@ -43,6 +43,40 @@ _ARTIFACT_WRITE_BY_ID_PATH_TEMPLATE = "/todos/by-id/{todo_id}/artifacts/{name}"
 _ARTIFACT_WRITE_BY_SLUG_PATH_TEMPLATE = "/todos/artifacts/{slug}/{name}"
 _URL_QUOTE_SAFE = ""
 _HTTP_METHOD_POST = "POST"
+_HTTP_METHOD_GET = "GET"
+_COMPUTER_PARAM = "computer"
+_ARTIFACT_READ_BY_ID_PATH_TEMPLATE = "/todos/by-id/{todo_id}/artifacts/{name}"
+_ARTIFACT_READ_VERB = "todo artifacts read"
+_ARTIFACT_WRITE_VERB = "todo artifacts write"
+
+
+def _read_remote_artifact(
+    project_root: Path,
+    slug: str,
+    artifact_name: str,
+    todo_id: str | None,
+    *,
+    computer: str,
+    identity: ResolvedCliIdentity,
+) -> str:
+    """Read an artifact from the computer that holds it: the identified todo's own, else the slug's."""
+    if todo_id is not None:
+        path = _ARTIFACT_READ_BY_ID_PATH_TEMPLATE.format(
+            todo_id=quote(todo_id, safe=_URL_QUOTE_SAFE), name=quote(artifact_name, safe=_URL_QUOTE_SAFE)
+        )
+    else:
+        path = _ARTIFACT_WRITE_BY_SLUG_PATH_TEMPLATE.format(
+            slug=quote(slug, safe=_URL_QUOTE_SAFE), name=quote(artifact_name, safe=_URL_QUOTE_SAFE)
+        )
+    answer = tool_api_request(
+        _HTTP_METHOD_GET,
+        path,
+        params={"cwd": str(project_root), _COMPUTER_PARAM: computer},
+        clearance_scope=ClearanceScope.verb(_ARTIFACT_READ_VERB, target_computer=computer),
+        clearance_identity=identity,
+    )
+    content = answer.get("content") if isinstance(answer, dict) else None
+    return content if isinstance(content, str) else ""
 
 
 @dataclass
@@ -56,6 +90,7 @@ class MaterializedArtifact:
     clearance_identity: ResolvedCliIdentity
     file_path: Path
     _temp_dir_path: Path
+    computer: str | None = None
 
     @classmethod
     def from_db(
@@ -65,16 +100,20 @@ class MaterializedArtifact:
         slug: str,
         artifact_name: str,
         todo_id: str | None = None,
+        computer: str | None = None,
         clearance_identity: ResolvedCliIdentity,
     ) -> MaterializedArtifact:
-        """Materialize an artifact from todos.db into a temporary file."""
+        """Materialize an artifact into a temporary file: from the computer that holds it, else from todos.db here."""
         temp_dir = Path(tempfile.mkdtemp(prefix="teleclaude-artifact-"))
         file_path = temp_dir / artifact_display_filename(artifact_name)
-        content = (
-            read_artifact_content_by_id(project_root, todo_id, artifact_name)
-            if todo_id is not None
-            else read_artifact_content(project_root, slug, artifact_name)
-        )
+        if computer is not None:
+            content = _read_remote_artifact(
+                project_root, slug, artifact_name, todo_id, computer=computer, identity=clearance_identity
+            )
+        elif todo_id is not None:
+            content = read_artifact_content_by_id(project_root, todo_id, artifact_name)
+        else:
+            content = read_artifact_content(project_root, slug, artifact_name)
         file_path.write_text(content, encoding="utf-8")
         return cls(
             project_root=project_root,
@@ -84,6 +123,7 @@ class MaterializedArtifact:
             clearance_identity=clearance_identity,
             file_path=file_path,
             _temp_dir_path=temp_dir,
+            computer=computer,
         )
 
     @property
@@ -111,7 +151,8 @@ class MaterializedArtifact:
                 "cwd": str(self.project_root),
                 "updated_by": "teleclaude.cli.editor",
             },
-            clearance_scope=ClearanceScope.verb("todo artifacts write"),
+            params={_COMPUTER_PARAM: self.computer} if self.computer is not None else None,
+            clearance_scope=ClearanceScope.verb(_ARTIFACT_WRITE_VERB, target_computer=self.computer),
             clearance_identity=self.clearance_identity,
         )
 
@@ -295,6 +336,7 @@ def main() -> None:
     parser.add_argument("--artifact-slug", help="Todo slug for DB-backed artifact editing")
     parser.add_argument("--artifact-name", help="Logical artifact name in todos.db")
     parser.add_argument("--artifact-todo-id", help="Durable todo row id for an identity-addressed artifact view")
+    parser.add_argument("--artifact-computer", help="Computer that holds the artifact when it is not this one")
 
     args = parser.parse_args()
     materialized: MaterializedArtifact | None = None
@@ -307,15 +349,18 @@ def main() -> None:
 
     if artifact_mode:
         identity = resolve_cli_identity()
-        refusal = clearance_scope_refusal(ClearanceScope.verb("todo artifacts read"), identity)
+        refusal = clearance_scope_refusal(
+            ClearanceScope.verb(_ARTIFACT_READ_VERB, target_computer=args.artifact_computer), identity
+        )
         if refusal is not None:
             print(f"Error: {refusal}", file=sys.stderr)
             raise SystemExit(1)
         materialized = MaterializedArtifact.from_db(
-            project_root=args.project_root.resolve(),
+            project_root=args.project_root if args.artifact_computer else args.project_root.resolve(),
             slug=args.artifact_slug,
             artifact_name=args.artifact_name,
             todo_id=args.artifact_todo_id,
+            computer=args.artifact_computer,
             clearance_identity=identity,
         )
         file_path = materialized.file_path

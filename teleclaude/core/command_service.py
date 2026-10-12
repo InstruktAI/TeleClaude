@@ -47,6 +47,7 @@ from teleclaude.core.command_handlers import (
 )
 from teleclaude.core.models import SessionLaunchIntent, ThinkingMode
 from teleclaude.core.procedure_activation_runner import activate as _activate_procedure
+from teleclaude.core.relayed_request import handle_relay_request
 from teleclaude.core.session_launcher import create_session
 from teleclaude.core.session_startup_message import resolve_slash_command
 from teleclaude.core.shutdown_drain import get_shutdown_drain
@@ -62,6 +63,7 @@ from teleclaude.types.commands import (
     InternalCommand,
     KeysCommand,
     ProcessMessageCommand,
+    RelayRequestCommand,
     RestartAgentCommand,
     RestartAgentResult,
     ResumeAgentCommand,
@@ -83,7 +85,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import VoiceFocusSetContext
 from teleclaude.core.help_desk_relay import EscalationRequest, escalate
 from teleclaude.core.inbound_queue import init_inbound_queue_manager
-from teleclaude.core.models import ContentFormat, MessageMetadata
+from teleclaude.core.models import ContentFormat, JsonDict, MessageMetadata
 from teleclaude.core.session_links import close_link_for_member
 from teleclaude.core.session_listeners import unregister_listener
 from teleclaude.events.envelope import EventVisibility
@@ -161,6 +163,27 @@ BootstrapSessionFunc = Callable[[str, SessionLaunchIntent | None], Awaitable[Non
 _DATA_KEY_CONTENT = "content"
 _DATA_KEY_OUTPUT_FORMAT = "output_format"
 _PLAIN_RETRY_WARNING = "Sent as plain content after a delivery failure"
+
+
+_DISPATCH_PRIVILEGE_REFUSAL_TEMPLATE = (
+    "role '{role}' cannot dispatch /{command} (requires dispatch privilege for '{target_role}')"
+)
+
+
+def dispatch_privilege_refusal(system_role: str | None, command: SlashCommand | None) -> str | None:
+    """Why a session of ``system_role`` may not dispatch ``command``, or None when it may.
+
+    A caller with no system role, or a command no role is mapped to, is not bounded by dispatch privilege.
+    """
+    role_info = COMMAND_ROLE_MAP.get(command) if command is not None else None
+    if role_info is None or not system_role:
+        return None
+    target_role = role_info[0]
+    if target_role in DISPATCH_ALLOWED.get(system_role, frozenset()):
+        return None
+    return _DISPATCH_PRIVILEGE_REFUSAL_TEMPLATE.format(
+        role=system_role, command=command.value if command is not None else "", target_role=target_role
+    )
 
 
 def _content_format_from_request(raw_format: object) -> ContentFormat:
@@ -265,6 +288,10 @@ class CommandService:
     @_admitted
     async def run_agent_command(self, cmd: RunAgentCommand) -> None:
         await run_agent_command(cmd, self.client, self._execute_terminal_command)
+
+    @_admitted
+    async def relay_request(self, cmd: RelayRequestCommand) -> JsonDict:
+        return await handle_relay_request(cmd)
 
     @_admitted
     async def get_session_data(self, cmd: GetSessionDataCommand) -> SessionDataPayload:

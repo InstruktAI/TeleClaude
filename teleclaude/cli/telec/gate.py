@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from teleclaude.caller_identity import Company, Person, Platform, Project, ProjectPath, RelayedAct, RoleTarget
+from teleclaude.caller_identity import Company, Person, Platform, Project, ProjectPath, RoleTarget
 from teleclaude.cli import CommandScope, ConfigSubjectType
 from teleclaude.cli.session_auth import ComputerTargetDisposition, classify_computer_target, require_cli_clearance
 from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs
@@ -19,7 +19,6 @@ from teleclaude.paths import invocation_cwd
 from teleclaude.slug import normalize_slug
 
 _CONFIGURATION_UNREADABLE_ERROR = "Error: {error}"
-_RELAYED_ACT_PATHS = frozenset(act.value.removeprefix("telec ") for act in RelayedAct)
 
 
 def clear_command(request: CommandClearance) -> None:
@@ -62,9 +61,8 @@ def _role_target_for_command(
     if auth is None or auth.caller_independent:
         return None
     if classify_computer_target(target_computer) is ComputerTargetDisposition.REMOTE:
-        if " ".join(path) in _RELAYED_ACT_PATHS:
-            return Platform() if direct_conversation else None
-        return Platform()
+        # The addressed computer decides the person band; only a direct conversation stays here, at platform scope.
+        return Platform() if direct_conversation else None
     if auth.scope is CommandScope.PLATFORM:
         return Platform()
     if auth.scope is CommandScope.CONFIG_SUBJECT:

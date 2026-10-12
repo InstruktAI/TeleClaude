@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -25,7 +25,6 @@ from teleclaude.api.agent_dispatch_errors import (
 from teleclaude.api.auth import (
     CallerIdentity,
     carried_caller,
-    principal_for_carried_caller,
     resolve_caller_provenance,
 )
 from teleclaude.api.run_session_refusals import RunSessionRefusal
@@ -47,12 +46,11 @@ from teleclaude.api.session_listing_route import (
     build_local_session_listing,
     parse_list_sessions_query,
 )
-from teleclaude.api.session_ownership import RemoteOwnership, resolve_session_ownership
 from teleclaude.api.session_reminder_summary import attach_next_reminders, observe_session_reminder_summaries
 from teleclaude.api.session_remote import is_remote_create_target, is_remote_target
 from teleclaude.api.session_route_helpers import build_metadata as _build_metadata
 from teleclaude.api.session_route_helpers import close_accepted as _close_accepted
-from teleclaude.api.session_route_helpers import dispatch_caller_command, http_exception_for_relay_failure
+from teleclaude.api.session_route_helpers import dispatch_caller_command
 from teleclaude.api.session_route_helpers import resolve_created_session_transport as _resolve_created_session_transport
 from teleclaude.api.session_view_models import project_session_dtos
 from teleclaude.api.sessions_actions_routes import guard_generic_create_session
@@ -67,7 +65,6 @@ from teleclaude.api_models import (
 from teleclaude.config.machine import config
 from teleclaude.constants import SlashCommand
 from teleclaude.core.agent_dispatch import AgentDispatchReason
-from teleclaude.core.command_dispatch import RelayFailure, relay_caller_read
 from teleclaude.core.command_input import (
     WORKTREE_BOUND_WORKER_COMMANDS,
     CommandInputMode,
@@ -93,18 +90,16 @@ from teleclaude.core.inbound_errors import (
 from teleclaude.core.injected_text import MachineRoleLabel
 from teleclaude.core.models import (
     AgentDispatchMode,
-    JsonDict,
-    JsonValue,
     MessageAuthor,
     MessageMetadata,
     SessionEntryPoint,
     SessionLaunchIntent,
     SessionLaunchKind,
-    parse_peer_session_snapshots,
 )
 from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
-from teleclaude.core.operations.service import SerializedOperation, get_operations_service
+from teleclaude.core.operation_caller_identity import get_relayed_caller
+from teleclaude.core.operations.service import get_operations_service
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_links import (
     active_direct_peer,
@@ -114,10 +109,6 @@ from teleclaude.core.session_links import (
 )
 from teleclaude.core.session_listeners import (
     register_listener,
-)
-from teleclaude.core.session_listing import (
-    SESSION_IDS_FIELD,
-    listed_by_default,
 )
 from teleclaude.core.session_startup_message import resolve_command_input
 from teleclaude.core.session_status import is_session_terminal as _terminal
@@ -143,6 +134,7 @@ _EXCLUSIVE_DIRECT_LINK_DETAIL = (
     "Direct conversation is exclusive to two peers; close it before starting another."
 )
 _EMPTY_MESSAGE_TEXT = ""
+_NO_TMUX_SESSION = ""
 _WORKTREE_SUBDIR_TEMPLATE = "trees/{slug}"
 _WORKTREE_DIRECTORY_MISSING_TEMPLATE = "required worktree directory does not exist: {worktree_dir}"
 
@@ -157,10 +149,6 @@ class ResolvedSessionEventIdentity:
 _CONFIG_UNSET = object()
 _LIST_SESSIONS_READ = "list_sessions"
 _INCLUDE_CLOSED_FIELD = "include_closed"
-_NO_REMOTE_COMPUTER = ""
-_REMOTE_SESSION_LISTING_UNAVAILABLE_DETAIL = "Remote session listing is unavailable"
-_REMOTE_SESSION_LISTING_INVALID_DETAIL = "Remote session listing returned invalid data"
-_REMOTE_SESSION_LISTING_FAILURE_EVENT = "list_sessions.remote_failure"
 
 _STATE = SimpleNamespace(client=None, cache=None, reminder_service=None)
 _SESSION_EVENT_IDENTITY_RESOLVED_EVENT = "session_event_identity_resolved"
@@ -352,57 +340,6 @@ async def list_sessions(
         List of session summaries (merged local + cached remote)
     """
     try:
-        if is_remote_target(query.computer, config.computer.name):
-            if _STATE.client is None:
-                raise HTTPException(status_code=503, detail=_REMOTE_SESSION_LISTING_UNAVAILABLE_DETAIL)
-            principal = principal_for_carried_caller(_identity, required=True)
-            target_computer = query.computer or _NO_REMOTE_COMPUTER
-            request_data: JsonDict = {_INCLUDE_CLOSED_FIELD: query.include_closed}
-            if query.session_ids is not None:
-                request_data[SESSION_IDS_FIELD] = cast(JsonValue, sorted(query.session_ids))
-            try:
-                remote_data = await relay_caller_read(
-                    _STATE.client,
-                    target_computer,
-                    _LIST_SESSIONS_READ,
-                    principal=principal,
-                    request=request_data,
-                )
-            except RelayFailure as exc:
-                logger.error(_REMOTE_SESSION_LISTING_FAILURE_EVENT, computer=target_computer, exc_info=True)
-                raise http_exception_for_relay_failure(exc) from exc
-            if not isinstance(remote_data, list):
-                raise HTTPException(status_code=502, detail=_REMOTE_SESSION_LISTING_INVALID_DETAIL)
-            if any(not isinstance(item, dict) for item in remote_data):
-                raise HTTPException(status_code=502, detail=_REMOTE_SESSION_LISTING_INVALID_DETAIL)
-            peer_data = cast(list[JsonDict], remote_data)
-            remote_sessions = parse_peer_session_snapshots(peer_data, target_computer)
-            if len(remote_sessions) != len(peer_data):
-                raise HTTPException(status_code=502, detail=_REMOTE_SESSION_LISTING_INVALID_DETAIL)
-            for session in remote_sessions:
-                session.computer = target_computer
-            if query.session_ids is not None:
-                # Older peers may ignore the ids field and answer their whole listing.
-                remote_sessions = [session for session in remote_sessions if session.session_id in query.session_ids]
-            caller_session_id = request.headers.get("x-caller-session-id")
-            if caller_session_id and not query.all_sessions and query.session_ids is None:
-                remote_sessions = [
-                    session for session in remote_sessions if session.initiator_session_id == caller_session_id
-                ]
-            remote_sessions = listed_by_default(
-                remote_sessions, all_sessions=query.all_sessions, session_ids=query.session_ids
-            )
-            if query.job:
-                remote_sessions = [session for session in remote_sessions if session.job == query.job]
-            computer_registry = _STATE.cache.get_computers() if _STATE.cache is not None else []
-            dtos = project_session_dtos(
-                remote_sessions,
-                serving_computer=config.computer.name,
-                computer_registry=computer_registry,
-            )
-            observe_session_reminder_summaries(dtos)
-            return dtos
-
         caller_session_id = request.headers.get("x-caller-session-id")
         merged, local_session_ids = await build_local_session_listing(
             query,
@@ -644,25 +581,6 @@ async def end_session(
     )
 
     caller = await resolve_caller_provenance(identity)
-    if computer and is_remote_target(computer, config.computer.name):
-        ownership = await resolve_session_ownership(session_id, db=db, cache=_STATE.cache)
-        target_computer: str | None = None
-        if isinstance(ownership, RemoteOwnership):
-            if ownership.computer != computer:
-                raise HTTPException(status_code=404, detail="Session not found on requested computer")
-            target_computer = ownership.computer
-        elif ownership is None:
-            target_computer = computer
-
-        if target_computer is not None:
-            # ADR-0036: cross-host close carries no human-origin signal, so it does not hold (scoped out).
-            cmd = CloseSessionCommand(session_id=session_id)
-            cmd.computer = target_computer
-            cmd.caller = caller
-            result = await dispatch_caller_command(_STATE.client, cmd, identity)
-            if not isinstance(result, dict):
-                raise RuntimeError("Remote receipt submission returned no result")
-            return _close_accepted(cast(SerializedOperation, result))  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
     # ADR-0036: only a human-initiated close holds the driven todo. A human
     # terminal/TUI caller has an empty identity.session_id; an agent
@@ -702,15 +620,21 @@ async def _resolve_caller_event_identity(caller_session_id: str) -> ResolvedSess
     """Compose the identity of the carried caller session from its record on this computer.
 
     The caller runs on the computer whose request surface it called, and its
-    carried session is taken as given (caller verification).
+    carried session is taken as given (caller verification). A request another
+    computer carried here names a caller session that computer holds: only its
+    address is known, so its identity is the generic machine author at that address.
     """
     caller = await db.get_session(caller_session_id)
-    assert caller is not None
-    role = caller.system_role
-    agent = caller.active_agent
-    thinking_mode = caller.thinking_mode
-    job_role = caller.job
-    computer = caller.computer_name
+    if caller is None:
+        relayed = get_relayed_caller()
+        assert relayed is not None and relayed.session_id == caller_session_id
+        role, agent, thinking_mode, job_role, computer = None, None, None, None, relayed.computer
+    else:
+        role = caller.system_role
+        agent = caller.active_agent
+        thinking_mode = caller.thinking_mode
+        job_role = caller.job
+        computer = caller.computer_name
     role_label = _MACHINE_ROLE_LABELS.get((role or "").strip())
     author = resolve_session_event_author(
         session_id=caller_session_id,
@@ -752,19 +676,34 @@ def _wrap_message_with_origin(
     return format_identity_conversation(header=event_identity.header, body=message_text, occurrence_key=occurrence_key)
 
 
+def _listener_caller(identity: CallerIdentity, caller_session: Session | None) -> tuple[str, str] | None:
+    """Where a one-shot listener reaches the caller: its tmux session and computer.
+
+    A caller session another computer holds has no tmux session here; its listener is
+    recorded against the computer its relay named, and the outcome is delivered there.
+    """
+    if caller_session is not None:
+        if not caller_session.tmux_session_name:
+            return None
+        return caller_session.tmux_session_name, caller_session.computer_name
+    relayed = get_relayed_caller()
+    if relayed is not None and relayed.session_id == identity.session_id:
+        return _NO_TMUX_SESSION, relayed.computer
+    return None
+
+
 async def _process_api_message(
     session_id: str,
     message_text: str,
     metadata: MessageMetadata,
     identity: CallerIdentity,
     occurrence_key: str | None = None,
-    computer: str | None = None,
 ) -> None:
     # guard: loose-dict - CommandMapper.map_api_input payload boundary
     payload: dict[str, object] = {"session_id": session_id, "text": message_text}
     if occurrence_key is not None:
         payload[OCCURRENCE_KEY] = occurrence_key
-    cmd = CommandMapper.map_api_input("message", payload, metadata, computer=computer)
+    cmd = CommandMapper.map_api_input("message", payload, metadata)
     await dispatch_caller_command(_STATE.client, cmd, identity)
 
 
@@ -911,19 +850,16 @@ async def send_message_endpoint(
 
         # Auto-register a one-shot listener so the caller receives the response.
         caller_session = await db.get_session(identity.session_id) if identity.session_id else None
-        if (
-            identity.session_id
-            and identity.session_id != session_id
-            and caller_session
-            and caller_session.tmux_session_name
-        ):
+        listener_caller = _listener_caller(identity, caller_session)
+        if identity.session_id and identity.session_id != session_id and listener_caller is not None:
+            caller_tmux_session, caller_computer = listener_caller
             try:
                 await register_listener(
                     target_session_id=session_id,
                     caller_session_id=identity.session_id,
-                    caller_tmux_session=caller_session.tmux_session_name,
+                    caller_tmux_session=caller_tmux_session,
                     one_shot=True,
-                    caller_computer=caller_session.computer_name,
+                    caller_computer=caller_computer,
                 )
             except Exception:
                 logger.debug(
@@ -949,7 +885,7 @@ async def send_message_endpoint(
         if event_identity is not None:
             metadata.caller_origin_prefix_len = caller_prefix_len
             metadata.caller_origin_suffix_len = caller_suffix_len
-        await _process_api_message(session_id, message_text, metadata, identity, occurrence_key, computer=computer)
+        await _process_api_message(session_id, message_text, metadata, identity, occurrence_key)
         return SendMessageResponseDTO(status="success", mode="work")
     except (SessionMessageRejectedError, UnidentifiableCallerError) as exc:
         if isinstance(exc, UnidentifiableCallerError):

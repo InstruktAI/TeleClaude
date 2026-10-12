@@ -30,4 +30,6 @@ COMMAND_ADMISSION: dict[CommandType, AdmissionClass] = {
     CommandType.SYSTEM: AdmissionClass.BUSINESS_WORK,
     CommandType.SET_VOICE_FOCUS: AdmissionClass.BUSINESS_WORK,
     CommandType.ACTIVATE_PROCEDURE: AdmissionClass.BUSINESS_WORK,
+    # The carried request is admitted or refused by the owner's own API boundary when it re-enters.
+    CommandType.RELAY_REQUEST: AdmissionClass.OBSERVATION,
 }

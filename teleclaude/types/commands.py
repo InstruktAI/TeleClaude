@@ -36,6 +36,7 @@ class CommandType(str, Enum):
     SYSTEM = "system_command"
     SET_VOICE_FOCUS = "set_voice_focus"
     ACTIVATE_PROCEDURE = "activate_procedure"
+    RELAY_REQUEST = "relay_request"
 
 
 class ResponseMode(str, Enum):
@@ -918,3 +919,65 @@ class SetVoiceFocusCommand(InternalCommand):
 
     def to_payload(self) -> dict[str, object]:
         return {"person_slug": self.person_slug, "session_id": self.session_id}
+
+
+@dataclass(kw_only=True)
+class RelayRequestCommand(InternalCommand):
+    """One API request carried whole to the computer that owns the object it addresses.
+
+    The owning computer runs the request against its own API, as the caller its
+    own registries resolve from the relayed principal, and answers with that
+    request's complete response. The command carries no role, scope, author
+    kind or runtime of the caller: only the caller session's address, so the
+    owner can record who asked and wake it with an outcome.
+    """
+
+    command_type: CommandType = field(init=False, default=CommandType.RELAY_REQUEST)
+    method: str
+    path: str
+    deadline_at: float
+    query: list[list[str]] = field(default_factory=list)
+    body_b64: str = ""
+    content_type: str | None = None
+    caller_session_id: str | None = None
+    caller_computer: str | None = None
+    cleared_command: str | None = None
+
+    def to_payload(self) -> dict[str, object]:
+        return {"method": self.method, "path": self.path}
+
+
+@dataclass(frozen=True, kw_only=True)
+class RelayedResponse:
+    """The complete response a computer gave to a relayed request: status, end-to-end headers and body, as produced."""
+
+    status_code: int
+    body_b64: str
+    headers: list[list[str]] = field(default_factory=list)
+
+    def to_dict(self) -> JsonDict:
+        """Serialize as the data block of the relay command's wire response."""
+        return {
+            "status_code": self.status_code,
+            "body_b64": self.body_b64,
+            "headers": [list(pair) for pair in self.headers],
+        }
+
+    @staticmethod
+    def from_wire(data: JsonValue | None) -> "RelayedResponse":
+        """Rebuild from the data block of the relay command's wire response."""
+        if not isinstance(data, dict):
+            raise ValueError("relayed response must be a JSON object")
+        status_code = data.get("status_code")
+        body_b64 = data.get("body_b64")
+        raw_headers = data.get("headers", [])
+        if not isinstance(status_code, int) or isinstance(status_code, bool) or not isinstance(body_b64, str):
+            raise ValueError("relayed response must carry a status code and a body")
+        if not isinstance(raw_headers, list):
+            raise ValueError("relayed response headers must be a list of name and value pairs")
+        headers: list[list[str]] = []
+        for pair in raw_headers:
+            if not isinstance(pair, list) or len(pair) != 2 or not all(isinstance(item, str) for item in pair):
+                raise ValueError("relayed response headers must be a list of name and value pairs")
+            headers.append([str(pair[0]), str(pair[1])])
+        return RelayedResponse(status_code=status_code, body_b64=body_b64, headers=headers)

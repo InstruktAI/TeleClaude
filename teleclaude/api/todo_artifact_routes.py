@@ -36,7 +36,7 @@ from teleclaude.constants import (
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.core.todos_db import HolderWriteRefused
+from teleclaude.core.todos_db import HolderWriteRefused, malformed_digest_detail
 from teleclaude.project_root import resolve_project_root
 
 if TYPE_CHECKING:
@@ -237,6 +237,36 @@ async def remove_artifact(
         removed=result["removed"],
         versions_deleted=result["versions_deleted"],
     )
+
+
+class _ArtifactDiffResponse(BaseModel):
+    """Response from artifact diff."""
+
+    model_config = ConfigDict(frozen=True)
+    slug: str
+    name: str
+    diff: str
+
+
+@router.get("/artifacts/{slug}/{name}/diff")
+async def diff_artifact(
+    slug: str,
+    name: str,
+    old_digest: str,
+    new_digest: str,
+    cwd: str | None = None,
+    _identity: CallerIdentity = Depends(carried_caller),
+) -> _ArtifactDiffResponse:
+    """Show a unified diff between two versions of a todo artifact."""
+    malformed_detail = malformed_digest_detail(old_digest, new_digest)
+    if malformed_detail is not None:
+        raise HTTPException(status_code=422, detail=malformed_detail)
+    todos_db = await _get_todos_db_from_cwd(cwd or _default_cwd())
+    try:
+        diff = await todos_db.artifacts_diff(slug, name, old_digest, new_digest, include_removed=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _ArtifactDiffResponse(slug=slug, name=name, diff=diff)
 
 
 @router.get("/artifacts/{slug}")

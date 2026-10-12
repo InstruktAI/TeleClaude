@@ -5,6 +5,7 @@ from __future__ import annotations
 import json as _json
 
 from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.addressing import addressed_computer, project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.surface import TODO_SHOW
@@ -35,6 +36,21 @@ def _handle_todo_show(args: list[str]) -> None:
             include_removed=include_removed,
             include_artifact_content=include_artifact_content,
         )
+
+    if addressed_computer() is not None:
+        from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - command boundary: daemon API client.
+
+        remote = tool_api_call(
+            "GET",
+            f"/todos/show/{slug}",
+            params={
+                "cwd": project_reference(),
+                "include_removed": include_removed,
+                "include_artifact_content": include_artifact_content,
+            },
+        )
+        print(_json.dumps(remote, indent=2))
+        return
 
     result = run_todo_read(read_show)
     if result is not None:

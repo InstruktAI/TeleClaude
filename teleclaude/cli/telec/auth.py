@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from teleclaude.cli import CommandScope
 from teleclaude.cli.telec.surface import CLI_SURFACE, CommandAuth, CommandDef
 
 _TELEC_PREFIX = "telec "
@@ -34,6 +35,12 @@ def _resolve_command_auth(command_path: str) -> CommandAuth | None:
     """Resolve a command path to its CommandAuth, or None if not found."""
     node = _resolve_command(command_path)
     return node.auth if node is not None else None
+
+
+def command_scope(command_path: str) -> CommandScope | None:
+    """Where a person's role is resolved for a command, or None for an unknown command path."""
+    auth = _resolve_command_auth(command_path)
+    return auth.scope if auth is not None else None
 
 
 def is_desk_command(command_path: str) -> bool:

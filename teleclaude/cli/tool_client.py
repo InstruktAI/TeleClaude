@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 _API_SOCKET_ENV = "TELECLAUDE_API_SOCKET_PATH"
 _PROJECT_ROOT_HEADER = "x-teleclaude-project-root"
 _REFUSAL_KIND_FIELD: Final = "kind"
+_COMPUTER_PARAM: Final = "computer"
 
 # How long a caller waits before running a refused command again, and how long it keeps
 # trying. The delay spans the typical daemon restart gap; the stop bound covers nearly
@@ -214,9 +215,11 @@ def tool_api_request(
         )
 
         carried = CarriedIdentity.from_cli_identity(scoped_identity or resolve_cli_identity())
+        carried = carried.with_command(_cleared_command_path(clearance_scope))
     headers = carried.to_headers()
     if project_root is not None:
         headers[_PROJECT_ROOT_HEADER] = str(project_root)
+    params = _addressed_params(params)
 
     try:
         transport = httpx.HTTPTransport(uds=resolved_socket_path)
@@ -268,6 +271,40 @@ def tool_api_request(
         return resp.json()
     except Exception:
         return resp.text
+
+
+def _addressed_params(params: ToolQueryParams | None) -> ToolQueryParams | None:
+    """The query parameters with the computer this invocation addresses, so the daemon carries the request there."""
+    from teleclaude.cli.telec.addressing import (  # noqa: PLC0415 - addressing state is read only when a request is built.
+        addressed_computer,
+    )
+
+    computer = addressed_computer()
+    if computer is None:
+        return params
+    pairs: list[tuple[str, QueryParamValue]] = []
+    if isinstance(params, Mapping):
+        for name, value in params.items():
+            if isinstance(value, Sequence) and not isinstance(value, str):
+                pairs.extend((name, item) for item in value)
+            else:
+                pairs.append((name, value))
+    elif params is not None:
+        pairs.extend(params)
+    if all(name != _COMPUTER_PARAM for name, _ in pairs):
+        pairs.append((_COMPUTER_PARAM, computer))
+    return pairs
+
+
+def _cleared_command_path(clearance_scope: ClearanceScope | None) -> str | None:
+    """The command this request was cleared as: the scope's verb, else the one the invocation's gate cleared."""
+    if clearance_scope is not None and clearance_scope.command_path is not None:
+        return clearance_scope.command_path
+    from teleclaude.cli.session_auth import (  # noqa: PLC0415 - gate state is read only when a request is built.
+        resolve_cleared_command,
+    )
+
+    return resolve_cleared_command()
 
 
 def tool_api_call(

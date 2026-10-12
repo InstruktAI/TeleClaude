@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, TypedDict
@@ -15,6 +15,7 @@ from textual import work
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.caller_identity import ProjectPath, RoleTarget
 from teleclaude.cli.clearance import ClearanceScope
+from teleclaude.cli.telec.addressing import remote_computer
 from teleclaude.cli.tool_client import ToolAPIError, ToolQueryParams, tool_api_request
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest, StateChanged
 from teleclaude.cli.tui.tree import project_collapse_key
@@ -83,6 +84,7 @@ _PREPARING_LABEL_TEMPLATE = "Preparing {slug}"
 _STARTING_WORK_LABEL_TEMPLATE = "Starting work {slug}"
 _REMOVING_TODO_LABEL_TEMPLATE = "Removing {slug}"
 _CWD_BODY_KEY = "cwd"
+_COMPUTER_PARAM = "computer"
 _REASON_BODY_KEY = "reason"
 _STAMP_TYPE_BODY_KEY = "stamp_type"
 
@@ -90,6 +92,7 @@ _STAMP_TYPE_BODY_KEY = "stamp_type"
 # (teleclaude/core/operations/service.py) — the serialized field names, not
 # the model column names, and the values the follow-through worker branches on.
 _HTTP_METHOD_GET = "GET"
+_OPERATION_READ_VERB = "operations get"
 _OPERATION_STATUS_PATH_TEMPLATE = "/operations/{operation_id}"
 _OPERATION_RESPONSE_KEY_OPERATION_ID = "operation_id"
 _OPERATION_RESPONSE_KEY_STATE = "state"
@@ -114,6 +117,14 @@ _NO_HOLD_CONTROL_MESSAGE = "No hold control is available for this todo"
 _HOLD_SUCCESS_MESSAGE_TEMPLATE = "Held '{slug}'"
 _RELEASE_HOLD_SUCCESS_MESSAGE_TEMPLATE = "Released hold on '{slug}'"
 _REMOTE_PROJECT_NOTICE = "Add a project on its own computer."
+
+
+def _with_computer(params: ToolQueryParams | None, computer: str | None) -> ToolQueryParams | None:
+    """The query parameters addressed to the row's computer when that is another computer."""
+    owner = remote_computer(computer)
+    if owner is None:
+        return params
+    return {**(dict(params) if isinstance(params, Mapping) else {}), _COMPUTER_PARAM: owner}
 
 
 class PreparationAction(StrEnum):
@@ -273,18 +284,20 @@ class PreparationViewActionsMixin:
         body: object | None = None,
         params: ToolQueryParams | None = None,
         relay_warnings: bool = False,
+        computer: str | None = None,
     ) -> None:
-        """Run one row-addressed API action and contain transport failures at the UI edge."""
+        """Run one row-addressed API action on the row's computer and contain transport failures at the UI edge."""
         try:
             result = tool_api_request(
                 method,
                 path,
                 json_body=body,
-                params=params,
+                params=_with_computer(params, computer),
                 timeout=10.0,
                 clearance_scope=ClearanceScope.verb(
                     _ACTION_CLEARANCE_VERBS[action],
                     role_target=role_target,
+                    target_computer=remote_computer(computer),
                 ),
                 clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
             )
@@ -533,12 +546,14 @@ class PreparationViewActionsMixin:
                         file_row.slug,
                         file_row.artifact_name,
                         todo_id=file_row.todo_id,
+                        computer=file_row.computer,
                     ),
                     command=self._editor_command(  # type: ignore[attr-defined]
                         project_path=file_row.project_path,
                         slug=file_row.slug,
                         artifact_name=file_row.artifact_name,
                         todo_id=file_row.todo_id,
+                        computer=file_row.computer,
                         status=file_row.status,
                     ),
                     title=(
@@ -600,12 +615,14 @@ class PreparationViewActionsMixin:
                         file_row.slug,
                         file_row.artifact_name,
                         todo_id=file_row.todo_id,
+                        computer=file_row.computer,
                     ),
                     command=self._editor_command(  # type: ignore[attr-defined]
                         project_path=file_row.project_path,
                         slug=file_row.slug,
                         artifact_name=file_row.artifact_name,
                         todo_id=file_row.todo_id,
+                        computer=file_row.computer,
                         view=True,
                     ),
                     title=file_row.filename,
@@ -622,6 +639,8 @@ class PreparationViewActionsMixin:
     def _create_item(self, slug: str, *, kind: TodoDumpKind) -> None:
         """Create a todo or bug via the daemon API after content modal confirmation."""
         project_root = self._current_project_path()
+        context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        computer = context.computer if context else None
 
         def _on_content(content: str | None) -> None:
             if not content or not content.strip():
@@ -639,10 +658,12 @@ class PreparationViewActionsMixin:
                     "POST",
                     "/todos/dump",
                     json_body=request.model_dump(mode="json"),
+                    params=_with_computer(None, computer),
                     timeout=10.0,
                     clearance_scope=ClearanceScope.verb(
                         "bugs report" if kind == TODO_KIND_BUG else "todo create",
                         role_target=ProjectPath(Path(project_root)),
+                        target_computer=remote_computer(computer),
                     ),
                     clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
                 )
@@ -732,6 +753,7 @@ class PreparationViewActionsMixin:
                 return
             context = self._resolve_cursor_context()  # type: ignore[attr-defined]
             project_path = (context.project_path if context else "") or (file_row.project_path or "")
+            computer = (context.computer if context else None) or file_row.computer
             if not project_path:
                 self._report_unresolved_target(PreparationAction.REMOVE_ARTIFACT, slug)
                 return
@@ -750,6 +772,7 @@ class PreparationViewActionsMixin:
                     success_message=_REMOVE_ARTIFACT_SUCCESS_TEMPLATE.format(artifact_name=artifact_name, slug=slug),
                     role_target=ProjectPath(Path(project_path)),
                     params={_CWD_BODY_KEY: project_path},
+                    computer=computer,
                 )
 
             self.app.push_screen(  # type: ignore[attr-defined]
@@ -771,6 +794,7 @@ class PreparationViewActionsMixin:
             return
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         project_path = context.project_path if context else ""
+        computer = context.computer if context else None
         if not project_path:
             self._report_unresolved_target(PreparationAction.REMOVE_ARTIFACT, slug)
             return
@@ -786,6 +810,7 @@ class PreparationViewActionsMixin:
                 scope=ClearanceScope.verb(
                     "todo remove",
                     role_target=ProjectPath(Path(project_path)),
+                    target_computer=remote_computer(computer),
                 ),
             )
 
@@ -805,11 +830,13 @@ class PreparationViewActionsMixin:
         *,
         scope: ClearanceScope,
     ) -> None:
+        computer = scope.target_computer
         try:
             result = tool_api_request(
                 _ROW_ACTION_POST,
                 path,
                 json_body={_CWD_BODY_KEY: project_path},
+                params=_with_computer(None, computer),
                 timeout=10.0,
                 clearance_scope=scope,
                 clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
@@ -823,7 +850,12 @@ class PreparationViewActionsMixin:
         if isinstance(result, dict) and result.get("operation_id"):
             self.app.notify_text(f"{display_label}...")  # type: ignore[attr-defined]
             self.app._refresh_data()  # type: ignore[attr-defined]
-            self._follow_lifecycle_operation(str(result["operation_id"]), scope)  # type: ignore[attr-defined]
+            receipt_computer = result.get(_COMPUTER_PARAM)
+            self._follow_lifecycle_operation(  # type: ignore[attr-defined]
+                str(result["operation_id"]),
+                scope,
+                receipt_computer if isinstance(receipt_computer, str) else computer,
+            )
             return
         if isinstance(result, dict) and result.get("detail"):
             logger.error(_ROW_ACTION_FAILURE_EVENT, action=path, detail=result["detail"])
@@ -831,7 +863,9 @@ class PreparationViewActionsMixin:
         logger.error(_ROW_ACTION_FAILURE_EVENT, action=path, response=repr(result))
 
     @work(thread=True, group="lifecycle-op")
-    def _follow_lifecycle_operation(self, operation_id: str, scope: ClearanceScope) -> None:
+    def _follow_lifecycle_operation(
+        self, operation_id: str, scope: ClearanceScope, computer: str | None = None
+    ) -> None:
         """Follow a submitted lifecycle operation to its terminal state.
 
         The receipt only confirms acceptance; the operation's real outcome
@@ -843,6 +877,9 @@ class PreparationViewActionsMixin:
         delay_s = 0.0
         response: object = None
         status_path = _OPERATION_STATUS_PATH_TEMPLATE.format(operation_id=operation_id)
+        owner = remote_computer(computer)
+        # An operation another computer owns is read there, as the operation read it is.
+        poll_scope = ClearanceScope.verb(_OPERATION_READ_VERB, target_computer=owner) if owner is not None else scope
         while True:
             if delay_s > 0:
                 time.sleep(delay_s)
@@ -851,8 +888,9 @@ class PreparationViewActionsMixin:
                 response = tool_api_request(
                     _HTTP_METHOD_GET,
                     status_path,
+                    params=_with_computer(None, owner),
                     timeout=10.0,
-                    clearance_scope=scope,
+                    clearance_scope=poll_scope,
                     clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
                 )
             except ToolAPIError as exc:
@@ -923,6 +961,7 @@ class PreparationViewActionsMixin:
     def action_prepare(self) -> None:
         """p: submit a prepare operation for the selected scope."""
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        computer = context.computer if context else None
         if not context:
             self._report_unresolved_target(PreparationAction.PREPARE, None)
             return
@@ -933,7 +972,11 @@ class PreparationViewActionsMixin:
                 _TODO_PREPARE_PATH,
                 project_path,
                 "Preparing",
-                scope=ClearanceScope.verb("todo prepare", role_target=ProjectPath(Path(project_path))),
+                scope=ClearanceScope.verb(
+                    "todo prepare",
+                    role_target=ProjectPath(Path(project_path)),
+                    target_computer=remote_computer(computer),
+                ),
             )
             return
         row = self._resolve_todo_for_cursor()  # type: ignore[attr-defined]
@@ -948,12 +991,15 @@ class PreparationViewActionsMixin:
             path,
             project_path,
             _PREPARING_LABEL_TEMPLATE.format(slug=slug),
-            scope=ClearanceScope.verb("todo prepare", role_target=ProjectPath(Path(project_path))),
+            scope=ClearanceScope.verb(
+                "todo prepare", role_target=ProjectPath(Path(project_path)), target_computer=remote_computer(computer)
+            ),
         )
 
     def action_start_work(self) -> None:
         """Submit a work operation and report the workflow's terminal outcome."""
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        computer = context.computer if context else None
         if not context:
             self._report_unresolved_target(PreparationAction.START_WORK, None)
             return
@@ -975,7 +1021,9 @@ class PreparationViewActionsMixin:
                 _TODO_WORK_PATH,
                 project_path,
                 "Starting work",
-                scope=ClearanceScope.verb("todo work", role_target=ProjectPath(Path(project_path))),
+                scope=ClearanceScope.verb(
+                    "todo work", role_target=ProjectPath(Path(project_path)), target_computer=remote_computer(computer)
+                ),
             )
             return
         if todo_id is None:
@@ -985,7 +1033,9 @@ class PreparationViewActionsMixin:
             path,
             project_path,
             _STARTING_WORK_LABEL_TEMPLATE.format(slug=slug),
-            scope=ClearanceScope.verb("todo work", role_target=ProjectPath(Path(project_path))),
+            scope=ClearanceScope.verb(
+                "todo work", role_target=ProjectPath(Path(project_path)), target_computer=remote_computer(computer)
+            ),
         )
 
     def action_freeze(self) -> None:
@@ -999,6 +1049,7 @@ class PreparationViewActionsMixin:
             return
 
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        computer = context.computer if context else None
         project_path = context.project_path if context else ""
         if not project_path:
             self._report_unresolved_target(PreparationAction.FREEZE, slug)
@@ -1015,6 +1066,7 @@ class PreparationViewActionsMixin:
                 todo_id=todo_id,
                 success_message=_FREEZE_SUCCESS_TEMPLATE.format(slug=slug),
                 role_target=ProjectPath(Path(project_path)),
+                computer=computer,
                 body={_CWD_BODY_KEY: project_path},
                 relay_warnings=True,
             )
@@ -1099,6 +1151,7 @@ class PreparationViewActionsMixin:
         if todo_id is None:
             return
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        computer = context.computer if context else None
         project_path = context.project_path if context else ""
         if not project_path:
             self._report_unresolved_target(PreparationAction.UNFREEZE, slug)
@@ -1112,6 +1165,7 @@ class PreparationViewActionsMixin:
             todo_id=todo_id,
             success_message=_UNFREEZE_SUCCESS_TEMPLATE.format(slug=slug),
             role_target=ProjectPath(Path(project_path)),
+            computer=computer,
             body={_CWD_BODY_KEY: project_path},
             relay_warnings=True,
         )
@@ -1131,6 +1185,7 @@ class PreparationViewActionsMixin:
         if todo_id is None:
             return
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        computer = context.computer if context else None
         project_path = context.project_path if context else ""
         if not project_path:
             self._report_unresolved_target(PreparationAction.HOLD, slug)
@@ -1151,6 +1206,7 @@ class PreparationViewActionsMixin:
                     todo_id=todo_id,
                     success_message=_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug),
                     role_target=ProjectPath(Path(project_path)),
+                    computer=computer,
                     body={_CWD_BODY_KEY: project_path, _REASON_BODY_KEY: reason.strip()},
                 )
 
@@ -1175,6 +1231,7 @@ class PreparationViewActionsMixin:
             todo_id=todo_id,
             success_message=_RELEASE_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug),
             role_target=ProjectPath(Path(project_path)),
+            computer=computer,
             body={_CWD_BODY_KEY: project_path},
         )
 
@@ -1193,6 +1250,7 @@ class PreparationViewActionsMixin:
         if todo_id is None:
             return
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        computer = context.computer if context else None
         project_path = context.project_path if context else ""
         if not project_path:
             self._report_unresolved_target(PreparationAction.APPROVE_GATE, slug)
@@ -1206,6 +1264,7 @@ class PreparationViewActionsMixin:
             todo_id=todo_id,
             success_message=_APPROVE_SUCCESS_TEMPLATE.format(slug=slug),
             role_target=ProjectPath(Path(project_path)),
+            computer=computer,
             body={_CWD_BODY_KEY: project_path, _STAMP_TYPE_BODY_KEY: stamp_type},
         )
 
@@ -1255,6 +1314,7 @@ class PreparationViewActionsMixin:
 
         slug = row.slug
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+        computer = context.computer if context else None
         project_path = context.project_path if context else ""
         if not project_path:
             self._report_unresolved_target(PreparationAction.REACTIVATE_SELECTED, slug)
@@ -1265,10 +1325,12 @@ class PreparationViewActionsMixin:
                 "POST",
                 f"/todos/by-id/{todo_id}/reactivate",
                 json_body={"cwd": project_path},
+                params=_with_computer(None, computer),
                 timeout=10.0,
                 clearance_scope=ClearanceScope.verb(
                     "todo reactivate",
                     role_target=ProjectPath(Path(project_path)),
+                    target_computer=remote_computer(computer),
                 ),
                 clearance_identity=self.app._clearance_identity,  # type: ignore[attr-defined]
             )

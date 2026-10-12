@@ -1945,6 +1945,43 @@ CLI_SURFACE: dict[str, CommandDef] = {
         auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
     ),
 }
+# =============================================================================
+# Computer addressing — every command that acts on state a computer owns accepts the
+# computer to address. The daemon boundary carries the request to that computer
+# (`local/projects/teleclaude/spec/feature/integration/computer-addressed-execution`);
+# a command the invoking checkout or folder defines, or one that reports a job's own
+# run, names no other computer.
+# =============================================================================
+
+_BOUNDARY_ADDRESSED_GROUPS = ("todo", "bugs", "jobs", "agents", "config")
+_NOT_BOUNDARY_ADDRESSED = frozenset(
+    {
+        ("todo", "sync"),
+        ("todo", "sync-replica"),
+        ("jobs", "report"),
+        ("config", "project", "adopt"),
+        ("config", "wizard"),
+    }
+)
+_COMPUTER_ARGS = "[--computer <host>]"
+
+
+def _declare_boundary_addressing(path: tuple[str, ...], node: CommandDef) -> None:
+    """Declare the computer to address on every leaf command under ``node`` that acts on computer-owned state."""
+    if node.subcommands:
+        for name, subcommand in node.subcommands.items():
+            _declare_boundary_addressing((*path, name), subcommand)
+        return
+    if path in _NOT_BOUNDARY_ADDRESSED or F.FLAG_COMPUTER in node.flags:
+        return
+    node.flags.append(F.FLAG_COMPUTER)
+    node.args = f"{node.args} {_COMPUTER_ARGS}".strip()
+    node.addressed_at_boundary = True
+
+
+for _group in _BOUNDARY_ADDRESSED_GROUPS:
+    _declare_boundary_addressing((_group,), CLI_SURFACE[_group])
+
 HELP_SUBCOMMAND_EXPANSIONS: dict[str, dict[str, list[tuple[str, str]]]] = {}
 
 # =============================================================================

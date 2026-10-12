@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import sys
-import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,6 +11,7 @@ from typing import TYPE_CHECKING
 from teleclaude.caller_identity import NoIdentityCliCaller, Platform, ProjectPath
 from teleclaude.cli.session_auth import no_identity_refusal, require_cli_clearance, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.addressing import addressed_computer, project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._creation_gate import CREATION_VALIDITY_GATE_ITEM
 from teleclaude.cli.telec.handlers._todo_read import run_todo_read
@@ -27,6 +27,7 @@ from teleclaude.services.log_bug_hunter_suppressions import (
     active,
     append,
     load,
+    new_suppression,
     remove,
     suppressions_path_for,
 )
@@ -53,6 +54,9 @@ __all__ = [
 # here; every other reference in this module reads this constant.
 _FILING_ACK_FLAG = "--approved"
 _BUGS_REPORT_PATH = "bugs report"
+_BUGS_PATH = "/bugs"
+_SUPPRESSIONS_PATH = "/bugs/suppressions"
+_UNEXPECTED_RESPONSE = "unexpected bugs response: {answer}"
 _BUGS_SUPPRESS_PATH = "bugs suppress"
 _BUGS_SUPPRESSIONS_PATH = "bugs suppressions"
 _BUGS_UNSUPPRESS_PATH = "bugs unsuppress"
@@ -224,7 +228,7 @@ def _handle_bugs_report(args: list[str]) -> None:
     project_name = parsed.value(F.FLAG_BUG_PROJECT)
     human_involvement_reason = parsed.value(F.FLAG_HUMAN_INVOLVED)
     approved = parsed.has(F.FLAG_BUG_APPROVED)
-    project_root = resolve_invocation_cwd()
+    project_root: Path | str = resolve_invocation_cwd()
 
     # The interrogation gate: a description without the acknowledgment flag
     # is the designed discovery moment (mirrors the sealed-commit gate's
@@ -235,7 +239,10 @@ def _handle_bugs_report(args: list[str]) -> None:
         print(_BUG_FILING_GATE, file=sys.stderr, end="")
         return
 
-    if project_name:
+    if addressed_computer() is not None:
+        # The addressed computer resolves the project it holds and refuses by name when it holds none.
+        project_root = project_name or project_reference()
+    elif project_name:
         project_root = _resolve_project_by_name(project_name, _BUGS_REPORT_PATH)
 
     if not description:
@@ -291,7 +298,7 @@ def _handle_bugs_list(args: list[str]) -> None:
         project_root = resolve_invocation_roots().require_project_root()
         return get_work_service(str(project_root)).todo.bug_entries()
 
-    bugs = run_todo_read(read_bugs)
+    bugs = _read_remote_bugs() if addressed_computer() is not None else run_todo_read(read_bugs)
 
     if not bugs:
         print("No bugs found")
@@ -302,6 +309,70 @@ def _handle_bugs_list(args: list[str]) -> None:
     print("-" * 60)
     for bug in bugs:
         print(f"{bug.slug:<40} {bug.status:<15}")
+
+
+def _read_remote_bugs() -> list[BugListEntryDTO]:
+    """The addressed computer's active bugs for the project this invocation acts on."""
+    from teleclaude.api_models import BugListEntryDTO  # noqa: PLC0415 - deferred command-local dependency.
+    from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - deferred command-local dependency.
+
+    answer = tool_api_call("GET", _BUGS_PATH, params={"cwd": project_reference()})
+    if not isinstance(answer, list):
+        raise ValueError(_UNEXPECTED_RESPONSE.format(answer=answer))
+    return [BugListEntryDTO.model_validate(row) for row in answer]
+
+
+def _suppression_scope(project_name: str | None) -> dict[str, str]:
+    """Name the project a suppression request is about: the one asked for, else the invoking checkout's."""
+    return {"project": project_name} if project_name else {"cwd": project_reference()}
+
+
+def _remote_suppress(
+    project_name: str | None,
+    pattern: str,
+    match: MatchMode,
+    disposition: Disposition,
+    reason: str,
+    source_bug: str | None,
+    expires_at: str | None,
+) -> None:
+    """Register a suppression in the addressed computer's ledger for the project."""
+    from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - deferred command-local dependency.
+
+    body: dict[str, object] = {  # guard: loose-dict - JSON request body
+        "pattern": pattern,
+        "match": match.value,
+        "disposition": disposition.value,
+        "reason": reason,
+        "source_bug": source_bug,
+        "expires_at": expires_at,
+        **_suppression_scope(project_name),
+    }
+    answer = tool_api_call("POST", _SUPPRESSIONS_PATH, json_body=body)
+    if not isinstance(answer, dict):
+        raise ValueError(_UNEXPECTED_RESPONSE.format(answer=answer))
+    print(f"Registered suppression {answer['id']} for project '{answer['project']}' ({match.value}: {pattern!r}).")
+
+
+def _remote_suppressions(project_name: str | None) -> tuple[str, list[Suppression]]:
+    """The addressed computer's active suppressions for the project."""
+    from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - deferred command-local dependency.
+
+    answer = tool_api_call("GET", _SUPPRESSIONS_PATH, params=_suppression_scope(project_name))
+    if not isinstance(answer, dict):
+        raise ValueError(_UNEXPECTED_RESPONSE.format(answer=answer))
+    entries = [Suppression.from_dict(entry) for entry in answer["suppressions"]]
+    return str(answer["project"]), entries
+
+
+def _remote_unsuppress(project_name: str | None, suppression_id: str) -> tuple[str, bool]:
+    """Remove one suppression from the addressed computer's ledger for the project."""
+    from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - deferred command-local dependency.
+
+    answer = tool_api_call("DELETE", f"{_SUPPRESSIONS_PATH}/{suppression_id}", params=_suppression_scope(project_name))
+    if not isinstance(answer, dict):
+        raise ValueError(_UNEXPECTED_RESPONSE.format(answer=answer))
+    return str(answer["project"]), bool(answer["removed"])
 
 
 def _parse_expires(raw: str) -> datetime:
@@ -359,6 +430,17 @@ def _handle_bugs_suppress(args: list[str]) -> None:
             raise SystemExit(1) from None
 
     expires_at = _parse_expires(expires_raw) if expires_raw else None
+    if addressed_computer() is not None:
+        _remote_suppress(
+            project_name,
+            pattern,
+            match,
+            disposition,
+            reason,
+            source_bug,
+            expires_at.isoformat() if expires_at else None,
+        )
+        return
     slug = _resolve_project_slug(project_name, _BUGS_SUPPRESS_PATH)
     identity = resolve_cli_identity()
     principal = identity.principal
@@ -366,15 +448,13 @@ def _handle_bugs_suppress(args: list[str]) -> None:
         print(no_identity_refusal(identity))
         raise SystemExit(1)
 
-    entry = Suppression(
-        id=uuid.uuid4().hex[:12],
+    entry = new_suppression(
         pattern=pattern,
         match=match,
         disposition=disposition,
         reason=reason,
         source_bug=source_bug,
         created_by=principal,
-        created_at=datetime.now(UTC),
         expires_at=expires_at,
     )
     append(suppressions_path_for(slug), entry)
@@ -390,9 +470,11 @@ def _handle_bugs_suppressions(args: list[str]) -> None:
         raise SystemExit(1)
     project_name = parsed.value(F.FLAG_PROJECT_TRUSTED)
 
-    slug = _resolve_project_slug(project_name, _BUGS_SUPPRESSIONS_PATH)
-    ledger = load(suppressions_path_for(slug))
-    entries = active(ledger, datetime.now(UTC))
+    if addressed_computer() is not None:
+        slug, entries = _remote_suppressions(project_name)
+    else:
+        slug = _resolve_project_slug(project_name, _BUGS_SUPPRESSIONS_PATH)
+        entries = active(load(suppressions_path_for(slug)), datetime.now(UTC))
     if not entries:
         print(f"No active suppressions for project '{slug}'.")
         return
@@ -423,8 +505,12 @@ def _handle_bugs_unsuppress(args: list[str]) -> None:
         print(_usage("bugs", "unsuppress"))
         raise SystemExit(1)
 
-    slug = _resolve_project_slug(project_name, _BUGS_UNSUPPRESS_PATH)
-    if remove(suppressions_path_for(slug), suppression_id):
+    if addressed_computer() is not None:
+        slug, removed = _remote_unsuppress(project_name, suppression_id)
+    else:
+        slug = _resolve_project_slug(project_name, _BUGS_UNSUPPRESS_PATH)
+        removed = remove(suppressions_path_for(slug), suppression_id)
+    if removed:
         print(f"Removed suppression {suppression_id} from project '{slug}'.")
     else:
         print(f"No suppression with id '{suppression_id}' for project '{slug}'.")

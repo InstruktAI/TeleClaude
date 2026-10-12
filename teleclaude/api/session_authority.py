@@ -12,6 +12,9 @@ that module reads a todo's claim, this one reads the session graph.
 
 from __future__ import annotations
 
+import re
+from http import HTTPMethod
+
 from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
 
@@ -25,6 +28,13 @@ ACT_END = "telec sessions end"
 ACT_UNSUBSCRIBE = "telec sessions unsubscribe"
 ACT_RESTART = "telec sessions restart"
 
+_TARGET_GROUP = "session_id"
+_ANCESTOR_ACT_ROUTES: tuple[tuple[HTTPMethod, re.Pattern[str], str], ...] = (
+    (HTTPMethod.POST, re.compile(rf"^/sessions/(?P<{_TARGET_GROUP}>[^/]+)/message$"), ACT_SEND_MESSAGE),
+    (HTTPMethod.DELETE, re.compile(rf"^/sessions/(?P<{_TARGET_GROUP}>[^/]+)$"), ACT_END),
+    (HTTPMethod.POST, re.compile(rf"^/sessions/(?P<{_TARGET_GROUP}>[^/]+)/agent-restart$"), ACT_RESTART),
+    (HTTPMethod.POST, re.compile(rf"^/sessions/(?P<{_TARGET_GROUP}>[^/]+)/unsubscribe$"), ACT_UNSUBSCRIBE),
+)
 _SESSION_ACT_REFUSED_ANCESTOR_EVENT = "session_act_refused_ancestor"
 REFUSED_ANCESTOR_DETAIL = (
     "session '{target_session_id}' is above caller '{caller_session_id}' in its dispatch "
@@ -60,3 +70,14 @@ async def refuse_act_on_ancestor(caller: CallerIdentity, target_session_id: str,
             act=act,
         ),
     )
+
+
+def ancestor_act_for_request(method: str, path: str) -> tuple[str, str] | None:
+    """The session act a request performs and the session it targets, when the ancestor rule governs it."""
+    for route_method, pattern, act in _ANCESTOR_ACT_ROUTES:
+        if method != route_method.value:
+            continue
+        match = pattern.match(path)
+        if match is not None:
+            return act, match.group(_TARGET_GROUP)
+    return None

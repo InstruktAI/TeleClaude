@@ -28,6 +28,7 @@ from teleclaude.constants import HUMAN_ROLE_CUSTOMER, LOGIN_REQUIRED_DETAIL, ROL
 from teleclaude.core.conversation_messages import resolve_session_event_author
 from teleclaude.core.daemon_lifecycle_identity import is_daemon_credential
 from teleclaude.core.db import db
+from teleclaude.core.operation_caller_identity import get_relayed_caller
 from teleclaude.types.commands import CallerProvenance
 from teleclaude.types.creation_record import EntryPoint
 
@@ -49,6 +50,7 @@ class CallerIdentity:
     principal: str | None = None
     entry_point: EntryPoint | None = None
     company: str | None = None
+    command: str | None = None
 
 
 def caller_role_for_session(identity: CallerIdentity, session: Session) -> str | None:
@@ -155,13 +157,18 @@ def carried_caller(
         principal=carried.principal,
         entry_point=entry_point,
         company=carried.company,
+        command=carried.command,
     )
+
+
+def carried_caller_of(request: HTTPConnection) -> CallerIdentity:
+    """Take the caller identity carried by a request outside a route's dependency injection."""
+    return carried_caller(request, request.headers.get(_DAEMON_TOKEN_HEADER))
 
 
 def carried_caller_session_id(request: HTTPConnection) -> str | None:
     """Return the session id carried by this request, or None for automation."""
-    identity = carried_caller(request, request.headers.get(_DAEMON_TOKEN_HEADER))
-    return identity.session_id or None
+    return carried_caller_of(request).session_id or None
 
 
 def require_clearance(command_path: str) -> Callable[..., CallerIdentity]:
@@ -191,13 +198,39 @@ def require_clearance_at_caller_person(command_path: str) -> Callable[..., Calle
     return _require
 
 
+def _relayed_caller_provenance(session_id: str) -> CallerProvenance | None:
+    """Provenance for a caller session another computer holds, from the address its relay carried.
+
+    The relaying computer carries only the address, so the author is the generic machine author;
+    everything else the caller's surface shows about itself stays with that computer.
+    """
+    relayed = get_relayed_caller()
+    if relayed is None or relayed.session_id != session_id:
+        return None
+    author = resolve_session_event_author(
+        session_id=session_id,
+        system_role=None,
+        active_agent=None,
+        thinking_mode=None,
+    )
+    return CallerProvenance(
+        session_id=session_id,
+        computer=relayed.computer,
+        author_kind=author.kind.value,
+        author_display=author.display,
+        agent_runtime=author.agent_runtime,
+        thinking_mode=author.thinking_mode,
+        machine_role=author.machine_role,
+    )
+
+
 async def resolve_caller_provenance(identity: CallerIdentity) -> CallerProvenance | None:
     """Build session provenance from the caller's session record when present."""
     if not identity.session_id:
         return None
     session = await db.get_session(identity.session_id)
     if session is None:
-        return None
+        return _relayed_caller_provenance(identity.session_id)
     author = resolve_session_event_author(
         session_id=identity.session_id,
         system_role=session.system_role,
@@ -220,6 +253,7 @@ __all__ = [
     "CallerIdentity",
     "caller_from_carried_identity",
     "carried_caller",
+    "carried_caller_of",
     "carried_caller_session_id",
     "principal_for_carried_caller",
     "require_clearance",

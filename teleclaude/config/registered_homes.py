@@ -63,6 +63,19 @@ def registered_home_folder(kind: ConfigSubjectKind, slug: str) -> Path | None:
     return None
 
 
+def project_folder(reference: str) -> Path | None:
+    """Answer the folder of the project a request names: a path as given, else the registered project's folder.
+
+    A caller addressing another computer from a project's checkout names the project by the identity
+    it is registered under, since its own path means nothing here. Returns ``None`` when the
+    reference is neither a path nor an identity registered on this computer.
+    """
+    path = Path(reference)
+    if path.is_absolute():
+        return path
+    return registered_home_folder(ConfigSubjectKind.PROJECT, reference)
+
+
 def _registered_project_root(slug: str) -> Path | None:
     """Find the registered project root whose identity is ``slug``.
 

@@ -7,12 +7,12 @@ import sys
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Final, NoReturn, cast
+from typing import Final, cast
 
 from jobs.base import JobResult, JSONState
 from teleclaude.api_models import JobDTO
-from teleclaude.cli.session_auth import resolve_cli_identity
 from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.addressing import addressed_computer, project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.surface import (
     JOBS_DISABLE,
@@ -28,25 +28,9 @@ from teleclaude.cli.tool_client import print_json, tool_api_call
 from teleclaude.config.jobs import (
     SubscriptionChange,
     load_effective_jobs,
-    plan_job_subscription,
 )
-from teleclaude.config.loader import load_global_config
-from teleclaude.config.resource_contract import (
-    InvalidCandidate,
-    PartialCommitFailure,
-    ReadOnlyProjection,
-    SubjectNotFound,
-    SubjectView,
-)
-from teleclaude.config.resources import affected_sections, patch_subject, read_subject
-from teleclaude.config.revision import StaleRevision
-from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.core.configuration_clearance import (
-    ConfigurationOperation,
-    ConfigurationTarget,
-    decide,
-    standing_for,
-)
+from teleclaude.config.subject_operations import ConfigRequest, ConfigVerb
+from teleclaude.config_subjects import ConfigSubjectKind
 from teleclaude.cron.result_store import job_result_transaction, write_job_result_in_transaction
 from teleclaude.cron.state import CronState, JobRunStatus, compose_job_key
 from teleclaude.project_root import resolve_invocation_roots
@@ -62,20 +46,8 @@ _LAST_RUN_NEVER: Final[str] = "never"
 _NEXT_DUE_NONE: Final[str] = "-"
 _JOB_LIST_LINE: Final[str] = "{scope} {name}"
 _JOB_STATUS_LINE: Final[str] = "{name}: last_run={last_run}; status={status}; next_due={next_due}"
-_PROJECT_SECTION: Final[str] = "project"
-_JOBS_SECTION: Final[str] = "jobs"
-_INVALID_PROJECT_SECTION_ERROR: Final[str] = "Project subject has no writable project section"
-_INVALID_JOBS_ARRAY_ERROR: Final[str] = "Project subject has an invalid jobs array"
-_REFUSED_MESSAGE: Final[str] = "Error: refused — required standing: {standing} ({reason}) (request {request_id})"
-_NOT_FOUND_MESSAGE: Final[str] = "Error: {message} (request {request_id})"
-_STALE_MESSAGE: Final[str] = (
-    "Error: stale revision — expected {expected}, subject is now at {actual} (request {request_id})"
-)
-_INVALID_MESSAGE: Final[str] = "Error: {message} (request {request_id})"
-_PARTIAL_COMMIT_MESSAGE: Final[str] = (
-    "Error: {message} (request {request_id})\n"
-    "The affected files may be in a mixed state — read them back before retrying."
-)
+_CHANGE_KEY: Final[str] = "change"
+_PROJECT_PARAM: Final[str] = "project"
 _SUBSCRIPTION_MESSAGES: Final[dict[SubscriptionChange, str]] = {
     SubscriptionChange.SUBSCRIBED: "Subscribed to job {name}",
     SubscriptionChange.ACTIVATED: "Enabled job {name}",
@@ -177,8 +149,7 @@ def handle_jobs_report(args: list[str]) -> None:
 def handle_jobs_list(args: list[str]) -> None:
     """List jobs visible to the invoking project."""
     _require_no_positionals(JOBS_LIST, args)
-    project_root = _invoking_project_root()
-    project_slug = _invoking_project_slug(project_root)
+    project_slug = _project_identity()
     for job in _load_project_jobs(project_slug):
         print(_JOB_LIST_LINE.format(scope=job.scope.value, name=job.name))
 
@@ -186,8 +157,7 @@ def handle_jobs_list(args: list[str]) -> None:
 def handle_jobs_status(args: list[str]) -> None:
     """Show the last and projected next run for each visible job."""
     _require_no_positionals(JOBS_STATUS, args)
-    project_root = _invoking_project_root()
-    project_slug = _invoking_project_slug(project_root)
+    project_slug = _project_identity()
     for job in _load_project_jobs(project_slug):
         last_run = job.last_run if job.last_run is not None else _LAST_RUN_NEVER
         next_due = job.next_due if job.next_due is not None else _NEXT_DUE_NONE
@@ -214,9 +184,9 @@ def handle_jobs_disable(args: list[str]) -> None:
 def handle_jobs_run(args: list[str]) -> None:
     """Run one effective job through the existing project-scoped endpoint."""
     job_name = _required_job_name(JOBS_RUN, args)
-    project_root = _invoking_project_root()
-    project_slug = _invoking_project_slug(project_root)
-    _validate_known_job(job_name, project_root)
+    project_slug = _project_identity()
+    if addressed_computer() is None:
+        _validate_known_job(job_name, _invoking_project_root())
     result = tool_api_call(
         "POST",
         _JOB_RUN_PATH.format(name=job_name),
@@ -226,59 +196,21 @@ def handle_jobs_run(args: list[str]) -> None:
 
 
 def _handle_job_subscription(args: list[str], command: CommandDef, *, enabled: bool) -> None:
+    from teleclaude.cli.config_cmd import run_config_request  # noqa: PLC0415 - command boundary: config operation.
+
     job_name = _required_job_name(command, args)
-    project_root = _invoking_project_root()
-    project_slug = _invoking_project_slug(project_root)
-    request_id = str(uuid.uuid4())
-    subject = SubjectRef(ConfigSubjectKind.PROJECT, project_slug)
-    sections = affected_sections(subject, {_JOBS_SECTION: []})
-    identity = resolve_cli_identity()
-    decision = decide(
-        standing_for(identity),
-        ConfigurationTarget(
-            kind=ConfigSubjectKind.PROJECT,
-            instance=project_slug,
-            operation=ConfigurationOperation.PATCH,
-            sections=sections,
-        ),
-        request_id=request_id,
+    project_slug = _project_identity()
+    request = ConfigRequest(
+        verb=ConfigVerb.JOB_SUBSCRIPTION,
+        kind=ConfigSubjectKind.PROJECT,
+        instance=project_slug,
+        project=project_slug,
+        job=job_name,
+        enabled=enabled,
+        request_id=str(uuid.uuid4()),
     )
-    if not decision.allowed:
-        _exit_command_error(
-            _REFUSED_MESSAGE.format(
-                standing=decision.required_standing.value,
-                reason=decision.reason,
-                request_id=request_id,
-            )
-        )
-
-    try:
-        view = read_subject(subject)
-    except SubjectNotFound as error:
-        _exit_command_error(_NOT_FOUND_MESSAGE.format(message=str(error), request_id=request_id))
-
-    try:
-        jobs = _jobs_array_from_view(view)
-    except ValueError as error:
-        _exit_command_error(_INVALID_MESSAGE.format(message=str(error), request_id=request_id))
-
-    published = load_global_config().jobs
-    try:
-        plan = plan_job_subscription(jobs, published, job_name, enabled)
-    except ValueError as error:
-        _exit_command_error(_INVALID_MESSAGE.format(message=str(error), request_id=request_id))
-    if plan.jobs is not None:
-        try:
-            patch_subject(
-                subject,
-                {_JOBS_SECTION: list(plan.jobs)},
-                expected_revision=view.revision,
-                request_id=request_id,
-            )
-        except (SubjectNotFound, StaleRevision, PartialCommitFailure, InvalidCandidate, ReadOnlyProjection) as error:
-            _exit_resource_error(error, request_id)
-
-    print(_SUBSCRIPTION_MESSAGES[plan.change].format(name=job_name))
+    payload = run_config_request(request, errors_to=sys.stderr)
+    print(_SUBSCRIPTION_MESSAGES[SubscriptionChange(str(payload[_CHANGE_KEY]))].format(name=job_name))
 
 
 def _required_job_name(command: CommandDef, args: list[str]) -> str:
@@ -292,41 +224,6 @@ def _required_job_name(command: CommandDef, args: list[str]) -> str:
     return positionals[0]
 
 
-def _jobs_array_from_view(view: SubjectView) -> list[Mapping[str, object]]:
-    section = view.sections.get(_PROJECT_SECTION)
-    if not isinstance(section, Mapping):
-        raise ValueError(_INVALID_PROJECT_SECTION_ERROR)
-    jobs = section.get(_JOBS_SECTION, [])
-    if not isinstance(jobs, list):
-        raise ValueError(_INVALID_JOBS_ARRAY_ERROR)
-    entries: list[Mapping[str, object]] = []
-    for entry in jobs:
-        if not isinstance(entry, Mapping) or any(not isinstance(key, str) for key in entry):
-            raise ValueError(_INVALID_JOBS_ARRAY_ERROR)
-        entries.append(cast(Mapping[str, object], entry))
-    return entries
-
-
-def _exit_resource_error(
-    error: SubjectNotFound | StaleRevision | PartialCommitFailure | InvalidCandidate | ReadOnlyProjection,
-    request_id: str,
-) -> NoReturn:
-    if isinstance(error, StaleRevision):
-        message = _STALE_MESSAGE.format(expected=error.expected, actual=error.actual, request_id=request_id)
-    elif isinstance(error, PartialCommitFailure):
-        message = _PARTIAL_COMMIT_MESSAGE.format(message=str(error), request_id=request_id)
-    elif isinstance(error, SubjectNotFound):
-        message = _NOT_FOUND_MESSAGE.format(message=str(error), request_id=request_id)
-    else:
-        message = _INVALID_MESSAGE.format(message=str(error), request_id=request_id)
-    _exit_command_error(message)
-
-
-def _exit_command_error(message: str) -> NoReturn:
-    print(message, file=sys.stderr)
-    raise SystemExit(1)
-
-
 def _require_no_positionals(command: CommandDef, args: list[str]) -> None:
     parsed = parse_command_args(command, args)
     if parsed.positionals:
@@ -335,7 +232,8 @@ def _require_no_positionals(command: CommandDef, args: list[str]) -> None:
 
 
 def _load_project_jobs(project_slug: str) -> list[JobDTO]:
-    response = tool_api_call("GET", _JOBS_API_PATH)
+    # The project names what the request is about: the computer that answers judges the caller there.
+    response = tool_api_call("GET", _JOBS_API_PATH, params={_PROJECT_PARAM: project_slug})
     if not isinstance(response, list) or any(not isinstance(row, Mapping) for row in response):
         raise ValueError(_JOBS_RESPONSE_ERROR)
     jobs = [JobDTO.model_validate(row) for row in response]
@@ -372,6 +270,13 @@ def _validate_known_job(job_name: str, project_root: Path) -> None:
 
 def _load_known_job_names(project_root: Path) -> set[str]:
     return {job.identity for job in load_effective_jobs(project_root)}
+
+
+def _project_identity() -> str:
+    """The identity of the invoking checkout's project: what the addressed computer holds it under."""
+    if addressed_computer() is not None:
+        return project_reference()
+    return _invoking_project_slug(_invoking_project_root())
 
 
 def _invoking_project_root() -> Path:

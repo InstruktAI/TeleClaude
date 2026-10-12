@@ -20,6 +20,7 @@ matches what was authored.
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -168,6 +169,33 @@ class SuppressionLedger:
         raw_entries = data.get("suppressions") or []
         entries = [Suppression.from_dict(raw) for raw in raw_entries]
         return cls(version=data.get("version", LEDGER_VERSION), suppressions=entries)
+
+
+_SUPPRESSION_ID_LENGTH = 12
+
+
+def new_suppression(
+    *,
+    pattern: str,
+    match: MatchMode,
+    disposition: Disposition,
+    reason: str,
+    source_bug: str | None,
+    created_by: str,
+    expires_at: datetime | None,
+) -> Suppression:
+    """Author a suppression entry: the ledger owner mints its identity and creation time."""
+    return Suppression(
+        id=uuid.uuid4().hex[:_SUPPRESSION_ID_LENGTH],
+        pattern=pattern,
+        match=match,
+        disposition=disposition,
+        reason=reason,
+        source_bug=source_bug,
+        created_by=created_by,
+        created_at=datetime.now(UTC),
+        expires_at=expires_at,
+    )
 
 
 def _as_utc(value: datetime | None) -> datetime | None:

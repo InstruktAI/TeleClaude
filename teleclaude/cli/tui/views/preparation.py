@@ -23,8 +23,10 @@ from teleclaude.api_models import (
     SessionDTO,
     TodoDTO,
 )
+from teleclaude.cli.telec.addressing import remote_computer
 from teleclaude.cli.tui.artifact_panes import (
     EDITOR_MODULE,
+    FLAG_ARTIFACT_COMPUTER,
     FLAG_ARTIFACT_NAME,
     FLAG_ARTIFACT_SLUG,
     FLAG_ARTIFACT_TODO_ID,
@@ -589,6 +591,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                         project_path=project_path,
                         todo_id=todo_id,
                         status=row.todo.status,
+                        computer=row.todo.computer,
                         updated_at=item.artifact_updated_at.get(artifact_name),
                         is_last=(fi == len(sorted_files) - 1),
                         tree_lines=detail_tree_lines,
@@ -759,6 +762,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 project_path=project_path,
                 todo_id=todo_id,
                 status=todo_row.todo.status,
+                computer=todo_row.todo.computer,
                 updated_at=todo_row.todo.artifact_updated_at.get(artifact_name),
                 is_last=is_last,
                 tree_lines=detail_tree_lines,
@@ -895,9 +899,16 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         return item if isinstance(item, ProjectHeader) else None
 
     @staticmethod
-    def _artifact_doc_id(project_path: str, slug: str, artifact_name: str, *, todo_id: str | None = None) -> str:
+    def _artifact_doc_id(
+        project_path: str,
+        slug: str,
+        artifact_name: str,
+        *,
+        todo_id: str | None = None,
+        computer: str | None = None,
+    ) -> str:
         """Build a stable document id for a todo artifact."""
-        return artifact_doc_id(project_path, slug, artifact_name, todo_id=todo_id)
+        return artifact_doc_id(project_path, slug, artifact_name, todo_id=todo_id, computer=remote_computer(computer))
 
     def _editor_command(
         self,
@@ -906,6 +917,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         slug: str,
         artifact_name: str,
         todo_id: str | None = None,
+        computer: str | None = None,
         status: TodoStatus | str | None = None,
         view: bool = False,
     ) -> str:
@@ -923,6 +935,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         ]
         if todo_id is not None:
             args.extend([FLAG_ARTIFACT_TODO_ID, todo_id])
+        owner = remote_computer(computer)
+        if owner is not None:
+            args.extend([FLAG_ARTIFACT_COMPUTER, owner])
         if view or status in RETAINED_TODO_STATUSES:
             args.append(FLAG_VIEW)
 

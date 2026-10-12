@@ -8,6 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 from instrukt_ai_logging import get_logger
+from pydantic import BaseModel, ConfigDict
 
 from teleclaude.api import todo_artifact_routes, todo_routes, todo_stamp_routes
 from teleclaude.api.auth import CallerIdentity, carried_caller
@@ -357,6 +358,28 @@ async def todo_stamp_by_id(
             background_tasks=background_tasks,
         ),
     )
+
+
+class _ArtifactByIdResponse(BaseModel):
+    """The content of exactly the identified todo row's artifact."""
+
+    model_config = ConfigDict(frozen=True)
+    todo_id: str
+    name: str
+    content: str
+
+
+@router.get("/by-id/{todo_id}/artifacts/{name}")
+async def read_artifact_by_id(
+    todo_id: str,
+    name: str,
+    cwd: str | None = None,
+    _identity: CallerIdentity = Depends(carried_caller),
+) -> _ArtifactByIdResponse:
+    """Read an artifact of exactly the identified todo row, including a retained row."""
+    todos_db = await todo_routes._get_todos_db_from_cwd(cwd or todo_routes._default_cwd())
+    content = await todos_db.read_artifact_by_id(todo_id, name)
+    return _ArtifactByIdResponse(todo_id=todo_id, name=name, content=content)
 
 
 @router.post("/by-id/{todo_id}/artifacts/{name}")

@@ -5,13 +5,13 @@ from __future__ import annotations
 import asyncio
 import sys
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
 from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
 from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.addressing import addressed_computer, project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import TODO_CREATE, TODO_DELIVER, TODO_REACTIVATE, TODO_REMOVE
@@ -23,7 +23,6 @@ from teleclaude.constants import (
     SLUG_NOT_FOUND_DETAIL,
     SLUG_NOT_IN_ICEBOX_DETAIL,
 )
-from teleclaude.paths import invocation_cwd
 from teleclaude.slug import validate_slug
 
 if TYPE_CHECKING:
@@ -31,6 +30,7 @@ if TYPE_CHECKING:
         ArtifactWritersRow,
         TodosDb,
     )
+    from teleclaude.services.work.slug_actions import SlugActionResult
 
 
 class _TodoUpdateBody(TypedDict):
@@ -190,29 +190,56 @@ def _validate_slugs(*slugs: str | None) -> None:
         raise SystemExit(1) from exc
 
 
-def _run_db(project_root: Path, slug: str, method: str, **kwargs: object) -> object:
-    from teleclaude.core.todos_db import TodosDb  # noqa: PLC0415 - command boundary: local workflow store.
+class _SlugAction(StrEnum):
+    """Slug-addressed todo actions the daemon serves and the workflow store runs in place."""
 
-    async def _execute() -> object:
-        db = TodosDb(str(project_root / ".teleclaude" / "todos.db"))
-        await db.initialize()
+    FREEZE = "freeze"
+    UNFREEZE = "unfreeze"
+    DELIVER = "deliver"
+
+
+def _perform_slug_action(action: _SlugAction, slug: str, commit: str | None = None) -> SlugActionResult:
+    """Run one slug-addressed action in the local workflow store, or ask the addressed computer to run it."""
+    from teleclaude.cli.telec.handlers._todo_roots import (  # noqa: PLC0415 - command boundary: local workflow store.
+        _resolve_project_root_or_exit,
+    )
+    from teleclaude.core.todos_db import close_todos_db_instances  # noqa: PLC0415 - command boundary: local store.
+    from teleclaude.services.work.slug_actions import (  # noqa: PLC0415 - command boundary: workflow actions.
+        SlugActionResult,
+        deliver_todo,
+        freeze_todo,
+        unfreeze_todo,
+    )
+
+    if addressed_computer() is not None:
+        from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - command boundary: daemon API client.
+
+        body: dict[str, str] = {"cwd": project_reference()}
+        if commit is not None:
+            body["commit"] = commit
+        return SlugActionResult.from_dict(tool_api_call("POST", f"/todos/{slug}/{action.value}", json_body=body))
+
+    project_root = _resolve_project_root_or_exit()
+    local: Coroutine[object, object, SlugActionResult]
+    if action is _SlugAction.FREEZE:
+        local = freeze_todo(project_root, slug)
+    elif action is _SlugAction.UNFREEZE:
+        local = unfreeze_todo(project_root, slug)
+    else:
+        local = deliver_todo(project_root, slug, commit)
+
+    async def run() -> SlugActionResult:
         try:
-            fn = getattr(db, method)
-            return await fn(slug, **kwargs)
+            return await local
         finally:
-            await db.close()
+            await close_todos_db_instances()
 
-    return asyncio.run(_execute())
+    return asyncio.run(run())
 
 
 def _handle_todo_freeze(args: list[str]) -> None:
     """Handle telec todo freeze <slug>."""
-    from teleclaude.cli.telec.handlers._todo_roots import (  # noqa: PLC0415 - command boundary: freeze resolves the store.
-        _resolve_project_root_or_exit,
-    )
-    from teleclaude.core.todo_dependency_warnings import (  # noqa: PLC0415 - command boundary: freeze warnings.
-        freeze_dependent_warnings,
-    )
+    from teleclaude.services.work.slug_actions import SlugActionOutcome  # noqa: PLC0415 - command boundary: outcome.
 
     if not args:
         print(_usage("todo", "freeze"))
@@ -238,26 +265,18 @@ def _handle_todo_freeze(args: list[str]) -> None:
         raise SystemExit(1)
 
     _validate_slugs(slug)
-    project_root = _resolve_project_root_or_exit()
-    if _run_db(project_root, slug, "freeze"):
-        print(f"Froze {slug} → icebox")
-        open_dependents = cast(list[str], _run_db(project_root, slug, "get_open_dependents"))
-        for warning in freeze_dependent_warnings(slug, open_dependents):
-            print(warning)
-        return
-    print(SLUG_NOT_FOUND_DETAIL.format(slug=slug))
-    raise SystemExit(1)
+    result = _perform_slug_action(_SlugAction.FREEZE, slug)
+    if result.outcome is SlugActionOutcome.NOT_FOUND:
+        print(SLUG_NOT_FOUND_DETAIL.format(slug=slug))
+        raise SystemExit(1)
+    print(f"Froze {slug} → icebox")
+    for warning in result.warnings:
+        print(warning)
 
 
 def _handle_todo_unfreeze(args: list[str]) -> None:
     """Handle telec todo unfreeze <slug>."""
-    from teleclaude.cli.telec.handlers._todo_roots import (  # noqa: PLC0415 - command boundary: unfreeze resolves the store.
-        _resolve_project_root_or_exit,
-    )
-    from teleclaude.core.todo_dependency_warnings import (  # noqa: PLC0415 - command boundary: unfreeze warnings.
-        unfreeze_frozen_dep_warnings,
-    )
-    from teleclaude.types.todos import DependencyEntry  # noqa: PLC0415 - command boundary: unfreeze cast.
+    from teleclaude.services.work.slug_actions import SlugActionOutcome  # noqa: PLC0415 - command boundary: outcome.
 
     if not args:
         print(_usage("todo", "unfreeze"))
@@ -283,32 +302,18 @@ def _handle_todo_unfreeze(args: list[str]) -> None:
         raise SystemExit(1)
 
     _validate_slugs(slug)
-    project_root = _resolve_project_root_or_exit()
-    if _run_db(project_root, slug, "unfreeze"):
-        print(f"Unfroze {slug} → todo list")
-        dependencies = cast(list[DependencyEntry], _run_db(project_root, slug, "get_deps_with_status"))
-        for warning in unfreeze_frozen_dep_warnings(slug, dependencies):
-            print(warning)
-        return
-    print(SLUG_NOT_IN_ICEBOX_DETAIL.format(slug=slug))
-    raise SystemExit(1)
+    result = _perform_slug_action(_SlugAction.UNFREEZE, slug)
+    if result.outcome is SlugActionOutcome.NOT_FOUND:
+        print(SLUG_NOT_IN_ICEBOX_DETAIL.format(slug=slug))
+        raise SystemExit(1)
+    print(f"Unfroze {slug} → todo list")
+    for warning in result.warnings:
+        print(warning)
 
 
 def _handle_todo_deliver(args: list[str]) -> None:
     """Handle telec todo deliver <slug> [--commit SHA]."""
-    from teleclaude.cli.telec.handlers._todo_roots import (  # noqa: PLC0415 - command boundary: deliver resolves the store.
-        _resolve_project_root_or_exit,
-    )
-    from teleclaude.core.next_machine.delivery import (  # noqa: PLC0415 - command boundary: delivery cleanup.
-        cleanup_delivered_slug,
-    )
-    from teleclaude.core.next_machine.marker_reconciliation import (  # noqa: PLC0415 - command boundary: markers.
-        MarkerMoment,
-        reconcile_lifecycle_markers,
-    )
-    from teleclaude.core.todos_db._errors import (  # noqa: PLC0415 - command boundary: delivery refusal.
-        DeliveryProvenanceRefused,
-    )
+    from teleclaude.services.work.slug_actions import SlugActionOutcome  # noqa: PLC0415 - command boundary: outcome.
 
     if not args:
         print(_usage("todo", "deliver"))
@@ -328,29 +333,13 @@ def _handle_todo_deliver(args: list[str]) -> None:
         raise SystemExit(1)
 
     _validate_slugs(slug)
-    project_root = _resolve_project_root_or_exit()
-    receipt = reconcile_lifecycle_markers(project_root, slug, MarkerMoment.DELIVER)
-    if not receipt.succeeded:
-        print(f"Delivery reconciliation failed for {slug}: {receipt.reason}")
+    result = _perform_slug_action(_SlugAction.DELIVER, slug, commit)
+    if result.outcome is SlugActionOutcome.REFUSED:
+        print(result.detail)
         raise SystemExit(1)
-    try:
-        delivered = _run_db(
-            project_root,
-            slug,
-            "deliver",
-            reconciliation_receipt=receipt,
-            reconciliation_root=project_root,
-            commit=commit,
-        )
-    except DeliveryProvenanceRefused as exc:
-        kind = exc.kind or "unknown"
-        print(f"Delivery refused for {exc.slug}: --commit is required for {kind} todos.")
-        raise SystemExit(1) from exc
-    if not delivered:
+    if result.outcome is SlugActionOutcome.NOT_FOUND:
         print(SLUG_NOT_FOUND_DETAIL.format(slug=slug))
         raise SystemExit(1)
-
-    cleanup_delivered_slug(str(project_root), slug)
     print(f"Delivered {slug} (cleanup complete)")
 
 
@@ -439,7 +428,7 @@ def _handle_todo_create(args: list[str]) -> None:
         after=parsed.after,
         schedule=parsed.schedule,
         kind=dump_kind,
-        cwd=parsed.project_root if parsed.project_root is not None else str(invocation_cwd()),
+        cwd=parsed.project_root if parsed.project_root is not None else project_reference(),
         icebox=parsed.icebox,
         group=parsed.group,
         plan=parsed.plan,
@@ -529,7 +518,7 @@ def _handle_todo_remove(args: list[str]) -> None:
     body = {
         "slug": slug,
         "force": force,
-        "cwd": str(invocation_cwd()),
+        "cwd": project_reference(),
         "client_request_id": str(uuid.uuid4()),
     }
     render_receipt(tool_api_call("POST", "/todos/remove", json_body=body))
@@ -605,7 +594,7 @@ def _handle_todo_update(args: list[str]) -> None:
 
     body: _TodoUpdateBody = {
         "slug": slug,
-        "cwd": str(invocation_cwd()),
+        "cwd": project_reference(),
         "client_request_id": str(uuid.uuid4()),
     }
     if new_slug is not None:
@@ -679,6 +668,19 @@ def _handle_todo_artifacts(args: list[str]) -> None:
         raise SystemExit(1)
 
 
+def _remote_read(
+    path: str, extra_params: dict[str, str] | None = None
+) -> dict[str, object]:  # guard: loose-dict - JSON body
+    """Read from the addressed computer's workflow store, naming the project this invocation acts on."""
+    from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - command boundary: daemon API client.
+
+    answer = tool_api_call("GET", path, params={"cwd": project_reference(), **(extra_params or {})})
+    if not isinstance(answer, dict):
+        print(f"Error: unexpected response: {answer}", file=sys.stderr)
+        raise SystemExit(1)
+    return cast(dict[str, object], answer)  # guard: loose-dict - JSON body
+
+
 def _handle_artifacts_list(args: list[str]) -> None:
     """Handle telec todo artifacts list <slug>."""
     from teleclaude.cli.telec.handlers._todo_read import (  # noqa: PLC0415 - command boundary: local workflow-store read.
@@ -694,7 +696,11 @@ def _handle_artifacts_list(args: list[str]) -> None:
     async def read_artifacts(todos_db: TodosDb) -> list[ArtifactWritersRow]:
         return await todos_db.list_artifacts_with_writers(slug, include_removed=True)
 
-    artifacts = run_todo_read(read_artifacts)
+    if addressed_computer() is not None:
+        remote = _remote_read(f"/todos/artifacts/{slug}")
+        artifacts = cast(list[ArtifactWritersRow], remote.get("artifacts") or [])
+    else:
+        artifacts = run_todo_read(read_artifacts)
     if not artifacts:
         print(f"No artifacts for {slug}")
     else:
@@ -721,6 +727,9 @@ def _handle_artifacts_read(args: list[str]) -> None:
     async def read_artifact(todos_db: TodosDb) -> str:
         return await todos_db.read_artifact(slug, name, include_removed=True)
 
+    if addressed_computer() is not None:
+        print(_remote_read(f"/todos/artifacts/{slug}/{name}")["content"])
+        return
     print(run_todo_read(read_artifact))
 
 
@@ -745,6 +754,12 @@ def _handle_artifacts_diff(args: list[str]) -> None:
     async def read_diff(todos_db: TodosDb) -> str:
         return await todos_db.artifacts_diff(slug, name, old_digest, new_digest, include_removed=True)
 
+    if addressed_computer() is not None:
+        remote = _remote_read(
+            f"/todos/artifacts/{slug}/{name}/diff", {"old_digest": old_digest, "new_digest": new_digest}
+        )
+        print(remote["diff"])
+        return
     try:
         print(run_todo_read(read_diff))
     except ValueError as exc:
@@ -788,7 +803,7 @@ def _handle_artifacts_remove(args: list[str]) -> None:
     result = tool_api_request(
         "DELETE",
         f"/todos/artifacts/{slug_val}/{name_val}",
-        params={"cwd": str(invocation_cwd())},
+        params={"cwd": project_reference()},
     )
     if not isinstance(result, dict) or result.get("status") != "ok":
         print(result, file=sys.stderr)
@@ -836,14 +851,14 @@ def _handle_artifacts_write(args: list[str]) -> None:
         raise SystemExit(1)
 
     _validate_artifact_name_write(name_val)
-    cwd = str(invocation_cwd())
+    cwd = project_reference()
     result = tool_api_request(
         "POST",
         f"/todos/artifacts/{slug_val}/{name_val}",
         json_body={
             "content": content_val,
             "cwd": cwd,
-            "codebase_sha_at_write": get_head_commit(cwd),
+            "codebase_sha_at_write": None if addressed_computer() is not None else get_head_commit(cwd),
         },
     )
     if isinstance(result, dict) and result.get("status") == "ok":
@@ -871,7 +886,7 @@ def _handle_todo_reactivate(args: list[str]) -> None:
         print("Usage: telec todo reactivate <slug> | --id <row-id>")
         raise SystemExit(1)
 
-    result = tool_api_request("POST", target_path, json_body={"cwd": str(invocation_cwd())})
+    result = tool_api_request("POST", target_path, json_body={"cwd": project_reference()})
 
     if isinstance(result, dict) and result.get("slug"):
         print(f"Restored todo: {result['slug']}")

@@ -7,6 +7,7 @@ from typing import TypedDict
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.addressing import addressed_computer, project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.handlers._todo_roots import _resolve_project_root_or_exit
@@ -19,6 +20,8 @@ from teleclaude.core.todos_db import TodosDb
 from teleclaude.services.work import get_work_service
 
 __all__ = ["_handle_todo_list"]
+
+_UNEXPECTED_RESPONSE = "unexpected todo list response: {answer}"
 
 
 class _TodoListArgs(TypedDict):
@@ -49,7 +52,7 @@ def _handle_todo_list(args: list[str]) -> None:
             delivered_since=since_cutoff or None,
         )
 
-    todos = run_todo_read(read_entries)
+    todos = _read_remote_entries(since_cutoff) if addressed_computer() is not None else run_todo_read(read_entries)
 
     if not todos:
         if parsed["json_output"]:
@@ -80,6 +83,19 @@ def _handle_todo_list(args: list[str]) -> None:
         return
 
     _print_sectioned_todo_list(section_items)
+
+
+def _read_remote_entries(since_cutoff: str) -> list[TodoDTO]:
+    """The addressed computer's todo entries for the project this invocation acts on."""
+    from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - command boundary: daemon API client.
+
+    params = {"cwd": project_reference()}
+    if since_cutoff:
+        params["delivered_since"] = since_cutoff
+    answer = tool_api_call("GET", "/todos", params=params)
+    if not isinstance(answer, list):
+        raise ValueError(_UNEXPECTED_RESPONSE.format(answer=answer))
+    return [TodoDTO.model_validate(row) for row in answer]
 
 
 def _parse_todo_list_args(args: list[str]) -> _TodoListArgs:

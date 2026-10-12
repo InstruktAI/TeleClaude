@@ -21,7 +21,6 @@ from teleclaude.caller_identity import (
     PersonCliCaller,
     Platform,
     ProjectPath,
-    RelayedAct,
     RoleResolver,
     RoleTarget,
     SessionAct,
@@ -137,6 +136,8 @@ _INVOCATION_IDENTITY: ContextVar[ResolvedCliIdentity | None] = ContextVar(
     _INVOCATION_IDENTITY_NAME,
     default=None,
 )
+_INVOCATION_COMMAND_NAME = "telec_cli_invocation_command"
+_INVOCATION_COMMAND: ContextVar[str | None] = ContextVar(_INVOCATION_COMMAND_NAME, default=None)
 _SELF_TARGET = "self"
 _UNAUTHORIZED_ROLE = "unauthorized"
 _SESSION_END_PATH = "sessions end"
@@ -145,8 +146,6 @@ _SESSION_SHOW_PATH = "sessions show"
 _CALLER_INDEPENDENT_COMMAND_REFUSAL = "Unknown command path or missing command authorization."
 _DESK_COMMAND_REFUSAL_TEMPLATE = "permission denied — {command_path} is not available at a help desk"
 _PERMISSION_REFUSAL_TEMPLATE = "permission denied — role '{role}' is not permitted to call {command_path}"
-_TELEC_COMMAND_PREFIX = "telec "
-_RELAYED_ACT_PATHS = frozenset(act.value.removeprefix(_TELEC_COMMAND_PREFIX) for act in RelayedAct)
 
 
 def _detect_ancestor_tty() -> str | None:
@@ -469,7 +468,7 @@ def cli_clearance(
         )
 
     remote_target = target_disposition is ComputerTargetDisposition.REMOTE
-    if remote_target and command_path in _RELAYED_ACT_PATHS and not direct_conversation:
+    if remote_target and not direct_conversation:
         if isinstance(identity.caller, PersonCliCaller) and not identity.in_session:
             return CliClearance(identity=identity, refusal=None)
         if auth.allows(identity.system_role, None):
@@ -482,6 +481,7 @@ def cli_clearance(
 
     resolved_role_target = role_target or _fallback_role_target(auth, identity, target_session_id)
     if remote_target:
+        # Only a direct conversation reaches here: it stays on the caller's computer at platform scope.
         resolved_role_target = Platform()
     person_role = (
         RoleResolver().role_for(identity.caller, resolved_role_target)
@@ -529,7 +529,13 @@ def require_cli_clearance(
         print(f"Error: {clearance.refusal}", file=sys.stderr)
         raise SystemExit(1)
     _INVOCATION_IDENTITY.set(clearance.identity)
+    _INVOCATION_COMMAND.set(command_path)
     return clearance.identity
+
+
+def resolve_cleared_command() -> str | None:
+    """The command path this invocation's gate cleared the caller for, if the gate ran."""
+    return _INVOCATION_COMMAND.get()
 
 
 def resolve_cli_system_role() -> str | None:

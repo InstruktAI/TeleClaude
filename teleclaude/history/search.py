@@ -20,7 +20,8 @@ from teleclaude.config.machine import config
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_dispatch import is_relay_failure_detail, is_remote_target
 from teleclaude.history.search_payload import HistorySearchPayload, HistorySearchRow
-from teleclaude.history.service import HistoryRelayCommand, build_history_search_payload, resolve_history_reach
+from teleclaude.history.service import build_history_search_payload, resolve_history_reach
+from teleclaude.types.commands import CommandType
 
 _TARGET_FAILURE_TEMPLATE: Final = "[{target}] History search failed: {failure}"
 _LOCAL_TARGET: Final = "local"
@@ -208,7 +209,7 @@ def _is_peer_failure(failure: BaseException, computer: str | None) -> bool:
     return (
         isinstance(failure, APIError)
         and computer is not None
-        and is_relay_failure_detail(failure.detail, command=HistoryRelayCommand.SEARCH.value, computer=computer)
+        and is_relay_failure_detail(failure.detail, command=CommandType.RELAY_REQUEST.value, computer=computer)
     )
 
 

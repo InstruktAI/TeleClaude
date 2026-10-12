@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
@@ -28,6 +29,7 @@ from teleclaude.core.reconciliation import (
     INTERACTIVE_COMMAND_INPUT_FEATURE_ID,
     decode_capability_set,
 )
+from teleclaude.core.reconciliation.feature_ids import RELAY_REQUEST_FEATURE_ID
 from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.types.commands import (
     CommandType,
@@ -35,6 +37,7 @@ from teleclaude.types.commands import (
     HandoffAgentCommand,
     InternalCommand,
     ProcessMessageCommand,
+    RelayRequestCommand,
     ResponseMode,
 )
 
@@ -60,6 +63,7 @@ COMMAND_HANDLER_METHODS: dict[CommandType, str] = {
     CommandType.SYSTEM: "system_command",
     CommandType.SET_VOICE_FOCUS: "set_voice_focus",
     CommandType.ACTIVATE_PROCEDURE: "activate_procedure",
+    CommandType.RELAY_REQUEST: "relay_request",
 }
 
 PEER_NAME_FIELD = "name"
@@ -80,6 +84,10 @@ _REFUSED_ERROR_KIND = "refused_by_target"
 _RETRY_AFTER_FIELD = "retry_after_seconds"
 _READ_TIMEOUT_DETAIL = "target did not answer before the read timed out"
 _PEER_REQUEST_DETAIL = "peer request failed"
+RELAY_REQUEST_TIMEOUT_S = 30.0
+RELAY_NO_ANSWER_DETAIL = "{computer} did not answer; whether the request ran there is unknown."
+RELAY_UNSUPPORTED_DETAIL = "{computer} runs a build that cannot take this request; nothing was run."
+_MINIMUM_RELAY_WAIT_S = 1.0
 
 
 class RemoteDispatchReason(StrEnum):
@@ -96,6 +104,8 @@ class RemoteDispatchReason(StrEnum):
     REFUSED_BY_TARGET = "refused_by_target"
     PEER_DRAINING = "peer_draining"
     PEER_ERROR = "peer_error"
+    UNKNOWN_COMPUTER = "unknown_computer"
+    RELAY_UNSUPPORTED = "relay_unsupported"
 
 
 _RELAY_ERROR_KIND_REASONS: dict[str, RemoteDispatchReason] = {
@@ -138,6 +148,7 @@ class RelayFailure(RemoteDispatchError):
     ) -> None:
         self.computer = computer
         self.command = command
+        self.detail = detail
         super().__init__(
             _RELAY_FAILURE_DETAIL_TEMPLATE.format(command=command, computer=computer, detail=detail),
             reason=reason,
@@ -234,6 +245,15 @@ async def diagnose_peer_dispatch_failure(
             )
         )
     return error
+
+
+async def peer_lacks_relay(client: AdapterClient, target_computer: str) -> bool:
+    """Whether discovery shows the peer running a build that does not carry the relay."""
+    for peer in await client.discover_peers():
+        if peer.get(PEER_NAME_FIELD) != target_computer:
+            continue
+        return RELAY_REQUEST_FEATURE_ID not in decode_capability_set(peer.get(PEER_CAPABILITY_SET_FIELD))
+    return False
 
 
 async def parse_remote_dispatch_data_diagnosed(
@@ -469,7 +489,10 @@ async def forward_command_to_peer(
     )
 
     timeout = 30.0 if command.command_type is CommandType.CREATE_SESSION else 3.0
-    if command.command_type is CommandType.KEYS:
+    if isinstance(command, RelayRequestCommand):
+        # The relay waits exactly as long as its deadline allows: the owner refuses it after that.
+        timeout = max(command.deadline_at - time.time(), _MINIMUM_RELAY_WAIT_S)
+    elif command.command_type is CommandType.KEYS:
         timeout = 10.0
     elif command.response_mode is ResponseMode.RECEIPT:
         # Submission is a persist-and-return on the owning computer — not the
@@ -486,7 +509,9 @@ async def forward_command_to_peer(
             computer=target_computer,
             command=command.command_type.value,
             reason=RemoteDispatchReason.UNREACHABLE,
-            detail=_READ_TIMEOUT_DETAIL,
+            detail=RELAY_NO_ANSWER_DETAIL.format(computer=target_computer)
+            if isinstance(command, RelayRequestCommand)
+            else _READ_TIMEOUT_DETAIL,
         ) from exc
     except (OSError, RedisError) as exc:
         raise RelayFailure(
@@ -495,12 +520,22 @@ async def forward_command_to_peer(
             reason=RemoteDispatchReason.PEER_ERROR,
             detail=str(exc) or _PEER_REQUEST_DETAIL,
         ) from exc
-    return await parse_remote_dispatch_data_diagnosed(
-        client,
-        response_text,
-        target_computer=target_computer,
-        command=command.command_type.value,
-    )
+    try:
+        return await parse_remote_dispatch_data_diagnosed(
+            client,
+            response_text,
+            target_computer=target_computer,
+            command=command.command_type.value,
+        )
+    except PeerReportedError as error:
+        if isinstance(command, RelayRequestCommand) and await peer_lacks_relay(client, target_computer):
+            raise RelayFailure(
+                computer=target_computer,
+                command=command.command_type.value,
+                reason=RemoteDispatchReason.RELAY_UNSUPPORTED,
+                detail=RELAY_UNSUPPORTED_DETAIL.format(computer=target_computer),
+            ) from error
+        raise
 
 
 async def dispatch_command(

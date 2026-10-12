@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Final, TypedDict
 
 from teleclaude.cli.session_send_request import SessionSendUsageError, resolve_session_send
 from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.addressing import address_computer, project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.surface import (
     SESSIONS_END,
@@ -41,7 +42,6 @@ from teleclaude.cli.tool_client import (
 )
 from teleclaude.cli.tool_commands._receipt import render_receipt
 from teleclaude.constants import SessionTarget
-from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
@@ -277,8 +277,9 @@ def handle_sessions_start(args: list[str]) -> None:
     if company is not None:
         body["company"] = company
 
+    address_computer(computer)
     if not body.get("project_path"):
-        body["project_path"] = str(resolve_invocation_cwd())
+        body["project_path"] = project_reference()
 
     data = tool_api_call("POST", "/sessions", json_body=body)
     print_json(data)
@@ -447,8 +448,9 @@ def handle_sessions_run(args: list[str]) -> None:
     if not body.get("command"):
         print("Error: --command is required", file=sys.stderr)
         raise SystemExit(1)
+    address_computer(computer)
     if not body.get("project"):
-        body["project"] = str(resolve_invocation_cwd())
+        body["project"] = project_reference()
 
     data = tool_api_call("POST", "/sessions/run", json_body=body)
     print_json(data)

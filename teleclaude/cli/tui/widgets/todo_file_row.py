@@ -47,6 +47,7 @@ class TodoFileRow(TelecMixin, Widget):
         project_path: str,
         todo_id: str,
         status: TodoStatus | str,
+        computer: str | None = None,
         updated_at: str | None = None,
         is_last: bool = False,
         tree_lines: list[bool] | None = None,
@@ -59,6 +60,7 @@ class TodoFileRow(TelecMixin, Widget):
         self.project_path = project_path
         self.todo_id = todo_id
         self.status = status
+        self.computer = computer
         self.updated_at = updated_at
         self.is_last = is_last
         self._tree_lines = tree_lines or []

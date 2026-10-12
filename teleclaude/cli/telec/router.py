@@ -8,7 +8,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from teleclaude.cli import CommandScope
-from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, ParsedArgs, parse_command_args
+from teleclaude.cli.telec.handlers._arg_parsing import (
+    CliUsageError,
+    ParsedArgs,
+    parse_command_args,
+    without_value_flag,
+)
 from teleclaude.cli.telec.help import (
     _handle_completion,
     _maybe_show_help,
@@ -156,6 +161,11 @@ def _handle_cli_command(argv: list[str], clear: ClearanceGate) -> None:
             )
         )
 
+    if node.addressed_at_boundary:
+        from teleclaude.cli.telec.addressing import address_computer  # noqa: PLC0415 - real commands only.
+
+        address_computer(target_computer)
+        args = without_value_flag(args, F.FLAG_COMPUTER)
     handler = _resolve_cli_handler(cmd_enum, args)
     if handler is None:
         print(f"Unknown command: /{cmd}")

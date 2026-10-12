@@ -171,3 +171,32 @@ def parse_command_args(  # noqa: C901 - declared flag arities intentionally shar
         _declared=frozenset(declared),
         _values={key: tuple(value) for key, value in values.items()},
     )
+
+
+def without_value_flag(args: Sequence[str], flag: Flag) -> list[str]:
+    """The arguments with every occurrence of a value flag, and its value, removed.
+
+    A command whose flag is declared for the daemon boundary to act on never sees it:
+    the router reads it, and the handlers parse what remains.
+    """
+    names = {name for name in (flag.long, flag.short) if name}
+    assignment_prefix = f"{flag.long}="
+    kept: list[str] = []
+    skip_value = False
+    past_separator = False
+    for token in args:
+        if skip_value:
+            skip_value = False
+            continue
+        if past_separator:
+            kept.append(token)
+            continue
+        if token == "--":
+            past_separator = True
+        elif token in names:
+            skip_value = True
+            continue
+        elif token.startswith(assignment_prefix):
+            continue
+        kept.append(token)
+    return kept

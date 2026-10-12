@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -23,7 +23,6 @@ from teleclaude.api.auth import (
     CallerIdentity,
     caller_role_for_session,
     carried_caller,
-    principal_for_carried_caller,
     resolve_caller_provenance,
 )
 from teleclaude.api.driver_start_guard import enforce_driver_start_guard, terminal_driver_email
@@ -31,17 +30,15 @@ from teleclaude.api.run_session_job import normalize_job_run_request
 from teleclaude.api.run_session_procedure import normalize_procedure_activation_request
 from teleclaude.api.run_session_refusals import (
     RunSessionRefusal,
-    normalize_run_session_command,
     resolve_run_session_agent,
+    resolve_run_session_command,
 )
 from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug, leading_command_args
 from teleclaude.api.session_authority import ACT_RESTART, ACT_UNSUBSCRIBE, refuse_act_on_ancestor
 from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
-from teleclaude.api.session_pane_routes import configure as configure_session_pane_routes
 from teleclaude.api.session_pane_routes import router as session_pane_router
-from teleclaude.api.session_remote import is_remote_target
 from teleclaude.api.session_result_routes import router as session_result_router
-from teleclaude.api.session_route_helpers import dispatch_caller_command, http_exception_for_relay_failure
+from teleclaude.api.session_route_helpers import dispatch_caller_command
 from teleclaude.api.sessions_coordinate_routes import router as sessions_coordinate_router
 from teleclaude.api.sessions_personal_assistant_routes import (
     configure as configure_personal_assistant_routes,
@@ -60,6 +57,7 @@ from teleclaude.api_models import (
 )
 from teleclaude.api_session_actions_models import AgentRestartRequest, AgentRestartResponseDTO
 from teleclaude.config.machine import config
+from teleclaude.config.registered_homes import project_folder
 from teleclaude.constants import (
     COMMAND_ROLE_MAP,
     NON_SLUG_BOUND_COMMANDS,
@@ -77,16 +75,14 @@ from teleclaude.core.agent_dispatch import (
 )
 from teleclaude.core.agents import get_known_agents
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
-from teleclaude.core.command_dispatch import RelayFailure, relay_caller_read
 from teleclaude.core.command_handlers import resolve_working_slug_from_subdir, select_handoff_successor
 from teleclaude.core.command_input import REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS
 from teleclaude.core.command_mapper import KEY_COMMANDS, CommandMapper
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.command_service import DISPATCH_ALLOWED
+from teleclaude.core.command_service import dispatch_privilege_refusal
 from teleclaude.core.db import db
 from teleclaude.core.models import (
     AgentDispatchMode,
-    JsonDict,
     MessageMetadata,
     SessionEntryPoint,
     SessionLaunchIntent,
@@ -94,7 +90,7 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.next_machine.manual_start import DriverStartGuardResult
-from teleclaude.core.operations.service import SerializedOperation, get_operations_service
+from teleclaude.core.operations.service import get_operations_service
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_message_projection import (
     SessionMessageProjectionOptions,
@@ -105,7 +101,6 @@ from teleclaude.core.session_startup_message import (
     resolve_command_document,
     resolve_slash_command,
 )
-from teleclaude.core.session_status import AgentStatusValue
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.project_manifest_runtime import load_registered_entries
 from teleclaude.types.commands import (
@@ -122,16 +117,8 @@ if TYPE_CHECKING:
 from teleclaude.types.commands import SystemCommand
 
 logger = get_logger(__name__)
-_AGENT_STATUS_FIELD = "agent_status"
-_AGENT_STATUS_EXACT_FIELD = "agent_status_exact"
-_SINCE_FIELD = "since"
-_INCLUDE_TOOLS_FIELD = "include_tools"
-_INCLUDE_THINKING_FIELD = "include_thinking"
 _ESCALATE_NOTIFIED_KEY = "notified"
 _ESCALATE_WARNING_KEY = "warning"
-_TAIL_CHARS_FIELD = "tail_chars"
-_TAIL_SCOPE_FIELD = "tail_scope"
-_REMOTE_AGENT_STATUS_INVALID_DETAIL = "Remote session returned an invalid agent status"
 
 WORKER_LIFECYCLE_COMMANDS = {
     SlashCommand.BUILD,
@@ -156,8 +143,7 @@ SLUG_REQUIRED_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS - {
     command.value for command in NON_SLUG_BOUND_COMMANDS
 }
 
-REMOTE_SESSION_MESSAGES_COMMAND = "get_session_messages"
-NO_REMOTE_COMPUTER = ""
+_UNREGISTERED_PROJECT_DETAIL = "project '{project}' is not registered on {computer}; nothing was run."
 
 _STATE = SimpleNamespace(client=None)
 router = APIRouter()
@@ -172,7 +158,6 @@ def configure(client: AdapterClient | None = None) -> None:
     if client is not None:
         _STATE.client = client
         configure_personal_assistant_routes(client=client)
-    configure_session_pane_routes(client)
 
 
 def _build_metadata(*, origin: str = InputOrigin.TERMINAL.value, **kwargs: object) -> MessageMetadata:
@@ -341,22 +326,8 @@ def _prepare_run_session(
     entry_point: SessionEntryPoint,
 ) -> RunSessionPlan:
     """Normalize run-session inputs into a create-session plan."""
-    normalized_cmd = normalize_run_session_command(request.command)
-    try:
-        resolved_command = resolve_command_document(normalized_cmd)
-    except AmbiguousCommandError as exc:
-        raise RunSessionRefusal(
-            status_code=400,
-            detail=str(exc),
-            reason=AgentDispatchReason.COMMAND_INVALID,
-        ) from exc
-    if resolved_command is not None:
-        normalized_cmd = resolved_command.canonical_name
+    normalized_cmd, slash_cmd = resolve_run_session_command(request.command)
     normalized_args = request.args.strip()
-    try:
-        slash_cmd = SlashCommand(normalized_cmd)
-    except ValueError:
-        slash_cmd = None
     is_job_command = slash_cmd is SlashCommand.RUN_JOB
     is_activation_command = slash_cmd is SlashCommand.ACTIVATE_PROCEDURE
     company: str | None = request.company
@@ -428,17 +399,13 @@ def _prepare_run_session(
         origin_metadata = TerminalOriginMetadata(email=identity.email)
 
     role_info = COMMAND_ROLE_MAP.get(slash_cmd) if slash_cmd else None
-    if role_info is not None and identity.system_role:
-        target_role = role_info[0]
-        if target_role not in DISPATCH_ALLOWED.get(identity.system_role, frozenset()):
-            raise RunSessionRefusal(
-                status_code=403,
-                detail=(
-                    f"role '{identity.system_role}' cannot dispatch /{normalized_cmd} "
-                    f"(requires dispatch privilege for '{target_role}')"
-                ),
-                reason=AgentDispatchReason.DISPATCH_PRIVILEGE_FORBIDDEN,
-            )
+    dispatch_refusal = dispatch_privilege_refusal(identity.system_role, slash_cmd)
+    if dispatch_refusal is not None:
+        raise RunSessionRefusal(
+            status_code=403,
+            detail=dispatch_refusal,
+            reason=AgentDispatchReason.DISPATCH_PRIVILEGE_FORBIDDEN,
+        )
 
     return RunSessionPlan(
         effective_agent=effective_agent,
@@ -467,7 +434,6 @@ def _prepare_run_session(
 async def send_keys_endpoint(
     session_id: str,
     request: KeysRequest,
-    computer: str | None = Query(None),
     identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send key command to session."""
@@ -482,7 +448,6 @@ async def send_keys_endpoint(
             "keys",
             {"session_id": session_id, "key": request.key, "args": args},
             metadata,
-            computer=computer,
         )
         await dispatch_caller_command(_STATE.client, cmd, identity)
         return {"status": "success"}
@@ -520,7 +485,6 @@ async def send_file_endpoint(
 @router.post("/sessions/{session_id}/agent-restart", status_code=202)
 async def agent_restart(
     session_id: str,
-    computer: str | None = Query(None),
     restart_request: AgentRestartRequest | None = None,
     identity: CallerIdentity = Depends(carried_caller),
 ) -> AgentRestartResponseDTO:
@@ -535,15 +499,13 @@ async def agent_restart(
         logger.info("API agent_restart requested (session=%s, origin=api)", session_id)
 
         handoff = restart_request.handoff if restart_request else False
-        session = None
-        if not is_remote_target(computer, config.computer.name):
-            session = await db.get_session(session_id)
-            if not session:
-                raise HTTPException(status_code=404, detail="Session not found")
-            if not session.active_agent:
-                raise HTTPException(status_code=409, detail="No active agent for this session")
-            if not session.native_session_id and not handoff:
-                raise HTTPException(status_code=409, detail="No native session ID - start agent first")
+        session = await db.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not session.active_agent:
+            raise HTTPException(status_code=409, detail="No active agent for this session")
+        if not session.native_session_id and not handoff:
+            raise HTTPException(status_code=409, detail="No native session ID - start agent first")
 
         self_restart = restart_request.self_restart if restart_request else False
         agent = restart_request.agent.value if restart_request and restart_request.agent else None
@@ -553,8 +515,6 @@ async def agent_restart(
 
         cmd: HandoffAgentCommand | RestartAgentCommand
         if handoff:
-            if session is None:
-                raise HTTPException(status_code=400, detail="Remote handoff is not supported")
             try:
                 cmd = await select_handoff_successor(
                     session,
@@ -567,16 +527,9 @@ async def agent_restart(
             selected_agent = cmd.agent_name
         else:
             cmd = RestartAgentCommand(session_id=session_id, self_restart=self_restart, request_id=request_id)
-        cmd.computer = computer
         cmd.caller = caller
 
-        if is_remote_target(computer, config.computer.name):
-            result = await dispatch_caller_command(_STATE.client, cmd, identity)
-            if not isinstance(result, dict):
-                raise RuntimeError("Remote receipt submission returned no result")
-            receipt = cast(SerializedOperation, result)
-        else:
-            receipt = await get_operations_service().submit(cmd, caller=caller, client_request_id=request_id)
+        receipt = await get_operations_service().submit(cmd, caller=caller, client_request_id=request_id)
         return AgentRestartResponseDTO(**receipt, selected_agent=selected_agent)
     except HTTPException:
         raise
@@ -590,23 +543,20 @@ async def revive_session(
     http_request: Request,
     session_id: str,
     agent: str | None = Query(None, description="When provided, session_id is a native agent session ID"),
-    computer: str | None = Query(None),
     identity: CallerIdentity = Depends(carried_caller),
 ) -> CreateSessionResponseDTO:
     """Revive a session by TeleClaude or native session ID."""
     session_id = await _resolve_revive_session_id(http_request, session_id, agent, identity)
     try:
         session = await db.get_session(session_id)
-        if not is_remote_target(computer, config.computer.name):
-            if not session:
-                raise HTTPException(status_code=404, detail="Session not found")
-            if not session.active_agent:
-                raise HTTPException(status_code=409, detail="No active agent for this session")
-            if not session.native_session_id:
-                raise HTTPException(status_code=409, detail="No native session ID - start agent first")
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not session.active_agent:
+            raise HTTPException(status_code=409, detail="No active agent for this session")
+        if not session.native_session_id:
+            raise HTTPException(status_code=409, detail="No native session ID - start agent first")
 
         cmd = ReviveAgentCommand(session_id=session_id)
-        cmd.computer = computer
         cmd.caller = await resolve_caller_provenance(identity)
         result = await dispatch_caller_command(_STATE.client, cmd, identity)
         if isinstance(result, tuple | list) and len(result) >= 2:
@@ -624,8 +574,7 @@ async def revive_session(
             status="success",
             session_id=session_id,
             tmux_session_name=tmux_session_name,
-            computer=computer if is_remote_target(computer, config.computer.name) else None,
-            agent=session.active_agent if session and session.active_agent in get_known_agents() else None,
+            agent=session.active_agent if session.active_agent in get_known_agents() else None,
         )
     except HTTPException:
         raise
@@ -649,46 +598,6 @@ async def get_session_messages(
             tail_chars=query.tail_chars,
             tail_scope=query.tail_scope,
         )
-        if is_remote_target(query.computer, config.computer.name):
-            if _STATE.client is None:
-                raise HTTPException(status_code=503, detail="Remote session tail is unavailable")
-            principal = principal_for_carried_caller(_identity, required=True)
-            target_computer = query.computer or NO_REMOTE_COMPUTER
-            request: JsonDict = {
-                _SINCE_FIELD: query.since,
-                _INCLUDE_TOOLS_FIELD: query.include_tools,
-                _INCLUDE_THINKING_FIELD: query.include_thinking,
-                _TAIL_CHARS_FIELD: query.tail_chars,
-                _TAIL_SCOPE_FIELD: query.tail_scope,
-            }
-            data = await relay_caller_read(
-                _STATE.client,
-                target_computer,
-                REMOTE_SESSION_MESSAGES_COMMAND,
-                principal=principal,
-                session_id=session_id,
-                request=request,
-            )
-            if not isinstance(data, dict):
-                raise HTTPException(status_code=502, detail=_REMOTE_AGENT_STATUS_INVALID_DETAIL)
-            exact_present = _AGENT_STATUS_EXACT_FIELD in data
-            raw_status = data.get(_AGENT_STATUS_EXACT_FIELD if exact_present else _AGENT_STATUS_FIELD)
-            try:
-                status_input = raw_status if exact_present else (raw_status or AgentStatusValue.UNKNOWN)
-                remote_status = AgentStatusValue(str(status_input))
-            except ValueError as exc:
-                logger.warning(
-                    "Rejected remote session status",
-                    session_id=session_id,
-                    target_computer=target_computer,
-                    exact_present=exact_present,
-                )
-                raise HTTPException(status_code=502, detail=_REMOTE_AGENT_STATUS_INVALID_DETAIL) from exc
-            data[_AGENT_STATUS_FIELD] = remote_status.value
-            if exact_present:
-                data[_AGENT_STATUS_EXACT_FIELD] = remote_status.value
-            return SessionMessagesDTO.model_validate(data)
-
         target_session = await db.get_session(session_id)
         if target_session is None:
             raise LookupError("Session not found")
@@ -703,9 +612,6 @@ async def get_session_messages(
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Session not found") from exc
-    except RelayFailure as exc:
-        logger.error("get_session_messages remote read failed", session_id=session_id, exc_info=True)
-        raise http_exception_for_relay_failure(exc) from exc
     except HTTPException:
         raise
     except Exception as e:
@@ -716,6 +622,18 @@ async def get_session_messages(
 # =====================================================================
 # Tool CLI endpoints receive caller identity resolved by the requesting client.
 # =====================================================================
+
+
+def _with_project_folder(request: RunSessionRequest) -> RunSessionRequest:
+    """The request naming its project by path: a registered project identity is resolved to its folder here."""
+    folder = project_folder(request.project)
+    if folder is None:
+        raise RunSessionRefusal(
+            status_code=404,
+            detail=_UNREGISTERED_PROJECT_DETAIL.format(project=request.project, computer=config.computer.name),
+            reason=AgentDispatchReason.PROJECT_REQUIRED,
+        )
+    return request.model_copy(update={"project": str(folder)})
 
 
 async def _run_session(
@@ -762,6 +680,7 @@ async def _run_session(
             raise RunSessionRefusal(
                 status_code=400, detail="project required", reason=AgentDispatchReason.PROJECT_REQUIRED
             )
+        request = _with_project_folder(request)
         plan = _prepare_run_session(request, identity, request_entry_point)
     except RunSessionRefusal as exc:
         emit_run_outcome(
@@ -807,7 +726,6 @@ async def _run_session(
             "initial_input": plan.full_command,
         },
         metadata,
-        computer=request.computer,
     )
     if isinstance(cmd, CreateSessionCommand):
         cmd.command = plan.command
@@ -872,7 +790,6 @@ async def _run_session(
             status="success",
             session_id=str(session_id),
             tmux_session_name=str(tmux_session_name),
-            computer=request.computer if is_remote_target(request.computer, config.computer.name) else None,
             agent=data.get("agent") if isinstance(data.get("agent"), str) else None,
             routing_explanation=routing_explanation,
             routing_reason=read_routing_reason(data),
@@ -909,7 +826,6 @@ async def run_session(
 @router.post("/sessions/{session_id}/unsubscribe")
 async def unsubscribe_session(
     session_id: str,
-    computer: str | None = Query(None),
     identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Stop caring about a target session — umbrella verb across both subscription axes.
@@ -920,7 +836,6 @@ async def unsubscribe_session(
     """
     await refuse_act_on_ancestor(identity, session_id, ACT_UNSUBSCRIBE)
     cmd = UnsubscribeSessionCommand(session_id=session_id, caller_session_id=identity.session_id)
-    cmd.computer = computer
     result = await dispatch_caller_command(_STATE.client, cmd, identity)
     if isinstance(result, dict):
         return {"status": "success", **result}

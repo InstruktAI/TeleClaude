@@ -41,6 +41,7 @@ from teleclaude.cli.api_session_args import CreateSessionArgs, RunSessionArgs
 from teleclaude.cli.clearance import ClearanceScope, clearance_scope_refusal, refresh_cli_identity_role
 from teleclaude.cli.models import WsEvent
 from teleclaude.cli.session_auth import ResolvedCliIdentity
+from teleclaude.cli.telec.addressing import addressed_computer, remote_computer
 from teleclaude.cli.tool_client import (
     NotAcceptedCause,
     exit_not_accepted,
@@ -95,6 +96,25 @@ __all__ = ["APIError", "TelecAPIClient"]
 
 WS_OPERATION_ERRORS = (OSError, RuntimeError, WebSocketException)
 REQUEST_WRAP_ERRORS = (OSError, RuntimeError, TypeError, ValueError)
+
+
+def _with_addressed_computer(
+    params: dict[str, str] | list[tuple[str, str]] | None,
+) -> dict[str, str] | list[tuple[str, str]] | None:
+    """The query parameters with the computer this invocation addresses, so the daemon carries the request there."""
+    computer = addressed_computer()
+    if computer is None:
+        return params
+    pairs = list(params.items()) if isinstance(params, dict) else list(params or [])
+    if all(name != _COMPUTER_PARAM for name, _ in pairs):
+        pairs.append((_COMPUTER_PARAM, computer))
+    return pairs
+
+
+def _computer_params(computer: str | None) -> dict[str, str] | None:
+    """The query parameter that addresses a request to a computer, when that is another computer."""
+    owner = remote_computer(computer)
+    return {_COMPUTER_PARAM: owner} if owner is not None else None
 
 
 @dataclass
@@ -378,7 +398,7 @@ class _TelecConnectionClient:
             raise APIError("Client not connected. Call connect() first.")
 
         request_kwargs: dict[str, Any] = {  # guard: loose-dict - HTTP request kwargs
-            "params": request_options.params,
+            "params": _with_addressed_computer(request_options.params),
             "headers": identity_headers,
             "timeout": timeout,
         }
@@ -442,7 +462,9 @@ class _TelecConnectionClient:
         if refusal is not None:
             raise APIError(refusal, work_feedback=refusal)
         identity_headers = (
-            self._build_identity_headers(identity) if identity is not None else self._http_state.identity_headers
+            self._build_identity_headers(identity, options.clearance_scope.command_path)
+            if identity is not None
+            else self._http_state.identity_headers
         )
 
         try:
@@ -504,8 +526,10 @@ class _TelecConnectionClient:
         """Return a monotonic timestamp for debounce logic."""
         return time.monotonic()
 
-    def _build_identity_headers(self, identity: ResolvedCliIdentity | None = None) -> dict[str, str]:
-        """Build the carried caller headers from the invocation's resolved identity."""
+    def _build_identity_headers(
+        self, identity: ResolvedCliIdentity | None = None, command_path: str | None = None
+    ) -> dict[str, str]:
+        """Build the carried caller headers from the invocation's resolved identity and the command it cleared."""
         if self._daemon_credential:
             return daemon_credential_headers()
 
@@ -522,7 +546,7 @@ class _TelecConnectionClient:
             )
 
             identity = resolve_cli_identity()
-        return CarriedIdentity.from_cli_identity(identity).to_headers()
+        return CarriedIdentity.from_cli_identity(identity).with_command(command_path).to_headers()
 
     async def _wait_for_socket(self, *, timeout_s: float = 1.0) -> None:
         """Wait briefly for the API socket to appear and be connectable."""
@@ -683,7 +707,11 @@ class _TelecSessionAPI:
             "POST",
             "/sessions",
             timeout=30.0,
-            request_options=RequestOptions(json_body=payload, clearance_scope=clearance_scope),
+            request_options=RequestOptions(
+                json_body=payload,
+                params=_computer_params(kwargs["computer"]),
+                clearance_scope=clearance_scope,
+            ),
         )
         return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
 
@@ -712,6 +740,7 @@ class _TelecSessionAPI:
             timeout=30.0,
             request_options=RequestOptions(
                 json_body=request.model_dump(exclude_unset=True),
+                params=_computer_params(kwargs.get("computer")),
                 clearance_scope=clearance_scope,
             ),
         )

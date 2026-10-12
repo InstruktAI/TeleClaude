@@ -10,11 +10,11 @@ import sys
 import uuid
 
 from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.addressing import project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs, parse_command_args
 from teleclaude.cli.telec.surface import OPERATIONS_GET, TODO_DESIGN, TODO_INTEGRATE, TODO_PREPARE, TODO_WORK
 from teleclaude.cli.tool_client import ToolQueryParams, print_json, tool_api_call
 from teleclaude.cli.tool_commands._receipt import render_receipt
-from teleclaude.project_root import resolve_invocation_cwd
 
 __all__ = [
     "handle_operations",
@@ -58,7 +58,7 @@ def handle_todo_design(args: list[str]) -> None:
     """
     parsed = parse_command_args(TODO_DESIGN, args)
     slug = _parse_single_slug(parsed)
-    body: dict[str, object] = {"cwd": str(resolve_invocation_cwd())}  # guard: loose-dict - JSON request body
+    body: dict[str, object] = {"cwd": project_reference()}  # guard: loose-dict - JSON request body
     if slug is not None:
         body["slug"] = slug
 
@@ -91,7 +91,7 @@ def handle_todo_prepare(args: list[str]) -> None:
     """
     parsed = parse_command_args(TODO_PREPARE, args)
     slug = _parse_single_slug(parsed)
-    body: dict[str, object] = {"cwd": str(resolve_invocation_cwd())}  # guard: loose-dict - JSON request body
+    body: dict[str, object] = {"cwd": project_reference()}  # guard: loose-dict - JSON request body
     if slug is not None:
         body["slug"] = slug
 
@@ -122,7 +122,7 @@ def handle_todo_work(args: list[str]) -> None:
     parsed = parse_command_args(TODO_WORK, args)
     slug = _parse_single_slug(parsed)
     body: dict[str, object] = {  # guard: loose-dict - JSON request body
-        "cwd": str(resolve_invocation_cwd()),
+        "cwd": project_reference(),
         "client_request_id": str(uuid.uuid4()),
     }
     if slug is not None:
@@ -161,7 +161,7 @@ def handle_todo_integrate(args: list[str]) -> None:
     parsed = parse_command_args(TODO_INTEGRATE, args)
     slug = _parse_single_slug(parsed)
     body: dict[str, object] = {  # guard: loose-dict - JSON request body
-        "cwd": str(resolve_invocation_cwd()),
+        "cwd": project_reference(),
         "client_request_id": str(uuid.uuid4()),
     }
     if slug is not None:

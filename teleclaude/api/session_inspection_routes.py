@@ -15,7 +15,6 @@ from teleclaude.api.auth import (
     principal_for_carried_caller,
 )
 from teleclaude.api.session_ownership import LocalOwnership, RemoteOwnership, resolve_session_ownership
-from teleclaude.api.session_remote import is_remote_target
 from teleclaude.api.session_route_helpers import http_exception_for_relay_failure
 from teleclaude.config.machine import config
 from teleclaude.constants import SessionTarget
@@ -37,7 +36,6 @@ _REMOTE_INVALID_DETAIL: Final[str] = "Peer answered session inspection with an i
 _NOT_FOUND_DETAIL_TEMPLATE: Final[str] = "session {session_id} not found"
 _NOT_A_SESSION_DETAIL_TEMPLATE: Final[str] = "not a TeleClaude session; terminal identity is {identity}"
 _NO_TERMINAL_IDENTITY: Final[str] = "absent (no principal or email is carried)"
-_NO_REMOTE_COMPUTER: Final[str] = ""
 _STATE = SimpleNamespace(client=None, cache=None)
 
 router = APIRouter()
@@ -55,12 +53,11 @@ def configure(client: AdapterClient | None = None, cache: DaemonCache | None = N
 async def inspect_session_endpoint(
     session_id: str,
     full: bool = Query(False, description="Show the complete stored record instead of the grouped detail"),
-    computer: str | None = Query(None, description="Target computer"),
     identity: CallerIdentity = Depends(carried_caller),
 ) -> JsonDict:
     """Show one session's stored record under the caller's listing reach."""
     target_session_id = _resolve_target(session_id, identity)
-    record = await _read_record(target_session_id, computer, identity)
+    record = await _read_record(target_session_id, identity)
     return record if full else curated_view(record)
 
 
@@ -77,10 +74,7 @@ def _resolve_target(session_id: str, identity: CallerIdentity) -> str:
     )
 
 
-async def _read_record(session_id: str, computer: str | None, identity: CallerIdentity) -> JsonDict:
-    if is_remote_target(computer, config.computer.name):
-        return await _relay_record(session_id, computer or _NO_REMOTE_COMPUTER, identity)
-
+async def _read_record(session_id: str, identity: CallerIdentity) -> JsonDict:
     ownership = await resolve_session_ownership(session_id, db=db, cache=_STATE.cache)
     match ownership:
         case None:

@@ -16,13 +16,13 @@ import sys
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO, cast
 
 import yaml
-from redis.exceptions import RedisError
 
 from teleclaude.cli.session_auth import ResolvedCliIdentity, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.addressing import addressed_computer
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _maybe_show_help
 from teleclaude.cli.telec.surface import (
@@ -52,29 +52,16 @@ from teleclaude.cli.telec.surface import (
     CONFIG_PROJECT_LIST,
     CONFIG_PROJECT_PATCH,
 )
-from teleclaude.config._environment import CompanyCredentialsError, InvalidEnvironmentReferenceError
-from teleclaude.config.effective_view import InvalidEffectiveValue, effective_sections, without_masked_values
-from teleclaude.config.machine import config
-from teleclaude.config.person_voice import configure_person_discord_voice_bot
-from teleclaude.config.project_subject_init import adopt_project_subject, create_project_subject
-from teleclaude.config.resource_contract import (
-    InvalidCandidate,
-    PartialCommitFailure,
-    ReadOnlyProjection,
-    SubjectNotFound,
-    SubjectView,
+from teleclaude.config.project_subject_init import adopt_project_subject
+from teleclaude.config.resource_contract import InvalidCandidate, PartialCommitFailure, SubjectNotFound, SubjectView
+from teleclaude.config.subject_operations import (
+    ConfigFailureKind,
+    ConfigOutcome,
+    ConfigRequest,
+    ConfigVerb,
+    run_config_operation,
 )
-from teleclaude.config.resources import (
-    affected_sections,
-    init_subject,
-    list_subjects,
-    patch_subject,
-    read_subject,
-    remove_person_subject,
-)
-from teleclaude.config.revision import StaleRevision
-from teleclaude.config.roster import RosterOutcome, RosterRefused
-from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.config_subjects import ConfigSubjectKind
 from teleclaude.core.configuration_clearance import (
     ConfigurationOperation,
     ConfigurationTarget,
@@ -82,23 +69,7 @@ from teleclaude.core.configuration_clearance import (
     decide,
     standing_for,
 )
-from teleclaude.core.endpoints import (
-    TELEGRAM_START_PARAMETER_MAX,
-    DeskIdentifier,
-    desk_home_present,
-    local_desk_endpoint,
-)
-from teleclaude.core.inbound.fleet import observe_fleet_from_heartbeats
-from teleclaude.core.models import HelpDeskKind
-from teleclaude.core.organization import person_roles
-from teleclaude.invite import invite_person, render_help_desk_links
 from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_roots
-from teleclaude.project_setup.init_flow import (
-    CompanyHomeDestination,
-    PersonHomeDestination,
-    PlatformPathDestination,
-    ProjectDestination,
-)
 
 _YAML = "yaml"
 _JSON = "json"
@@ -135,21 +106,20 @@ _CREATE_FORM_CONFLICT_ERROR = "Error: --company and --path never combine."
 _NO_PERSON_HOME_ERROR = "Error: creating in your own home needs a registered person."
 _SLUG_FIELD = "slug"
 _HELP_DESK_LINKS_VERB = "help-desk-links"
-_DESK_NOT_ENABLED_ERROR = "Error: help desk of {kind} {slug} is not enabled{request}"
-_DESK_NOT_HOSTED_ERROR = "Error: this computer does not host the help desk of {kind} {slug}{request}"
-_DESK_NOT_ON_MASTER_ERROR = "Error: help desks run on the mesh master, and this computer is not the master{request}"
-_FLEET_UNOBSERVABLE_ERROR = "Error: cannot observe the fleet: {error}{request}"
 # The keys of the help-desk links JSON answer.
 _LINKS_IDENTIFIER_KEY = "identifier"
 _LINKS_KEY = "links"
 _LINKS_REQUEST_ID_KEY = "request_id"
-_FLEET_LAGGING_ERROR = (
-    "Error: help-desk entry is not served until every computer runs it; lagging: {computers}{request}"
-)
 _NO_LINKS_LINE = "No entry links could be generated for {identifier}."
 _LINK_LINE = "  {adapter}: {link}"
 _LINKS_HEADING = "Entry links for {identifier}:"
-_LIST_SEPARATOR = ", "
+_OPERATIONS_PATH = "/config/operations"
+_JSON_MODE = "json"
+_PLAIN_ERROR = "Error: {message}"
+_INSTANCES_KEY = "instances"
+_VIEW_KEY = "view"
+_SECTIONS_KEY = "sections"
+_REVISION_KEY = "revision"
 
 _KIND_TO_SUBJECT: dict[str, ConfigSubjectKind] = {
     "computer": ConfigSubjectKind.COMPUTER,
@@ -276,26 +246,68 @@ def _require_instance(
     return positionals[0], positionals[1:]
 
 
+# --- performing an operation: here, or on the computer the command addresses ---
+
+
+def _perform(request: ConfigRequest) -> ConfigOutcome:
+    """Run one configuration operation in this process, or ask the addressed computer to run it."""
+    if addressed_computer() is not None:
+        from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - remote path: daemon API client.
+
+        answer = tool_api_call("POST", _OPERATIONS_PATH, json_body=request.model_dump(mode=_JSON_MODE), timeout=60.0)
+        return ConfigOutcome.model_validate(answer)
+    standing = standing_for(resolve_cli_identity())
+    return asyncio.run(run_config_operation(standing, request))
+
+
+def _succeeded(
+    outcome: ConfigOutcome, request_id: str, errors_to: TextIO
+) -> dict[str, object]:  # guard: loose-dict - config payload
+    """The operation's payload, or the operation's failure presented and the command exited."""
+    failure = outcome.failure
+    if failure is None:
+        assert outcome.payload is not None
+        return outcome.payload
+    suffix = _REQUEST_SUFFIX.format(request_id=request_id)
+    if failure.kind is ConfigFailureKind.REFUSED and failure.required_standing is not None:
+        print(
+            _REFUSED_MESSAGE.format(
+                required_standing=failure.required_standing, reason=failure.message, request=suffix
+            ),
+            file=errors_to,
+        )
+    elif failure.kind is ConfigFailureKind.REFUSED:
+        print(_PLAIN_ERROR.format(message=failure.message), file=errors_to)
+    elif failure.kind is ConfigFailureKind.STALE_REVISION:
+        print(_STALE_MESSAGE.format(expected=failure.expected, actual=failure.actual, request=suffix), file=errors_to)
+    elif failure.kind is ConfigFailureKind.NOT_FOUND:
+        print(_NOT_FOUND_MESSAGE.format(message=failure.message, request=suffix), file=errors_to)
+    elif failure.kind is ConfigFailureKind.PARTIAL_COMMIT:
+        print(_PARTIAL_COMMIT_MESSAGE.format(message=failure.message, request=suffix), file=errors_to)
+    else:
+        print(_INVALID_MESSAGE.format(message=failure.message, request=suffix), file=errors_to)
+    raise SystemExit(1)
+
+
+def run_config_request(
+    request: ConfigRequest, *, errors_to: TextIO = sys.stdout
+) -> dict[str, object]:  # guard: loose-dict - config payload
+    """Perform one operation and return its payload, exiting non-zero on its failure."""
+    return _succeeded(_perform(request), request.request_id, errors_to)
+
+
 # --- list ---
 
 
 def _handle_list(kind: str, subject_kind: ConfigSubjectKind, args: list[str], request_id: str) -> None:
     parse_command_args(_LIST_COMMAND_DEFS[kind], args)
-    _gate(
-        kind,
-        "list",
-        subject_kind,
-        instance=None,
-        operation=ConfigurationOperation.LIST,
-        sections=frozenset(),
-        request_id=request_id,
-    )
-    refs = list_subjects(subject_kind)
-    if not refs:
+    payload = run_config_request(ConfigRequest(verb=ConfigVerb.LIST, kind=subject_kind, request_id=request_id))
+    instances = cast(list[str | None], payload[_INSTANCES_KEY])
+    if not instances:
         print(f"No {kind} subjects.")
         return
-    for ref in refs:
-        print(ref.instance if ref.instance is not None else f"({kind})")
+    for instance in instances:
+        print(instance if instance is not None else f"({kind})")
 
 
 # --- get ---
@@ -305,58 +317,25 @@ def _handle_get(kind: str, subject_kind: ConfigSubjectKind, args: list[str], req
     parsed = parse_command_args(_GET_COMMAND_DEFS[kind], args)
     instance, paths = _require_instance(kind, subject_kind, parsed.positionals)
     output_format = _output_format(parsed.value(F.FLAG_CONFIG_FORMAT))
-    _gate(
-        kind,
-        "get",
-        subject_kind,
-        instance=instance,
-        operation=ConfigurationOperation.GET,
-        sections=frozenset(),
-        request_id=request_id,
+    payload = run_config_request(
+        ConfigRequest(verb=ConfigVerb.GET, kind=subject_kind, instance=instance, request_id=request_id)
     )
-    try:
-        view = read_subject(SubjectRef(subject_kind, instance))
-    except SubjectNotFound as error:
-        print(_NOT_FOUND_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
-    read_only = dict(view.read_only)
-    if subject_kind is ConfigSubjectKind.PERSON and instance is not None:
-        read_only["roles"] = person_roles(instance)
-    try:
-        sections = effective_sections(view)
-    except (InvalidEffectiveValue, InvalidEnvironmentReferenceError, CompanyCredentialsError) as error:
-        print(_INVALID_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
-    merged: dict[str, object] = {**sections, **read_only}  # guard: loose-dict - heterogeneous rendered config view
+    merged = cast(dict[str, object], payload[_VIEW_KEY])  # guard: loose-dict - heterogeneous rendered config view
     rendered = _select_subject_paths(merged, kind, list(paths)) if paths else merged
-    _render({**rendered, "revision": view.revision, "request_id": request_id}, output_format)
+    _render({**rendered, "revision": payload[_REVISION_KEY], "request_id": request_id}, output_format)
 
 
 # --- init ---
 
 
-def _run_init(
-    compute: Callable[[], SubjectView],
-    output_format: str,
-    request_id: str,
-    *,
-    completion_line: str | None = None,
+def _render_view(
+    payload: Mapping[str, object], output_format: str, request_id: str, completion_line: str | None = None
 ) -> None:
-    """Run one init call, rendering its view or a clean error for every typed refusal."""
-    try:
-        view = compute()
-    except PartialCommitFailure as error:
-        print(_PARTIAL_COMMIT_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
-    except SubjectNotFound as error:
-        print(_NOT_FOUND_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
-    except (InvalidCandidate, ValueError) as error:
-        print(_INVALID_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
+    """Render the view an operation answered with, after its completion line if it has one."""
     if completion_line is not None:
         print(completion_line)
-    _render({**view.sections, "revision": view.revision, "request_id": request_id}, output_format)
+    sections = cast(dict[str, object], payload[_SECTIONS_KEY])  # guard: loose-dict - heterogeneous config sections
+    _render({**sections, "revision": payload[_REVISION_KEY], "request_id": request_id}, output_format)
 
 
 def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], request_id: str) -> None:
@@ -364,20 +343,8 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
     output_format = _output_format(None)
 
     if subject_kind in _SINGLETON_KINDS:
-        _gate(
-            kind,
-            "init",
-            subject_kind,
-            instance=None,
-            operation=ConfigurationOperation.INIT,
-            sections=frozenset(),
-            request_id=request_id,
-        )
-        _run_init(
-            lambda: init_subject(SubjectRef(subject_kind, None), None, request_id=request_id),
-            output_format,
-            request_id,
-        )
+        payload = run_config_request(ConfigRequest(verb=ConfigVerb.INIT, kind=subject_kind, request_id=request_id))
+        _render_view(payload, output_format, request_id)
         return
 
     # person / company: fields come from init flags, not from an instance the
@@ -388,15 +355,6 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
         raise SystemExit(1)
     name = parsed.positionals[0]
     company_slug = parsed.value(F.FLAG_COMPANY_SLUG) if subject_kind is ConfigSubjectKind.COMPANY else None
-    _gate(
-        kind,
-        "init",
-        subject_kind,
-        instance=None,
-        operation=ConfigurationOperation.INIT,
-        sections=frozenset(),
-        request_id=request_id,
-    )
     fields: dict[str, object] = {"name": name}  # guard: loose-dict - per-kind init payload, passed through as-is
     if subject_kind is ConfigSubjectKind.PERSON:
         email = parsed.value(F.FLAG_PEOPLE_EMAIL)
@@ -415,41 +373,13 @@ def _handle_init(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
     else:
         if company_slug is not None:
             fields[_SLUG_FIELD] = company_slug
-    _run_init(
-        lambda: init_subject(SubjectRef(subject_kind, None), fields, request_id=request_id),
-        output_format,
-        request_id,
+    payload = run_config_request(
+        ConfigRequest(verb=ConfigVerb.INIT, kind=subject_kind, fields=fields, request_id=request_id)
     )
+    _render_view(payload, output_format, request_id)
 
 
 # --- create and adopt ---
-
-
-def _creation_target(parsed_company: str | None, parsed_path: str | None) -> tuple[ProjectCreationForm, str | None]:
-    """Name the creation form a request asks for and the company it names, if any."""
-    if parsed_path is not None:
-        return ProjectCreationForm.PLATFORM_PATH, None
-    if parsed_company is not None:
-        return ProjectCreationForm.COMPANY, parsed_company
-    return ProjectCreationForm.OWN_HOME, None
-
-
-def _creation_destination(
-    form: ProjectCreationForm,
-    company: str | None,
-    path: str | None,
-    person_slug: str | None,
-) -> ProjectDestination:
-    """Resolve where a created project lands from the form the request asked for."""
-    if form is ProjectCreationForm.PLATFORM_PATH and path is not None:
-        requested = Path(path).expanduser()
-        return PlatformPathDestination(requested if requested.is_absolute() else resolve_invocation_cwd() / requested)
-    if form is ProjectCreationForm.COMPANY and company is not None:
-        return CompanyHomeDestination(company)
-    if person_slug is None:
-        print(_NO_PERSON_HOME_ERROR)
-        raise SystemExit(1)
-    return PersonHomeDestination(person_slug)
 
 
 def _handle_create(args: list[str], request_id: str) -> None:
@@ -463,24 +393,45 @@ def _handle_create(args: list[str], request_id: str) -> None:
     if company is not None and path is not None:
         print(_CREATE_FORM_CONFLICT_ERROR)
         raise SystemExit(1)
-    form, instance = _creation_target(company, path)
-    identity = _gate(
-        ConfigSubjectKind.PROJECT.value,
-        _CREATE_VERB,
-        ConfigSubjectKind.PROJECT,
-        instance=instance,
-        operation=ConfigurationOperation.CREATE,
-        sections=frozenset(),
-        request_id=request_id,
-        creation_form=form,
+    if path is not None:
+        requested = Path(path).expanduser()
+        if not requested.is_absolute() and addressed_computer() is None:
+            path = str(resolve_invocation_cwd() / requested)
+    payload = run_config_request(
+        ConfigRequest(
+            verb=ConfigVerb.CREATE,
+            kind=ConfigSubjectKind.PROJECT,
+            name=name,
+            company=company,
+            path=path,
+            request_id=request_id,
+        )
     )
-    destination = _creation_destination(form, company, path, standing_for(identity).person_slug)
-    _run_init(
-        lambda: create_project_subject(name, destination, request_id=request_id),
-        _output_format(None),
-        request_id,
-        completion_line=_PROJECT_CREATE_COMPLETE,
-    )
+    _render_view(payload, _output_format(None), request_id, _PROJECT_CREATE_COMPLETE)
+
+
+def _run_init(
+    compute: Callable[[], SubjectView],
+    output_format: str,
+    request_id: str,
+    *,
+    completion_line: str | None = None,
+) -> None:
+    """Run one in-process init call, rendering its view or a clean error for every typed refusal."""
+    try:
+        view = compute()
+    except PartialCommitFailure as error:
+        print(_PARTIAL_COMMIT_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
+        raise SystemExit(1) from error
+    except SubjectNotFound as error:
+        print(_NOT_FOUND_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
+        raise SystemExit(1) from error
+    except (InvalidCandidate, ValueError) as error:
+        print(_INVALID_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
+        raise SystemExit(1) from error
+    if completion_line is not None:
+        print(completion_line)
+    _render({**view.sections, "revision": view.revision, "request_id": request_id}, output_format)
 
 
 def _handle_adopt(args: list[str], request_id: str) -> None:
@@ -523,76 +474,31 @@ def _handle_patch(kind: str, subject_kind: ConfigSubjectKind, args: list[str], r
     remove = subject_kind is ConfigSubjectKind.PERSON and parsed.has(F.FLAG_CONFIG_REMOVE)
 
     if remove:
-        _gate(
-            kind,
-            "patch",
-            subject_kind,
-            instance=instance,
-            operation=ConfigurationOperation.REMOVE,
-            sections=frozenset(),
-            request_id=request_id,
-        )
         assert instance is not None
-        delete_dir = parsed.has(F.FLAG_PEOPLE_DELETE_DIR)
-        try:
-            outcome = remove_person_subject(
-                SubjectRef(subject_kind, instance), delete_dir=delete_dir, request_id=request_id
+        removed = run_config_request(
+            ConfigRequest(
+                verb=ConfigVerb.REMOVE,
+                kind=subject_kind,
+                instance=instance,
+                delete_dir=parsed.has(F.FLAG_PEOPLE_DELETE_DIR),
+                request_id=request_id,
             )
-        except PartialCommitFailure as error:
-            print(
-                _PARTIAL_COMMIT_MESSAGE.format(
-                    message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)
-                )
-            )
-            raise SystemExit(1) from error
-        except SubjectNotFound as error:
-            print(_NOT_FOUND_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-            raise SystemExit(1) from error
-        _render(_roster_outcome_payload(outcome, request_id), output_format)
+        )
+        _render({**removed, "request_id": request_id}, output_format)
         return
 
     patch = _read_patch(parsed.value(F.FLAG_CONFIG_FROM_FILE), parsed.value(F.FLAG_CONFIG_YAML))
-    patch = without_masked_values(subject_kind, patch)
-    ref = SubjectRef(subject_kind, instance)
-    sections = affected_sections(ref, patch)
-    _gate(
-        kind,
-        "patch",
-        subject_kind,
-        instance=instance,
-        operation=ConfigurationOperation.PATCH,
-        sections=sections,
-        request_id=request_id,
-    )
-    try:
-        view = patch_subject(ref, patch, expected_revision=revision, request_id=request_id)
-    except StaleRevision as error:
-        print(
-            _STALE_MESSAGE.format(
-                expected=error.expected, actual=error.actual, request=_REQUEST_SUFFIX.format(request_id=request_id)
-            )
+    payload = run_config_request(
+        ConfigRequest(
+            verb=ConfigVerb.PATCH,
+            kind=subject_kind,
+            instance=instance,
+            patch=patch,
+            revision=revision,
+            request_id=request_id,
         )
-        raise SystemExit(1) from error
-    except PartialCommitFailure as error:
-        print(_PARTIAL_COMMIT_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
-    except (InvalidCandidate, ReadOnlyProjection, RosterRefused) as error:
-        print(_INVALID_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
-    except SubjectNotFound as error:
-        print(_NOT_FOUND_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
-    _render({**view.sections, "revision": view.revision, "request_id": request_id}, output_format)
-
-
-def _roster_outcome_payload(
-    outcome: RosterOutcome, request_id: str
-) -> dict[str, object]:  # guard: loose-dict - rendered CLI payload, not a config document
-    return {
-        "companies_written": list(outcome.companies_written),
-        "removed_assignments": [list(pair) for pair in outcome.removed_assignments],
-        "request_id": request_id,
-    }
+    )
+    _render_view(payload, output_format, request_id)
 
 
 # --- person invite / discord-voice-bot ---
@@ -605,39 +511,23 @@ def _handle_invite(args: list[str], request_id: str) -> None:
         raise SystemExit(1)
     slug = parsed.positionals[0]
     use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
-    _gate(
-        "person",
-        "invite",
-        ConfigSubjectKind.PERSON,
-        instance=slug,
-        operation=ConfigurationOperation.INVITE,
-        sections=frozenset(),
-        request_id=request_id,
+    outcome = run_config_request(
+        ConfigRequest(verb=ConfigVerb.INVITE, kind=ConfigSubjectKind.PERSON, instance=slug, request_id=request_id)
     )
-    try:
-        outcome = invite_person(slug)
-    except ValueError as error:
-        print(_INVALID_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
-    payload = {
-        "name": outcome.name,
-        "email": outcome.email,
-        "links": outcome.links,
-        "email_sent": outcome.email_sent,
-        "request_id": request_id,
-    }
     if use_json:
-        print(json.dumps(payload))
+        print(json.dumps({**outcome, "request_id": request_id}))
         return
-    if outcome.email_sent:
-        print(f"Invite sent to {outcome.email} for {outcome.name}{_REQUEST_SUFFIX.format(request_id=request_id)}")
+    name = outcome["name"]
+    links = cast(dict[str, str], outcome["links"])
+    if outcome["email_sent"]:
+        print(f"Invite sent to {outcome['email']} for {name}{_REQUEST_SUFFIX.format(request_id=request_id)}")
     else:
-        available = {platform: url for platform, url in outcome.links.items() if url}
+        available = {platform: url for platform, url in links.items() if url}
         if available:
             relay = "\n".join(f"  {platform}: {url}" for platform, url in available.items())
-            print(f"Invite for {outcome.name}: email not delivered — share these links directly:\n{relay}")
+            print(f"Invite for {name}: email not delivered — share these links directly:\n{relay}")
         else:
-            print(f"Invite for {outcome.name}: email not delivered and no invite links could be generated.")
+            print(f"Invite for {name}: email not delivered and no invite links could be generated.")
 
 
 def _handle_discord_voice_bot(args: list[str], request_id: str) -> None:
@@ -647,22 +537,13 @@ def _handle_discord_voice_bot(args: list[str], request_id: str) -> None:
         raise SystemExit(1)
     slug = parsed.positionals[0]
     use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
-    _gate(
-        "person",
-        "discord-voice-bot",
-        ConfigSubjectKind.PERSON,
-        instance=slug,
-        operation=ConfigurationOperation.BIND_VOICE_BOT,
-        sections=frozenset(),
-        request_id=request_id,
+    result = run_config_request(
+        ConfigRequest(
+            verb=ConfigVerb.DISCORD_VOICE_BOT, kind=ConfigSubjectKind.PERSON, instance=slug, request_id=request_id
+        )
     )
-    try:
-        result = configure_person_discord_voice_bot(slug, config.discord.token)
-    except (OSError, ValueError) as error:
-        print(_INVALID_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
     fields = ["discord_voice_bot"]
-    if result.environment_secured:
+    if result["environment_secured"]:
         fields.append("personal_env_permissions")
     if use_json:
         print(json.dumps({"ok": True, "slug": slug, "updated": fields, "request_id": request_id}))
@@ -676,10 +557,6 @@ _HELP_DESK_LINKS_COMMAND_DEFS = {
     ConfigSubjectKind.COMPANY: CONFIG_COMPANY_HELP_DESK_LINKS,
     ConfigSubjectKind.PROJECT: CONFIG_PROJECT_HELP_DESK_LINKS,
 }
-_DESK_KIND_BY_SUBJECT = {
-    ConfigSubjectKind.COMPANY: HelpDeskKind.COMPANY,
-    ConfigSubjectKind.PROJECT: HelpDeskKind.PROJECT,
-}
 
 
 def _handle_help_desk_links(kind: str, subject_kind: ConfigSubjectKind, args: list[str], request_id: str) -> None:
@@ -689,37 +566,11 @@ def _handle_help_desk_links(kind: str, subject_kind: ConfigSubjectKind, args: li
         raise SystemExit(1)
     slug = parsed.positionals[0]
     use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
-    _gate(
-        kind,
-        _HELP_DESK_LINKS_VERB,
-        subject_kind,
-        instance=slug,
-        operation=ConfigurationOperation.HELP_DESK_LINKS,
-        sections=frozenset(),
-        request_id=request_id,
+    answer = run_config_request(
+        ConfigRequest(verb=ConfigVerb.HELP_DESK_LINKS, kind=subject_kind, instance=slug, request_id=request_id)
     )
-    request = _REQUEST_SUFFIX.format(request_id=request_id)
-    identifier = DeskIdentifier(_DESK_KIND_BY_SUBJECT[subject_kind], slug)
-    if not config.computer.is_master:
-        print(_DESK_NOT_ON_MASTER_ERROR.format(kind=kind, slug=slug, request=request))
-        raise SystemExit(1)
-    if local_desk_endpoint(identifier, config.computer.name, True) is None:
-        template = _DESK_NOT_ENABLED_ERROR if desk_home_present(identifier) else _DESK_NOT_HOSTED_ERROR
-        print(template.format(kind=kind, slug=slug, request=request))
-        raise SystemExit(1)
-    try:
-        fleet = asyncio.run(observe_fleet_from_heartbeats())
-    except (OSError, RedisError) as error:
-        print(_FLEET_UNOBSERVABLE_ERROR.format(error=error, request=request))
-        raise SystemExit(1) from error
-    if not fleet.conversation_entry_safe():
-        computers = _LIST_SEPARATOR.join(fleet.lacking_conversation_entry())
-        print(_FLEET_LAGGING_ERROR.format(computers=computers, request=request))
-        raise SystemExit(1)
-    rendered = identifier.render()
-    links = asyncio.run(
-        render_help_desk_links(rendered, telegram_allowed=len(rendered) <= TELEGRAM_START_PARAMETER_MAX)
-    )
+    rendered = cast(str, answer[_LINKS_IDENTIFIER_KEY])
+    links = cast(dict[str, str], answer[_LINKS_KEY])
     if use_json:
         print(json.dumps({_LINKS_IDENTIFIER_KEY: rendered, _LINKS_KEY: links, _LINKS_REQUEST_ID_KEY: request_id}))
         return
