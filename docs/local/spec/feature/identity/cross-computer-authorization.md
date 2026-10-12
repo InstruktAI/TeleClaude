@@ -24,7 +24,9 @@ command's person band and the object's rules as one decision
 (`local/projects/teleclaude/spec/feature/identity/command-clearance`).
 
 The caller's computer establishes who is calling and carries only the caller's
-principal across. It never carries a role or a scope, and a session identity is a
+principal across as identity. It never carries a role or a scope as authority: a
+role that travels inside a message's author label is projection, read on the
+holding computer for display and record and by no clearance. A session identity is a
 handle local to the computer that holds that session, never authority on another. What it decides itself is what only it knows about its own
 caller: that the caller is identified, that a session caller's agent role is admitted
 by the command's agent band, and that the caller's dispatch chain permits the act

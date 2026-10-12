@@ -128,12 +128,14 @@ class InternalCommand:
 `CallerProvenance` is the record of who asked, resolved once at the API boundary and
 carried on every command: the caller's session id and computer, its resolved author kind
 and display, its agent runtime and thinking mode, and its machine and job roles. It
-crosses the transport with the command so the owning computer records the same caller on
-the operation row and addresses the outcome back to it. It is a record, never authority:
-no clearance on the owning computer reads a role from it. The caller's identity for
-clearance is the principal alone, and the owning computer resolves every authorization
-fact from that principal and its own registries
-(`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
+crosses the transport with a session-addressed command so the receiving computer records
+the same caller and projects the author label — kind, display, role — on the surface
+where the message lands. It is projection and record, never authority: no clearance on
+the owning computer reads a role from it. The caller's identity for clearance is the
+principal alone, and the owning computer resolves every authorization fact from that
+principal and its own registries
+(`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). The
+relay command carries no provenance beyond the caller session's address.
 
 The `computer` field is the routing key for cross-computer dispatch: it names the computer
 that owns the object the command operates on. The API boundary stamps it from the request;
@@ -142,13 +144,14 @@ the dispatcher reads it to decide local execution versus forwarding.
 ### `RelayRequestCommand` fields
 
 The relay command carries one API request whole: its method, its path, its query, its
-body, the caller's principal, the caller provenance the boundary resolved, and
-`computer`, the computer the request names. It carries no role or scope as authority.
-Its result is that request's response: the status code, the body and the declared work
-feedback. The owning computer executes the carried request against its own API as
-though it had arrived there directly, as the caller the principal resolves to on that
-computer, with the provenance recorded as who asked; nothing about the request is
-interpreted on the way.
+body, the caller's principal, the caller session's address — its id and computer, so
+the owning computer can record who asked and wake it with the outcome — and
+`computer`, the computer the request names. It carries no role, scope, author kind or
+runtime: everything the caller's own surface shows about the caller stays with the
+caller. Its result is that request's response: the status code, the body and the
+declared work feedback. The owning computer executes the carried request against its
+own API as though it had arrived there directly, as the caller the principal resolves
+to on that computer; nothing about the request is interpreted on the way.
 
 ### `OperationReceipt` fields (RECEIPT mode response)
 
