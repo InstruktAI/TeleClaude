@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from types import ModuleType
 from typing import TYPE_CHECKING
 
@@ -33,9 +32,10 @@ class EscalationThreadsMixin:
 
     _discord: ModuleType
     _desk_forums: dict[str, DeskForums]
-    _get_channel: Callable[[int], Awaitable[object | None]]
 
     if TYPE_CHECKING:
+
+        async def _get_channel(self, channel_id: int) -> object | None: ...
 
         @staticmethod
         def _is_forum_channel(channel: object) -> bool: ...
