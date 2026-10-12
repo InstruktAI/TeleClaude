@@ -16,7 +16,9 @@ from tools.release.isolated_inspection import (
     IsolatedProcessResult,
     install_principal_file,
     make_read_only_tree,
+    read_principal_file,
     run_isolated_process,
+    validate_principal_file,
 )
 from tools.release.report_models import LaneReport
 
@@ -118,6 +120,7 @@ _UNEXPECTED_HOOK_EVENT = "Claude emitted an unapproved managed hook event."
 _UNEXPECTED_TOOL_EVENT = "Claude emitted a tool invocation outside its read-only allowlist."
 _UNEXPECTED_TOOL_PATH = "Claude requested a file path outside the prepared evidence root."
 _NO_STRUCTURED_RESULT = "Claude's stream ended without one structured result event."
+_CONFIGURATION_INVALID = "The private Claude inspection configuration is unavailable or unsafe."
 _EMPTY = ""
 _PARENT_DIRECTORY_PART = ".."
 _CURRENT_DIRECTORY_PART = "."
@@ -270,6 +273,8 @@ def run_claude_inspection(
     result_directory: Path,
     oauth_token: str,
     timeout_seconds: int,
+    *,
+    runtime_path: str = _SYSTEM_PATH,
 ) -> ClaudeInspectionResult:
     """Run one restricted Claude assessment with no shell, MCP, source write, or host credentials."""
     if not oauth_token:
@@ -281,19 +286,8 @@ def run_claude_inspection(
         inspect_local_managed_policy()
         make_read_only_tree(evidence_directory)
         settings_path = claude_config_directory / _OUTPUT_SETTINGS_FILE
-        settings = _settings_content(
-            evidence_directory,
-            controller_directory,
-            claude_config_directory,
-            principal_home,
-            principal_temp,
-        )
-        install_principal_file(
-            InspectorRole.CLAUDE,
-            controller_directory,
-            settings_path,
-            settings,
-            mode=_READ_ONLY_CONFIG_MODE,
+        validate_claude_configuration(
+            evidence_directory, controller_directory, principal_home, principal_temp, claude_config_directory
         )
     except (OSError, RuntimeError, ValueError):
         return _failed_result(ProviderFailure.EXECUTION, None, False, _DIAGNOSTIC_SETUP_FAILURE, result_directory)
@@ -303,7 +297,7 @@ def run_claude_inspection(
     )
     environment = {
         _HOME_ENVIRONMENT: str(principal_home),
-        _PATH_ENVIRONMENT: _SYSTEM_PATH,
+        _PATH_ENVIRONMENT: runtime_path,
         _TEMP_ENVIRONMENT: str(principal_temp),
         _CLAUDE_CONFIG_ENVIRONMENT: str(claude_config_directory),
         _CLAUDE_AUTH_TOKEN_ENVIRONMENT: oauth_token,
@@ -358,6 +352,25 @@ def run_claude_inspection(
         result_directory,
         (evidence_directory, controller_directory, claude_config_directory, principal_home, principal_temp),
     )
+
+
+def prepare_claude_configuration(evidence: Path, controller: Path, home: Path, temporary: Path, config: Path) -> None:
+    """Stage the unchanged private native settings before credential-bearing execution."""
+    inspect_local_managed_policy()
+    settings = _settings_content(evidence, controller, config, home, temporary)
+    install_principal_file(
+        InspectorRole.CLAUDE, controller, config / _OUTPUT_SETTINGS_FILE, settings, mode=_READ_ONLY_CONFIG_MODE
+    )
+
+
+def validate_claude_configuration(evidence: Path, controller: Path, home: Path, temporary: Path, config: Path) -> None:
+    """Validate contained settings metadata and bytes, keeping configuration policy with this adapter."""
+    path = config / _OUTPUT_SETTINGS_FILE
+    validate_principal_file(InspectorRole.CLAUDE, controller, path, mode=_READ_ONLY_CONFIG_MODE)
+    if read_principal_file(InspectorRole.CLAUDE, path) != _settings_content(
+        evidence, controller, config, home, temporary
+    ):
+        raise ValueError(_CONFIGURATION_INVALID)
 
 
 def _interpret_result(

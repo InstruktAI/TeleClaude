@@ -45,6 +45,7 @@ class FilesystemOperation(StrEnum):
     CREATE_DIRECTORY = "create_directory"
     INSTALL_FILE = "install_file"
     CHECK_ABSENT = "check_absent"
+    CHECK_FILE = "check_file"
 
 
 class FilesystemArguments(argparse.Namespace):
@@ -114,6 +115,14 @@ def check_absent(root: Path, target: Path) -> None:
         raise FileExistsError(errno.EEXIST, _PATH_EXISTS)
 
 
+def check_file(root: Path, target: Path, uid: int, mode: int) -> None:
+    """Require a contained regular private file with the selected principal's exact ownership/mode."""
+    with _destination_parent(root, target) as parent:
+        metadata = os.stat(target.name, dir_fd=parent, follow_symlinks=False)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != uid or stat.S_IMODE(metadata.st_mode) != mode:
+            raise ValueError(_INVALID_PATH)
+
+
 def install_file(root: Path, target: Path, uid: int, gid: int, source: Path, mode: int) -> None:
     """Copy bounded controller staging bytes into a new provider-owned file."""
     if mode not in {_PRIVATE_MODE, _READ_ONLY_MODE}:
@@ -164,6 +173,8 @@ def main(argv: list[str] | None = None) -> int:
             create_directory(arguments.root, arguments.target, arguments.uid, arguments.gid)
         elif operation is FilesystemOperation.CHECK_ABSENT:
             check_absent(arguments.root, arguments.target)
+        elif operation is FilesystemOperation.CHECK_FILE:
+            check_file(arguments.root, arguments.target, arguments.uid, int(arguments.mode, _OCTAL_BASE))
         else:
             if arguments.source is None:
                 raise ValueError(_INVALID_SOURCE)

@@ -19,6 +19,7 @@ from tools.release.isolated_inspection import (
     make_read_only_tree,
     read_principal_file,
     run_isolated_process,
+    validate_principal_file,
     validate_principal_file_absent,
 )
 from tools.release.report_models import LaneReport
@@ -88,6 +89,7 @@ _DIAGNOSTIC_INVALID_REPORT = "Codex CLI returned a report that did not match its
 _DIAGNOSTIC_INCOMPLETE = "Codex returned a structurally valid incomplete assessment."
 _DIAGNOSTIC_SETUP_FAILURE = "Codex inspection setup or execution failed before a valid assessment."
 _DIAGNOSTIC_AUTH_STATE_FAILURE = "Codex auth state could not be captured after the isolated process exited."
+_CONFIGURATION_INVALID = "The private Codex inspection configuration is unavailable or unsafe."
 _STDOUT_HASH_PREFIX = "stdout_sha256="
 _STDERR_HASH_PREFIX = "stderr_sha256="
 
@@ -112,27 +114,22 @@ def run_codex_inspection(
     result_directory: Path,
     auth_json_before: bytes,
     timeout_seconds: int,
+    *,
+    runtime_path: str = _SYSTEM_PATH,
 ) -> InspectionRunResult:
     """Run a single schema-constrained Codex assessment in a dedicated UID."""
     if result_directory.exists() or result_directory.is_symlink():
         raise ValueError(_RESULT_PATH_EXISTS)
     result_directory.mkdir(mode=_PRIVATE_RESULT_DIRECTORY_MODE, parents=True)
     make_read_only_tree(evidence_directory)
-    profile = _profile_content(evidence_directory, controller_directory, principal_home, principal_temp, codex_home)
-    install_principal_file(
-        InspectorRole.CODEX,
-        controller_directory,
-        codex_home / _CODEX_PROFILE_FILE,
-        profile.encode(_CONFIG_ENCODING),
-        mode=_READ_ONLY_CONFIG_MODE,
-    )
+    validate_codex_configuration(evidence_directory, controller_directory, principal_home, principal_temp, codex_home)
     client_report = codex_home / _CLIENT_REPORT_FILENAME
     validate_principal_file_absent(InspectorRole.CODEX, controller_directory, client_report)
     prompt = (evidence_directory / PROMPT_FILENAME).read_bytes()
     schema_path = evidence_directory / REPORT_SCHEMA_FILENAME
     environment = {
         _CODEX_ENVIRONMENT_HOME: str(principal_home),
-        _CODEX_ENVIRONMENT_PATH: _SYSTEM_PATH,
+        _CODEX_ENVIRONMENT_PATH: runtime_path,
         _CODEX_ENVIRONMENT_TEMP: str(principal_temp),
         _CODEX_ENVIRONMENT_HOME_DIR: str(codex_home),
         _LANGUAGE_ENVIRONMENT: _LANGUAGE_VALUE,
@@ -181,6 +178,27 @@ def run_codex_inspection(
         result_directory,
         (evidence_directory, controller_directory, codex_home, principal_home, principal_temp),
     )
+
+
+def prepare_codex_configuration(evidence: Path, controller: Path, home: Path, temporary: Path, config: Path) -> None:
+    """Stage the unchanged private permission profile before the auth-use checkpoint."""
+    profile = _profile_content(evidence, controller, home, temporary, config)
+    install_principal_file(
+        InspectorRole.CODEX,
+        controller,
+        config / _CODEX_PROFILE_FILE,
+        profile.encode(_CONFIG_ENCODING),
+        mode=_READ_ONLY_CONFIG_MODE,
+    )
+
+
+def validate_codex_configuration(evidence: Path, controller: Path, home: Path, temporary: Path, config: Path) -> None:
+    """Validate metadata and exact permission-profile bytes without following provider links."""
+    path = config / _CODEX_PROFILE_FILE
+    validate_principal_file(InspectorRole.CODEX, controller, path, mode=_READ_ONLY_CONFIG_MODE)
+    expected = _profile_content(evidence, controller, home, temporary, config).encode(_CONFIG_ENCODING)
+    if read_principal_file(InspectorRole.CODEX, path) != expected:
+        raise ValueError(_CONFIGURATION_INVALID)
 
 
 def _interpret_result(

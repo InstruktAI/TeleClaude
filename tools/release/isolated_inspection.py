@@ -47,6 +47,7 @@ _USER_ENVIRONMENT_KEYS = frozenset({"HOME", "PATH", "TMPDIR", "LANG", "LC_ALL"})
 _CODEX_ENVIRONMENT_KEYS = frozenset({"CODEX_HOME"})
 _CLAUDE_ENVIRONMENT_KEYS = frozenset({"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN"})
 _LAUNCHER_SOURCE = Path(__file__).with_name("inspector_exec.py")
+_ACCESS_SOURCE = Path(__file__).with_name("inspector_access.py")
 _LAUNCHER_DIRECTORY = "inspector-launcher"
 _FILESYSTEM_HELPER = Path(__file__).with_name("inspector_fs.py")
 _LAUNCHER_PAYLOAD_SEPARATOR = b"\n"
@@ -207,20 +208,21 @@ def create_controller_root(root: Path, *, temporary_parent: Path) -> Path:
 
 def _stage_launcher(controller_directory: Path) -> None:
     """Copy only trusted launcher code into controller-owned, provider-readable storage."""
-    if _LAUNCHER_SOURCE.is_symlink() or not _LAUNCHER_SOURCE.is_file():
-        raise ValueError(_LAUNCHER_INVALID)
     directory = controller_directory / _LAUNCHER_DIRECTORY
     directory.mkdir(mode=_PRIVATE_ROOT_INITIAL_MODE)
-    launcher = directory / _LAUNCHER_SOURCE.name
-    launcher.write_bytes(_LAUNCHER_SOURCE.read_bytes())
-    launcher.chmod(_READ_ONLY_FILE_MODE)
+    for source in (_LAUNCHER_SOURCE, _ACCESS_SOURCE):
+        if source.is_symlink() or not source.is_file():
+            raise ValueError(_LAUNCHER_INVALID)
+        target = directory / source.name
+        target.write_bytes(source.read_bytes())
+        target.chmod(_READ_ONLY_FILE_MODE)
     directory.chmod(_READ_ONLY_DIRECTORY_MODE)
 
 
-def _staged_launcher(controller_directory: Path) -> Path:
+def _staged_launcher(controller_directory: Path, source: Path = _LAUNCHER_SOURCE) -> Path:
     """Require fixed non-symlink paths owned by the controller and the exact checked-in bytes."""
     directory = controller_directory / _LAUNCHER_DIRECTORY
-    launcher = directory / _LAUNCHER_SOURCE.name
+    launcher = directory / source.name
     checks = (
         (controller_directory, True, _CONTROLLER_ROOT_MODE),
         (directory, True, _READ_ONLY_DIRECTORY_MODE),
@@ -232,20 +234,36 @@ def _staged_launcher(controller_directory: Path) -> Path:
             expected_type = stat.S_ISDIR(metadata.st_mode) if is_directory else stat.S_ISREG(metadata.st_mode)
             if not expected_type or metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) != mode:
                 raise ValueError(_LAUNCHER_INVALID)
-        if launcher.read_bytes() != _LAUNCHER_SOURCE.read_bytes():
+        if launcher.read_bytes() != source.read_bytes():
             raise ValueError(_LAUNCHER_INVALID)
     except OSError:
         raise ValueError(_LAUNCHER_INVALID) from None
     return launcher
 
 
+def inspector_access_helper(controller_directory: Path) -> Path:
+    """Return the same verified controller-owned code used for provider path preflight."""
+    return _staged_launcher(controller_directory, _ACCESS_SOURCE)
+
+
+def inspector_python() -> Path:
+    """Return the public system interpreter selected by the execution boundary."""
+    return Path(_system_binary(_PYTHON_BINARY))
+
+
+def principal_layout_paths(role: InspectorRole, root: Path) -> tuple[Path, Path, Path]:
+    """Own the stable layout addresses used by both allocation and receipt validation."""
+    principal = root / role.value
+    return principal / _PRINCIPAL_HOME_DIRECTORY, principal / _PRINCIPAL_TEMP_DIRECTORY, principal / _STATE_DIRECTORY
+
+
 def create_principal_layout(role: InspectorRole, root: Path) -> tuple[Path, Path, Path]:
     """Create isolated HOME, temporary, and provider-state directories."""
     principal_root = root / role.value
     create_principal_directory(role, root, principal_root)
-    home = create_principal_directory(role, root, principal_root / _PRINCIPAL_HOME_DIRECTORY)
-    temporary = create_principal_directory(role, root, principal_root / _PRINCIPAL_TEMP_DIRECTORY)
-    state = create_principal_directory(role, root, principal_root / _STATE_DIRECTORY)
+    home, temporary, state = principal_layout_paths(role, root)
+    for directory in (home, temporary, state):
+        create_principal_directory(role, root, directory)
     return home, temporary, state
 
 
@@ -287,6 +305,14 @@ def validate_principal_file_absent(role: InspectorRole, temporary_root: Path, ta
     """Validate an output destination inside provider-private state with controller privilege."""
     account = ensure_inspector_principal(role)
     _run_filesystem_operation(FilesystemOperation.CHECK_ABSENT, temporary_root, target, account.pw_uid, account.pw_gid)
+
+
+def validate_principal_file(role: InspectorRole, root: Path, target: Path, *, mode: str = _PRIVATE_FILE_MODE) -> None:
+    """Validate private file metadata within the same privileged contained filesystem boundary."""
+    account = ensure_inspector_principal(role)
+    _run_filesystem_operation(
+        FilesystemOperation.CHECK_FILE, root, target, account.pw_uid, account.pw_gid, (_FILESYSTEM_MODE_OPTION, mode)
+    )
 
 
 def read_principal_file(role: InspectorRole, path: Path, max_bytes: int = _MAX_PRIVATE_FILE_BYTES) -> bytes:
@@ -405,6 +431,12 @@ def run_isolated_process(
         timed_out=False,
         elapsed_seconds=elapsed,
     )
+
+
+def settle_inspector_principal(role: InspectorRole) -> None:
+    """Close and verify the dedicated UID before removing any owned bootstrap material."""
+    account = ensure_inspector_principal(role)
+    _reap_principal(account.pw_name)
 
 
 def remove_principal_tree(role: InspectorRole, root: Path, target: Path) -> None:

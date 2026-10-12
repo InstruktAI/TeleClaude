@@ -232,10 +232,8 @@ jobs:
         continue-on-error: true
         if: ${{ steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
         run: |
-          npm install --global --no-audit --no-fund "@openai/codex@$CODEX_CLI_VERSION" "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+          uv run python -m tools.ci.install_inspector_runtime --evidence "$RUNNER_TEMP/release-evidence"
           uv run python -m tools.ci.install_age
-          codex --version
-          claude --version
       - name: Restore Codex state and write begin checkpoint
         id: codex_prepare
         continue-on-error: true
@@ -343,7 +341,7 @@ jobs:
         if: always()
         run: >-
           uv run python -m tools.ci.release_stage cleanup-inspectors
-          --controller-root "$RUNNER_TEMP/teleclaude-release-controller"
+          --bootstrap-receipt "$RUNNER_TEMP/release-inspector-bootstrap.json"
       - name: Manifest analysis artifact files
         id: manifest
         if: ${{ always() && steps.capture.outcome == 'success' }}

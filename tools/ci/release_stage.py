@@ -7,7 +7,6 @@ import base64
 import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -58,18 +57,24 @@ from tools.release.github_artifacts import (
     WorkflowAttempt,
     WorkflowEvent,
 )
+from tools.release.inspector_bootstrap import (
+    BOOTSTRAP_RECEIPT_FILENAME,
+    cleanup_bootstrap,
+    load_bootstrap,
+    verify_provider_paths,
+)
 from tools.release.inspector_fs import FilesystemOperation
 from tools.release.isolated_inspection import (
     InspectorBoundaryError,
     InspectorRole,
     InspectorSetupError,
     create_controller_root,
-    create_principal_directory,
-    create_principal_layout,
+    principal_layout_paths,
     read_principal_file,
     remove_controller_root,
     remove_principal_tree,
     validate_controller_root,
+    validate_principal_file,
 )
 
 _UTF8 = "utf-8"
@@ -137,6 +142,11 @@ _ARTIFACT_MANIFEST_FILENAME = "artifact-manifest.json"
 _ARTIFACT_MANIFEST_SCHEMA = 1
 _ARTIFACT_MANIFEST_HASH_OUTPUT = "artifact_manifest_sha256"
 _SETUP_DIAGNOSTIC_FILENAME = "provider-setup-diagnostic.json"
+_CLEANUP_COMMAND = "cleanup-inspectors"
+_CONTROLLER_ROOT_OPTION = "--controller-root"
+_BOOTSTRAP_RECEIPT_OPTION = "--bootstrap-receipt"
+_CLAUDE_RESULT_DIRECTORY = "claude-result"
+_PROVIDER_TIMEOUT = 900
 
 
 class ProviderPhase(StrEnum):
@@ -165,6 +175,8 @@ class ProviderOperation(StrEnum):
 
     VALIDATE_INPUT = "validate_input"
     CONTROLLER_ROOT = "controller_root"
+    BOOTSTRAP_PREFLIGHT = "bootstrap_preflight"
+    INITIAL_AUTH_READ = "initial_auth_read"
     PROVIDER_LAYOUT = "provider_layout"
     PROVIDER_STATE_DIRECTORY = "provider_state_directory"
     ATTEMPT_IDENTITY = "attempt_identity"
@@ -267,8 +279,6 @@ def prepare_codex(attempt_path: Path, evidence_directory: Path, state_directory:
     run_attempt = int(os.environ.get(_GITHUB_RUN_ATTEMPT, "0"))
     token = os.environ.get(_GH_TOKEN, _EMPTY)
     identity = os.environ.get(_AGE_IDENTITY, _EMPTY)
-    temporary_parent = _job_temporary_parent()
-    controller_root = temporary_parent / _RELEASE_CONTROLLER_ROOT
     state_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     output_root = result_directory.parent
     output_root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -276,14 +286,14 @@ def prepare_codex(attempt_path: Path, evidence_directory: Path, state_directory:
     try:
         if not token or not identity or not run_id.isdigit() or run_attempt < 1:
             raise ValueError(_AUTH_FAILURE)
-        operation = ProviderOperation.CONTROLLER_ROOT
-        create_controller_root(controller_root, temporary_parent=temporary_parent)
-        operation = ProviderOperation.PROVIDER_LAYOUT
-        principal_home, principal_temp, principal_state = create_principal_layout(InspectorRole.CODEX, controller_root)
-        operation = ProviderOperation.PROVIDER_STATE_DIRECTORY
-        codex_home = create_principal_directory(
-            InspectorRole.CODEX, controller_root, principal_state / _CODEX_AUTH_HOME
-        )
+        operation = ProviderOperation.BOOTSTRAP_PREFLIGHT
+        bootstrap = load_bootstrap(_job_temporary_parent() / BOOTSTRAP_RECEIPT_FILENAME)
+        verify_provider_paths(bootstrap, InspectorRole.CODEX)
+        controller_root = bootstrap.controller
+        principal_home, principal_temp, principal_state = principal_layout_paths(InspectorRole.CODEX, controller_root)
+        codex_home = bootstrap.config(InspectorRole.CODEX)
+        if evidence_directory.resolve() != bootstrap.evidence_source:
+            raise ValueError(_SETUP_FAILURE)
         operation = ProviderOperation.ATTEMPT_IDENTITY
         load_attempt_identity(attempt_path)
         operation = ProviderOperation.WORKFLOW_IDENTITY
@@ -297,6 +307,9 @@ def prepare_codex(attempt_path: Path, evidence_directory: Path, state_directory:
             workflow = client.get_workflow_attempt(expected)
             operation = ProviderOperation.RESTORE_AUTH
             restored = restore_latest_auth_state(client, repository, identity, controller_root, codex_home)
+            operation = ProviderOperation.INITIAL_AUTH_READ
+            validate_principal_file(InspectorRole.CODEX, controller_root, codex_home / CODEX_AUTH_FILENAME)
+            read_principal_file(InspectorRole.CODEX, codex_home / CODEX_AUTH_FILENAME)
             operation = ProviderOperation.BEGIN_CHECKPOINT
             begin_directory = _codex_checkpoint_directory(state_directory, CodexCheckpointDirectory.BEGUN)
             lease = write_begin_checkpoint(workflow, repository, restored.artifact, begin_directory)
@@ -304,7 +317,7 @@ def prepare_codex(attempt_path: Path, evidence_directory: Path, state_directory:
         state = CodexControllerState(
             attempt_path=attempt_path.resolve(),
             controller_root=controller_root,
-            evidence_directory=evidence_directory.resolve(),
+            evidence_directory=bootstrap.evidence,
             principal_home=principal_home,
             principal_temp=principal_temp,
             principal_state=principal_state,
@@ -382,12 +395,13 @@ def run_codex(state_directory: Path, report_output_directory: Path) -> bool:
     try:
         if state.begin_reference is None:
             raise ValueError(_AUTH_FAILURE)
-        executable_text = shutil.which("codex")
-        if executable_text is None:
-            raise FileNotFoundError(_SETUP_FAILURE)
+        bootstrap = load_bootstrap(_job_temporary_parent() / BOOTSTRAP_RECEIPT_FILENAME)
+        if state.controller_root != bootstrap.controller or state.evidence_directory != bootstrap.evidence:
+            raise ValueError(_SETUP_FAILURE)
+        verify_provider_paths(bootstrap, InspectorRole.CODEX)
         lease = state.lease
         result = run_codex_inspection(
-            Path(executable_text),
+            bootstrap.executable(InspectorRole.CODEX),
             state.evidence_directory,
             state.controller_root,
             state.principal_home,
@@ -395,7 +409,8 @@ def run_codex(state_directory: Path, report_output_directory: Path) -> bool:
             state.codex_home,
             result_directory,
             _read_principal_auth(state),
-            900,
+            _PROVIDER_TIMEOUT,
+            runtime_path=bootstrap.runtime_path,
         )
         append_output("codex_boundary_closed", _TRUE)
         state.provider_attempt = result.attempt
@@ -488,40 +503,34 @@ def confirm_codex_settled(result_directory: Path, state_directory: Path) -> bool
 def run_claude(evidence_directory: Path, output_directory: Path) -> bool:
     """Run one native restricted Claude fallback over the same immutable evidence."""
     output_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    temporary_parent = _job_temporary_parent()
-    controller_root = temporary_parent / _RELEASE_CONTROLLER_ROOT
     phase = ProviderPhase.PREPARATION
     operation = ProviderOperation.VALIDATE_INPUT
     try:
-        executable_text = shutil.which("claude")
         oauth_token = os.environ.get(_CLAUDE_TOKEN, _EMPTY)
-        if executable_text is None or not oauth_token:
+        if not oauth_token:
             raise ValueError(_SETUP_FAILURE)
-        operation = ProviderOperation.CONTROLLER_ROOT
-        validate_controller_root(controller_root, temporary_parent=temporary_parent)
-        if not controller_root.exists():
-            create_controller_root(controller_root, temporary_parent=temporary_parent)
-        operation = ProviderOperation.PROVIDER_LAYOUT
-        principal_home, principal_temp, principal_state = create_principal_layout(InspectorRole.CLAUDE, controller_root)
-        operation = ProviderOperation.PROVIDER_STATE_DIRECTORY
-        claude_config = create_principal_directory(
-            InspectorRole.CLAUDE,
-            controller_root,
-            principal_state / _CLAUDE_CONFIG_HOME,
-        )
-        result_directory = output_directory / "claude-result"
+        operation = ProviderOperation.BOOTSTRAP_PREFLIGHT
+        bootstrap = load_bootstrap(_job_temporary_parent() / BOOTSTRAP_RECEIPT_FILENAME)
+        verify_provider_paths(bootstrap, InspectorRole.CLAUDE)
+        controller_root = bootstrap.controller
+        principal_home, principal_temp, _ = principal_layout_paths(InspectorRole.CLAUDE, controller_root)
+        claude_config = bootstrap.config(InspectorRole.CLAUDE)
+        if evidence_directory.resolve() != bootstrap.evidence_source:
+            raise ValueError(_SETUP_FAILURE)
+        result_directory = output_directory / _CLAUDE_RESULT_DIRECTORY
         phase = ProviderPhase.INSPECTION
         operation = ProviderOperation.INSPECT
         result = run_claude_inspection(
-            Path(executable_text),
-            evidence_directory,
+            bootstrap.executable(InspectorRole.CLAUDE),
+            bootstrap.evidence,
             controller_root,
             principal_home,
             principal_temp,
             claude_config,
             result_directory,
             oauth_token,
-            900,
+            _PROVIDER_TIMEOUT,
+            runtime_path=bootstrap.runtime_path,
         )
         operation = ProviderOperation.WRITE_RESULT
         _write_attempt(output_directory / _CLAUDE_ATTEMPT_FILENAME, result.attempt)
@@ -1179,8 +1188,10 @@ def main(argv: list[str] | None = None) -> int:
     record_proof_parser.add_argument("--runtime-report", type=Path, required=True)
     record_proof_parser.add_argument("--harness-exit-code", type=int, required=True)
     record_proof_parser.add_argument("--output-directory", type=Path, required=True)
-    cleanup = commands.add_parser("cleanup-inspectors")
-    cleanup.add_argument("--controller-root", type=Path, required=True)
+    cleanup = commands.add_parser(_CLEANUP_COMMAND)
+    cleanup_target = cleanup.add_mutually_exclusive_group(required=True)
+    cleanup_target.add_argument(_CONTROLLER_ROOT_OPTION, type=Path)
+    cleanup_target.add_argument(_BOOTSTRAP_RECEIPT_OPTION, type=Path)
     args = parser.parse_args(argv)
     try:
         _stage_handler(args)()
@@ -1223,7 +1234,11 @@ def _stage_handler(args: argparse.Namespace) -> Callable[[], object]:
             args.harness_exit_code,
             args.output_directory,
         ),
-        "cleanup-inspectors": lambda: cleanup_inspectors(args.controller_root),
+        _CLEANUP_COMMAND: lambda: (
+            cleanup_bootstrap(args.bootstrap_receipt)
+            if args.bootstrap_receipt is not None
+            else cleanup_inspectors(args.controller_root)
+        ),
     }
     return handlers[args.command]
 

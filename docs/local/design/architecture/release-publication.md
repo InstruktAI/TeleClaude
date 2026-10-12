@@ -91,11 +91,25 @@ separate from their original serialized evidence and integrity hashes.
 
 ### Credentials and inspection
 
-The trusted controller supplies the resolved job temporary parent for both
-controller-root creation and cleanup. Controller roots are proper resolved
-descendants of that parent; creation rejects an existing root, and both paths
-reject symlink roots. Cleanup verifies the root boundary before deleting provider
-material (`sdlc/policy/security-awareness`).
+Provider inspection uses one fresh controller-owned bootstrap namespace beneath
+an explicitly selected shared temporary parent. It does not depend on runner
+home, checkout or job-directory ancestry being searchable by isolated identities.
+Private controller/provider storage and immutable evidence are siblings; existing
+private directories retain their permissions. A private, secret-free ownership
+receipt binds the namespace and later cleanup. Cleanup verifies that claim and
+settled provider UIDs before removing only the owned namespace
+(`sdlc/policy/security-awareness`). The seed-only crypto flow retains its resolved
+job-temporary parent and controller-root boundary.
+
+`tools/release/inspector_bootstrap.py` owns allocation, evidence materialization,
+pinned runtime installation and the receipt. The controller copies the selected
+Node interpreter and installs the pinned clients into owned read-only runtime
+storage. Before auth-use begins, each actual provider UID checks every required
+code, runtime-tree, absolute evidence and private configuration path; credential-
+free version startup checks exercise interpreter and dependency loading. Restored
+Codex auth must also be readable through its provider UID before the begin
+checkpoint. Failed checks preserve refusal rather than opening existing private
+ancestry. Runtime paths and private layouts travel explicitly to both adapters.
 
 Provider-private path resolution, containment and symlink checks, and exclusive
 directory/file creation run together under the privileged controller filesystem
