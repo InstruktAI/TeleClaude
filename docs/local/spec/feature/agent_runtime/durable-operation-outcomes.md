@@ -92,15 +92,12 @@ And an immediate mode that declares either outcome event is rejected
 And the invalid command never reaches the dispatcher
 ```
 
-#### UC-DO7: The owning computer owns the row and the emission
+#### UC-DO7: Only the outcome notification crosses back to the caller's computer
 
 ```gherkin
 Given a caller on one computer submits a receipt-backed command for a session another computer owns
 When the command is dispatched
-Then the owning computer persists the row, runs the work, and emits the outcome event locally
-And the receipt returned to the caller names the owning computer
-And only the outcome notification crosses the machine boundary, to be delivered locally to the caller's session
-And the caller reads the full record on the computer the receipt names
+Then only the outcome notification crosses the machine boundary, to be delivered locally to the caller's session
 ```
 
 ## Known caveats
