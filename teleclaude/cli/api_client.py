@@ -9,7 +9,7 @@ import stat
 import threading
 import time
 from collections.abc import Awaitable, Callable, Collection
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from http import HTTPMethod
 from typing import TYPE_CHECKING, Any, Unpack
 from urllib.parse import urlencode
@@ -115,6 +115,19 @@ def _computer_params(computer: str | None) -> dict[str, str] | None:
     """The query parameter that addresses a request to a computer, when that is another computer."""
     owner = remote_computer(computer)
     return {_COMPUTER_PARAM: owner} if owner is not None else None
+
+
+def _addressed_options(options: RequestOptions) -> RequestOptions:
+    """Use the same effective destination for request clearance and transmission."""
+    params = _with_addressed_computer(options.params)
+    pairs = list(params.items()) if isinstance(params, dict) else list(params or [])
+    computer = next((value for name, value in pairs if name == _COMPUTER_PARAM), None)
+    scope = options.clearance_scope
+    return replace(
+        options,
+        params=params,
+        clearance_scope=replace(scope, target_computer=computer if computer is not None else scope.target_computer),
+    )
 
 
 @dataclass
@@ -398,7 +411,7 @@ class _TelecConnectionClient:
             raise APIError("Client not connected. Call connect() first.")
 
         request_kwargs: dict[str, Any] = {  # guard: loose-dict - HTTP request kwargs
-            "params": _with_addressed_computer(request_options.params),
+            "params": request_options.params,
             "headers": identity_headers,
             "timeout": timeout,
         }
@@ -450,7 +463,7 @@ class _TelecConnectionClient:
             APIError: If request fails
         """
         request_timeout = timeout if timeout is not None else 15.0
-        options = request_options or RequestOptions()
+        options = _addressed_options(request_options or RequestOptions())
         method_enum = self._normalize_http_method(method)
         identity = (
             refresh_cli_identity_role(self._http_state.clearance_identity)

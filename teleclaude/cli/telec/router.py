@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 type _ToolAPIError = ToolAPIError
 
 _INVALID_CONFIGURATION_ERROR = "Error: invalid configuration.\n%s"
-_DIRECT_CONVERSATION_FLAGS = (F.FLAG_DIRECT_SEND, F.FLAG_CLOSE_LINK, F.FLAG_CLOSE_LINK_ALIAS)
+_DIRECT_CONVERSATION_FLAGS = (F.FLAG_DIRECT_START, F.FLAG_DIRECT_SEND, F.FLAG_CLOSE_LINK, F.FLAG_CLOSE_LINK_ALIAS)
 
 
 @dataclass(frozen=True)
@@ -146,20 +146,22 @@ def _handle_cli_command(argv: list[str], clear: ClearanceGate) -> None:
     target_session_id = _session_action_target(node, remainder)
     parsed = parse_command_args(node, remainder)
     target_computer = parsed.value(F.FLAG_COMPUTER) if F.FLAG_COMPUTER in node.flags else None
+    targets = parsed.values(F.FLAG_COMPUTER_MANY) if F.FLAG_COMPUTER_MANY in node.flags else ()
     direct_conversation = any(flag in node.flags and parsed.has(flag) for flag in _DIRECT_CONVERSATION_FLAGS)
     auth = _effective_auth(node, parsed)
     if auth is None or not admits_any_caller(auth.caller_independent, node.desk):
-        clear(
-            CommandClearance(
-                path=path,
-                node=node,
-                auth=auth,
-                parsed=parsed,
-                target_session_id=target_session_id,
-                target_computer=target_computer,
-                direct_conversation=direct_conversation,
+        for target in targets or (target_computer,):
+            clear(
+                CommandClearance(
+                    path=path,
+                    node=node,
+                    auth=auth,
+                    parsed=parsed,
+                    target_session_id=target_session_id,
+                    target_computer=target,
+                    direct_conversation=direct_conversation,
+                )
             )
-        )
 
     if node.addressed_at_boundary:
         from teleclaude.cli.telec.addressing import address_computer  # noqa: PLC0415 - real commands only.
