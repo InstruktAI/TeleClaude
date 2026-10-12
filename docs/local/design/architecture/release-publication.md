@@ -120,8 +120,11 @@ managed requirements using the fixed startup operand owned by
 captured public evidence, refuse reads of synthetic private controller/auth-path
 markers, and refuse a new evidence-file write. They use no credentials or
 inference and remove only their own markers. Readiness requires all checks. It
-retains native status, mechanical outcomes and output hashes, not trace machinery
-or raw output. Failure records an unexpected
+retains native status, mechanical outcomes and output hashes. A failed fixed,
+credential-free startup also retains bounded stderr with known credentials and
+local paths redacted, so its ordinary native error remains actionable. Successful
+startup and confinement checks retain no output bodies; no trace machinery,
+environment, argv or configuration capture is collected. Failure records an unexpected
 primary execution/platform outcome before credential restoration or auth use;
 independent Claude fallback remains available. Startup readiness does not prove
 an assessment or attribute a previous platform denial.

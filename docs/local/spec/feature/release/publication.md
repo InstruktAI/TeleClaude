@@ -74,6 +74,13 @@ network and tool restrictions remain required. Codex uses the supported distro
 bubblewrap/scoped Ubuntu AppArmor setup and one credential-free startup check
 before restoring credentials; it changes no global security restrictions.
 
+A failed fixed credential-free startup retains its native status and bounded
+sanitized stderr before any credential restoration or auth-use checkpoint. Known
+credential values and local paths are redacted; environment, argv, configuration,
+stdout and trace data are not retained. This is setup evidence, with the provider
+exit code still absent, and does not prove which helper was selected or establish
+native confinement.
+
 Failover preserves the failed provider outcome alongside the successful report.
 Expected availability failures and unexpected faults remain distinguishable in
 the evidence. Successful fallback does not erase an unexpected fault or discharge

@@ -6,6 +6,7 @@ import argparse
 import errno
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 from enum import StrEnum
@@ -56,6 +57,18 @@ _PARSER = "/usr/sbin/apparmor_parser"
 _BWRAP = Path("/usr/bin/bwrap")
 _PROFILE_SOURCE = Path("/usr/share/apparmor/extra-profiles/bwrap-userns-restrict")
 _PROFILE_TARGET = Path("/etc/apparmor.d/bwrap-userns-restrict")
+_STARTUP_STDERR_LIMIT = 4096
+_STARTUP_STDERR_KEY = "startup_stderr"
+_REDACTION = "[redacted]"
+_PATH_REDACTION = "<runtime-path>"
+_DECODE_ERRORS = "backslashreplace"
+_STARTUP_SECRET_KEYS = (
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "CODEX_AUTH_AGE_IDENTITY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "OPENAI_API_KEY",
+)
 
 
 class SandboxOperation(StrEnum):
@@ -242,6 +255,17 @@ def check_confinement(bootstrap: InspectorBootstrap, environment: dict[str, str]
     return observations
 
 
+def _safe_startup_stderr(content: bytes, bootstrap: InspectorBootstrap) -> str:
+    """Keep a bounded ordinary pre-auth error without known credentials or local paths."""
+    text = content.decode(_UTF8, errors=_DECODE_ERRORS)
+    secrets = {value for key in _STARTUP_SECRET_KEYS if (value := os.environ.get(key))}
+    for secret in sorted(secrets, key=len, reverse=True):
+        text = text.replace(secret, _REDACTION)
+    for path in (bootstrap.controller, bootstrap.evidence):
+        text = text.replace(str(path), _PATH_REDACTION)
+    return text[:_STARTUP_STDERR_LIMIT]
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run exactly one no-op native check and retain only bounded ordinary failure metadata."""
     parser = argparse.ArgumentParser(description=_DESCRIPTION)
@@ -252,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     status: int | None = None
     stdout_hash: str | None = None
     stderr_hash: str | None = None
+    startup_stderr: str | None = None
     exception: str | None = None
     native_errno: int | None = None
     operation = SandboxOperation.STARTUP
@@ -284,6 +309,8 @@ def main(argv: list[str] | None = None) -> int:
         status = result.return_code
         stdout_hash = hashlib.sha256(result.stdout).hexdigest()
         stderr_hash = hashlib.sha256(result.stderr).hexdigest()
+        if status != 0:
+            startup_stderr = _safe_startup_stderr(result.stderr, bootstrap)
         if status == 0:
             confinement = check_confinement(bootstrap, environment)
     except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
@@ -300,6 +327,7 @@ def main(argv: list[str] | None = None) -> int:
                 _NATIVE_STATUS_KEY: status,
                 _STDOUT_HASH_KEY: stdout_hash,
                 _STDERR_HASH_KEY: stderr_hash,
+                _STARTUP_STDERR_KEY: startup_stderr,
                 _EXCEPTION_KEY: exception,
                 _ERRNO_KEY: native_errno,
                 _PROBES_KEY: [item.model_dump(mode=_JSON_MODE) for item in confinement],
