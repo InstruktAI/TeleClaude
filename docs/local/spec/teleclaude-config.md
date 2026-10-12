@@ -75,6 +75,35 @@ where `computer.is_ingress_node` is set. A person's voice-bot token is needed
 nowhere: without it, that person has no voice room. The per-file published schema cannot express a
 condition on the machine configuration, so it does not carry these needs.
 
+<!-- planned:master-owned-providers -->
+
+A machine-config section declares its **scope**: `local`, the default, or
+`master`. A master-scoped section is meaningful only on the computer where
+`computer.is_master` holds. On every other computer the configuration reader
+yields it with `enabled` false, and every surface reads that one declaration:
+the published machine schema and `telec config wizard` do not offer the section
+on a non-master, its required fields are not judged there, `telec config
+computer get` and the readiness report name it as master-scoped and not
+applicable, and the fleet's view of which adapters a computer runs derives from
+the same effective flag. Scope changes what a non-master consumes, never what
+its file says: the document keeps what the operator wrote.
+
+A section's `enabled` flag governs the whole section. When its effective value
+is false, the section's fields are not consumed and every `enabled` nested
+beneath it reads as false, whatever the document sets there. A consumer
+branches on the section's effective `enabled` and reads the section's fields on
+the enabled branch; the disabled branch is an outcome the consumer states in its
+own terms.
+
+The person-facing providers — `telegram`, `whatsapp` and `email` — are
+master-scoped. `discord` is local: its token also serves the computer-owned
+project forums under
+`local/projects/teleclaude/spec/feature/integration/discord-interaction-ownership`,
+and ownership of Discord direct messages is the conversational-entry rule in
+`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`, not a
+scope on the section.
+<!-- /planned:master-owned-providers -->
+
 A file points at its schema with a `# yaml-language-server: $schema=<ref>`
 modeline. The reference is relative and fixed by the file's tier alone, derived
 in one place by the configuration writer (`teleclaude/config/declaration.py`),

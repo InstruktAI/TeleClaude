@@ -29,12 +29,32 @@ Use this when you need to:
 
 ### Person-addressed delivery (`telec message`)
 
+<!-- planned-change:master-owned-providers -->
+
 `telec message <text> [--recipient <person-slug>] [--file <path>] [--subject <text>] [--channel <telegram|discord|whatsapp|email>]`
 delivers a message to a **person**, decoupled from any session origin. The CLI
 handler posts the request over the daemon socket; a core person-messaging
 service resolves the recipients and dispatches through the existing outbound
 provider primitives (`local/projects/teleclaude/spec/feature/integration/outbound-messaging-providers`)
 — the same layer the invitation flow uses. No new transport exists.
+<!-- change:master-owned-providers -->
+
+`telec message <text> [--recipient <person-slug>] [--file <path>] [--subject <text>] [--channel <telegram|discord|whatsapp|email>]`
+delivers a message to a **person**, decoupled from any session origin. The CLI
+handler posts the request over the daemon socket; a core person-messaging
+service resolves the recipients and dispatches through the existing outbound
+provider primitives (`local/projects/teleclaude/spec/feature/integration/outbound-messaging-providers`)
+— the same layer the invitation flow uses. No new transport exists.
+
+**The master sends.** The person-facing provider sections are master-scoped
+(`local/projects/teleclaude/spec/teleclaude-config`), so the master is the one
+computer in the fleet that holds a sending credential. A request made on any
+other computer is carried to the master by the requesting daemon over the
+computer-addressed relay, executed there, and the master's outcome is returned
+to the caller as the outcome of the request. The caller addresses a person,
+never a computer. When no master is reachable the request fails with that
+error; no other computer sends in its place.
+<!-- /planned-change:master-owned-providers -->
 
 **Recipients.** `--recipient` names one person by slug. Without it, the
 recipients are resolved from the caller's authority, as
