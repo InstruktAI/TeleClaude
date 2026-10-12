@@ -136,13 +136,6 @@ And the command is not silently delivered as ordinary text
 
 #### UC-ICI7: Owning-computer command resolution
 
-```gherkin
-Given a human selects a remote project in the TUI New Session modal
-When the operator submits command input
-Then command recognition and document loading use the owning computer's installed command corpus
-And the selected project and agent preference reach that computer unchanged
-```
-
 ### Cross-context references
 
 - **agent_runtime** owns command interpretation, session acceptance, and command
