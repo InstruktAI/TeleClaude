@@ -20,7 +20,10 @@ to address, and the daemon decides where a request runs in one place, before
 any route is reached. A request that names another computer is carried whole to
 that computer and runs there through the same route a request made on that
 computer runs through. A request that names this computer, or none, runs here.
-No command opts into this, so a newly added command cannot miss it.
+No command opts into this, so a newly added command cannot miss it. A command
+run from a project's checkout and addressed to another computer acts on that same
+registered project there; a computer that holds no such project refuses it,
+naming the project and the computer.
 
 **Decided by the owner.** Whether the caller may perform the command is
 decided by the owning computer from the caller's principal
