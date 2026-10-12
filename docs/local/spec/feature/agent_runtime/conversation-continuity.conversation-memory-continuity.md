@@ -93,8 +93,8 @@ runtime contract and is separate from memory curation.
 Closure readiness and extraction remain tied to the captured closure and
 conversation coverage if the person returns before post-processing finishes.
 New input resumes the same eligible conversation and forms later extractable
-content. An incomplete mirror leaves extraction pending with an observable
-reason. Memory writes already completed survive an interrupted extraction.
+content. A mirror not yet ready for the closure leaves extraction pending with
+an observable reason. Memory writes already completed survive an interrupted extraction.
 
 ### Use cases
 

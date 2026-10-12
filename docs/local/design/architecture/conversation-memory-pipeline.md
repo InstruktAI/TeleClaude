@@ -71,8 +71,11 @@ underneath its execution (`general/principle/trust-and-guardrails`).
 
 ## Failure modes
 
-- Mirror coverage is incomplete: the closure's extraction remains pending with
-  its reason and source reference; later reconciliation can satisfy it.
+- Mirror coverage is not ready for the closure — a present source failed or is
+  not yet read: the closure's extraction remains pending with its reason and
+  source reference; later reconciliation can satisfy it.
+- A native source has disappeared: coverage reports it as missing, its retained
+  content is extracted as recorded, and the extraction names the missing source.
 - The user returns before extraction finishes: the captured source stretch is
   still processed, while newer exchanges remain beyond its completion boundary.
 - A worker stops after partial writes: source progress stays unfinished; the
