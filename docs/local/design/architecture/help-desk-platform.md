@@ -109,8 +109,7 @@ working folder or becoming an alternative conversation owner
 Desk entry links are rendered through the help-desk link commands on their
 master owner. Person invitations use
 `local/projects/teleclaude/spec/feature/config/person-invitations`; both point
-at the canonical public providers. The operational transition is
-`local/projects/teleclaude/procedure/conversation-entry-cutover`.
+at the canonical public providers.
 
 <!-- /planned-change:master-conversation-entry -->
 

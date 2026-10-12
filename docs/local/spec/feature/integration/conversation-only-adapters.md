@@ -30,8 +30,6 @@ are transport facts; they do not confer conversation ownership
 (`general/principle/trust-and-guardrails`).
 
 Person-addressed outbound delivery follows its existing messaging contract.
-Retiring a bot requires resolving any active senders that still depend on that
-identity through `local/projects/teleclaude/procedure/conversation-entry-cutover`.
 
 <!-- /planned:master-conversation-entry -->
 

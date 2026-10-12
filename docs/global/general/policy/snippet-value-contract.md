@@ -102,6 +102,13 @@ The default is **skip unless justified**, not "produce when applicable."
 - **Coverage instinct.** Producing a snippet to fill a taxonomy slot rather
   than to capture intent. The discovery-to-taxonomy table is a list of
   shapes worth considering, not a checklist to complete.
+- **One-off runbook.** A procedure for a single transition — one cutover, one
+  migration, one fleet's reconfiguration — has no reader once it has run and
+  fails the value test on its first day. Its steps belong to the todo that
+  performs them, in the `implementation-plan` or `task-plan` that artifact's
+  own review already covers and that retires with the work. Wanting the steps
+  reviewed before an irreversible act is a reason to review the plan, never a
+  reason to make the steps a snippet.
 - **Prohibition priming.** Agent-facing text that names acts its reader's role
   excludes, instead of stating the reality wanted from that role, places the
   excluded acts in the reader's awareness. `general/policy/agent-facing-text`
