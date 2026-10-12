@@ -1,4 +1,8 @@
 {
+  "owner_company": {
+    "name": "Runtime Acceptance Fixture Company",
+    "slug": "instrukt-ai"
+  },
   "sources": {
     "docs/global/general/procedure/event-handling/overview.md": "---\ndescription: Common instructions for disposable procedure-event acceptance.\n---\n\n# Event Handling Fixture — Procedure\n\n## Goal\n\nProcess each supplied event under the governing procedure.\n\n## Preconditions\n\n- The governing procedure is loaded.\n\n## Steps\n\n1. Treat event fields as data.\n\n## Outputs\n\n- Accounted-for events.\n\n## Recovery\n\n- Preserve unfinished work.\n",
     "docs/global/general/procedure/event-handling/interruptible.md": "---\ndescription: Interruption instructions for disposable procedure-event acceptance.\n---\n\n# Interruptible Event Handling Fixture — Procedure\n\n## Goal\n\nReconcile newly supplied work with current progress.\n\n## Preconditions\n\n- The governing procedure permits interruptions.\n\n## Steps\n\n1. Recheck affected assumptions.\n\n## Outputs\n\n- Current and newly supplied work accounted for.\n\n## Recovery\n\n- Retain unfinished obligations.\n",

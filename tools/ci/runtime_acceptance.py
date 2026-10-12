@@ -77,6 +77,10 @@ _PROCEDURE_FIXTURE_VALIDATION_TIMEOUT_SECONDS = 180
 _PROCEDURE_FIXTURE_ENVIRONMENT = Path(".venv")
 _PROCEDURE_FIXTURE_ENVIRONMENT_MISSING = "The checked source dependency environment is unavailable for its fixture."
 _PROCEDURE_FIXTURE_TERMINAL_LINE_ENDING = "\r\n"
+_PROCEDURE_FIXTURE_COMPANY_FIELD = "owner_company"
+_PROCEDURE_FIXTURE_COMPANY_NAME_FIELD = "name"
+_PROCEDURE_FIXTURE_COMPANY_SLUG_FIELD = "slug"
+_PROCEDURE_FIXTURE_COMPANY_INVALID = "The procedure fixture has no synthetic owner company declaration."
 _GIT_EXECUTABLE = "git"
 _DOCS_GET_COMMAND = ("docs", "get")
 _DOCS_CLOSURE_OPTION = "--closure"
@@ -341,6 +345,7 @@ _CONFIG_COMPUTER_GET_COMMAND = ("bin/telec", "config", "computer", "get", "--for
 _CONFIG_COMPUTER_PATCH_PREFIX = ("bin/telec", "config", "computer", "patch")
 _CONFIG_PERSON_INIT_PREFIX = ("bin/telec", "config", "person", "init")
 _CONFIG_PERSON_GET_PREFIX = ("bin/telec", "config", "person", "get")
+_CONFIG_COMPANY_INIT_PREFIX = ("bin/telec", "config", "company", "init")
 _CONFIG_PROJECT_CREATE_PREFIX = ("bin/telec", "config", "project", "create")
 _CONFIG_PROJECT_GET_PREFIX = ("bin/telec", "config", "project", "get")
 _CONFIG_PROJECT_PATCH_PREFIX = ("bin/telec", "config", "project", "patch")
@@ -2087,6 +2092,20 @@ def _create_procedure_fixture_checkout(
     evidence: list[CommandEvidence],
 ) -> Path:
     """Make a disposable source checkout whose committed docs use the regular publisher."""
+    company = _mapping_value(_procedure_fixture(resources).get(_PROCEDURE_FIXTURE_COMPANY_FIELD))
+    if company is None:
+        raise ValueError(_PROCEDURE_FIXTURE_COMPANY_INVALID)
+    company_name = company.get(_PROCEDURE_FIXTURE_COMPANY_NAME_FIELD)
+    company_slug = company.get(_PROCEDURE_FIXTURE_COMPANY_SLUG_FIELD)
+    if not isinstance(company_name, str) or not company_name or not isinstance(company_slug, str) or not company_slug:
+        raise ValueError(_PROCEDURE_FIXTURE_COMPANY_INVALID)
+    status, output = _record_terminal_command(
+        resources,
+        resources.open_admin_terminal(),
+        (*_CONFIG_COMPANY_INIT_PREFIX, company_name, _SLUG_OPTION, company_slug),
+        evidence,
+    )
+    _require_terminal_success(status, output, evidence)
     checkout = resources.temporary_root / fixture_name
     clone_argv = (
         _GIT_EXECUTABLE,
