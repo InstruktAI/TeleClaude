@@ -11,16 +11,16 @@
     "sequential": {
       "id": "general/procedure/runtime-acceptance-event-delivery/sequential",
       "included_ids": [
-        "general/procedure/runtime-acceptance-event-delivery/sequential",
-        "general/procedure/event-handling/overview"
+        "general/procedure/event-handling/overview",
+        "general/procedure/runtime-acceptance-event-delivery/sequential"
       ]
     },
     "batched": {
       "id": "general/procedure/runtime-acceptance-event-delivery/batched",
       "included_ids": [
-        "general/procedure/runtime-acceptance-event-delivery/batched",
+        "general/procedure/event-handling/interruptible",
         "general/procedure/event-handling/overview",
-        "general/procedure/event-handling/interruptible"
+        "general/procedure/runtime-acceptance-event-delivery/batched"
       ]
     }
   },

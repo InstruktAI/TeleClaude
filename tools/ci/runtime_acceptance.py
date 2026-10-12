@@ -80,7 +80,7 @@ _PROCEDURE_FIXTURE_TERMINAL_LINE_ENDING = "\r\n"
 _GIT_EXECUTABLE = "git"
 _DOCS_GET_COMMAND = ("docs", "get")
 _DOCS_CLOSURE_OPTION = "--closure"
-_CLI_SNIPPET_BLOCK_SEPARATOR = "\n---\n"
+_CLI_SNIPPET_BLOCK_SEPARATOR = "\n---\nid: "
 _CLI_SNIPPET_ID_PREFIX = "id: "
 _PROCEDURE_CLOSURE_SEQUENTIAL = "sequential"
 _PROCEDURE_CLOSURE_BATCHED = "batched"
@@ -2185,11 +2185,16 @@ def _publish_procedure_fixture(
     )
 
 
+def _closure_response_blocks(output: str) -> list[str]:
+    """Split only snippet openings, retaining each metadata/body divider."""
+    return [_CLI_SNIPPET_ID_PREFIX + block for block in output.split(_CLI_SNIPPET_BLOCK_SEPARATOR)[1:]]
+
+
 def _closure_block_ids(output: str) -> list[str]:
     """Read the ordered IDs from the public CLI's normalized Markdown response blocks."""
-    blocks = output.split(_CLI_SNIPPET_BLOCK_SEPARATOR)
+    blocks = _closure_response_blocks(output)
     identifiers: list[str] = []
-    for block in blocks[1:]:
+    for block in blocks:
         for line in block.splitlines():
             if line.startswith(_CLI_SNIPPET_ID_PREFIX):
                 identifiers.append(line.removeprefix(_CLI_SNIPPET_ID_PREFIX))
@@ -2205,7 +2210,7 @@ def _check_procedure_closure_snapshot(
     expected_ids = snapshot.get("included_ids")
     if not isinstance(expected_ids, list) or not all(isinstance(item, str) for item in expected_ids):
         raise ValueError("A procedure closure response snapshot is malformed.")
-    blocks = output.split(_CLI_SNIPPET_BLOCK_SEPARATOR)[1:]
+    blocks = _closure_response_blocks(output)
     actual_ids = _closure_block_ids(output)
     if actual_ids != expected_ids:
         raise ValueError(f"The public procedure closure did not match its ordered response snapshot: {actual_ids!r}")
