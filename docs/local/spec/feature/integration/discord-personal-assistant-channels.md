@@ -1,7 +1,6 @@
 ---
-description: Designated Discord Team assistant channels carry every conversation input to the core's continuing-conversation resolver.
-delivered_by:
-  - designated-channel-continuity
+description: Designated Discord Team assistant channels carry every conversation input
+  to the core's continuing-conversation resolver.
 ---
 
 # Discord Personal Assistant Channels — Spec

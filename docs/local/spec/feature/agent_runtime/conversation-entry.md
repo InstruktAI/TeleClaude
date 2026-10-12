@@ -32,23 +32,6 @@ desk whose home is present on it with the desk enabled; no other computer hosts
 a desk, so a desk declared in a repository checked out on several computers has
 exactly one host. Every session at a desk runs on the master.
 
-<!-- planned-change:designated-channel-continuity -->
-
-**Conversations.** A conversation is one adapter's private channel with one
-person — a chat, a direct-message channel, a phone number. Every session carries
-its adapter's origin metadata, and the endpoint it was created at is stamped
-beside it. On an adapter whose conversations belong to one computer's bot, that
-computer decides alone and finds the person's sessions by origin metadata; a
-desk identifier there reaches a desk only when that computer is the master. On
-adapters whose inbound messages reach every computer, the mesh master alone
-decides: it keeps each conversation's binding in a durable record of its own,
-and every other computer handles none of those messages. An adapter's only
-routing act is to recognise an entry identifier in what the person sent and hand
-it to the core; how the identifier is carried is the adapter's own (see
-Canonical fields). It holds no routing rules of its own.
-
-<!-- change:designated-channel-continuity -->
-
 **Conversations.** A conversation is one adapter's private channel with one
 person — a chat, a direct-message channel, a phone number. Every session carries
 its adapter's origin metadata, and the endpoint it was created at is stamped
@@ -63,24 +46,14 @@ designation to the core. Recognition and transport belong to the adapter;
 endpoint resolution and conversation routing belong to the core
 (`sdlc/principle/design-fundamentals`).
 
-<!-- /planned-change:designated-channel-continuity -->
-
 **Discord.** Discord is a members' surface and never a customer's, so it carries
 no desk entry: a desk identifier sent on Discord is a miss, and a Discord
 conversation is never bound to a desk session. Customers reach a desk through
 Telegram and WhatsApp.
 
-<!-- planned-change:designated-channel-continuity -->
-
-**Routing.** What a person sent decides where it goes, and nothing else does:
-
-<!-- change:designated-channel-continuity -->
-
 **Routing.** The core resolves conversation input from its entry identifier,
 verified channel designation and existing conversation binding. The following
 routes apply at the selected entry point:
-
-<!-- /planned-change:designated-channel-continuity -->
 
 | Inbound                                           | Result                                                                                                                                                                |
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -90,21 +63,6 @@ routes apply at the selected entry point:
 | No identifier, and the conversation has a session | That session, revived when it was closed.                                                                                                                             |
 | No identifier, no session, a registered person    | Their own assistant, by the same rule.                                                                                                                                |
 | No identifier, no session, anyone else            | The neutral reply; no session.                                                                                                                                        |
-
-<!-- planned-change:designated-channel-continuity -->
-
-No other route exists: nobody is sent somewhere by their role, by a desk they
-used before, or by a default endpoint. An adapter's bare entry gesture — a start
-link without a parameter — from a registered person is an entry to their own
-assistant; from anyone else it carries no identifier and routes like any other
-message. Entering elsewhere leaves the earlier session as it is; it receives no
-more messages from the conversation, and a later entry at its endpoint
-continues it. A miss changes nothing, so the conversation stays where it was. A
-session is the conversation's session whatever its state while it is open —
-starting, active or escalated. A session that carries no endpoint is never
-treated as a desk session to return to.
-
-<!-- change:designated-channel-continuity -->
 
 A verified designated channel supplies its conversation entry point without a
 user-sent token. At token-based entry points, an adapter's bare entry gesture — a
@@ -116,8 +74,6 @@ continues it. A miss changes nothing, so the conversation stays where it was. A
 session is the conversation's session whatever its state while it is open —
 starting, active or escalated. A session that carries no endpoint is never
 treated as a desk session to return to.
-
-<!-- /planned-change:designated-channel-continuity -->
 
 **Misses.** An identifier that resolves to nothing — no such home, a desk that
 is not enabled or whose home is not on the master, a desk identifier sent to a
@@ -164,8 +120,6 @@ Discord, and who sees them, is owned by
   `telec config project help-desk-links <slug>`, one per adapter configured
   there that carries desk identifiers.
 
-<!-- planned:designated-channel-continuity -->
-
 ### Designated conversation channels
 
 A UI adapter's designated conversation channel is a durable entry point to a
@@ -204,8 +158,6 @@ accepted work through the existing lifecycle contract and retires competing
 channel-delivery associations (`general/principle/trust-and-guardrails`).
 Distinct channels remain distinct continuing conversations, even when they
 resolve to the same person and assistant endpoint.
-
-<!-- /planned:designated-channel-continuity -->
 
 ### Conversation identity and retention
 
@@ -531,8 +483,6 @@ Then the most recently created eligible matching conversation is continued
 And unrelated endpoints, worker runs and soft-deleted conversations are not selected
 ```
 
-<!-- planned:designated-channel-continuity -->
-
 #### UC-CE29: A designated channel continues its assistant
 
 ```gherkin
@@ -594,8 +544,6 @@ And every other receiver performs no independent session creation or input deliv
 And retained records on other computers do not become competing channel bindings
 ```
 
-<!-- /planned:designated-channel-continuity -->
-
 ### Cross-context references
 
 - **integration** — each adapter recognises and carries the identifier; a
@@ -617,17 +565,6 @@ And retained records on other computers do not become competing channel bindings
   `local/projects/teleclaude/spec/feature/agent_runtime/session-revival`.
 
 ## Known caveats
-
-<!-- planned-change:designated-channel-continuity -->
-
-- Discord Team assistant channels use guild session resolution without endpoint
-  stamping. Its lookup selects open sessions; input after closure creates a new
-  session rather than continuing the closed conversation. Shared Team channels
-  are also accepted by non-master receivers; master-only provisioning does not
-  restrict their conversation input.
-
-<!-- change:designated-channel-continuity -->
-<!-- /planned-change:designated-channel-continuity -->
 
 - Discord carries no identifier in a link: a member sends their invitation
   token as a direct message, which needs a Discord account able to open a direct

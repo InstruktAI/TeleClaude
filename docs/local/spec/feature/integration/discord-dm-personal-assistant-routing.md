@@ -25,14 +25,6 @@ routing therefore keys on the DM channel that the message arrived on, so a direc
 is never absorbed into an unrelated guild session, and the assistant's reply is delivered
 to the DM rather than to a guild forum thread.
 
-<!-- planned-change:designated-channel-continuity -->
-
-The DM path hands each direct message to the core conversation seam, keyed on the DM
-channel; the guild path is a policy of the shared inbound resolve-or-create seam. Each
-persists the channel binding on the session for outbound delivery — a DM session carries
-the DM channel with its guild id unset.
-<!-- change:designated-channel-continuity -->
-
 The DM path hands each direct message to the core conversation seam, keyed on the DM
 channel. Designated Team personal-assistant channels also reach that seam through
 `local/projects/teleclaude/spec/feature/integration/discord-personal-assistant-channels`;
@@ -44,7 +36,6 @@ A direct message carrying audio, image or file attachments, with or without text
 reaches the seam as one turn of that DM conversation. Its attachments and any
 accompanying text follow the once-only combined-input contract of
 `local/projects/teleclaude/spec/feature/integration/discord-personal-assistant-channels`.
-<!-- /planned-change:designated-channel-continuity -->
 
 A direct message that is exactly the person's invitation token is an entry to
 their personal assistant
@@ -98,8 +89,6 @@ Then they receive the neutral reply and no desk session is created
 And their next direct message reaches their personal-assistant session
 ```
 
-<!-- planned:designated-channel-continuity -->
-
 #### UC-DM-ATTACHMENT-INPUT: An attachment sent as a direct message reaches the DM's assistant
 
 ```
@@ -116,5 +105,3 @@ Scenario Outline: direct message through <modality>
     | image    |
     | file     |
 ```
-
-<!-- /planned:designated-channel-continuity -->
