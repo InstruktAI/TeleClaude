@@ -101,20 +101,6 @@ Then the send fails, naming each admin and why they were not reached
 And nothing is delivered
 ```
 
-<!-- planned:master-owned-providers -->
-
-#### UC-PAM7: A message requested on a non-master computer is delivered by the master
-
-```gherkin
-Given a fleet whose master holds the person-facing provider configuration
-And an agent session on another computer of that fleet
-When the agent sends a person-addressed message naming a registered person
-Then that person receives it on their routed channel, sent by the master
-And the agent is told the outcome the master reported
-```
-
-<!-- /planned:master-owned-providers -->
-
 ## See Also
 
 - docs/local/spec/messaging.md — the person-addressed command surface, channel routing, and per-send failure contract.
