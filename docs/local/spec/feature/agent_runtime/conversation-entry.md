@@ -30,6 +30,22 @@ assistant or desk runtime. Ownership follows the configured master through the
 existing fleet resolver, independently of how many computers receive a provider
 event (`general/principle/trust-and-guardrails`).
 
+<!-- planned:master-owned-providers -->
+
+**Two planes.** Conversations with people are the master's: insiders converse
+through Discord direct messages, designated Team channels and personal voice
+rooms (`local/projects/teleclaude/spec/feature/integration/discord-personal-voice-conversation`),
+outsiders through Telegram and WhatsApp. Each computer's operator console — its
+Discord project forums
+(`local/projects/teleclaude/spec/feature/integration/discord-interaction-ownership`)
+and its TUI — is its own and keeps working without the others. Discord
+therefore runs one bot on every computer under a local configuration scope
+(`local/projects/teleclaude/spec/teleclaude-config`), and the master's ownership
+of Discord direct messages and Team channels is the owner rule above, never a
+property of that configuration.
+
+<!-- /planned:master-owned-providers -->
+
 **Conversations.** A conversation is one adapter's designated channel with one
 person. The session records its adapter identity and resolved endpoint. The
 master retains the channel's durable binding. An adapter carries the person's
