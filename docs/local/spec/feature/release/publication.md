@@ -74,6 +74,12 @@ network and tool restrictions remain required. Codex uses the supported distro
 bubblewrap/scoped Ubuntu AppArmor setup and one credential-free startup check
 before restoring credentials; it changes no global security restrictions.
 
+The Codex command sandbox can read the frozen evidence, minimal system runtime
+and the exact verified pinned native executable needed by its inner stage.
+Runtime provisioning supplies that file explicitly; it does not grant an enclosing
+toolcache, package or home read root. Auth/controller reads and source writes
+remain denied, and readiness verifies those boundaries before auth use.
+
 A failed fixed credential-free startup retains its native status and bounded
 sanitized stderr before any credential restoration or auth-use checkpoint. Known
 credential values and local paths are redacted; environment, argv, configuration,

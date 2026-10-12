@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -57,6 +58,50 @@ _WRITE_MODE = "x"
 _REPLACE_MODE = "w"
 _VERSION_TIMEOUT = 30
 _RECEIPT_BOUND = 16384
+_LINUX = "Linux"
+_PACKAGE_MANIFEST = "package.json"
+_CODEX_PACKAGE_NAME = "@openai/codex"
+_CODEX_WRAPPER = Path("bin/codex.js")
+_CODEX_NATIVE_LAYOUTS = {
+    "x86_64": ("codex-linux-x64", "x86_64-unknown-linux-musl", "-linux-x64"),
+    "aarch64": ("codex-linux-arm64", "aarch64-unknown-linux-musl", "-linux-arm64"),
+}
+_NODE_MODULES = "node_modules"
+_OPENAI_SCOPE = "@openai"
+_VENDOR = "vendor"
+_NATIVE_BINARY = Path("bin/codex")
+_WRAPPER_PARENT_INDEX = 6
+
+
+class NpmPackageIdentity(BaseModel):
+    """The public pinned package identity, without interpreting unrelated npm fields."""
+
+    model_config = ConfigDict(extra="ignore", strict=True, frozen=True)
+    name: str
+    version: str
+
+
+def _codex_native_executable(wrapper: Path, version: str) -> Path:
+    """Resolve only the pinned npm wrapper's installed Linux platform package."""
+    layout = _CODEX_NATIVE_LAYOUTS.get(platform.machine())
+    if platform.system() != _LINUX or layout is None:
+        raise ValueError(_INVALID)
+    package_root = wrapper.resolve().parent.parent
+    if wrapper.resolve() != package_root / _CODEX_WRAPPER:
+        raise ValueError(_INVALID)
+    package, target, suffix = layout
+    native_root = package_root / _NODE_MODULES / _OPENAI_SCOPE / package
+    for root, expected in ((package_root, version), (native_root, version + suffix)):
+        manifest = root / _PACKAGE_MANIFEST
+        if manifest.resolve() != manifest:
+            raise ValueError(_INVALID)
+        identity = NpmPackageIdentity.model_validate_json(manifest.read_bytes())
+        if identity.name != _CODEX_PACKAGE_NAME or identity.version != expected:
+            raise ValueError(_INVALID)
+    native = native_root / _VENDOR / target / _NATIVE_BINARY
+    if native.resolve() != native or not native.is_file() or not os.access(native, os.X_OK):
+        raise ValueError(_INVALID)
+    return native
 
 
 class InspectorBootstrap(BaseModel):
@@ -125,7 +170,19 @@ def verify_provider_paths(bootstrap: InspectorBootstrap, role: InspectorRole) ->
     if bootstrap.evidence.is_symlink() or not bootstrap.evidence.is_dir():
         raise ValueError(_INVALID)
     if role is InspectorRole.CODEX:
-        validate_codex_configuration(bootstrap.evidence, bootstrap.controller, home, temporary, bootstrap.config(role))
+        if len(executable.parents) <= _WRAPPER_PARENT_INDEX:
+            raise ValueError(_INVALID)
+        wrapper = executable.parents[_WRAPPER_PARENT_INDEX] / _CODEX_WRAPPER
+        if _codex_native_executable(wrapper, bootstrap.version) != executable:
+            raise ValueError(_INVALID)
+        validate_codex_configuration(
+            bootstrap.evidence,
+            bootstrap.controller,
+            home,
+            temporary,
+            bootstrap.config(role),
+            native_executable=executable,
+        )
     else:
         validate_claude_configuration(bootstrap.evidence, bootstrap.controller, home, temporary, bootstrap.config(role))
 
@@ -166,9 +223,12 @@ def create_bootstrap(
     executable = shutil.which(_EXECUTABLES[role])
     if executable is None:
         raise ValueError(_INVALID)
+    native_executable = (
+        _codex_native_executable(Path(executable), version) if role is InspectorRole.CODEX else Path(executable)
+    )
     bootstrap = bootstrap.model_copy(
         update={
-            _EXECUTABLE_PATH_KEY: Path(executable),
+            _EXECUTABLE_PATH_KEY: native_executable,
             _RUNTIME_PATH_KEY: str(Path(node).parent)
             + os.pathsep
             + os.defpath
@@ -178,7 +238,9 @@ def create_bootstrap(
     )
     make_read_only_tree(bootstrap.evidence)
     if role is InspectorRole.CODEX:
-        prepare_codex_configuration(bootstrap.evidence, controller, home, temporary, config)
+        prepare_codex_configuration(
+            bootstrap.evidence, controller, home, temporary, config, native_executable=native_executable
+        )
     else:
         prepare_claude_configuration(bootstrap.evidence, controller, home, temporary, config)
     verify_provider_paths(bootstrap, role)
@@ -204,7 +266,7 @@ def create_bootstrap(
         raise InspectorSetupError(exception_type=ValueError.__name__, native_status=node_result.return_code)
     result = run_isolated_process(
         role,
-        Path(executable),
+        native_executable,
         (_VERSION_FLAG,),
         bootstrap.evidence,
         environment,

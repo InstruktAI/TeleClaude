@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -50,6 +51,7 @@ _TOML_VAR_RUN_DENY = '"/var/run" = "deny"'
 _TOML_READ_PERMISSION = "read"
 _TOML_DENY_PERMISSION = "deny"
 _TOML_NETWORK_DISABLED = "enabled = false"
+_RUNTIME_DENIED_ROOTS = (Path("/tmp"), Path("/proc"), Path("/run"), Path("/var/run"))
 _CODEX_EXEC_COMMAND = "exec"
 _CODEX_EPHEMERAL_FLAG = "--ephemeral"
 _CODEX_STRICT_CONFIG_FLAG = "--strict-config"
@@ -123,7 +125,14 @@ def run_codex_inspection(
         raise ValueError(_RESULT_PATH_EXISTS)
     result_directory.mkdir(mode=_PRIVATE_RESULT_DIRECTORY_MODE, parents=True)
     make_read_only_tree(evidence_directory)
-    validate_codex_configuration(evidence_directory, controller_directory, principal_home, principal_temp, codex_home)
+    validate_codex_configuration(
+        evidence_directory,
+        controller_directory,
+        principal_home,
+        principal_temp,
+        codex_home,
+        native_executable=executable,
+    )
     client_report = codex_home / _CLIENT_REPORT_FILENAME
     validate_principal_file_absent(InspectorRole.CODEX, controller_directory, client_report)
     prompt = (evidence_directory / PROMPT_FILENAME).read_bytes()
@@ -184,9 +193,11 @@ def run_codex_inspection(
     )
 
 
-def prepare_codex_configuration(evidence: Path, controller: Path, home: Path, temporary: Path, config: Path) -> None:
-    """Stage the unchanged private permission profile before the auth-use checkpoint."""
-    profile = _profile_content(evidence, controller, home, temporary, config)
+def prepare_codex_configuration(
+    evidence: Path, controller: Path, home: Path, temporary: Path, config: Path, *, native_executable: Path
+) -> None:
+    """Stage the evidence and exact native-runtime profile before the auth-use checkpoint."""
+    profile = _profile_content(evidence, controller, home, temporary, config, native_executable)
     install_principal_file(
         InspectorRole.CODEX,
         controller,
@@ -196,11 +207,15 @@ def prepare_codex_configuration(evidence: Path, controller: Path, home: Path, te
     )
 
 
-def validate_codex_configuration(evidence: Path, controller: Path, home: Path, temporary: Path, config: Path) -> None:
+def validate_codex_configuration(
+    evidence: Path, controller: Path, home: Path, temporary: Path, config: Path, *, native_executable: Path
+) -> None:
     """Validate metadata and exact permission-profile bytes without following provider links."""
     path = config / _CODEX_PROFILE_FILE
     validate_principal_file(InspectorRole.CODEX, controller, path, mode=_READ_ONLY_CONFIG_MODE)
-    expected = _profile_content(evidence, controller, home, temporary, config).encode(_CONFIG_ENCODING)
+    expected = _profile_content(evidence, controller, home, temporary, config, native_executable).encode(
+        _CONFIG_ENCODING
+    )
     if read_principal_file(InspectorRole.CODEX, path) != expected:
         raise ValueError(_CONFIGURATION_INVALID)
 
@@ -353,8 +368,9 @@ def _profile_content(
     principal_home: Path,
     principal_temp: Path,
     codex_home: Path,
+    native_executable: Path,
 ) -> str:
-    """Build a native Codex read-only profile that exposes only the evidence tree."""
+    """Expose evidence and one native runtime file, preserving the private denial boundary."""
     if not controller_directory.is_absolute() or controller_directory.resolve() != controller_directory:
         raise ValueError(_PRIVATE_PROFILE_PATH_INVALID)
     for private_path in (principal_home, principal_temp, codex_home):
@@ -365,6 +381,16 @@ def _profile_content(
             or not private_path.is_relative_to(controller_directory)
         ):
             raise ValueError(_PRIVATE_PROFILE_PATH_INVALID)
+    if (
+        not native_executable.is_absolute()
+        or native_executable.resolve() != native_executable
+        or not native_executable.is_file()
+        or not os.access(native_executable, os.X_OK)
+        or native_executable.is_relative_to(controller_directory)
+        or native_executable.is_relative_to(evidence_directory.resolve())
+        or any(native_executable.is_relative_to(path.resolve()) for path in _RUNTIME_DENIED_ROOTS)
+    ):
+        raise ValueError(_PRIVATE_PROFILE_PATH_INVALID)
     lines = (
         _TOML_DEFAULT_PROFILE,
         _TOML_AUTH_STORAGE,
@@ -376,6 +402,7 @@ def _profile_content(
         _TOML_RUN_DENY,
         _TOML_VAR_RUN_DENY,
         _toml_path_rule(evidence_directory, _TOML_READ_PERMISSION),
+        _toml_path_rule(native_executable, _TOML_READ_PERMISSION),
         _toml_path_rule(controller_directory, _TOML_DENY_PERMISSION),
         _TOML_NETWORK_TABLE,
         _TOML_NETWORK_DISABLED,

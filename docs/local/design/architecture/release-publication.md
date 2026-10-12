@@ -130,8 +130,12 @@ independent Claude fallback remains available. Startup readiness does not prove
 an assessment or attribute a previous platform denial.
 
 The trusted native clients retain authentication/refresh access outside their
-model tools. Codex's exact managed filesystem/network/PID restrictions expose
-only prepared evidence to command tools and deny auth, controller, home and
+model tools. Codex setup resolves the pinned npm platform package's native
+executable and records that exact file in the existing private job receipt.
+Its profile permits read access to that executable for the sandbox's inner stage,
+alongside prepared evidence and the native minimal system runtime. It grants no
+read access to the enclosing toolcache, Node installation or package directory.
+Codex's exact managed filesystem/network/PID restrictions deny auth, controller, home and
 process-credential paths. Its non-interactive `exec` command, permission profile,
 requirements and approval settings remain explicit. Claude retains subscription-
 compatible restricted safe mode, only Read/Grep/Glob tools, denied outside reads,
