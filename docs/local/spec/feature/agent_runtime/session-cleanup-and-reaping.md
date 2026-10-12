@@ -11,15 +11,7 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:conversation-memory-continuity -->
-
-The cleanup half of agent_runtime session lifecycle. Where `session-lifecycle` accepts a close request, this surface performs it: token revocation, host-pane termination, conversation-link teardown, listener cleanup, adapter channel deletion, workspace removal, per-session tmpdir removal, Claude Code session temp directory removal on purge, escalation teardown, inbound expiry, and the final `closing -> closed` lifecycle write.
-
-<!-- change:conversation-memory-continuity -->
-
 The cleanup half of agent_runtime session lifecycle. Where `session-lifecycle` accepts a close request, this surface performs it: token revocation, host-pane termination, conversation-link teardown, listener cleanup, adapter channel deletion, workspace removal, per-session tmpdir removal, temporary runtime resource removal, escalation teardown, inbound expiry, and the final `closing -> closed` lifecycle write.
-
-<!-- /planned-change:conversation-memory-continuity -->
 
 It also reconciles the gap between what durable storage believes and what the system holds: stale sessions (storage-active but host-pane-gone), orphan host-pane sessions (TeleClaude-prefixed host pane with no storage row), orphan workspace directories (UUID-named directory under the workspace base with no storage row), and orphan per-session tmpdirs (UUID-named subdirectory under the configured tmpdir base, not bound to a live session).
 
@@ -28,8 +20,6 @@ Finally, it provides the recently-closed replay mechanism: a sweep that re-emits
 The cleanup loop runs on the maintenance service tick (every hour by default). An end-session request reaches the termination flow synchronously via the command service.
 
 ## Canonical fields
-
-<!-- planned:conversation-memory-continuity -->
 
 ### Durable session identity
 
@@ -40,8 +30,6 @@ Exact-id historical retrieval remains subject to the existing reach rules.
 Restoration retains the original TeleClaude identity. Ephemeral process, token,
 listener and temporary-directory cleanup remains available independently of the
 retained record (`general/principle/trust-and-guardrails`).
-
-<!-- /planned:conversation-memory-continuity -->
 
 ### Host binding release
 
@@ -64,28 +52,6 @@ deciding host availability from close intent.
 
 #### terminate-session — happy path
 
-<!-- planned-change:conversation-memory-continuity -->
-
-```
-Given a non-closed session row exists for session_id
-And the caller invokes terminate-session for the session with a reason
-When the cleanup begins
-Then the session id is added to the in-flight cleanup set (concurrency guard)
-And the lifecycle status is written to "closing"
-And the host pane is terminated when a host pane reference is present and the session is not headless
-And the resource-cleanup step runs (links, listeners, channel delete, workspace removal)
-And the per-session tmpdir cleanup runs
-And the Claude Code session temp directory cleanup runs only when the destructive delete variant is requested
-And the inbound queue manager expires pending inbound messages for the session
-And the escalation-end step clears relay state and emits `session.escalation_ended` if relay status was active
-And the lifecycle write completes via close-session (or delete-session when the destructive variant is requested)
-And the cache is invalidated one final time
-And the session id is removed from the in-flight cleanup set
-And the function reports success
-```
-
-<!-- change:conversation-memory-continuity -->
-
 ```
 Given a non-closed session row exists for session_id
 And the caller invokes terminate-session for the session with a reason
@@ -104,8 +70,6 @@ And the session id is removed from the in-flight cleanup set
 And the function reports success
 ```
 
-<!-- /planned-change:conversation-memory-continuity -->
-
 #### UC-SCR-1: Host-pane processes are reaped before per-session tmpdir removal
 
 ```
@@ -118,18 +82,6 @@ And the tmpdir is removed without a "directory not empty" failure
 
 #### UC-SCR-2: Order of operations is fixed
 
-<!-- planned-change:conversation-memory-continuity -->
-
-```
-Given the termination flow is mid-flight
-Then the order is: revoke tokens -> lifecycle status = closing -> terminate host pane -> reap the host pane's process tree -> resource cleanup -> per-session tmpdir cleanup -> Claude Code session temp directory cleanup (delete variant only) -> expire inbound -> end escalation -> close-session (or delete-session)
-And every step after host-pane termination is wrapped in best-effort error handling
-And a failure in any intermediate step is logged but does NOT prevent the final lifecycle write — once the host pane is gone, leaving the row stuck at "closing" would be worse than continuing
-And a reap that cannot confirm the process tree exited within its bound logs the unresolved or surviving process ids and continues, so the final lifecycle write still runs
-```
-
-<!-- change:conversation-memory-continuity -->
-
 ```
 Given the termination flow is mid-flight
 Then the order is: revoke tokens -> lifecycle status = closing -> terminate host pane -> reap the host pane's process tree -> resource cleanup -> per-session tmpdir cleanup -> expire inbound -> end escalation -> close the retained session record or mark it soft-deleted
@@ -137,8 +89,6 @@ And every step after host-pane termination is wrapped in best-effort error handl
 And a failure in any intermediate step is logged but does NOT prevent the final lifecycle write — once the host pane is gone, leaving the row stuck at "closing" would be worse than continuing
 And a reap that cannot confirm the process tree exited within its bound logs the unresolved or surviving process ids and continues, so the final lifecycle write still runs
 ```
-
-<!-- /planned-change:conversation-memory-continuity -->
 
 #### Concurrency guard
 
@@ -200,21 +150,6 @@ And no exception escapes the function
 
 #### cleanup-stale-session — storage-active, host-pane-gone
 
-<!-- planned-change:conversation-memory-continuity -->
-
-```
-Given a session row has lifecycle status reading as active
-And the host pane named by the session no longer exists
-And the session is older than 10 seconds (race-condition guard against just-created sessions)
-And the session has a non-empty host-pane reference (headless sessions are skipped — they have no host pane to detect staleness against)
-When the stale-session cleanup is called
-Then a warning is logged: "Found stale session ... cleaning up"
-And termination is invoked with reason "stale", host-pane termination suppressed (already gone), and the destructive delete variant requested (drop the row entirely)
-And it reports success
-```
-
-<!-- change:conversation-memory-continuity -->
-
 ```
 Given a session row has lifecycle status reading as active
 And the host pane named by the session no longer exists
@@ -225,8 +160,6 @@ Then a warning is logged: "Found stale session ... cleaning up"
 And termination closes the stale runtime while retaining its TeleClaude record and history
 And it reports success
 ```
-
-<!-- /planned-change:conversation-memory-continuity -->
 
 #### cleanup-orphan-host-panes — host-pane-present, storage-absent
 
@@ -324,23 +257,6 @@ Scenario Outline: The session-ended event states what kind of session ended
 
 #### UC-SCR-12: An ending is reported once, and a later ending again
 
-<!-- planned-change:conversation-memory-continuity -->
-
-```gherkin
-Scenario Outline: An ending is reported once, and a later ending again
-  Given a session ended and its session-ended event was emitted
-  When <later act>
-  Then <outcome>
-
-  Examples:
-    | later act                                                          | outcome                                                                    |
-    | the close is replayed for the already-closed session               | no second session-ended event is reported for that ending                  |
-    | the closed session's row is purged after the retention window      | no second session-ended event is reported for that ending                  |
-    | the session is revived and ends again                              | a new session-ended event is reported for the new ending, with its own id  |
-```
-
-<!-- change:conversation-memory-continuity -->
-
 ```gherkin
 Scenario Outline: An ending is reported once, and a later ending again
   Given a session ended and its session-ended event was emitted
@@ -354,8 +270,6 @@ Scenario Outline: An ending is reported once, and a later ending again
     | the session is revived and ends again                              | a new session-ended event is reported for the new ending, with its own id  |
 ```
 
-<!-- /planned-change:conversation-memory-continuity -->
-
 #### emit-recently-closed-session-events — restart-recovery sweep
 
 ```
@@ -368,28 +282,6 @@ And emits a session-close-request event (NOT a session-closed event) for each so
 And returns the count of emitted events
 And a non-positive window short-circuits to zero emissions
 ```
-
-<!-- planned-change:conversation-memory-continuity -->
-
-#### UC-SCR-3: Closed session rows inside the 90-day window are retained
-
-```
-Given a closed session row whose closed-at marker is newer than 90 days
-When the maintenance cleanup tick runs
-Then the row remains in the agent_runtime session ledger
-And operator surfaces may still resolve the TeleClaude session id for direct jump or revive affordances
-```
-
-#### UC-SCR-4: Closed session rows older than 90 days are hard-purged
-
-```
-Given a closed session row whose closed-at marker is older than 90 days
-When the maintenance cleanup tick runs
-Then the row is hard-deleted from the agent_runtime session ledger
-And operator surfaces that still carry the historical TeleClaude session id render it as inert text
-```
-
-<!-- change:conversation-memory-continuity -->
 
 #### UC-SCR-3:
 
@@ -409,8 +301,6 @@ Then the session is soft-deleted and remains absent from ordinary selection
 And its identity, historical content and source relationships are retained
 And maintenance never hard-purges that record
 ```
-
-<!-- /planned-change:conversation-memory-continuity -->
 
 #### UC-SCR-5: Adapter stale-thread reconciliation reaches project-specific session forums
 
@@ -455,21 +345,6 @@ And when Discord cannot conclusively list the forum's threads, the sweep deletes
 
 ## Known caveats
 
-<!-- planned-change:conversation-memory-continuity -->
-
-- **The lifecycle write at the end is non-negotiable.** Every intermediate step after host-pane termination is wrapped in best-effort error handling specifically so a single hiccup (e.g., a removal race on a per-session tmpdir) cannot strand a session at `lifecycle_status=closing`. If the lifecycle write were skipped on an inner failure, the session would be invisible to both the live UI and the close-reaper sweep.
-- **Resource cleanup does NOT touch the lifecycle write.** Callers handle the lifecycle write; the resource-cleanup helper is purely for adapter / filesystem / listener teardown. The split exists so terminate-session and stale-session cleanup can both reuse the same resource sweep with different lifecycle intentions (close vs delete).
-- **Headless sessions are excluded from stale detection.** They have no host-pane reference to consult, so stale detection short-circuits to false for them — they only ever close via explicit user/agent action.
-- **Stale detection has a 10-second race-condition floor.** Sessions younger than 10 seconds are skipped to avoid reaping a just-created session whose host pane has not yet appeared.
-- **Orphan-tmpdir sweep has a 10-minute race-safety window.** A tmpdir freshly created for a brand-new session is invisible to the sweep until its modification time ages past the window. The window is necessary because the row insert (which makes the session id "live") and the tmpdir creation are not co-transactional.
-- **Symlink-escape guards on tmpdir removal.** Single-session and orphan-tmpdir sweeps both refuse to traverse symlinks and check that the resolved path remains under the configured base. A maliciously symlinked tmpdir cannot trick the sweep into removing arbitrary paths.
-- **The recently-closed sweep re-emits a session-close request, not a session-closed event.** This is deliberate — it routes back through termination's idempotent path so the channel reference gets cleared on the second pass. Re-emitting a session-closed event would not run the channel-delete logic.
-- **Orphan sweeps are time-bound to the maintenance tick (~1 hour).** There is no startup sweep that runs these unconditionally on boot — the first sweep happens immediately on periodic-cleanup entry (the first-run flag skips the initial sleep), but a freshly-rebooted service that crashes again within minutes can carry orphans across two restarts before they are observed.
-- **The in-flight cleanup set is process-local.** Two service processes claiming the same session (which should not happen — there is one service per machine) would not coordinate through this guard. The guard exists to deduplicate parallel events within a single service, not to provide cross-process exclusion.
-- **The destructive delete variant is, well, destructive.** It removes the row entirely rather than transitioning it to closed. The cleanup paths use this only for stale-session reaping, where the row carries no recoverable signal — preserving a tombstone for a session whose host pane died before the service noticed has no operational value.
-
-<!-- change:conversation-memory-continuity -->
-
 - **The lifecycle write at the end is non-negotiable.** Every intermediate step after host-pane termination is wrapped in best-effort error handling specifically so a single hiccup (e.g., a removal race on a per-session tmpdir) cannot strand a session at `lifecycle_status=closing`. If the lifecycle write were skipped on an inner failure, the session would be invisible to both the live UI and the close-reaper sweep.
 - **Resource cleanup does NOT touch the lifecycle write.** Callers handle the lifecycle write; the resource-cleanup helper is purely for adapter / filesystem / listener teardown. The split exists so terminate-session and stale-session cleanup can both reuse the same resource sweep with different lifecycle intentions (close vs soft deletion).
 - **Headless sessions are excluded from stale detection.** They have no host-pane reference to consult, so stale detection short-circuits to false for them — they only ever close via explicit user/agent action.
@@ -482,8 +357,6 @@ And when Discord cannot conclusively list the forum's threads, the sweep deletes
 - Removal changes visibility of the retained session record. Resource cleanup,
   stale-session recovery and retention sweeps preserve its durable identity,
   transcript lineage and mirror relationships.
-
-<!-- /planned-change:conversation-memory-continuity -->
 
 - **The single session-ended type is retired, not renamed.** Endings are
   reported only under the kinded types, so a subscriber selects one kind or

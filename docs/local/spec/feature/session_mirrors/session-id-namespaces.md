@@ -1,110 +1,99 @@
 ---
-visibility: public
-description: The two session-id namespaces — the TeleClaude session id the platform
-  addresses sessions by, and the agent-native id a mirror is keyed on — which surface
-  accepts which, and where translation between them happens.
+description: TeleClaude session identity addresses one durable conversation mirror; native identities address its recorded transcript sources.
 ---
 
 # Session Id Namespaces — Spec
 
-## Required reads
-
-- @docs/local/spec/domain/session_mirrors.md
-
 ## What it is
 
-A session carries two identifiers, and they are never the same value.
+The TeleClaude session id identifies the lasting conversation and its one
+mirror. The agent-native id identifies one producing runtime's transcript in
+that conversation's lineage. Compaction, handoff and native transcript rotation
+leave the TeleClaude identity stable.
 
-- The **TeleClaude session id** is what the platform addresses a session by. It is
-  the `session_id` on the session record, the id `telec sessions` verbs accept, the
-  id a notification carries, the id stamped into a todo's `lineage`, and the id a
-  commit footer records.
-- The **agent-native session id** is the identifier the agent runtime assigns its
-  own conversation. It names the transcript on disk and it is what a mirror row is
-  keyed on, because a mirror is derived from the transcript and outlives the session
-  record the platform keeps.
-
-Both are full UUIDs, so neither can be recognised by shape. A caller holding one
-cannot tell which it holds without asking the session registry, and the two
-populations do not overlap: no session's native id equals its TeleClaude id.
-
-Mirrors stay keyed on the native id deliberately. The session record is ephemeral
-and the mirror is durable, so keying the archive on the platform id would make a
-conversation unreachable exactly when its session row is gone — which is the case
-the archive exists for.
-
-Translation therefore belongs at the edge that receives a caller's id, never in the
-store. The store does record, as a fact written with each mirror, the TeleClaude
-session that mirror belongs to (`mirror-identity-enrichment`), so the TeleClaude id
-of an attributed mirror outlives the session record. A surface that accepts a
-TeleClaude id first asks the store for the mirrors attributed to that session; only
-when none is attributed does it resolve the id against the session registry and
-query the store under the native id. Neither step is translation inside the store:
-the store answers queries over the key it owns and the facts it recorded.
-
-A session id is a full UUID. A value that is not one is not an identity, and the
-boundary where a derived value first becomes an identity refuses it rather than
-storing it.
+Agent runtime owns the retained session record and publishes its ordered
+transcript lineage. Session mirrors consume that lineage through the same
+conversation projection used by session tailing. They store one complete
+conversational projection per TeleClaude session. Source paths and native ids
+remain provenance and exact source-retrieval aliases, not competing mirror keys
+(`sdlc/policy/code-quality`).
 
 ## Canonical fields
 
+### Addressing and migration
+
+TeleClaude-id history retrieval returns the whole session conversation. Explicit
+native-id or raw retrieval continues to identify the recorded source requested
+by the caller, under the existing history reach checks. An ambiguous source
+association is reported rather than silently joining different conversations.
+
+Migration consolidates source mirrors through their recorded TeleClaude
+attribution and lineage ordering, preserving conversation content, source
+addresses and visibility facts. It restores a pruned session's retained identity
+from established attribution where possible. Historical sources with no
+TeleClaude association receive a retained, non-running archive session record;
+only recorded facts are carried forward. No agent is launched and no person or
+authority is invented by that archival association. Existing native-id history
+references remain usable (`sdlc/policy/backward-compatibility-hygiene`).
+
 ### Use cases
 
-#### UC-SIN-1: The two namespaces are disjoint
+#### UC-SIN-1:
 
-```
-Given any session with both a TeleClaude session id and an agent-native session id
-When the two values are compared
-Then they differ
-And neither can be distinguished from the other by shape, since both are full UUIDs
-```
-
-#### UC-SIN-2: A mirror is keyed on the agent-native id
-
-```
-Given a transcript is mirrored
-When the mirror is written
-Then it is keyed on the agent-native session id read from the transcript
-And it remains addressable by that id after the session record is gone
+```gherkin
+Given an operator has a TeleClaude conversation containing native agent transcripts
+When the operator inspects its identity
+Then the conversation identity is distinct from the identities of its transcript sources
 ```
 
-#### UC-SIN-3: An accepting surface translates; the store does not
+#### UC-SIN-2:
 
-```
-Given a surface accepts a session id from a caller
-And the id belongs to the TeleClaude namespace
-When the surface resolves it
-Then the surface first asks the mirror store for the mirrors attributed to that session
-And only when none is attributed does it consult the session registry for that session's native id and query the mirror store under the native id
-And the mirror store applies no namespace translation of its own
+```gherkin
+Given an operator's TeleClaude conversation spans several native transcripts
+When the conversation is mirrored
+Then it has one durable mirror addressed by its TeleClaude identity
+And every source remains traceable within that mirror's provenance
 ```
 
-#### UC-SIN-4: A derived identity is a full UUID or it is refused
+#### UC-SIN-3:
 
-```
-Given a transcript that carries a session identity
-When the value derived for it is not a full UUID
-Then the derivation fails loudly at that boundary
-And no row is stored under the non-conforming value
-And a transcript that carries no session identity of its own never reaches this boundary, because it is dropped as a subagent transcript before derivation
+```gherkin
+Given an authorized caller supplies a full conversation or source identifier
+When history resolves that identifier
+Then a TeleClaude identifier addresses the complete conversation
+And an explicit native identifier addresses its recorded source without bypassing history access rules
 ```
 
-#### UC-SIN-5: A subagent transcript belongs to no session and is never mirrored
+#### UC-SIN-4:
 
+```gherkin
+Given an agent supplies a malformed identity to historical retrieval
+When the request is resolved
+Then the identity is refused explicitly rather than matched by prefix or guessed recency
 ```
-Given a transcript that belongs to no session — a subagent transcript dispatched within a session, whatever runtime spawned it
-When transcript discovery or the session-end fanout encounters it
-Then it is recognized as a subagent transcript before any identity is derived from it
-And no mirror is written for it
-And the archive holds no mirror whose session id is null
+
+#### UC-SIN-5:
+
+```gherkin
+Given a runtime produced a subagent transcript
+When the mirror producer encounters that source
+Then the existing subagent exclusion applies
+And no independent conversation mirror is created for it
+```
+
+#### UC-SIN-6:
+
+```gherkin
+Given historical mirrors include attributed and previously unattributed conversations
+When storage migrates to retained TeleClaude conversation identities
+Then every previously retained conversation remains retrievable
+And existing source references still resolve under the same access rules
+And missing authorship or identity facts remain unknown
 ```
 
 ## Known caveats
 
-- A mirror no session record ever claimed has no TeleClaude id. It is
-  addressable by its native id alone, and a surface that prints ids states which
-  namespace it is printing. An attributed mirror keeps its TeleClaude id after
-  its session record is pruned.
-- Agent runtimes own their transcript filenames and have changed them. A filename
-  is a hint about identity, never the identity itself; the authoritative value is
-  read from the transcript's own contents.
+- Native transcript filenames remain provider-owned. The session's recorded
+  lineage and source identity facts establish their association.
+- Retaining the session record does not itself retain transcript bytes. The
+  stored conversation mirror remains durable when a source file is unavailable.

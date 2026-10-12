@@ -16,19 +16,10 @@ injected platform instructions and compaction metadata are outside its
 conversation text. Generation is deterministic and calls no language model
 (`local/projects/teleclaude/spec/feature/session_mirrors/session-summary-generation`).
 
-<!-- planned-change:conversation-memory-continuity -->
-
-Each generation reads one native transcript. Its mirror is addressed by source
-identity and carries the TeleClaude attribution available for that source.
-
-<!-- change:conversation-memory-continuity -->
-
 Each generation reads the retained TeleClaude session's complete ordered
 transcript lineage through the same chain reader and projector as session
 tailing. It updates the session's one conversational mirror. Native ids,
 producing runtimes, paths and entry positions remain source provenance.
-
-<!-- /planned-change:conversation-memory-continuity -->
 
 Launch command, worker classification, title and identity facts come from the
 owning session under

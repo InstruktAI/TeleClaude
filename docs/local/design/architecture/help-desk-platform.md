@@ -228,20 +228,9 @@ A person in the desk's scope answers by replying in the thread; the reply is del
 
 **Relay lifecycle:**
 
-<!-- planned-change:conversation-memory-continuity -->
-
-- Relay state persists for the lifetime of the session (7d max)
-- Multiple escalation/handback cycles can occur within one session
-- Each handback collects only messages since the previous handback (or relay start)
-- When the session dies (7d sweep), its relay state dies with it
-
-<!-- change:conversation-memory-continuity -->
-
 - Multiple escalation and handback cycles can occur within one conversation.
 - Each handback collects messages after its preceding handback or relay start.
 - Closing settles the active relay while retaining the conversation record.
-
-<!-- /planned-change:conversation-memory-continuity -->
 
 ### Customer-Facing Agent Behavior
 
@@ -279,93 +268,6 @@ Memories are kept current by memory agents (`local/projects/teleclaude/spec/feat
 - `GET /api/memory/search` — add optional `identity_key` query param
 - No `identity_key` → saved/queried as project-level memory (NULL)
 
-<!-- planned-change:conversation-memory-continuity -->
-
-### Customer Session Lifecycle
-
-#### Interruptible compaction runtime
-
-The visitor-facing desk keeps native slash commands disabled and bundled
-skills unavailable. The idle cycle resumes the same native transcript in a
-temporary maintenance launch whose recipe enables the compaction command
-while retaining the desk's other restrictions. Maintenance is not a new
-conversation and receives no visitor input.
-
-Returning input remains in the existing durable queue. A visitor's message
-or desk re-entry abandons the attempt, discards the temporary tmux runtime
-through the existing shutdown machinery, and revives the ordinary restricted
-desk through the existing transcript-resumption path. The queue then drains
-in accepted order. Returning input takes priority over maintenance, whose
-next attempt follows the next idle period.
-
-Attempt-scoped startup and completion cannot open readiness or close a desk
-revived after cancellation. Abandoning maintenance does not emit a conversation
-end; the existing memory-extraction behavior follows only a real session end.
-Compaction that completed before cancellation stays in the native transcript;
-the platform performs no rollback, transcript validation or additional
-process-exit verification.
-
-A desk session is closed only to spare resources while its visitor is away, never to end the conversation. After 30 minutes without visitor input, the daemon compacts its context and closes it. Its end wakes the desk's memory agent, which keeps the memories about that visitor current. The visitor's next message, or their re-entry at the desk, revives the same session with those memories injected (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-continuity`).
-
-**Idle cycle.** The daemon's idle cycle visits conversation sessions — desk sessions and a person's own assistant sessions, never agents the platform started for a procedure — periodically, well within the 30-minute threshold. A session whose agent is idle, which has had no input for 30 minutes, which carries no active escalation relay and has no input waiting, goes through:
-
-1. Compaction of the agent's context through the agent's own compaction command, awaited until the agent's own end-of-compaction signal (both declared per agent; a session running an agent that declares neither is not idle-closed)
-2. Closing the session, once compaction completed and no input arrived meanwhile
-3. None of it is recorded as a message sent into the session — it is invisible to the visitor
-
-A failed launch is abandoned and ordinary conversation delivery is restored.
-A returning person abandons unfinished compaction and resets the idle period;
-the cycle retries after the next idle period. Extraction is not part of the
-cycle: it follows a real close (Post-Session Memory Extraction), and the native
-transcript retains the conversation that extraction reads.
-
-```mermaid
-sequenceDiagram
-    participant Visitor as Human visitor
-    participant Daemon as Idle cycle
-    participant Desk as Ordinary restricted desk
-    participant Maintenance as Temporary compaction runtime
-    participant Queue as Accepted input queue
-    participant DB as Conversation session
-    participant Memory as Desk memory agent
-
-    Note over Daemon: Conversation idle, no relay or input waiting
-    Daemon->>Desk: Drop its tmux runtime through existing shutdown
-    Daemon->>Maintenance: Resume the recorded native transcript
-    Daemon->>Maintenance: Submit the declared compaction command
-    alt Visitor returns during maintenance
-        opt Return includes conversation text
-            Visitor->>Queue: Accept the message durably
-        end
-        Visitor->>Daemon: Returning message or desk re-entry
-        Daemon->>Maintenance: Abandon attempt and drop its tmux runtime
-        Daemon->>Desk: Revive normally with slash commands disabled
-        opt Accepted text is waiting
-            Queue->>Desk: Deliver accepted text in order
-        end
-        Note over Daemon: Retry maintenance after the next idle period
-    else Compaction completes while the visitor is away
-        Maintenance->>Daemon: This attempt completed
-        Daemon->>DB: Perform the ordinary idle close
-        DB-->>Memory: Conversation ended at its desk
-    end
-    Note over Visitor,Maintenance: Maintenance receives no visitor input and sends no visitor reply
-```
-
-**Session resumption.** When a visitor returns through the same conversation (the same Telegram chat or WhatsApp number), or re-enters the desk with its identifier, the conversation's session at that desk continues, revived when it was closed; no new session is created. The agent has: (a) compacted conversation history, (b) injected personal memories from the most recent extraction, (c) access to `telec docs index` + `telec docs get` at the visitor's depth.
-
-**Bookkeeping.** A `last_memory_extraction_at` timestamp on the session record is the session's read point: the newest conversation entry its memory agent has read. The agent reads only the conversation after it and advances it last, after its memory changes are made, so a session that ends again is read from where its memory agent stopped.
-
-**Session state fields (additions):**
-
-- `last_memory_extraction_at` — timestamp of last successful extraction (high-water mark)
-
-- `relay_status` — `NULL` or `"active"` (relay mode)
-- the relay's thread — the desk's escalation thread for this relay
-- `relay_started_at` — timestamp of current relay activation
-
-<!-- change:conversation-memory-continuity -->
-
 ### Customer Session Lifecycle
 
 The adapter conversation retains its TeleClaude session and recorded native
@@ -379,48 +281,6 @@ Removal is a soft deletion under
 `local/projects/teleclaude/spec/feature/agent_runtime/session-cleanup-and-reaping`.
 The mirror is the session-owned conversational projection; the extraction
 checkpoint belongs to that source rather than to the visitor's identity.
-
-<!-- /planned-change:conversation-memory-continuity -->
-
-<!-- planned-change:conversation-memory-continuity -->
-
-### Post-Session Memory Extraction
-
-Memory extraction follows a conversation session's end. The session-ended event names the session, its home, and that it was a help-desk session; it wakes the desk memory procedure in the home that owns the desk. That procedure's agent is bound to the session: one memory agent per desk session, and the same agent is brought back when that session ends again after a revival. A person's own assistant sessions wake the person-memory procedure in their home, whose single standing agent keeps that person's memories. Both are procedure agents (`local/projects/teleclaude/design/architecture/procedure-activation`); no direct model API call is made.
-
-The desk memory agent, given the ended session:
-
-1. Reads the session's own conversation after its read point — every transcript the session has carried, entries from before any compaction included
-2. Lists the current memories about that visitor at that desk
-3. Adds, updates and retires memories so they hold what is true now, never a near-duplicate of one that exists
-4. Records the business items the conversation showed as prospects for the home that owns the desk
-5. Advances the session's read point
-
-```mermaid
-sequenceDiagram
-    participant Daemon
-    participant Events as Session-ended event
-    participant Agent as Desk memory agent (per session)
-    participant Transcript as Session transcript chain
-    participant Memory as Memory
-
-    Daemon->>Events: Session ended (help desk, desk's home)
-    Events->>Agent: Start or wake the agent for this session
-    Agent->>Transcript: Read the conversation after the read point
-    Agent->>Memory: List the visitor's current memories at this desk
-    Agent->>Memory: Add / update / retire memories
-    Agent->>Memory: Record business items as prospects
-    Agent->>Memory: Advance the session's read point
-```
-
-**What the agent keeps** (its judgment, per its procedure):
-
-1. **About the visitor** — what to remember about THIS person: preferences, context, communication style, open questions, relationship history
-2. **Business items** — what the conversation shows the home: feature requests, complaints, confusion, sentiment, competitive mentions; collected as prospects for later aggregation, never used as they are
-
-Neither records project knowledge or decisions (`local/projects/teleclaude/spec/domain/memory`). Namespaces, keys and subjects follow Identity-Scoped Memory.
-
-<!-- change:conversation-memory-continuity -->
 
 ### Post-Session Memory Extraction
 
@@ -440,8 +300,6 @@ conversations. These specialized briefs share memory judgment rather than a
 session-id-based executable workflow
 (`local/projects/teleclaude/spec/feature/memory/memory-curation`).
 
-<!-- /planned-change:conversation-memory-continuity -->
-
 ### Business Insights
 
 What desk conversations show about the business — requests for what does not exist, complaints, recurring confusion, sentiment, mentions of alternatives — is not synthesized by any scheduled job. Turning collected business items into durable knowledge for the home that owns the desk, and where that knowledge lands, is not designed yet.
@@ -457,48 +315,6 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 5. **Observer interests** (for dual-observer prompts):
    - Personal: the visitor's name, company, role, preferences, communication style, open questions, relationship history
    - Business: feature requests, complaints, confusion points, sentiment, competitive mentions, pricing discussions
-
-<!-- planned-change:conversation-memory-continuity -->
-
-## Invariants
-
-1. **Single memory store**: Identity-scoped memories live in the same `memory_observations` table. No separate tables or databases per identity.
-
-2. **NULL means shared**: `identity_key IS NULL` means the memory belongs to the project, visible to all sessions in that project. This is the default behavior, preserving backward compatibility.
-
-3. **Identity key is opaque**: The memory system does not parse identity keys. It stores and matches them as strings. Format convention is `{platform}:{platform_user_id}` but the store doesn't enforce this.
-
-4. **Identity key is derived**: The `identity_key` is derived from origin metadata at query time, not stored as a denormalized column on the session.
-
-5. **Compaction keeps the conversation readable**: compaction shortens the agent's context, not its native transcript, which keeps every entry from before a compaction; memory extraction reads that transcript after the session ended, so compaction never takes anything extraction needs.
-
-6. **Help desks are folders of their homes**: A help desk is never a repository of its own. Scaffolding is idempotent: the operator brain is seeded only while absent, the ignore declaration converges to its kind's template, and nothing the template does not carry is touched.
-
-7. **A desk exists only where its home enables it**: no machine-wide desk location exists. A desk's folder follows from its home, and a home without `help_desk.enabled` has no desk.
-
-8. **Extraction resumes from its read point**: a memory agent reads only the conversation after the session's read point and advances it after its memory changes, so no stretch of a conversation is read twice; memories are kept current, not accumulated. Durable state lives in the database, not in the agent.
-
-9. **Entry names an endpoint exactly**: an identifier either resolves to an endpoint the receiving computer can serve, or the person gets the neutral reply. No identifier is interpreted as a nearby one, and no miss reveals which organisations exist.
-
-10. **Closing spares resources, never the conversation**: a desk session closes after 30 minutes without visitor input, only after its context was compacted; its memory agent keeps the visitor's memories current from the closed conversation, and any later message or re-entry revives the same session with those memories injected.
-
-11. **Relay is session-scoped**: The admin relay is a state of the session, not a separate entity. When the session dies (7d sweep), the relay state dies with it.
-
-12. **Relay diverts, not duplicates**: When relay is active, visitor messages go to the escalation thread ONLY, not to both thread and agent, whichever adapter they use. The agent session is fully paused during relay.
-
-13. **Handback collects incrementally**: Each handback collects messages since the previous handback (or since relay activation). Multiple escalation/handback cycles within one session each get a clean context window.
-
-14. **Escalation is a help-desk act aimed at the desk's scope**: `telec sessions escalate` is accepted only from a session in a help desk; it opens a thread in that desk's escalations forum and notifies everyone in the desk's scope.
-
-15. **One binding per conversation**: a conversation reaches its session — on a per-computer adapter found by origin metadata, elsewhere through the mesh master's durable record; an entry makes the person's own session at its endpoint the conversation's session, continuing or reviving it, so the latest entry wins.
-
-16. **One authority per conversation, one host per desk**: a conversation on a per-computer bot is decided by that computer; where every computer receives inbound messages, the mesh master alone decides. Every desk runs on the master. Without the master nothing routes on the shared adapters; the only answer is the temporarily-unavailable reply.
-
-17. **Each desk is seen only by its scope**: a desk's sessions and escalations appear only in that desk's own Discord category, visible only to the desk's scope through per-person overwrites; no shared surface carries them.
-
-18. **Customers read public documentation only**: a customer's desk agent reads its desk's reach at public depth, and no desk master inlines its home's internal documentation.
-
-<!-- change:conversation-memory-continuity -->
 
 ## Invariants
 
@@ -537,8 +353,6 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 17. **Each desk is seen only by its scope**: a desk's sessions and escalations appear only in that desk's own Discord category, visible only to the desk's scope through per-person overwrites; no shared surface carries them.
 
 18. **Customers read public documentation only**: a customer's desk agent reads its desk's reach at public depth, and no desk master inlines its home's internal documentation.
-
-<!-- /planned-change:conversation-memory-continuity -->
 
 ## Primary Flows
 
@@ -597,50 +411,6 @@ sequenceDiagram
     AI->>Customer: "Your billing has been corrected to $29. Is there anything else?"
 ```
 
-<!-- planned-change:conversation-memory-continuity -->
-
-### Idle Compaction Cycle
-
-```mermaid
-sequenceDiagram
-    participant Visitor as Human visitor
-    participant Daemon as Idle cycle
-    participant Desk as Ordinary restricted desk
-    participant Maintenance as Temporary compaction runtime
-    participant Queue as Accepted input queue
-    participant DB as Conversation session
-    participant Worker as Desk memory agent
-    participant Memory as Memory
-
-    Note over Daemon: Conversation idle, no relay or input waiting
-    Daemon->>Desk: Drop its tmux runtime through existing shutdown
-    Daemon->>Maintenance: Resume the recorded native transcript
-    Daemon->>Maintenance: Submit the declared compaction command
-    alt Visitor sends input or re-enters during maintenance
-        opt Return includes conversation text
-            Visitor->>Queue: Accept the message durably
-        end
-        Visitor->>Daemon: Returning message or desk re-entry
-        Daemon->>Maintenance: Drop the temporary tmux runtime
-        Daemon->>Desk: Revive the same conversation under its ordinary profile
-        opt Accepted text is waiting
-            Queue->>Desk: Deliver accepted text in order
-        end
-        Note over Daemon: The return resets the idle period
-    else This attempt completes with no returning input
-        Maintenance->>Daemon: Compaction completed
-        Daemon->>DB: Perform the ordinary idle close
-        DB-->>Worker: Conversation ended at its desk
-        Worker->>Memory: Keep visitor memories current and collect prospects
-        Worker->>DB: Advance the read point
-        Visitor->>Daemon: Return after the close
-        Daemon->>Desk: Revive the same conversation with current memories
-    end
-    Note over Visitor,Maintenance: No maintenance input or output is delivered as visitor conversation
-```
-
-<!-- change:conversation-memory-continuity -->
-
 ### Idle Compaction Cycle
 
 The runtime's confirmed compaction completion proceeds directly to closure.
@@ -648,8 +418,6 @@ Closure and mirror readiness then release memory extraction through
 `local/projects/teleclaude/design/architecture/conversation-memory-pipeline`.
 A returning visitor takes precedence over unfinished maintenance through the
 existing compaction cancellation and resumption contract.
-
-<!-- /planned-change:conversation-memory-continuity -->
 
 ### Desk Category Reconciliation
 
@@ -705,22 +473,6 @@ sequenceDiagram
 
 ## Failure Modes
 
-<!-- planned-change:conversation-memory-continuity -->
-
-| Scenario                                                                                    | Behavior                                                       | Recovery                                                                                                                                             |
-| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key                 | Personal memories not injected; the agent handles without context                                                                                    |
-| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                                  | The visitor uses a working desk link                                                                                                                 |
-| A desk identifier sent to a computer's own bot when that computer is not the master         | Neutral reply                                                  | Desk links are rendered on the master, naming its bot                                                                                                |
-| The entered desk's home is not on the master                                                | Neutral reply, no session                                      | Make the desk's home present on the master                                                                                                           |
-| A restricted session names no enabled desk                                                  | Session creation is refused                                    | The core resolves an endpoint first or sends the neutral reply                                                                                       |
-| A memory agent fails or stops                                                               | Its memory changes so far stay; the read point is not advanced | The session's next end, or a later activation for it, reads from the same point; the agent compares with current memories, so nothing is added twice |
-| Compaction does not finish                                                                  | The session stays open, not compacted                          | A later pass retries; the session is never closed uncompacted                                                                                        |
-| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)                       | Most recent memories prioritized                                                                                                                     |
-| Session transcript unavailable to the memory agent                                          | Nothing read; read point not advanced                          | A later activation for the session retries                                                                                                           |
-
-<!-- change:conversation-memory-continuity -->
-
 | Scenario                                                                                    | Behavior                                                      | Recovery                                                                                                 |
 | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key                | Personal memories not injected; the agent handles without context                                        |
@@ -732,8 +484,6 @@ sequenceDiagram
 | Compaction does not finish                                                                  | The session stays open, not compacted                         | A later pass retries; the session is never closed uncompacted                                            |
 | Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)                      | Most recent memories prioritized                                                                         |
 | Conversation mirror coverage is not ready                                                   | Extraction remains pending with its source coverage           | Successful mirror refresh or reconciliation releases the captured extraction once coverage is ready      |
-
-<!-- /planned-change:conversation-memory-continuity -->
 
 **Escalation failure modes:**
 

@@ -71,8 +71,6 @@ because the session record belongs to agent runtime (`local/projects/teleclaude/
 
 ## Canonical fields
 
-<!-- planned:conversation-memory-continuity -->
-
 ### Session-owned conversation convergence
 
 The mirror is keyed by retained TeleClaude session identity. Source associations
@@ -83,8 +81,6 @@ remains idempotent (`sdlc/policy/backward-compatibility-hygiene`). Historical
 associations follow
 `local/projects/teleclaude/spec/feature/session_mirrors/session-id-namespaces`.
 The recorded conversation and established access facts survive consolidation.
-
-<!-- /planned:conversation-memory-continuity -->
 
 ### Use cases
 

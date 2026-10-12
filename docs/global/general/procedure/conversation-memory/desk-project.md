@@ -1,45 +1,55 @@
 ---
-description: Keeps the memories about a project help-desk visitor current when their
-  desk session ends — one agent per desk session, returned to by that session's later
-  ends.
+description: Maintain a visitor's memories at a project help desk and collect that desk's business prospects from ready conversation extractions.
 subscriptions:
-  - teleclaude.agent_runtime.session.ended.help_desk
+  - teleclaude.memory.extraction.requested
 subscription_home: project
 subscription_identity: subject
+event_delivery: sequential
+interruptible: false
 ---
 
 # Project Desk Conversation Memory — Procedure
 
 ## Required reads
 
-- @~/.teleclaude/docs/general/procedure/conversation-memory/overview.md
+@~/.teleclaude/docs/general/procedure/conversation-memory/overview.md
 
 ## Goal
 
-When a help-desk session at this project's desk ends, keep the memories about
-its visitor at that desk current and collect the business items the conversation
-showed, as the conversation memory procedure describes. This agent serves one
-desk session: a later end of the same session, after its visitor revived it,
-returns to this agent with its own context.
+Maintain the assigned visitor's memories at the assigned project desk and
+collect the business prospects their conversations establish for that project.
+The visitor identity and desk remain this worker's scope across source sessions.
 
 ## Preconditions
 
-- Activated by the end of a help-desk session at this project's desk, working in
-  the project's checkout.
+- The startup assignment names the project home; the prepared extraction identifies the visitor and desk.
+- Hook-delivered activation data names an extraction ready to read.
 
 ## Steps
 
-1. Run the conversation memory procedure for the ended session, through
-   advancing its read point.
-2. End this session: `telec sessions end self`. The desk session's next end
-   revives this agent with its context.
+1. Read `telec memories extraction read <id>`. Use its bounded conversation
+   evidence and progress. An already completed extraction needs no further work.
+2. List `telec memories scope --identity <identity> --desk <desk-id>` using the
+   assignment's resolved visitor and desk. The response includes current
+   memories and prospects already recorded for this extraction.
+3. Apply the shared conversation-memory judgment. Persist warranted additions,
+   updates and retirements with the same `--identity`, `--desk` and
+   `--extraction` values.
+4. Collect requests, complaints, confusion, sentiment and mentions of alternatives
+   as prospects with `telec memories prospect --desk <desk-id> --extraction <id>
+--type <type> <text>`. Compare with already recorded prospects before adding.
+5. Complete successful handling with `telec memories extraction complete <id>`,
+   including a read that warrants no changes.
+6. End this session with `telec sessions end self`. Later work for this same
+   visitor and desk resumes the worker through its continuing procedure identity.
 
 ## Outputs
 
-- The outputs of the conversation memory procedure for this desk session.
+- The visitor's current memories at this desk and the project's recorded prospects.
+- Completed progress for each successfully handled extraction.
 
 ## Recovery
 
-- Recovery follows the conversation memory procedure. A run ended by its
-  recovery still ends this session, so the next end of the desk session revives
-  this agent to read the same stretch again.
+- An unreadable source or refused operation is reported with `telec memories
+extraction fail <id> --reason <reason>`. Keep the unfinished progress and
+  end this session, leaving the reason for the next eligible continuation.

@@ -190,8 +190,6 @@ Then publication is refused with a finding identifying each invalid declaration
 And none of those declarations becomes an active subscription
 ```
 
-<!-- planned:conversation-memory-continuity -->
-
 #### UC-RA14:
 
 This journey consumes
@@ -220,8 +218,6 @@ When the owner invokes memory-curation operations through the public CLI
 Then each operation is refused
 And a fresh authorized memory listing reports no memory added by those attempts
 ```
-
-<!-- /planned:conversation-memory-continuity -->
 
 ## Known caveats
 

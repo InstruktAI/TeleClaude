@@ -13,18 +13,34 @@ description: A help-desk or assistant conversation outlives the session that car
 
 ## What it is
 
-A conversation session — a session at a help desk, or a session in a person's
-own home that is that person's conversation with their assistant — is closed only to spare resources
-while its person is away, never to end the conversation. Once it has had no input
-for 30 minutes, the daemon compacts the agent's context and closes the session.
+A conversation belongs to its durable TeleClaude session. An adapter-bound
+personal assistant or help desk continues that session when its person returns.
+Once the idle threshold is reached and the agent is idle, the daemon resumes the
+recorded native transcript for compaction. Confirmed compaction completion
+closes the runtime immediately, without another periodic wait. The threshold
+is owned by `CONVERSATION_IDLE_THRESHOLD`.
+
+A person may also explicitly start separate personal-assistant conversations.
+Those use their ordinary session-close lifecycle rather than automatic idle
+compaction. Creating one leaves the adapter-bound continuing conversation in
+place. Both kinds are eligible for memory extraction at closure.
 The person's next message, or their re-entry at the desk, revives the same
 session (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
 
-When the session ends, a memory agent reads what the conversation added since
-it was last read and keeps the memories about that person current: it adds what
-is new, updates what changed, and retires what no longer holds. At a desk it
-also collects the business items the conversation showed, for the home that owns
-the desk. The revived session starts with the current memories about its person.
+An eligible session closure requests readiness of its session-owned conversation
+mirror. Only after the mirror covers that closure does the memory capability
+release an extraction request. Readiness also succeeds when the existing mirror
+already covers the conversation. Agent runtime supplies eligibility and the
+closure identity; session mirrors supply coverage; memory owns extraction and
+its completion (`sdlc/policy/code-quality`).
+
+Eligibility covers human personal-assistant conversations and help-desk
+conversations. Project SDLC sessions and autonomous task, procedure and worker
+runs are outside this extraction lifecycle. The launch purpose and endpoint
+establish the distinction; a working folder alone does not. Multiple PA
+conversations retain independent source progress while contributing to the
+person's same memory scope. The revived conversation receives its person's
+current memories.
 
 Memories about a person are kept per desk and per person:
 
@@ -66,17 +82,31 @@ The platform uses its existing tmux shutdown and native transcript revival
 contract. It neither rolls back a compaction already recorded by the agent nor
 implements transcript validation or additional process-exit checks.
 
+### Closure and continuation
+
+The existing session record retains its endpoint, adapter metadata and ordered
+native transcript lineage through closure and soft deletion. Compaction changes
+the agent's working context; extraction reads the archived conversation rather
+than that compacted context. Compaction-prompt customization follows the native
+runtime contract and is separate from memory curation.
+
+Closure readiness and extraction remain tied to the captured closure and
+conversation coverage if the person returns before post-processing finishes.
+New input resumes the same eligible conversation and forms later extractable
+content. A mirror not yet ready for the closure leaves extraction pending with
+an observable reason. Memory writes already completed survive an interrupted extraction.
+
 ### Use cases
 
-#### UC-CC1: An idle conversation session is compacted, then closed
+#### UC-CC1:
 
 ```gherkin
-Given a conversation session whose agent is idle
-And the session has received no input for 30 minutes
-When the daemon's idle cycle reaches it
-Then the agent's context is compacted
-And the session is closed only after the compaction completed
-And the person receives no message about any of it
+Given a human has an adapter-bound continuing conversation whose agent is idle
+And the conversation has received no input through its idle threshold
+When idle maintenance runs
+Then the agent's context is compacted through its native compaction mechanism
+And confirmed compaction completion immediately closes that runtime
+And the human receives no maintenance message
 ```
 
 #### UC-CC2: A conversation that is still going on is not closed
@@ -91,11 +121,11 @@ And the escalation, the agent's work and the new input continue undisturbed
 #### UC-CC3: A closed conversation is read once by its memory agent
 
 ```gherkin
-Given a conversation session that ended, however it ended
-When its end is announced
-Then a memory agent reads the conversation after the point it last read, including what came before any compaction
-And afterwards that point covers the conversation it read
-And a later end of the same session is read from there, never from the beginning again
+Given an eligible human conversation has closed
+When its complete conversational mirror is confirmed ready for that closure
+Then the memory worker receives its unprocessed conversational stretch
+And successful handling advances progress for that conversation
+And a repeated closure notification does not repeat completed extraction
 ```
 
 #### UC-CC4: Memories about a person stay current, not accumulated
@@ -182,6 +212,42 @@ Then that attempt neither opens the resumed agent's input readiness nor closes t
 And the person's conversation continues normally
 ```
 
+#### UC-CC13:
+
+```gherkin
+Given a human explicitly started an additional personal-assistant conversation
+When that conversation reaches the idle interval
+Then it retains its ordinary close lifecycle
+And its eventual close receives the same mirror-based extraction as the person's continuing assistant
+```
+
+#### UC-CC14:
+
+```gherkin
+Given a human returns to a conversation while its closed stretch awaits memory extraction
+When the conversation resumes and produces more messages
+Then the pending extraction still handles its captured stretch
+And completing it does not skip messages from the resumed conversation
+```
+
+#### UC-CC15:
+
+```gherkin
+Given a human closed an eligible conversation immediately after its last exchange
+When its mirror has not yet captured that exchange
+Then extraction waits for the mirror's confirmed coverage
+And it starts when coverage is ready without requiring another human message
+```
+
+#### UC-CC16:
+
+```gherkin
+Given an eligible human conversation closes with an already-current mirror
+When closure post-processing observes that coverage
+Then extraction can proceed without a new conversation-text change
+And successful handling with nothing new to extract leaves progress complete
+```
+
 ### Cross-context references
 
 - **memory** — keeps the memories and their state, collects business items, and
@@ -192,15 +258,16 @@ And the person's conversation continues normally
   identity) and which memories a visitor's session may receive
   (`local/projects/teleclaude/spec/feature/identity/data-visibility`).
 - **agent_runtime** — closing and reviving the session follow the session
-  surfaces; the memory agents are procedure agents started by the session's end
+  surfaces; memory agents are procedure agents reached by ready extraction requests
   (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-standing-agent`).
 
 ## Known caveats
 
-- **Closing happens on the cycle's next pass, not at the 30-minute mark.**
+- Eligibility begins at the configured idle threshold. After native compaction
+  completes, closure has no additional scan delay.
 - **A session whose agent never returns to idle is never closed by this
-  cycle.** The cycle compacts only an idle agent and closes only a compacted
-  session.
+  cycle.** The cycle compacts only an idle adapter-bound conversation and closes
+  its runtime only after confirmed compaction.
 - **A revived session continues its own conversation.** Revival resumes the
   session from its own transcript
   (`local/projects/teleclaude/spec/feature/agent_runtime/session-revival` UC-SR9),

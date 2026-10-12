@@ -1,260 +1,115 @@
 ---
-description: "A mirror is attributed at write time to the TeleClaude session whose transcript chain holds it, recording the session's principal, registered project, and launch facts. Identity fields come from the upstream session record, and no write replaces a recorded fact with an absent one."
-visibility: 'public'
+description: One conversation mirror belongs to one retained TeleClaude session and preserves the provenance of every transcript in its lineage.
 ---
 
 # Mirror Identity Enrichment — Spec
 
-## Required reads
-
-- @docs/local/spec/domain/session_mirrors.md
-- @docs/local/spec/domain/identity.md
-
 ## What it is
 
-A mirror's identity comes from the upstream session record owned by the
-agent_runtime bounded context, never from the transcript file. When the
-session_mirrors service writes a mirror, it resolves the session record that
-claims the transcript through the queries agent_runtime publishes for its session
-records, and never reads those records' storage itself. It records what that
-record establishes, in two places.
+A conversation mirror is identified by its retained TeleClaude session. Agent
+runtime publishes the session's identity facts and ordered native transcript
+lineage; session mirrors consume those facts rather than deriving human
+identity from transcript prose or reaching into another domain's storage.
 
-- **The session attribution.** Each TeleClaude session with a mirrored
-  transcript holds one session attribution in the mirror store: its TeleClaude
-  session id, the principal it ran under, the registered project it ran in, the
-  subject the session recorded — the project, person, or company home it landed
-  in, or none — with that subject's owner, its subfolder, the session that
-  started it and that session's computer, whether an agent started it, the
-  scheduled job it ran for, and when it started and closed. Every mirror of the
-  session links to that attribution and records its position in the session's
-  transcript chain. An attribution written before sessions recorded a subject
-  receives the subject its session record carries, once.
-- **The mirror itself.** `human_email`, `visibility`, `project_path` (the
-  checkout the session ran in), `computer`, the launch command and the todo it
-  worked, the worker classification, the title, and the origin channel with its
-  platform identifiers are recorded on the mirror.
+Mirror generation resolves the full lineage and uses the existing conversation
+chain reader and projector that session tailing uses. Each source is parsed by
+its producing runtime. The mirror applies its conversation-only visibility
+policy, retaining human and assistant conversational text while excluding tool
+calls, tool results, reasoning and injected runtime instructions.
 
-A session's transcripts rotate, and a handoff to another agent starts a new
-transcript under the same session. The session record keeps the ordered chain of
-earlier transcripts beside the current one, and every transcript in that chain is
-attributed to the session, not only the current one.
+The mirror records the session's principal, home subject and owner, registered
+project, title, launch facts, originating adapter facts and closure facts. Each
+source keeps its native identity, path, producing runtime and position as
+provenance. A native source change updates the same conversation mirror.
+Attribution is lineage, not authorship
+(`general/concept/lineage-vs-authorship`).
 
-The principal is the one the platform's session principal resolution yields for
-the record (`local/projects/teleclaude/spec/identity-and-auth`); the mirror service never derives a
-principal of its own. The registered project is the project the project catalog
-registers at the session's project path; a path the catalog does not register
-yields no project.
-
-The mirror store is the durable history domain and the session record lives in an
-operational store that may be pruned (`local/projects/teleclaude/policy/single-database`), so
-attribution is recorded when the mirror is written and never looked up when it is
-read. The reconciliation loop and the event fanout write every fact through the
-same path. A write that finds no session record, or a record that lacks a value,
-never replaces a value already recorded: the stored value stays. A value the
-session record changes — the title while the session runs — is recorded by the
-next write of the session's transcript. The session's close is recorded by the
-reconciliation loop's next pass, whether or not the transcript changed after its
-last write.
-
-A transcript no session record claims carries no session attribution. It stays
-mirrored and addressable by its agent-native id.
+Missing source material or missing upstream facts never erase recorded history.
+Stored text remains durable independently of source-file retention. Migration
+and identifier compatibility follow
+`local/projects/teleclaude/spec/feature/session_mirrors/session-id-namespaces`.
 
 ## Canonical fields
 
 ### Use cases
 
-#### Session record lookup
+#### UC-MIE-1:
 
-```
-Given a mirror event for session_id S (and possibly a transcript_path P)
-When the session_mirrors service resolves session context
-Then a single session record is looked up where session_id = S, or whose current transcript is P, or whose chain of earlier transcripts holds P
-And ties prefer the record whose session_id matches S, then the most recently created record
-And the returned context exposes
-  session_id, computer, agent, project path, subfolder, transcript_path, the transcript's position in the chain,
-  human_email, visibility, last_input_origin, adapter_metadata, system_role, the resolved principal,
-  the initiating session and its computer, whether an agent initiated it, job, command, the todo it worked,
-  title, the record's creation and close times, and the platform identifiers of its origin channel
-And missing fields map to None or the empty string
+```gherkin
+Given an operator's conversation spans several native transcripts
+When its mirror is refreshed through either existing producer path
+Then the operator can retrieve the ordered conversation through one TeleClaude identity
+And each exchange retains its source provenance
+And refreshing more than one source does not duplicate the full conversation
 ```
 
-#### Classification and title come from the session record
+#### UC-MIE-2:
 
-```
-Given a session context is resolved
-When the session_mirrors service generates a mirror
-Then is_worker is true exactly when context.system_role is the worker role
-And command and todo are the launch command and its argument recorded on the session record
-And the mirror title is the session record's title
-And no value among these is derived by reading the transcript's text
-
-Given no session record exists for the transcript
-When the session_mirrors service generates a mirror
-Then is_worker, command, and todo keep the values already recorded on the mirror, and are false and null for a new mirror
-And the title falls back to the first user message's stripped text, per `conversation-text-extraction`
+```gherkin
+Given the platform has established the authority under which a session ran
+When an authorized agent reads its mirror attribution
+Then the mirror reports that established principal
+And it reports no principal where the record establishes none
 ```
 
-#### Identity threading into mirror generation
+#### UC-MIE-3:
 
-```
-Given a session context is resolved
-When the session_mirrors service generates a mirror
-Then human_email = context.human_email
-And visibility = context.visibility OR "private"
-And computer = context.computer OR the local computer name
-And project_path = context's project path OR ""
-And last_input_origin = context.last_input_origin
-And these values are persisted on the resulting mirror
+```gherkin
+Given an operator's session ran in a registered project
+When its mirror is written
+Then the mirror carries the project the registry establishes for that session
+And an unregistered working path does not invent a project
 ```
 
-#### Channel identifier extraction for telegram
+#### UC-MIE-4:
 
-```
-Given context.last_input_origin == "telegram"
-And the adapter metadata exposes a telegram block
-When channel identifiers are extracted
-Then the result contains {"user_id": <str telegram user_id>} when user_id is present
-And nothing else from the telegram block
-And the result is merged into the mirror's metadata blob
+```gherkin
+Given an operator can retrieve recorded conversation text and identity facts
+When a refresh lacks an older source or an upstream fact
+Then the recorded content and established facts remain preserved
+And the refresh reports incomplete coverage instead of representing missing input as erased history
 ```
 
-#### Channel identifier extraction for discord
+#### UC-MIE-5:
 
-```
-Given context.last_input_origin == "discord"
-And the adapter metadata exposes a discord block with user_id and channel_id
-When channel identifiers are extracted
-Then the result may contain "user_id" (the discord user_id string)
-And "channel_id" (the discord channel_id as string) when present
-```
-
-#### Channel identifier extraction for whatsapp
-
-```
-Given context.last_input_origin == "whatsapp"
-And the adapter metadata exposes a whatsapp block with phone_number
-When channel identifiers are extracted
-Then the result contains {"phone_number": <phone_number>}
+```gherkin
+Given an operator's session was started with recorded launch and lineage facts
+When the session is mirrored and later closes
+Then its mirror preserves those launch facts and records the closure
+And repeated observations of that closure do not create another conversation
 ```
 
-#### Unsupported origin or invalid payload
+#### UC-MIE-6:
 
-```
-Given context.last_input_origin is None OR not in {telegram, discord, whatsapp}
-OR adapter metadata is empty
-When channel identifiers are extracted
-Then the extractor returns an empty result
-
-Given adapter metadata fails to parse
-When the extractor handles the parse failure
-Then it returns an empty result
+```gherkin
+Given an operator closes or soft-deletes a session
+When the operator later retrieves its historical conversation
+Then its mirror, identity and source lineage remain resolvable under the existing access rules
 ```
 
-#### Origin channel persistence in metadata
+#### UC-MIE-7:
 
-```
-Given last_input_origin is non-empty at mirror generation time
-When the mirror metadata is built
-Then metadata.origin_channel = last_input_origin
-And metadata.transcript_path = the transcript path
-And metadata.agent = the agent name
-And metadata is merged with any channel identifiers extracted above
-And the final metadata is serialized deterministically (stable field ordering)
-
-Given a mirror whose metadata records an origin channel and platform identifiers
-When a later write supplies no origin channel or no identifiers
-Then the recorded origin channel and identifiers stay in the metadata
-And the transcript path and agent are replaced by the write's values
+```gherkin
+Given a historical transcript has no established TeleClaude association
+When that retained history is associated with an archive session
+Then the conversation remains retrievable through its original source identity
+And no missing human attribution is inferred from its prose
 ```
 
-#### UC-MIE-1: Every transcript in a session's chain belongs to that session
+### Cross-context references
 
-```
-Given a TeleClaude session whose conversation spans several transcripts, because its transcript rotated or the session was handed off to another agent
-When those transcripts are mirrored
-Then each of their mirrors is attributed to that one session
-And each mirror states its place in the session's order of transcripts
-And an agent reading any of those mirrors from history learns the TeleClaude session it belongs to
-```
-
-#### UC-MIE-2: A mirror records the authority its session ran under
-
-```
-Given a session a person started, and the orchestrators and workers that ran in that person's chain
-When their transcripts are mirrored
-Then each mirror's session attribution records that person as the principal the session ran under
-And a session rooted in the platform itself records the platform's principal
-And a session whose record resolves no principal records none, rather than one inferred from the transcript
-```
-
-#### UC-MIE-3: A mirror records the registered project its session ran in
-
-```
-Given a session that ran in a checkout the project catalog registers
-When its transcript is mirrored
-Then the mirror's session attribution records that registered project
-And the mirror records the checkout path it ran in
-And a session that ran in a path the catalog does not register records the path and no project
-```
-
-#### UC-MIE-4: A later write never erases a recorded fact
-
-```
-Given a mirror that records identity facts
-When a later write of that mirror finds no session record, or a record that lacks one of those facts
-Then every fact the write cannot supply keeps its recorded value
-And a fact the write does supply replaces the recorded value
-And the reconciliation loop and the event fanout record the same facts for the same session record
-```
-
-#### UC-MIE-5: The session's launch facts are recorded
-
-```
-Given a session started by another session, by an agent, or for a scheduled job, in a subfolder of its project
-When its transcript is mirrored
-Then the session attribution records which session started it and on which computer, whether an agent started it, the job, and the subfolder
-And it records when the session started
-And once the session has closed, the reconciliation loop's next pass records when it closed, even when its transcript did not change after its last write
-```
-
-#### UC-MIE-6: The attribution survives the session record
-
-```
-Given a mirror attributed to a session
-When that session's record is later pruned from the operational store
-Then an agent reading the mirror from history still learns the TeleClaude session, principal, project, and launch facts it recorded
-```
-
-#### UC-MIE-7: A transcript no session claims stays unattributed
-
-```
-Given a transcript that no session record names as its current transcript or holds in its chain
-When it is mirrored
-Then the mirror carries no session attribution, principal, or registered project
-And it remains mirrored and addressable by its agent-native id
-```
+- Agent runtime owns session retention, conversation selection and native
+  transcript lineage.
+- Identity owns history reach and principal resolution.
+- The mirror reconciliation and fanout contracts own when refresh work runs.
 
 ## Known caveats
 
-- The session context lookup is read-only against the upstream session
-  record. A mirror-level value the record changes, such as the title, is
-  recorded only by a later write of the session's transcript; once a closed
-  session's transcript stops changing, the values its last write recorded stand.
-- A session without a record in the upstream store (cross-machine handoff,
-  manual cleanup, etc.) means the event fanout returns without generating a
-  mirror; the reconciliation loop still mirrors the transcript, unattributed.
-- A transcript that more than one session record claims — a revived session
-  continues the same transcript under a new TeleClaude session — is attributed
-  to the most recently created of them.
-- The session record keeps its chain as an ordered list of transcript paths. A
-  transcript's position is its place in that order, with the current transcript
-  last.
-- The mirror's `metadata` blob is serialized with stable field ordering;
-  the same set of fields always produces byte-identical metadata. Field
-  ordering is not a difference signal.
-- The discord adapter user_id is passed through as a raw string; the
-  discord channel_id is coerced to string. The mixed treatment is a
-  preserved quirk of the historical extractor.
-- `visibility` arrives as a free-form string from the session record and
-  the mirror store defaults it to `private`. The value is stored but grants
-  nothing: history scoping does not read it.
+- A source may be unavailable for re-derivation while its stored conversation
+  remains readable. That limitation stays explicit in coverage results.
+- Coverage that names a missing source is still ready for readers once every
+  source present on disk has been read under the current derivation rules: the
+  missing source's retained content is all the conversation still holds from it.
+  A present source that failed or is not yet read leaves coverage not ready.
+- Existing source exclusions and history access rules apply to the unified
+  mirror just as they apply to its inputs.

@@ -117,8 +117,6 @@ Discord, and who sees them, is owned by
   `telec config project help-desk-links <slug>`, one per adapter configured
   there that carries desk identifiers.
 
-<!-- planned:conversation-memory-continuity -->
-
 ### Conversation identity and retention
 
 The TeleClaude session is the durable continuation record. Returning adapter
@@ -136,8 +134,6 @@ identity resolves several linked adapters to the same registered person.
 Native transcript references remain on the session's existing lineage. Closing
 releases execution resources while retaining that record. Soft deletion hides a
 record from ordinary selection without discarding its history or relationships.
-
-<!-- /planned:conversation-memory-continuity -->
 
 ### Use cases
 
@@ -425,8 +421,6 @@ Scenario Outline: <case>
     | earlier binding | their direct message was bound to a session at that desk  | a message without an identifier | the message reaches their own assistant and not the desk session              |
 ```
 
-<!-- planned:conversation-memory-continuity -->
-
 #### UC-CE27:
 
 ```gherkin
@@ -446,8 +440,6 @@ When the human enters that endpoint
 Then the most recently created eligible matching conversation is continued
 And unrelated endpoints, worker runs and soft-deleted conversations are not selected
 ```
-
-<!-- /planned:conversation-memory-continuity -->
 
 ### Cross-context references
 

@@ -1,43 +1,51 @@
 ---
-description: Keeps a person's own memories current as their conversations in their
-  home end — one standing agent per person home, so their memories are changed by
-  one agent, one ended conversation at a time.
+description: Maintain one person's personal memories from ready conversation extractions, serially across their PA conversations.
 subscriptions:
-  - teleclaude.agent_runtime.session.ended.person
+  - teleclaude.memory.extraction.requested
 subscription_home: person
+event_delivery: sequential
+interruptible: false
 ---
 
 # Person Conversation Memory — Procedure
 
 ## Required reads
 
-- @~/.teleclaude/docs/general/procedure/conversation-memory/overview.md
+@~/.teleclaude/docs/general/procedure/conversation-memory/overview.md
 
 ## Goal
 
-When a conversation of this person in their own home ends, keep the memories
-about them in their home current, as the conversation memory procedure
-describes. This agent is the one standing agent for the person's home: every
-ended conversation of theirs reaches it, one at a time.
+Maintain the personal memories of the person whose slug the startup assignment
+names. Each activation identifies one prepared extraction from that person's
+personal-assistant conversations. Carry the assignment across later wakes.
 
 ## Preconditions
 
-- Activated by the end of a session a person held in their own home, working in
-  that person's home.
+- The startup assignment names the person this worker serves.
+- Hook-delivered activation data names an extraction ready to read.
 
 ## Steps
 
-1. Run the conversation memory procedure for the ended session, through
-   advancing its read point.
-2. End the turn. The next ended conversation of this person arrives here as a
-   new activation.
+1. Read `telec memories extraction read <id>` for the activation's extraction.
+   Take its bounded conversation evidence and progress state. An already
+   completed extraction needs no further handling.
+2. Use `person:<slug>` from the assignment to list
+   `telec memories scope --identity person:<slug>`.
+3. Apply the shared conversation-memory judgment to the supplied material.
+   Persist additions, updates and retirements with `--identity person:<slug>`
+   and `--extraction <id>` through the corresponding `telec memories` operation.
+4. After the changes are finished, run `telec memories extraction complete <id>`.
+   Complete a successfully read extract even when it warrants no memory changes.
+5. End the turn. Later wakes carry further extractions under this same assignment.
 
 ## Outputs
 
-- The outputs of the conversation memory procedure for each ended conversation.
+- Current personal memories attributed to the assigned person.
+- Completed progress for each successfully handled extraction.
 
 ## Recovery
 
-- Recovery follows the conversation memory procedure. The next ended
-  conversation, or the next end of the same conversation after its revival,
-  reads from that session's unchanged read point.
+- If the source cannot be read or an operation refuses, report the failed
+  extraction with `telec memories extraction fail <id> --reason <reason>` and
+  end the turn with the reason. Preserve partial writes and unfinished progress
+  for the next eligible handling.

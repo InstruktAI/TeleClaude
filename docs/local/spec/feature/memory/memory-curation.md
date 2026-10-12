@@ -1,118 +1,206 @@
 ---
-description: The operations a memory agent uses to keep the memories about one person
-  current — list, add, update, retire — plus collecting business items as prospects
-  and advancing a conversation's read point; open only to procedure agents.
+description: Identity-addressed curation of personal and desk memories from completed conversation mirrors, with independent source progress.
 ---
 
 # Memory Curation — Spec
 
-## Required reads
-
-- @docs/local/spec/domain/memory.md
-
 ## What it is
 
-Memories about a person are kept current by a memory agent, never accumulated.
-The agent reads a stretch of conversation, compares it with the person's current
-memories, and changes them: it adds a new memory, updates one whose fact
-changed, or retires one that no longer holds. What to keep is the agent's
-judgment; memory owns the operations and the state they leave behind.
+A memory describes a person or visitor in a memory scope. Its identity is
+independent of the conversation that supplied the evidence. Identity resolves
+registered people to `person:<slug>` and unregistered visitors to their
+provider-qualified entry identity. A person's personal memories and the
+memories about that person at each help desk occupy separate scopes.
 
-Every operation works within one **scope**: one person (their identity key) in
-one memory namespace (a desk's, or the person's own home's). A memory is
-**current** or **retired**. Retired memories leave startup context and search
-but stay recorded. Nothing is deleted by curation.
+An extraction reads a bounded revision of one TeleClaude session's conversation
+mirror. Its source references and progress identify what was processed; they
+never select the person whose memories are changed. The memory worker judges
+what the conversation establishes, compares it with current memories, and adds,
+updates or retires observations. Business prospects belong to the desk's owner
+and remain separate from person memories.
 
-Business items a conversation showed are collected as **prospects** for the home
-that owns the desk. A prospect is a record in the memory store but not a memory:
-it is raw material, never rendered as startup context, returned by search, or
-listed with memories.
-
-The agent also advances the conversation session's **read point** — how far its
-conversation has been read — once its changes are made.
+These boundaries follow explicit state ownership and identity resolution
+(`sdlc/policy/code-quality`,
+`local/projects/teleclaude/spec/feature/identity/human-identity-resolution`).
 
 ## Canonical fields
 
+### Identity and scope
+
+`--identity` accepts the canonical person key or a provider-qualified visitor
+key. Identity validates and normalizes the supplied reference using the same
+entry binding used at conversation entry. Verified bindings to registered people
+resolve to their slug regardless of their role. Original provider metadata stays
+available as provenance. Unlinked provider identities remain separate.
+
+Without `--desk`, the identity names a registered person's personal memory
+scope. With `--desk`, the existing help-desk identifier selects that desk's
+memory scope. Unregistered visitors require a desk. Neither a working directory
+nor a source session silently selects these values.
+
+A verified visitor-to-person binding reconciles prior memories within the same
+scope, preserving their provenance. Personal and desk scopes remain distinct.
+Unscoped historical records are attributed only from reliable recorded evidence;
+unresolved records remain retained and are excluded from automatic personal or
+visitor context. General administrative history reach is unchanged.
+
+### Worker command contract
+
+```text
+telec memories scope --identity <identity> [--desk <desk-id>]
+telec memories add --identity <identity> [--desk <desk-id>] --extraction <id> --type <type> <text>
+telec memories update <memory-id> --identity <identity> [--desk <desk-id>] --extraction <id> <text>
+telec memories retire <memory-id> --identity <identity> [--desk <desk-id>] --extraction <id>
+telec memories prospect --desk <desk-id> --extraction <id> --type <type> <text>
+telec memories extraction read <id>
+telec memories extraction complete <id>
+telec memories extraction fail <id> --reason <reason>
+```
+
+The extraction assignment carries its resolved identity and scope. Mutations
+verify that the named scope agrees with the assignment and preserve the source
+reference. The existing observation-type vocabulary owns accepted types.
+An extraction read returns its bounded conversational material, source coverage,
+resolved scope, and already-recorded progress. Its content excludes tools,
+reasoning, injected platform instructions, and compaction summaries.
+
+Completion is the worker's declaration that its memory/prospect changes for the
+supplied material are finished, including a successful run with no changes.
+Completion advances durable progress only through that material. Failure keeps
+the uncompleted stretch eligible and reports the reason. Reading, dispatching,
+handing an event to a hook, and an agent stopping are not completion.
+
+An extraction is released once its mirror's coverage is ready for the captured
+closure. A source whose file has disappeared contributes its retained content,
+and the extraction read names that source as missing. A present source that
+cannot yet be read keeps the extraction pending with that reason.
+
+Progress is independent for each TeleClaude conversation mirror and remains
+stable through native transcript changes, compaction, and mirror re-derivation.
+A timestamp alone on a person is never the progress key. Repeated delivery of
+the same completed source revision does not repeat extraction. Updates for one
+identity and memory scope are serialized, including work from different PA
+conversations. A newer mirror revision cannot be overwritten by completion of
+an older extraction.
+
+Existing session-addressed curation calls have a deployment transition in which
+they are normalized at the compatibility boundary. Worker instructions use the
+identity-addressed contract. The transition preserves accepted work and ends
+after pre-transition workers and fleet callers have moved to the current
+contract (`sdlc/policy/backward-compatibility-hygiene`).
+
 ### Use cases
 
-#### UC-MC1: A memory agent lists one person's current memories
+#### UC-MC1:
 
 ```gherkin
-Given a procedure agent and a scope of one person in one namespace
-When it lists the memories of that scope
-Then it receives every current memory of that person in that namespace
-And no retired memory, no prospect, and nothing of any other person or namespace
+Given a memory worker assigned to a person and memory scope
+When it lists the current memories for that identity and scope
+Then it receives that person's current memories in that scope
+And it receives no retired memory, business prospect, or memory from another identity or scope
 ```
 
-#### UC-MC2: Adding, updating and retiring stay within the scope
+#### UC-MC2:
 
 ```gherkin
-Given a procedure agent working on one scope
-When it adds a memory, updates one, or retires one
-Then the change applies to that scope only
-And an update or retirement of a memory outside that scope is refused
+Given a memory worker processing an assigned conversation extract
+When it adds, updates or retires a memory
+Then the change is attributed to the assignment's person and memory scope
+And a mismatching requested scope is refused without mutation
 ```
 
-#### UC-MC3: Retired memories are out of use but kept
+#### UC-MC3:
 
 ```gherkin
-Given a memory that a memory agent retired
-When startup context is rendered or memories are searched or listed for use
-Then the retired memory is not included
-And it remains recorded with the moment it was retired
+Given a memory worker retired a memory
+When an assistant receives memory context or searches current memories
+Then the retired memory is absent from that result
+And the historical observation remains recorded
 ```
 
-#### UC-MC4: Business items are collected as prospects
+#### UC-MC4:
 
 ```gherkin
-Given a procedure agent that read a desk conversation
-When it records a business item for the home that owns the desk
-Then the item is kept as a prospect in that home's namespace, with the conversation it came from
-And it is never rendered as startup context, returned by search, or listed with memories
+Given a desk memory worker found a business item in a visitor conversation
+When it records that item as a prospect
+Then the prospect belongs to the desk's owning home
+And it does not appear as a person memory in assistant context or memory search
 ```
 
-#### UC-MC5: The read point advances only when asked
+#### UC-MC5:
 
 ```gherkin
-Given a conversation session and a procedure agent that finished its changes for a stretch of that conversation
-When the agent advances the session's read point to the newest entry it read
-Then a later read of that session starts after that entry
-And a read point is never moved backwards
+Given a memory worker finished handling a bounded conversation extract
+When it declares the extraction complete
+Then progress covers exactly the supplied stretch, whether or not any memory changed
+And later extraction starts after that stretch
+And progress never moves backwards
 ```
 
-#### UC-MC7: A conversation's business items are collected once
+#### UC-MC6:
 
 ```gherkin
-Given a procedure agent that recorded business items from a desk conversation
-And the conversation's read point was not advanced afterwards
-When a procedure agent reads that stretch again
-Then the scope of that conversation lists the prospects already recorded from it
-And an item already among them is not recorded a second time
+Given a caller asks to perform a memory-curation operation
+When the platform has not established that caller as a procedure agent under its system authority
+Then the operation is refused without changing memory or extraction progress
 ```
 
-#### UC-MC6: Only procedure agents curate
+#### UC-MC7:
 
 ```gherkin
-Given a caller asking to list a scope for curation, add, update or retire a memory, record a prospect, or advance a read point
-When the caller is not an agent the platform started for a procedure, under the system principal
-Then the request is refused and nothing changes
+Given a desk memory worker recorded a prospect before an extraction was interrupted
+When the same extract is handled again
+Then the worker can see the prospect already recorded from that source
+And handling the extract does not add that prospect again
+```
+
+#### UC-MC8:
+
+```gherkin
+Given a person has several separate personal-assistant conversations
+When a memory worker completes extraction from one conversation
+Then the other conversations retain their own extraction progress
+And each can contribute observations to the same person's personal memories
+```
+
+#### UC-MC9:
+
+```gherkin
+Given an agent can retrieve a person's memories from an earlier conversation
+When that source conversation is closed, soft-deleted, or continued with another native transcript
+Then the memories remain attributed to the same identity and scope
+And their recorded source remains traceable
+```
+
+#### UC-MC10:
+
+```gherkin
+Given a visitor has memories at a help desk under a provider identity
+When identity verifies that provider account's binding to a registered person
+Then an assistant serving that person at the same desk can retrieve those memories through the canonical person identity
+And the binding does not expose memories from other desks or an unrelated provider identity
+```
+
+#### UC-MC11:
+
+```gherkin
+Given a worker completed extraction from a conversation revision
+When a repeated notification or metadata-only mirror update reaches the worker
+Then already processed conversational content is not mined again
+And new conversational content remains eligible
 ```
 
 ### Cross-context references
 
-- **agent_runtime** — the memory agents are procedure agents started by a
-  conversation session's end
-  (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-continuity`);
-  the read point is a fact on the session record.
-- **identity** — supplies the person's identity key and principal recorded with
-  each memory, and decides who is a procedure agent under the system principal
-  (`local/projects/teleclaude/spec/feature/memory/identity-key-ownership`).
+- Identity owns canonical person and visitor references and caller reach.
+- Session mirrors own the complete conversation and its readable coverage
+  (`local/projects/teleclaude/spec/feature/session_mirrors/mirror-detail-retrieval`).
+- Agent runtime owns eligible conversation closure and procedure lifecycle
+  (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-continuity`).
 
 ## Known caveats
 
-- **Memory does not judge.** It applies the changes it is asked for within a
-  scope; deciding them is the agent's.
-- **Saving a single observation is unchanged.** The existing save path keeps its
-  behavior; curation is a separate set of operations.
-- **Prospects wait for aggregation.** Collected business items accumulate until
-  their aggregation exists; nothing reads them meanwhile.
+- Content selection is the memory worker's judgment. The storage operations
+  validate identity, scope and progress rather than grading its prose.
+- A failed extraction can leave completed memory writes with unadvanced source
+  progress. Retrying compares with current records before completing the stretch.

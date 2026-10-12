@@ -1,7 +1,6 @@
 ---
-description: Composition of retained conversation sessions, session-owned mirrors and identity-addressed memory extraction at closure.
-delivered_by:
-  - conversation-memory-continuity
+description: Composition of retained conversation sessions, session-owned mirrors
+  and identity-addressed memory extraction at closure.
 ---
 
 # Conversation Memory Pipeline — Design

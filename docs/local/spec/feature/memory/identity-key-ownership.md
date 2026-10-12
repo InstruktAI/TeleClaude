@@ -11,8 +11,6 @@ Every memory observation may carry an optional `identity_key` — an opaque stri
 
 ## Canonical fields
 
-<!-- planned:conversation-memory-continuity -->
-
 ### Conversation curation
 
 Worker curation explicitly selects a canonical identity and optional desk under
@@ -21,8 +19,6 @@ personal and visitor context uses that strictly resolved scope; unresolved
 legacy observations remain retained without automatic attribution. The generic
 programmatic and administrative surfaces retain their existing reach contracts.
 Source sessions and extraction identities carry provenance and progress.
-
-<!-- /planned:conversation-memory-continuity -->
 
 ### Use cases
 
@@ -94,14 +90,6 @@ And the resulting call is unscoped — saves record no identity scope; queries r
 - **Inclusion-of-unscoped is intentional asymmetry.** A query scoped to a key sees unscoped observations too; a query with no key sees every observation. Whether to keep this "unscoped-is-public" semantic or replace it with strict per-principal scoping is a memory-domain decision, not a feature-level one.
 - **Identity scope is honored on search and on context injection only.** Bulk-fetch and timeline surfaces do not filter by identity. A caller that knows an observation id can fetch it regardless of how it was tagged at save.
 
-<!-- planned-change:conversation-memory-continuity -->
-
-- **CLI is identity-blind outside curation.** Every CLI save records no identity scope, and every CLI query returns observations from every scope. Only programmatic callers, the session-start consumer, and curation — whose operations take the scope of the conversation session they name (`local/projects/teleclaude/spec/feature/memory/memory-curation`) — participate in identity scoping.
-
-<!-- change:conversation-memory-continuity -->
-
 - **CLI is identity-blind outside curation.** Every CLI save records no identity scope, and every CLI query returns observations from every scope. Only programmatic callers, the session-start consumer, and curation — whose operations name a resolved identity and optional desk (`local/projects/teleclaude/spec/feature/memory/memory-curation`) — participate in identity scoping.
-
-<!-- /planned-change:conversation-memory-continuity -->
 
 - **Rotation is not modeled.** If a principal's identity key is rotated, prior observations remain tagged with the old key and are not visible to queries supplying the new key. There is no migration helper.
