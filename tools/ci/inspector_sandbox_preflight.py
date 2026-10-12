@@ -14,6 +14,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 from tools.ci.gha import append_output, required_env
+from tools.ci.inspector_native_access import NativeAccessOperation, native_probe_program
 from tools.release.attempt import ProviderAttempt, ProviderFailure, ProviderName, ProviderOutcome
 from tools.release.codex_auth import CODEX_AUTH_FILENAME
 from tools.release.evidence_contract import EVIDENCE_INDEX_FILENAME
@@ -136,28 +137,8 @@ _PROBE_PYTHON = "/usr/bin/python3"
 _PROBE_CODE_OPTION = "-c"
 
 
-class NativeAccessOperation(StrEnum):
-    """Fixed probe access operations in the bounded native receipt."""
-
-    READ = "read"
-    WRITE = "write"
-
-
 _PROBE_READ = NativeAccessOperation.READ
 _PROBE_WRITE = NativeAccessOperation.WRITE
-_PROBE_CODE = """import hashlib,json,os,sys
-result={"operation":sys.argv[1],"errno":None,"sha256":None}
-try:
-    if sys.argv[1]=="read":
-        with open(sys.argv[2],"rb") as source:
-            result["sha256"]=hashlib.sha256(source.read()).hexdigest()
-    else:
-        descriptor=os.open(sys.argv[2],os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-        os.close(descriptor)
-except OSError as error:
-    result["errno"]=error.errno
-print(json.dumps(result))
-"""
 _READ_REFUSAL_ERRNOS = frozenset({errno.EACCES, errno.EPERM, errno.ENOENT})
 _WRITE_REFUSAL_ERRNOS = _READ_REFUSAL_ERRNOS | {errno.EROFS}
 _PROBES_KEY = "confinement"
@@ -215,7 +196,14 @@ def check_confinement(bootstrap: InspectorBootstrap, environment: dict[str, str]
             result = run_isolated_process(
                 InspectorRole.CODEX,
                 bootstrap.executable(InspectorRole.CODEX),
-                (*_SANDBOX_ARGUMENTS[:-1], _PROBE_PYTHON, _PROBE_CODE_OPTION, _PROBE_CODE, access, str(path)),
+                (
+                    *_SANDBOX_ARGUMENTS[:-1],
+                    _PROBE_PYTHON,
+                    _PROBE_CODE_OPTION,
+                    native_probe_program(),
+                    access,
+                    str(path),
+                ),
                 bootstrap.evidence,
                 environment,
                 controller_directory=bootstrap.controller,
