@@ -75,8 +75,6 @@ where `computer.is_ingress_node` is set. A person's voice-bot token is needed
 nowhere: without it, that person has no voice room. The per-file published schema cannot express a
 condition on the machine configuration, so it does not carry these needs.
 
-<!-- planned:master-owned-providers -->
-
 A machine-config section declares its **scope**: `local`, the default, or
 `master`. A master-scoped section is meaningful only on the computer where
 `computer.is_master` holds. On every other computer the configuration reader
@@ -109,7 +107,6 @@ project forums under
 and ownership of Discord direct messages is the conversational-entry rule in
 `local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`, not a
 scope on the section.
-<!-- /planned:master-owned-providers -->
 
 A file points at its schema with a `# yaml-language-server: $schema=<ref>`
 modeline. The reference is relative and fixed by the file's tier alone, derived
@@ -478,11 +475,6 @@ consult the process environment directly.
 environment_variables:
   # Telegram adapter
   - TELEGRAM_BOT_TOKEN
-<!-- planned-change:master-owned-providers -->
-  - TELEGRAM_ALERT_USERNAME
-  - TELEGRAM_ALERT_CHAT_ID
-<!-- change:master-owned-providers -->
-<!-- /planned-change:master-owned-providers -->
   # Discord adapter
   - DISCORD_TOKEN
   - DISCORD_GUILD_ID
@@ -622,11 +614,6 @@ services:
 telegram:
   enabled: boolean
   bot_token: string | null # normally ${TELEGRAM_BOT_TOKEN}
-<!-- planned-change:master-owned-providers -->
-  alert_username: string | null # normally ${TELEGRAM_ALERT_USERNAME}
-  alert_chat_id: string | null # normally ${TELEGRAM_ALERT_CHAT_ID}
-<!-- change:master-owned-providers -->
-<!-- /planned-change:master-owned-providers -->
 discord:
   enabled: boolean
   token: string | null # sensitive; ${DISCORD_TOKEN}
