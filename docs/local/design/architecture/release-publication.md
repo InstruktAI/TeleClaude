@@ -156,6 +156,12 @@ content, so inspection needs no shell or GitHub token. Source and evidence are
 controller-owned and immutable to the inspector identity. Source symlinks remain
 data rather than links into the host filesystem.
 
+Claude's native `StructuredOutput` event produces report data rather than file
+access. The adapter recognizes that exact formatting capability only when its
+input validates as `LaneReport`. File-read, search and listing events retain
+their evidence-path checks; existing hook and external-tool refusals remain in
+force. Final result validation still owns whether assessment completed.
+
 Claude runtime authentication and private configuration stay outside every
 model-readable working root. Native safe mode and an empty external-tool
 configuration suppress discovered customizations; the effective managed policy

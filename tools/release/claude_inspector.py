@@ -112,6 +112,7 @@ _WRAPPER_TYPE = "result"
 _ASSISTANT_TYPE = "assistant"
 _TOOL_USE_TYPE = "tool_use"
 _SYSTEM_EVENT_TYPE = "system"
+_STRUCTURED_OUTPUT_TOOL_NAME = "StructuredOutput"
 _READ_TOOL_NAME = "Read"
 _GLOB_TOOL_NAME = "Glob"
 _HOOK_EVENT_SUBTYPES = frozenset({"hook_started", "hook_progress", "hook_response"})
@@ -179,7 +180,7 @@ class ClaudeToolUse(BaseModel):
 
     type: str | None = None
     name: str | None = None
-    input: ClaudeFileToolInput | None = None
+    input: object | None = None
 
 
 class ClaudeMessage(BaseModel):
@@ -520,23 +521,27 @@ def _parse_stream_result(output: bytes, evidence_directory: Path) -> ClaudeCliEn
 
 def _validate_tool_invocation(invocation: ClaudeToolUse, evidence_directory: Path) -> None:
     """Keep each logged tool request inside the prepared source tree and tool allowlist."""
+    if invocation.name == _STRUCTURED_OUTPUT_TOOL_NAME:
+        LaneReport.model_validate(invocation.input)
+        return
     if invocation.name not in _ALLOWED_TOOL_NAMES or invocation.input is None:
         raise InspectorBoundaryError(_UNEXPECTED_TOOL_EVENT)
+    file_input = ClaudeFileToolInput.model_validate(invocation.input)
     paths: list[str]
     if invocation.name == _READ_TOOL_NAME:
-        if invocation.input.file_path is None:
+        if file_input.file_path is None:
             raise InspectorBoundaryError(_UNEXPECTED_TOOL_EVENT)
-        paths = [invocation.input.file_path]
+        paths = [file_input.file_path]
     else:
-        path_value = invocation.input.path
+        path_value = file_input.path
         if path_value is None:
             paths = [_EMPTY]
         elif isinstance(path_value, str):
             paths = [path_value]
         else:
             paths = path_value
-    if invocation.name == _GLOB_TOOL_NAME and invocation.input.pattern is not None:
-        pattern_path = PurePosixPath(invocation.input.pattern)
+    if invocation.name == _GLOB_TOOL_NAME and file_input.pattern is not None:
+        pattern_path = PurePosixPath(file_input.pattern)
         if pattern_path.is_absolute() or any(part == _PARENT_DIRECTORY_PART for part in pattern_path.parts):
             raise InspectorBoundaryError(_UNEXPECTED_TOOL_PATH)
     root = evidence_directory.resolve()
