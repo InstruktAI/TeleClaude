@@ -91,6 +91,7 @@ _DIAGNOSTIC_INCOMPLETE = "Codex returned a structurally valid incomplete assessm
 _DIAGNOSTIC_SETUP_FAILURE = "Codex inspection setup or execution failed before a valid assessment."
 _DIAGNOSTIC_AUTH_STATE_FAILURE = "Codex auth state could not be captured after the isolated process exited."
 _CONFIGURATION_INVALID = "The private Codex inspection configuration is unavailable or unsafe."
+_PRIVATE_PROFILE_PATH_INVALID = "Codex private paths must be resolved descendants of the denied controller directory."
 _STDOUT_HASH_PREFIX = "stdout_sha256="
 _STDERR_HASH_PREFIX = "stderr_sha256="
 
@@ -355,6 +356,16 @@ def _profile_content(
     codex_home: Path,
 ) -> str:
     """Build a native Codex read-only profile that exposes only the evidence tree."""
+    if not controller_directory.is_absolute() or controller_directory.resolve() != controller_directory:
+        raise ValueError(_PRIVATE_PROFILE_PATH_INVALID)
+    for private_path in (principal_home, principal_temp, codex_home):
+        if (
+            not private_path.is_absolute()
+            or private_path.resolve() != private_path
+            or private_path == controller_directory
+            or not private_path.is_relative_to(controller_directory)
+        ):
+            raise ValueError(_PRIVATE_PROFILE_PATH_INVALID)
     lines = (
         _TOML_DEFAULT_PROFILE,
         _TOML_AUTH_STORAGE,
@@ -367,10 +378,7 @@ def _profile_content(
         _TOML_RUN_DENY,
         _TOML_VAR_RUN_DENY,
         _toml_path_rule(evidence_directory, _TOML_READ_PERMISSION),
-        _toml_path_rule(codex_home, _TOML_DENY_PERMISSION),
         _toml_path_rule(controller_directory, _TOML_DENY_PERMISSION),
-        _toml_path_rule(principal_home, _TOML_DENY_PERMISSION),
-        _toml_path_rule(principal_temp, _TOML_DENY_PERMISSION),
         _TOML_NETWORK_TABLE,
         _TOML_NETWORK_DISABLED,
     )
