@@ -145,13 +145,24 @@ the dispatcher reads it to decide local execution versus forwarding.
 
 The relay command carries one API request whole: its method, its path, its query, its
 body, the caller's principal, the caller session's address — its id and computer, so
-the owning computer can record who asked and wake it with the outcome — and
-`computer`, the computer the request names. It carries no role, scope, author kind or
-runtime: everything the caller's own surface shows about the caller stays with the
-caller. Its result is that request's response: the status code, the body and the
-declared work feedback. The owning computer executes the carried request against its
-own API as though it had arrived there directly, as the caller the principal resolves
-to on that computer; nothing about the request is interpreted on the way.
+the owning computer can record who asked and wake it with the outcome — the `telec`
+command the caller's surface cleared the request as, and `computer`, the computer the
+request names. It carries no role, scope, author kind or runtime: everything the
+caller's own surface shows about the caller stays with the caller. Its result is that
+request's response: the status code, the body and the declared work feedback. The
+owning computer executes the carried request against its own API as though it had
+arrived there directly, as the caller the principal resolves to on that computer;
+nothing about the request is interpreted on the way.
+
+The owning computer admits a relayed request before it runs. The command it names
+must be one that performs that request: the command surface declares, for every
+daemon-backed command, the API requests it performs, and a request no declared
+command performs is refused by name. The owner then decides the command's person
+band from the principal at the scope of the object the request addresses, read from
+the request and the object itself
+(`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`), and
+runs the request as the caller it resolved itself. Nothing from the relaying
+computer's own caller headers reaches the owner's route.
 
 ### `OperationReceipt` fields (RECEIPT mode response)
 
@@ -165,7 +176,7 @@ to on that computer; nothing about the request is interpreted on the way.
   "computer":         str,  # the computer that owns the row and runs the work
   "success_event":    str,  # emitted on a successful terminal transition
   "failure_event":    str,  # emitted on a failed terminal transition
-  "recovery_command": str,  # telec operations get {operation_id}
+  "recovery_command": str,  # telec operations get {operation_id} --computer {computer}
 }
 ```
 
@@ -217,13 +228,11 @@ to on that computer; nothing about the request is interpreted on the way.
   the same dispatcher and the same forwarding, and the owning computer reconstructs the
   request it carries.
 - **Authentication at the edge, the person band at the owner.** The caller is
-  authenticated and cleared once, in the client process that serves it, and nothing
-  authenticates it again anywhere. The relay carries the caller's principal and no role.
-  The owning computer resolves that principal's roles from its own person registry,
-  company rosters and project registry, and applies the verb's person band and the
-  object's rules as one decision — the contract every relayed act already follows
-  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). No
-  login, session or terminal on the owning computer takes part.
+  authenticated once, in the client process that serves it, and nothing authenticates
+  it again anywhere. The relay carries the caller's principal and the command it was
+  cleared as, and no role. The owning computer admits only a request that command
+  performs, and decides the command's person band there
+  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
 - **Work, row, and emission stay together.** The computer that runs an operation owns its
   row and emits its outcome events. Neither the row nor the receipt is replicated; only the
   outcome notification crosses a machine boundary. A caller reads a relayed operation's
@@ -244,8 +253,9 @@ to on that computer; nothing about the request is interpreted on the way.
 - **A daemon-backed CLI command addresses a computer.** Every `telec` command that acts
   through the daemon on an object a computer owns accepts the computer to address;
   omitted, it addresses this one. The command surface declares which commands these
-  are. A command that reads local state without the daemon when it addresses this
-  computer reaches the daemon when it addresses another.
+  are. A command that acts on local state without the daemon when it addresses this
+  computer reaches the daemon when it addresses another, through a request that
+  performs the same operation, so the owning computer answers it as that command.
 
 ## Primary flows
 
@@ -350,10 +360,14 @@ clearance there — crosses back as that route's own status and work feedback.
   raises. The invalid command never reaches the dispatcher.
 - **Caller mismatch on read.** Non-admin callers attempting to inspect another session's
   operation receive a 404 rather than a 403, to avoid operation and session enumeration.
-- **The addressed computer cannot take the request.** A computer that is offline, unknown
-  to the registry, or running a version without the relay refuses the request before
-  anything runs anywhere, with an error that names the computer and the reason. Nothing
-  is executed locally in its place.
+- **The addressed computer cannot take the request.** The relaying computer reads its
+  peer registry before it sends: a computer the registry does not hold is unknown, one
+  whose heartbeat has lapsed is offline, and one whose advertised capability set lacks
+  the relay is running a version without it. Each is refused before anything runs
+  anywhere, with an error that names the computer and the reason. Nothing is executed
+  locally in its place.
+- **The relayed request is not one its command performs.** The owning computer refuses
+  it, naming the request and the command, and runs nothing.
 - **The addressed computer refuses the caller.** The person band the owning computer
   resolves for the relayed principal decides; its refusal crosses back as the response,
   and the relaying computer records nothing as done.

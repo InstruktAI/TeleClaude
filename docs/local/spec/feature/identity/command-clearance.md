@@ -138,6 +138,8 @@ Then the command is refused with the not-permitted failure naming `customer` and
 And the machine configuration and the person registry are unchanged and unread
 ```
 
+<!-- planned-change:relay-computer-addressed-requests -->
+
 #### UC-CCS7: A command naming another computer that acts on nothing held there is refused locally
 
 ```
@@ -145,6 +147,12 @@ Given a person holding no platform role and the admin role in one company
 When the person runs a command naming another computer that acts on nothing held there, such as listing its projects
 Then the command is refused naming `customer` and sends no request
 ```
+
+<!-- change:relay-computer-addressed-requests -->
+
+#### UC-CCS7: A command naming another computer that acts on nothing held there is refused locally
+
+<!-- /planned-change:relay-computer-addressed-requests -->
 
 #### UC-CCS8: A trusted-directory name reaches its selected project
 
@@ -504,6 +512,8 @@ supplies.
   but customer, so a registered person without a platform role creates in their
   own home and adopts.
 
+<!-- planned-change:relay-computer-addressed-requests -->
+
 - A command that names a target session is judged at the project that session runs
   in.
 - A command that names a directory to act in is judged at the project containing
@@ -521,6 +531,28 @@ supplies.
   registered project.
 - The TUI judges each action at the scope of the object that action targets, and
   at platform scope when the action targets no project or session.
+
+<!-- change:relay-computer-addressed-requests -->
+
+- A command that names a target session is judged at the project that session runs
+  in.
+- A command that names a directory to act in is judged at the project containing
+  that directory.
+- A `telec bugs` command whose `--project` value names a trusted directory is
+  judged at the project containing the directory that name resolves to
+  (`local/projects/teleclaude/design/architecture/cli-invocation-boundary` invariant 5).
+- A command that names another computer is decided by that computer, at the scope
+  of the object it addresses there, read by these same rules from the request it sends
+  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). Here it needs an identified caller and,
+  for a session caller, the command's agent band. A `telec sessions send` that opens or closes a direct
+  conversation with a session on another computer is judged at platform scope.
+- Every other command is judged at the project the invocation runs in — the project
+  of its working directory's checkout — and at platform scope where it runs in no
+  registered project.
+- The TUI judges each action at the scope of the object that action targets, and
+  at platform scope when the action targets no project or session.
+
+<!-- /planned-change:relay-computer-addressed-requests -->
 
 A person caller is admitted when the command's person band admits their effective
 role at that scope. A session acting for a person is admitted only when the

@@ -14,6 +14,8 @@ visibility: internal
 
 ## What it is
 
+<!-- planned-change:relay-computer-addressed-requests -->
+
 A person or agent on one computer can act on objects another computer holds: a
 session running there, a session to start there, an operation it owns, the
 sessions it can list, and the history it can search or show. Such a command is
@@ -22,6 +24,21 @@ computer resolves the caller's roles from its own person registry, company roste
 and project registry, reads the object's scope from its own records, and applies the
 command's person band and the object's rules as one decision
 (`local/projects/teleclaude/spec/feature/identity/command-clearance`).
+
+<!-- change:relay-computer-addressed-requests -->
+
+A person or agent on one computer can act on objects another computer holds:
+whatever a command addressed to that computer acts on — a session running there or
+to start there, an operation it owns, its session listing and history, a todo and
+its artifacts in a project there, its jobs, its agents' dispatch status, its
+configuration. Such a command is decided by the computer that holds the object
+(`local/projects/teleclaude/design/architecture/scoped-roles`): that computer
+resolves the caller's roles from its own person registry, company rosters, and
+project registry, reads the object's scope from its own records, and applies the
+command's person band and the object's rules as one decision
+(`local/projects/teleclaude/spec/feature/identity/command-clearance`).
+
+<!-- /planned-change:relay-computer-addressed-requests -->
 
 The caller's computer establishes who is calling and carries only the caller's
 principal across as identity. It never carries a role or a scope as authority: a

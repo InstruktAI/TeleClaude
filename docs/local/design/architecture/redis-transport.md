@@ -146,6 +146,10 @@ owning computer reconstructs the request and runs it through its own API boundar
 the response crosses back on the one-shot response stream. The transport carries no
 per-route vocabulary and no read-specific command set for API-originated work.
 
+The relay is a negotiated capability. A computer advertises it in the capability set
+its heartbeat carries, and sends a relay command only to a peer that advertises it; a
+peer that does not is refused before anything is sent, naming the computer.
+
 <!-- /planned:relay-computer-addressed-requests -->
 
 ## Failure modes

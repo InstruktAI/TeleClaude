@@ -129,6 +129,21 @@ TeleClaudeNext.
   no project publishes a domain by that name. The consumers that tell people
   read interests through that answer and never parse them.
 
+<!-- planned:relay-computer-addressed-requests -->
+
+**Configuration subjects are reachable through the daemon.** Every `telec config`
+operation on a subject — list, get, init, patch, project creation, person
+invitation, the voice-bot declaration, help-desk links, validation, and the
+environment — is also published as a daemon request that performs the same
+operation under the same target clearance
+(`local/projects/teleclaude/spec/feature/identity/configuration-target-clearance`).
+A `telec config` command addressed to another computer reaches that computer
+through it
+(`local/projects/teleclaude/spec/feature/integration/computer-addressed-execution`);
+addressed to this computer, the command still runs in the process that invokes it.
+
+<!-- /planned:relay-computer-addressed-requests -->
+
 #### Use cases (index of feature specs)
 
 - **project-registry** — `docs/local/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry
