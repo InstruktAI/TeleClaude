@@ -109,6 +109,7 @@ class GatewayHandlersMixin:
     - _parse_optional_int(value) -> int | None
     - _ensure_discord_infrastructure() (async)
     - _reconcile_team_channels() (async)
+    - _holds_shared_provider_authority() (async)
     - _build_session_launcher_view(forum_id) -> object
     - _post_or_update_launcher(forum_id) (async)
     - _handle_launcher_click(interaction, agent_name, launcher_forum_id) (async)
@@ -165,6 +166,8 @@ class GatewayHandlersMixin:
         async def _ensure_discord_infrastructure(self) -> None: ...
 
         async def _reconcile_team_channels(self) -> None: ...
+
+        async def _holds_shared_provider_authority(self) -> bool: ...
 
         async def _handle_projects_changed(self, _event: str, context: ProjectsChangedContext) -> None: ...
 
@@ -374,7 +377,10 @@ class GatewayHandlersMixin:
 
         await self._reconcile_team_channels()
 
-        if self._tree is not None and self._guild_id is not None:
+        # Handlers are registered on every computer for the resources it owns; the guild's published
+        # command definitions are the shared application's, replaced wholesale by each sync, so only
+        # the unique master publishes them.
+        if self._tree is not None and self._guild_id is not None and await self._holds_shared_provider_authority():
             sync_fn = getattr(self._tree, "sync", None)
             object_cls = getattr(self._discord, "Object", None)
             if callable(sync_fn) and callable(object_cls):

@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
@@ -47,6 +48,27 @@ _PEER_VERSION_FIELD = "version"
 _PEER_CHANNEL_FIELD = "channel"
 _MASTER_CONFLICT_EVENT = "conversation_master_conflict"
 _FLEET_OBSERVATION_FAILED_EVENT = "fleet_observation_failed"
+
+
+class MasterUnavailability(StrEnum):
+    """Why the fleet names no master for a request."""
+
+    NO_LIVE_MASTER = "no_live_master"
+    CONFLICTING_MASTERS = "conflicting_masters"
+    MASTER_DOES_NOT_RUN_ADAPTER = "master_does_not_run_adapter"
+
+
+@dataclass(frozen=True)
+class MasterResolution:
+    """The fleet's answer to "who is the master": one live computer, or the reason there is none.
+
+    ``computers`` names the computers the answer rests on: the selected master, the declared
+    masters in conflict, or the master that does not run the requested adapter.
+    """
+
+    master: FleetMember | None
+    unavailability: MasterUnavailability | None = None
+    computers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -102,23 +124,33 @@ class FleetView:
         """The live computers that do not carry endpoint routing yet."""
         return [member.name for member in self.members if CONVERSATION_ENTRY_FEATURE_ID not in member.capability_set]
 
+    def resolve_master(self) -> MasterResolution:
+        """The single live mesh master, or why there is none: no live master, or a conflict between several."""
+        masters = tuple(member for member in self.members if member.is_master)
+        if len(masters) > 1:
+            return MasterResolution(None, MasterUnavailability.CONFLICTING_MASTERS, tuple(m.name for m in masters))
+        if not masters:
+            return MasterResolution(None, MasterUnavailability.NO_LIVE_MASTER)
+        return MasterResolution(masters[0], computers=(masters[0].name,))
+
+    def resolve_routing_master(self, origin: InputOrigin) -> MasterResolution:
+        """The master when it is live and runs ``origin``, or why no computer routes there."""
+        resolution = self.resolve_master()
+        master = resolution.master
+        if master is not None and not master.runs(origin):
+            return MasterResolution(None, MasterUnavailability.MASTER_DOES_NOT_RUN_ADAPTER, (master.name,))
+        return resolution
+
     def master(self) -> FleetMember | None:
         """The single live mesh master; none, or a conflict between several, is no master."""
-        masters = [member for member in self.members if member.is_master]
-        if len(masters) > 1:
-            logger.error(_MASTER_CONFLICT_EVENT, computers=[member.name for member in masters])
-            return None
-        return masters[0] if masters else None
+        resolution = self.resolve_master()
+        if resolution.unavailability is MasterUnavailability.CONFLICTING_MASTERS:
+            logger.error(_MASTER_CONFLICT_EVENT, computers=list(resolution.computers))
+        return resolution.master
 
     def routing_master(self, origin: InputOrigin) -> FleetMember | None:
         """The master, when it is live and runs ``origin``; the only computer that routes there."""
-        master = self.master()
-        return master if master is not None and master.runs(origin) else None
-
-    def unavailable_replier(self, origin: InputOrigin) -> str | None:
-        """The lowest-named live computer running ``origin``: the one that answers while nobody routes."""
-        running = [member.name for member in self.members if member.runs(origin)]
-        return running[0] if running else None
+        return self.resolve_routing_master(origin).master
 
 
 def local_conversation_adapters() -> frozenset[str]:
@@ -202,6 +234,8 @@ async def observe_fleet(client: AdapterClient) -> FleetView:
 __all__ = [
     "FleetMember",
     "FleetView",
+    "MasterResolution",
+    "MasterUnavailability",
     "build_fleet_view",
     "contraction_answer_from_heartbeats",
     "fleet_member_from_peer",

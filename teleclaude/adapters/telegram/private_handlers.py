@@ -90,7 +90,7 @@ def _is_private_chat_session(session: Session) -> bool:
 
 
 def telegram_conversation(user_id: int) -> ConversationRef:
-    """A Telegram private chat: this computer's bot's conversation with one user."""
+    """A Telegram private chat: one user's conversation with the bot, decided by the mesh master."""
     return ConversationRef(
         origin=InputOrigin.TELEGRAM,
         key_field=_KEY_FIELD,

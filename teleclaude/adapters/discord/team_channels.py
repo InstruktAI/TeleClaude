@@ -96,28 +96,21 @@ class TeamChannelsMixin:
 
         async def _get_channel(self, channel_id: int) -> object | None: ...
 
-    async def ensure_team_channels(self, guild: object, category: object | None, people: list[object]) -> None:
-        """Public wrapper for team-channel provisioning."""
-        await self._ensure_team_channels(guild, category, people)
-
-    async def ensure_channel_private(self, channel_id: int, guild: object, owner_user_id: int) -> None:
-        """Public wrapper for team-channel permission enforcement."""
-        await self._ensure_channel_private(channel_id, guild, owner_user_id)
-
     async def _ensure_team_channels(
         self,
         guild: object,
         category: object | None,
         people: list[object],
         *,
-        create: bool = True,
+        create: bool,
     ) -> None:
         """Create a private text channel per person under the Team category.
 
         Each channel is only visible to the person (matched by their Discord
         user ID from per-person config) and the bot. Everyone else is denied.
-        When ``create`` is False, resolves existing channels but never creates —
-        team channels are provisioned by the master computer only.
+        ``create`` is the shared-write authority: only the unique master creates channels
+        and repairs their permissions. Without it, existing channels are resolved and
+        mapped, and nothing on the provider is written.
         """
         if category is None:
             return
@@ -146,7 +139,7 @@ class TeamChannelsMixin:
             else:
                 logger.warning("Team channel not found/created for person %s (slug=%s)", name, slug)
             # Ensure permissions are correct on existing channels too
-            if ch_id is not None and discord_user_id is not None:
+            if create and ch_id is not None and discord_user_id is not None:
                 await self._ensure_channel_private(ch_id, guild, discord_user_id)
 
     async def _reconcile_team_channels(self) -> None:

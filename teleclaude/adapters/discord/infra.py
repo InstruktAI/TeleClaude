@@ -174,8 +174,8 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         """Auto-provision the Discord channel structure for this computer.
 
         Shared categories — Operations (#announcements, #general) and Team
-        (per-person text channels) — are generic across the guild and provisioned
-        by the master computer only. The guild-wide Help Desk category those
+        (per-person text channels) — are generic across the guild and written
+        (created, and their permissions repaired) by the unique live master only. The guild-wide Help Desk category those
         replaced by per-desk categories is retired here on every start until it is
         gone; the desk categories themselves are reconciled separately. Non-master computers resolve these by name but
         never create them, so a shared Discord app cannot accrue duplicates.
@@ -201,29 +201,29 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             logger.warning("Cannot auto-provision Discord channels: guild %s not found", self._guild_id)
             return
 
-        is_master = config.computer.is_master
+        shared_writer = await self._holds_shared_provider_authority()
         changes: dict[str, int | dict[str, int]] = {}
         cat_changes: dict[str, int] = {}
 
-        # --- Category: Operations (shared — master provisions, others resolve) ---
-        ops_cat = await self._ensure_category(guild, "Operations", existing_cats, cat_changes, create=is_master)
+        # --- Category: Operations (shared — the unique master provisions, others resolve) ---
+        ops_cat = await self._ensure_category(guild, "Operations", existing_cats, cat_changes, create=shared_writer)
 
         self._announcements_channel_id = await self._validate_channel_id(self._announcements_channel_id)
         if self._announcements_channel_id is None:
-            ch_id = await self._find_or_create_text_channel(guild, ops_cat, "announcements", create=is_master)
+            ch_id = await self._find_or_create_text_channel(guild, ops_cat, "announcements", create=shared_writer)
             if ch_id is not None:
                 self._announcements_channel_id = ch_id
                 changes["announcements_channel_id"] = ch_id
 
         self._general_channel_id = await self._validate_channel_id(self._general_channel_id)
         if self._general_channel_id is None:
-            ch_id = await self._find_or_create_text_channel(guild, ops_cat, "general", create=is_master)
+            ch_id = await self._find_or_create_text_channel(guild, ops_cat, "general", create=shared_writer)
             if ch_id is not None:
                 self._general_channel_id = ch_id
                 changes["general_channel_id"] = ch_id
 
         # --- Retire the guild-wide Help Desk category (replaced by per-desk categories) ---
-        await self._retire_shared_help_desk_surface(guild, is_master=is_master)
+        await self._retire_shared_help_desk_surface(guild, is_master=shared_writer)
 
         # --- Category: Projects - {computer} (per-computer, always enabled when Discord is configured) ---
         computer_name_slug = config.computer.name.lower().replace("-", "_").replace(" ", "_")
@@ -261,12 +261,12 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             # Build project-path-to-forum mapping for session routing
             await self._build_project_forum_map()
 
-        # --- Category: Team (shared — master provisions, others resolve) ---
+        # --- Category: Team (shared — the unique master provisions, others resolve) ---
         try:
             global_cfg = load_global_config()
             if global_cfg.people:
-                team_cat = await self._ensure_category(guild, "Team", existing_cats, cat_changes, create=is_master)
-                await self._ensure_team_channels(guild, team_cat, global_cfg.people, create=is_master)  # type: ignore[arg-type]
+                team_cat = await self._ensure_category(guild, "Team", existing_cats, cat_changes, create=shared_writer)
+                await self._ensure_team_channels(guild, team_cat, global_cfg.people, create=shared_writer)  # type: ignore[arg-type]
                 logger.info("Team channels provisioned: %d entries in _team_channel_map", len(self._team_channel_map))
             else:
                 logger.info("No people in global config — skipping team channel provisioning")
