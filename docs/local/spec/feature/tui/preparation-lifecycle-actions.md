@@ -36,8 +36,6 @@ holds the same rule for every action addressed to a todo's durable identity: it
 refuses an action the todo's state does not allow and names the way forward
 (`local/projects/teleclaude/spec/feature/workflow/todo-management`).
 
-<!-- planned:relay-computer-addressed-requests -->
-
 **The cursor's row names its own computer.** A project header sits under a
 computer, and every row beneath it — the todo and each of its files — carries
 that computer. Everything done from the row — a lifecycle action, an artifact
@@ -45,8 +43,6 @@ action, opening a file to view or edit, saving an edit, and following the
 operation the action submitted — is addressed to that computer
 (`local/projects/teleclaude/spec/feature/integration/computer-addressed-execution`).
 A remote row is offered the same actions as a local one.
-
-<!-- /planned:relay-computer-addressed-requests -->
 
 **Submission is not an outcome.** A lifecycle operation is durable and
 asynchronous: the response to the submission is an acceptance receipt, and the

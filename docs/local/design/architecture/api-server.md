@@ -71,8 +71,6 @@ session stream.
 - **Safe command boundary:** UI projection changes no mutation authority,
   command response mode, or durable-operation lifecycle.
 
-<!-- planned:relay-computer-addressed-requests -->
-
 - **Computer-addressed execution:** an HTTP request that names another computer
   is carried whole to that computer before any route runs here, executes there
   through the same route with the person band that computer resolves for the
@@ -82,8 +80,6 @@ session stream.
   Routes hold no remote path of their own; the boundary owns the one crossing
   (`local/projects/teleclaude/design/architecture/command-classification`).
   Connection projection options are not requests and name no computer.
-
-<!-- /planned:relay-computer-addressed-requests -->
 
 ## Primary flows
 

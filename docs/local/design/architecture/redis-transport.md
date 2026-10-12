@@ -138,8 +138,6 @@ transport change. The routing decision is the command's `computer` field — for
 forwards, local computer (or unset) executes in place. See command-classification for the
 dispatch model.
 
-<!-- planned:relay-computer-addressed-requests -->
-
 An API request addressed to another computer crosses the same way: as one relay command
 that carries the request whole, dispatched and forwarded like every other command. The
 owning computer reconstructs the request and runs it through its own API boundary, and
@@ -151,8 +149,6 @@ without it rejects the relay command as a command it does not know, and the rela
 computer reports that peer as running a build without the relay. A relay command
 carries a deadline, and a computer that reads it from its stream after that deadline
 refuses it without running it.
-
-<!-- /planned:relay-computer-addressed-requests -->
 
 ## Failure modes
 

@@ -1,5 +1,5 @@
 ---
-description: 'Response-mode classification for API commands: synchronous results, and receipt-backed asynchronous work that reports its outcome to the caller that asked.'
+description: 'Response-mode classification for API commands, and the one crossing by which a request addressed to another computer executes there: synchronous results, receipt-backed asynchronous work that reports its outcome to the caller that asked, and the boundary relay that carries any request to the computer that owns its object.'
 visibility: 'public'
 ---
 
@@ -16,15 +16,28 @@ The mode is a property of the command, not of the route — it lives on the
 the transport layer, and the command dispatcher all read this property; they do not
 re-derive it from `isinstance` checks or hardcoded status codes.
 
+Every API request also answers a second question before any route runs: which
+computer owns the object it addresses. A request that names another computer is
+relayed to that computer at the API boundary and executes there, through the same
+route and the same response mode a request made on that computer passes through,
+with the person band decided there from the relayed principal; its answer returns to
+the caller unchanged. A request that names this
+computer, or none, runs here. No route opts into this and no route can miss it.
+
 ```mermaid
 flowchart TD
     Request["HTTP Request"]
+    Boundary["API boundary<br/>(which computer?)"]
+    Relay["RelayRequestCommand<br/>(computer = owner)"]
     Router["API Route"]
     Command["InternalCommand<br/>(response_mode declared)"]
     Service["CommandService"]
     Operations["OperationsService"]
 
-    Request --> Router
+    Request --> Boundary
+    Boundary -->|another computer| Relay
+    Relay -->|transport| Boundary
+    Boundary -->|this computer| Router
     Router --> Command
     Command -->|IMMEDIATE| Service
     Command -->|RECEIPT| Operations
@@ -36,14 +49,18 @@ flowchart TD
 
 ## Inputs/Outputs
 
-**Inputs:** Any HTTP mutation request (POST, PUT, PATCH, DELETE) routed through
-CommandService, carrying the caller provenance the API boundary resolves from the
-authenticated request.
+**Inputs:** Any HTTP request routed through the API boundary, carrying the caller
+provenance the boundary resolves from the authenticated request and, when the request
+addresses an object another computer owns, the name of that computer.
 
 **Outputs per mode:**
 
 - `IMMEDIATE` — `200 OK` with the command result in the body.
 - `RECEIPT` — `202 Accepted` with a full `OperationReceipt`.
+
+A relayed request produces the same output its route produces on the owning computer:
+the status code, the body and the declared work feedback cross back exactly as that
+computer answered them.
 
 Command-to-mode mapping:
 
@@ -60,72 +77,76 @@ Command-to-mode mapping:
 | ResumeAgentCommand        | IMMEDIATE                                   | None                                                               |
 | RunAgentCommand           | IMMEDIATE                                   | None                                                               |
 | UnsubscribeSessionCommand | IMMEDIATE                                   | None                                                               |
+| RelayRequestCommand       | IMMEDIATE                                   | None                                                               |
 | RestartAgentCommand       | RECEIPT                                     | `agent.restart.completed` / `agent.restart.failed`                 |
 | CloseSessionCommand       | RECEIPT                                     | `session.close.completed` / `session.close.failed`                 |
 | HandoffAgentCommand       | RECEIPT                                     | `agent_runtime.handoff.completed` / `agent_runtime.handoff.failed` |
 
 Todo lifecycle work (create, prepare, work, integrate, remove, rename) and task runs
 are receipt-backed operations submitted by their routes directly to the
-`OperationsService`; they carry no `InternalCommand` type.
+`OperationsService`; they carry no `InternalCommand` type. Addressed to another
+computer, they reach that computer's route through the relay and are submitted to
+that computer's `OperationsService`.
 
-### `ResponseMode` enum
+`RelayRequestCommand` is `IMMEDIATE` whatever the relayed route's own mode is: its
+result is that route's complete response, a receipt included. A receipt that crosses
+back this way is the owning computer's receipt, naming that computer.
 
-```python
-class ResponseMode(str, Enum):
-    IMMEDIATE = "immediate"  # result returned in the response body
-    RECEIPT   = "receipt"    # durable operation row, outcome events, caller delivery
-```
+### Response mode and command fields
 
-### `InternalCommand` base fields
+The response mode is the command's declared `ResponseMode`, and every
+`InternalCommand` carries its mode, its outcome events, the computer that owns its
+object, and the caller provenance stamped at the API boundary; the declarations are
+owned by `teleclaude/types/commands.py`. A command declares both outcome events
+exactly when its mode is `RECEIPT`, and construction refuses every other
+combination.
 
-```python
-@dataclass(kw_only=True)
-class InternalCommand:
-    command_type:   CommandType
-    request_id:     str | None    = None
-    response_mode:  ResponseMode  = ResponseMode.IMMEDIATE
-    success_event:  str | None    = None  # declared if and only if RECEIPT
-    failure_event:  str | None    = None  # declared if and only if RECEIPT
-    computer:       str | None    = None  # owning computer; unset/local ⇒ run here, else forward
-    caller:         CallerProvenance | None = None  # who asked; stamped at the API boundary
-
-    def __post_init__(self) -> None:
-        declares_events = self.success_event is not None or self.failure_event is not None
-        is_async = self.response_mode is ResponseMode.RECEIPT
-        if declares_events != is_async:
-            raise ValueError(
-                f"{type(self).__name__}: RECEIPT requires both outcome events, "
-                f"and IMMEDIATE declares neither"
-            )
-        if is_async and (self.success_event is None or self.failure_event is None):
-            raise ValueError(f"{type(self).__name__}: RECEIPT requires both success_event and failure_event")
-```
-
-`CallerProvenance` is the caller-identity block the API boundary resolves once and every
-command carries: the caller's session id and computer, its resolved author kind and
-display, its agent runtime and thinking mode, and its machine and job roles. It crosses
-the transport with the command, so an owning computer reconstructs the same caller the
-originating computer resolved.
+`CallerProvenance` is the record of who asked, resolved once at the API boundary and
+carried on every command: the caller's session id and computer, its resolved author kind
+and display, its agent runtime and thinking mode, and its machine and job roles. It
+crosses the transport with a session-addressed command so the receiving computer records
+the same caller and projects the author label — kind, display, role — on the surface
+where the message lands. It is projection and record, never authority: no clearance on
+the owning computer reads a role from it. The caller's identity for clearance is the
+principal alone, and the owning computer resolves every authorization fact from that
+principal and its own registries
+(`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). The
+relay command carries no provenance beyond the caller session's address.
 
 The `computer` field is the routing key for cross-computer dispatch: it names the computer
-that owns the session the command operates on. The API boundary stamps it from the request;
+that owns the object the command operates on. The API boundary stamps it from the request;
 the dispatcher reads it to decide local execution versus forwarding.
 
-### `OperationReceipt` fields (RECEIPT mode response)
+### `RelayRequestCommand` fields
 
-```python
-{
-  "operation_id":     str,  # durable identity
-  "kind":             str,  # operation kind (e.g. "todo_work")
-  "state":            str,  # queued | running | completed | failed | stale
-  "status_path":      str,  # /operations/{operation_id}
-  "poll_after_ms":    int,  # suggested polling interval (0 if terminal)
-  "computer":         str,  # the computer that owns the row and runs the work
-  "success_event":    str,  # emitted on a successful terminal transition
-  "failure_event":    str,  # emitted on a failed terminal transition
-  "recovery_command": str,  # telec operations get {operation_id}
-}
-```
+The relay command carries one API request whole: its method, its path, its query, its
+body, the caller's principal, the caller session's address — its id and computer, so
+the owning computer can record who asked and wake it with the outcome — the `telec`
+command the caller's surface cleared the request as, and `computer`, the computer the
+request names. It carries no role, scope, author kind or runtime: everything the
+caller's own surface shows about the caller stays with the caller. Its result is that
+request's response: the status code, the body and the declared work feedback. The
+owning computer executes the carried request against its own API as though it had
+arrived there directly, as the caller the principal resolves to on that computer;
+nothing about the request is interpreted on the way.
+
+Every request a cleared command sends carries the command it was cleared as, set where
+the clearance happens, so no command or route declares anything for it. The owning
+computer trusts that command exactly as it trusts the principal: the relaying computer
+is a peer, and the request surface it serves is not an isolation boundary between its
+local processes (`local/projects/teleclaude/spec/identity-and-auth`). The owner decides
+that command's person band from the principal at the scope of the object the request
+addresses, read from the request and the object itself
+(`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`), and
+runs the request as the caller it resolved itself. Nothing from the relaying
+computer's own caller headers reaches the owner's route.
+
+### Operation receipt
+
+A `RECEIPT` response is an `OperationReceipt`, serialized by the operations service
+(`teleclaude/core/operations/service.py`). Every receipt names the computer that owns
+the row and runs the work, and its recovery command addresses that computer, so a
+receipt that crossed back from another computer is read and followed there.
 
 ## Invariants
 
@@ -152,17 +173,46 @@ the dispatcher reads it to decide local execution versus forwarding.
   recorded caller session that is still live is woken with an address — operation identity,
   outcome, and where to read the record — and never with the record's contents. A
   caller-less operation wakes nobody and loses nothing, because the row stands on its own.
-- **Dispatch is computer-aware.** A session-scoped command carries `computer`, the computer
-  that owns the target session. When it is unset or names the local computer, the dispatcher
-  runs the command in-process. When it names a peer, the dispatcher forwards the command to
-  the owning computer, which runs it through the same dispatcher and `response_mode` layer.
+- **Every request addressed to a computer executes there.** The API boundary reads the
+  computer a request names before any route runs. A request naming this computer, or
+  none, runs here. A request naming another computer is carried whole to that computer
+  as one relay command and executes there through the same route, under that computer's
+  own clearance and against that computer's own state; its complete response crosses
+  back unchanged. Routes therefore run only against local state, and no route holds a
+  remote path of its own. Before relaying, the caller's computer applies what only it
+  knows of its caller
+  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
+  including the dispatch privilege its session's role grants
+  (`local/projects/teleclaude/spec/feature/agent_runtime/run-session-with-command`).
+  Opening or closing a direct conversation with a session on another computer is not
+  relayed; it stays on its existing path
+  (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`).
+- **The request names its computer in one place.** The computer a request addresses is
+  its `computer` query parameter, on every route alike. Session creation and run also
+  accept it in their body, and the boundary reads it there too, so a request carrying
+  it that way crosses the same way. A route whose object is the
+  caller's own session, or this daemon itself, names no computer.
+- **Dispatch is computer-aware.** An adapter-originated command carries `computer`, the
+  computer that owns the object it operates on. When it is unset or names the local
+  computer, the dispatcher runs the command in-process. When it names a peer, the
+  dispatcher forwards the command to the owning computer, which runs it through the same
+  dispatcher and `response_mode` layer.
 - **The command is the cross-computer wire format.** The serialized command itself crosses
   the transport. There is no parallel command-string vocabulary and no per-command remote
   wrapper: the owning computer reconstructs the same `InternalCommand` and dispatches it
   identically to a locally-originated one, keyed on `command_type` and `response_mode`.
+  A relayed API request is no exception: it crosses as the one relay command, through
+  the same dispatcher and the same forwarding, and the owning computer reconstructs the
+  request it carries.
+- **Authentication at the edge, the person band at the owner.** The caller is
+  authenticated once, in the client process that serves it, and nothing authenticates
+  it again anywhere. The relay carries the caller's principal and the command it was
+  cleared as, and no role. The owning computer decides that command's person band
+  there (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
 - **Work, row, and emission stay together.** The computer that runs an operation owns its
   row and emits its outcome events. Neither the row nor the receipt is replicated; only the
-  outcome notification crosses a machine boundary.
+  outcome notification crosses a machine boundary. A caller reads a relayed operation's
+  record on the computer its receipt names.
 
 - **The CLI never waits on a receipt.** A `telec` command backed by a `RECEIPT` command
   prints the receipt and exits as soon as the daemon answers. Its output names the
@@ -176,6 +226,12 @@ the dispatcher reads it to decide local execution versus forwarding.
   request whose connection fails after it was sent and a command that sends several
   requests are the cases where a non-zero exit does not settle acceptance (Failure
   modes).
+- **A daemon-backed CLI command addresses a computer.** Every `telec` command that acts
+  through the daemon on an object a computer owns accepts the computer to address;
+  omitted, it addresses this one. The command surface declares which commands these
+  are. A command that acts on local state without the daemon when it addresses this
+  computer reaches the daemon when it addresses another, through a request that
+  performs the same operation, so the owning computer answers it as that command.
 
 ## Primary flows
 
@@ -220,33 +276,47 @@ sequenceDiagram
     Route->>Caller: {state: "completed", result: ...}
 ```
 
-### 3. RECEIPT command, owned by a remote computer
+### 3. A request addressed to another computer
 
-The caller's computer forwards the command; the owning computer submits it to its own
-operations service, runs it, owns the row, and notifies the caller's computer on the
-terminal transition. The receipt the caller holds names the owning computer, so the
-caller reads the record there.
+The caller's API boundary carries the request to the owning computer as one relay
+command. The owning computer's boundary resolves the relayed principal's roles from its
+own registries, runs the request through its own route, and returns the route's
+complete response. For a
+receipt-backed route the owning computer submits the operation to its own operations
+service, owns the row, and notifies the caller's computer on the terminal transition.
+The receipt the caller holds names the owning computer, so the caller reads the record
+there.
 
 ```mermaid
 sequenceDiagram
-    participant Caller as Caller session (A)
-    participant RouteA as Route (A)
-    participant DispatchA as Dispatcher (A)
+    participant Caller as Caller (A)
+    participant BoundaryA as API boundary (A)
     participant Transport
+    participant BoundaryB as API boundary (B)
+    participant RouteB as Route (B)
     participant OpsB as OperationsService (B)
     participant DeliveryA as Control delivery (A)
 
-    Caller->>RouteA: POST /sessions/{id}/agent-restart?computer=B
-    RouteA->>DispatchA: HandoffAgentCommand(computer=B, caller=A-session)
-    DispatchA->>Transport: serialize + forward
-    Transport->>OpsB: reconstruct → submit locally
-    OpsB->>Transport: OperationReceipt (computer=B)
-    Transport->>Caller: 202 Accepted + receipt
+    Caller->>BoundaryA: POST /todos/by-id/{id}/remove?computer=B
+    BoundaryA->>Transport: RelayRequestCommand(request, caller=A-session, computer=B)
+    Transport->>BoundaryB: reconstruct request + caller
+    BoundaryB->>RouteB: run as a local request
+    RouteB->>OpsB: submit(caller)
+    OpsB->>RouteB: OperationReceipt (computer=B)
+    RouteB->>BoundaryB: 202 + receipt
+    BoundaryB->>Transport: status + body
+    Transport->>BoundaryA: status + body
+    BoundaryA->>Caller: 202 Accepted + receipt
     OpsB->>OpsB: run work, write terminal row, emit outcome event
     OpsB->>Transport: outcome notification for the recorded caller
     Transport->>DeliveryA: deliver to the caller's session
     DeliveryA->>Caller: address, naming B
 ```
+
+A read addressed to another computer follows the same path and returns that computer's
+live answer: an artifact's content, a todo's state, a session's record. A refusal the
+owning route raises — a todo in a state that does not allow the action, a caller without
+clearance there — crosses back as that route's own status and work feedback.
 
 ## Failure modes
 
@@ -266,6 +336,34 @@ sequenceDiagram
   raises. The invalid command never reaches the dispatcher.
 - **Caller mismatch on read.** Non-admin callers attempting to inspect another session's
   operation receive a 404 rather than a 403, to avoid operation and session enumeration.
+- **The addressed computer cannot take the request.** A name this computer has neither
+  configured nor discovered is unknown and is sent nothing. Any other addressed
+  computer is sent the request; no presence signal decides on its behalf. A computer
+  running a version without the relay rejects the relay command itself as one it does
+  not know, and the relaying computer reports it as running a build without the relay.
+  Both reach the caller as a work refusal that names the computer and the reason, and
+  nothing is executed anywhere.
+- **The addressed computer does not answer.** A computer that does not answer within
+  the relay timeout is reported to the caller as not having answered, naming it, with
+  no instruction to run the command again. Whether it ran is unknown — an offline
+  computer refuses the request when it reads it after the deadline, a slow one may
+  have taken it in time — so the error is diagnostic, presented as every unknown
+  outcome is (`local/projects/teleclaude/spec/feature/presentation/work-feedback`).
+- **The relayed request arrives after its deadline.** Every relay command carries a
+  deadline; a computer that takes it later — after coming back from being offline —
+  refuses it and runs nothing, so a request its caller was told had failed never runs.
+- **A relayed request names no command.** A request carrying no command whose kind is
+  one of the relayed acts (`RelayedAct` in `teleclaude/caller_identity.py`) is relayed
+  as that act. Any other request carrying a person or agent principal and no command
+  is malformed; the owning computer refuses it, naming the missing command, and runs
+  nothing. A system principal carries no person band.
+- **The addressed computer refuses the caller.** The person band the owning computer
+  resolves for the relayed principal decides; its refusal crosses back as the response,
+  and the relaying computer records nothing as done.
+- **A relayed request's transport fails after it was sent.** The caller learns neither
+  acceptance nor refusal, exactly as with a local request whose connection broke; the
+  error names the computer and the transport failure and carries no instruction to run
+  the command again.
 
 - **A request's connection fails after it was sent.** A request that times out, or
   whose connection breaks mid-request, exits non-zero without the CLI knowing whether
@@ -291,5 +389,8 @@ sequenceDiagram
 
 - docs/local/adr/0098-async-work-always-carries-a-receipt.md
 - docs/local/adr/0119-the-cli-never-waits-on-a-receipt.md
+- docs/local/adr/0121-computer-addressed-requests-cross-as-one-relay-command.md
 - docs/local/design/architecture/operation-receipts.md
 - docs/local/spec/feature/agent_runtime/control-delivery.md
+- docs/local/spec/feature/identity/cross-computer-authorization.md
+- docs/local/spec/feature/integration/computer-addressed-execution.md

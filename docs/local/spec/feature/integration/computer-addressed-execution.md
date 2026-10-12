@@ -1,8 +1,8 @@
 ---
-description: A command addressed to another computer executes on that computer and returns that computer's answer — every daemon-backed command alike, read or write, with the owner's own clearance, refusals and receipts.
+description: A command addressed to another computer executes on that computer and
+  returns that computer's answer — every daemon-backed command alike, read or write,
+  with the owner's own clearance, refusals and receipts.
 visibility: internal
-delivered_by:
-  - relay-computer-addressed-requests
 ---
 
 # Computer-Addressed Execution — Spec
