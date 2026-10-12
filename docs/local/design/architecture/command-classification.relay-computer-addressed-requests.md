@@ -181,12 +181,16 @@ receipt that crossed back from another computer is read and followed there.
   back unchanged. Routes therefore run only against local state, and no route holds a
   remote path of its own. Before relaying, the caller's computer applies what only it
   knows of its caller
-  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
+  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
+  including the dispatch privilege its session's role grants
+  (`local/projects/teleclaude/spec/feature/agent_runtime/run-session-with-command`).
   Opening or closing a direct conversation with a session on another computer is not
   relayed; it stays on its existing path
   (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`).
 - **The request names its computer in one place.** The computer a request addresses is
-  its `computer` query parameter, on every route alike. A route whose object is the
+  its `computer` query parameter, on every route alike. Session creation and run also
+  accept it in their body, as they always have, and the boundary reads it there too, so
+  a client that still sends it that way crosses the same way. A route whose object is the
   caller's own session, or this daemon itself, names no computer.
 - **Dispatch is computer-aware.** An adapter-originated command carries `computer`, the
   computer that owns the object it operates on. When it is unset or names the local
@@ -332,13 +336,14 @@ clearance there — crosses back as that route's own status and work feedback.
   raises. The invalid command never reaches the dispatcher.
 - **Caller mismatch on read.** Non-admin callers attempting to inspect another session's
   operation receive a 404 rather than a 403, to avoid operation and session enumeration.
-- **The addressed computer cannot take the request.** A computer this one is not
-  configured to reach is unknown, and a configured computer with no live presence is
-  offline; neither is sent anything. A computer running a version without the relay
-  rejects the relay command itself as one it does not know, and the relaying computer
-  reports it as running a build without the relay. Each reaches the caller as a work
-  refusal that names the computer and the reason, and nothing is executed locally in
-  its place.
+- **The addressed computer cannot take the request.** A name this computer has neither
+  configured nor discovered is unknown and is sent nothing. Any other addressed
+  computer is sent the request; no presence signal decides on its behalf. A computer
+  running a version without the relay rejects the relay command itself as one it does
+  not know, and the relaying computer reports it as running a build without the relay.
+  A computer that does not answer within the relay timeout is reported as not having
+  answered. Each reaches the caller as a work refusal that names the computer and the
+  reason, and nothing is executed locally in its place.
 - **The relayed request arrives after its deadline.** Every relay command carries a
   deadline; a computer that takes it later — after coming back from being offline —
   refuses it and runs nothing, so a request its caller was told had failed never runs.
