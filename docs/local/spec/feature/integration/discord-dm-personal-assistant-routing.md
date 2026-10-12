@@ -25,10 +25,21 @@ routing therefore keys on the DM channel that the message arrived on, so a direc
 is never absorbed into an unrelated guild session, and the assistant's reply is delivered
 to the DM rather than to a guild forum thread.
 
+<!-- planned-change:designated-channel-continuity -->
+
 The DM path hands each direct message to the core conversation seam, keyed on the DM
 channel; the guild path is a policy of the shared inbound resolve-or-create seam. Each
 persists the channel binding on the session for outbound delivery — a DM session carries
 the DM channel with its guild id unset.
+<!-- change:designated-channel-continuity -->
+
+The DM path hands each direct message to the core conversation seam, keyed on the DM
+channel. Designated Team personal-assistant channels also reach that seam through
+`local/projects/teleclaude/spec/feature/integration/discord-personal-assistant-channels`;
+guild forum conversations use their independent session-resolution path. Each
+persists the channel binding on the session for outbound delivery — a DM session carries
+the DM channel with its guild id unset.
+<!-- /planned-change:designated-channel-continuity -->
 
 A direct message that is exactly the person's invitation token is an entry to
 their personal assistant

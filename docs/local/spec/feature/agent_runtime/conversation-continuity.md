@@ -13,12 +13,27 @@ description: A help-desk or assistant conversation outlives the session that car
 
 ## What it is
 
+<!-- planned-change:designated-channel-continuity -->
+
 A conversation belongs to its durable TeleClaude session. An adapter-bound
 personal assistant or help desk continues that session when its person returns.
 Once the idle threshold is reached and the agent is idle, the daemon resumes the
 recorded native transcript for compaction. Confirmed compaction completion
 closes the runtime immediately, without another periodic wait. The threshold
 is owned by `CONVERSATION_IDLE_THRESHOLD`.
+<!-- change:designated-channel-continuity -->
+
+A conversation belongs to its durable TeleClaude session. A personal assistant
+or help desk reached through a designated UI-adapter conversation channel
+continues that session when its person returns. Continuing eligibility follows
+the channel designation and resolved endpoint owned by
+`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`.
+It applies equally to direct chats and designated member-assistant channels.
+Once the idle threshold is reached and the agent is idle, the daemon resumes the
+recorded native transcript for compaction. Confirmed compaction completion
+closes the runtime immediately, without another periodic wait. The threshold
+is owned by `CONVERSATION_IDLE_THRESHOLD`.
+<!-- /planned-change:designated-channel-continuity -->
 
 A person may also explicitly start separate personal-assistant conversations.
 Those use their ordinary session-close lifecycle rather than automatic idle
@@ -248,6 +263,38 @@ Then extraction can proceed without a new conversation-text change
 And successful handling with nothing new to extract leaves progress complete
 ```
 
+<!-- planned:designated-channel-continuity -->
+
+#### UC-CC17: A member's designated channel uses idle maintenance
+
+```gherkin
+Given a human has a designated assistant channel on a UI adapter
+And its agent is idle with no human input through the idle threshold
+When idle maintenance runs
+Then the conversation follows the native compaction and immediate closure contract
+And mirror readiness releases its eligible memory extraction
+```
+
+#### UC-CC18: Adoption makes an existing channel conversation continuing
+
+```gherkin
+Given an existing human assistant session has been verified and adopted for its designated channel
+When that conversation becomes due for idle maintenance
+Then it follows the same continuing-conversation lifecycle as a newly created channel conversation
+And adoption itself performs no compaction, closure or memory extraction
+```
+
+#### UC-CC19: Forum and explicit conversations retain ordinary closure
+
+```gherkin
+Given a person has a forum conversation or an explicitly started PA session
+When input arrives through an adapter or that session reaches the idle threshold
+Then receipt of adapter input alone does not make it a designated continuing conversation
+And it retains its ordinary close lifecycle and existing extraction eligibility
+```
+
+<!-- /planned:designated-channel-continuity -->
+
 ### Cross-context references
 
 - **memory** — keeps the memories and their state, collects business items, and
@@ -262,6 +309,14 @@ And successful handling with nothing new to extract leaves progress complete
   (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-standing-agent`).
 
 ## Known caveats
+
+<!-- planned-change:designated-channel-continuity -->
+
+- Discord Team assistant channels carry no assistant endpoint stamp. They
+  receive extraction at ordinary closure and are excluded from idle maintenance.
+
+<!-- change:designated-channel-continuity -->
+<!-- /planned-change:designated-channel-continuity -->
 
 - Eligibility begins at the configured idle threshold. After native compaction
   completes, closure has no additional scan delay.

@@ -117,6 +117,39 @@ Discord, and who sees them, is owned by
   `telec config project help-desk-links <slug>`, one per adapter configured
   there that carries desk identifiers.
 
+<!-- planned:designated-channel-continuity -->
+
+### Designated conversation channels
+
+A UI adapter's designated conversation channel is a durable entry point to a
+personal assistant or help desk. Designation comes from the adapter's established
+surface binding and verified participant identity. A provider's generic channel
+object alone establishes no designation. Forum posts and explicitly started
+sessions keep their independently selected conversations
+(`general/policy/human-contract`).
+
+The adapter supplies the channel identity and designation to the core conversation
+resolver. The core resolves its endpoint and retains the TeleClaude session
+binding, open or closed. Text, audio and file input use that same resolution.
+Channel selection remains separate from person-wide memory attribution.
+
+At reconciliation and entry, an existing session at a verified designated channel
+acquires its resolved endpoint while retaining its TeleClaude identity and native
+lineage. Selection uses the established channel binding or the most recently
+created eligible matching record, including closed records. Eligibility requires
+agreement among the channel designation, participant, endpoint and recorded
+session purpose; soft-deleted records, forum conversations and autonomous runs
+retain their own lifecycle. Unresolved associations remain observable without
+claiming a participant or endpoint
+(`general/principle/trust-and-guardrails`).
+
+Conversation ownership follows the existing adapter/computer routing contract.
+Entry on an existing channel preserves the conversation's owning computer.
+Distinct channels remain distinct continuing conversations, even when they
+resolve to the same person and assistant endpoint.
+
+<!-- /planned:designated-channel-continuity -->
+
 ### Conversation identity and retention
 
 The TeleClaude session is the durable continuation record. Returning adapter
@@ -441,6 +474,60 @@ Then the most recently created eligible matching conversation is continued
 And unrelated endpoints, worker runs and soft-deleted conversations are not selected
 ```
 
+<!-- planned:designated-channel-continuity -->
+
+#### UC-CE29: A designated channel continues its assistant
+
+```gherkin
+Given a registered person has a designated personal-assistant channel on a UI adapter
+When they send conversation input through that channel
+Then the core reaches that channel's assistant endpoint
+And the session records the endpoint and channel binding
+And subsequent input continues the same TeleClaude session
+```
+
+#### UC-CE30: A designated channel revives its closed conversation
+
+```gherkin
+Given a designated conversation channel is bound to a closed TeleClaude session
+When its person sends text, audio or file input
+Then that same session is revived on its owning computer
+And the accepted input reaches it through the existing delivery contract
+And its response returns to the originating channel
+```
+
+#### UC-CE31: Existing channel conversations retain their identity
+
+```gherkin
+Given a designated conversation channel has an eligible retained session with no endpoint stamp
+And its recorded participant and purpose agree with the channel's verified designation
+When channel reconciliation or entry resolves the conversation
+Then the resolved endpoint is recorded on that session
+And its TeleClaude id and native transcript lineage are retained
+And closed state alone does not require a replacement session
+```
+
+#### UC-CE32: Channel designation preserves independent conversations
+
+```gherkin
+Given a person has two distinct designated assistant channels
+And separately started PA and project-forum conversations
+When the person writes through one designated channel
+Then that channel's retained conversation receives the input
+And the other conversations retain their bindings and lifecycle
+```
+
+#### UC-CE33: Unresolved channel associations remain unclaimed
+
+```gherkin
+Given a retained session's participant or purpose cannot be verified against a designated channel
+When reconciliation considers that session for adoption
+Then the session receives no inferred assistant endpoint
+And the unresolved association is observable for recovery
+```
+
+<!-- /planned:designated-channel-continuity -->
+
 ### Cross-context references
 
 - **integration** — each adapter recognises and carries the identifier; a
@@ -462,6 +549,15 @@ And unrelated endpoints, worker runs and soft-deleted conversations are not sele
   `local/projects/teleclaude/spec/feature/agent_runtime/session-revival`.
 
 ## Known caveats
+
+<!-- planned-change:designated-channel-continuity -->
+
+- Discord Team assistant channels use guild session resolution without endpoint
+  stamping. Its lookup selects open sessions; input after closure creates a new
+  session rather than continuing the closed conversation.
+
+<!-- change:designated-channel-continuity -->
+<!-- /planned-change:designated-channel-continuity -->
 
 - Discord carries no identifier in a link: a member sends their invitation
   token as a direct message, which needs a Discord account able to open a direct
