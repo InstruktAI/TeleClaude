@@ -87,12 +87,6 @@ And its absence does not mark the session closed or create a closure in pane or 
 
 #### UC-SVIS-5: An unattended procedure agent never enters the normal view
 
-```gherkin
-Given an unattended procedure agent is open in a project a human operator may access
-When the operator's view starts, reconnects, or receives a change to that agent's session
-Then the normal Sessions view does not show that agent
-```
-
 #### UC-SVIS-6: A newly discovered peer's idle sessions enter the running view
 
 ```gherkin
