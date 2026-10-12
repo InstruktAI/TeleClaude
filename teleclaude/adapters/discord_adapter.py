@@ -21,9 +21,12 @@ from teleclaude.adapters.discord import (
     MessageOperationsMixin,
 )
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
+from teleclaude.adapters.discord.cancel_command import CancelCommandMixin
 from teleclaude.adapters.discord.conversation_turns import ConversationTurnsMixin
 from teleclaude.adapters.discord.escalation_threads import EscalationThreadsMixin
+from teleclaude.adapters.discord.forum_sessions import ForumSessionsMixin
 from teleclaude.adapters.discord.help_desk_categories import DeskForums, HelpDeskCategoriesMixin
+from teleclaude.adapters.discord.launcher_clicks import LauncherClicksMixin
 from teleclaude.adapters.discord.listen_control import ListenHereView
 from teleclaude.adapters.discord.voice_room import VoiceRoom
 from teleclaude.adapters.editable_ui_adapter import EditableUiAdapter
@@ -94,6 +97,9 @@ class DiscordAdapter(
     EscalationThreadsMixin,
     InfrastructureMixin,
     HelpDeskCategoriesMixin,
+    ForumSessionsMixin,
+    LauncherClicksMixin,
+    CancelCommandMixin,
     InputHandlersMixin,
     MessageOperationsMixin,
     EditableUiAdapter,

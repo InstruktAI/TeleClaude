@@ -1,29 +1,32 @@
 """Channel operations mixin for Discord adapter.
 
 Handles thread/channel creation, title updates, open/close/delete lifecycle,
-stale resource cleanup, and thread ownership classification.
+stale resource cleanup, thread ownership classification, channel lookup, and
+destination resolution.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from enum import StrEnum
 from types import ModuleType
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.base_adapter import AdapterError, ChannelNotProvisionedError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.adapters.discord.help_desk_categories import DeskForums
 from teleclaude.config import machine as teleclaude_config
 from teleclaude.core.db import db
+from teleclaude.core.delivery import Destination
 from teleclaude.core.endpoints import DeskIdentifier
 from teleclaude.core.identity import session_person_role
 from teleclaude.core.integration.discord_admin_state import session_launcher_key
 from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, DiscordMetadataField, EndpointStamp, Session
 from teleclaude.core.models._adapter import session_is_unattended
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_short_project_name
 from teleclaude.services.project_catalog import get_project_catalog_service
 
@@ -42,6 +45,26 @@ DISCORD_THREAD_FETCH_MESSAGE_ATTRIBUTE = "fetch_message"
 DISCORD_THREAD_ID_ATTRIBUTE = "id"
 THREAD_CLEANUP_PACING_SECONDS = 0.5
 THREAD_STARTER_FETCH_LABEL = "Discord thread fetch_message"
+
+_DISCORD_SECTION = InputOrigin.DISCORD.value
+_THREAD_TYPE_MARKER = "thread"
+_ADAPTER_NOT_STARTED_MESSAGE = "Discord adapter not started"
+_DESTINATION_RESOLVE_LOG_TEMPLATE = "[DISCORD_RESOLVE] session=%s -> destination=%s"
+_DESTINATION_UNMAPPED_TEMPLATE = "Session {session_id} has no discord channel mapping yet"
+_STALE_CHANNEL_WARNING_TEMPLATE = "Discord channel %s not found for session %s, clearing stale metadata"
+_CHANNEL_NOT_FOUND_TEMPLATE = "Discord channel {channel_id} not found (metadata cleared)"
+_FETCH_DESTINATION_MESSAGE_LABEL = "Discord channel fetch_message"
+_MESSAGE_ID_NOT_NUMERIC_TEMPLATE = "Discord message_id must be numeric, got {message_id!r}"
+_GET_CHANNEL_ATTRIBUTE = "get_channel"
+_FETCH_CHANNEL_ATTRIBUTE = "fetch_channel"
+_CLIENT_FETCH_CHANNEL_LABEL = "Discord client fetch_channel"
+_FETCH_CHANNEL_FAILED_TEMPLATE = "Discord fetch_channel(%s) failed: %s"
+_CREATE_THREAD_ATTRIBUTE = "create_thread"
+_FORUM_CREATE_THREAD_LABEL = "Discord forum create_thread"
+_DEFAULT_THREAD_STARTER_CONTENT = "Initializing Help Desk session..."
+_THREAD_STARTER_CONTEXT = "thread_starter"
+_TITLE_ELLIPSIS = "..."
+_INVALID_THREAD_ID_MESSAGE = "Discord create_thread() returned invalid thread id"
 
 
 class ThreadMatchField(StrEnum):
@@ -120,10 +143,13 @@ class ChannelOperationsMixin:
     - _guild_id: int | None
     - _client: DiscordClientLike | None
     - _require_async_callable(fn, *, label) -> Callable
-    - _get_channel(channel_id) -> object | None (async)
     - _parse_optional_int(value) -> int | None
     - _resolve_parent_forum_id(channel) -> int | None
     - _get_managed_forum_ids() -> set[int]
+    - _discord_errors() -> tuple[type[Exception], ...] (from InputHandlersMixin)
+    - _async_callable(fn, *, label) -> AsyncDiscordCallable (from InputHandlersMixin)
+    - _extract_forum_thread_result(result) -> tuple
+    - _fit_message_text(text, *, context) -> str
     """
 
     _all_sessions_channel_id: int | None
@@ -136,7 +162,6 @@ class ChannelOperationsMixin:
     _client: object
     _parse_optional_int: Callable[[object], int | None]
     _require_async_callable: Callable[..., AsyncDiscordCallable]
-    _get_channel: Callable[[int], Awaitable[object | None]]
     _resolve_parent_forum_id: Callable[[object | None], int | None]
 
     if TYPE_CHECKING:
@@ -145,6 +170,15 @@ class ChannelOperationsMixin:
         def display_title(self, session: Session) -> str: ...
 
         def _get_managed_forum_ids(self) -> set[int]: ...
+
+        def _discord_errors(self) -> tuple[type[Exception], ...]: ...
+
+        def _async_callable(self, fn: object, *, label: str) -> AsyncDiscordCallable: ...
+
+        @staticmethod
+        def _extract_forum_thread_result(create_result: object) -> tuple[object | None, object | None]: ...
+
+        def _fit_message_text(self, *args: object, **kwargs: object) -> str: ...
 
     # =========================================================================
     # ensure_channel
@@ -322,7 +356,7 @@ class ChannelOperationsMixin:
                 raise AdapterError(f"Discord channel {target_forum_id} is not a Forum Channel")
 
             topper = self._build_thread_topper(session)
-            thread_id, topper_message_id = await self._create_forum_thread(  # type: ignore[attr-defined]
+            thread_id, topper_message_id = await self._create_forum_thread(
                 forum,
                 title=title,
                 content=topper,
@@ -392,6 +426,112 @@ class ChannelOperationsMixin:
     @staticmethod
     def _is_forum_channel(channel: object) -> bool:
         return "forum" in type(channel).__name__.lower()
+
+    @staticmethod
+    def _is_thread_channel(channel: object) -> bool:
+        type_name = type(channel).__name__.lower()
+        return _THREAD_TYPE_MARKER in type_name
+
+    # =========================================================================
+    # Channel Lookup and Destination Resolution
+    # =========================================================================
+
+    async def _resolve_destination_channel(
+        self,
+        destination: Destination,
+    ) -> object:
+        if self._client is None:
+            raise AdapterError(_ADAPTER_NOT_STARTED_MESSAGE)
+
+        destination_id = destination.thread_id or destination.channel_id
+        logger.debug(
+            _DESTINATION_RESOLVE_LOG_TEMPLATE,
+            destination.session_id,
+            destination_id,
+        )
+        if destination_id is None:
+            raise ChannelNotProvisionedError(_DESTINATION_UNMAPPED_TEMPLATE.format(session_id=destination.session_id))
+
+        channel = await self._get_channel(destination_id)
+        if channel is None:
+            # Channel was deleted from Discord — clear stale metadata so we stop retrying
+            logger.warning(
+                _STALE_CHANNEL_WARNING_TEMPLATE,
+                destination_id,
+                destination.session_id,
+            )
+            clear_section: dict[str, object] = {  # guard: loose-dict - JSON merge-patch section
+                DiscordMetadataField.THREAD_ID: None,
+                DiscordMetadataField.CHANNEL_ID: None,
+                DiscordMetadataField.OUTPUT_MESSAGE_ID: None,
+                DiscordMetadataField.THREAD_TOPPER_MESSAGE_ID: None,
+            }
+            await db.update_origin_metadata(destination.session_id, _DISCORD_SECTION, clear_section)
+            raise AdapterError(_CHANNEL_NOT_FOUND_TEMPLATE.format(channel_id=destination_id))
+        return channel
+
+    async def _fetch_destination_message(
+        self,
+        destination: Destination,
+        message_id: str,
+    ) -> object:
+        channel = await self._resolve_destination_channel(destination)
+        fetch_fn = self._async_callable(
+            getattr(channel, DISCORD_THREAD_FETCH_MESSAGE_ATTRIBUTE, None), label=_FETCH_DESTINATION_MESSAGE_LABEL
+        )
+        if not message_id.isdigit():
+            raise AdapterError(_MESSAGE_ID_NOT_NUMERIC_TEMPLATE.format(message_id=message_id))
+        return await fetch_fn(int(message_id))
+
+    async def _get_channel(self, channel_id: int) -> object | None:
+        if self._client is None:
+            return None
+
+        get_fn = getattr(self._client, _GET_CHANNEL_ATTRIBUTE, None)
+        if callable(get_fn):
+            cached = get_fn(channel_id)
+            if cached is not None:
+                return cached  # type: ignore[no-any-return]
+
+        fetch_fn = getattr(self._client, _FETCH_CHANNEL_ATTRIBUTE, None)
+        if callable(fetch_fn):
+            recoverable_errors = self._discord_errors()
+            try:
+                fetch_channel = self._async_callable(fetch_fn, label=_CLIENT_FETCH_CHANNEL_LABEL)
+                return await fetch_channel(channel_id)
+            except recoverable_errors as exc:
+                logger.debug(_FETCH_CHANNEL_FAILED_TEMPLATE, channel_id, exc)
+        return None
+
+    async def _create_forum_thread(
+        self,
+        forum_channel: object,
+        *,
+        title: str,
+        content: str = _DEFAULT_THREAD_STARTER_CONTENT,
+        allowed_mentions: object | None = None,
+    ) -> tuple[int, str]:
+        create_thread_fn = self._async_callable(
+            getattr(forum_channel, _CREATE_THREAD_ATTRIBUTE, None),
+            label=_FORUM_CREATE_THREAD_LABEL,
+        )
+
+        # Discord channel names must be 1-100 characters
+        if len(title) > 100:
+            title = title[:97] + _TITLE_ELLIPSIS
+        result = await create_thread_fn(
+            name=title,
+            content=self._fit_message_text(content, context=_THREAD_STARTER_CONTEXT),
+            allowed_mentions=allowed_mentions,
+        )
+        thread, starter_message = self._extract_forum_thread_result(result)
+
+        thread_id = self._parse_optional_int(getattr(thread, DISCORD_THREAD_ID_ATTRIBUTE, None))
+        if thread_id is None:
+            raise AdapterError(_INVALID_THREAD_ID_MESSAGE)
+        starter_message_id_raw = getattr(starter_message, DISCORD_THREAD_ID_ATTRIBUTE, None)
+        starter_message_id = str(starter_message_id_raw) if starter_message_id_raw is not None else str(thread_id)
+        return thread_id, starter_message_id
 
     # =========================================================================
     # Stale Thread Cleanup
