@@ -28,7 +28,7 @@ decided by the owning computer from the caller's principal
 
 **Nothing is lost on the way back.** The caller receives the owning computer's
 response as that computer produced it: a read's content, a receipt that names
-the owning computer, a work refusal with its explanation and way forward. A
+the owning computer, or its refusal. A
 receipt-backed operation is owned where it runs, and its outcome reaches the
 caller the way every operation outcome does
 (`local/projects/teleclaude/spec/feature/agent_runtime/durable-operation-outcomes`).
@@ -68,7 +68,7 @@ And nothing is created, read, or changed on the agent's own computer in its plac
 Given a human operator addresses an action to a todo on another computer
 And that todo's state does not allow the action
 When the action reaches the other computer
-Then the operator receives the other computer's refusal, with its explanation and the way forward
+Then the operator receives the other computer's refusal as that computer produced it
 ```
 
 #### UC-CAE3: A receipt-backed operation addressed to another computer is owned there
