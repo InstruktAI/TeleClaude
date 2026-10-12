@@ -104,6 +104,7 @@ _CODEX_REPORT_FILENAME = "codex-report.json"
 _CLAUDE_ATTEMPT_FILENAME = "claude-attempt.json"
 _CLAUDE_REPORT_FILENAME = "claude-report.json"
 _SELECTION_FILENAME = "selection.json"
+_SELECTED_PROVIDER_OUTPUT = "selected_provider"
 _SELECTED_REPORT_FILENAME = "selected-report.json"
 _SEED_PREFIX = "codex-seed-operation-"
 _PUBLISHING_PREFIX = "release-publication-"
@@ -686,7 +687,9 @@ def collect_analysis(capture_directory: Path, output_directory: Path) -> None:
         (selection_directory / _SELECTION_FILENAME).write_text(
             summary.model_dump_json(indent=_JSON_INDENT) + _NEWLINE, encoding=_UTF8
         )
-        append_output("selected_provider", summary.selected_provider.value if summary.selected_provider else _EMPTY)
+        append_output(
+            _SELECTED_PROVIDER_OUTPUT, summary.selected_provider.value if summary.selected_provider else _EMPTY
+        )
         return
     finish_inspection(
         codex_root / _CODEX_ATTEMPT_FILENAME,
@@ -793,7 +796,7 @@ def finish_inspection(
         selection.selected_report.model_dump_json(indent=_JSON_INDENT) + _NEWLINE,
         encoding=_UTF8,
     )
-    append_output("selected_provider", selection.selected_provider)
+    append_output(_SELECTED_PROVIDER_OUTPUT, selection.selected_provider)
     append_output("selected_classification", selection.selected_report.classification)
     codex_failure = (
         selection.codex_attempt.failure.value
