@@ -199,12 +199,15 @@ Then the operator is notified at error severity with that refusal
 #### UC-PLA-12: Opening an artifact of a todo on another computer shows that computer's content
 
 ```gherkin
-Given a human operator at the TUI has expanded a todo under another computer's project header
+Given a human operator at the TUI has expanded a live todo under another computer's project header
 When the operator opens one of that todo's files
 Then the viewer shows the content stored for that artifact on the other computer
 When the operator saves an edit there
 Then the edit is stored on the other computer, for that todo's artifact alone
 And the other computer's refusal, if it refuses the edit, reaches the operator at error severity
+Given instead the todo under the other computer's header is delivered or removed
+When the operator opens one of its files
+Then the viewer shows the other computer's stored content read-only, exactly as for a local todo in that state
 ```
 
 <!-- /planned:relay-computer-addressed-requests -->
