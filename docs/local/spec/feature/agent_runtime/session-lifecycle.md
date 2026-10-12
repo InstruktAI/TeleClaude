@@ -76,6 +76,21 @@ Then the request is refused and creates no session
 And no default folder is chosen for it
 ```
 
+<!-- planned:tui-sessions-view-remote-row-assumptions -->
+
+#### UC-SL59: A request whose working directory is not a directory on the running computer is refused
+
+```gherkin
+Given a request to create a session on a computer
+And the request's working directory does not exist on that computer, or is not a directory there
+When the session is created
+Then that computer refuses the request as a work refusal naming the working directory
+And the refusal reaches the caller as the explanation of why no session was started (`local/projects/teleclaude/spec/feature/presentation/work-feedback`)
+And no session is created
+```
+
+<!-- /planned:tui-sessions-view-remote-row-assumptions -->
+
 #### UC-SL48: A help-desk session below member is confined to its desk
 
 ```gherkin
