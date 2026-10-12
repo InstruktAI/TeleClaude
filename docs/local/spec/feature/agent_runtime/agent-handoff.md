@@ -105,15 +105,6 @@ And the session remains inspectable with the last truthful runtime binding
 
 #### UC-AH9: Remote handoff negotiates capability before dispatch
 
-```gherkin
-Given the session is owned by another computer
-When a caller requests handoff on that owner
-Then the command transport checks the target's heartbeat-advertised command capabilities through the shared command-capability gate
-And a target that does not advertise agent handoff is refused before receiving the command
-And a supporting target reconstructs the same command, submits it to its own operations service, and performs the same in-place swap as a local owner
-And the receipt returned across the wire names that target as the computer holding the row
-```
-
 #### UC-AH10: Session-scoped relationships survive unchanged
 
 ```gherkin
