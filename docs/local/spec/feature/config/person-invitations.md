@@ -36,11 +36,20 @@ whose endpoint cannot be resolved is reported as unavailable for the invitation;
 other generated links may still be returned. Resending rotates the person's
 invitation through the same owning store. Initialization alone issues no invite.
 
+<!-- planned-change:telegram-bot-retirement -->
+
 Existing invitations on the master retain their state through activation.
 Secondary-bot invitations and their records are accounted for by
 `local/projects/teleclaude/procedure/conversation-entry-cutover`; they establish
 no alternative live issuer. Provider account binding and conversation selection
 belong to identity and agent runtime, respectively.
+<!-- change:telegram-bot-retirement -->
+
+Existing invitations on the master retain their state through activation. An
+invitation issued elsewhere establishes no alternative live issuer. Provider
+account binding and conversation selection belong to identity and agent
+runtime, respectively.
+<!-- /planned-change:telegram-bot-retirement -->
 
 ## Canonical fields
 
