@@ -13,6 +13,7 @@ import sys
 import tempfile
 from collections.abc import Callable
 from enum import StrEnum
+from functools import partial
 from pathlib import Path
 
 import httpx
@@ -153,7 +154,13 @@ _AUTH_SETTLEMENT_FAILED_KEY = "auth_settlement_failed"
 _DIAGNOSTIC_PATH_KEY = "diagnostic_path"
 
 
-_COLLECT_COMMAND = "collect-analysis"
+class AdditionalStageCommand(StrEnum):
+    """New stage selectors owned by the static CI dispatch boundary."""
+
+    COLLECT_ANALYSIS = "collect-analysis"
+
+
+_COLLECT_COMMAND = AdditionalStageCommand.COLLECT_ANALYSIS
 _CAPTURE_DIRECTORY_OPTION = "--capture-directory"
 _JOB_RESULT_SUFFIX = "_JOB_RESULT"
 _ARTIFACT_ID_SUFFIX = "_ARTIFACT_ID"
@@ -1379,10 +1386,25 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _collect_analysis_command(args: argparse.Namespace) -> None:
+    """Bind validated parser inputs to the named analysis owner."""
+    collect_analysis(args.capture_directory, args.output_directory)
+
+
+_ADDITIONAL_STAGE_HANDLERS: dict[AdditionalStageCommand, Callable[[argparse.Namespace], object]] = {
+    AdditionalStageCommand.COLLECT_ANALYSIS: _collect_analysis_command,
+}
+
+
 def _stage_handler(args: argparse.Namespace) -> Callable[[], object]:
     """Resolve parsed command arguments to one small controller operation."""
+    try:
+        additional = AdditionalStageCommand(args.command)
+    except ValueError:
+        additional = None
+    if additional is not None:
+        return partial(_ADDITIONAL_STAGE_HANDLERS[additional], args)
     handlers: dict[str, Callable[[], object]] = {
-        _COLLECT_COMMAND: lambda: collect_analysis(args.capture_directory, args.output_directory),
         "prepare-codex": lambda: prepare_codex(
             args.attempt, args.evidence, args.state_directory, args.result_directory
         ),

@@ -107,13 +107,16 @@ cross-provider UID switching, privileged filesystem transfer, copied interpreter
 shared public namespace, ownership claim or staged launcher. Child environments
 contain only the adapter's explicit allowlist; prompts travel byte-exact through
 stdin and credentials never enter argv. Owned private directories/files retain
-0700/0600 permissions and configuration is read-only.
+private permissions and configuration is read-only. Their declarations and owned
+filesystem checks belong to `tools/release/isolated_inspection.py` and the
+provider configuration adapters.
 
 The Codex job installs compatible distribution bubblewrap and Ubuntu's scoped
 AppArmor user-namespace profile using the vendor-supported setup, without
 changing global kernel/LSM restrictions. One untraced, credential-free readiness
 check runs the pinned native sandbox with the inspection permission profile and
-managed requirements, first executing `/bin/true`. Fixed follow-up checks read
+managed requirements using the fixed startup operand owned by
+`tools/ci/inspector_sandbox_preflight.py`. Fixed follow-up checks read
 captured public evidence, refuse reads of synthetic private controller/auth-path
 markers, and refuse a new evidence-file write. They use no credentials or
 inference and remove only their own markers. Readiness requires all checks. It

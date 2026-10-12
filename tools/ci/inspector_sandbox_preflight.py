@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
-import shlex
 import shutil
 import subprocess
 from enum import StrEnum
@@ -132,13 +132,45 @@ def prepare_ubuntu_sandbox() -> None:
 _PRIVATE_MARKER = "readiness-private-marker"
 _WRITE_MARKER = ".release-readiness-write-marker"
 _MARKER_CONTENT = b"synthetic release readiness marker\n"
-_CAT = "/bin/cat"
-_SHELL = "/bin/sh"
-_SHELL_FLAG = "-c"
-_WRITE_COMMAND = "printf x > {}"
-_READ_COMMAND = "/bin/cat -- {}"
+_PROBE_PYTHON = "/usr/bin/python3"
+_PROBE_CODE_OPTION = "-c"
+
+
+class NativeAccessOperation(StrEnum):
+    """Fixed probe access operations in the bounded native receipt."""
+
+    READ = "read"
+    WRITE = "write"
+
+
+_PROBE_READ = NativeAccessOperation.READ
+_PROBE_WRITE = NativeAccessOperation.WRITE
+_PROBE_CODE = """import hashlib,json,os,sys
+result={"operation":sys.argv[1],"errno":None,"sha256":None}
+try:
+    if sys.argv[1]=="read":
+        with open(sys.argv[2],"rb") as source:
+            result["sha256"]=hashlib.sha256(source.read()).hexdigest()
+    else:
+        descriptor=os.open(sys.argv[2],os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        os.close(descriptor)
+except OSError as error:
+    result["errno"]=error.errno
+print(json.dumps(result))
+"""
+_READ_REFUSAL_ERRNOS = frozenset({errno.EACCES, errno.EPERM, errno.ENOENT})
+_WRITE_REFUSAL_ERRNOS = _READ_REFUSAL_ERRNOS | {errno.EROFS}
 _PROBES_KEY = "confinement"
 _EXCLUSIVE_BINARY_MODE = "xb"
+
+
+class NativeAccessObservation(BaseModel):
+    """Completed fixed access operation: only errno or content hash, never payload bytes."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    operation: NativeAccessOperation
+    errno: int | None
+    sha256: str | None
 
 
 class ConfinementObservation(BaseModel):
@@ -171,36 +203,36 @@ def check_confinement(bootstrap: InspectorBootstrap, environment: dict[str, str]
         commands = (
             (
                 SandboxOperation.READ_EVIDENCE,
-                (_SHELL, _SHELL_FLAG, _READ_COMMAND.format(shlex.quote(str(evidence_file)))),
-                evidence_file.read_bytes(),
+                _PROBE_READ,
+                evidence_file,
+                hashlib.sha256(evidence_file.read_bytes()).hexdigest(),
             ),
-            (SandboxOperation.DENY_CONTROLLER, (_CAT, str(controller_marker)), None),
-            (SandboxOperation.DENY_AUTH, (_CAT, str(auth_marker)), None),
-            (
-                SandboxOperation.DENY_WRITE,
-                (_SHELL, _SHELL_FLAG, _WRITE_COMMAND.format(shlex.quote(str(write_marker)))),
-                None,
-            ),
+            (SandboxOperation.DENY_CONTROLLER, _PROBE_READ, controller_marker, None),
+            (SandboxOperation.DENY_AUTH, _PROBE_READ, auth_marker, None),
+            (SandboxOperation.DENY_WRITE, _PROBE_WRITE, write_marker, None),
         )
-        for operation, command, expected in commands:
+        for operation, access, path, expected in commands:
             result = run_isolated_process(
                 InspectorRole.CODEX,
                 bootstrap.executable(InspectorRole.CODEX),
-                (*_SANDBOX_ARGUMENTS[:-1], *command),
+                (*_SANDBOX_ARGUMENTS[:-1], _PROBE_PYTHON, _PROBE_CODE_OPTION, _PROBE_CODE, access, str(path)),
                 bootstrap.evidence,
                 environment,
                 controller_directory=bootstrap.controller,
                 timeout_seconds=_PROBE_TIMEOUT,
             )
-            passed = (
-                (result.return_code == 0 and result.stdout == expected)
-                if expected is not None
-                else (
-                    result.return_code != 0
-                    and _MARKER_CONTENT not in result.stdout
-                    and _MARKER_CONTENT not in result.stderr
-                )
-            )
+            passed = False
+            if not result.timed_out and result.return_code == 0:
+                try:
+                    observation = NativeAccessObservation.model_validate_json(result.stdout)
+                except ValueError:
+                    observation = None
+                if observation is not None and observation.operation == access:
+                    if expected is not None:
+                        passed = observation.errno is None and observation.sha256 == expected
+                    else:
+                        refusals = _WRITE_REFUSAL_ERRNOS if access == _PROBE_WRITE else _READ_REFUSAL_ERRNOS
+                        passed = observation.errno in refusals and observation.sha256 is None
             if operation is SandboxOperation.DENY_WRITE:
                 passed = passed and not write_marker.exists() and not write_marker.is_symlink()
             observations.append(
