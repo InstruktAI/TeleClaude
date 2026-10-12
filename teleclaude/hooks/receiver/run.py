@@ -47,6 +47,7 @@ from teleclaude.core.identity import NoIdentityCliCaller, derive_identity_key, m
 from teleclaude.core.injected_text import recognize_delivered_text, wake_occurrence_key
 from teleclaude.core.models import JsonDict, Session
 from teleclaude.core.organization import CompanyMembership, resolve_organization
+from teleclaude.core.session_ended import is_conversation_session
 from teleclaude.core.session_status import AgentStatusReason
 from teleclaude.git import GitCommandError
 from teleclaude.hooks.adapters import get_adapter
@@ -463,8 +464,8 @@ def _resolve_memory_caller(session_id: str) -> CliCaller:
     return caller_from_principal(principal)
 
 
-def _resolve_memory_scope(session_id: str) -> MemoryScope | None:
-    """The starting session's memory scope, read from the session columns that predate every migration."""
+def _resolve_memory_scope(session_id: str) -> tuple[MemoryScope, bool] | None:
+    """The starting session's memory scope, and whether its context is a conversation's strictly resolved scope."""
     row = _load_session_row(
         session_id,
         cast(QueryableAttribute[Any], db_models.Session.session_id),
@@ -475,6 +476,8 @@ def _resolve_memory_scope(session_id: str) -> MemoryScope | None:
         cast(QueryableAttribute[Any], db_models.Session.system_role),
         cast(QueryableAttribute[Any], db_models.Session.project_path),
         cast(QueryableAttribute[Any], db_models.Session.subdir),
+        cast(QueryableAttribute[Any], db_models.Session.config_subject),
+        cast(QueryableAttribute[Any], db_models.Session.initiator_session_id),
     )
     if row is None:
         return None
@@ -483,21 +486,23 @@ def _resolve_memory_scope(session_id: str) -> MemoryScope | None:
         parsed = json.loads(row.origin_metadata)
         if isinstance(parsed, dict):
             origin_metadata = parsed
-    return memory_scope(
-        Session(
-            session_id=row.session_id,
-            computer_name="",
-            tmux_session_name="",
-            title="",
-            origin_metadata=origin_metadata,
-            principal=row.principal,
-            human_email=row.human_email,
-            human_role=row.human_role,
-            system_role=row.system_role,
-            project_path=row.project_path,
-            subdir=row.subdir,
-        )
+    session = Session(
+        session_id=row.session_id,
+        computer_name="",
+        tmux_session_name="",
+        title="",
+        origin_metadata=origin_metadata,
+        principal=row.principal,
+        human_email=row.human_email,
+        human_role=row.human_role,
+        system_role=row.system_role,
+        project_path=row.project_path,
+        subdir=row.subdir,
+        config_subject=row.config_subject,
+        initiator_session_id=row.initiator_session_id,
     )
+    scope = memory_scope(session)
+    return None if scope is None else (scope, is_conversation_session(session))
 
 
 def _resolve_identity_context(
@@ -734,8 +739,11 @@ def _print_additional_context(
 ) -> str | None:
     """Gather startup context; the boundary owns the single eventual response."""
     scope: MemoryScope | None = None
+    strict_scope = False
     try:
-        scope = _resolve_memory_scope(session_id)
+        resolved_scope = _resolve_memory_scope(session_id)
+        if resolved_scope is not None:
+            scope, strict_scope = resolved_scope
     except (SQLAlchemyError, TypeError, ValueError, OSError, RuntimeError):
         logger.error(_MEMORY_SCOPE_RESOLUTION_FAILED, session_id=session_id, exc_info=True)
     project_name = scope.namespace if scope is not None else (Path(cwd).name if cwd else None)
@@ -771,7 +779,12 @@ def _print_additional_context(
             logger.error(_MEMORY_CALLER_RESOLUTION_FAILED, session_id=session_id, exc_info=True)
             return resolve_reach(NoIdentityCliCaller())
 
-    memory_context = _get_memory_context(project_name, resolve_memory_reach, identity_key=identity_key)
+    memory_context = _get_memory_context(
+        project_name,
+        resolve_memory_reach,
+        identity_key=identity_key,
+        strict_identity_keys=scope.identity_keys if strict_scope and scope is not None else None,
+    )
     if not memory_context and not person_header and not company_header:
         logger.info(
             EVENT_SESSION_START_CONTEXT_COMPOSED,

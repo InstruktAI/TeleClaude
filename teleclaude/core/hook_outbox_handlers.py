@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Protocol
 
 from teleclaude.core.models import Session
-from teleclaude.core.session_transcript_chain import append_transcript_once
+from teleclaude.core.session_transcript_chain import native_log_binding_updates
 
 if TYPE_CHECKING:
 
@@ -54,15 +54,13 @@ async def handle_native_metadata_update(
     if native_session_id and session.native_session_id != native_session_id:
         updates["native_session_id"] = native_session_id
 
-    native_log_file = optional_payload_str_value(payload, "native_log_file")
-    if native_log_file and session.native_log_file != native_log_file:
-        previous_native_log_file = (session.native_log_file or "").strip()
-        if previous_native_log_file:
-            updates["transcript_files"] = append_transcript_once(
-                session.transcript_files,
-                previous_native_log_file,
-            )
-        updates["native_log_file"] = native_log_file
+    updates.update(
+        native_log_binding_updates(
+            current_log_file=session.native_log_file,
+            current_chain=session.transcript_files,
+            new_log_file=optional_payload_str_value(payload, "native_log_file"),
+        )
+    )
 
     if updates:
         await db_handle.update_session(session_id, **updates)

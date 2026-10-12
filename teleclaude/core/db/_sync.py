@@ -28,6 +28,7 @@ from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.models import Session as SessionRecord
 from teleclaude.core.models._session import SessionField
 from teleclaude.core.session_identity_facts import read_session_identity_facts
+from teleclaude.core.session_transcript_chain import build_message_chain
 
 from .. import db_models
 
@@ -59,6 +60,9 @@ ORDER BY created_at DESC
 """
 _SESSION_CLOSES_SQL_PREFIX = "SELECT session_id, closed_at FROM sessions WHERE session_id IN ("
 _SESSION_CLOSES_SQL_SUFFIX = ") AND closed_at IS NOT NULL"
+_SESSION_EXISTENCE_SQL_PREFIX = "SELECT session_id FROM sessions WHERE session_id IN ("
+_SESSION_EXISTENCE_SQL_SUFFIX = ")"
+_SESSION_EXISTENCE_CHUNK = 500
 _READ_ONLY_URI_SUFFIX = "?mode=ro&uri=true"
 
 
@@ -75,6 +79,7 @@ class SessionMirrorFacts:
     subject_owner: str | None
     native_log_file: str | None
     transcript_files: tuple[str, ...]
+    lineage: tuple[str, ...]
     visibility: str | None
     last_input_origin: str | None
     adapter_metadata: str | None
@@ -120,6 +125,7 @@ def _session_mirror_facts(row: Mapping[str, object]) -> SessionMirrorFacts:
     raw_transcripts = mapping["transcript_files"]
     parsed_transcripts = json.loads(raw_transcripts) if isinstance(raw_transcripts, str) else []
     transcript_files = tuple(value for value in parsed_transcripts if isinstance(value, str))
+    native_log_file = _optional_session_fact(mapping["native_log_file"])
     session_id = str(mapping["session_id"])
     identity = SessionRecord(
         session_id=session_id,
@@ -143,8 +149,11 @@ def _session_mirror_facts(row: Mapping[str, object]) -> SessionMirrorFacts:
         subdir=_optional_session_fact(mapping["subdir"]),
         config_subject=_optional_session_fact(mapping[SessionField.CONFIG_SUBJECT.value]),
         subject_owner=_optional_session_fact(mapping[SessionField.SUBJECT_OWNER.value]),
-        native_log_file=_optional_session_fact(mapping["native_log_file"]),
+        native_log_file=native_log_file,
         transcript_files=transcript_files,
+        lineage=tuple(
+            build_message_chain(raw_transcripts if isinstance(raw_transcripts, str) else None, native_log_file)
+        ),
         visibility=_optional_session_fact(mapping["visibility"]),
         last_input_origin=_optional_session_fact(mapping["last_input_origin"]),
         adapter_metadata=_optional_session_fact(mapping["adapter_metadata"]),
@@ -219,6 +228,30 @@ def get_session_closed_at_sync(db_path: str, session_ids: Sequence[str]) -> dict
     except OperationalError as exc:
         if _NO_SUCH_TABLE_ERROR in str(exc).lower():
             return {}
+        raise
+    finally:
+        engine.dispose()
+
+
+def existing_session_ids_sync(db_path: str, session_ids: Sequence[str]) -> set[str]:
+    """Return which of the requested ids have a retained session record, soft-deleted or archived ones included."""
+    if not session_ids:
+        return set()
+    engine = _session_mirror_facts_engine(db_path)
+    existing: set[str] = set()
+    try:
+        with engine.connect() as connection:
+            for start in range(0, len(session_ids), _SESSION_EXISTENCE_CHUNK):
+                chunk = tuple(session_ids[start : start + _SESSION_EXISTENCE_CHUNK])
+                placeholders = ",".join("?" for _ in chunk)
+                rows = connection.exec_driver_sql(
+                    f"{_SESSION_EXISTENCE_SQL_PREFIX}{placeholders}{_SESSION_EXISTENCE_SQL_SUFFIX}", chunk
+                ).fetchall()
+                existing.update(str(row[0]) for row in rows)
+            return existing
+    except OperationalError as exc:
+        if _NO_SUCH_TABLE_ERROR in str(exc).lower():
+            return set()
         raise
     finally:
         engine.dispose()

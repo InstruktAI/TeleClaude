@@ -283,6 +283,10 @@ class SessionField(Enum):
     IDLE_COMPACTION_REQUESTED_AT = "idle_compaction_requested_at"
     IDLE_COMPACTION_COMPLETED_AT = "idle_compaction_completed_at"
     IDLE_CLOSED_AT = "idle_closed_at"
+    CLOSED_AT = "closed_at"
+    DELETED_AT = "deleted_at"
+    NATIVE_LOG_FILE = "native_log_file"
+    TRANSCRIPT_FILES = "transcript_files"
 
 
 class TranscriptFormat(str, Enum):
@@ -399,6 +403,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     created_at: datetime | None = None
     last_activity: datetime | None = None
     closed_at: datetime | None = None
+    deleted_at: datetime | None = None
     project_path: str | None = None
     subdir: str | None = None
     config_subject: str | None = None
@@ -431,7 +436,6 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     open_tool_calls: frozenset[str] = field(default_factory=frozenset)
     lifecycle_transitioned_at: datetime | None = None
     lifecycle_transition_reason: str | None = None
-    last_memory_extraction_at: datetime | None = None
     help_desk_processed_at: datetime | None = None
     idle_compaction_requested_at: datetime | None = None
     idle_compaction_completed_at: datetime | None = None
@@ -463,6 +467,14 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             SessionField.IDLE_COMPACTION_REQUESTED_AT.value: self.idle_compaction_requested_at,
             SessionField.IDLE_COMPACTION_COMPLETED_AT.value: self.idle_compaction_completed_at,
             SessionField.IDLE_CLOSED_AT.value: self.idle_closed_at,
+        }
+        return {name: stamp.isoformat() for name, stamp in stamps.items() if stamp}
+
+    def _record_end_stamps(self) -> JsonDict:
+        """The close and soft-deletion stamps as ISO strings, for the stamps that are set."""
+        stamps = {
+            SessionField.CLOSED_AT.value: self.closed_at,
+            SessionField.DELETED_AT.value: self.deleted_at,
         }
         return {name: stamp.isoformat() for name, stamp in stamps.items() if stamp}
 
@@ -508,10 +520,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             data["last_agent_stop_at"] = self.last_agent_stop_at.isoformat()
         if self.last_agent_idle_at:
             data["last_agent_idle_at"] = self.last_agent_idle_at.isoformat()
-        if self.closed_at:
-            data["closed_at"] = self.closed_at.isoformat()
-        if self.last_memory_extraction_at:
-            data["last_memory_extraction_at"] = self.last_memory_extraction_at.isoformat()
+        data.update(self._record_end_stamps())
         if self.help_desk_processed_at:
             data["help_desk_processed_at"] = self.help_desk_processed_at.isoformat()
         data.update(self._idle_compaction_stamps())
@@ -538,6 +547,9 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
 
         closed_at_raw = data.get("closed_at")
         closed_at = parse_iso_datetime(closed_at_raw) if isinstance(closed_at_raw, str) else closed_at_raw
+
+        deleted_at_raw = data.get("deleted_at")
+        deleted_at = parse_iso_datetime(deleted_at_raw) if isinstance(deleted_at_raw, str) else deleted_at_raw
 
         last_message_sent_at_raw = data.get("last_message_sent_at")
         last_message_sent_at = (
@@ -629,6 +641,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             created_at=ensure_utc(created_at) if isinstance(created_at, datetime) else None,
             last_activity=ensure_utc(last_activity) if isinstance(last_activity, datetime) else None,
             closed_at=ensure_utc(closed_at) if isinstance(closed_at, datetime) else None,
+            deleted_at=ensure_utc(deleted_at) if isinstance(deleted_at, datetime) else None,
             project_path=_get_optional_str("project_path"),
             subdir=_get_optional_str("subdir"),
             config_subject=_get_optional_str("config_subject"),
@@ -701,9 +714,6 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             else None,
             lifecycle_transition_reason=str(data.get("lifecycle_transition_reason"))
             if data.get("lifecycle_transition_reason")
-            else None,
-            last_memory_extraction_at=parse_iso_datetime(data.get("last_memory_extraction_at"))
-            if isinstance(data.get("last_memory_extraction_at"), str)
             else None,
             help_desk_processed_at=parse_iso_datetime(data.get("help_desk_processed_at"))
             if isinstance(data.get("help_desk_processed_at"), str)

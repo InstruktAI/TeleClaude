@@ -23,6 +23,13 @@ _TRANSCRIPT_NOT_FOUND = "No transcript found for session '{session_id}'"
 _HISTORY_SHOW_ONE_COMPUTER_ERROR = "history show accepts exactly one --computer value"
 _REMOTE_DETAIL_FAILURE_TEMPLATE = "Failed to fetch session '{session_id}' from {computer}: {detail}"
 _UNKNOWN_VALUE = "unknown"
+_COMPLETENESS_LINE_TEMPLATE = "Complete: {complete}"
+_SOURCES_LINE_TEMPLATE = "Sources: {sources}"
+_SOURCE_TEMPLATE = "{native_id} ({agent}{missing})"
+_SOURCE_SEPARATOR = ", "
+_MISSING_SOURCE_MARK = ", missing"
+_YES_VALUE = "yes"
+_NO_VALUE = "no"
 _COVERAGE_LINE_TEMPLATE = "Coverage: through {timestamp_end}; state: {coverage_state}"
 _RETAINED_COVERAGE_LINE_TEMPLATE = (
     "Coverage: through {timestamp_end}; state: {coverage_state}; shrink refusal observed: {shrink_refused_at}"
@@ -48,6 +55,26 @@ def _coverage_header_line(payload: HistoryDetailPayload) -> str:
     return _COVERAGE_LINE_TEMPLATE.format(**values)
 
 
+def _lineage_header_lines(payload: HistoryDetailPayload) -> list[str]:
+    """The completeness and native-source lines, when the answering computer reports its lineage."""
+    sources = payload.get("sources")
+    if not sources:
+        return []
+    complete = payload.get("complete", True)
+    rendered = _SOURCE_SEPARATOR.join(
+        _SOURCE_TEMPLATE.format(
+            native_id=source["native_id"] or _UNKNOWN_VALUE,
+            agent=source["agent"],
+            missing=_MISSING_SOURCE_MARK if source["missing"] else "",
+        )
+        for source in sources
+    )
+    return [
+        _COMPLETENESS_LINE_TEMPLATE.format(complete=_YES_VALUE if complete else _NO_VALUE),
+        _SOURCES_LINE_TEMPLATE.format(sources=rendered),
+    ]
+
+
 def _detail_header_lines(payload: HistoryDetailPayload) -> list[str]:
     header_lines = [payload["title"]] if payload["title"] else []
     if payload["project"]:
@@ -61,6 +88,7 @@ def _detail_header_lines(payload: HistoryDetailPayload) -> list[str]:
     if payload["computer"] is not None:
         header_lines.append(f"Messages: {payload['message_count']}")
         header_lines.append(_coverage_header_line(payload))
+        header_lines.extend(_lineage_header_lines(payload))
     header_lines.extend(
         [
             f"Running: {payload['running']}",

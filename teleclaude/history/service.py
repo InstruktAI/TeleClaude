@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
@@ -17,6 +17,8 @@ from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.core.db._sync import get_session_field_sync
 from teleclaude.history.search_payload import HistorySearchPayload, HistorySearchRow
 from teleclaude.identity_reach import Reach, resolve_reach
+from teleclaude.mirrors.conversations import get_conversation_state
+from teleclaude.mirrors.segments import get_source_segment
 from teleclaude.mirrors.store import (
     MirrorCoverageState,
     MirrorRecord,
@@ -112,6 +114,15 @@ class MirrorResolution:
     source: DetailSource
 
 
+class HistorySourceRow(TypedDict):
+    """One native transcript in a conversation's lineage, with provenance only."""
+
+    native_id: str | None
+    agent: str
+    position: int
+    missing: bool
+
+
 class HistoryDetailPayload(TypedDict):
     """Machine-readable history detail result."""
 
@@ -131,6 +142,9 @@ class HistoryDetailPayload(TypedDict):
     running: str
     raw: bool
     conversation_text: str
+    covered_at: NotRequired[str | None]
+    complete: NotRequired[bool]
+    sources: NotRequired[list[HistorySourceRow]]
 
 
 def _format_display_timestamp(value: str) -> str:
@@ -165,6 +179,27 @@ def _running_state(tc_id: str | None) -> str:
     return _YES_VALUE if lifecycle_status in _RUNNING_SESSION_STATES else _NO_VALUE
 
 
+def _lineage_sources(mirror: MirrorRecord | None) -> list[HistorySourceRow]:
+    """The native sources of the conversation a record belongs to, in lineage order."""
+    if mirror is None:
+        return []
+    state = get_conversation_state(
+        session_id=mirror.session_id,
+        source_identities=[mirror.source_identity] if mirror.source_identity else [],
+    )
+    if state is None:
+        return []
+    return [
+        HistorySourceRow(
+            native_id=source.native_session_id,
+            agent=source.agent,
+            position=source.position,
+            missing=source.missing_at is not None,
+        )
+        for source in state.sources
+    ]
+
+
 def _detail_json_payload(
     resolution: MirrorResolution,
     *,
@@ -172,6 +207,7 @@ def _detail_json_payload(
     raw: bool,
 ) -> HistoryDetailPayload:
     mirror = resolution.mirror
+    sources = _lineage_sources(mirror)
     return {
         "requested_id": resolution.requested_id,
         "requested_namespace": resolution.requested_namespace.value,
@@ -189,6 +225,9 @@ def _detail_json_payload(
         "running": _running_state(resolution.tc_id),
         "raw": raw,
         "conversation_text": body,
+        "covered_at": mirror.covered_at if mirror is not None else None,
+        "complete": not any(source["missing"] for source in sources),
+        "sources": sources,
     }
 
 
@@ -197,14 +236,14 @@ def _resolve_local_mirror(
     *,
     reach: Reach,
 ) -> MirrorResolution:
-    mirror = get_mirror(native_session_id=session_id, reach=reach)
-    if mirror is not None:
+    segment = get_source_segment(session_id, reach=reach)
+    if segment is not None:
         return MirrorResolution(
-            mirror=mirror,
+            mirror=segment,
             requested_id=session_id,
             requested_namespace=IdNamespace.NATIVE,
-            tc_id=mirror.session_id,
-            native_id=mirror.native_session_id,
+            tc_id=segment.session_id,
+            native_id=session_id,
             source=DetailSource.MIRROR,
         )
 

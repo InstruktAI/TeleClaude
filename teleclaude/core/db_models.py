@@ -37,6 +37,7 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     created_at: datetime | None = None
     last_activity: datetime | None = None
     closed_at: datetime | None = None
+    deleted_at: datetime | None = None
     project_path: str | None = None
     subdir: str | None = None
     config_subject: str | None = None
@@ -69,7 +70,6 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     human_email: str | None = None
     human_role: str | None = None
     principal: str | None = None
-    last_memory_extraction_at: str | None = None
     help_desk_processed_at: str | None = None
     idle_compaction_requested_at: str | None = None
     idle_compaction_completed_at: str | None = None
@@ -593,6 +593,62 @@ class MemoryObservation(SQLModel, table=True):
     state: str = MemoryState.CURRENT.value
     retired_at: str | None = None
     source_session_id: str | None = None
+    extraction_id: str | None = None
+
+
+class MemoryClosure(SQLModel, table=True):
+    """memory_closures table: one eligible conversation closure captured from its ending event."""
+
+    __tablename__ = "memory_closures"
+    __table_args__ = {"extend_existing": True}
+
+    id: str = Field(primary_key=True)
+    source_session_id: str
+    ended_at: str
+    identity_key: str
+    desk: str | None = None
+    home_kind: str
+    home_slug: str
+    extraction_id: str | None = None
+    pending_reason: str | None = None
+    settled_at: str | None = None
+    created_at: str
+
+
+class MemoryExtraction(SQLModel, table=True):
+    """memory_extractions table: one bounded stretch of a source conversation released to a memory worker."""
+
+    __tablename__ = "memory_extractions"
+    __table_args__ = {"extend_existing": True}
+
+    id: str = Field(primary_key=True)
+    source_session_id: str
+    identity_key: str
+    desk: str | None = None
+    home_kind: str
+    home_slug: str
+    from_key: str | None = None
+    through_key: str | None = None
+    through_at: str | None = None
+    message_count: int = 0
+    missing_sources: str = "[]"
+    status: str
+    reason: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class MemorySourceProgress(SQLModel, table=True):
+    """memory_source_progress table: how far each source conversation's messages have been extracted."""
+
+    __tablename__ = "memory_source_progress"
+    __table_args__ = {"extend_existing": True}
+
+    source_session_id: str = Field(primary_key=True)
+    through_key: str | None = None
+    through_at: str | None = None
+    time_bound: str | None = None
+    updated_at: str
 
 
 class MemorySummary(SQLModel, table=True):

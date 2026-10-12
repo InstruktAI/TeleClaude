@@ -21,6 +21,7 @@ from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.procedure_routing import build_procedure_activation_consumer
 from teleclaude.core.reconciliation import FleetCapabilityMap, contraction_answer_from_live_map
+from teleclaude.core.session_cleanup import terminate_session
 from teleclaude.events import (
     Consumer,
     ConsumerRuntime,
@@ -49,6 +50,9 @@ from teleclaude.hooks.registry import ContractRegistry
 from teleclaude.hooks.relay_delivery import RelayDeliveryPipeline
 from teleclaude.hooks.webhook_models import Contract, PropertyCriterion, Target
 from teleclaude.hooks.whatsapp_handler import handle_whatsapp_event
+from teleclaude.memory.closure import build_memory_closure_consumer
+from teleclaude.memory.transition import run_transition, run_transition_until_complete
+from teleclaude.mirrors.closure import build_mirror_closure_consumer
 from teleclaude.services.project_catalog.ownership import load_project_ownership_index
 from teleclaude.transport.redis_transport import RedisTransport
 
@@ -71,6 +75,11 @@ _RETIRED_GROUP_ABSENT_EVENT = "No stream yet; no retired system pipeline consume
 _EVENT_CONSUMERS_TASK_NAME = "event-consumers"
 _EVENT_CONSUMERS_LOG_TASK_NAME = "event_consumers"
 _EVENT_CONSUMERS_STARTED_EVENT = "Event consumer runtime started"
+_MEMORY_TRANSITION_TASK_NAME = "memory-transition"
+_MEMORY_TRANSITION_LOG_TASK_NAME = "memory_transition"
+_MEMORY_TRANSITION_PASS_FAILED_EVENT = "memory.transition.pass_failed"
+_MEMORY_TRANSITION_INCOMPLETE_EVENT = "Conversation-memory transition incomplete; retrying until complete"
+_MEMORY_TRANSITION_END_REASON = "conversation_memory_transition"
 _API_SERVER_ATTRIBUTE = "api_server"
 _API_APP_ATTRIBUTE = "app"
 _INBOUND_ROUTES_INSTALLED_EVENT = "Inbound endpoints installed on the ingress computer"
@@ -151,6 +160,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         return [
             self._build_integration_trigger(),
             build_lifecycle_router_consumer(),
+            build_mirror_closure_consumer(),
+            build_memory_closure_consumer(),
             build_procedure_activation_consumer(),
             build_event_bound_maintenance_consumer(),
             build_correlation_consumer(self._event_db, self._event_producer, CorrelationConfig()),
@@ -286,6 +297,30 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._event_producer = event_producer
         self._event_redis_client = redis_client
 
+    async def _end_for_memory_transition(self, session_id: str) -> bool:
+        """End a pre-transition conversation-memory worker through agent runtime's termination flow."""
+        return await terminate_session(session_id, self.client, reason=_MEMORY_TRANSITION_END_REASON)
+
+    async def _run_conversation_memory_transition(self) -> None:
+        """Run the one-time worker transition before any consumer can release an extraction.
+
+        A pass that cannot finish (a worker that would not end) is retried in the background until the transition
+        is recorded, and nothing is released until then.
+        """
+        try:
+            complete = await run_transition(self._end_for_memory_transition)
+        except Exception:
+            logger.error(_MEMORY_TRANSITION_PASS_FAILED_EVENT, exc_info=True)
+            complete = False
+        if complete:
+            return
+        logger.warning(_MEMORY_TRANSITION_INCOMPLETE_EVENT)
+        task = asyncio.create_task(
+            run_transition_until_complete(self._end_for_memory_transition, self.shutdown_event),
+            name=_MEMORY_TRANSITION_TASK_NAME,
+        )
+        task.add_done_callback(self._log_background_task_exception(_MEMORY_TRANSITION_LOG_TASK_NAME))
+
     async def _start_event_consumers(self) -> None:
         """Start the event platform's consumer tasks after the API socket is bound."""
         redis_client = self._event_redis_client
@@ -293,6 +328,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         assert event_producer is not None  # built by _start_event_platform_prepare
         await self._destroy_retired_system_group(redis_client)
         computer_label = config.computer.name
+        await self._run_conversation_memory_transition()
         self._start_event_consumers_runtime(redis_client)
         self._event_platform_status.pending_recovery_progress = "processor_started"
         logger.info(

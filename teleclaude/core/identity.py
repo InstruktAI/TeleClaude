@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -211,6 +211,8 @@ def select_reflection_avatar(
 _GLOBAL_CONFIG_PATH = GLOBAL_CONFIG_PATH
 _PEOPLE_DIR = PEOPLE_DIR
 _TELEGRAM_PLATFORM = "telegram"
+_DISCORD_PLATFORM = "discord"
+_WHATSAPP_PLATFORM = "whatsapp"
 # Each person's own config file, relative to the people directory.
 _PERSON_CONFIG_PATTERN = f"*/{ConfigFileName.OVERLAY}"
 
@@ -404,6 +406,41 @@ class IdentityResolver:
                 normalized_phone = self._normalize_phone_number(str(whatsapp_creds.phone_number))
                 if normalized_phone:
                     self._by_whatsapp_phone[normalized_phone] = person
+
+    def person_by_slug(self, slug: str) -> PersonEntry | None:
+        """The one registered person holding this slug, or ``None`` when none or more than one does."""
+        self._reload_if_stale()
+        matches = self._by_slug.get(slug, [])
+        return matches[0] if len(matches) == 1 else None
+
+    def person_for_provider_identity(self, platform: str, native_id: str) -> PersonEntry | None:
+        """The registered person whose verified credentials bind this provider account, if any."""
+        self._reload_if_stale()
+        if platform == _TELEGRAM_PLATFORM:
+            return self._by_telegram_user_id.get(int(native_id)) if native_id.isdigit() else None
+        if platform == _DISCORD_PLATFORM:
+            return self._by_discord_user_id.get(native_id)
+        if platform == _WHATSAPP_PLATFORM:
+            return self._by_whatsapp_phone.get(self._normalize_phone_number(native_id))
+        return None
+
+    def provider_identities_for_person(self, slug: str) -> tuple[str, ...]:
+        """Every provider-qualified identity key the person's verified credentials bind."""
+        self._reload_if_stale()
+        bound = [
+            f"{_TELEGRAM_PLATFORM}:{user_id}"
+            for user_id, person in self._by_telegram_user_id.items()
+            if person.slug == slug
+        ]
+        bound += [
+            f"{_DISCORD_PLATFORM}:{user_id}"
+            for user_id, person in self._by_discord_user_id.items()
+            if person.slug == slug
+        ]
+        bound += [
+            f"{_WHATSAPP_PLATFORM}:{phone}" for phone, person in self._by_whatsapp_phone.items() if person.slug == slug
+        ]
+        return tuple(sorted(bound))
 
     def resolve_person_context_binding(self, claim: str, context_root: Path) -> PersonContextBinding:
         """Validate a declared person claim against the registry and its designated root."""
@@ -613,7 +650,8 @@ def get_identity_resolver() -> IdentityResolver:
     return _resolver_instance
 
 
-_PERSON_KEY_PREFIX = "person:"
+_PERSON_KEY_KIND = "person"
+_PERSON_KEY_PREFIX = f"{_PERSON_KEY_KIND}:"
 _ADAPTER_PLATFORMS = ("discord", "telegram", "whatsapp")
 
 
@@ -659,11 +697,55 @@ def memory_person_for_session(session: Session) -> MemoryPerson | None:
     return MemoryPerson(identity_key=identity_key, principal=visitor_principal(identity_key), person_slug=None)
 
 
+def memory_person_for_identity(reference: str) -> MemoryPerson | None:
+    """The person an identity reference names, or ``None`` when it names no recognizable identity.
+
+    The reference is a canonical person key (``person:<slug>``) or a provider-qualified key. A provider
+    account bound to a registered person by that person's verified credentials resolves to the person,
+    whatever their role; any other provider account stays the visitor it is. The reference is normalized
+    exactly as entry binding normalizes it (a WhatsApp number is its digits).
+    """
+    kind, separator, value = reference.strip().partition(":")
+    if not separator or not value:
+        return None
+    resolver = get_identity_resolver()
+    if kind == _PERSON_KEY_KIND:
+        person = resolver.person_by_slug(value)
+        return _registered_person(value, person.email) if person is not None and person.slug else None
+    if kind not in _ADAPTER_PLATFORMS:
+        return None
+    native_id = resolver._normalize_phone_number(value) if kind == _WHATSAPP_PLATFORM else value
+    if not native_id:
+        return None
+    bound = resolver.person_for_provider_identity(kind, native_id)
+    if bound is not None and bound.slug:
+        return _registered_person(bound.slug, bound.email)
+    identity_key = f"{kind}:{native_id}"
+    return MemoryPerson(identity_key=identity_key, principal=visitor_principal(identity_key), person_slug=None)
+
+
+def provider_identities_for_person(person_slug: str) -> tuple[str, ...]:
+    """The provider-qualified identity keys a registered person's verified credentials bind."""
+    return get_identity_resolver().provider_identities_for_person(person_slug)
+
+
 def memory_person_reach(person: MemoryPerson) -> Reach:
-    """What a session serving this person may read: a registered person's own reach, a visitor's own records."""
-    if person.registered:
-        return resolve_reach(caller_from_principal(person.principal))
+    """What a session serving this person may read: a registered person's own reach, a visitor's own records.
+
+    A registered person's reach also admits what their verified provider accounts recorded as visitors, since
+    those accounts are theirs.
+    """
+    if person.person_slug is not None:
+        reach = resolve_reach(caller_from_principal(person.principal))
+        linked = frozenset(visitor_principal(key) for key in provider_identities_for_person(person.person_slug))
+        return replace(reach, linked_principals=linked)
     return visitor_reach(person.identity_key)
+
+
+def canonical_memory_identity(reference: str) -> str:
+    """The identity key a reference names once verified bindings are applied; an unrecognized reference is its own."""
+    person = memory_person_for_identity(reference)
+    return person.identity_key if person is not None else reference
 
 
 def _registered_person(person_slug: str, email: str) -> MemoryPerson:

@@ -36,6 +36,7 @@ class SessionMirrorContext:
     agent: str | None
     project_path: str
     transcript_path: str | None
+    lineage: tuple[str, ...]
     human_email: str | None
     visibility: str | None
     last_input_origin: str | None
@@ -89,13 +90,11 @@ def _extract_channel_identifiers(origin: str | None, raw_json: str | None) -> di
 
 
 def _position_for_transcript(facts: SessionMirrorFacts, transcript_path: str | None) -> int | None:
-    """Return the transcript's chain position, placing the current transcript last."""
+    """Return the transcript's position in the session's ordered lineage."""
     if transcript_path is None:
         return None
-    if transcript_path == facts.native_log_file:
-        return len(facts.transcript_files)
     try:
-        return facts.transcript_files.index(transcript_path)
+        return facts.lineage.index(transcript_path)
     except ValueError:
         return None
 
@@ -120,6 +119,7 @@ def session_context_from_facts(facts: SessionMirrorFacts, transcript_path: str |
         agent=facts.active_agent,
         project_path=facts.project_path or "",
         transcript_path=transcript_path or facts.native_log_file,
+        lineage=facts.lineage,
         human_email=facts.identity.human_email,
         visibility=facts.visibility,
         last_input_origin=facts.last_input_origin,

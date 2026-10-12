@@ -7,30 +7,19 @@
     "$defs": {
       "EventHomeKind": {
         "description": "Configuration homes an event can belong to.",
-        "enum": [
-          "project",
-          "person",
-          "company"
-        ],
+        "enum": ["project", "person", "company"],
         "title": "EventHomeKind",
         "type": "string"
       },
       "EventHomeMarker": {
         "description": "Explicit home states that are not registered homes: none is a claim, unknown makes none.",
-        "enum": [
-          "none",
-          "unknown"
-        ],
+        "enum": ["none", "unknown"],
         "title": "EventHomeMarker",
         "type": "string"
       },
       "EventHomeOwnerMarker": {
         "description": "Explicit project-owner states that are not registry references.",
-        "enum": [
-          "none",
-          "ownerless",
-          "unresolved"
-        ],
+        "enum": ["none", "ownerless", "unresolved"],
         "title": "EventHomeOwnerMarker",
         "type": "string"
       },
@@ -44,19 +33,13 @@
             "type": "string"
           }
         },
-        "required": [
-          "kind",
-          "instance"
-        ],
+        "required": ["kind", "instance"],
         "title": "EventHomeRef",
         "type": "object"
       },
       "EventOwnerKind": {
         "description": "Registered project-owner kinds that may appear on an event.",
-        "enum": [
-          "company",
-          "person"
-        ],
+        "enum": ["company", "person"],
         "title": "EventOwnerKind",
         "type": "string"
       },
@@ -70,10 +53,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "kind",
-          "instance"
-        ],
+        "required": ["kind", "instance"],
         "title": "EventOwnerRef",
         "type": "object"
       },
@@ -88,10 +68,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "kind",
-          "identity"
-        ],
+        "required": ["kind", "identity"],
         "title": "EventRef",
         "type": "object"
       },
@@ -217,13 +194,7 @@
         "title": "Causationid"
       }
     },
-    "required": [
-      "id",
-      "type",
-      "source",
-      "time",
-      "home"
-    ],
+    "required": ["id", "type", "source", "time", "home"],
     "title": "ReceivedEvent",
     "type": "object"
   },
@@ -233,9 +204,7 @@
       "version": 1,
       "description": "Worktree branch pushed to remote, candidate ready for integration",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "branch",
@@ -248,9 +217,7 @@
           "nullable": true
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -258,9 +225,7 @@
       "version": 1,
       "description": "Build phase completed for a work item",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -268,9 +233,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -278,9 +241,7 @@
       "version": 1,
       "description": "Deployment failed and requires attention",
       "subject_kind": "deployment",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "error",
@@ -293,9 +254,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -303,9 +262,7 @@
       "version": 1,
       "description": "Deployment completed successfully",
       "subject_kind": "deployment",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -313,9 +270,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -323,9 +278,7 @@
       "version": 1,
       "description": "Deployment was triggered for a work item",
       "subject_kind": "deployment",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "environment",
@@ -338,9 +291,7 @@
           "nullable": true
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -348,9 +299,7 @@
       "version": 1,
       "description": "Integrated to main, delivery bookkeeping done",
       "subject_kind": "deployment",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "branch",
@@ -378,9 +327,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -388,9 +335,7 @@
       "version": 1,
       "description": "Integration blocked, needs attention",
       "subject_kind": "deployment",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "blocked_at",
@@ -423,9 +368,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -433,9 +376,7 @@
       "version": 1,
       "description": "Finalize ready, candidate queued for integration",
       "subject_kind": "deployment",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "ready_at",
@@ -448,9 +389,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -458,9 +397,7 @@
       "version": 1,
       "description": "An integration candidate was blocked",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "blocked_at",
@@ -488,9 +425,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -498,9 +433,7 @@
       "version": 1,
       "description": "An integration candidate completed delivery",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "branch",
@@ -523,9 +456,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -533,9 +464,7 @@
       "version": 1,
       "description": "An integration candidate was parked for the current drain",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "branch",
@@ -563,9 +492,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -573,9 +500,7 @@
       "version": 1,
       "description": "An integration drain completed with delivered and parked outcomes",
       "subject_kind": "session",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "completed_at",
@@ -598,9 +523,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -608,9 +531,7 @@
       "version": 1,
       "description": "An integrator began processing a candidate",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "queue_depth",
@@ -628,9 +549,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -638,9 +557,7 @@
       "version": 1,
       "description": "Definition of Ready was assessed for a work item",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "score",
@@ -658,9 +575,7 @@
           "nullable": true
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -668,9 +583,7 @@
       "version": 1,
       "description": "Finalize-ready worker claim is ready for integration handoff",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "branch",
@@ -703,9 +616,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -713,9 +624,7 @@
       "version": 1,
       "description": "Upstream change cascaded staleness to a prepare artifact",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -728,9 +637,7 @@
           "nullable": true
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -738,9 +645,7 @@
       "version": 1,
       "description": "Prepare artifact written and lifecycle-tracked in state",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "artifact",
@@ -758,9 +663,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -768,9 +671,7 @@
       "version": 1,
       "description": "Preparation blocked, requires human decision",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "blocker",
@@ -783,9 +684,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -793,9 +692,7 @@
       "version": 1,
       "description": "Preparation complete, todo ready for build",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -803,9 +700,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -813,9 +708,7 @@
       "version": 1,
       "description": "Requirements discovery phase dispatched",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -823,9 +716,7 @@
           "nullable": true
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -833,9 +724,7 @@
       "version": 1,
       "description": "Input consumed by discovery worker, requirements production started",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -843,9 +732,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -853,9 +740,7 @@
       "version": 1,
       "description": "Human thinking was captured or updated in input.md",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -863,9 +748,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -873,9 +756,7 @@
       "version": 1,
       "description": "Prepare phase skipped via inheritance from parent todo",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "phase",
@@ -893,9 +774,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -903,9 +782,7 @@
       "version": 1,
       "description": "Implementation plan reviewed and approved",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -913,9 +790,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -923,9 +798,7 @@
       "version": 1,
       "description": "Implementation plan drafted from approved requirements",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -933,9 +806,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -943,9 +814,7 @@
       "version": 1,
       "description": "Requirements reviewed and approved, ready for plan drafting",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -953,9 +822,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -963,9 +830,7 @@
       "version": 1,
       "description": "Requirements derived from triangulation",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -973,9 +838,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -983,9 +846,7 @@
       "version": 1,
       "description": "Scoped re-review dispatched with a findings artifact",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "findings_artifact",
@@ -998,9 +859,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1008,9 +867,7 @@
       "version": 1,
       "description": "Review passed, candidate eligible for finalization",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "approved_at",
@@ -1033,9 +890,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1043,9 +898,7 @@
       "version": 1,
       "description": "Review requires a human decision before proceeding",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "question",
@@ -1063,9 +916,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1073,9 +924,7 @@
       "version": 1,
       "description": "Code review verdict is ready",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "round",
@@ -1093,9 +942,7 @@
           "nullable": true
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1103,9 +950,7 @@
       "version": 1,
       "description": "A roadmap entry moved between queues or dependency positions",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -1113,9 +958,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1123,9 +966,7 @@
       "version": 1,
       "description": "A workflow todo was created and may require lifecycle-runner evaluation",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "context",
@@ -1183,9 +1024,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1193,9 +1032,7 @@
       "version": 1,
       "description": "A workflow todo was delivered and may unblock dependents",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "delivered_at",
@@ -1218,9 +1055,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1228,9 +1063,7 @@
       "version": 1,
       "description": "A workflow todo advanced lifecycle phase and may unblock runner work",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "lifecycle_phase",
@@ -1253,9 +1086,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1263,9 +1094,7 @@
       "version": 1,
       "description": "A workflow todo control-plane field changed and may affect runner eligibility",
       "subject_kind": "todo",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "project_path",
@@ -1283,9 +1112,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1293,11 +1120,7 @@
       "version": 1,
       "description": "A help-desk conversation session ended",
       "subject_kind": "session",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "ended_at",
@@ -1315,9 +1138,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1325,11 +1146,7 @@
       "version": 1,
       "description": "A session a person started and talks to ended",
       "subject_kind": "session",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "ended_at",
@@ -1347,9 +1164,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1357,11 +1172,7 @@
       "version": 1,
       "description": "A session the system started ended",
       "subject_kind": "session",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "ended_at",
@@ -1379,9 +1190,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1389,11 +1198,7 @@
       "version": 1,
       "description": "A session ended whose record does not establish what kind of session it was",
       "subject_kind": "session",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "ended_at",
@@ -1411,9 +1216,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1421,11 +1224,7 @@
       "version": 1,
       "description": "An agent restart failed before the agent could resume, and the session was kept alive for inspection",
       "subject_kind": "session",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "computer",
@@ -1453,9 +1252,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1463,9 +1260,7 @@
       "version": 1,
       "description": "Effective project configuration changed and may affect workflow runner eligibility",
       "subject_kind": "configuration",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "changed_sections",
@@ -1483,9 +1278,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1506,9 +1299,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.config.validation",
         "state": "failed",
@@ -1533,9 +1324,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.config.validation",
         "state": "recovered",
@@ -1547,11 +1336,7 @@
       "version": 1,
       "description": "Raw content was captured and queued for processing",
       "subject_kind": "captured_item",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "author",
@@ -1569,9 +1354,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1579,11 +1362,7 @@
       "version": 1,
       "description": "Content was made available externally",
       "subject_kind": "captured_item",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "content_id",
@@ -1591,9 +1370,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1601,11 +1378,7 @@
       "version": 1,
       "description": "Content was processed or edited",
       "subject_kind": "captured_item",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "content_id",
@@ -1613,9 +1386,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1623,9 +1394,7 @@
       "version": 1,
       "description": "Deployment failed and requires attention",
       "subject_kind": "deployment",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "reason",
@@ -1638,9 +1407,7 @@
           "nullable": true
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.deployment",
         "state": "failed",
@@ -1652,9 +1419,7 @@
       "version": 1,
       "description": "Rollback executed after deployment failure",
       "subject_kind": "deployment",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -1662,9 +1427,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1672,9 +1435,7 @@
       "version": 1,
       "description": "Deployment initiated",
       "subject_kind": "deployment",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -1682,9 +1443,7 @@
           "nullable": true
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1692,9 +1451,7 @@
       "version": 1,
       "description": "Deployment succeeded",
       "subject_kind": "deployment",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "slug",
@@ -1702,9 +1459,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.deployment",
         "state": "succeeded",
@@ -1716,9 +1471,7 @@
       "version": 1,
       "description": "A recurring job run failed and requires operator attention",
       "subject_kind": "job",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "items",
@@ -1746,9 +1499,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.job.run",
         "state": "failed",
@@ -1760,9 +1511,7 @@
       "version": 1,
       "description": "A recurring job run stalled before reporting an outcome",
       "subject_kind": "job",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "items",
@@ -1790,9 +1539,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.job.run",
         "state": "stalled",
@@ -1804,9 +1551,7 @@
       "version": 1,
       "description": "A recurring job run completed successfully",
       "subject_kind": "job",
-      "home_kinds": [
-        "project"
-      ],
+      "home_kinds": ["project"],
       "data_fields": [
         {
           "name": "items",
@@ -1834,9 +1579,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.job.run",
         "state": "succeeded",
@@ -1850,9 +1593,7 @@
       "subject_kind": "computer",
       "home_kinds": [],
       "data_fields": [],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1862,9 +1603,7 @@
       "subject_kind": "computer",
       "home_kinds": [],
       "data_fields": [],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1874,9 +1613,7 @@
       "subject_kind": "computer",
       "home_kinds": [],
       "data_fields": [],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1884,11 +1621,7 @@
       "version": 1,
       "description": "An issue was escalated to a human for action",
       "subject_kind": "escalation",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "escalation_id",
@@ -1901,9 +1634,7 @@
           "nullable": true
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1911,11 +1642,7 @@
       "version": 1,
       "description": "An escalation was resolved",
       "subject_kind": "escalation",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "escalation_id",
@@ -1923,9 +1650,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1946,9 +1671,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1958,9 +1681,7 @@
       "subject_kind": "schema_proposal",
       "home_kinds": [],
       "data_fields": [],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -1970,9 +1691,48 @@
       "subject_kind": "schema_proposal",
       "home_kinds": [],
       "data_fields": [],
-      "related_kinds": [
-        "session"
+      "related_kinds": ["session"],
+      "state": null
+    },
+    {
+      "name": "teleclaude.session_mirrors.mirror.covered",
+      "version": 1,
+      "description": "A session's conversation mirror was refreshed and covers the conversation through the stated time; readiness reports whether every source present on disk was read",
+      "subject_kind": "session",
+      "home_kinds": ["project", "person", "company"],
+      "data_fields": [
+        {
+          "name": "session_id",
+          "kind": "string",
+          "nullable": false
+        },
+        {
+          "name": "covered_at",
+          "kind": "string",
+          "nullable": false
+        },
+        {
+          "name": "ready",
+          "kind": "boolean",
+          "nullable": false
+        },
+        {
+          "name": "complete",
+          "kind": "boolean",
+          "nullable": false
+        },
+        {
+          "name": "missing_source_count",
+          "kind": "integer",
+          "nullable": false
+        },
+        {
+          "name": "message_count",
+          "kind": "integer",
+          "nullable": false
+        }
       ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -2013,9 +1773,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -2056,9 +1814,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -2079,9 +1835,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -2089,11 +1843,7 @@
       "version": 1,
       "description": "A burst of events of the same type was detected within a short window",
       "subject_kind": "event_type",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "count",
@@ -2111,9 +1861,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.system.burst",
         "state": "detected",
@@ -2125,11 +1873,7 @@
       "version": 1,
       "description": "Events of a type that burst no longer reach the burst threshold within the detection window",
       "subject_kind": "event_type",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "episode_start",
@@ -2137,9 +1881,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.system.burst",
         "state": "subsided",
@@ -2164,9 +1906,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -2174,11 +1914,7 @@
       "version": 1,
       "description": "Repeated failures detected for the same thing within a short window",
       "subject_kind": null,
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "entity",
@@ -2196,9 +1932,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.system.entity",
         "state": "degraded",
@@ -2210,11 +1944,7 @@
       "version": 1,
       "description": "None of a degraded thing's failing event types reaches the degradation threshold any more",
       "subject_kind": null,
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "episode_start",
@@ -2222,9 +1952,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.system.entity",
         "state": "recovered",
@@ -2274,9 +2002,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -2302,9 +2028,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.system.failure_cascade",
         "state": "detected",
@@ -2324,9 +2048,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": {
         "family": "teleclaude.system.failure_cascade",
         "state": "subsided",
@@ -2376,9 +2098,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -2386,11 +2106,7 @@
       "version": 1,
       "description": "A session's tmux/identity bootstrap failed, stranding it before it reached active",
       "subject_kind": "session",
-      "home_kinds": [
-        "project",
-        "person",
-        "company"
-      ],
+      "home_kinds": ["project", "person", "company"],
       "data_fields": [
         {
           "name": "project_path",
@@ -2408,9 +2124,7 @@
           "nullable": false
         }
       ],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     },
     {
@@ -2420,12 +2134,9 @@
       "subject_kind": "computer",
       "home_kinds": [],
       "data_fields": [],
-      "related_kinds": [
-        "session"
-      ],
+      "related_kinds": ["session"],
       "state": null
     }
   ]
 }
 ```
-

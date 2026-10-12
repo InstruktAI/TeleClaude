@@ -43,12 +43,14 @@ _SQL_ASSIGNMENT_OWNER_PARAMETER = "assignment_owner_{index}"
 _SQL_PERSON_OWNER_PARAMETER = "person_owner"
 _SQL_SUBJECT_PARAMETER_GROUP = "subject"
 _SQL_PRINCIPAL_PARAMETER_GROUP = "principal"
+_SQL_LINKED_PRINCIPAL_PARAMETER_GROUP = "linked_principal"
 _SQL_PROJECT_PREFIX_PARAMETER = "project_prefix"
 _SQL_REGISTERED_PROJECT_PARAMETER_GROUP = "registered_project"
 _SQL_COMPANY_OWNER_PARAMETER_GROUP = "company_owner"
 _SQL_COL_EQUAL_PARAMETER_TEMPLATE = "{column} = :{parameter}"
 _SQL_NOT_IN_TEMPLATE = "{column} NOT IN ({values})"
 _SQL_SUBJECT_MATCH_TEMPLATE = "{subject_col} IN ({tokens})"
+_SQL_PRINCIPAL_IN_TEMPLATE = "{principal_col} IN ({tokens})"
 _SQL_PRINCIPAL_MATCH_TEMPLATE = "{principal_col} = :{parameter}"
 _SQL_OWNER_MATCH_TEMPLATE = "({subject_col} LIKE :{prefix_parameter} AND {registered_clause} AND ({owner_clause}))"
 _SQL_ASSIGNMENT_MATCH_TEMPLATE = "({subject_col} = :{subject_parameter} AND {owner_col} = :{owner_parameter})"
@@ -74,12 +76,13 @@ class Reach:
     shared_documentation: bool
     principal: str | None
     email: str | None = None
+    linked_principals: frozenset[str] = frozenset()
 
     def admits(self, subject: str | None, owner: str | None, principal: str | None) -> bool:
         """Return whether a record's recorded facts fall within this reach."""
         if self.everything:
             return True
-        if principal is not None and principal == self.principal:
+        if principal is not None and (principal == self.principal or principal in self.linked_principals):
             return True
         if subject is None:
             return False
@@ -135,6 +138,11 @@ class Reach:
             parameter = _SQL_PARAM_PREFIX + _SQL_PRINCIPAL_PARAMETER_GROUP
             parameters[parameter] = self.principal
             clauses.append(_SQL_PRINCIPAL_MATCH_TEMPLATE.format(principal_col=principal_col, parameter=parameter))
+        if principal_col is not None and self.linked_principals:
+            placeholders = _bind_values(
+                parameters, sorted(self.linked_principals), _SQL_LINKED_PRINCIPAL_PARAMETER_GROUP
+            )
+            clauses.append(_SQL_PRINCIPAL_IN_TEMPLATE.format(principal_col=principal_col, tokens=placeholders))
 
         owner_clause = _owner_clause(self, subject_col, owner_col, parameters)
         if owner_clause:

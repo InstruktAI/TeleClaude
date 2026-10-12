@@ -539,6 +539,16 @@ FLAG_MEMORIES_CURATION_SESSION = Flag(
     "--session", "-s", "The conversation session whose memories are curated", arity=VALUE
 )
 FLAG_MEMORIES_CURATION_TYPE = Flag("--type", desc="Observation type", arity=VALUE)
+FLAG_MEMORIES_IDENTITY = Flag(
+    "--identity",
+    desc="The person (person:<slug>) or provider account (<provider>:<account>) memories are about",
+    arity=VALUE,
+)
+FLAG_MEMORIES_DESK = Flag(
+    "--desk", desc="The help desk (hd-company-<slug> or hd-project-<slug>) the memories are kept at", arity=VALUE
+)
+FLAG_MEMORIES_EXTRACTION = Flag("--extraction", desc="The extraction the change is made for", arity=VALUE)
+FLAG_MEMORIES_FAIL_REASON = Flag("--reason", desc="Why the extraction could not be finished", arity=VALUE)
 FLAG_MEMORIES_ADVANCE_TO = Flag("--to", desc="Timestamp (ISO8601) of the newest conversation entry read", arity=VALUE)
 
 # =============================================================================

@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.agents import resolve_parser_agent
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.models import Session
-from teleclaude.core.session_message_projection import build_message_chain
+from teleclaude.core.session_transcript_chain import build_message_chain
 from teleclaude.output_projection.conversation_projector import project_conversation_chain
 from teleclaude.output_projection.models import ProjectedAuthorKind, VisibilityPolicy
 

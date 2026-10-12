@@ -28,6 +28,7 @@ from ._agent_status import (
     encode_open_tool_calls,
 )
 from ._control_delivery import initialize_procedure_delivery_in_transaction
+from ._session_retention import not_archive_record
 
 if TYPE_CHECKING:
     pass
@@ -432,7 +433,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
             all_open,
             initiator_session_id,
         )
-        stmt = select(db_models.Session)
+        stmt = select(db_models.Session).where(db_models.Session.deleted_at.is_(None), not_archive_record())
         if not include_closed:
             stmt = stmt.where(db_models.Session.closed_at.is_(None))
         # ``all_open`` is the authoritative sessions projection. Other callers
@@ -571,6 +572,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
                         "last_activity",
                         "lifecycle_transitioned_at",
                         "closed_at",
+                        "deleted_at",
                         "last_message_sent_at",
                         "last_input_written_at",
                         "last_projected_at",
@@ -854,29 +856,6 @@ class DbSessionsMixin(AgentStatusPersistenceMixin):
         async with self._session() as db_session:
             await db_session.exec(stmt)  # type: ignore[arg-type]
             await db_session.commit()
-
-    async def delete_session(self, session_id: str) -> None:
-        """Delete session and handle event.
-
-        Args:
-            session_id: Session ID
-        """
-        # Get session before deleting for event emission
-        session = await self.get_session(session_id)
-
-        async with self._session() as db_session:
-            await db_session.exec(
-                db_models.Session.__table__.delete().where(db_models.Session.session_id == session_id)
-            )  # type: ignore[arg-type]
-            await db_session.commit()
-        logger.debug("Deleted session %s from database", session_id)
-
-        if session:
-            event_bus.emit(
-                TeleClaudeEvents.SESSION_CLOSED,
-                SessionLifecycleContext(session_id=session_id),
-                visibility=EventVisibility.CLUSTER,
-            )
 
     async def count_sessions(self, computer_name: str | None = None) -> int:
         """Count sessions with optional filters.

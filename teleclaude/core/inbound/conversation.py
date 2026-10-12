@@ -261,14 +261,23 @@ def _hidden_on_this_computer(stamp: EndpointStamp | None, env: ConversationEnvir
     return stamp is not None and stamp.is_help_desk and not env.is_master
 
 
+def _is_continuable_record(session: Session) -> bool:
+    """Whether a retained session record may be selected to continue a conversation.
+
+    A soft-deleted record is out of ordinary selection, and a run the system or another
+    session started (a worker, a procedure or job run) is never a person's conversation.
+    """
+    return session.deleted_at is None and not (session.system_role or session.initiator_session_id or session.job)
+
+
 def _can_be_conversation_session(turn: ConversationTurn, session: Session, env: ConversationEnvironment) -> bool:
     """Whether a session of the conversation's key could be its session on this computer.
 
     The adapter admits it and no later entry took the conversation from it; it is
-    open, or closed and carrying the endpoint it was created at, and it is not a
-    desk this computer does not host.
+    a continuable record, open or closed and carrying the endpoint it was created at, and it is
+    not a desk this computer does not host.
     """
-    if not turn.conversation.admits(session) or is_superseded(session):
+    if not _is_continuable_record(session) or not turn.conversation.admits(session) or is_superseded(session):
         return False
     stamp = EndpointStamp.from_session(session)
     return not _hidden_on_this_computer(stamp, env) and (stamp is not None or _is_open(session))
@@ -301,7 +310,7 @@ async def _latest_shared(turn: ConversationTurn, env: ConversationEnvironment) -
     if binding is None:
         return None
     session = await env.db.get_session(binding.session_id)
-    if session is None:
+    if session is None or session.deleted_at is not None:
         await env.db.delete_conversation_binding(conversation.origin.value, conversation.key_field, conversation.key)
         _log(ConversationDecision.BINDING_DROPPED, turn, session_id=binding.session_id)
         return None
@@ -326,7 +335,12 @@ async def _newest_at(turn: ConversationTurn, env: ConversationEnvironment, endpo
     )
     for session in sessions:
         stamp = EndpointStamp.from_session(session)
-        if stamp is not None and conversation.admits(session) and _names_same_endpoint(stamp, wanted):
+        if (
+            stamp is not None
+            and _is_continuable_record(session)
+            and conversation.admits(session)
+            and _names_same_endpoint(stamp, wanted)
+        ):
             return session
     return None
 

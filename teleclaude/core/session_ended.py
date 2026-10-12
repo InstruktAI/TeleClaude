@@ -14,7 +14,7 @@ from teleclaude.caller_identity import (
     resolve_session_principal,
 )
 from teleclaude.core.agent_dispatch import desk_session_kind
-from teleclaude.core.models import EndpointStamp, Session
+from teleclaude.core.models import EndpointKind, EndpointStamp, Session
 from teleclaude.events.envelope import EventHomeKind, EventHomeRef, EventLevel, occurrence_id
 from teleclaude.events.envelope_facts import home_for_session_config
 from teleclaude.events.producer import publish_event
@@ -89,6 +89,19 @@ def is_conversation_session(session: Session) -> bool:
     except ValueError:
         return False
     return isinstance(home, EventHomeRef) and home.kind is EventHomeKind.PERSON
+
+
+def is_continuing_conversation(session: Session) -> bool:
+    """Whether the session is an adapter-bound conversation that a returning person continues.
+
+    A session at a desk, or a session created at a person's assistant endpoint through conversation entry.
+    Only these use the idle cycle. A person's independently started conversation is a conversation
+    session without this endpoint and closes through the ordinary lifecycle.
+    """
+    if session_ended_kind(session) is SessionEndedKind.HELP_DESK:
+        return True
+    stamp = EndpointStamp.from_session(session)
+    return stamp is not None and stamp.kind is EndpointKind.ASSISTANT
 
 
 async def report_session_ended(session: Session) -> None:

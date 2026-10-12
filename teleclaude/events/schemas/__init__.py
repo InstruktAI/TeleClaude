@@ -16,6 +16,8 @@ _DECLARATION_MODULES = (
     "teleclaude.events.schemas.notification",
     "teleclaude.events.schemas.schema",
     "teleclaude.events.schemas.signal",
+    "teleclaude.events.schemas.session_mirrors",
+    "teleclaude.events.schemas.memory",
 )
 
 

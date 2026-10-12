@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Literal, Protocol, cast
@@ -22,6 +21,7 @@ from teleclaude.core.reminders.models import ReminderEntry, ReminderEntryReadIte
 from teleclaude.core.reminders.ordering import ProjectionOrderKey, ProjectionSourceKind, projection_order_key
 from teleclaude.core.reminders.presentation import format_agent_reminder
 from teleclaude.core.session_output import assistant_output_parts_are_bare_noop, is_bare_noop_output
+from teleclaude.core.session_transcript_chain import build_message_chain
 from teleclaude.output_projection import conversation_projector as conversation_projector_module
 from teleclaude.output_projection import serializers as output_serializers
 from teleclaude.output_projection.models import ProjectionSurface, visibility_policy_for_person
@@ -70,21 +70,6 @@ class NativeMessageProjection:
 
     messages: list[MessageDTO]
     bare_noop_suppressed: bool
-
-
-def build_message_chain(transcript_files: str | None, native_log_file: str | None) -> list[str]:
-    """Build transcript chain from stored session fields."""
-    chain: list[str] = []
-    if transcript_files:
-        try:
-            stored = json.loads(transcript_files)
-            if isinstance(stored, list):
-                chain = [str(path) for path in stored if path]
-        except (json.JSONDecodeError, TypeError):
-            pass
-    if native_log_file and native_log_file not in chain:
-        chain.append(native_log_file)
-    return chain
 
 
 def project_messages(

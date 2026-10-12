@@ -6,7 +6,7 @@ import json
 import os
 import sys
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -119,12 +119,21 @@ def _get_sqlmodel_module() -> Any:
 
 
 def _get_memory_context(
-    project_name: str, resolve_memory_reach: Callable[[], Reach], identity_key: str | None = None
+    project_name: str,
+    resolve_memory_reach: Callable[[], Reach],
+    identity_key: str | None = None,
+    strict_identity_keys: Sequence[str] | None = None,
 ) -> str:
     """Fetch pre-formatted memory context from local database for the reach the session's person has."""
     try:
         db_path = str(tc_paths.MAIN_DB_PATH)
-        return generate_context_sync(project_name, db_path, resolve_memory_reach(), identity_key=identity_key)
+        return generate_context_sync(
+            project_name,
+            db_path,
+            resolve_memory_reach(),
+            identity_key=identity_key,
+            strict_identity_keys=strict_identity_keys,
+        )
     except ReachResolutionError:
         logger.error(_MEMORY_REACH_RESOLUTION_FAILED, project=project_name, exc_info=True)
         return ""

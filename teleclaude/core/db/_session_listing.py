@@ -13,6 +13,7 @@ from .. import db_models
 from ..models import JsonDict, Session
 from ..models._types import to_json_dict
 from ._base import DbBase
+from ._session_retention import not_archive_record
 
 _PROJECT_SUBJECT_PATTERN = "project:%"
 _SESSION_SUBJECT_COLUMN = "sessions.config_subject"
@@ -50,6 +51,7 @@ class DbSessionListingMixin(DbBase):
             select(db_models.Session)
             .where(
                 db_models.Session.closed_at.is_(None),
+                db_models.Session.deleted_at.is_(None),
                 db_models.Session.lifecycle_status == "active",
             )
             .order_by(db_models.Session.last_activity.desc())
@@ -68,7 +70,7 @@ class DbSessionListingMixin(DbBase):
         if session_ids is not None and not session_ids:
             return []
 
-        stmt = select(db_models.Session)
+        stmt = select(db_models.Session).where(db_models.Session.deleted_at.is_(None), not_archive_record())
         reach_clause, reach_parameters = reach.sql_predicate(
             subject_col=_SESSION_SUBJECT_COLUMN,
             owner_col=_SESSION_SUBJECT_OWNER_COLUMN,

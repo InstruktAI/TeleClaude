@@ -17,6 +17,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ROLE_WORKER
 from teleclaude.core.agents import AgentName
+from teleclaude.mirrors._session_convergence import converge_session_owned_conversations
 from teleclaude.paths import MAIN_DB_PATH, MIRRORS_BACKUP_DIR
 from teleclaude.utils.transcript_discovery import (
     SessionId,
@@ -54,7 +55,7 @@ _MISSING_COLUMN_ERROR = "no such column"
 # process that opens the store, including read-only CLI calls, so an ungated scan would
 # both re-read the table on every invocation and take a write lock a reader never needed.
 _DATA_REVISION = 6
-LATEST_DATA_REVISION = 8
+LATEST_DATA_REVISION = 9
 
 _READ_DATA_REVISION_SQL = "PRAGMA user_version"
 _WRITE_DATA_REVISION_SQL = "PRAGMA user_version = {}"
@@ -256,6 +257,7 @@ def _converge_derived_data(
         (6, _migrate_revision_6),
         (7, _migrate_revision_7),
         (8, _migrate_revision_8),
+        (9, _migrate_revision_9),
     )
     current_revision = int(conn.execute(_READ_DATA_REVISION_SQL).fetchone()[0])
     for revision, migration in migrations:
@@ -356,6 +358,16 @@ def _migrate_revision_8(
     if _MIRROR_SESSION_SUBJECT_OWNER_COLUMN not in columns:
         _add_column(conn, _ADD_MIRROR_SESSION_SUBJECT_OWNER_SQL)
     backfill_session_attributions(conn, store_path, snapshot_path)
+
+
+def _migrate_revision_9(
+    conn: sqlite3.Connection,
+    store_path: str,
+    _backfill_session_attributions: Callable[[sqlite3.Connection, str, Path], None],
+) -> None:
+    """Snapshot the durable store, then converge its mirrors to one conversation per TeleClaude session."""
+    _snapshot_mirrors_store(conn, store_path)
+    converge_session_owned_conversations(conn)
 
 
 def create_current_attribution_schema(conn: sqlite3.Connection) -> None:

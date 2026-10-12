@@ -950,7 +950,6 @@ async def end_session(
         client,
         reason="end_session",
         session=session,
-        delete_db=False,
     )
     if not terminated:
         # The session exists (fetched above); terminate_session returns False only

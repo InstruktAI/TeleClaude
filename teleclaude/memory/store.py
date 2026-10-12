@@ -122,6 +122,7 @@ class MemoryStore:
             principal=principal,
             state=inp.state.value,
             source_session_id=inp.source_session_id,
+            extraction_id=inp.extraction_id,
         )
 
         async with db._session() as session:
@@ -161,6 +162,7 @@ class MemoryStore:
                     principal=principal,
                     state=inp.state.value,
                     source_session_id=inp.source_session_id,
+                    extraction_id=inp.extraction_id,
                 )
                 session.add(obs)
                 session.commit()

@@ -18,6 +18,20 @@ from teleclaude.cli.api_client_request import JsonBody, RequestOptions
 from teleclaude.cli.clearance import ClearanceScope
 
 _MEMORY_ROWS = TypeAdapter(list[dict[str, object]])  # guard: loose-dict - JSON response from daemon memory API
+
+
+def _curation_address(
+    *,
+    session_id: str | None = None,
+    identity: str | None = None,
+    desk: str | None = None,
+    extraction: str | None = None,
+) -> dict[str, str]:
+    """The addressing fields of a curation request: the session, or the identity, desk and extraction."""
+    fields = dict(session_id=session_id, identity=identity, desk=desk, extraction=extraction)
+    return {name: value for name, value in fields.items() if value is not None}
+
+
 _MEMORY_ROW = TypeAdapter(dict[str, object])  # guard: loose-dict - JSON response from daemon memory API
 
 
@@ -175,70 +189,151 @@ class TelecRuntimeAPI:
         return _MEMORY_ROWS.validate_json(resp.text)
 
     async def memory_curation_scope(
-        self, session_id: str
+        self,
+        *,
+        session_id: str | None = None,
+        identity: str | None = None,
+        desk: str | None = None,
     ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
-        """List the scope a conversation session defines for curation."""
+        """List the scope a conversation session or an identity (and desk) defines for curation."""
         resp = await self._request(
             "GET",
             "/api/memory/curation/scope",
             request_options=RequestOptions(
-                params={"session_id": session_id}, clearance_scope=ClearanceScope.verb("memories scope")
+                params=_curation_address(session_id=session_id, identity=identity, desk=desk),
+                clearance_scope=ClearanceScope.verb("memories scope"),
             ),
         )
         return _MEMORY_ROW.validate_json(resp.text)
 
     async def memory_curation_add(
-        self, session_id: str, obs_type: str, text: str
+        self,
+        obs_type: str,
+        text: str,
+        *,
+        session_id: str | None = None,
+        identity: str | None = None,
+        desk: str | None = None,
+        extraction: str | None = None,
     ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
-        """Add a current memory about a conversation session's person."""
+        """Add a current memory about the person a session or an extraction names."""
         resp = await self._request(
             "POST",
             "/api/memory/curation/add",
             request_options=RequestOptions(
-                json_body={"session_id": session_id, "type": obs_type, "text": text},
+                json_body={
+                    **_curation_address(session_id=session_id, identity=identity, desk=desk, extraction=extraction),
+                    "type": obs_type,
+                    "text": text,
+                },
                 clearance_scope=ClearanceScope.verb("memories add"),
             ),
         )
         return _MEMORY_ROW.validate_json(resp.text)
 
     async def memory_curation_update(
-        self, session_id: str, observation_id: int, text: str
+        self,
+        observation_id: int,
+        text: str,
+        *,
+        session_id: str | None = None,
+        identity: str | None = None,
+        desk: str | None = None,
+        extraction: str | None = None,
     ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
-        """Replace the statement of a current memory in a conversation session's scope."""
+        """Replace the statement of a current memory in the scope a session or an extraction names."""
         resp = await self._request(
             "POST",
             "/api/memory/curation/update",
             request_options=RequestOptions(
-                json_body={"session_id": session_id, "id": observation_id, "text": text},
+                json_body={
+                    **_curation_address(session_id=session_id, identity=identity, desk=desk, extraction=extraction),
+                    "id": observation_id,
+                    "text": text,
+                },
                 clearance_scope=ClearanceScope.verb("memories update"),
             ),
         )
         return _MEMORY_ROW.validate_json(resp.text)
 
     async def memory_curation_retire(
-        self, session_id: str, observation_id: int
+        self,
+        observation_id: int,
+        *,
+        session_id: str | None = None,
+        identity: str | None = None,
+        desk: str | None = None,
+        extraction: str | None = None,
     ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
-        """Retire a current memory in a conversation session's scope."""
+        """Retire a current memory in the scope a session or an extraction names."""
         resp = await self._request(
             "POST",
             "/api/memory/curation/retire",
             request_options=RequestOptions(
-                json_body={"session_id": session_id, "id": observation_id},
+                json_body={
+                    **_curation_address(session_id=session_id, identity=identity, desk=desk, extraction=extraction),
+                    "id": observation_id,
+                },
                 clearance_scope=ClearanceScope.verb("memories retire"),
             ),
         )
         return _MEMORY_ROW.validate_json(resp.text)
 
     async def memory_curation_prospect(
-        self, session_id: str, obs_type: str, text: str
+        self,
+        obs_type: str,
+        text: str,
+        *,
+        session_id: str | None = None,
+        desk: str | None = None,
+        extraction: str | None = None,
     ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
         """Collect a business item from a desk conversation as a prospect."""
         resp = await self._request(
             "POST",
             "/api/memory/curation/prospect",
             request_options=RequestOptions(
-                json_body={"session_id": session_id, "type": obs_type, "text": text},
+                json_body={
+                    **_curation_address(session_id=session_id, desk=desk, extraction=extraction),
+                    "type": obs_type,
+                    "text": text,
+                },
                 clearance_scope=ClearanceScope.verb("memories prospect"),
+            ),
+        )
+        return _MEMORY_ROW.validate_json(resp.text)
+
+    async def memory_extraction_read(
+        self, extraction_id: str
+    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
+        """Read an extraction's conversation material, coverage and scope."""
+        resp = await self._request(
+            "GET",
+            f"/api/memory/curation/extraction/{extraction_id}",
+            request_options=RequestOptions(clearance_scope=ClearanceScope.verb("memories extraction read")),
+        )
+        return _MEMORY_ROW.validate_json(resp.text)
+
+    async def memory_extraction_complete(
+        self, extraction_id: str
+    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
+        """Declare an extraction's changes finished."""
+        resp = await self._request(
+            "POST",
+            f"/api/memory/curation/extraction/{extraction_id}/complete",
+            request_options=RequestOptions(clearance_scope=ClearanceScope.verb("memories extraction complete")),
+        )
+        return _MEMORY_ROW.validate_json(resp.text)
+
+    async def memory_extraction_fail(
+        self, extraction_id: str, reason: str
+    ) -> dict[str, object]:  # guard: loose-dict - JSON response from daemon memory API
+        """Report that an extraction could not be finished."""
+        resp = await self._request(
+            "POST",
+            f"/api/memory/curation/extraction/{extraction_id}/fail",
+            request_options=RequestOptions(
+                json_body={"reason": reason}, clearance_scope=ClearanceScope.verb("memories extraction fail")
             ),
         )
         return _MEMORY_ROW.validate_json(resp.text)

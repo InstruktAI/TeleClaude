@@ -251,7 +251,9 @@ from teleclaude.logging_config import setup_logging
 _record_import_timing("teleclaude.logging_config", _t)
 
 _t = time.perf_counter()
-from teleclaude.mirrors import MirrorWorker
+from teleclaude.mirrors.archive import threadsafe_archive_adopter
+from teleclaude.mirrors.closure import threadsafe_coverage_reporter
+from teleclaude.mirrors.worker import MirrorWorker
 
 _record_import_timing("teleclaude.mirrors", _t)
 
@@ -947,7 +949,9 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 self.maintenance_service.periodic_cleanup(), name="periodic-cleanup"
             )
             self.cleanup_task.add_done_callback(self._log_background_task_exception("periodic_cleanup"))
-            logger.info("Periodic cleanup task started (closed sessions purged after 7d, inbound queue trimmed at 7d)")
+            logger.info(
+                "Periodic cleanup task started (closed sessions soft-deleted after retention window, inbound queue trimmed at 7d)"
+            )
 
             # Start polling watcher (keeps pollers aligned with tmux foreground state)
             self.poller_watch_task = asyncio.create_task(
@@ -1003,7 +1007,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             )
             logger.info("Agent status watchdog started")
 
-            mirror_worker = MirrorWorker()
+            mirror_loop = asyncio.get_running_loop()
+            mirror_worker = MirrorWorker(
+                archive_adopter=threadsafe_archive_adopter(db, mirror_loop),
+                coverage_reporter=threadsafe_coverage_reporter(mirror_loop),
+            )
             self.mirror_worker_task = asyncio.create_task(mirror_worker.run(), name="mirror-worker")
             self._track_background_task(self.mirror_worker_task, "mirror-worker")
             logger.info("Mirror worker started")

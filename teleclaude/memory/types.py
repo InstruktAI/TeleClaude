@@ -39,6 +39,14 @@ class MemoryState(StrEnum):
 CURRENT_MEMORY_PREDICATE = f"memory_observations.state = '{MemoryState.CURRENT.value}'"
 
 
+class ExtractionStatus(StrEnum):
+    """Where a released extraction stands: with its memory worker, finished, or failed with a reason."""
+
+    READY = "ready"  # Released to a memory worker; progress has not moved past it
+    COMPLETED = "completed"  # The worker declared its changes for the stretch finished; progress moved past it
+    FAILED = "failed"  # The worker could not finish; the stretch is eligible again
+
+
 class ObservationConcept(str, Enum):
     """Cross-cutting concept tags for richer querying."""
 
@@ -66,6 +74,7 @@ class ObservationInput:
     principal: str | None = None
     state: MemoryState = MemoryState.CURRENT
     source_session_id: str | None = None
+    extraction_id: str | None = None
 
 
 @dataclass

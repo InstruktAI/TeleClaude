@@ -1,13 +1,13 @@
-"""The conversation idle cycle: compact an idle conversation session, then close it.
+"""The conversation idle cycle: compact an idle continuing conversation, then close it.
 
-A conversation session (a session at a help desk, or a person's own session in their
-home) is closed only to spare resources while its person is away. After it has had no
-input for the idle threshold, the cycle resumes its native transcript in a temporary
-runtime, submits the agent's declared compaction command, and closes only after the
-provider confirms compaction. Returning input abandons maintenance and resumes the same
-session under its ordinary launch profile.
+A continuing conversation (a session at a help desk, or a session created at a person's
+assistant endpoint through conversation entry) is closed only to spare resources while its
+person is away. After it has had no input for the idle threshold, the cycle resumes its native
+transcript in a temporary runtime, submits the agent's declared compaction command, and closes
+only after the provider confirms compaction. Returning input abandons maintenance and resumes
+the same session under its ordinary launch profile.
 
-The cycle never touches a session that is not a conversation, and never records the
+The cycle never touches a session that is not a continuing conversation, and never records the
 compaction command as conversation input: the idle clock is the session's last input.
 """
 
@@ -46,7 +46,7 @@ from teleclaude.core.session_compaction import (
     launch_context_for_attempt,
     session_compaction_owner,
 )
-from teleclaude.core.session_ended import is_conversation_session
+from teleclaude.core.session_ended import is_continuing_conversation
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_idle_compaction import (
     CONVERSATION_IDLE_THRESHOLD,
@@ -205,8 +205,68 @@ async def _launch_temporary_compaction_runtime(
         clear_relaunch_awaiting_readiness(session.session_id)
 
 
+async def _due_to_close(session: Session) -> NotDueReason | None:
+    """Why the session may not be closed now, or ``None`` when its completed compaction makes it due."""
+    reason = await _not_due_reason(session, datetime.now(UTC), require_idle_status=False)
+    if reason is not None:
+        logger.info(_NOT_DUE_EVENT, session_id=session.session_id, step=IdleStep.CLOSE, reason=reason.value)
+        return reason
+    if not compaction_completed(session):
+        return NotDueReason.COMPACTION_NOT_COMPLETED
+    return None
+
+
+async def close_completed_conversation(
+    session: Session,
+    client: AdapterClient,
+    compaction_owner: SessionCompactionOwner,
+) -> None:
+    """Close a session whose compaction completed, unless the conversation is going on.
+
+    Input queued for the session, or arriving while the close starts, calls the close
+    off. The close is stamped before the session leaves ``ACTIVE``, so input that still
+    reaches the session afterwards finds an idle-closed conversation: its delivery waits
+    for the close to end and resumes the same session (``deliver_inbound``), and the
+    conversation seam does the same for a turn it routes to the closing session.
+    """
+    session_id = session.session_id
+    async with session_runtime_owner(session_id):
+        fresh = await db.get_session(session_id)
+        if fresh is None or fresh.lifecycle_status != SessionLifecycleStatus.ACTIVE:
+            return
+        attempt = compaction_owner.active_attempt(fresh)
+        if attempt is None or not compaction_completed(fresh):
+            return
+        if await _due_to_close(fresh) is not None:
+            return
+        await db.update_session(session_id, idle_closed_at=datetime.now(UTC).isoformat())
+        await transition_session(
+            db,
+            session_id,
+            LifecycleTransition(SessionLifecycleStatus.CLOSING, LifecycleTransitionReason.CLOSE_STARTED),
+        )
+        started = await db.get_session(session_id)
+        reason = None if started is None else await _due_to_close(started)
+        if reason is not None:
+            await transition_session(
+                db,
+                session_id,
+                LifecycleTransition(SessionLifecycleStatus.ACTIVE, LifecycleTransitionReason.CLOSE_FAILED),
+            )
+            await db.update_session(session_id, idle_closed_at=None)
+            logger.info(_CLOSE_CALLED_OFF_EVENT, session_id=session_id, reason=reason.value)
+            return
+        terminated = await terminate_session(session_id, client, reason=IDLE_CLOSE_REASON, expire_inbound=False)
+        if not terminated:
+            logger.warning(_CLOSE_NOT_PERFORMED_EVENT, session_id=session_id)
+            return
+        await compaction_owner.settle(fresh, attempt.attempt_id)
+        await db.update_session(session_id, idle_compaction_completed_at=None)
+        logger.info(_CLOSED_EVENT, session_id=session_id, agent=session.active_agent)
+
+
 class ConversationIdleCycle:
-    """Compacts and closes the conversation sessions that have been idle past the threshold."""
+    """Compacts and closes the continuing conversations that have been idle past the threshold."""
 
     def __init__(self, client: AdapterClient, compaction_owner: SessionCompactionOwner | None = None) -> None:
         self._client = client
@@ -225,10 +285,10 @@ class ConversationIdleCycle:
                 await asyncio.sleep(IDLE_CYCLE_INTERVAL_S)
 
     async def run_pass(self) -> None:
-        """Advance every active conversation session whose agent declares a compaction command."""
+        """Advance every active continuing conversation whose agent declares a compaction command."""
         for session in await db.get_active_sessions():
             command = compaction_command(session)
-            if command is None or not is_conversation_session(session):
+            if command is None or not is_continuing_conversation(session):
                 continue
             try:
                 await self._advance(session, command)
@@ -241,7 +301,7 @@ class ConversationIdleCycle:
         """Take the one step the session's compaction stamps call for."""
         if self._compaction_owner.active_attempt(session) is not None:
             if compaction_completed(session):
-                await self._close(session)
+                await close_completed_conversation(session, self._client, self._compaction_owner)
             return
         await self._request_compaction(session, command)
 
@@ -301,59 +361,3 @@ class ConversationIdleCycle:
             error=str(launch_error),
             restored=restored,
         )
-
-    async def _close(self, session: Session) -> None:
-        """Close a session whose compaction completed, unless the conversation is going on.
-
-        Input queued for the session, or arriving while the close starts, calls the close
-        off. The close is stamped before the session leaves ``ACTIVE``, so input that still
-        reaches the session afterwards finds an idle-closed conversation: its delivery waits
-        for the close to end and resumes the same session (``deliver_inbound``), and the
-        conversation seam does the same for a turn it routes to the closing session.
-        """
-        session_id = session.session_id
-        async with session_runtime_owner(session_id):
-            fresh = await db.get_session(session_id)
-            if fresh is None or fresh.lifecycle_status != SessionLifecycleStatus.ACTIVE:
-                return
-            attempt = self._compaction_owner.active_attempt(fresh)
-            if attempt is None or not compaction_completed(fresh):
-                return
-            if await self._due_to_close(fresh) is not None:
-                return
-            await db.update_session(session_id, idle_closed_at=datetime.now(UTC).isoformat())
-            await transition_session(
-                db,
-                session_id,
-                LifecycleTransition(SessionLifecycleStatus.CLOSING, LifecycleTransitionReason.CLOSE_STARTED),
-            )
-            started = await db.get_session(session_id)
-            reason = None if started is None else await self._due_to_close(started)
-            if reason is not None:
-                await transition_session(
-                    db,
-                    session_id,
-                    LifecycleTransition(SessionLifecycleStatus.ACTIVE, LifecycleTransitionReason.CLOSE_FAILED),
-                )
-                await db.update_session(session_id, idle_closed_at=None)
-                logger.info(_CLOSE_CALLED_OFF_EVENT, session_id=session_id, reason=reason.value)
-                return
-            terminated = await terminate_session(
-                session_id, self._client, reason=IDLE_CLOSE_REASON, expire_inbound=False
-            )
-            if not terminated:
-                logger.warning(_CLOSE_NOT_PERFORMED_EVENT, session_id=session_id)
-                return
-            await self._compaction_owner.settle(fresh, attempt.attempt_id)
-            await db.update_session(session_id, idle_compaction_completed_at=None)
-            logger.info(_CLOSED_EVENT, session_id=session_id, agent=session.active_agent)
-
-    async def _due_to_close(self, session: Session) -> NotDueReason | None:
-        """Why the session may not be closed now, or ``None`` when its completed compaction makes it due."""
-        reason = await _not_due_reason(session, datetime.now(UTC), require_idle_status=False)
-        if reason is not None:
-            logger.info(_NOT_DUE_EVENT, session_id=session.session_id, step=IdleStep.CLOSE, reason=reason.value)
-            return reason
-        if not compaction_completed(session):
-            return NotDueReason.COMPACTION_NOT_COMPLETED
-        return None

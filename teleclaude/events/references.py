@@ -36,6 +36,7 @@ class ReferenceKind(StrEnum):
     DEPLOYMENT = "deployment"
     SCHEMA_PROPOSAL = "schema_proposal"
     ESCALATION = "escalation"
+    MEMORY_SCOPE = "memory_scope"
 
 
 @dataclass(frozen=True)
@@ -188,3 +189,10 @@ class EscalationRef(TypedRef):
     """An escalation, by escalation id."""
 
     KIND: ClassVar[ReferenceKind] = ReferenceKind.ESCALATION
+
+
+@dataclass(frozen=True)
+class MemoryScopeRef(TypedRef):
+    """A memory scope, by identity key, with ``@<desk>`` appended for the memories kept at one help desk."""
+
+    KIND: ClassVar[ReferenceKind] = ReferenceKind.MEMORY_SCOPE

@@ -48,6 +48,8 @@ if TYPE_CHECKING:
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 
 logger = get_logger(__name__)
+
+_SOFT_DELETED_IN_DATABASE_EVENT = "session_cleanup.soft_deleted"
 _LEGACY_RESTRICTED_SESSION_ENDED_EVENT = "legacy_restricted_session_ended"
 _LEGACY_RESTRICTED_SESSION_REASON = "legacy_restricted_session"
 
@@ -141,7 +143,7 @@ async def _clear_session_reminders(session_id: str) -> None:
         )
 
 
-async def _suspend_procedure_events_on_session_close(session_id: str, *, delete_db: bool) -> None:
+async def _suspend_procedure_events_on_session_close(session_id: str, *, soft_delete: bool) -> None:
     """Suspend responsibility work before close, retaining only live session state for revival."""
     suspended_count = await db.suspend_procedure_events_for_session(
         session_id=session_id,
@@ -152,7 +154,7 @@ async def _suspend_procedure_events_on_session_close(session_id: str, *, delete_
         session_id=session_id,
         suspended_count=suspended_count,
     )
-    if delete_db:
+    if soft_delete:
         await db.remove_procedure_event_delivery_session(session_id=session_id)
 
 
@@ -380,7 +382,7 @@ async def terminate_session(
     session: Session | None = None,
     kill_tmux: bool | None = None,
     delete_channel: bool = True,
-    delete_db: bool = False,
+    soft_delete: bool = False,
     expire_inbound: bool = True,
 ) -> bool:
     """Terminate a session and mark it closed in the DB.
@@ -392,6 +394,7 @@ async def terminate_session(
         session: Optional pre-fetched session object
         kill_tmux: Whether to kill tmux (defaults to True)
         delete_channel: Whether to delete adapter channels/topics
+        soft_delete: Whether the retained record is also removed from ordinary navigation
         expire_inbound: Whether input still queued for the session is dropped; a close that
             keeps the conversation (the idle close) leaves it queued, and its delivery resumes the session
 
@@ -410,25 +413,25 @@ async def terminate_session(
             session=session,
             kill_tmux=kill_tmux,
             delete_channel=delete_channel,
-            delete_db=delete_db,
+            soft_delete=soft_delete,
             expire_inbound=expire_inbound,
         )
     finally:
         _cleanup_in_flight.discard(session_id)
 
 
-async def _write_session_end(session: Session, *, delete_db: bool, already_closed: bool) -> None:
-    """Write the end of a session — delete its row or close it — and report an ending that happens now.
+async def _write_session_end(session: Session, *, soft_delete: bool, already_closed: bool) -> None:
+    """Write the end of a session — close its retained record, or also soft-delete it — and report an ending that happens now.
 
-    The record held here is what the report states, so the delete variant reports from it too. A
+    The record held here is what the report states, so the soft-deletion variant reports from it too. A
     session that was already closed was reported when it closed.
     """
-    if delete_db:
-        await db.delete_session(session.session_id)
-        logger.info("Deleted session %s from database", session.session_id)
-    elif not already_closed:
+    if not already_closed:
         await db.close_session(session.session_id)
         logger.info("Closed session %s in database", session.session_id)
+    if soft_delete:
+        await db.soft_delete_session(session.session_id)
+        logger.info(_SOFT_DELETED_IN_DATABASE_EVENT, session_id=session.session_id)
     if not already_closed:
         await report_session_ended(session)
 
@@ -441,7 +444,7 @@ async def _terminate_session_inner(
     session: Session | None = None,
     kill_tmux: bool | None = None,
     delete_channel: bool = True,
-    delete_db: bool = False,
+    soft_delete: bool = False,
     expire_inbound: bool = True,
 ) -> bool:
     """Inner implementation of terminate_session (called only when not in flight)."""
@@ -450,7 +453,7 @@ async def _terminate_session_inner(
         logger.debug("Session %s not found for termination", session_id)
         return False
     already_closed = bool(session.closed_at)
-    if already_closed and not delete_db:
+    if already_closed and not soft_delete:
         logger.debug("Session %s already closed; proceeding with cleanup", session_id)
 
     logger.info("Terminating session %s (%s)", session_id, reason)
@@ -502,7 +505,7 @@ async def _terminate_session_inner(
                         SESSION_PROCESS_REAP_TIMEOUT,
                         [proc.pid for proc in surviving],
                     )
-        elif session.tmux_session_name and not already_closed and not delete_db:
+        elif session.tmux_session_name and not already_closed and not soft_delete:
             await _publish_host_release(session, kill_succeeded=False)
 
         try:
@@ -525,9 +528,9 @@ async def _terminate_session_inner(
                 exc_info=True,
             )
 
-        # A closed session stays revivable with its Claude scratchpad until its
-        # row is purged, so the Claude temp directory goes only with the row.
-        if delete_db:
+        # A closed session stays revivable with its Claude scratchpad until it is
+        # soft-deleted, so the Claude temp directory goes only with the removal.
+        if soft_delete:
             try:
                 await cleanup_claude_session_tmpdir(session)
             except Exception as exc:
@@ -538,7 +541,7 @@ async def _terminate_session_inner(
                     exc_info=True,
                 )
 
-        await _suspend_procedure_events_on_session_close(session.session_id, delete_db=delete_db)
+        await _suspend_procedure_events_on_session_close(session.session_id, soft_delete=soft_delete)
 
         # Expire any pending inbound messages before marking the session closed. A close that keeps
         # the conversation leaves them queued: their delivery resumes the session.
@@ -574,9 +577,9 @@ async def _terminate_session_inner(
                 exc_info=True,
             )
     finally:
-        await _write_session_end(session, delete_db=delete_db, already_closed=already_closed)
+        await _write_session_end(session, soft_delete=soft_delete, already_closed=already_closed)
         clear_relaunch_awaiting_readiness(session.session_id)
-    return not already_closed or delete_db
+    return not already_closed or soft_delete
 
 
 async def emit_recently_closed_session_events(
@@ -707,7 +710,6 @@ async def cleanup_stale_session(session_id: str, adapter_client: AdapterClient) 
         reason="stale",
         session=session,
         kill_tmux=False,
-        delete_db=True,
     )
     if cleaned:
         logger.info("Cleaned up stale session %s", session_id)

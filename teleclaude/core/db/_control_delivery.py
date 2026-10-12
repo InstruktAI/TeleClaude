@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -604,6 +605,29 @@ class DbControlDeliveryMixin:
         statement = (
             select(db_models.ProcedureEventInbox)
             .where(db_models.ProcedureEventInbox.responsibility_key == responsibility_key)
+            .where(db_models.ProcedureEventInbox.outcome.in_([outcome.value for outcome in outcomes]))
+            .order_by(db_models.ProcedureEventInbox.enqueue_order.asc())
+        )
+        async with self._session() as db_session:
+            rows = (await db_session.exec(statement)).all()
+        return [_procedure_event_record(row) for row in rows]
+
+    async def list_procedure_activations(
+        self,
+        *,
+        procedure_ids: Sequence[str],
+        outcomes: Sequence[db_models.ProcedureEventDeliveryOutcome],
+    ) -> list[ProcedureEventRecord]:
+        """Read the retained activations of the named procedures in the given outcomes, in enqueue order.
+
+        The reads above return only pending and suspended work, because a delivered activation was handed off;
+        a census of work that was handed off but may be unfinished needs this one.
+        """
+        if not procedure_ids or not outcomes:
+            return []
+        statement = (
+            select(db_models.ProcedureEventInbox)
+            .where(db_models.ProcedureEventInbox.procedure_id.in_(tuple(procedure_ids)))
             .where(db_models.ProcedureEventInbox.outcome.in_([outcome.value for outcome in outcomes]))
             .order_by(db_models.ProcedureEventInbox.enqueue_order.asc())
         )

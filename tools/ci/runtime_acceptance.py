@@ -121,6 +121,8 @@ _SCENARIO_CANDIDATE_IDENTITY = "UC-RA10"
 _SCENARIO_INVALID_CONFIG = "UC-RA11"
 _SCENARIO_PROCEDURE_CLOSURE = "UC-RA12"
 _SCENARIO_DELIVERY_VALIDATION = "UC-RA13"
+_SCENARIO_ARCHIVED_HISTORY = "UC-RA14"
+_SCENARIO_CURATION_REFUSAL = "UC-RA15"
 _COLD_PROFILE_SCENARIOS = (_SCENARIO_COLD,)
 _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_COLD,
@@ -136,6 +138,8 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_INVALID_CONFIG,
     _SCENARIO_PROCEDURE_CLOSURE,
     _SCENARIO_DELIVERY_VALIDATION,
+    _SCENARIO_ARCHIVED_HISTORY,
+    _SCENARIO_CURATION_REFUSAL,
 )
 _PROFILE_COLD = "cold"
 _PROFILE_FULL = "full"
@@ -195,6 +199,8 @@ _COMPUTER_NAME_FIELD = "name"
 _COMPUTER_STATUS_FIELD = "status"
 _READY_LOCAL_COMPUTER_SNAPSHOT = Path("snapshots") / "ready-local-computer.json"
 _MEMBER_PATCH_REFUSAL_SNAPSHOT = Path("snapshots") / "member-computer-patch-refusal.txt"
+_CURATION_REFUSALS_SNAPSHOT = Path("snapshots") / "curation-refusals.txt"
+_ARCHIVED_CONVERSATION_SNAPSHOT = Path("snapshots") / "archived-conversation.txt"
 _INVALID_PATCH_REFUSAL_SNAPSHOT = Path("snapshots") / "invalid-computer-patch-refusal.txt"
 _REFUSAL_REQUEST_PREFIX = " (request "
 _REFUSAL_REQUEST_END = ")"
@@ -338,6 +344,67 @@ _CONFIG_PROJECT_PATCH_PREFIX = ("bin/telec", "config", "project", "patch")
 _AUTH_LOGIN_PREFIX = ("bin/telec", "auth", "login")
 _AUTH_WHOAMI_COMMAND = ("bin/telec", "auth", "whoami")
 _AUTH_LOGOUT_COMMAND = ("bin/telec", "auth", "logout")
+_HISTORY_SEARCH_PREFIX = ("bin/telec", "history", "search")
+_HISTORY_SHOW_PREFIX = ("bin/telec", "history", "show")
+_JSON_OPTION = "--json"
+_MEMORIES_COMMAND_PREFIX = ("bin/telec", "memories")
+_MEMORIES_LIST_COMMAND = (*_MEMORIES_COMMAND_PREFIX, "list")
+_MESSAGE_COUNT_FIELD = "message_count"
+_TELECLAUDE_ID_FIELD = "tc_id"
+_CONVERSATION_TEXT_FIELD = "conversation_text"
+_ARCHIVE_NATIVE_ID = "7f3c2a10-5b1d-4c8e-9a11-0d2e4f6a8b90"
+_ARCHIVE_SEARCH_TERM = "runtimeacceptancearchive"
+_ARCHIVE_PROJECT_DIRECTORY = "-runtime-acceptance-archive"
+_ARCHIVE_TRANSCRIPT_ROOT = (".claude", "projects")
+_ARCHIVE_ADOPTION_WINDOW_SECONDS = 120
+_ARCHIVE_POLL_INTERVAL_SECONDS = 2
+_MINIMUM_ARCHIVED_MESSAGES = 1
+_ARCHIVE_USER_TURN = "Please remember the {term} marker in this conversation."
+_ARCHIVE_ASSISTANT_TURN = "The {term} marker is noted."
+_ARCHIVE_TRANSCRIPT_TIMESTAMPS = ("2026-01-01T10:00:00.000Z", "2026-01-01T10:00:05.000Z")
+_CURATION_REFUSED_EXTRACTION = "00000000-0000-4000-8000-000000000000"
+_CURATION_REFUSED_IDENTITY = f"person:{_OWNER_SEED_SLUG}"
+_CURATION_REFUSED_TEXT = "runtime acceptance attempted memory"
+_CURATION_REFUSED_COMMANDS = (
+    ("scope", "--identity", _CURATION_REFUSED_IDENTITY),
+    (
+        "add",
+        "--identity",
+        _CURATION_REFUSED_IDENTITY,
+        "--extraction",
+        _CURATION_REFUSED_EXTRACTION,
+        "--type",
+        "preference",
+        _CURATION_REFUSED_TEXT,
+    ),
+    (
+        "update",
+        "1",
+        "--identity",
+        _CURATION_REFUSED_IDENTITY,
+        "--extraction",
+        _CURATION_REFUSED_EXTRACTION,
+        _CURATION_REFUSED_TEXT,
+    ),
+    ("retire", "1", "--identity", _CURATION_REFUSED_IDENTITY, "--extraction", _CURATION_REFUSED_EXTRACTION),
+    (
+        "prospect",
+        "--desk",
+        "hd-company-runtime-acceptance",
+        "--extraction",
+        _CURATION_REFUSED_EXTRACTION,
+        "--type",
+        "request",
+        _CURATION_REFUSED_TEXT,
+    ),
+    ("extraction", "read", _CURATION_REFUSED_EXTRACTION),
+    ("extraction", "complete", _CURATION_REFUSED_EXTRACTION),
+    ("extraction", "fail", _CURATION_REFUSED_EXTRACTION, "--reason", "runtime acceptance attempt"),
+)
+_ARCHIVE_ADOPTION_ERROR = "The archived transcript did not become exactly one conversation with a TeleClaude identity."
+_ARCHIVE_RETRIEVAL_ERROR = "History retrieval did not return the archived conversation."
+_CURATION_NOT_REFUSED_ERROR = "A memory-curation operation was not refused for a caller that is not a procedure agent."
+_CURATION_CHANGED_MEMORIES_ERROR = "A refused memory-curation attempt changed the memory listing."
 _JOBS_LIST_COMMAND = ("bin/telec", "jobs", "list")
 _JOBS_STATUS_COMMAND = ("bin/telec", "jobs", "status")
 _ENV_OWNER_NAME_VARIABLE = "TELECLAUDE_OWNER_NAME"
@@ -2268,6 +2335,136 @@ def _full_delivery_declaration_validation(
         _restore_procedure_fixture_publication(resources, evidence)
 
 
+def _restart_runtime(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Restart the disposable runtime through its public service command and wait for readiness."""
+    resources.start_attempted = True
+    restart_result = _record_external_command(
+        resources,
+        _SERVICE_RESTART_COMMAND,
+        cwd=resources.source_root,
+        timeout_seconds=_RESTART_COMMAND_TIMEOUT_SECONDS,
+        evidence=evidence,
+    )
+    _require_process_success(restart_result)
+    _run_readiness_check(resources, evidence)
+
+
+def _archive_transcript_path(resources: FullRuntimeResources) -> Path:
+    home = Path(resources.environment[_COLD_HOME_VARIABLE])
+    return home.joinpath(*_ARCHIVE_TRANSCRIPT_ROOT, _ARCHIVE_PROJECT_DIRECTORY, f"{_ARCHIVE_NATIVE_ID}.jsonl")
+
+
+def _write_archive_transcript(resources: FullRuntimeResources) -> Path:
+    """Place a synthetic native transcript no session record claims under the runtime's agent root."""
+    path = _archive_transcript_path(resources)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    working_directory = str(resources.project_path or resources.source_root)
+    user_timestamp, assistant_timestamp = _ARCHIVE_TRANSCRIPT_TIMESTAMPS
+    entries: list[JSONObject] = [
+        {
+            "type": "user",
+            "timestamp": user_timestamp,
+            "cwd": working_directory,
+            "sessionId": _ARCHIVE_NATIVE_ID,
+            "message": {"role": "user", "content": _ARCHIVE_USER_TURN.format(term=_ARCHIVE_SEARCH_TERM)},
+        },
+        {
+            "type": "assistant",
+            "timestamp": assistant_timestamp,
+            "cwd": working_directory,
+            "sessionId": _ARCHIVE_NATIVE_ID,
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": _ARCHIVE_ASSISTANT_TURN.format(term=_ARCHIVE_SEARCH_TERM)}],
+            },
+        },
+    ]
+    lines = [json.dumps(entry) for entry in entries]
+    path.write_text(_LINE_BREAK.join(lines) + _LINE_BREAK, encoding=_UTF8)
+    return path
+
+
+def _archived_conversation_rows(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> list[object]:
+    """The search rows that name the archived conversation, read through a fresh public CLI process."""
+    terminal = resources.open_admin_terminal()
+    status, output = _record_terminal_command(
+        resources, terminal, (*_HISTORY_SEARCH_PREFIX, _ARCHIVE_SEARCH_TERM, _JSON_OPTION), evidence
+    )
+    if status != _PROCESS_SUCCESS:
+        return []
+    payload = _structured_value(output)
+    return list(payload) if isinstance(payload, list) else []
+
+
+def _await_archived_conversation(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> str:
+    """Wait for the runtime to archive the transcript; the TeleClaude identity of its one conversation."""
+    deadline = time.monotonic() + _ARCHIVE_ADOPTION_WINDOW_SECONDS
+    while time.monotonic() < deadline:
+        rows = _archived_conversation_rows(resources, evidence)
+        if len(rows) == 1:
+            row = _mapping_value(rows[0])
+            identity = row.get("tc_id") if row is not None else None
+            if isinstance(identity, str) and identity:
+                return identity
+        time.sleep(_ARCHIVE_POLL_INTERVAL_SECONDS)
+    raise ValueError(_ARCHIVE_ADOPTION_ERROR)
+
+
+def _archived_conversation_matches(conversation_text: str) -> bool:
+    """Compare the retrieved conversation body with the snapshot of what the archived transcript renders to."""
+    expected = (Path(__file__).parent / _ARCHIVED_CONVERSATION_SNAPSHOT).read_text(encoding=_UTF8)
+    return conversation_text.strip() + _LINE_BREAK == expected
+
+
+def _require_archived_history(
+    resources: FullRuntimeResources, evidence: list[CommandEvidence], requested_id: str, conversation_id: str
+) -> None:
+    """History retrieval by one identity returns the archived conversation under the TeleClaude identity."""
+    terminal = resources.open_admin_terminal()
+    status, output = _record_terminal_command(
+        resources, terminal, (*_HISTORY_SHOW_PREFIX, requested_id, _JSON_OPTION), evidence
+    )
+    detail = _mapping_value(_structured_value(output))
+    message_count = detail.get(_MESSAGE_COUNT_FIELD) if detail is not None else None
+    if (
+        status != _PROCESS_SUCCESS
+        or detail is None
+        or detail.get(_TELECLAUDE_ID_FIELD) != conversation_id
+        or not isinstance(message_count, int)
+        or message_count < _MINIMUM_ARCHIVED_MESSAGES
+        or not _archived_conversation_matches(str(detail.get(_CONVERSATION_TEXT_FIELD, _EMPTY)))
+    ):
+        raise ValueError(_ARCHIVE_RETRIEVAL_ERROR)
+
+
+def _full_archived_history(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    transcript = _write_archive_transcript(resources)
+    _restart_runtime(resources, evidence)
+    conversation_id = _await_archived_conversation(resources, evidence)
+    _require_archived_history(resources, evidence, conversation_id, conversation_id)
+    _require_archived_history(resources, evidence, _ARCHIVE_NATIVE_ID, conversation_id)
+    transcript.unlink()
+    _restart_runtime(resources, evidence)
+    _require_archived_history(resources, evidence, conversation_id, conversation_id)
+
+
+def _full_curation_refusal(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    terminal = resources.open_admin_terminal()
+    before_status, before_listing = _record_terminal_command(resources, terminal, _MEMORIES_LIST_COMMAND, evidence)
+    _require_terminal_success(before_status, before_listing, evidence)
+    expected_refusals = (Path(__file__).parent / _CURATION_REFUSALS_SNAPSHOT).read_text(encoding=_UTF8).splitlines()
+    for operation, expected in zip(_CURATION_REFUSED_COMMANDS, expected_refusals, strict=True):
+        status, output = _record_terminal_command(
+            resources, terminal, (*_MEMORIES_COMMAND_PREFIX, *operation), evidence
+        )
+        if status in (_PROCESS_SUCCESS, None) or _LINE_BREAK.join(output.splitlines()).strip() != expected:
+            raise ValueError(_CURATION_NOT_REFUSED_ERROR)
+    after_status, after_listing = _record_terminal_command(resources, terminal, _MEMORIES_LIST_COMMAND, evidence)
+    _require_terminal_success(after_status, after_listing, evidence)
+    if len(after_listing.splitlines()) != len(before_listing.splitlines()):
+        raise ValueError(_CURATION_CHANGED_MEMORIES_ERROR)
+
+
 def _cold_entrypoint_scenario(
     source_root: Path,
     child_environment: Mapping[str, str],
@@ -2421,6 +2618,12 @@ def run_profile(
                     ),
                     _SCENARIO_DELIVERY_VALIDATION: _bind_full_scenario(
                         _SCENARIO_DELIVERY_VALIDATION, resources, _full_delivery_declaration_validation
+                    ),
+                    _SCENARIO_ARCHIVED_HISTORY: _bind_full_scenario(
+                        _SCENARIO_ARCHIVED_HISTORY, resources, _full_archived_history
+                    ),
+                    _SCENARIO_CURATION_REFUSAL: _bind_full_scenario(
+                        _SCENARIO_CURATION_REFUSAL, resources, _full_curation_refusal
                     ),
                 }
             )

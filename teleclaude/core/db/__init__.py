@@ -39,6 +39,7 @@ from ._session_listing import (
     SessionRecordOutsideReach,
     SessionRecordRead,
 )
+from ._session_retention import DbSessionRetentionMixin
 from ._sessions import DbSessionsMixin
 from ._settings import DbSettingsMixin
 from ._startup_handovers import DbStartupHandoversMixin
@@ -75,6 +76,7 @@ class Db(
     DbSettingsMixin,
     DbVoiceTranscriptionsMixin,
     DbSessionListingMixin,
+    DbSessionRetentionMixin,
     DbStartupHandoversMixin,
     DbSessionsMixin,
     DbBase,

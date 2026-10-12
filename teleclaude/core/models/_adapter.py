@@ -226,6 +226,13 @@ class WhatsAppAdapterMetadata:
 
 
 ENDPOINT_SECTION = "endpoint"
+ARCHIVE_SECTION = "archive"
+
+
+class ArchiveStampField(StrEnum):
+    """Persisted key names in the root ``archive`` origin section of a retained, non-running session record."""
+
+    SOURCE_IDENTITY = "source_identity"
 
 
 class EndpointKind(StrEnum):

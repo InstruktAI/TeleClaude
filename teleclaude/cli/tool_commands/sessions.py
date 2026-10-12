@@ -482,8 +482,9 @@ def handle_sessions_end(args: list[str]) -> None:
     Without a session_id, closes every live direct child of the authenticated
     caller across computers.
 
-    Gracefully terminates the session: kills the tmux session, deletes the
-    session record, and cleans up all resources (listeners, workspace dirs).
+    Gracefully terminates the session: kills the tmux session, closes the
+    session record (which is retained), and cleans up all resources
+    (listeners, workspace dirs).
     Ending a named session prints an operation receipt; the outcome is delivered
     to the calling session.
 

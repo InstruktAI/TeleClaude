@@ -56,6 +56,7 @@ from teleclaude.core.models import (
     HumanActionIntent,
     Session,
     SessionEntryPoint,
+    SessionField,
     ThinkingMode,
 )
 from teleclaude.core.session_launch_profile import resolve_session_launch_profile
@@ -101,6 +102,9 @@ _AGENT_START_DEBUG_LOG = (
 )
 _AGENT_START_COMMAND_LOG = "Executing agent start command for %s: base_command=%s prompt_len=%s prompt_sha=%s"
 _AGENT_RESTART_READINESS_OPPORTUNITY_EVENT = "agent_restart_readiness_opportunity"
+_TMUX_SESSION_NAME_FIELD = "tmux_session_name"
+_RESTART_REVIVE_CLOSED_EVENT = "agent_restart.session_revived"
+_RESTART_RESTORE_DELETED_EVENT = "agent_restart.soft_deleted_session_restored"
 _RESTART_PANE_MISSING_EVENT = "agent_restart_pane_missing"
 _HANDOFF_CONTEXT_HEADER = "ADDITIONAL CONTEXT:"
 _HANDOFF_CONTEXT_WITH_TRANSCRIPT_TEMPLATE = (
@@ -688,6 +692,21 @@ async def handoff_agent(
     await execute_handoff(session, cmd, client, execute_terminal_command, startup_message, lease)
 
 
+async def _revival_record_updates(session: Session) -> dict[str, str | None]:
+    """The stored fields a revival clears: a close, a soft deletion, and a host pane that no longer exists."""
+    updates: dict[str, str | None] = {}
+    if session.closed_at is not None:
+        updates[SessionField.CLOSED_AT.value] = None
+        logger.info(_RESTART_REVIVE_CLOSED_EVENT, session_id=session.session_id)
+    if session.deleted_at is not None:
+        updates[SessionField.DELETED_AT.value] = None
+        logger.info(_RESTART_RESTORE_DELETED_EVENT, session_id=session.session_id)
+    if session.tmux_session_name and not await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False):
+        updates[_TMUX_SESSION_NAME_FIELD] = None
+        logger.info(_RESTART_PANE_MISSING_EVENT, session_id=session.session_id, tmux_session=session.tmux_session_name)
+    return updates
+
+
 async def _restart_agent(
     session: Session,
     cmd: RestartAgentCommand | ReviveAgentCommand,
@@ -721,20 +740,7 @@ async def _restart_agent(
         await client.send_message(session, f"❌ {error}")
         return False, error
 
-    session_updates: dict[str, str | None] = {}
-    if session.closed_at is not None:
-        session_updates["closed_at"] = None
-        logger.info("Reviving closed session before agent restart (session=%s)", session.session_id)
-
-    if session.tmux_session_name:
-        tmux_exists = await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False)
-        if not tmux_exists:
-            session_updates["tmux_session_name"] = None
-            logger.info(
-                _RESTART_PANE_MISSING_EVENT,
-                session_id=session.session_id,
-                tmux_session=session.tmux_session_name,
-            )
+    session_updates = await _revival_record_updates(session)
 
     if session_updates:
         await db.update_session(session.session_id, **session_updates)

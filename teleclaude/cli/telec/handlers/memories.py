@@ -8,12 +8,15 @@ from typing import NoReturn
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.telec import flags as F
-from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs, parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import (
     MEMORIES_ADD,
     MEMORIES_ADVANCE,
     MEMORIES_DELETE,
+    MEMORIES_EXTRACTION_COMPLETE,
+    MEMORIES_EXTRACTION_FAIL,
+    MEMORIES_EXTRACTION_READ,
     MEMORIES_LIST,
     MEMORIES_PROSPECT,
     MEMORIES_RETIRE,
@@ -30,6 +33,7 @@ __all__ = [
     "_handle_memories_add",
     "_handle_memories_advance",
     "_handle_memories_delete",
+    "_handle_memories_extraction",
     "_handle_memories_list",
     "_handle_memories_prospect",
     "_handle_memories_retire",
@@ -42,11 +46,49 @@ __all__ = [
 
 _REQUEST_FAILURE_TEMPLATE = "Error: {detail}"
 _SESSION_REQUIRED = "--session is required."
+_ADDRESS_REQUIRED = "Name the conversation with --session, or the person with --identity (and --desk) and --extraction."
+_EXTRACTION_ID_REQUIRED = "Extraction ID is required."
+_REASON_REQUIRED = "--reason is required."
+_DESK_AND_EXTRACTION_REQUIRED = "Name the desk with --desk and the extraction with --extraction."
 _TYPE_REQUIRED = "--type is required."
 _TEXT_REQUIRED = "Text is required."
 _MEMORY_ID_REQUIRED = "Memory ID is required."
 _TO_REQUIRED = "--to is required."
 _SCOPE_SESSION_TEMPLATE = "Session: {session_id}"
+_EXTRACTION_HEADER_TEMPLATE = "Extraction: {id} (status: {status})"
+_EXTRACTION_REASON_TEMPLATE = "Reason: {reason}"
+_EXTRACTION_IDENTITY_TEMPLATE = "Identity: {identity}"
+_EXTRACTION_DESK_TEMPLATE = "Desk: {desk}"
+_EXTRACTION_SOURCE_TEMPLATE = "Source session: {source}"
+_EXTRACTION_COVERAGE_TEMPLATE = "Coverage: through {covered_at}; ready: {ready}; complete: {complete}"
+_EXTRACTION_MISSING_TEMPLATE = "Missing sources (retained content only): {sources}"
+_EXTRACTION_RANGE_TEMPLATE = "Stretch: {count} message(s), from after {from_key} through {through_key}"
+_EXTRACTION_MESSAGES_HEADING = "Conversation material"
+_EXTRACTION_PROSPECTS_HEADING = "Prospects already recorded from this source"
+_EXTRACTION_MESSAGE_TEMPLATE = "  [{timestamp}] {role}: {text}"
+_EXTRACTION_SETTLED_TEMPLATE = "Extraction {id}: {status}"
+_START = "the start"
+_NONE = "none"
+_YES = "yes"
+_NO = "no"
+_MISSING_SEPARATOR = ", "
+_EXTRACTION_KEY = "id"
+_EXTRACTION_STATUS_KEY = "status"
+_EXTRACTION_REASON_KEY = "reason"
+_EXTRACTION_IDENTITY_KEY = "identity"
+_EXTRACTION_DESK_KEY = "desk"
+_EXTRACTION_SOURCE_KEY = "source_session_id"
+_EXTRACTION_COVERED_KEY = "covered_at"
+_EXTRACTION_READY_KEY = "ready"
+_EXTRACTION_COMPLETE_KEY = "complete"
+_EXTRACTION_MISSING_KEY = "missing_sources"
+_EXTRACTION_COUNT_KEY = "message_count"
+_EXTRACTION_FROM_KEY = "from_key"
+_EXTRACTION_THROUGH_KEY = "through_key"
+_EXTRACTION_MESSAGES_KEY = "messages"
+_MESSAGE_TIMESTAMP_KEY = "timestamp"
+_MESSAGE_ROLE_KEY = "role"
+_MESSAGE_TEXT_KEY = "text"
 _SCOPE_PERSON_TEMPLATE = "Person: {person} (registered: {registered})"
 _SCOPE_NAMESPACE_TEMPLATE = "Namespace: {namespace}"
 _SCOPE_DESK_TEMPLATE = "Help-desk conversation: {desk} (home: {home})"
@@ -288,6 +330,8 @@ def _handle_memories(args: list[str]) -> None:
         _handle_memories_retire(args[1:])
     elif subcommand == "prospect":
         _handle_memories_prospect(args[1:])
+    elif subcommand == "extraction":
+        _handle_memories_extraction(args[1:])
     elif subcommand == "advance":
         _handle_memories_advance(args[1:])
     else:
@@ -372,11 +416,17 @@ def _handle_memories_timeline(args: list[str]) -> None:
     )
 
 
-def _curation_session(parsed_session: str | None, subcommand: str) -> str:
-    """The conversation session a curation verb names."""
-    if not parsed_session:
-        _memories_usage_error(subcommand, _SESSION_REQUIRED)
-    return parsed_session
+def _curation_address(parsed: ParsedArgs, subcommand: str, *, needs_identity: bool = True) -> dict[str, str | None]:
+    """Where a curation verb is addressed: its conversation session, or its identity, desk and extraction."""
+    session_id = parsed.value(F.FLAG_MEMORIES_CURATION_SESSION)
+    identity = parsed.value(F.FLAG_MEMORIES_IDENTITY) if needs_identity else None
+    desk = parsed.value(F.FLAG_MEMORIES_DESK)
+    extraction = parsed.value(F.FLAG_MEMORIES_EXTRACTION)
+    if session_id:
+        return {"session_id": session_id, "identity": None, "desk": None, "extraction": None}
+    if not extraction or (needs_identity and not identity) or (not needs_identity and not desk):
+        _memories_usage_error(subcommand, _ADDRESS_REQUIRED if needs_identity else _DESK_AND_EXTRACTION_REQUIRED)
+    return {"session_id": None, "identity": identity, "desk": desk, "extraction": extraction}
 
 
 def _curation_text(positionals: Sequence[str], subcommand: str) -> str:
@@ -432,27 +482,42 @@ def _print_scope_entries(heading: str, entries: object) -> None:
 def _handle_memories_scope(args: list[str]) -> None:
     """Handle telec memories scope."""
     parsed = parse_command_args(MEMORIES_SCOPE, args)
-    session_id = _curation_session(parsed.value(F.FLAG_MEMORIES_CURATION_SESSION), "scope")
-    scope = _run_curation(lambda api: api.memory_curation_scope(session_id))
-    print(_SCOPE_SESSION_TEMPLATE.format(session_id=scope.get(_SCOPE_SESSION_KEY)))
+    session_id = parsed.value(F.FLAG_MEMORIES_CURATION_SESSION)
+    identity = parsed.value(F.FLAG_MEMORIES_IDENTITY)
+    desk = parsed.value(F.FLAG_MEMORIES_DESK)
+    if bool(session_id) == bool(identity):
+        _memories_usage_error("scope", _ADDRESS_REQUIRED)
+    scope = _run_curation(lambda api: api.memory_curation_scope(session_id=session_id, identity=identity, desk=desk))
+    if scope.get(_SCOPE_SESSION_KEY):
+        print(_SCOPE_SESSION_TEMPLATE.format(session_id=scope.get(_SCOPE_SESSION_KEY)))
     print(
         _SCOPE_PERSON_TEMPLATE.format(person=scope.get(_SCOPE_PERSON_KEY), registered=scope.get(_SCOPE_REGISTERED_KEY))
     )
     print(_SCOPE_NAMESPACE_TEMPLATE.format(namespace=scope.get(_SCOPE_NAMESPACE_KEY)))
     print(_SCOPE_DESK_TEMPLATE.format(desk=scope.get(_SCOPE_DESK_KEY), home=scope.get(_SCOPE_HOME_KEY)))
-    print(_SCOPE_READ_POINT_TEMPLATE.format(read_point=scope.get(_SCOPE_READ_POINT_KEY)))
+    if scope.get(_SCOPE_SESSION_KEY):
+        print(_SCOPE_READ_POINT_TEMPLATE.format(read_point=scope.get(_SCOPE_READ_POINT_KEY)))
     _print_scope_entries(_SCOPE_MEMORIES_HEADING, scope.get(_SCOPE_MEMORIES_KEY))
-    if scope.get(_SCOPE_DESK_KEY):
+    if scope.get(_SCOPE_DESK_KEY) and scope.get(_SCOPE_SESSION_KEY):
         _print_scope_entries(_SCOPE_PROSPECTS_HEADING, scope.get(_SCOPE_PROSPECTS_KEY))
 
 
 def _handle_memories_add(args: list[str]) -> None:
     """Handle telec memories add."""
     parsed = parse_command_args(MEMORIES_ADD, args)
-    session_id = _curation_session(parsed.value(F.FLAG_MEMORIES_CURATION_SESSION), "add")
+    address = _curation_address(parsed, "add")
     obs_type = _curation_type(parsed.value(F.FLAG_MEMORIES_CURATION_TYPE), "add")
     text = _curation_text(parsed.positionals, "add")
-    result = _run_curation(lambda api: api.memory_curation_add(session_id, obs_type, text))
+    result = _run_curation(
+        lambda api: api.memory_curation_add(
+            obs_type,
+            text,
+            session_id=address["session_id"],
+            identity=address["identity"],
+            desk=address["desk"],
+            extraction=address["extraction"],
+        )
+    )
     print(
         _ADDED_TEMPLATE.format(
             id=result.get(_ROW_ID_KEY), title=result.get(_RESULT_TITLE_KEY), namespace=result.get(_RESULT_PROJECT_KEY)
@@ -463,42 +528,159 @@ def _handle_memories_add(args: list[str]) -> None:
 def _handle_memories_update(args: list[str]) -> None:
     """Handle telec memories update."""
     parsed = parse_command_args(MEMORIES_UPDATE, args)
-    session_id = _curation_session(parsed.value(F.FLAG_MEMORIES_CURATION_SESSION), "update")
+    address = _curation_address(parsed, "update")
     if not parsed.positionals:
         _memories_usage_error("update", _MEMORY_ID_REQUIRED)
     observation_id = _parse_numeric_id(parsed.positionals[0], "update")
     text = _curation_text(parsed.positionals[1:], "update")
-    _run_curation(lambda api: api.memory_curation_update(session_id, observation_id, text))
+    _run_curation(
+        lambda api: api.memory_curation_update(
+            observation_id,
+            text,
+            session_id=address["session_id"],
+            identity=address["identity"],
+            desk=address["desk"],
+            extraction=address["extraction"],
+        )
+    )
     print(_UPDATED_TEMPLATE.format(id=observation_id))
 
 
 def _handle_memories_retire(args: list[str]) -> None:
     """Handle telec memories retire."""
     parsed = parse_command_args(MEMORIES_RETIRE, args)
-    session_id = _curation_session(parsed.value(F.FLAG_MEMORIES_CURATION_SESSION), "retire")
+    address = _curation_address(parsed, "retire")
     if len(parsed.positionals) != 1:
         _memories_usage_error("retire", _MEMORY_ID_REQUIRED)
     observation_id = _parse_numeric_id(parsed.positionals[0], "retire")
-    _run_curation(lambda api: api.memory_curation_retire(session_id, observation_id))
+    _run_curation(
+        lambda api: api.memory_curation_retire(
+            observation_id,
+            session_id=address["session_id"],
+            identity=address["identity"],
+            desk=address["desk"],
+            extraction=address["extraction"],
+        )
+    )
     print(_RETIRED_TEMPLATE.format(id=observation_id))
 
 
 def _handle_memories_prospect(args: list[str]) -> None:
     """Handle telec memories prospect."""
     parsed = parse_command_args(MEMORIES_PROSPECT, args)
-    session_id = _curation_session(parsed.value(F.FLAG_MEMORIES_CURATION_SESSION), "prospect")
+    address = _curation_address(parsed, "prospect", needs_identity=False)
     obs_type = _curation_type(parsed.value(F.FLAG_MEMORIES_CURATION_TYPE), "prospect")
     text = _curation_text(parsed.positionals, "prospect")
-    result = _run_curation(lambda api: api.memory_curation_prospect(session_id, obs_type, text))
+    result = _run_curation(
+        lambda api: api.memory_curation_prospect(
+            obs_type,
+            text,
+            session_id=address["session_id"],
+            desk=address["desk"],
+            extraction=address["extraction"],
+        )
+    )
     print(_PROSPECT_TEMPLATE.format(id=result.get(_ROW_ID_KEY), namespace=result.get(_RESULT_PROJECT_KEY)))
 
 
 def _handle_memories_advance(args: list[str]) -> None:
     """Handle telec memories advance."""
     parsed = parse_command_args(MEMORIES_ADVANCE, args)
-    session_id = _curation_session(parsed.value(F.FLAG_MEMORIES_CURATION_SESSION), "advance")
+    session_id = parsed.value(F.FLAG_MEMORIES_CURATION_SESSION)
+    if not session_id:
+        _memories_usage_error("advance", _SESSION_REQUIRED)
     newest_entry_read = parsed.value(F.FLAG_MEMORIES_ADVANCE_TO)
     if not newest_entry_read:
         _memories_usage_error("advance", _TO_REQUIRED)
     result = _run_curation(lambda api: api.memory_curation_advance(session_id, newest_entry_read))
     print(_READ_POINT_TEMPLATE.format(read_point=result.get(_SCOPE_READ_POINT_KEY)))
+
+
+def _yes_no(value: object) -> str:
+    return _YES if value else _NO
+
+
+def _print_extraction(extraction: dict[str, object]) -> None:  # guard: loose-dict - JSON API response
+    """Print an extraction as the worker reads it: its scope, coverage, stretch and conversation material."""
+    print(
+        _EXTRACTION_HEADER_TEMPLATE.format(
+            id=extraction.get(_EXTRACTION_KEY), status=extraction.get(_EXTRACTION_STATUS_KEY)
+        )
+    )
+    if extraction.get(_EXTRACTION_REASON_KEY):
+        print(_EXTRACTION_REASON_TEMPLATE.format(reason=extraction.get(_EXTRACTION_REASON_KEY)))
+    print(_EXTRACTION_IDENTITY_TEMPLATE.format(identity=extraction.get(_EXTRACTION_IDENTITY_KEY)))
+    print(_EXTRACTION_DESK_TEMPLATE.format(desk=extraction.get(_EXTRACTION_DESK_KEY) or _NONE))
+    print(_EXTRACTION_SOURCE_TEMPLATE.format(source=extraction.get(_EXTRACTION_SOURCE_KEY)))
+    print(
+        _EXTRACTION_COVERAGE_TEMPLATE.format(
+            covered_at=extraction.get(_EXTRACTION_COVERED_KEY) or _NONE,
+            ready=_yes_no(extraction.get(_EXTRACTION_READY_KEY)),
+            complete=_yes_no(extraction.get(_EXTRACTION_COMPLETE_KEY)),
+        )
+    )
+    missing = extraction.get(_EXTRACTION_MISSING_KEY)
+    if isinstance(missing, list) and missing:
+        print(_EXTRACTION_MISSING_TEMPLATE.format(sources=_MISSING_SEPARATOR.join(str(source) for source in missing)))
+    print(
+        _EXTRACTION_RANGE_TEMPLATE.format(
+            count=extraction.get(_EXTRACTION_COUNT_KEY),
+            from_key=extraction.get(_EXTRACTION_FROM_KEY) or _START,
+            through_key=extraction.get(_EXTRACTION_THROUGH_KEY) or _NONE,
+        )
+    )
+    messages = extraction.get(_EXTRACTION_MESSAGES_KEY)
+    rows = messages if isinstance(messages, list) else []
+    print(_SCOPE_HEADING_TEMPLATE.format(heading=_EXTRACTION_MESSAGES_HEADING, count=len(rows)))
+    for row in rows:
+        if isinstance(row, dict):
+            print(
+                _EXTRACTION_MESSAGE_TEMPLATE.format(
+                    timestamp=row.get(_MESSAGE_TIMESTAMP_KEY) or _NONE,
+                    role=row.get(_MESSAGE_ROLE_KEY),
+                    text=row.get(_MESSAGE_TEXT_KEY),
+                )
+            )
+    if extraction.get(_EXTRACTION_DESK_KEY):
+        _print_scope_entries(_EXTRACTION_PROSPECTS_HEADING, extraction.get(_SCOPE_PROSPECTS_KEY))
+
+
+def _extraction_id(parsed: ParsedArgs, subcommand: str) -> str:
+    if len(parsed.positionals) != 1:
+        _memories_usage_error(subcommand, _EXTRACTION_ID_REQUIRED)
+    return parsed.positionals[0]
+
+
+def _handle_memories_extraction(args: list[str]) -> None:
+    """Handle telec memories extraction read|complete|fail."""
+    if not args or args[0] in ("-h", "--help"):
+        print(_usage("memories", "extraction"))
+        return
+    action, rest = args[0], args[1:]
+    if action == "read":
+        extraction_id = _extraction_id(parse_command_args(MEMORIES_EXTRACTION_READ, rest), "extraction read")
+        _print_extraction(_run_curation(lambda api: api.memory_extraction_read(extraction_id)))
+    elif action == "complete":
+        extraction_id = _extraction_id(parse_command_args(MEMORIES_EXTRACTION_COMPLETE, rest), "extraction complete")
+        settled = _run_curation(lambda api: api.memory_extraction_complete(extraction_id))
+        print(
+            _EXTRACTION_SETTLED_TEMPLATE.format(
+                id=settled.get(_EXTRACTION_KEY), status=settled.get(_EXTRACTION_STATUS_KEY)
+            )
+        )
+    elif action == "fail":
+        parsed = parse_command_args(MEMORIES_EXTRACTION_FAIL, rest)
+        extraction_id = _extraction_id(parsed, "extraction fail")
+        reason = parsed.value(F.FLAG_MEMORIES_FAIL_REASON)
+        if not reason:
+            _memories_usage_error("extraction fail", _REASON_REQUIRED)
+        settled = _run_curation(lambda api: api.memory_extraction_fail(extraction_id, reason))
+        print(
+            _EXTRACTION_SETTLED_TEMPLATE.format(
+                id=settled.get(_EXTRACTION_KEY), status=settled.get(_EXTRACTION_STATUS_KEY)
+            )
+        )
+    else:
+        print(f"Unknown memories extraction subcommand: {action}")
+        print(_usage("memories", "extraction"))
+        raise SystemExit(1)

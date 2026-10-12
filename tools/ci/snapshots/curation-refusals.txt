@@ -1,0 +1,8 @@
+Error: permission denied — role 'admin' is not permitted to call memories scope
+Error: permission denied — role 'admin' is not permitted to call memories add
+Error: permission denied — role 'admin' is not permitted to call memories update
+Error: permission denied — role 'admin' is not permitted to call memories retire
+Error: permission denied — role 'admin' is not permitted to call memories prospect
+Error: permission denied — role 'admin' is not permitted to call memories extraction read
+Error: permission denied — role 'admin' is not permitted to call memories extraction complete
+Error: permission denied — role 'admin' is not permitted to call memories extraction fail

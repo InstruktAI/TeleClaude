@@ -72,6 +72,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_SOFT_DELETING_EXPIRED_EVENT = "maintenance.expired_session.soft_deleting"
+
 
 # Closed agent-runtime session retention keeps recent creator-session links
 # (TUI revive/jump affordances) resolvable; removed-todo retention bounds how
@@ -590,12 +592,12 @@ class MaintenanceService:
                         session.session_id,
                         LifecycleTransition(SessionLifecycleStatus.CLOSED, LifecycleTransitionReason.CLOSED),
                     )
-                # Purge closed sessions older than the 90-day cutoff.
+                # Soft-delete closed sessions past the retention window; the record is retained.
                 if session.closed_at < cutoff_time:
                     logger.info(
-                        "Purging old closed session %s (closed %s ago)",
-                        session.session_id,
-                        datetime.now(UTC) - session.closed_at,
+                        _SOFT_DELETING_EXPIRED_EVENT,
+                        session_id=session.session_id,
+                        closed_ago=str(datetime.now(UTC) - session.closed_at),
                     )
                     await session_cleanup.terminate_session(
                         session.session_id,
@@ -603,12 +605,12 @@ class MaintenanceService:
                         reason="closed_expired",
                         session=session,
                         kill_tmux=False,
-                        delete_db=True,
+                        soft_delete=True,
                     )
                 continue
 
             # Open sessions are never auto-closed. Users and agents close them explicitly.
-            # The cleanup routine only purges closed sessions past the retention window.
+            # The cleanup routine only soft-deletes closed sessions past the retention window.
 
     async def _cleanup_worktree_trash(self) -> None:
         """Reclaim released worktrees outside caller execution and the event loop."""

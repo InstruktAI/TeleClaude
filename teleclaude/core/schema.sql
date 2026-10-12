@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     closed_at TIMESTAMP,
+    deleted_at TIMESTAMP,
     project_path TEXT,
     subdir TEXT,
     config_subject TEXT,
@@ -66,7 +67,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     human_email TEXT,
     human_role TEXT,
     principal TEXT,
-    last_memory_extraction_at TEXT,
     help_desk_processed_at TEXT,
     idle_compaction_requested_at TEXT,
     idle_compaction_completed_at TEXT,
@@ -563,7 +563,8 @@ CREATE TABLE IF NOT EXISTS memory_observations (
     principal TEXT,
     state TEXT NOT NULL DEFAULT 'current',
     retired_at TEXT,
-    source_session_id TEXT
+    source_session_id TEXT,
+    extraction_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_memory_obs_session ON memory_observations(memory_session_id);
@@ -571,6 +572,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_obs_project ON memory_observations(project
 CREATE INDEX IF NOT EXISTS idx_memory_obs_type ON memory_observations(type);
 CREATE INDEX IF NOT EXISTS idx_memory_obs_identity ON memory_observations(project, identity_key);
 CREATE INDEX IF NOT EXISTS idx_memory_obs_source_session ON memory_observations(source_session_id);
+CREATE INDEX IF NOT EXISTS idx_memory_obs_extraction ON memory_observations(extraction_id);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_observations_fts USING fts5(
     title, subtitle, narrative, facts, concepts,
@@ -594,6 +596,53 @@ CREATE TRIGGER IF NOT EXISTS memory_obs_au AFTER UPDATE ON memory_observations B
     INSERT INTO memory_observations_fts(rowid, title, subtitle, narrative, facts, concepts)
     VALUES (new.id, new.title, new.subtitle, new.narrative, new.facts, new.concepts);
 END;
+
+-- Memory-owned extraction state: a conversation's closures awaiting extraction, the extractions released from
+-- them, and how far each source conversation has been processed.
+CREATE TABLE IF NOT EXISTS memory_closures (
+    id TEXT PRIMARY KEY,
+    source_session_id TEXT NOT NULL,
+    ended_at TEXT NOT NULL,
+    identity_key TEXT NOT NULL,
+    desk TEXT,
+    home_kind TEXT NOT NULL,
+    home_slug TEXT NOT NULL,
+    extraction_id TEXT,
+    pending_reason TEXT,
+    settled_at TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_closures_source ON memory_closures(source_session_id, ended_at);
+CREATE INDEX IF NOT EXISTS idx_memory_closures_extraction ON memory_closures(extraction_id);
+
+CREATE TABLE IF NOT EXISTS memory_extractions (
+    id TEXT PRIMARY KEY,
+    source_session_id TEXT NOT NULL,
+    identity_key TEXT NOT NULL,
+    desk TEXT,
+    home_kind TEXT NOT NULL,
+    home_slug TEXT NOT NULL,
+    from_key TEXT,
+    through_key TEXT,
+    through_at TEXT,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    missing_sources TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL,
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_extractions_source ON memory_extractions(source_session_id, status);
+
+CREATE TABLE IF NOT EXISTS memory_source_progress (
+    source_session_id TEXT PRIMARY KEY,
+    through_key TEXT,
+    through_at TEXT,
+    time_bound TEXT,
+    updated_at TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS memory_summaries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

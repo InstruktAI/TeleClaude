@@ -1612,52 +1612,121 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "scope": CommandDef(
                 desc=(
-                    "Show the scope a conversation session defines for curation: its person, memory "
-                    "namespace, read point, current memories and, for a desk, the prospects already recorded."
+                    "Show the scope an identity (and desk) names for curation: its current memories, "
+                    "including those held under the person's bound provider accounts at the desk."
                 ),
-                args="--session <session_id>",
-                flags=[F.FLAG_HELP, F.FLAG_MEMORIES_CURATION_SESSION],
-                examples=["telec memories scope --session 00000000-0000-4000-8000-000000000000"],
+                args="--identity <identity> [--desk <desk-id>]",
+                flags=[F.FLAG_HELP, F.FLAG_MEMORIES_IDENTITY, F.FLAG_MEMORIES_DESK, F.FLAG_MEMORIES_CURATION_SESSION],
+                notes=["--session <session_id> remains accepted from workers that began before identity addressing."],
+                examples=[
+                    "telec memories scope --identity person:maurice",
+                    "telec memories scope --identity telegram:123 --desk hd-company-acme",
+                ],
                 auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
             ),
             "add": CommandDef(
-                desc="Add a current memory about the session's person.",
-                args="--session <session_id> --type <type> <text>",
-                flags=[F.FLAG_HELP, F.FLAG_MEMORIES_CURATION_SESSION, F.FLAG_MEMORIES_CURATION_TYPE],
+                desc="Add a current memory about the extraction's person, in the scope the extraction prepared.",
+                args="--identity <identity> [--desk <desk-id>] --extraction <id> --type <type> <text>",
+                flags=[
+                    F.FLAG_HELP,
+                    F.FLAG_MEMORIES_IDENTITY,
+                    F.FLAG_MEMORIES_DESK,
+                    F.FLAG_MEMORIES_EXTRACTION,
+                    F.FLAG_MEMORIES_CURATION_SESSION,
+                    F.FLAG_MEMORIES_CURATION_TYPE,
+                ],
+                notes=["--session <session_id> remains accepted from workers that began before identity addressing."],
                 examples=[
-                    'telec memories add --session 00000000-0000-4000-8000-000000000000 --type preference "Prefers short answers"'
+                    'telec memories add --identity person:maurice --extraction 00000000-0000-4000-8000-000000000000 --type preference "Prefers short answers"'
                 ],
                 auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
             ),
             "update": CommandDef(
-                desc="Replace the statement of a current memory in the session's scope.",
-                args="<id> --session <session_id> <text>",
-                flags=[F.FLAG_HELP, F.FLAG_MEMORIES_CURATION_SESSION],
+                desc="Replace the statement of a current memory in the extraction's scope.",
+                args="<memory-id> --identity <identity> [--desk <desk-id>] --extraction <id> <text>",
+                flags=[
+                    F.FLAG_HELP,
+                    F.FLAG_MEMORIES_IDENTITY,
+                    F.FLAG_MEMORIES_DESK,
+                    F.FLAG_MEMORIES_EXTRACTION,
+                    F.FLAG_MEMORIES_CURATION_SESSION,
+                ],
+                notes=["--session <session_id> remains accepted from workers that began before identity addressing."],
                 examples=[
-                    'telec memories update 42 --session 00000000-0000-4000-8000-000000000000 "Now prefers detail"'
+                    'telec memories update 42 --identity person:maurice --extraction 00000000-0000-4000-8000-000000000000 "Now prefers detail"'
                 ],
                 auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
             ),
             "retire": CommandDef(
-                desc="Retire a current memory in the session's scope: it leaves use and stays recorded.",
-                args="<id> --session <session_id>",
-                flags=[F.FLAG_HELP, F.FLAG_MEMORIES_CURATION_SESSION],
-                examples=["telec memories retire 42 --session 00000000-0000-4000-8000-000000000000"],
+                desc="Retire a current memory in the extraction's scope: it leaves use and stays recorded.",
+                args="<memory-id> --identity <identity> [--desk <desk-id>] --extraction <id>",
+                flags=[
+                    F.FLAG_HELP,
+                    F.FLAG_MEMORIES_IDENTITY,
+                    F.FLAG_MEMORIES_DESK,
+                    F.FLAG_MEMORIES_EXTRACTION,
+                    F.FLAG_MEMORIES_CURATION_SESSION,
+                ],
+                notes=["--session <session_id> remains accepted from workers that began before identity addressing."],
+                examples=[
+                    "telec memories retire 42 --identity person:maurice --extraction 00000000-0000-4000-8000-000000000000"
+                ],
                 auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
             ),
             "prospect": CommandDef(
-                desc="Collect a business item from a desk conversation as a prospect for the home that owns the desk.",
-                args="--session <session_id> --type <type> <text>",
-                flags=[F.FLAG_HELP, F.FLAG_MEMORIES_CURATION_SESSION, F.FLAG_MEMORIES_CURATION_TYPE],
+                desc="Collect a business item from the extraction's desk conversation as a prospect for the desk's home.",
+                args="--desk <desk-id> --extraction <id> --type <type> <text>",
+                flags=[
+                    F.FLAG_HELP,
+                    F.FLAG_MEMORIES_DESK,
+                    F.FLAG_MEMORIES_EXTRACTION,
+                    F.FLAG_MEMORIES_CURATION_SESSION,
+                    F.FLAG_MEMORIES_CURATION_TYPE,
+                ],
+                notes=["--session <session_id> remains accepted from workers that began before identity addressing."],
                 examples=[
-                    'telec memories prospect --session 00000000-0000-4000-8000-000000000000 --type request "Wants an export"'
+                    'telec memories prospect --desk hd-company-acme --extraction 00000000-0000-4000-8000-000000000000 --type request "Wants an export"'
                 ],
                 auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+            ),
+            "extraction": CommandDef(
+                desc="Read an extraction's conversation material, or declare it finished or failed.",
+                subcommands={
+                    "read": CommandDef(
+                        desc=(
+                            "Show the extraction's bounded conversation material, its coverage and scope, "
+                            "and the prospects already recorded from its source."
+                        ),
+                        args="<id>",
+                        flags=[F.FLAG_HELP],
+                        examples=["telec memories extraction read 00000000-0000-4000-8000-000000000000"],
+                        auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+                    ),
+                    "complete": CommandDef(
+                        desc="Declare the extraction's memory and prospect changes finished, including a read with none.",
+                        args="<id>",
+                        flags=[F.FLAG_HELP],
+                        examples=["telec memories extraction complete 00000000-0000-4000-8000-000000000000"],
+                        auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+                    ),
+                    "fail": CommandDef(
+                        desc="Report that the extraction could not be finished; its stretch stays eligible.",
+                        args="<id> --reason <reason>",
+                        flags=[F.FLAG_HELP, F.FLAG_MEMORIES_FAIL_REASON],
+                        examples=[
+                            'telec memories extraction fail 00000000-0000-4000-8000-000000000000 --reason "source unreadable"'
+                        ],
+                        auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+                    ),
+                },
             ),
             "advance": CommandDef(
                 desc="Advance a conversation session's read point to the newest entry read; it never moves backwards.",
                 args="--session <session_id> --to <timestamp>",
                 flags=[F.FLAG_HELP, F.FLAG_MEMORIES_CURATION_SESSION, F.FLAG_MEMORIES_ADVANCE_TO],
+                notes=[
+                    "Accepted only from workers that began before identity addressing, and only while no extraction is open."
+                ],
                 examples=[
                     "telec memories advance --session 00000000-0000-4000-8000-000000000000 --to 2026-10-10T12:00:00Z"
                 ],
@@ -1952,6 +2021,9 @@ MEMORIES_UPDATE = CLI_SURFACE["memories"].subcommands["update"]
 MEMORIES_RETIRE = CLI_SURFACE["memories"].subcommands["retire"]
 MEMORIES_PROSPECT = CLI_SURFACE["memories"].subcommands["prospect"]
 MEMORIES_ADVANCE = CLI_SURFACE["memories"].subcommands["advance"]
+MEMORIES_EXTRACTION_READ = CLI_SURFACE["memories"].subcommands["extraction"].subcommands["read"]
+MEMORIES_EXTRACTION_COMPLETE = CLI_SURFACE["memories"].subcommands["extraction"].subcommands["complete"]
+MEMORIES_EXTRACTION_FAIL = CLI_SURFACE["memories"].subcommands["extraction"].subcommands["fail"]
 
 MESSAGE = CLI_SURFACE["message"]
 

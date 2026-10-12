@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import cast
 
+from instrukt_ai_logging import get_logger
+
+from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -16,6 +19,8 @@ from teleclaude.core.events import (
     AgentStopPayload,
     TeleClaudeEvents,
 )
+from teleclaude.core.idle_close import close_completed_conversation
+from teleclaude.core.models import Session
 from teleclaude.core.session_compaction import (
     SessionCompactionOwner,
     is_current_compaction_launch,
@@ -24,14 +29,35 @@ from teleclaude.core.session_compaction import (
     session_compaction_owner as default_compaction_owner,
 )
 from teleclaude.core.session_idle_compaction import compaction_completed
+from teleclaude.core.session_runtime_gate import RuntimeMutationInProgress
 from teleclaude.events.envelope import EventVisibility
+
+logger = get_logger(__name__)
+
+_IMMEDIATE_CLOSE_BUSY_EVENT = "compaction_immediate_close_busy"
+_IMMEDIATE_CLOSE_FAILED_EVENT = "compaction_immediate_close_failed"
+
+
+async def _close_after_completion(session: Session, client: AdapterClient, owner: SessionCompactionOwner) -> None:
+    """Close the conversation whose compaction just completed; the idle cycle retries a close that did not happen."""
+    try:
+        await close_completed_conversation(session, client, owner)
+    except RuntimeMutationInProgress:
+        logger.info(_IMMEDIATE_CLOSE_BUSY_EVENT, session_id=session.session_id)
+    except Exception as exc:
+        logger.error(_IMMEDIATE_CLOSE_FAILED_EVENT, session_id=session.session_id, error=str(exc), exc_info=True)
 
 
 async def handle_compaction_event(
     context: AgentEventContext,
+    client: AdapterClient,
     owner: SessionCompactionOwner = default_compaction_owner,
 ) -> None:
-    """Route a temporary launch's signals without applying visitor-turn effects."""
+    """Route a temporary launch's signals without applying visitor-turn effects.
+
+    Confirmed compaction completion closes the conversation at once; the idle cycle remains the
+    fallback when that close is called off or finds the conversation going on.
+    """
     launch_context = context.compaction_launch_context
     if launch_context is None:
         return
@@ -56,7 +82,9 @@ async def handle_compaction_event(
         if idle_payload.session_id is not None and idle_payload.session_id != launch_context.native_session_id:
             return
         completed = await owner.record_completion(session, launch_context)
-        if not completed:
+        if completed:
+            await _close_after_completion(session, client, owner)
+        else:
             await owner.restore_ordinary(context.session_id, launch_context.attempt_id)
         return
     if context.event_type in {

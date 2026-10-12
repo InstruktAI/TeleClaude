@@ -62,6 +62,7 @@ from teleclaude.core.session_startup import uncertain_delivery_occurrence_key
 from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue, SessionLifecycleStatus
 from teleclaude.core.session_title import generate_session_title_from_transcript
 from teleclaude.core.session_transcript import session_transcript
+from teleclaude.core.session_transcript_chain import native_log_binding_updates
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
 from teleclaude.events.envelope import EventVisibility
@@ -348,7 +349,7 @@ class AgentCoordinator(
     async def handle_event(self, context: AgentEventContext) -> None:
         """Handle any agent lifecycle event."""
         if context.compaction_launch_context is not None:
-            await handle_compaction_event(context, self.compaction_owner)
+            await handle_compaction_event(context, self.client, self.compaction_owner)
             return
         if context.event_type == AgentHookEvents.AGENT_SESSION_START:
             logger.info(
@@ -482,10 +483,16 @@ class AgentCoordinator(
         update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         if native_session_id:
             update_kwargs["native_session_id"] = str(native_session_id)
-        if native_log_file:
-            update_kwargs["native_log_file"] = str(native_log_file)
 
         session = await db.get_session(context.session_id)
+        if session and native_log_file:
+            update_kwargs.update(
+                native_log_binding_updates(
+                    current_log_file=session.native_log_file,
+                    current_chain=session.transcript_files,
+                    new_log_file=str(native_log_file),
+                )
+            )
 
         if isinstance(raw_cwd, str) and raw_cwd:
             if session and not session.project_path:

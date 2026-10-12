@@ -9,14 +9,10 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
-from teleclaude.utils.transcript_discovery import (
-    build_source_identity,
-    extract_session_id,
-    in_session_root,
-    is_subagent_transcript,
-)
+from teleclaude.utils.transcript_discovery import in_session_root, is_subagent_transcript
 
-from .generator import MirrorWriteTrigger, generate_mirror
+from .closure import refresh_and_report_coverage
+from .generator import MirrorWriteTrigger
 from .session_context import get_session_context
 
 logger = get_logger(__name__)
@@ -48,7 +44,7 @@ def get_processors() -> list[MirrorProcessor]:
 
 
 async def process_mirror_event(event: MirrorEvent) -> None:
-    """Generate a mirror for a normalized event payload."""
+    """Refresh the session-owned mirror of the session a normalized event payload names."""
     context = get_session_context(session_id=event.session_id, transcript_path=event.transcript_path)
     if context is None:
         logger.debug("Mirror processor skipped: session context missing", session_id=event.session_id)
@@ -77,17 +73,7 @@ async def process_mirror_event(event: MirrorEvent) -> None:
         )
         return
 
-    transcript_session_id = extract_session_id(Path(transcript_path), agent_name)
-
-    await generate_mirror(
-        native_session_id=transcript_session_id,
-        source_identity=build_source_identity(transcript_path, agent_name),
-        transcript_path=transcript_path,
-        agent_name=agent_name,
-        db=None,
-        context=context,
-        trigger=MirrorWriteTrigger.FANOUT,
-    )
+    await refresh_and_report_coverage(context.session_id, MirrorWriteTrigger.FANOUT)
 
 
 def register_default_processors() -> None:
