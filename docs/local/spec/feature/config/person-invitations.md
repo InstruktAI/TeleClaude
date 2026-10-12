@@ -72,7 +72,6 @@ And the caller's local invitation store and bot credentials are not used as subs
 Given a person received a Telegram invitation generated through the master
 When they redeem it at the bot named by its link
 Then the invitation resolves to that person from the issuing store
-And the account-binding result is handed to the master's conversation entry
 ```
 
 #### UC-PI3: Missing ownership cannot rotate an invitation locally
