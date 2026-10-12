@@ -8,10 +8,11 @@ import json
 import os
 import sys
 from collections.abc import Mapping
+from enum import StrEnum
 from pathlib import Path
 
 import httpx
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from teleclaude.git import GitCommandError, Repo
 from tools.ci.gha import append_output
@@ -66,11 +67,30 @@ _BASELINE_SHA_OUTPUT = "baseline_sha"
 _LATEST_RELEASE_OUTPUT = "latest_completed_tag"
 _DECISION_MODE_OUTPUT = "decision_mode"
 _REQUESTED_VERSION_OUTPUT = "requested_version"
-_READY = "ready"
+
+
+class CaptureStatus(StrEnum):
+    """Source admission outcomes consumed across the immutable capture artifact."""
+
+    READY = "ready"
+    BASELINE_UNAVAILABLE = "baseline_unavailable"
+    NO_CHANGE = "no_change"
+
+
+class CaptureState(BaseModel):
+    """The existing frozen admission record, with one typed owner for consumers."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    status: CaptureStatus
+    attempt: AttemptIdentity | None
+    latest_completed_tag: str | None
+
+
+_READY = CaptureStatus.READY
 _AUTOMATIC = "automatic"
-_BASELINE_UNAVAILABLE = "baseline_unavailable"
+_BASELINE_UNAVAILABLE = CaptureStatus.BASELINE_UNAVAILABLE
 _SCHEDULED_OPERATION = "scheduled"
-_NO_CHANGE = "no_change"
+_NO_CHANGE = CaptureStatus.NO_CHANGE
 _INVALID_INPUT = "The release run identity or operation is invalid."
 _CHECKOUT_DIRTY = "Source capture requires a clean workflow checkout."
 _ATTEMPT_OUTPUT_EXISTS = "Release capture output requires a new directory."
@@ -225,13 +245,9 @@ def _write_state(
     latest_completed_tag: str | None,
 ) -> None:
     """Write the run's exact source/baseline admission state for downstream gates."""
-    state = {
-        "status": status,
-        "attempt": attempt.model_dump(mode="json") if attempt is not None else None,
-        "latest_completed_tag": latest_completed_tag,
-    }
+    state = CaptureState(status=CaptureStatus(status), attempt=attempt, latest_completed_tag=latest_completed_tag)
     (directory / _STATUS_FILENAME).write_text(
-        json.dumps(state, ensure_ascii=True, indent=_JSON_INDENT) + _NEWLINE,
+        state.model_dump_json(indent=_JSON_INDENT) + _NEWLINE,
         encoding=_UTF8,
     )
 

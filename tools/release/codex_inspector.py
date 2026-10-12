@@ -118,7 +118,7 @@ def run_codex_inspection(
     *,
     runtime_path: str = _SYSTEM_PATH,
 ) -> InspectionRunResult:
-    """Run a single schema-constrained Codex assessment in a dedicated UID."""
+    """Run a schema-constrained native Codex assessment in its fresh hosted job."""
     if result_directory.exists() or result_directory.is_symlink():
         raise ValueError(_RESULT_PATH_EXISTS)
     result_directory.mkdir(mode=_PRIVATE_RESULT_DIRECTORY_MODE, parents=True)

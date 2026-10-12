@@ -7,6 +7,7 @@ import base64
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from teleclaude.git import Repo
+from tools.ci.capture_release_attempt import CaptureState, CaptureStatus
 from tools.ci.gha import append_output, repo_root, required_env
 from tools.ci.publish_release import publish_proved_candidate
 from tools.ci.read_inspector_report import InspectorSelection, select_inspector_report
@@ -29,6 +31,7 @@ from tools.release.attempt import (
     ProviderOutcome,
     PublicationReceipt,
     PublicationState,
+    ReleaseDecisionMode,
     load_attempt_identity,
     load_candidate_identity,
     load_proof_identity,
@@ -63,7 +66,6 @@ from tools.release.inspector_bootstrap import (
     load_bootstrap,
     verify_provider_paths,
 )
-from tools.release.inspector_fs import FilesystemOperation
 from tools.release.isolated_inspection import (
     InspectorBoundaryError,
     InspectorRole,
@@ -151,6 +153,47 @@ _AUTH_SETTLEMENT_FAILED_KEY = "auth_settlement_failed"
 _DIAGNOSTIC_PATH_KEY = "diagnostic_path"
 
 
+_COLLECT_COMMAND = "collect-analysis"
+_CAPTURE_DIRECTORY_OPTION = "--capture-directory"
+_JOB_RESULT_SUFFIX = "_JOB_RESULT"
+_ARTIFACT_ID_SUFFIX = "_ARTIFACT_ID"
+_ARTIFACT_DIGEST_SUFFIX = "_ARTIFACT_DIGEST"
+_MANIFEST_SUFFIX = "_ARTIFACT_MANIFEST_SHA256"
+_PROVIDER_ARTIFACT_PREFIX = "release-"
+_PROVIDER_ARTIFACT_SEPARATOR = "-"
+_PROVIDER_DOWNLOAD_PREFIX = "provider-download-"
+_JOB_DIAGNOSTIC = "job-outcome.json"
+_JOB_RESULT_KEY = "job_result"
+_EVIDENCE_AVAILABLE_KEY = "provider_evidence_available"
+_OUTCOME_KEY = "outcome"
+_FAILURE_KEY = "failure"
+_CAPTURE_STATE = "capture-state.json"
+_CAPTURE_ATTEMPT = "attempt.json"
+_CAPTURE_EVIDENCE = "evidence"
+_OUTPUT_DIRECTORY_OPTION = "--output-directory"
+_CODEX_RESULT_DIRECTORY = "codex-result"
+_CLAUDE_DIRECTORY = "claude"
+_SELECTION_DIRECTORY = "selection"
+
+
+class HostedJobResult(StrEnum):
+    """Native GitHub terminal job dispositions, independent of client execution status."""
+
+    SUCCESS = "success"
+    FAILURE = "failure"
+    CANCELLED = "cancelled"
+    SKIPPED = "skipped"
+
+
+class HostedJobDiagnostic(BaseModel):
+    """Observed job disposition without inventing a native client result or auth settlement."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    job_result: HostedJobResult
+    provider_evidence_available: bool
+    observed_provider_attempt: ProviderAttempt | None
+
+
 class ProviderPhase(StrEnum):
     """The controller phase in which a caught provider failure occurred."""
 
@@ -211,7 +254,6 @@ class ProviderSetupDiagnostic(BaseModel):
     exception_type: str
     errno: int | None
     native_status: int | None
-    filesystem_operation: FilesystemOperation | None
     inspection_progress: InspectionProgress | None = None
 
 
@@ -592,6 +634,97 @@ def run_claude(evidence_directory: Path, output_directory: Path) -> bool:
         )
         append_output("claude_success", _FALSE)
         return False
+
+
+def collect_analysis(capture_directory: Path, output_directory: Path) -> None:
+    """Consume frozen input and exact provider artifacts; missing jobs never fabricate client evidence."""
+    state = CaptureState.model_validate_json((capture_directory / _CAPTURE_STATE).read_bytes())
+    output_directory.mkdir(mode=0o700, parents=True, exist_ok=False)
+    shutil.copyfile(capture_directory / _CAPTURE_STATE, output_directory / _CAPTURE_STATE)
+    attempt_path = capture_directory / _CAPTURE_ATTEMPT
+    if state.status is CaptureStatus.BASELINE_UNAVAILABLE:
+        if state.attempt is not None or attempt_path.exists():
+            raise ValueError(_SETUP_FAILURE)
+        return
+    attempt = load_attempt_identity(attempt_path)
+    shutil.copyfile(attempt_path, output_directory / _CAPTURE_ATTEMPT)
+    if state.attempt != attempt:
+        raise ValueError(_SETUP_FAILURE)
+    if attempt.decision_mode is not ReleaseDecisionMode.AUTOMATIC or state.status is CaptureStatus.NO_CHANGE:
+        return
+    if not (capture_directory / _CAPTURE_EVIDENCE).is_dir():
+        raise ValueError(_SETUP_FAILURE)
+    for provider in ProviderName:
+        _collect_provider_outcome(provider, output_directory)
+    codex_root = output_directory / _CODEX_RESULT_DIRECTORY
+    claude_root = output_directory / _CLAUDE_DIRECTORY
+    codex_report = codex_root / _CODEX_REPORT_FILENAME
+    claude_report = claude_root / _CLAUDE_REPORT_FILENAME
+    finish_inspection(
+        codex_root / _CODEX_ATTEMPT_FILENAME,
+        codex_report if codex_report.is_file() else None,
+        (claude_root / _CLAUDE_ATTEMPT_FILENAME) if (claude_root / _CLAUDE_ATTEMPT_FILENAME).is_file() else None,
+        claude_report if claude_report.is_file() else None,
+        output_directory / _SELECTION_DIRECTORY,
+    )
+
+
+def _collect_provider_outcome(provider: ProviderName, output_directory: Path) -> None:
+    """Bind client outcomes to verified job artifacts and retain honest runner-loss diagnostics."""
+    prefix = provider.value.upper()
+    disposition = HostedJobResult(os.environ[prefix + _JOB_RESULT_SUFFIX])
+    artifact_id = os.environ.get(prefix + _ARTIFACT_ID_SUFFIX, _EMPTY)
+    root_name = _CODEX_RESULT_DIRECTORY if provider is ProviderName.CODEX else _CLAUDE_DIRECTORY
+    filename = _CODEX_ATTEMPT_FILENAME if provider is ProviderName.CODEX else _CLAUDE_ATTEMPT_FILENAME
+    result_root = output_directory / root_name
+    available = False
+    if artifact_id:
+        name = (
+            _PROVIDER_ARTIFACT_PREFIX
+            + provider.value
+            + _PROVIDER_ARTIFACT_SEPARATOR
+            + os.environ[_GITHUB_RUN_ID]
+            + _PROVIDER_ARTIFACT_SEPARATOR
+            + os.environ[_GITHUB_RUN_ATTEMPT]
+        )
+        downloaded = download_current_artifact(
+            name,
+            int(artifact_id),
+            os.environ[prefix + _ARTIFACT_DIGEST_SUFFIX],
+            output_directory.parent / (_PROVIDER_DOWNLOAD_PREFIX + provider.value),
+            os.environ[prefix + _MANIFEST_SUFFIX],
+        )
+        source = downloaded / root_name
+        if source.is_dir():
+            shutil.copytree(source, result_root)
+            available = (result_root / filename).is_file()
+    result_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = result_root / filename
+    observed = ProviderAttempt.model_validate_json(path.read_bytes()) if available else None
+    if observed is not None and observed.provider is not provider:
+        raise ValueError(_SETUP_FAILURE)
+    if not available or disposition is not HostedJobResult.SUCCESS:
+        diagnostic = result_root / _JOB_DIAGNOSTIC
+        diagnostic.write_text(
+            HostedJobDiagnostic(
+                job_result=disposition, provider_evidence_available=available, observed_provider_attempt=observed
+            ).model_dump_json(),
+            encoding=_UTF8,
+        )
+        diagnostic.chmod(0o600)
+        if provider is ProviderName.CLAUDE and disposition is HostedJobResult.SKIPPED and not available:
+            return
+        if observed is None:
+            _write_attempt_failure(path, ProviderFailure.EXECUTION, provider, diagnostic_path=_JOB_DIAGNOSTIC)
+        else:
+            failed = observed.model_copy(
+                update={
+                    _OUTCOME_KEY: ProviderOutcome.FAILED,
+                    _FAILURE_KEY: ProviderFailure.EXECUTION,
+                    _DIAGNOSTIC_PATH_KEY: _JOB_DIAGNOSTIC,
+                }
+            )
+            _write_attempt(path, failed)
 
 
 def finish_inspection(
@@ -991,7 +1124,6 @@ def _write_provider_setup_diagnostic(
         exception_type=setup_error.exception_type if setup_error else type(error).__name__,
         errno=setup_error.errno if setup_error else error.errno if isinstance(error, OSError) else None,
         native_status=setup_error.native_status if setup_error else None,
-        filesystem_operation=setup_error.filesystem_operation if setup_error else None,
         inspection_progress=inspection_progress,
     )
     path = directory / _SETUP_DIAGNOSTIC_FILENAME
@@ -1005,8 +1137,7 @@ def ensure_provider_attempt(path: Path, provider: ProviderName) -> None:
     if path.exists() or path.is_symlink():
         ProviderAttempt.model_validate_json(path.read_bytes())
         return
-    failure = ProviderFailure.AUTH_SETTLEMENT if provider is ProviderName.CODEX else ProviderFailure.EXECUTION
-    _write_attempt_failure(path, failure, provider)
+    _write_attempt_failure(path, ProviderFailure.EXECUTION, provider)
 
 
 def _read_state(directory: Path) -> CodexControllerState:
@@ -1163,6 +1294,9 @@ def main(argv: list[str] | None = None) -> int:
     """Expose discrete workflow stages while keeping secrets in dedicated inputs."""
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    collect = commands.add_parser(_COLLECT_COMMAND)
+    collect.add_argument(_CAPTURE_DIRECTORY_OPTION, type=Path, required=True)
+    collect.add_argument(_OUTPUT_DIRECTORY_OPTION, type=Path, required=True)
     codex_prepare = commands.add_parser("prepare-codex")
     codex_prepare.add_argument("--attempt", type=Path, required=True)
     codex_prepare.add_argument("--evidence", type=Path, required=True)
@@ -1248,6 +1382,7 @@ def main(argv: list[str] | None = None) -> int:
 def _stage_handler(args: argparse.Namespace) -> Callable[[], object]:
     """Resolve parsed command arguments to one small controller operation."""
     handlers: dict[str, Callable[[], object]] = {
+        _COLLECT_COMMAND: lambda: collect_analysis(args.capture_directory, args.output_directory),
         "prepare-codex": lambda: prepare_codex(
             args.attempt, args.evidence, args.state_directory, args.result_directory
         ),

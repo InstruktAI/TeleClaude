@@ -1,6 +1,5 @@
 ---
-description: Immutable release candidates, independently advancing main, isolated
-  subscription inspection, and recoverable publication state.
+description: Immutable release candidates, independently advancing main, native provider jobs, and recoverable publication state.
 visibility: internal
 ---
 
@@ -91,111 +90,61 @@ separate from their original serialized evidence and integrity hashes.
 
 ### Credentials and inspection
 
-Provider inspection uses one fresh controller-owned bootstrap namespace beneath
-an explicitly selected shared temporary parent. It does not depend on runner
-home, checkout or job-directory ancestry being searchable by isolated identities.
-Private controller/provider storage and immutable evidence are siblings; existing
-private directories retain their permissions. A private, secret-free ownership
-receipt binds the namespace and later cleanup. Cleanup verifies that claim and
-settled provider UIDs before removing only the owned namespace
-(`sdlc/policy/security-awareness`). The seed-only crypto flow retains its resolved
-job-temporary parent and controller-root boundary.
+Capture freezes one source/baseline attempt and bounded evidence artifact before
+inspection. A fresh GitHub-hosted Ubuntu job runs Codex; a separate fresh Ubuntu
+job runs Claude only when Codex has no eligible complete report with confirmed
+credential settlement. Selection consumes exact artifact identities, digests and
+inventories. Manual versions and unchanged source bypass provider jobs. Missing,
+failed, skipped or cancelled primary job evidence remains an observed failure,
+with no invented client exit or settled-auth claim. Claude does not depend on a
+cleanup signal from another machine.
 
-`tools/release/inspector_bootstrap.py` owns allocation, evidence materialization,
-pinned runtime installation and the receipt. The controller copies the selected
-Node interpreter and installs the pinned clients into owned read-only runtime
-storage. Before auth-use begins, each actual provider UID checks every required
-code, runtime-tree, absolute evidence and private configuration path; credential-
-free version startup checks exercise interpreter and dependency loading. Restored
-Codex auth must also be readable through its provider UID before the begin
-checkpoint. Failed checks preserve refusal rather than opening existing private
-ancestry. Runtime paths and private layouts travel explicitly to both adapters.
+Each provider runs its pinned native CLI as the ordinary hosted runner UID. Its
+job installs only its own client. Private controller and client configuration
+live outside immutable model-readable evidence in ordinary job temporary
+storage; existing checkout and home permissions are unchanged. There is no
+cross-provider UID switching, privileged filesystem transfer, copied interpreter,
+shared public namespace, ownership claim or staged launcher. Child environments
+contain only the adapter's explicit allowlist; prompts travel byte-exact through
+stdin and credentials never enter argv. Owned private directories/files retain
+0700/0600 permissions and configuration is read-only.
 
-Before credential restoration or an auth-use checkpoint, a separate Python CI
-preflight runs the pinned Codex native sandbox with the same named permission
-profile and managed requirements under the dedicated UID. The fixed,
-credential-free probe command is owned by `SANDBOX_ARGUMENTS` in
-`tools/release/inspector_sandbox.py`. It first
-runs without tracing; a failure permits at most one narrow diagnostic trace.
-The retained, typed evidence contains only allowlisted platform/process facts,
-observed executable identities, native syscall outcomes and output hashes.
-Runtime policy observations are distinct from declared configuration; unavailable
-helper, policy, LSM or audit facts remain explicit gaps. Bundled helpers executed
-through file descriptors are included when observable. Raw output, argv,
-environment, configuration and credential data are never retained.
+The Codex job installs compatible distribution bubblewrap and Ubuntu's scoped
+AppArmor user-namespace profile using the vendor-supported setup, without
+changing global kernel/LSM restrictions. One untraced, credential-free readiness
+check runs the pinned native sandbox with the inspection permission profile and
+managed requirements, first executing `/bin/true`. Fixed follow-up checks read
+captured public evidence, refuse reads of synthetic private controller/auth-path
+markers, and refuse a new evidence-file write. They use no credentials or
+inference and remove only their own markers. Readiness requires all checks. It
+retains native status, mechanical outcomes and output hashes, not trace machinery
+or raw output. Failure records an unexpected
+primary execution/platform outcome before credential restoration or auth use;
+independent Claude fallback remains available. Startup readiness does not prove
+an assessment or attribute a previous platform denial.
 
-A failed preflight records an unexpected primary execution/platform failure and
-skips restoration, begin checkpoint and provider execution. Its status is not a
-provider assessment exit code or an auth-settlement failure. Claude fallback
-remains available after the Codex UID settles; shared bootstrap readiness stays
-independent. Cleanup retains ownership of the namespace and both UIDs. The
-preflight changes no kernel, LSM, permission, network or approval settings and
-establishes no repair of an unobserved hosted fault.
-
-Provider-private path resolution, containment and symlink checks, and exclusive
-directory/file creation run together under the privileged controller filesystem
-boundary. Descriptor-relative traversal refuses symlinks instead of requiring
-the controller UID to search provider-owned directories. Provider-owned
-directories and private files exclude other unprivileged identities; installed
-configuration is owner-readable and read-only. `tools/release/inspector_fs.py`
-owns their permission declarations. Temporary input files stay in private,
-controller-owned staging and are removed after installation; staging permissions
-are owned by `install_principal_file` in
-`tools/release/isolated_inspection.py`. Credential bytes never enter argv.
-
-The isolated launcher consumes only the newline-delimited JSON environment frame
-from the stdin descriptor, without buffering subsequent bytes. After `execve`,
-the provider receives the original trailing stdin byte stream unchanged,
-including empty input, embedded newlines and large prompts. Environment values
-stay off argv; malformed environment frames fail before provider launch.
-
-Controller-root creation stages the checked-in launcher into controller-owned,
-read-only code storage. Both inspectors receive the controller root explicitly;
-launcher selection verifies ownership, permissions and exact source content.
-Isolated identities need no access to the private checkout to load this code.
-Provider-private state remains separate, and controller-root cleanup removes the
-staged code after provider processes settle. Launcher storage and its permission
-declarations belong to `tools/release/isolated_inspection.py`.
-
-The trusted controller owns credentials, persistence, and artifact transport.
-The inspector runs under a separate unprivileged identity with read-only source
-access and provider-native tool permissions. Its tool processes cannot read the
-authentication cache or controller state, reach control credentials, or write
-the source. The Codex client retains its native authentication and refresh
-capability outside its command sandbox.
-The adapter selects Codex's native non-interactive `exec` command before its
-inspection flags; command selection and its permission profile stay explicit.
-
-Claude receives the prepared prompt bytes through stdin, separate from CLI
-options. Leading dashes and source frontmatter remain prompt data. The isolated
-launcher preserves those bytes across its environment-frame handoff.
-
-Claude uses its native restricted non-interactive mode with only file-read,
-search, and listing tools. The controller supplies complete indexed evidence
-for the fixed source and baseline, including segmented diffs and deleted-file
-content, so inspection needs no shell or GitHub token. Source and evidence are
-controller-owned and immutable to the inspector identity. Source symlinks remain
-data rather than links into the host filesystem.
+The trusted native clients retain authentication/refresh access outside their
+model tools. Codex's exact managed filesystem/network/PID restrictions expose
+only prepared evidence to command tools and deny auth, controller, home and
+process-credential paths. Its non-interactive `exec` command, permission profile,
+requirements and approval settings remain explicit. Claude retains subscription-
+compatible restricted safe mode, only Read/Grep/Glob tools, denied outside reads,
+empty MCP configuration and managed customization checks. Source symlinks are
+data. Unsupported policy, hooks, MCP or tools refuse rather than widening access.
 
 Claude's native `StructuredOutput` capability produces report data rather than
-file access. Tool requests and results correlate uniquely, in order, within
-the same session and parent context. An explicitly SDK-rejected formatter
-attempt may precede a valid retry; its malformed input is never accepted or
-unwrapped. Successful formatter input validates strictly as `LaneReport`, and
-the successful terminal report matches the latest confirmed formatter in its
-context. Missing, duplicate, orphaned or ambiguous correlation refuses.
-File-read, search and listing requests retain their evidence-path checks even
-when the SDK rejects them. Existing hook, MCP and unknown-tool refusals remain
-in force. Neither error prose nor final report validity supplies boundary proof.
+file access. Tool requests/results correlate uniquely, in order, within session
+and parent context. Only an explicitly SDK-rejected formatter may precede a valid
+retry without accepting its malformed payload. Successful formatter input
+strictly validates as `LaneReport`; the complete terminal report matches its
+confirmed formatter. Missing, duplicate, orphaned or ambiguous correlation
+refuses. Read/Grep/Glob paths remain checked even on rejected tool attempts.
 
-Claude runtime authentication and private configuration stay outside every
-model-readable working root. Native safe mode and an empty external-tool
-configuration suppress discovered customizations; the effective managed policy
-must also contain no unapproved executable integrations. The controller rejects
-unsupported permissions or unexpected tools instead of widening access. Both
-providers' descendants are settled before result transport or later privileged
-operations. Native tool restrictions are not a claim that the vendor client
-itself cannot use its own authentication.
+Each job owns bounded client/descendant lifetime and private-file cleanup before
+its result artifact is eligible. Runner loss cannot supply successful cleanup or
+auth settlement; fresh independent fallback does not need that machine to
+recover. Codex auth checkpoints retain their serialized uncertainty semantics.
+The seed-only crypto flow retains its job-temporary controller boundary.
 
 Codex's managed login belongs to one serialized CI stream. Private Actions
 artifacts retain only age-encrypted state; the stable decryption identity is a
@@ -230,8 +179,10 @@ and seeding use the same serialized stream.
 
 1. Resolve any incomplete owned publication before capturing another baseline.
 2. Capture S and B. An unchanged normalized source finishes successfully.
-3. Prepare the compact inventory and public-contract comparison. Run Codex, then
-   Claude only if Codex's inspection or credential settlement is unsuccessful.
+3. Prepare and retain the compact inventory and public-contract comparison once.
+   Run Codex on its fresh hosted job, then Claude on a separate fresh job only if
+   Codex's inspection or credential settlement is unsuccessful. Select their
+   exact artifact-bound outcomes, retaining runner failure as unsuccessful evidence.
    A valid complete no-release result finishes successfully.
 4. Generate complete commit notes with git-cliff and add the selected assessment's
    summary. Prepare R with final version and lock coherence, released manifests,

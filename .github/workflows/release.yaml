@@ -151,8 +151,8 @@ jobs:
           uv run python -m tools.ci.release_stage cleanup-inspectors
           --controller-root "$RUNNER_TEMP/teleclaude-release-controller"
 
-  release-analysis:
-    name: Capture source and inspect one release interval
+  capture-release:
+    name: Capture one immutable source interval
     if: >-
       ${{
         github.ref == 'refs/heads/main' &&
@@ -162,9 +162,10 @@ jobs:
           inputs.version == '' &&
           needs.recover-publication.outputs.publication_enabled != 'true')
       }}
-    needs: [recover-publication]
+    needs:
+      - recover-publication
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: write
@@ -176,71 +177,117 @@ jobs:
       latest_completed_tag: ${{ steps.capture.outputs.latest_completed_tag }}
       decision_mode: ${{ steps.capture.outputs.decision_mode }}
       requested_version: ${{ steps.capture.outputs.requested_version }}
-      selected_classification: ${{ steps.select.outputs.selected_classification }}
-      selected_provider: ${{ steps.select.outputs.selected_provider }}
-      codex_failure: ${{ steps.select.outputs.codex_failure }}
       publication_enabled: ${{ steps.activation.outputs.enabled }}
-      artifact_id: ${{ steps.analysis_upload.outputs.artifact-id }}
-      artifact_digest: ${{ steps.analysis_upload.outputs.artifact-digest }}
+      artifact_id: ${{ steps.capture_upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.capture_upload.outputs.artifact-digest }}
       artifact_manifest_sha256: ${{ steps.manifest.outputs.artifact_manifest_sha256 }}
     env:
       RELEASE_OPERATION: ${{ github.event_name == 'schedule' && 'scheduled' || inputs.operation }}
       RELEASE_VERSION: ${{ inputs.version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: refs/heads/main
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Install locked controller and check dependencies
-        run: |
-          python -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
+      - name: Install locked controller dependencies
+        run: 'python -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
+
           uv sync --frozen --group dev --no-install-project
-          source bin/init/tool_versions.sh
-          npm install --global --no-audit --no-fund "prettier@$PRETTIER_INSTALL_VERSION"
-          python3 tools/ci/export_env.py --path "$GITHUB_WORKSPACE/bin"
+
+          '
       - name: Capture canonical source and baseline after stream admission
         id: capture
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >-
-          uv run python -m tools.ci.capture_release_attempt
-          --output-directory "$RUNNER_TEMP/release-analysis"
+        run: uv run python -m tools.ci.capture_release_attempt --output-directory "$RUNNER_TEMP/release-capture"
       - name: Confirm checked out source is the captured source
         if: ${{ steps.capture.outputs.capture_status == 'ready' }}
         env:
           CAPTURED_SOURCE_SHA: ${{ steps.capture.outputs.source_sha }}
-        run: |
-          git checkout --detach "$CAPTURED_SOURCE_SHA"
+        run: 'git checkout --detach "$CAPTURED_SOURCE_SHA"
+
           test "$(git rev-parse HEAD)" = "$CAPTURED_SOURCE_SHA"
+
+          '
       - name: Build bounded shared evidence
         if: ${{ steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
-        run: >-
-          uv run python -m tools.ci.build_release_prompt
-          --attempt "$RUNNER_TEMP/release-analysis/attempt.json"
-          --output-directory "$RUNNER_TEMP/release-evidence"
+        run: uv run python -m tools.ci.build_release_prompt --attempt "$RUNNER_TEMP/release-capture/attempt.json" --output-directory "$RUNNER_TEMP/release-capture/evidence"
       - name: Read checked-in publication activation
         id: activation
         run: echo "enabled=$RELEASE_PUBLICATION_ENABLED" >> "$GITHUB_OUTPUT"
-      - name: Install pinned subscription inspector CLIs and age
-        continue-on-error: true
-        if: ${{ steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
-        run: |
-          uv run python -m tools.ci.install_inspector_runtime --evidence "$RUNNER_TEMP/release-evidence"
-          uv run python -m tools.ci.install_age
+      - name: Manifest owned result evidence
+        id: manifest
+        if: ${{ always() }}
+        run: uv run python -m tools.ci.release_stage write-artifact-manifest --root "$RUNNER_TEMP/release-capture"
+      - name: Retain immutable job evidence
+        id: capture_upload
+        if: ${{ always() && steps.manifest.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-capture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-capture
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+      - name: Confirm job evidence identity
+        if: ${{ always() && steps.capture_upload.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run:
+          uv run python -m tools.ci.release_stage confirm-upload --name "release-capture-${{ github.run_id }}-${{ github.run_attempt }}" --artifact-id "${{ steps.capture_upload.outputs.artifact-id }}" --digest "${{ steps.capture_upload.outputs.artifact-digest
+          }}"
+  inspect-codex:
+    name: Native Codex assessment on a fresh runner
+    needs:
+      - capture-release
+    if: ${{ needs.capture-release.result == 'success' && needs.capture-release.outputs.capture_status == 'ready' && needs.capture-release.outputs.decision_mode == 'automatic' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      codex_success: ${{ steps.codex_settled_confirm.outputs.codex_success }}
+      artifact_id: ${{ steps.provider_upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.provider_upload.outputs.artifact-digest }}
+      artifact_manifest_sha256: ${{ steps.manifest.outputs.artifact_manifest_sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.capture-release.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install locked controller dependencies
+        run: 'python -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
+
+          uv sync --frozen --group dev --no-install-project
+
+          '
+      - name: Consume the exact frozen attempt and evidence
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run:
+          uv run python -m tools.ci.release_stage download-artifact --name "release-capture-${{ github.run_id }}-${{ github.run_attempt }}" --artifact-id "${{ needs.capture-release.outputs.artifact_id }}" --digest "${{ needs.capture-release.outputs.artifact_digest
+          }}" --destination "$RUNNER_TEMP/release-capture-download" --manifest-sha256 "${{ needs.capture-release.outputs.artifact_manifest_sha256 }}"
+      - name: Install only the pinned native codex client
+        run:
+          'uv run python -m tools.ci.install_inspector_runtime --provider release-codex-inspector --evidence "$RUNNER_TEMP/release-capture-download/files/evidence"
+
+          uv run python -m tools.ci.install_age'
       - name: Probe native Codex sandbox before credential restoration
         id: codex_preflight
         continue-on-error: true
-        if: ${{ steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
-        run: >-
-          uv run python -m tools.ci.inspector_sandbox_preflight
-          --output-directory "$RUNNER_TEMP/release-analysis/codex-preflight"
+        run: uv run python -m tools.ci.inspector_sandbox_preflight --output-directory "$RUNNER_TEMP/release-codex/codex-preflight" --attempt-output "$RUNNER_TEMP/release-codex/codex-result/codex-attempt.json"
       - name: Restore Codex state and write begin checkpoint
         id: codex_prepare
         continue-on-error: true
@@ -248,16 +295,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODEX_AUTH_AGE_IDENTITY: ${{ secrets.CODEX_AUTH_AGE_IDENTITY }}
-        run: >-
-          uv run python -m tools.ci.release_stage prepare-codex
-          --attempt "$RUNNER_TEMP/release-analysis/attempt.json"
-          --evidence "$RUNNER_TEMP/release-evidence"
-          --state-directory "$RUNNER_TEMP/release-auth/state"
-          --result-directory "$RUNNER_TEMP/release-analysis/codex-result"
+        run:
+          uv run python -m tools.ci.release_stage prepare-codex --attempt "$RUNNER_TEMP/release-capture-download/files/attempt.json" --evidence "$RUNNER_TEMP/release-capture-download/files/evidence" --state-directory "$RUNNER_TEMP/release-auth/state"
+          --result-directory "$RUNNER_TEMP/release-codex/codex-result"
       - name: Upload Codex begin checkpoint before invoking the client
         id: codex_begin_upload
         if: ${{ steps.codex_prepare.outputs.codex_prepared == 'true' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ steps.codex_prepare.outputs.codex_begin_name }}
           path: ${{ steps.codex_prepare.outputs.codex_begin_directory }}/*
@@ -278,14 +322,11 @@ jobs:
         if: ${{ steps.codex_begin_confirm.outputs.codex_begin_confirmed == 'true' }}
         env:
           CODEX_AUTH_AGE_IDENTITY: ${{ secrets.CODEX_AUTH_AGE_IDENTITY }}
-        run: >-
-          uv run python -m tools.ci.release_stage run-codex
-          --state-directory "$RUNNER_TEMP/release-auth/state"
-          --report-output "$RUNNER_TEMP/release-analysis/codex-result"
+        run: uv run python -m tools.ci.release_stage run-codex --state-directory "$RUNNER_TEMP/release-auth/state" --report-output "$RUNNER_TEMP/release-codex/codex-result"
       - name: Upload encrypted settled Codex state
         id: codex_settled_upload
         if: ${{ always() && steps.codex_run.outputs.codex_settlement_artifact == 'true' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ steps.codex_run.outputs.codex_settled_name }}
           path: ${{ steps.codex_run.outputs.codex_settled_directory }}/*
@@ -299,85 +340,199 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPLOADED_ARTIFACT_ID: ${{ steps.codex_settled_upload.outputs.artifact-id }}
           UPLOADED_ARTIFACT_DIGEST: ${{ steps.codex_settled_upload.outputs.artifact-digest }}
-        run: >-
-          uv run python -m tools.ci.release_stage confirm-codex-settled
-          --result-directory "$RUNNER_TEMP/release-analysis/codex-result"
-          --state-directory "$RUNNER_TEMP/release-auth/state"
+        run: uv run python -m tools.ci.release_stage confirm-codex-settled --result-directory "$RUNNER_TEMP/release-codex/codex-result" --state-directory "$RUNNER_TEMP/release-auth/state"
+      - name: Ensure typed Codex outcome exists
+        if: ${{ always() }}
+        run: uv run python -m tools.ci.release_stage ensure-provider-attempt --provider codex --path "$RUNNER_TEMP/release-codex/codex-result/codex-attempt.json"
+      - name: Clean owned native client state
+        if: ${{ always() }}
+        run: uv run python -m tools.ci.release_stage cleanup-inspectors --bootstrap-receipt "$RUNNER_TEMP/release-inspector-bootstrap.json"
+      - name: Manifest owned result evidence
+        id: manifest
+        if: ${{ always() }}
+        run: uv run python -m tools.ci.release_stage write-artifact-manifest --root "$RUNNER_TEMP/release-codex"
+      - name: Retain immutable job evidence
+        id: provider_upload
+        if: ${{ always() && steps.manifest.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-codex-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-codex
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+      - name: Confirm job evidence identity
+        if: ${{ always() && steps.provider_upload.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run:
+          uv run python -m tools.ci.release_stage confirm-upload --name "release-codex-${{ github.run_id }}-${{ github.run_attempt }}" --artifact-id "${{ steps.provider_upload.outputs.artifact-id }}" --digest "${{ steps.provider_upload.outputs.artifact-digest
+          }}"
+  inspect-claude:
+    name: Native Claude fallback on a separate fresh runner
+    needs:
+      - capture-release
+      - inspect-codex
+    if:
+      ${{ always() && !cancelled() && needs.capture-release.result == 'success' && needs.capture-release.outputs.capture_status == 'ready' && needs.capture-release.outputs.decision_mode == 'automatic' && (needs.inspect-codex.result != 'success'
+      || needs.inspect-codex.outputs.codex_success != 'true' || needs.inspect-codex.outputs.artifact_id == '' || needs.inspect-codex.outputs.artifact_digest == '' || needs.inspect-codex.outputs.artifact_manifest_sha256 == '') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      claude_success: ${{ steps.claude_run.outputs.claude_success }}
+      artifact_id: ${{ steps.provider_upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.provider_upload.outputs.artifact-digest }}
+      artifact_manifest_sha256: ${{ steps.manifest.outputs.artifact_manifest_sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.capture-release.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install locked controller dependencies
+        run: 'python -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
+
+          uv sync --frozen --group dev --no-install-project
+
+          '
+      - name: Consume the exact frozen attempt and evidence
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run:
+          uv run python -m tools.ci.release_stage download-artifact --name "release-capture-${{ github.run_id }}-${{ github.run_attempt }}" --artifact-id "${{ needs.capture-release.outputs.artifact_id }}" --digest "${{ needs.capture-release.outputs.artifact_digest
+          }}" --destination "$RUNNER_TEMP/release-capture-download" --manifest-sha256 "${{ needs.capture-release.outputs.artifact_manifest_sha256 }}"
+      - name: Install only the pinned native claude client
+        run: uv run python -m tools.ci.install_inspector_runtime --provider release-claude-inspector --evidence "$RUNNER_TEMP/release-capture-download/files/evidence"
       - name: Run restricted Claude fallback for unsuccessful Codex
         id: claude_run
         continue-on-error: true
-        if: >-
-          ${{
-            !cancelled() &&
-            steps.capture.outputs.capture_status == 'ready' &&
-            steps.capture.outputs.decision_mode == 'automatic' &&
-            steps.codex_preflight.outputs.codex_boundary_closed == 'true' &&
-            steps.codex_run.outputs.codex_boundary_closed != 'false' &&
-            steps.codex_settled_confirm.outputs.codex_success != 'true'
-          }}
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: >-
-          uv run python -m tools.ci.release_stage run-claude
-          --evidence "$RUNNER_TEMP/release-evidence"
-          --output-directory "$RUNNER_TEMP/release-analysis/claude"
-      - name: Ensure typed Codex outcome exists
-        if: ${{ always() && steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
-        run: >-
-          uv run python -m tools.ci.release_stage ensure-provider-attempt
-          --provider codex
-          --path "$RUNNER_TEMP/release-analysis/codex-result/codex-attempt.json"
+        run: uv run python -m tools.ci.release_stage run-claude --evidence "$RUNNER_TEMP/release-capture-download/files/evidence" --output-directory "$RUNNER_TEMP/release-claude/claude"
       - name: Ensure typed Claude outcome exists when attempted
-        if: ${{ always() && steps.claude_run.outcome != 'skipped' }}
-        run: >-
-          uv run python -m tools.ci.release_stage ensure-provider-attempt
-          --provider claude
-          --path "$RUNNER_TEMP/release-analysis/claude/claude-attempt.json"
-      - name: Select one complete report
-        id: select
-        if: ${{ always() && steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
-        shell: bash
-        run: |
-          args=(--codex-attempt "$RUNNER_TEMP/release-analysis/codex-result/codex-attempt.json" --output-directory "$RUNNER_TEMP/release-analysis/selection")
-          if [ -f "$RUNNER_TEMP/release-analysis/codex-result/codex-report.json" ]; then args+=(--codex-report "$RUNNER_TEMP/release-analysis/codex-result/codex-report.json"); fi
-          if [ -f "$RUNNER_TEMP/release-analysis/claude/claude-attempt.json" ]; then
-            args+=(--claude-attempt "$RUNNER_TEMP/release-analysis/claude/claude-attempt.json")
-            if [ -f "$RUNNER_TEMP/release-analysis/claude/claude-report.json" ]; then args+=(--claude-report "$RUNNER_TEMP/release-analysis/claude/claude-report.json"); fi
-          fi
-          uv run python -m tools.ci.release_stage select "${args[@]}"
-      - name: Close provider process and credential boundaries
-        if: always()
-        run: >-
-          uv run python -m tools.ci.release_stage cleanup-inspectors
-          --bootstrap-receipt "$RUNNER_TEMP/release-inspector-bootstrap.json"
-      - name: Manifest analysis artifact files
+        if: ${{ always() }}
+        run: uv run python -m tools.ci.release_stage ensure-provider-attempt --provider claude --path "$RUNNER_TEMP/release-claude/claude/claude-attempt.json"
+      - name: Clean owned native client state
+        if: ${{ always() }}
+        run: uv run python -m tools.ci.release_stage cleanup-inspectors --bootstrap-receipt "$RUNNER_TEMP/release-inspector-bootstrap.json"
+      - name: Manifest owned result evidence
         id: manifest
-        if: ${{ always() && steps.capture.outcome == 'success' }}
+        if: ${{ always() }}
+        run: uv run python -m tools.ci.release_stage write-artifact-manifest --root "$RUNNER_TEMP/release-claude"
+      - name: Retain immutable job evidence
+        id: provider_upload
+        if: ${{ always() && steps.manifest.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-claude-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-claude
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+      - name: Confirm job evidence identity
+        if: ${{ always() && steps.provider_upload.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run:
+          uv run python -m tools.ci.release_stage confirm-upload --name "release-claude-${{ github.run_id }}-${{ github.run_attempt }}" --artifact-id "${{ steps.provider_upload.outputs.artifact-id }}" --digest "${{ steps.provider_upload.outputs.artifact-digest
+          }}"
+  release-analysis:
+    name: Select an artifact-bound complete report
+    needs:
+      - capture-release
+      - inspect-codex
+      - inspect-claude
+    if: ${{ always() && !cancelled() && needs.capture-release.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      capture_status: ${{ needs.capture-release.outputs.capture_status }}
+      source_sha: ${{ needs.capture-release.outputs.source_sha }}
+      baseline_tag: ${{ needs.capture-release.outputs.baseline_tag }}
+      baseline_sha: ${{ needs.capture-release.outputs.baseline_sha }}
+      latest_completed_tag: ${{ needs.capture-release.outputs.latest_completed_tag }}
+      decision_mode: ${{ needs.capture-release.outputs.decision_mode }}
+      requested_version: ${{ needs.capture-release.outputs.requested_version }}
+      publication_enabled: ${{ needs.capture-release.outputs.publication_enabled }}
+      selected_classification: ${{ steps.select.outputs.selected_classification }}
+      selected_provider: ${{ steps.select.outputs.selected_provider }}
+      codex_failure: ${{ steps.select.outputs.codex_failure }}
+      artifact_id: ${{ steps.analysis_upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.analysis_upload.outputs.artifact-digest }}
+      artifact_manifest_sha256: ${{ steps.manifest.outputs.artifact_manifest_sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.capture-release.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install locked controller dependencies
+        run: 'python -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
+
+          uv sync --frozen --group dev --no-install-project
+
+          '
+      - name: Consume the exact frozen attempt and evidence
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run:
+          uv run python -m tools.ci.release_stage download-artifact --name "release-capture-${{ github.run_id }}-${{ github.run_attempt }}" --artifact-id "${{ needs.capture-release.outputs.artifact_id }}" --digest "${{ needs.capture-release.outputs.artifact_digest
+          }}" --destination "$RUNNER_TEMP/release-capture-download" --manifest-sha256 "${{ needs.capture-release.outputs.artifact_manifest_sha256 }}"
+      - name: Collect outcomes and select without inventing missing client evidence
+        id: select
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CODEX_ARTIFACT_ID: ${{ needs.inspect-codex.outputs.artifact_id }}
+          CODEX_ARTIFACT_DIGEST: ${{ needs.inspect-codex.outputs.artifact_digest }}
+          CODEX_ARTIFACT_MANIFEST_SHA256: ${{ needs.inspect-codex.outputs.artifact_manifest_sha256 }}
+          CODEX_JOB_RESULT: ${{ needs.inspect-codex.result }}
+          CLAUDE_ARTIFACT_ID: ${{ needs.inspect-claude.outputs.artifact_id }}
+          CLAUDE_ARTIFACT_DIGEST: ${{ needs.inspect-claude.outputs.artifact_digest }}
+          CLAUDE_ARTIFACT_MANIFEST_SHA256: ${{ needs.inspect-claude.outputs.artifact_manifest_sha256 }}
+          CLAUDE_JOB_RESULT: ${{ needs.inspect-claude.result }}
+        run: uv run python -m tools.ci.release_stage collect-analysis --capture-directory "$RUNNER_TEMP/release-capture-download/files" --output-directory "$RUNNER_TEMP/release-analysis"
+      - name: Manifest owned result evidence
+        id: manifest
+        if: ${{ always() }}
         run: uv run python -m tools.ci.release_stage write-artifact-manifest --root "$RUNNER_TEMP/release-analysis"
-      - name: Upload analysis and diagnostics
+      - name: Retain immutable job evidence
         id: analysis_upload
         if: ${{ always() && steps.manifest.outcome == 'success' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-analysis-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-analysis
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
-      - name: Confirm analysis artifact identity
+      - name: Confirm job evidence identity
         if: ${{ always() && steps.analysis_upload.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >-
-          uv run python -m tools.ci.release_stage confirm-upload
-          --name "release-analysis-${{ github.run_id }}-${{ github.run_attempt }}"
-          --artifact-id "${{ steps.analysis_upload.outputs.artifact-id }}"
-          --digest "${{ steps.analysis_upload.outputs.artifact-digest }}"
+        run:
+          uv run python -m tools.ci.release_stage confirm-upload --name "release-analysis-${{ github.run_id }}-${{ github.run_attempt }}" --artifact-id "${{ steps.analysis_upload.outputs.artifact-id }}" --digest "${{ steps.analysis_upload.outputs.artifact-digest
+          }}"
 
   candidate:
     name: Materialize and lint the final candidate
     if: >-
       ${{
+        !cancelled() &&
         needs.release-analysis.result == 'success' &&
         needs.release-analysis.outputs.capture_status == 'ready' &&
         (
@@ -578,7 +733,7 @@ jobs:
 
   installer-proof:
     name: Prove the exact candidate in Tart
-    if: ${{ needs.candidate.result == 'success' }}
+    if: ${{ !cancelled() && needs.candidate.result == 'success' }}
     needs: [release-analysis, candidate]
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 30
@@ -678,6 +833,7 @@ jobs:
     name: Publish only an exactly proved candidate
     if: >-
       ${{
+        !cancelled() &&
         needs.candidate.result == 'success' &&
         needs.installer-proof.result == 'success' &&
         (

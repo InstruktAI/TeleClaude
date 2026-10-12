@@ -60,6 +60,20 @@ provider is attempted once. An execution error, invalid report, or incomplete
 assessment is an unsuccessful inspection. If neither provider returns a valid,
 complete report, the attempt ends without publication.
 
+Source, baseline and bounded evidence are frozen once before inspection. Codex
+and its fallback run on separate fresh GitHub-hosted Ubuntu jobs, each installing
+only its pinned native client and owning its cleanup. A primary job failure or
+missing artifact permits independent fallback without claiming a client exit or
+credential settlement that was not observed. Explicit-version and no-change
+attempts bypass both providers. Eligible Codex success requires a complete report
+and confirmed durable post-run auth; runner loss leaves auth uncertainty intact.
+
+Native clients run under the runner identity with explicit clean environments
+and private auth/controller state outside immutable evidence. Native filesystem,
+network and tool restrictions remain required. Codex uses the supported distro
+bubblewrap/scoped Ubuntu AppArmor setup and one credential-free startup check
+before restoring credentials; it changes no global security restrictions.
+
 Failover preserves the failed provider outcome alongside the successful report.
 Expected availability failures and unexpected faults remain distinguishable in
 the evidence. Successful fallback does not erase an unexpected fault or discharge
@@ -293,6 +307,11 @@ And the proved candidate changelog and published release use the same section
 
 ## Known caveats
 
+- Native Claude permissions prevent model-tool disclosure; stream validation
+  observes tool activity afterward and cannot undo a read. Private file modes
+  do not separate the client from controller files under the same runner UID.
+  The local managed-policy checker covers on-disk policy sources, not every
+  possible effective server-managed policy source.
 - The Claude inspector adapter's internal setup and process catches retain
   generic diagnostic text. These returned failure outcomes do not carry
   classified exception metadata into the controller handlers; their owner is
