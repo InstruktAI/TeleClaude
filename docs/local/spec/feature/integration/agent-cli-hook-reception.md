@@ -16,8 +16,10 @@ TeleClaude session identifier from the agent's native session id, and
 enqueues the event into the per-session hook outbox. The receiver also
 emits adapter-formatted "additional context" on `agent_session_start`
 and emits one adapter-formatted response at a control-delivery boundary. The
-receiver composes a closed semantic intent — context, continuation reason, or
-both — while each adapter owns the event-specific provider wire shape.
+receiver composes a closed semantic intent — context at a delivery boundary or
+a checkpoint continuation reason at stop — while each adapter owns the
+event-specific provider wire shape. Control-delivery timing is owned by
+`local/projects/teleclaude/spec/feature/agent_runtime/control-delivery`.
 
 Conceptually this surface belongs to the `agent_runtime` bounded context;
 it is inventoried under `integration` because the receiver shares its
@@ -213,8 +215,6 @@ When the receiver composes the provider response
 Then every provider receives a response valid for that native event
 And no provider response contains a null continuation reason
 And Claude and DeepSeek UserPromptSubmit context does not block or swallow the user's prompt
-And Codex Stop carries context only through one non-empty block reason without hook-specific output
-And Antigravity Stop carries context only through one non-empty continue reason without injection steps
 And Antigravity PreInvocation and PostInvocation context uses injection steps without a decision
 And the delivered context is observable in the agent transcript or the next model turn
 ```

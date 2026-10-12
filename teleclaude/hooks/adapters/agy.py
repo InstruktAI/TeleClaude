@@ -18,7 +18,6 @@ from teleclaude.hooks.adapters.base import (
     parse_stdin_hook_input,
 )
 from teleclaude.hooks.adapters.contracts import (
-    ContinueWithContext,
     ContinueWithReason,
     HookDeliveryMode,
     HookEmission,
@@ -48,7 +47,6 @@ _POST_TOOL_USE_EVENT = "PostToolUse"
 _STOP_EVENT = "Stop"
 _INVALID_INVOCATION_NUM = "Antigravity PreInvocation requires a non-negative integer invocationNum"
 _INVALID_FULLY_IDLE = "Antigravity Stop requires a boolean fullyIdle"
-_CONTEXT_SEPARATOR = "\n\n"
 _UNSUPPORTED_DELIVERY_EVENT = "Antigravity event does not support control delivery"
 _CONTINUATION_EVENT_REQUIRED = "Antigravity continuation requires a Stop event"
 _TOOL_DENIAL_EVENT_REQUIRED = "Antigravity tool denial requires a PreToolUse event"
@@ -142,7 +140,7 @@ class AgyAdapter(HookAdapter):
             ),
             AgyHookEvent.STOP: NativeHookSpec(
                 AgentHookEvents.AGENT_STOP,
-                frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                frozenset({HookPurpose.MINT}),
                 HookDeliveryMode.CONTINUATION_REASON,
             ),
         }
@@ -239,20 +237,13 @@ class AgyAdapter(HookAdapter):
         spec = self.native_hook_specs.get(hook_event_name)
         if spec is None or spec.delivery_mode is None:
             raise ValueError(_UNSUPPORTED_DELIVERY_EVENT)
-        if isinstance(intent, ContinueWithContext):
-            if spec.delivery_mode is not HookDeliveryMode.CONTINUATION_REASON:
-                raise ValueError(_CONTINUATION_EVENT_REQUIRED)
-            reason = _CONTEXT_SEPARATOR.join((intent.reason, intent.context))
-            payload = json.dumps({_DECISION_FIELD: AgyDecision.CONTINUE, _REASON_FIELD: reason})
-            return HookEmission(payload, HookResponseKind.CHECKPOINT_CONTINUE, HookResponseFormat.JSON)
         if isinstance(intent, ContinueWithReason):
             if spec.delivery_mode is not HookDeliveryMode.CONTINUATION_REASON:
                 raise ValueError(_CONTINUATION_EVENT_REQUIRED)
             payload = json.dumps({_DECISION_FIELD: AgyDecision.CONTINUE, _REASON_FIELD: intent.reason})
             return HookEmission(payload, HookResponseKind.CHECKPOINT_CONTINUE, HookResponseFormat.JSON)
-        if spec.delivery_mode is HookDeliveryMode.CONTINUATION_REASON:
-            payload = json.dumps({_DECISION_FIELD: AgyDecision.CONTINUE, _REASON_FIELD: intent.context})
-            return HookEmission(payload, HookResponseKind.CHECKPOINT_CONTINUE, HookResponseFormat.JSON)
+        if HookPurpose.CONTROL_DELIVERY not in spec.purposes:
+            raise ValueError(_UNSUPPORTED_DELIVERY_EVENT)
         payload = json.dumps({_INJECT_STEPS_FIELD: [{_EPHEMERAL_MESSAGE_FIELD: intent.context}]})
         return HookEmission(payload, HookResponseKind.STARTUP_CONTEXT, HookResponseFormat.JSON)
 

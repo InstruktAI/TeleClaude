@@ -15,7 +15,7 @@ the next natural boundary of the agent's work while one is certain to follow,
 otherwise a wake that produces one. A pending payload never waits on input
 that is not certain to arrive.
 
-Inside a running turn the payload is delivered at that turn's next boundary,
+Inside a running turn the payload is delivered at its next supported mid-turn boundary,
 with no terminal write. When the platform holds a pending payload and knows no
 boundary is coming — the producer observes no running turn, or the platform
 records the end of a turn while a payload is still pending — the session is
@@ -24,6 +24,15 @@ boundary like any other; only that minimal wake trigger reaches the terminal,
 never the control payload itself. Handing a payload to this surface is delivery
 from the producer's perspective: the producer neither tracks nor retries beyond
 the handoff.
+
+Stop-hook responses carry checkpoint obligations only; control payloads remain
+pending through that boundary. A checkpoint continuation offers its subsequent
+mid-turn boundaries for eligible payloads. An accepted stop records the turn end
+and wakes pending work through the existing session-input surface. This separation
+follows `sdlc/principle/design-fundamentals`: checkpoint continuation and control
+delivery have independent responsibilities. Runtime adapters declare their
+supported injection boundaries, including invocation boundaries where a native
+post-tool hook cannot carry context.
 
 Delivery boundaries for one session are ordered by the agent runtime, and this
 surface relies on that contract rather than arbitrating between simultaneous
@@ -76,13 +85,13 @@ And the turn is not ended or restarted by the delivery
 And nothing is typed into the session's terminal
 ```
 
-#### UC-CDL2: A turn without natural boundaries receives payloads at its end
+#### UC-CDL2:
 
 ```gherkin
 Given a control payload is pending for a session whose current turn performs no tool-assisted work
 When that turn completes
-Then the pending payload is handed into that turn at its completion boundary
-And the handoff completes before the session goes idle
+Then the pending payload does not block completion of that turn
+And the session is woken to receive the payload at the next turn's entry
 ```
 
 #### UC-CDL3: An idle session is woken so a delivery boundary exists

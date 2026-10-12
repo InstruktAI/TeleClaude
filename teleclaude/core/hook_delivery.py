@@ -26,7 +26,7 @@ from teleclaude.docs_subscriptions import (
     required_event_handling_dependencies,
 )
 from teleclaude.hooks.adapters.base import HookAdapter
-from teleclaude.hooks.adapters.contracts import ContinueWithContext, ContinueWithReason, DeliverContext, HookEmission
+from teleclaude.hooks.adapters.contracts import DeliverContext, HookEmission
 from teleclaude.hooks.main_db import main_sync_engine
 
 logger = get_logger(__name__)
@@ -149,7 +149,6 @@ def emit_pending_control_payloads(
     write_emission: EmissionWriter,
     initial_procedure_entry_id: str | None = None,
     procedure_wake_occurrence_id: str | None = None,
-    checkpoint_reason: str | None = None,
     startup_context: str | None = None,
 ) -> bool:
     """Drain one session's ordered control batch at an adapter-declared boundary."""
@@ -273,10 +272,7 @@ def emit_pending_control_payloads(
             if startup_context is not None:
                 write_emission(adapter.render_response(raw_event_type, DeliverContext(startup_context)))
                 return True
-            if checkpoint_reason is None:
-                return False
-            write_emission(adapter.render_response(raw_event_type, ContinueWithReason(checkpoint_reason)))
-            return True
+            return False
         row_ids = [row.id for row in rows if row.id is not None]
         logger.info(
             EVENT_CONTROL_DELIVERY_HOOK_ARRIVAL,
@@ -295,12 +291,7 @@ def emit_pending_control_payloads(
             )
             if part
         )
-        intent = (
-            ContinueWithContext(checkpoint_reason, context)
-            if checkpoint_reason is not None
-            else DeliverContext(context)
-        )
-        emission = adapter.render_response(raw_event_type, intent)
+        emission = adapter.render_response(raw_event_type, DeliverContext(context))
         payload = emission.payload
         try:
             write_emission(emission)

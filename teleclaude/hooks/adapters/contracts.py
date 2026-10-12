@@ -85,21 +85,7 @@ class ContinueWithReason:
             raise ValueError(_EMPTY_REASON_ERROR)
 
 
-@dataclass(frozen=True)
-class ContinueWithContext:
-    """Request continuation while delivering model-facing context."""
-
-    reason: str
-    context: str
-
-    def __post_init__(self) -> None:
-        if not self.reason.strip():
-            raise ValueError(_EMPTY_REASON_ERROR)
-        if not self.context.strip():
-            raise ValueError(_EMPTY_CONTEXT_ERROR)
-
-
-type HookResponseIntent = DeliverContext | ContinueWithReason | ContinueWithContext
+type HookResponseIntent = DeliverContext | ContinueWithReason
 
 
 @dataclass(frozen=True)

@@ -27,7 +27,6 @@ from teleclaude.hooks.adapters.base import (
     parse_stdin_hook_input,
 )
 from teleclaude.hooks.adapters.contracts import (
-    ContinueWithContext,
     ContinueWithReason,
     HookDeliveryMode,
     HookEmission,
@@ -100,7 +99,7 @@ class DshAdapter(HookAdapter):
             ),
             DshHookEvent.STOP: NativeHookSpec(
                 AgentHookEvents.AGENT_STOP,
-                frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                frozenset({HookPurpose.MINT}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
             DshHookEvent.STOP_FAILURE: NativeHookSpec(
@@ -139,18 +138,11 @@ class DshAdapter(HookAdapter):
         if isinstance(intent, ContinueWithReason):
             payload = json.dumps({_DECISION_FIELD: _BLOCK_DECISION, _REASON_FIELD: intent.reason})
             return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
+        if HookPurpose.CONTROL_DELIVERY not in spec.purposes:
+            raise ValueError(_UNSUPPORTED_DELIVERY_EVENT)
         hook_specific = {
             DSH_OUTPUT_HOOK_EVENT_NAME: hook_event_name,
             DSH_OUTPUT_ADDITIONAL_CONTEXT: intent.context,
         }
-        if isinstance(intent, ContinueWithContext):
-            payload = json.dumps(
-                {
-                    _DECISION_FIELD: _BLOCK_DECISION,
-                    _REASON_FIELD: intent.reason,
-                    DSH_OUTPUT_HOOK_SPECIFIC: hook_specific,
-                }
-            )
-            return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
         payload = json.dumps({DSH_OUTPUT_HOOK_SPECIFIC: hook_specific})
         return HookEmission(payload, HookResponseKind.STARTUP_CONTEXT, HookResponseFormat.JSON)

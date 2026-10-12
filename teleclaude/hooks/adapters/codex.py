@@ -17,7 +17,6 @@ from teleclaude.hooks.adapters.base import (
     parse_stdin_hook_input,
 )
 from teleclaude.hooks.adapters.contracts import (
-    ContinueWithContext,
     ContinueWithReason,
     HookDeliveryMode,
     HookEmission,
@@ -37,7 +36,6 @@ CODEX_OUTPUT_ADDITIONAL_CONTEXT = "additionalContext"
 _DECISION_FIELD = "decision"
 _REASON_FIELD = "reason"
 _BLOCK_DECISION = "block"
-_CONTEXT_SEPARATOR = "\n\n"
 _UNSUPPORTED_DELIVERY_EVENT = "Codex event does not support control delivery"
 _TOOL_USE_ID_FIELD = "tool_use_id"
 _TOOL_CALL_ID_FIELD = "tool_call_id"
@@ -91,7 +89,7 @@ class CodexAdapter(HookAdapter):
             ),
             CodexHookEvent.STOP: NativeHookSpec(
                 AgentHookEvents.AGENT_STOP,
-                frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                frozenset({HookPurpose.MINT}),
                 HookDeliveryMode.CONTINUATION_REASON,
             ),
         }
@@ -130,16 +128,11 @@ class CodexAdapter(HookAdapter):
         spec = self.native_hook_specs.get(hook_event_name)
         if spec is None or spec.delivery_mode is None:
             raise ValueError(_UNSUPPORTED_DELIVERY_EVENT)
-        if isinstance(intent, ContinueWithContext):
-            reason = _CONTEXT_SEPARATOR.join((intent.reason, intent.context))
-            payload = json.dumps({_DECISION_FIELD: _BLOCK_DECISION, _REASON_FIELD: reason})
-            return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
         if isinstance(intent, ContinueWithReason):
             payload = json.dumps({_DECISION_FIELD: _BLOCK_DECISION, _REASON_FIELD: intent.reason})
             return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
-        if spec.delivery_mode is HookDeliveryMode.CONTINUATION_REASON:
-            payload = json.dumps({_DECISION_FIELD: _BLOCK_DECISION, _REASON_FIELD: intent.context})
-            return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
+        if HookPurpose.CONTROL_DELIVERY not in spec.purposes:
+            raise ValueError(_UNSUPPORTED_DELIVERY_EVENT)
         payload = json.dumps(
             {
                 CODEX_OUTPUT_HOOK_SPECIFIC: {

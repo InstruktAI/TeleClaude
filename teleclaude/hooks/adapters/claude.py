@@ -17,7 +17,6 @@ from teleclaude.hooks.adapters.base import (
     parse_stdin_hook_input,
 )
 from teleclaude.hooks.adapters.contracts import (
-    ContinueWithContext,
     ContinueWithReason,
     HookDeliveryMode,
     HookEmission,
@@ -122,7 +121,7 @@ class ClaudeAdapter(HookAdapter):
             ),
             ClaudeHookEvent.STOP: NativeHookSpec(
                 AgentHookEvents.AGENT_STOP,
-                frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
+                frozenset({HookPurpose.MINT}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
             ClaudeHookEvent.NOTIFICATION: NativeHookSpec(AgentHookEvents.AGENT_BLOCKED, frozenset()),
@@ -180,18 +179,8 @@ class ClaudeAdapter(HookAdapter):
         if isinstance(intent, ContinueWithReason):
             payload = json.dumps({_DECISION_FIELD: _BLOCK_DECISION, _REASON_FIELD: intent.reason})
             return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
-        if isinstance(intent, ContinueWithContext):
-            payload = json.dumps(
-                {
-                    _DECISION_FIELD: _BLOCK_DECISION,
-                    _REASON_FIELD: intent.reason,
-                    _HOOK_SPECIFIC_FIELD: {
-                        _HOOK_EVENT_NAME_FIELD: hook_event_name,
-                        _ADDITIONAL_CONTEXT_FIELD: intent.context,
-                    },
-                }
-            )
-            return HookEmission(payload, HookResponseKind.CHECKPOINT_BLOCK, HookResponseFormat.JSON)
+        if HookPurpose.CONTROL_DELIVERY not in spec.purposes:
+            raise ValueError(_UNSUPPORTED_DELIVERY_EVENT)
         if spec.delivery_mode is HookDeliveryMode.PLAIN_CONTEXT:
             return HookEmission(intent.context, HookResponseKind.STARTUP_CONTEXT, HookResponseFormat.PLAIN_TEXT)
         payload = json.dumps(

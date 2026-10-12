@@ -53,6 +53,7 @@ from teleclaude.git import GitCommandError
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters.base import HookAdapter, HookNormalizationReason, read_stdin_payload
 from teleclaude.hooks.adapters.contracts import (
+    ContinueWithReason,
     HookEmission,
     HookResponseFormat,
     HookResponseKind,
@@ -1485,7 +1486,7 @@ def _maybe_emit_boundary_response(
     initial_procedure_entry_id: str | None,
     procedure_wake_occurrence_id: str | None,
 ) -> bool:
-    """Prioritize checkpoint safety, then emit one pending control batch."""
+    """Emit checkpoint continuations independently of control delivery."""
     checkpoint_reason = _maybe_emit_checkpoint_response(
         event_type=event_type,
         adapter=adapter,
@@ -1505,6 +1506,10 @@ def _maybe_emit_boundary_response(
             session_id=session_id,
         )
 
+    if checkpoint_reason is not None:
+        write_emission(adapter.render_response(raw_event_type, ContinueWithReason(checkpoint_reason)))
+        return True
+
     return emit_pending_control_payloads(
         adapter=adapter,
         raw_event_type=raw_event_type,
@@ -1515,7 +1520,6 @@ def _maybe_emit_boundary_response(
         write_emission=write_emission,
         initial_procedure_entry_id=initial_procedure_entry_id,
         procedure_wake_occurrence_id=procedure_wake_occurrence_id,
-        checkpoint_reason=checkpoint_reason,
         startup_context=startup_context,
     )
 
