@@ -101,7 +101,7 @@ And the returned CallerIdentity is the identity the call carries, or none
 - Consumed by every operation on the daemon's request surface. An operation that scopes an act to its objects — the session authority rule, reminder ownership, the claiming-group rule, person-bound service selection — evaluates that rule against the returned `CallerIdentity`.
 - The identity it takes is produced by the client-side caller resolution and clearance in `local/projects/teleclaude/spec/identity-and-auth` §6 and `feature/identity/command-clearance`; session principals resolve there through `feature/identity/principal-resolution`.
 - Reads nothing from the `agent_runtime` or `config` bounded contexts: the carried identity already names the session and the person.
-- A remote peer receives the caller the local daemon took, carried on the relay — see `feature/session_mirrors/cross-computer-history-federation`.
+- A request relayed to another computer carries the caller's principal, and that computer decides it — see `feature/identity/cross-computer-authorization`.
 - In v2 this collapses into `identity.resolve(headers)` returning a typed `Principal` (or Anonymous).
 
 ## Known caveats

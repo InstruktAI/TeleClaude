@@ -80,8 +80,8 @@ session's role and its help-desk confinement in
    not clear the person band for it. The caller's computer establishes who is
    calling and carries only the caller's principal over the daemon relay — a
    command the daemon forwards on its own account carries the daemon's system
-   principal — as remote history search already does
-   (`local/projects/teleclaude/spec/feature/session_mirrors/cross-computer-history-federation`).
+   principal
+   (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
    The target resolves that principal's roles from its own person registry,
    company rosters, and project registry; a role or scope carried with the
    request is never an input. The caller's computer decides only what it alone
