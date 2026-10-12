@@ -107,5 +107,9 @@ And no missing human attribution is inferred from its prose
 
 - A source may be unavailable for re-derivation while its stored conversation
   remains readable. That limitation stays explicit in coverage results.
+- Coverage that names a missing source is still ready for readers once every
+  source present on disk has been read under the current derivation rules: the
+  missing source's retained content is all the conversation still holds from it.
+  A present source that failed or is not yet read leaves coverage not ready.
 - Existing source exclusions and history access rules apply to the unified
   mirror just as they apply to its inputs.

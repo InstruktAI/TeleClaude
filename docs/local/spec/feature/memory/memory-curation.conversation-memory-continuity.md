@@ -70,6 +70,11 @@ Completion advances durable progress only through that material. Failure keeps
 the uncompleted stretch eligible and reports the reason. Reading, dispatching,
 handing an event to a hook, and an agent stopping are not completion.
 
+An extraction is released once its mirror's coverage is ready for the captured
+closure. A source whose file has disappeared contributes its retained content,
+and the extraction read names that source as missing. A present source that
+cannot yet be read keeps the extraction pending with that reason.
+
 Progress is independent for each TeleClaude conversation mirror and remains
 stable through native transcript changes, compaction, and mirror re-derivation.
 A timestamp alone on a person is never the progress key. Repeated delivery of
