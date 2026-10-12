@@ -341,11 +341,14 @@ clearance there — crosses back as that route's own status and work feedback.
   computer is sent the request; no presence signal decides on its behalf. A computer
   running a version without the relay rejects the relay command itself as one it does
   not know, and the relaying computer reports it as running a build without the relay.
-  A computer that does not answer within the relay timeout is reported as not having
-  answered. An offline computer runs nothing: it refuses the request when it reads it
-  after the deadline. A computer that took the request before the deadline and
-  answered too late leaves acceptance unknown, as any failure after sending does. Each reaches the caller as a work refusal that names the computer and the
-  reason, and nothing is executed locally in its place.
+  Both reach the caller as a work refusal that names the computer and the reason, and
+  nothing is executed anywhere.
+- **The addressed computer does not answer.** A computer that does not answer within
+  the relay timeout is reported to the caller as not having answered, naming it, with
+  no instruction to run the command again. Whether it ran is unknown — an offline
+  computer refuses the request when it reads it after the deadline, a slow one may
+  have taken it in time — so the error is diagnostic, presented as every unknown
+  outcome is (`local/projects/teleclaude/spec/feature/presentation/work-feedback`).
 - **The relayed request arrives after its deadline.** Every relay command carries a
   deadline; a computer that takes it later — after coming back from being offline —
   refuses it and runs nothing, so a request its caller was told had failed never runs.
