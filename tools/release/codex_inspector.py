@@ -43,7 +43,6 @@ _TOML_FILESYSTEM_TABLE = "[permissions.release-inspector.filesystem]"
 _TOML_NETWORK_TABLE = "[permissions.release-inspector.network]"
 _TOML_ROOT_DENY = '":root" = "deny"'
 _TOML_MINIMAL_READ = '":minimal" = "read"'
-_TOML_TEMP_DENY = '":tmpdir" = "deny"'
 _TOML_SLASH_TEMP_DENY = '":slash_tmp" = "deny"'
 _TOML_PROC_DENY = '"/proc" = "deny"'
 _TOML_RUN_DENY = '"/run" = "deny"'
@@ -372,7 +371,6 @@ def _profile_content(
         _TOML_FILESYSTEM_TABLE,
         _TOML_ROOT_DENY,
         _TOML_MINIMAL_READ,
-        _TOML_TEMP_DENY,
         _TOML_SLASH_TEMP_DENY,
         _TOML_PROC_DENY,
         _TOML_RUN_DENY,
