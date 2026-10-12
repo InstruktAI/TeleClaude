@@ -39,6 +39,11 @@ channel. Designated Team personal-assistant channels also reach that seam throug
 guild forum conversations use their independent session-resolution path. Each
 persists the channel binding on the session for outbound delivery — a DM session carries
 the DM channel with its guild id unset.
+
+A direct message carrying audio, image or file attachments, with or without text,
+reaches the seam as one turn of that DM conversation. Its attachments and any
+accompanying text follow the once-only combined-input contract of
+`local/projects/teleclaude/spec/feature/integration/discord-personal-assistant-channels`.
 <!-- /planned-change:designated-channel-continuity -->
 
 A direct message that is exactly the person's invitation token is an entry to
@@ -92,3 +97,24 @@ When the person sends a help desk's entry identifier as a direct message
 Then they receive the neutral reply and no desk session is created
 And their next direct message reaches their personal-assistant session
 ```
+
+<!-- planned:designated-channel-continuity -->
+
+#### UC-DM-ATTACHMENT-INPUT: An attachment sent as a direct message reaches the DM's assistant
+
+```
+Scenario Outline: direct message through <modality>
+  Given a bound person whose DM channel reaches their personal assistant
+  When they send <modality> input as a direct message, with or without accompanying text
+  Then the DM channel is resolved once to its personal-assistant session
+  And each accepted attachment and any accompanying text reach that session once
+  And the assistant's reply returns to that DM channel
+
+  Examples:
+    | modality |
+    | audio    |
+    | image    |
+    | file     |
+```
+
+<!-- /planned:designated-channel-continuity -->
