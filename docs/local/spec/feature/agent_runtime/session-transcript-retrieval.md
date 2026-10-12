@@ -110,8 +110,7 @@ And inspection writes no input and makes no permission decision for the child
 ### Explicit terminal query
 
 `telec sessions tail <session-id> --pane` requests a terminal observation from
-`GET /sessions/{session-id}/pane`. The optional computer selector routes the
-query to the computer that owns the target session. The query uses the existing
+`GET /sessions/{session-id}/pane`. The query uses the existing
 session-read clearance and access contract.
 
 The response identifies the target, its runtime, the capture time, and terminal
