@@ -76,9 +76,10 @@ Then the CLI reports "Failed to fetch session '<session-id>' from <peer>: <reaso
 
 ## Known caveats
 
-- When `--computer` is set, local mirrors on the dispatching host are
-  intentionally NOT mixed into the result. There is no "include local"
-  toggle; an operator wanting the local results too must run the command
+- When `--computer` is set, only the named computers are searched: local
+  mirrors on the dispatching host are included only when its own name is among
+  them. There is no "include local" toggle; an operator wanting the local
+  results beside remote ones names the local computer too, or runs the command
   twice (once with `--computer`, once without).
 - A remote request waits a bounded time for the peer's relay answer. A slow
   or paused peer produces a timeout failure without retry.
