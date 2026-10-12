@@ -111,6 +111,8 @@ _STRUCTURED_RETRY_FAILURE = "error_max_structured_output_retries"
 _WRAPPER_TYPE = "result"
 _ASSISTANT_TYPE = "assistant"
 _TOOL_USE_TYPE = "tool_use"
+_TOOL_RESULT_TYPE = "tool_result"
+_USER_TYPE = "user"
 _SYSTEM_EVENT_TYPE = "system"
 _STRUCTURED_OUTPUT_TOOL_NAME = "StructuredOutput"
 _READ_TOOL_NAME = "Read"
@@ -121,6 +123,8 @@ _UNEXPECTED_HOOK_EVENT = "Claude emitted an unapproved managed hook event."
 _UNEXPECTED_TOOL_EVENT = "Claude emitted a tool invocation outside its read-only allowlist."
 _UNEXPECTED_TOOL_PATH = "Claude requested a file path outside the prepared evidence root."
 _NO_STRUCTURED_RESULT = "Claude's stream ended without one structured result event."
+_BROKEN_TOOL_CORRELATION = "Claude emitted an unconfirmed or ambiguous native tool lifecycle."
+_FORMATTER_REPORT_MISMATCH = "Claude's terminal report does not match its confirmed native formatter."
 _CONFIGURATION_INVALID = "The private Claude inspection configuration is unavailable or unsafe."
 _EMPTY = ""
 _PARENT_DIRECTORY_PART = ".."
@@ -180,6 +184,9 @@ class ClaudeToolUse(BaseModel):
 
     type: str | None = None
     name: str | None = None
+    id: str | None = None
+    tool_use_id: str | None = None
+    is_error: bool | None = None
     input: object | None = None
 
 
@@ -188,6 +195,7 @@ class ClaudeMessage(BaseModel):
 
     model_config = ConfigDict(extra="ignore", strict=True)
 
+    role: str | None = None
     content: list[ClaudeToolUse] | None = None
 
 
@@ -200,6 +208,8 @@ class ClaudeCliEnvelope(BaseModel):
     subtype: str | None = None
     is_error: bool | None = None
     structured_output: object | None = None
+    session_id: str | None = None
+    parent_tool_use_id: str | None = None
     message: ClaudeMessage | None = None
 
 
@@ -499,24 +509,81 @@ def _interpret_result(
     )
 
 
+class NativeToolRequest(BaseModel):
+    """One pending native request with its original context and opaque input."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    invocation: ClaudeToolUse
+    session_id: str
+    parent_tool_use_id: str | None
+
+
 def _parse_stream_result(output: bytes, evidence_directory: Path) -> ClaudeCliEnvelope:
-    """Read one successful result event while rejecting hooks, tools, and paths outside evidence."""
+    """Correlate native outcomes without forgiving unsafe requests or malformed accepted output."""
     results: list[ClaudeCliEnvelope] = []
+    pending: dict[str, NativeToolRequest] = {}
+    seen: set[str] = set()
+    confirmed: dict[tuple[str, str | None], LaneReport] = {}
     for line in output.splitlines():
         if not line:
             continue
         event = ClaudeCliEnvelope.model_validate_json(line)
         if event.type == _SYSTEM_EVENT_TYPE and event.subtype in _HOOK_EVENT_SUBTYPES:
             raise InspectorBoundaryError(_UNEXPECTED_HOOK_EVENT)
-        if event.type == _ASSISTANT_TYPE and event.message is not None:
-            for invocation in event.message.content or []:
-                if invocation.type == _TOOL_USE_TYPE:
-                    _validate_tool_invocation(invocation, evidence_directory)
+        for block in event.message.content or [] if event.message is not None else []:
+            if block.type == _TOOL_USE_TYPE:
+                if (
+                    results
+                    or event.type != _ASSISTANT_TYPE
+                    or event.message is None
+                    or event.message.role != _ASSISTANT_TYPE
+                    or not event.session_id
+                    or not block.id
+                    or block.id in seen
+                ):
+                    raise InspectorBoundaryError(_BROKEN_TOOL_CORRELATION)
+                # Every capability other than report formatting is judged at request time, even on failure.
+                if block.name != _STRUCTURED_OUTPUT_TOOL_NAME:
+                    _validate_tool_invocation(block, evidence_directory)
+                else:
+                    confirmed.pop((event.session_id, event.parent_tool_use_id), None)
+                seen.add(block.id)
+                pending[block.id] = NativeToolRequest(
+                    invocation=block, session_id=event.session_id, parent_tool_use_id=event.parent_tool_use_id
+                )
+            elif block.type == _TOOL_RESULT_TYPE:
+                if (
+                    results
+                    or event.type != _USER_TYPE
+                    or event.message is None
+                    or event.message.role != _USER_TYPE
+                    or not block.tool_use_id
+                ):
+                    raise InspectorBoundaryError(_BROKEN_TOOL_CORRELATION)
+                request = pending.pop(block.tool_use_id, None)
+                if request is None or (request.session_id, request.parent_tool_use_id) != (
+                    event.session_id,
+                    event.parent_tool_use_id,
+                ):
+                    raise InspectorBoundaryError(_BROKEN_TOOL_CORRELATION)
+                if request.invocation.name == _STRUCTURED_OUTPUT_TOOL_NAME and block.is_error is not True:
+                    report = LaneReport.model_validate(request.invocation.input)
+                    confirmed[(request.session_id, request.parent_tool_use_id)] = report
         if event.type == _WRAPPER_TYPE:
+            if pending:
+                raise InspectorBoundaryError(_BROKEN_TOOL_CORRELATION)
             results.append(event)
     if len(results) != 1:
         raise _ClaudeStreamOutputError(_NO_STRUCTURED_RESULT)
-    return results[0]
+    if pending:
+        raise InspectorBoundaryError(_BROKEN_TOOL_CORRELATION)
+    result = results[0]
+    if result.subtype == _STRUCTURED_SUCCESS and result.is_error is not True and result.structured_output is not None:
+        report = LaneReport.model_validate(result.structured_output)
+        if not result.session_id or confirmed.get((result.session_id, result.parent_tool_use_id)) != report:
+            raise InspectorBoundaryError(_FORMATTER_REPORT_MISMATCH)
+    return result
 
 
 def _validate_tool_invocation(invocation: ClaudeToolUse, evidence_directory: Path) -> None:

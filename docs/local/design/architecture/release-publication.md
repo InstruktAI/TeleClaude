@@ -156,11 +156,16 @@ content, so inspection needs no shell or GitHub token. Source and evidence are
 controller-owned and immutable to the inspector identity. Source symlinks remain
 data rather than links into the host filesystem.
 
-Claude's native `StructuredOutput` event produces report data rather than file
-access. The adapter recognizes that exact formatting capability only when its
-input validates as `LaneReport`. File-read, search and listing events retain
-their evidence-path checks; existing hook and external-tool refusals remain in
-force. Final result validation still owns whether assessment completed.
+Claude's native `StructuredOutput` capability produces report data rather than
+file access. Tool requests and results correlate uniquely, in order, within
+the same session and parent context. An explicitly SDK-rejected formatter
+attempt may precede a valid retry; its malformed input is never accepted or
+unwrapped. Successful formatter input validates strictly as `LaneReport`, and
+the successful terminal report matches the latest confirmed formatter in its
+context. Missing, duplicate, orphaned or ambiguous correlation refuses.
+File-read, search and listing requests retain their evidence-path checks even
+when the SDK rejects them. Existing hook, MCP and unknown-tool refusals remain
+in force. Neither error prose nor final report validity supplies boundary proof.
 
 Claude runtime authentication and private configuration stay outside every
 model-readable working root. Native safe mode and an empty external-tool
