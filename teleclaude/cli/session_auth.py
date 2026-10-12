@@ -416,7 +416,9 @@ def cli_clearance(
         return CliClearance(identity=identity, refusal=_CALLER_INDEPENDENT_COMMAND_REFUSAL)
     if admits_any_caller(auth.caller_independent, desk_command):
         return CliClearance(identity=None, refusal=None)
-    if identity is not None and is_desk_visitor(identity.caller) and not desk_command:
+    remote_target = classify_computer_target(target_computer) is ComputerTargetDisposition.REMOTE
+    relayed_request = remote_target and not direct_conversation
+    if identity is not None and is_desk_visitor(identity.caller) and not desk_command and not relayed_request:
         return CliClearance(identity=identity, refusal=_DESK_COMMAND_REFUSAL_TEMPLATE.format(command_path=command_path))
     if auth.caller_independent:
         return CliClearance(identity=None, refusal=None)
@@ -425,7 +427,8 @@ def cli_clearance(
     if isinstance(identity.caller, NoIdentityCliCaller):
         return CliClearance(identity=identity, refusal=no_identity_refusal(identity))
 
-    target_disposition = classify_computer_target(target_computer)
+    if relayed_request:
+        return CliClearance(identity=identity, refusal=None)
 
     if identity.principal == SYSTEM_DAEMON_PRINCIPAL and identity.system_role is None:
         return CliClearance(identity=identity, refusal=None)
@@ -460,18 +463,6 @@ def cli_clearance(
         if (person_caller and identity.system_role is None) or (
             identity.system_role is not None and identity.system_role in auth.system
         ):
-            return CliClearance(identity=identity, refusal=None)
-        role = identity.system_role or _UNAUTHORIZED_ROLE
-        return CliClearance(
-            identity=identity,
-            refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
-        )
-
-    remote_target = target_disposition is ComputerTargetDisposition.REMOTE
-    if remote_target and not direct_conversation:
-        if isinstance(identity.caller, PersonCliCaller) and not identity.in_session:
-            return CliClearance(identity=identity, refusal=None)
-        if auth.allows(identity.system_role, None):
             return CliClearance(identity=identity, refusal=None)
         role = identity.system_role or _UNAUTHORIZED_ROLE
         return CliClearance(

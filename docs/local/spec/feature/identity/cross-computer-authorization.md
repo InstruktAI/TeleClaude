@@ -1,7 +1,6 @@
 ---
-description: A command acting on an object another computer holds is decided by that
-  computer from the caller's relayed principal; the caller's computer applies only
-  what it alone knows about its own caller.
+description: A command acting on an object another computer holds is authorized there
+  from the caller's relayed principal; the caller is authenticated at the edge.
 visibility: internal
 ---
 
@@ -29,11 +28,12 @@ The caller's computer establishes who is calling and carries only the caller's
 principal across as identity. It never carries a role or a scope as authority: a
 role that travels inside a message's author label is projection, read on the
 holding computer for display and record and by no clearance. A session identity is a
-handle local to the computer that holds that session, never authority on another. What it decides itself is what only it knows about its own
-caller: that the caller is identified, that a session caller's agent role is admitted
-by the command's agent band, and that the caller's dispatch chain permits the act
-(`local/projects/teleclaude/spec/feature/agent_runtime/session-authority`). Each of these narrows; none
-widens what the holding computer decides.
+handle local to the computer that holds that session, never authority on another.
+Authentication completes at the edge. Every identified caller's computer-addressed
+request is relayed to the owning computer, which authorizes it. The sending
+computer applies no command-role, dispatch-privilege, or dispatch-chain
+authorization to a relayed request
+(`local/projects/teleclaude/spec/identity-and-auth`).
 
 A session listing or a history read sent to another computer reaches objects whose
 owner decides, object by object, whether the caller reaches them. The holding
@@ -63,15 +63,15 @@ And a person that computer's registry does not hold is refused there, naming `cu
 And no role the person holds on their own computer is consulted by the other computer
 ```
 
-#### UC-XCA2: A person's agent is bounded on both computers
+#### UC-XCA2: The owning computer authorizes a person's agent
 
 ```
 Given an orchestrator session acting for a person who holds no platform role and the admin role in one company
 When it starts a session on another computer, in a project that company owns there
 Then the session is started there
 And the same start in a project owned by another company is refused by that computer, naming `customer`
-But a worker session acting for the same person is refused the start on its own computer
-And nothing is sent to the other computer for the refused worker
+And a worker session acting for the same person relays the same request
+And the owning computer decides that request from the person's principal by the same rules
 ```
 
 #### UC-XCA3: A session started on another computer holds the role that computer resolves

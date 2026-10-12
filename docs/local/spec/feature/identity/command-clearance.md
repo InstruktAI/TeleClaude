@@ -419,7 +419,7 @@ And no content is printed
 
 ### Clearance of commands that ask the daemon to act
 
-Every `telec` command is cleared once, in the CLI process, by the gate that precedes its handler (`local/projects/teleclaude/design/architecture/cli-invocation-boundary`), so every request it sends to the daemon has been cleared as that command before the first one leaves: against the command's own verb allowlist, with the caller the shared caller resolution yields (`local/projects/teleclaude/spec/identity-and-auth` §6). No request leaves uncleared, whichever handler sends it and however many requests the command makes — a receipt poll or a listing inside a command is part of that command. A command that acts on an object another computer holds, as the command scopes below name them, is cleared here for what this computer alone knows of its caller: that the caller is identified and, for a session caller, that the command's agent band admits the session's system role. The computer holding the object decides the command's person band from the caller's principal, which is all the request carries across (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). A caller that resolves to no person and no system principal is refused before any request is sent. A role outside the band this computer applies is refused with the not-permitted failure naming the role and the verb. The request that follows carries the resolved identity, and the daemon applies no verb band of its own to it; a daemon deciding an act another computer relays to it applies that act's person band. A command that sends no request to the daemon is cleared by the same gate.
+For a command that runs locally, the CLI gate preceding its handler applies the command's verb allowlist with the caller the shared identity resolution yields (`local/projects/teleclaude/spec/identity-and-auth` §6). The same gate authenticates a caller addressing another computer and relays the request without applying a sender-side role band. The owning computer authorizes the command from the relayed principal and its own records (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). This applies equally to terminal callers, roleless sessions, and sessions carrying any system role. A protected command with no usable caller identity is refused before any request is sent. Explicit local targets and commands naming no computer retain local clearance.
 
 The TUI clears each action it performs before sending it, against the verb of the command that action performs, with the identity it was launched with; an action on an object another computer holds is cleared as that command is. An action that performs no `telec` command, or one whose command no gate clears, is not cleared.
 
@@ -459,12 +459,13 @@ Then the new session records the agent's session as its initiator
 And the new session carries the principal the agent's session resolves to
 ```
 
-#### UC-CCA4: A command naming another computer is cleared locally
+#### UC-CCA4: A command naming another computer is authorized there
 
 ```
-Given an agent inside a session whose system role admits `telec sessions list`
+Given an identified agent session, with or without a system role
 When it lists the sessions of another computer
-Then the command is cleared in the agent's own process before any request is sent
+Then its request is relayed without a sender-side role decision
+And the owning computer authorizes the request from the relayed principal
 ```
 
 #### UC-CCA5: The TUI refuses an out-of-band action without asking the daemon
@@ -507,8 +508,7 @@ supplies.
   (`local/projects/teleclaude/design/architecture/cli-invocation-boundary` invariant 5).
 - A command that names another computer is decided by that computer, at the scope
   of the object it addresses there, read by these same rules from the request it sends
-  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). Here it needs an identified caller and,
-  for a session caller, the command's agent band. A `telec sessions send` that opens or closes a direct
+  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). Here it needs an identified caller; authorization belongs to the addressed computer. A `telec sessions send` that opens or closes a direct
   conversation with a session on another computer is judged at platform scope.
 - Every other command is judged at the project the invocation runs in — the project
   of its working directory's checkout — and at platform scope where it runs in no

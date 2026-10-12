@@ -12,7 +12,7 @@ Who may run which `telec` command. Every command declares, in the CLI surface sc
 ## Inputs/Outputs
 
 - **Input:** the caller the identity context's shared caller resolution yields (`local/projects/teleclaude/spec/identity-and-auth` §6) — a session's system role derived from its record, or a person's effective role for the object the command acts on (`local/projects/teleclaude/design/architecture/scoped-roles`) — and the command's declaration.
-- **Output:** admit or refuse, decided in the process that runs the command before any project operation or daemon request. The pre-dispatch gate completes commands whose target is known; a trusted-directory-named command completes its person band when its handler resolves the directory. The TUI applies the declaration of the command each of its actions performs.
+- **Output:** admit or refuse on the computer that executes the command. A request addressed to another computer authenticates its caller at the edge and is relayed for authorization there (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`). For local execution, the pre-dispatch gate completes commands whose target is known; a trusted-directory-named command completes its person band when its handler resolves the directory. The TUI applies the same boundary to each action.
 
 ## Invariants
 

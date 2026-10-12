@@ -8,10 +8,8 @@ A request naming this computer, or none, runs here. No route opts in: the
 boundary reads the computer a request names, so a route added later is
 addressable with nothing done for it.
 
-Before carrying a request, this computer applies what only it knows of its
-caller: the dispatch-chain rule for acts on a session above the caller, and the
-dispatch privilege a session's role grants. The person band is decided by the
-owning computer from the caller's principal
+The caller is authenticated at the edge. This boundary carries the request
+without sender-side authorization; the owning computer authorizes the caller's principal
 (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
 Every way the crossing can fail reaches the caller as an error naming the
 computer and the reason; nothing runs anywhere in its place.
@@ -34,8 +32,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, carried_caller_of, principal_for_carried_caller
 from teleclaude.api.computers_routes import known_computer_names
-from teleclaude.api.run_session_refusals import RunSessionRefusal, resolve_run_session_command
-from teleclaude.api.session_authority import ancestor_act_for_request, refuse_act_on_ancestor
 from teleclaude.api.session_route_helpers import http_exception_for_relay_failure
 from teleclaude.api.work_feedback import declared_refusal_response
 from teleclaude.caller_identity import RelayedAct, cleared_command_path
@@ -48,7 +44,6 @@ from teleclaude.core.command_dispatch import (
     dispatch_command,
     is_remote_target,
 )
-from teleclaude.core.command_service import dispatch_privilege_refusal
 from teleclaude.core.operation_caller_identity import get_relayed_caller
 from teleclaude.types.commands import CommandType, RelayedResponse, RelayRequestCommand
 
@@ -63,7 +58,6 @@ _DETAIL_FIELD = "detail"
 _COMPUTER_PARAM = "computer"
 _CONTENT_TYPE_HEADER = "content-type"
 _DIRECT_FIELDS: Final = ("direct", "close_link")
-_COMMAND_FIELD = "command"
 _UNKNOWN_COMPUTER_DETAIL = "{computer} is unknown to {local}; the request was not sent and nothing was run."
 _NESTED_RELAY_DETAIL = "a request carried here runs here; it names {computer}, and is not carried on."
 _TRANSPORT_UNAVAILABLE_DETAIL = "the request to {computer} could not be sent: {error}"
@@ -104,7 +98,6 @@ _DIRECT_CONVERSATION_ROUTES: Final = (
     (HTTPMethod.POST.value, re.compile(r"^/sessions$")),
     (HTTPMethod.POST.value, re.compile(r"^/sessions/[^/]+/message$")),
 )
-_RUN_SESSION_ROUTE: Final = (HTTPMethod.POST.value, "/sessions/run")
 
 
 @dataclass
@@ -196,31 +189,6 @@ def _cleared_command(request: Request, identity: CallerIdentity) -> str | None:
     return None
 
 
-async def _caller_side_refusal(
-    request: Request, identity: CallerIdentity, body: JsonObject | None
-) -> JSONResponse | None:
-    """Apply the checks only this computer can make about its caller; a refusal ends the request here."""
-    act_on_session = ancestor_act_for_request(request.method, request.url.path)
-    if act_on_session is not None:
-        act, target_session_id = act_on_session
-        try:
-            await refuse_act_on_ancestor(identity, target_session_id, act)
-        except HTTPException as refusal:
-            return JSONResponse(status_code=refusal.status_code, content={_DETAIL_FIELD: refusal.detail})
-    if (request.method, request.url.path) == _RUN_SESSION_ROUTE and body is not None and identity.system_role:
-        command = body.get(_COMMAND_FIELD)
-        if isinstance(command, str):
-            try:
-                _, slash_command = resolve_run_session_command(command)
-            except RunSessionRefusal:
-                # A command nobody can read is refused by the owning computer exactly as it would be here.
-                return None
-            detail = dispatch_privilege_refusal(identity.system_role, slash_command)
-            if detail is not None:
-                return JSONResponse(status_code=HTTPStatus.FORBIDDEN, content={_DETAIL_FIELD: detail})
-    return None
-
-
 def _relayed_response(result: object, computer: str) -> Response:
     """Rebuild the owning computer's response exactly as it answered."""
     try:
@@ -304,7 +272,4 @@ async def relay_boundary(request: Request, call_next: Callable[[Request], Awaita
         return await call_next(request)
 
     identity = carried_caller_of(request)
-    refusal = await _caller_side_refusal(request, identity, body)
-    if refusal is not None:
-        return refusal
     return await _carry(request, target, identity, raw_body)

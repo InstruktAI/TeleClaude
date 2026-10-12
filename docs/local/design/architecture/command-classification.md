@@ -179,11 +179,9 @@ receipt that crossed back from another computer is read and followed there.
   as one relay command and executes there through the same route, under that computer's
   own clearance and against that computer's own state; its complete response crosses
   back unchanged. Routes therefore run only against local state, and no route holds a
-  remote path of its own. Before relaying, the caller's computer applies what only it
-  knows of its caller
-  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`),
-  including the dispatch privilege its session's role grants
-  (`local/projects/teleclaude/spec/feature/agent_runtime/run-session-with-command`).
+  remote path of its own. The caller is authenticated at the edge; the relay
+  carries the request without sender-side authorization
+  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
   Opening or closing a direct conversation with a session on another computer is not
   relayed; it stays on its existing path
   (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle`).
