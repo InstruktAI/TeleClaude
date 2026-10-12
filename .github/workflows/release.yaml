@@ -30,7 +30,7 @@ concurrency:
 permissions: {}
 
 env:
-  RELEASE_PUBLICATION_ENABLED: 'false'
+  RELEASE_PUBLICATION_ENABLED: 'true'
   UV_VERSION: '0.13.0'
   UV_NO_SYNC: '1'
   PYTHON_VERSION: '3.12'
