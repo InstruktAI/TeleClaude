@@ -87,7 +87,7 @@ And the machine never returns WORK_ENTRY_DRIFT for drift.input or drift.diagnosi
 
 ```gherkin
 Given a work-entry drift bounce dispatched the sdlc/drift-analyze worker for a slug whose lifecycle claim the calling work orchestrator holds
-And that work orchestrator has started worker sessions for the slug, on this computer or another
+And that work orchestrator has started worker sessions for the slug
 When the analyzer stamps a substantive --drift-reviewed verdict and the work orchestrator re-enters "telec todo work my-feature"
 Then the work machine releases the Todo's lifecycle claim
 And the platform ends every session the work orchestrator started, then the work orchestrator itself, without any agent ending them
