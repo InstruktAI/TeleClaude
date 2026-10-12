@@ -73,7 +73,7 @@ class LifecycleMixin:
     Required from host class:
     - bot_token: str
     - computer_name: str
-    - is_master: bool
+    - is_master: bool (only the declared master starts the update receiver)
     - _qos_scheduler: OutputQoSScheduler
     - _startup_housekeeping_task: asyncio.Task[None] | None
     - _handle_private_start, _handle_private_text
@@ -195,7 +195,10 @@ class LifecycleMixin:
         # Start the bot
         await self.app.initialize()
         await self.app.start()
-        await self.app.updater.start_polling()
+        # Polling is what claims Telegram updates: only the declared master receives them.
+        receiver_active = bool(host.is_master)
+        if receiver_active:
+            await self.app.updater.start_polling()
 
         handlers = [handler for group in self.app.handlers.values() for handler in group]
         command_handlers = [handler for handler in handlers if isinstance(handler, CommandHandler)]
@@ -206,6 +209,7 @@ class LifecycleMixin:
         logger.info(
             "telegram_adapter_surface_ready",
             outcome="conversation_only",
+            receiver_active=receiver_active,
             operator_command_count=operator_command_count,
             binding_command_count=binding_command_count,
             supported_modalities="text,voice,document,photo",
@@ -226,6 +230,7 @@ class LifecycleMixin:
             host._startup_housekeeping_task = None
 
         if self.app and self.app.updater:
-            await self.app.updater.stop()
+            if self.app.updater.running:
+                await self.app.updater.stop()
             await self.app.stop()
             await self.app.shutdown()

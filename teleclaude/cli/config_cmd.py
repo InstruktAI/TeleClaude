@@ -19,10 +19,11 @@ from pathlib import Path
 from typing import Any, TextIO, cast
 
 import yaml
+from redis.exceptions import RedisError
 
 from teleclaude.cli.session_auth import ResolvedCliIdentity, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
-from teleclaude.cli.telec.addressing import addressed_computer
+from teleclaude.cli.telec.addressing import address_computer, addressed_computer, explicit_computer
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _maybe_show_help
 from teleclaude.cli.telec.surface import (
@@ -55,6 +56,7 @@ from teleclaude.cli.telec.surface import (
 from teleclaude.config.project_subject_init import adopt_project_subject
 from teleclaude.config.resource_contract import InvalidCandidate, PartialCommitFailure, SubjectNotFound, SubjectView
 from teleclaude.config.subject_operations import (
+    INVITE_UNAVAILABLE_PROVIDERS_KEY,
     ConfigFailureKind,
     ConfigOutcome,
     ConfigRequest,
@@ -69,6 +71,8 @@ from teleclaude.core.configuration_clearance import (
     decide,
     standing_for,
 )
+from teleclaude.core.inbound.fleet import observe_fleet_from_heartbeats
+from teleclaude.invite import InvitationOwnerUnavailable, invitation_owner
 from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_roots
 
 _YAML = "yaml"
@@ -110,6 +114,9 @@ _HELP_DESK_LINKS_VERB = "help-desk-links"
 _LINKS_IDENTIFIER_KEY = "identifier"
 _LINKS_KEY = "links"
 _LINKS_REQUEST_ID_KEY = "request_id"
+_INVITE_FLEET_UNOBSERVABLE = "cannot observe the fleet to find the invitation owner: {error}"
+_UNAVAILABLE_PROVIDERS_LINE = "Unavailable for this invitation: {providers}"
+_PROVIDER_SEPARATOR = ", "
 _NO_LINKS_LINE = "No entry links could be generated for {identifier}."
 _LINK_LINE = "  {adapter}: {link}"
 _LINKS_HEADING = "Entry links for {identifier}:"
@@ -504,6 +511,26 @@ def _handle_patch(kind: str, subject_kind: ConfigSubjectKind, args: list[str], r
 # --- person invite / discord-voice-bot ---
 
 
+def _address_invitation_owner() -> None:
+    """With no computer named, address the invitation to the mesh master, or stop when there is none.
+
+    An explicit selection, this computer's own name and the local sentinel included, is kept as
+    given: the executing computer admits or refuses it. Selection only picks the destination for
+    an omitted one, and nothing is sent or issued while no owner can be named.
+    """
+    if explicit_computer() is not None:
+        return
+    try:
+        owner = invitation_owner(asyncio.run(observe_fleet_from_heartbeats()))
+    except InvitationOwnerUnavailable as error:
+        print(_PLAIN_ERROR.format(message=error))
+        raise SystemExit(1) from error
+    except (OSError, RedisError) as error:
+        print(_PLAIN_ERROR.format(message=_INVITE_FLEET_UNOBSERVABLE.format(error=error)))
+        raise SystemExit(1) from error
+    address_computer(owner)
+
+
 def _handle_invite(args: list[str], request_id: str) -> None:
     parsed = parse_command_args(CONFIG_PERSON_INVITE, args)
     if not parsed.positionals:
@@ -511,6 +538,7 @@ def _handle_invite(args: list[str], request_id: str) -> None:
         raise SystemExit(1)
     slug = parsed.positionals[0]
     use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
+    _address_invitation_owner()
     outcome = run_config_request(
         ConfigRequest(verb=ConfigVerb.INVITE, kind=ConfigSubjectKind.PERSON, instance=slug, request_id=request_id)
     )
@@ -528,6 +556,9 @@ def _handle_invite(args: list[str], request_id: str) -> None:
             print(f"Invite for {name}: email not delivered — share these links directly:\n{relay}")
         else:
             print(f"Invite for {name}: email not delivered and no invite links could be generated.")
+    unavailable = cast(list[str], outcome.get(INVITE_UNAVAILABLE_PROVIDERS_KEY) or [])
+    if unavailable:
+        print(_UNAVAILABLE_PROVIDERS_LINE.format(providers=_PROVIDER_SEPARATOR.join(unavailable)))
 
 
 def _handle_discord_voice_bot(args: list[str], request_id: str) -> None:

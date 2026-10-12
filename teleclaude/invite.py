@@ -30,6 +30,7 @@ from teleclaude.core.identity import (
     DiscordAvatarBindingReason,
     observe_discord_avatar_binding,
 )
+from teleclaude.core.inbound.fleet import FleetView, MasterUnavailability
 from teleclaude.core.reconciliation.home_convergence import person_home_targets
 from teleclaude.core.reconciliation.template_installation import materialize_template_targets
 from teleclaude.paths import PEOPLE_DIR, TELECLAUDE_HOME, ConfigFileName
@@ -44,6 +45,12 @@ _TEMPLATES_DIR = _PROJECT_ROOT / "templates" / "emails"
 _LINK_BOT_UNRESOLVED_EVENT = "help_desk_link_bot_unresolved"
 _TELEGRAM_ADAPTER = "telegram"
 _DISCORD_ADAPTER = "discord"
+_NO_LIVE_MASTER_REFUSAL = "invitations are issued on the mesh master, and no master is live"
+_CONFLICTING_MASTERS_REFUSAL = (
+    "invitations are issued on the mesh master, and several computers declare themselves master: {computers}"
+)
+_NOT_THE_OWNER_REFUSAL = "invitations are issued on the mesh master {owner}, and this computer is {computer}"
+_COMPUTER_SEPARATOR = ", "
 
 
 # --- Bot Resolution ---
@@ -282,14 +289,49 @@ async def send_invite_email(
 # --- Invitation (explicit person action) ---
 
 
+class InvitationOwnerUnavailable(Exception):
+    """The fleet names no unique live master to issue invitations."""
+
+
+def invitation_owner(fleet: FleetView) -> str:
+    """The computer that issues and redeems invitations: the fleet's unique live master.
+
+    Raises ``InvitationOwnerUnavailable`` naming why there is none.
+    """
+    resolution = fleet.resolve_master()
+    if resolution.master is not None:
+        return resolution.master.name
+    if resolution.unavailability is MasterUnavailability.CONFLICTING_MASTERS:
+        raise InvitationOwnerUnavailable(
+            _CONFLICTING_MASTERS_REFUSAL.format(computers=_COMPUTER_SEPARATOR.join(resolution.computers))
+        )
+    raise InvitationOwnerUnavailable(_NO_LIVE_MASTER_REFUSAL)
+
+
+def admit_invitation_here(fleet: FleetView) -> None:
+    """Admit an invitation operation on this computer only when it is the owner.
+
+    Raises ``InvitationOwnerUnavailable`` when there is no owner or another computer is it,
+    naming the owner; nothing has been read or changed by then.
+    """
+    owner = invitation_owner(fleet)
+    if owner != config.computer.name:
+        raise InvitationOwnerUnavailable(_NOT_THE_OWNER_REFUSAL.format(owner=owner, computer=config.computer.name))
+
+
 @dataclass(frozen=True)
 class InviteOutcome:
-    """The result of issuing one person's invitation."""
+    """The result of issuing one person's invitation.
+
+    ``unavailable_providers`` names each configured provider whose public endpoint could not be
+    resolved, so its missing link is distinguishable from a provider that is not configured.
+    """
 
     name: str
     email: str
     links: dict[str, str | None]
     email_sent: bool
+    unavailable_providers: tuple[str, ...] = ()
 
 
 def invite_person(slug: str) -> InviteOutcome:
@@ -313,16 +355,21 @@ def invite_person(slug: str) -> InviteOutcome:
 
         telegram_username: str | None = None
         discord_bot_id: str | None = None
+        unavailable: list[str] = []
 
         try:
             telegram_username = await resolve_telegram_bot_username()
         except ValueError as e:
             logger.warning("Failed to resolve Telegram bot username: %s", e)
+            if config.telegram.bot_token:
+                unavailable.append(_TELEGRAM_ADAPTER)
 
         try:
             discord_bot_id = await resolve_discord_bot_user_id()
         except ValueError as e:
             logger.warning("Failed to resolve Discord bot user ID: %s", e)
+            if config.discord.token:
+                unavailable.append(_DISCORD_ADAPTER)
 
         whatsapp_number = config.whatsapp.business_number
         links = generate_invite_links(token, telegram_username, discord_bot_id, whatsapp_number)
@@ -334,6 +381,8 @@ def invite_person(slug: str) -> InviteOutcome:
             logger.warning("Failed to send invite email: %s", e)
             email_sent = False
 
-        return InviteOutcome(name=name, email=email, links=links, email_sent=email_sent)
+        return InviteOutcome(
+            name=name, email=email, links=links, email_sent=email_sent, unavailable_providers=tuple(unavailable)
+        )
 
     return asyncio.run(_run_invite())

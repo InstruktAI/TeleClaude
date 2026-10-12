@@ -20,7 +20,6 @@ from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord.provisioning import ProvisioningMixin
 from teleclaude.adapters.discord.team_channels import base_private_overwrites
 from teleclaude.config.loader import load_global_config, load_person_config_for_entry
-from teleclaude.config.machine import config
 from teleclaude.core.db import db
 from teleclaude.core.endpoints import DeskIdentifier, hosted_desks
 from teleclaude.core.integration.discord_admin_state import (
@@ -198,7 +197,7 @@ class HelpDeskCategoriesMixin(ProvisioningMixin):
         Discord answers are trusted as given; an error from any of them fails the
         pass with that error.
         """
-        if not config.computer.is_master or self._client is None or self._guild_id is None:
+        if self._client is None or self._guild_id is None or not await self._holds_shared_provider_authority():
             return
         hosted = hosted_desks(is_master=True)
         guild = await self._resolve_guild()

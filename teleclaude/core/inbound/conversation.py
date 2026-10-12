@@ -20,11 +20,12 @@ by what the person sent and nothing else:
   by the same rules as any registered person's message without an identifier;
 - every miss gets the one neutral reply, at most once per cooldown window.
 
-On a per-computer adapter (Telegram) the session is the binding and this
-computer decides. On adapters whose inbound messages reach every computer
-(Discord direct messages, WhatsApp) only the mesh master decides, from its
-durable binding record. Help desks run only on the master, so every session a
-turn reaches runs on the computer that decides.
+Only the mesh master decides, for every adapter alike: a computer that is not the
+unique live master, or that finds none, ignores the turn and touches nothing. On a
+per-computer adapter (Telegram) the master's own session records are the binding;
+on adapters whose inbound messages reach every computer (Discord direct messages,
+WhatsApp) the master's durable binding record is. Help desks run only on the master,
+so every session a turn reaches runs on the computer that decides.
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ from teleclaude.core.endpoints import (
 )
 from teleclaude.core.inbound.conversation_env import ConversationEnvironment, default_conversation_environment
 from teleclaude.core.inbound.designated import AdoptionVerdict, assess_adoption
-from teleclaude.core.inbound.fleet import FleetView
+from teleclaude.core.inbound.fleet import FleetView, MasterResolution
 from teleclaude.core.inbound.models import (
     BindOutcome,
     ConversationRef,
@@ -66,6 +67,7 @@ from teleclaude.core.models import (
     SessionLaunchIntent,
     SessionLaunchKind,
 )
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_compaction import session_compaction_owner
 from teleclaude.core.session_runtime_gate import RuntimeMutationInProgress, session_runtime_owner
 from teleclaude.core.session_status import is_close_started, is_session_terminal
@@ -94,7 +96,6 @@ class ConversationDecision(StrEnum):
     ENTRY_CONTINUED = "conversation_entry_continued"
     ENTRY_REVIVED = "conversation_entry_revived"
     ENTRY_SUPERSEDED = "conversation_entry_superseded"
-    ENTRY_NOT_HOSTED_HERE = "conversation_entry_not_hosted_here"
     ENTRY_REFUSED = "conversation_entry_refused"
     ENTRY_DESK_NOT_CARRIED = "conversation_entry_desk_not_carried"
     DESIGNATION_REFUSED = "conversation_designation_refused"
@@ -106,6 +107,7 @@ class ConversationDecision(StrEnum):
     TURN_REVIVED = "conversation_turn_revived"
     TURN_OWN_ASSISTANT = "conversation_turn_own_assistant"
     TURN_NOT_MASTER = "conversation_turn_not_master"
+    TURN_UNOWNED = "conversation_turn_unowned"
     REVIVE_FAILED = "conversation_revive_failed"
     BINDING_RECORDED = "conversation_binding_recorded"
     BINDING_DROPPED = "conversation_binding_dropped"
@@ -124,6 +126,7 @@ class ConversationOutcome(StrEnum):
     UNAVAILABLE = "unavailable"
     INVITE_REFUSED = "invite_refused"
     NOT_ROUTED_HERE = "not_routed_here"
+    NO_OWNER = "no_owner"
 
 
 @dataclass(frozen=True)
@@ -132,6 +135,42 @@ class _Latest:
 
     session: Session
     endpoint: EndpointStamp | None
+
+
+@dataclass(frozen=True)
+class EntryOwnership:
+    """Who owns conversational entry for an origin, as this computer observed the fleet.
+
+    ``resolution`` carries the unique live master that runs the origin, or the reason
+    there is none.
+    """
+
+    resolution: MasterResolution
+    host: str
+
+    @property
+    def owner(self) -> str | None:
+        """The computer that owns conversational entry for the origin, when there is one."""
+        master = self.resolution.master
+        return master.name if master is not None else None
+
+    @property
+    def owned_here(self) -> bool:
+        """Whether this computer is the owner."""
+        return self.owner == self.host
+
+
+def entry_ownership(fleet: FleetView, origin: InputOrigin, host: str) -> EntryOwnership:
+    """Ownership of conversational entry for ``origin`` under one fleet observation."""
+    return EntryOwnership(fleet.resolve_routing_master(origin), host)
+
+
+async def conversation_entry_ownership(
+    origin: InputOrigin, env: ConversationEnvironment | None = None
+) -> EntryOwnership:
+    """Whether this computer owns conversational entry for ``origin``, from the live fleet."""
+    environment = env if env is not None else default_conversation_environment()
+    return entry_ownership(await environment.observe_fleet(), origin, environment.host)
 
 
 def _log_conversation(decision: ConversationDecision, conversation: ConversationRef, **fields: object) -> None:
@@ -278,11 +317,6 @@ async def _deliver(turn: ConversationTurn, session: Session) -> None:
 # --- the conversation's session: the session itself (per computer) or the master's record (shared) ---
 
 
-def _hidden_on_this_computer(stamp: EndpointStamp | None, env: ConversationEnvironment) -> bool:
-    """Whether a session's endpoint is a desk this computer does not host: desks run only on the master."""
-    return stamp is not None and stamp.is_help_desk and not env.is_master
-
-
 def _is_continuable_record(session: Session) -> bool:
     """Whether a retained session record may be selected to continue a conversation.
 
@@ -327,8 +361,7 @@ def _can_be_conversation_session(turn: ConversationTurn, session: Session, env: 
     """Whether a session of the conversation's key could be its session on this computer.
 
     The adapter admits it and no later entry took the conversation from it; it is
-    a continuable record, open or closed and carrying the endpoint it was created at, and it is
-    not a desk this computer does not host. A record created without an endpoint is one too
+    a continuable record, open or closed and carrying the endpoint it was created at. A record created without an endpoint is one too
     while it is open, or when the registered sender may adopt it as their assistant conversation.
     """
     if not _is_continuable_record(session) or not turn.conversation.admits(session) or is_superseded(session):
@@ -338,7 +371,7 @@ def _can_be_conversation_session(turn: ConversationTurn, session: Session, env: 
         person_slug = _registered_person(turn, env)
         if person_slug is not None and _adoptable_for(turn.conversation, env, session, person_slug):
             return True
-    return not _hidden_on_this_computer(stamp, env) and (stamp is not None or _is_open(session))
+    return stamp is not None or _is_open(session)
 
 
 def _is_uncarried_desk_session(turn: ConversationTurn, latest: _Latest) -> bool:
@@ -495,14 +528,9 @@ async def _adopt(
 # --- endpoints a turn reaches ----------------------------------------------------------------
 
 
-def _resolve_desk(
-    turn: ConversationTurn, env: ConversationEnvironment, fleet: FleetView, identifier: DeskIdentifier
-) -> Endpoint | None:
+def _resolve_desk(env: ConversationEnvironment, fleet: FleetView, identifier: DeskIdentifier) -> Endpoint | None:
     """The endpoint of a desk this computer hosts, or ``None`` for a miss: desks run only on the master."""
     if not fleet.conversation_entry_safe():
-        return None
-    if not env.is_master:
-        _log(ConversationDecision.ENTRY_NOT_HOSTED_HERE, turn)
         return None
     return local_desk_endpoint(identifier, env.host, env.is_master, env.roots)
 
@@ -624,7 +652,7 @@ async def _designated_turn(turn: ConversationTurn, env: ConversationEnvironment)
     return await _ordinary_turn(turn, env)
 
 
-async def _decide(turn: ConversationTurn, env: ConversationEnvironment, fleet: FleetView | None) -> ConversationOutcome:
+async def _decide(turn: ConversationTurn, env: ConversationEnvironment, fleet: FleetView) -> ConversationOutcome:
     if turn.designated_person is not None:
         return await _designated_turn(turn, env)
     gesture = turn.gesture
@@ -642,8 +670,7 @@ async def _decide(turn: ConversationTurn, env: ConversationEnvironment, fleet: F
         if not turn.conversation.carries_desk_entry:
             _log(ConversationDecision.ENTRY_DESK_NOT_CARRIED, turn)
             return await _miss(turn, env)
-        desk_fleet = fleet if fleet is not None else await env.observe_fleet()
-        endpoint = _resolve_desk(turn, env, desk_fleet, identifier)
+        endpoint = _resolve_desk(env, fleet, identifier)
         if endpoint is None:
             return await _miss(turn, env)
         return await _reach(turn, env, endpoint)
@@ -738,23 +765,28 @@ async def handle_conversation_turn(
 ) -> ConversationOutcome:
     """Decide one inbound conversation turn: enter an endpoint, reach the latest session, or miss.
 
-    On a shared designated channel every computer then retires its own competing sessions, so
+    Ownership comes first, for every adapter: only the unique live master that runs the
+    turn's adapter decides. Any other computer, and every computer while there is no such
+    master, ignores the turn without a lookup, a session, a binding, a download or a reply.
+    On a shared designated channel every non-master retires its own competing sessions, so
     the master's bound session is the only one that answers.
     """
     environment = env if env is not None else default_conversation_environment()
     conversation = turn.conversation
-    if not conversation.reaches_every_computer:
-        async with environment.locks.hold(conversation.hashed_key):
-            return await _decide(turn, environment, None)
     fleet = await environment.observe_fleet()
-    router = fleet.routing_master(conversation.origin)
-    if router is None:
-        if fleet.unavailable_replier(conversation.origin) == environment.host:
-            return await _unavailable(turn, environment)
-        return ConversationOutcome.NOT_ROUTED_HERE
+    ownership = entry_ownership(fleet, conversation.origin, environment.host)
+    if ownership.owner is None:
+        resolution = ownership.resolution
+        logger.warning(
+            ConversationDecision.TURN_UNOWNED,
+            origin=conversation.origin.value,
+            reason=resolution.unavailability.value if resolution.unavailability is not None else None,
+            computers=list(resolution.computers),
+        )
+        return ConversationOutcome.NO_OWNER
     designated = turn.designated_person is not None
-    if router.name != environment.host:
-        logger.debug(ConversationDecision.TURN_NOT_MASTER, origin=conversation.origin.value, master=router.name)
+    if not ownership.owned_here:
+        logger.debug(ConversationDecision.TURN_NOT_MASTER, origin=conversation.origin.value, master=ownership.owner)
         if designated:
             async with environment.locks.hold(conversation.hashed_key):
                 await _retire_competitors(conversation, environment, keep_session_id=None)
@@ -775,6 +807,9 @@ __all__ = [
     "UNKNOWN_INVITE_REPLY",
     "ConversationDecision",
     "ConversationOutcome",
+    "EntryOwnership",
+    "conversation_entry_ownership",
+    "entry_ownership",
     "handle_conversation_turn",
     "reconcile_designated_conversation",
 ]

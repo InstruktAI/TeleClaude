@@ -19,6 +19,7 @@ from teleclaude.config.legacy_discord import (
 )
 from teleclaude.config.machine import config
 from teleclaude.core.db import db
+from teleclaude.core.inbound.fleet import observe_fleet
 from teleclaude.core.integration.discord_admin_state import (
     PROJECT_FORUM_KEY_PREFIX,
     DiscordArtifactKind,
@@ -31,6 +32,9 @@ from teleclaude.core.integration.discord_admin_state import (
 )
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.services.project_catalog.models import ProjectCatalogEntry
+
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
 
@@ -45,6 +49,7 @@ _PRUNE_SKIPPED_EVENT = "discord.project_forum_prune.skipped"
 _PRUNE_FORUM_DELETED_EVENT = "discord.project_forum_prune.forum_deleted"
 _PRUNE_FORUM_FAILED_EVENT = "discord.project_forum_prune.forum_delete_failed"
 _PRUNE_RECORD_CLEARED_EVENT = "discord.project_forum_prune.record_cleared"
+_SHARED_AUTHORITY_WITHHELD_EVENT = "discord.shared_provider_authority_withheld"
 
 
 class _StoredForumVerdict(StrEnum):
@@ -87,12 +92,14 @@ class ProvisioningMixin:
     - _require_async_callable(fn, *, label) -> Callable
     - _get_channel(channel_id) -> object | None (async)
     - _is_forum_channel(channel) -> bool
+    - client: AdapterClient (the fleet is observed through it)
     """
 
     _guild_id: int | None
 
     if TYPE_CHECKING:
         _client: object
+        client: AdapterClient
 
         def _parse_optional_int(self, value: object) -> int | None: ...
 
@@ -129,6 +136,24 @@ class ProvisioningMixin:
 
         _project_category_id: int | None
         _all_sessions_channel_id: int | None
+
+    async def _holds_shared_provider_authority(self) -> bool:
+        """Whether this computer is the fleet's unique live master: the only writer of shared guild objects.
+
+        Read from the live fleet, so two computers that both declare themselves master hold
+        no authority, and neither does any computer while no master is live.
+        """
+        resolution = (await observe_fleet(self.client)).resolve_master()
+        master = resolution.master
+        if master is not None and master.name == config.computer.name:
+            return True
+        logger.info(
+            _SHARED_AUTHORITY_WITHHELD_EVENT,
+            reason=resolution.unavailability.value if resolution.unavailability is not None else None,
+            master=master.name if master is not None else None,
+            computers=list(resolution.computers),
+        )
+        return False
 
     async def resolve_guild(self) -> object | None:
         """Public wrapper for guild resolution used by infrastructure callers."""

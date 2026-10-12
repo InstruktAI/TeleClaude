@@ -1315,9 +1315,17 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         ),
                     ),
                     "invite": CommandDef(
-                        desc="Generate (or rotate) invite links for a person",
+                        desc="Generate (or rotate) invite links for a person on the mesh master",
                         args="<slug> [--json]",
                         flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
+                        notes=[
+                            "The invitation runs on the mesh master from any computer: the token is issued there, "
+                            "where it is redeemed, and the links name the master's public bot endpoints.",
+                            "With no unique live master the command fails and changes nothing; addressing a computer "
+                            "that is not the master is refused with the master's name.",
+                            "A configured provider whose endpoint cannot be resolved is reported as unavailable; the "
+                            "other links are still returned, and so are all links when the email is not delivered.",
+                        ],
                         auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "discord-voice-bot": CommandDef(

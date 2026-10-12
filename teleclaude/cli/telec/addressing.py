@@ -19,11 +19,19 @@ from teleclaude.services.project_catalog.ownership import load_project_ownership
 
 _ADDRESSED_COMPUTER_NAME = "telec_cli_addressed_computer"
 _ADDRESSED_COMPUTER: ContextVar[str | None] = ContextVar(_ADDRESSED_COMPUTER_NAME, default=None)
+_EXPLICIT_COMPUTER_NAME = "telec_cli_explicit_computer"
+_EXPLICIT_COMPUTER: ContextVar[str | None] = ContextVar(_EXPLICIT_COMPUTER_NAME, default=None)
 _UNREGISTERED_CHECKOUT = "Error: {path} is not in a registered project, so it names no project on {computer}."
 
 
 def address_computer(target_computer: str | None) -> None:
-    """Record the computer this invocation addresses when it is not this one."""
+    """Record the computer this invocation addresses when it is not this one.
+
+    Any explicit selection is also remembered as given, this computer and the local sentinel
+    included, so a command that picks a default destination can tell selection from omission.
+    """
+    if target_computer:
+        _EXPLICIT_COMPUTER.set(target_computer)
     if classify_computer_target(target_computer) is ComputerTargetDisposition.REMOTE:
         _ADDRESSED_COMPUTER.set(target_computer)
 
@@ -33,6 +41,11 @@ def remote_computer(computer: str | None) -> str | None:
     if classify_computer_target(computer) is ComputerTargetDisposition.REMOTE:
         return computer
     return None
+
+
+def explicit_computer() -> str | None:
+    """The computer the invocation named, whichever computer it is; None when it named none."""
+    return _EXPLICIT_COMPUTER.get()
 
 
 def addressed_computer() -> str | None:
