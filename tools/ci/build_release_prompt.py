@@ -85,6 +85,10 @@ MANIFEST_PROMPT_LINE = (
     f"{PUBLIC_CONTRACTS_DIRECTORY_NAME}/{SOURCE_CONTRACT_DIRECTORY_NAME} in bounded reads. "
     "The evidence index supplies their comparison metadata."
 )
+INITIAL_MANIFEST_PROMPT_LINE = (
+    "No completed baseline exists. The source manifests describe the captured source only; "
+    "use the indexed reachable-history segments for navigation, without inventing a release comparison."
+)
 INDEX_PROMPT_SUFFIX = (
     " in bounded portions to account for changed areas and locate focused source/diff evidence. "
     "It retains the complete changed-path denominator and every indexed segment; those segments are not a reading checklist."
@@ -495,6 +499,8 @@ def _make_prompt(
     if attempt.decision_mode is ReleaseDecisionMode.MANUAL:
         contract = contract.split(MANUAL_TASK_HEADING, 1)[1].split(SEE_ALSO_HEADING, 1)[0]
         contract = MANUAL_TASK_PREFIX + contract
+    else:
+        contract = contract.split(MANUAL_TASK_HEADING, 1)[0]
     index_relative = index_path.relative_to(output_directory)
     schema_relative = schema_path.relative_to(output_directory)
     source_relative = Path(SOURCE_DIRECTORY_NAME)
@@ -505,7 +511,7 @@ def _make_prompt(
             PUBLIC_CONTRACT_HEADING,
             BASELINE_PROMPT_PREFIX + str(attempt.baseline_sha),
             SOURCE_PROMPT_PREFIX + attempt.source_sha,
-            MANIFEST_PROMPT_LINE,
+            MANIFEST_PROMPT_LINE if attempt.baseline_sha is not None else INITIAL_MANIFEST_PROMPT_LINE,
             EMPTY,
             INDEX_HEADING,
             READ_PROMPT_PREFIX + str(index_relative) + INDEX_PROMPT_SUFFIX,
