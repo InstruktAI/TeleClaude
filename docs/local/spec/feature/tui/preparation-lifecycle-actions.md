@@ -141,7 +141,7 @@ And saving an edit there changes only the live todo's artifact
 Given a human operator at the TUI sees a live todo's row in the Preparation view
 And after the view drew it, that todo was removed and a new live todo took its slug
 When the operator starts an action on the todo from that row before the view refreshes
-Then the new todo is left unchanged
+Then the view addresses the action to the removed todo's durable identity, never to the new todo
 ```
 
 #### UC-PLA-8: A todo created where nothing names a project belongs to the project the TUI was started from
