@@ -90,7 +90,7 @@ person's folder carries no human identity and acts as no person.
 : The agent a procedure declaring subject identity keeps for one subject in one home — started by the first activation about that subject and reached by every later one, revived when its session has closed.
 
 **Unattended agent**
-: The agent of a procedure declaring that no person watches it. Its work is a run: it answers, works, and is recorded as any other agent of its procedure while its session is open, is never revived once that session has closed, and is left out of the places people look at sessions unless they ask for it.
+: The agent of a procedure declaring that no person watches it. Its work is a run: it answers, works, and is recorded as any other agent of its procedure while its session is open, is never revived once that session has closed, and is left out of the places people look at sessions unless they ask for it (`local/projects/teleclaude/spec/feature/agent_runtime/session-lifecycle` UC-SL58).
 
 ### Use cases
 
@@ -349,19 +349,6 @@ Scenario Outline: A person's ordinary view of sessions leaves an unattended agen
 ```
 
 #### UC-PSA24: An unattended agent is shown when asked for
-
-```gherkin
-Scenario Outline: Asking for it shows an unattended agent to anyone whose reach admits it
-  Given a procedure declaring itself unattended has an agent
-  When a person whose reach admits that agent's session lists sessions <request>
-  Then the agent's session is shown
-
-  Examples:
-    | request                                          |
-    | asking for every session                         |
-    | asking for every session of the procedure's job  |
-    | naming the session by its id                     |
-```
 
 #### UC-PSA25: An open unattended agent answers as an attended one would
 
