@@ -7,6 +7,7 @@ import platform
 import re
 import shutil
 import subprocess
+from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -62,15 +63,24 @@ _LINUX = "Linux"
 _PACKAGE_MANIFEST = "package.json"
 _CODEX_PACKAGE_NAME = "@openai/codex"
 _CODEX_WRAPPER = Path("bin/codex.js")
-_CODEX_NATIVE_LAYOUTS = {
-    "x86_64": ("codex-linux-x64", "x86_64-unknown-linux-musl", "-linux-x64"),
-    "aarch64": ("codex-linux-arm64", "aarch64-unknown-linux-musl", "-linux-arm64"),
-}
 _NODE_MODULES = "node_modules"
 _OPENAI_SCOPE = "@openai"
 _VENDOR = "vendor"
 _NATIVE_BINARY = Path("bin/codex")
 _WRAPPER_PARENT_INDEX = 6
+
+
+class CodexNativeArchitecture(StrEnum):
+    """Supported Linux architecture identities at the native package boundary."""
+
+    X64 = "x86_64"
+    ARM64 = "aarch64"
+
+
+_CODEX_NATIVE_LAYOUTS = {
+    CodexNativeArchitecture.X64: ("codex-linux-x64", "x86_64-unknown-linux-musl", "-linux-x64"),
+    CodexNativeArchitecture.ARM64: ("codex-linux-arm64", "aarch64-unknown-linux-musl", "-linux-arm64"),
+}
 
 
 class NpmPackageIdentity(BaseModel):
@@ -83,13 +93,16 @@ class NpmPackageIdentity(BaseModel):
 
 def _codex_native_executable(wrapper: Path, version: str) -> Path:
     """Resolve only the pinned npm wrapper's installed Linux platform package."""
-    layout = _CODEX_NATIVE_LAYOUTS.get(platform.machine())
-    if platform.system() != _LINUX or layout is None:
+    if platform.system() != _LINUX:
         raise ValueError(_INVALID)
+    try:
+        architecture = CodexNativeArchitecture(platform.machine())
+    except ValueError:
+        raise ValueError(_INVALID) from None
     package_root = wrapper.resolve().parent.parent
     if wrapper.resolve() != package_root / _CODEX_WRAPPER:
         raise ValueError(_INVALID)
-    package, target, suffix = layout
+    package, target, suffix = _CODEX_NATIVE_LAYOUTS[architecture]
     native_root = package_root / _NODE_MODULES / _OPENAI_SCOPE / package
     for root, expected in ((package_root, version), (native_root, version + suffix)):
         manifest = root / _PACKAGE_MANIFEST

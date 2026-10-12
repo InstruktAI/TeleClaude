@@ -44,14 +44,15 @@ _TOML_FILESYSTEM_TABLE = "[permissions.release-inspector.filesystem]"
 _TOML_NETWORK_TABLE = "[permissions.release-inspector.network]"
 _TOML_ROOT_DENY = '":root" = "deny"'
 _TOML_MINIMAL_READ = '":minimal" = "read"'
-_TOML_SLASH_TEMP_DENY = '":slash_tmp" = "deny"'
-_TOML_PROC_DENY = '"/proc" = "deny"'
-_TOML_RUN_DENY = '"/run" = "deny"'
-_TOML_VAR_RUN_DENY = '"/var/run" = "deny"'
 _TOML_READ_PERMISSION = "read"
 _TOML_DENY_PERMISSION = "deny"
 _TOML_NETWORK_DISABLED = "enabled = false"
-_RUNTIME_DENIED_ROOTS = (Path("/tmp"), Path("/proc"), Path("/run"), Path("/var/run"))
+_SYSTEM_DENIED_PATHS = {
+    ":slash_tmp": Path("/tmp"),
+    "/proc": Path("/proc"),
+    "/run": Path("/run"),
+    "/var/run": Path("/var/run"),
+}
 _CODEX_EXEC_COMMAND = "exec"
 _CODEX_EPHEMERAL_FLAG = "--ephemeral"
 _CODEX_STRICT_CONFIG_FLAG = "--strict-config"
@@ -388,7 +389,7 @@ def _profile_content(
         or not os.access(native_executable, os.X_OK)
         or native_executable.is_relative_to(controller_directory)
         or native_executable.is_relative_to(evidence_directory.resolve())
-        or any(native_executable.is_relative_to(path.resolve()) for path in _RUNTIME_DENIED_ROOTS)
+        or any(native_executable.is_relative_to(path.resolve()) for path in _SYSTEM_DENIED_PATHS.values())
     ):
         raise ValueError(_PRIVATE_PROFILE_PATH_INVALID)
     lines = (
@@ -397,10 +398,7 @@ def _profile_content(
         _TOML_FILESYSTEM_TABLE,
         _TOML_ROOT_DENY,
         _TOML_MINIMAL_READ,
-        _TOML_SLASH_TEMP_DENY,
-        _TOML_PROC_DENY,
-        _TOML_RUN_DENY,
-        _TOML_VAR_RUN_DENY,
+        *(_toml_permission_rule(selector, _TOML_DENY_PERMISSION) for selector in _SYSTEM_DENIED_PATHS),
         _toml_path_rule(evidence_directory, _TOML_READ_PERMISSION),
         _toml_path_rule(native_executable, _TOML_READ_PERMISSION),
         _toml_path_rule(controller_directory, _TOML_DENY_PERMISSION),
@@ -412,7 +410,12 @@ def _profile_content(
 
 def _toml_path_rule(path: Path, permission: str) -> str:
     """Render one absolute TOML filesystem rule without changing path meaning."""
-    return json.dumps(str(path.resolve())) + _TOML_ASSIGNMENT + json.dumps(permission)
+    return _toml_permission_rule(str(path.resolve()), permission)
+
+
+def _toml_permission_rule(selector: str, permission: str) -> str:
+    """Render an owned native selector or a resolved absolute path consistently."""
+    return json.dumps(selector) + _TOML_ASSIGNMENT + json.dumps(permission)
 
 
 def _safe_diagnostic(
