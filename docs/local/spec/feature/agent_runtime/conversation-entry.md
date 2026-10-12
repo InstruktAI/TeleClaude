@@ -144,7 +144,17 @@ claiming a participant or endpoint
 (`general/principle/trust-and-guardrails`).
 
 Conversation ownership follows the existing adapter/computer routing contract.
-Entry on an existing channel preserves the conversation's owning computer.
+On a shared designated channel whose input reaches every computer, the mesh
+master alone resolves, hosts and binds the continuing conversation. Other
+receivers perform no independent session creation or input delivery. Master
+unavailability follows this spec's existing single-replier contract. A channel
+belonging to one computer's bot retains that computer's ownership.
+
+Adoption selects the eligible retained conversation on the authoritative host.
+Recorded conversations on other computers retain their history and provenance;
+they acquire no competing shared-channel binding. Shared-channel cutover settles
+accepted work through the existing lifecycle contract and retires competing
+channel-delivery associations (`general/principle/trust-and-guardrails`).
 Distinct channels remain distinct continuing conversations, even when they
 resolve to the same person and assistant endpoint.
 
@@ -524,6 +534,17 @@ Given a retained session's participant or purpose cannot be verified against a d
 When reconciliation considers that session for adoption
 Then the session receives no inferred assistant endpoint
 And the unresolved association is observable for recovery
+```
+
+#### UC-CE34: A shared designated channel has one conversation owner
+
+```gherkin
+Given several computers receive input for one shared designated assistant channel
+And exactly one live computer is the mesh master and runs the adapter
+When the person sends conversation input
+Then the master alone resolves and hosts the channel's continuing conversation
+And every other receiver performs no independent session creation or input delivery
+And retained records on other computers do not become competing channel bindings
 ```
 
 <!-- /planned:designated-channel-continuity -->

@@ -29,6 +29,13 @@ to an explicitly focused session carries that selection and leaves its lifecycle
 classification with the core
 (`local/projects/teleclaude/spec/feature/integration/discord-personal-voice-conversation`).
 
+Discord Team assistant channels are shared guild surfaces received by every
+connected computer. Their input reaches the core as a shared conversation under
+the master-routing contract in
+`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`.
+Provisioning ownership and conversation-input ownership are separate facts:
+resolving an existing channel on a peer supplies no authority to deliver its input.
+
 ## Canonical fields
 
 ### Use cases
@@ -75,4 +82,23 @@ Given a designated Team channel serves one registered person
 When an incoming message resolves to another person or no registered person
 Then the message does not enter the designated person's assistant
 And the mismatch is reported through the existing identity and routing refusal contract
+```
+
+#### UC-DPAC-5: Shared Team input reaches one resolver
+
+```gherkin
+Scenario Outline: shared Team input through <modality>
+  Given multiple computers are connected to the guild containing a Team assistant channel
+  And one live computer is the mesh master and runs Discord
+  When the channel receives <modality> input from its person
+  Then Discord passes it through shared conversation ownership
+  And exactly one accepted input reaches the master's continuing conversation
+  And non-master receivers start no competing session and send no independent assistant reply
+
+  Examples:
+    | modality |
+    | text     |
+    | audio    |
+    | image    |
+    | file     |
 ```
