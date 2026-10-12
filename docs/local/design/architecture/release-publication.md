@@ -143,6 +143,10 @@ authentication cache or controller state, reach control credentials, or write
 the source. The Codex client retains its native authentication and refresh
 capability outside its command sandbox.
 
+Claude receives the prepared prompt bytes through stdin, separate from CLI
+options. Leading dashes and source frontmatter remain prompt data. The isolated
+launcher preserves those bytes across its environment-frame handoff.
+
 Claude uses its native restricted non-interactive mode with only file-read,
 search, and listing tools. The controller supplies complete indexed evidence
 for the fixed source and baseline, including segmented diffs and deleted-file

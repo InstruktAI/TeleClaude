@@ -291,7 +291,7 @@ def run_claude_inspection(
         )
     except (OSError, RuntimeError, ValueError):
         return _failed_result(ProviderFailure.EXECUTION, None, False, _DIAGNOSTIC_SETUP_FAILURE, result_directory)
-    prompt = (evidence_directory / PROMPT_FILENAME).read_text(encoding=_CONFIG_ENCODING)
+    prompt = (evidence_directory / PROMPT_FILENAME).read_bytes()
     schema = json.dumps(
         LaneReport.model_json_schema(), ensure_ascii=_JSON_ENSURE_ASCII, separators=_JSON_SCHEMA_SEPARATOR
     )
@@ -330,7 +330,6 @@ def run_claude_inspection(
         schema,
         _SETTINGS_FLAG,
         str(settings_path),
-        prompt,
     )
     try:
         process = run_isolated_process(
@@ -340,6 +339,7 @@ def run_claude_inspection(
             evidence_directory,
             environment,
             controller_directory=controller_directory,
+            stdin=prompt,
             timeout_seconds=timeout_seconds,
         )
     except InspectorBoundaryError:
