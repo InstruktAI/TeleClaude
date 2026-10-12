@@ -249,29 +249,7 @@ And the wizard reminds the human that existing agent sessions must be restarted
 
 #### UC-WIZ-12: Config forms are schema-driven
 
-```
-Given the human opens `telec config wizard`
-When any config section renders
-Then fields are derived from the canonical config schema for that section, environment-backed ones from its sensitivity declarations
-And TUI-local shadow models do not define the field contract
-And the field's owning source determines the writer used on save
-And sensitive-looking paths remain reachable unless explicitly excluded by documented view metadata
-```
-
 #### UC-WIZ-13: Per-person overlay config is reachable from People
-
-```
-Given the human opens `telec config wizard`
-And a person exists in the global people list
-When the human expands that person in the People view
-Then the view shows both global identity fields and per-person overlay fields
-And the per-person overlay fields are rendered from the PersonConfig schema
-And creds, subscriptions, interests, and settings are reachable when present
-And invite_token is not shown as an overlay field because it is relocated out of PersonConfig to the ephemeral invitations store under ~/.teleclaude/state/
-And settings.output_visibility values can be set without editing YAML by hand
-And PersonEntry edits write the global config
-And PersonConfig edits write that person's per-person overlay file
-```
 
 #### UC-WIZ-14: `make start` fails fast when the configured Redis is unreachable
 
@@ -293,20 +271,6 @@ Then the daemon reports itself ready without requiring a restart
 ```
 
 #### UC-WIZ-15: Personal MCP secrets are managed from People
-
-```
-Given a configured person and a person-scoped MCP server with declared environment requirements
-When a trusted local operator expands the person in `telec config wizard`
-Then the People view shows a Secrets section derived from those requirements and the person's stored key names
-And configured values are never displayed or loaded into an edit buffer
-And keep-existing is the default action
-When the operator explicitly replaces or clears a key
-Then the wizard writes only that person's owner-only secret file
-And every unrelated key and line in that file remains unchanged
-And the next render derives status from the persisted file
-And PersonConfig YAML and the global environment remain unchanged
-And the wizard introduces no role gate beyond its trusted local machine and terminal boundary
-```
 
 ### Persistence surfaces and writers
 
@@ -473,6 +437,10 @@ rendering concern, not a state concern.
 
 ### Cross-context references
 
+- The People view and every config section render from the canonical schemas
+  and save to each field's owning file, per-person overlay fields and personal
+  MCP secrets included
+  (`local/projects/teleclaude/spec/feature/config/schema-driven-config-tui`).
 - `local/projects/teleclaude/spec/teleclaude-config` is the authoritative surface for the
   config files and env vars the wizard persists. Every new persisted
   field added by a wizard step is documented there.

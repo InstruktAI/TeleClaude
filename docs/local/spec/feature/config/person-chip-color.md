@@ -37,7 +37,9 @@ operator's responsibility.
 Both nested models carry default-instance factories so the parent
 `PersonConfig.color` can be instantiated with an empty tree, and a single leaf
 can be set without pre-populating its siblings — the per-person overlay save
-path instantiates the missing intermediate models on demand.
+path instantiates the missing intermediate models on demand. The People view
+renders and saves these leaves like any other per-person overlay field
+(`local/projects/teleclaude/spec/feature/config/schema-driven-config-tui`).
 
 ## Canonical fields
 
@@ -69,14 +71,6 @@ And the entry is accepted
 ```
 
 #### UC-CHIP-COLOR-3: Color cells are editable in the People subtab
-
-```
-Given the Configuration People subtab has a person expanded
-When the per-person overlay is reflected into the Overlay Settings section
-Then the four color leaves (background.light, background.dark, text.light, text.dark) appear as editable fields even when color is unset
-And editing a leaf instantiates the nested color models on demand
-And the value persists to the person's overlay file
-```
 
 #### UC-CHIP-COLOR-4: A set cell is stored verbatim
 
