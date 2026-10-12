@@ -63,13 +63,10 @@ Command-to-mode mapping:
 | RestartAgentCommand       | RECEIPT                                     | `agent.restart.completed` / `agent.restart.failed`                 |
 | CloseSessionCommand       | RECEIPT                                     | `session.close.completed` / `session.close.failed`                 |
 | HandoffAgentCommand       | RECEIPT                                     | `agent_runtime.handoff.completed` / `agent_runtime.handoff.failed` |
-| TodoWorkCommand           | RECEIPT                                     | (per operation kind)                                               |
-| TodoIntegrateCommand      | RECEIPT                                     | (per operation kind)                                               |
-| TodoCreateCommand         | RECEIPT                                     | (per operation kind)                                               |
-| TodoPrepareCommand        | RECEIPT                                     | (per operation kind)                                               |
-| TodoRenameCommand         | RECEIPT                                     | (per operation kind)                                               |
-| TodoRemoveCommand         | RECEIPT                                     | (per operation kind)                                               |
-| TaskRunCommand            | RECEIPT                                     | (per operation kind)                                               |
+
+Todo lifecycle work (create, prepare, work, integrate, remove, rename) and task runs
+are receipt-backed operations submitted by their routes directly to the
+`OperationsService`; they carry no `InternalCommand` type.
 
 ### `ResponseMode` enum
 

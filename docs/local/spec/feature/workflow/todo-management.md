@@ -27,6 +27,12 @@ Removal and delivery are lifecycle transitions on the same aggregate. `telec tod
 
 Lifecycle and artifact-changing actions are addressable by slug or by a todo's durable identity. A slug-addressed action resolves to the live todo that holds the slug. An identity-addressed action acts on exactly the identified todo and never resolves to another todo that shares its slug: on a live todo it performs the same action a slug-addressed request performs, and on a removed or delivered todo it is refused without effect, with a refusal that names the todo's state and the way forward — reactivation for a removed todo; a delivered todo's record is read-only. Reactivating a removed todo is the one change a retained todo accepts, and its retained content stays readable.
 
+<!-- planned:relay-computer-addressed-requests -->
+
+Every `telec todo` and `telec bugs` command that acts on a project's todo state accepts the computer whose project it addresses. Addressed to another computer, the command — a read of the list, a todo, or an artifact as much as a lifecycle or artifact-changing action — runs on that computer against that computer's project and the caller receives that computer's answer (`local/projects/teleclaude/spec/feature/integration/computer-addressed-execution`). Addressed to this computer, or to none, it runs here as it always has; a read that needs no daemon here still needs none.
+
+<!-- /planned:relay-computer-addressed-requests -->
+
 ## Canonical fields
 
 ### Use cases

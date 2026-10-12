@@ -138,6 +138,16 @@ transport change. The routing decision is the command's `computer` field — for
 forwards, local computer (or unset) executes in place. See command-classification for the
 dispatch model.
 
+<!-- planned:relay-computer-addressed-requests -->
+
+An API request addressed to another computer crosses the same way: as one relay command
+that carries the request whole, dispatched and forwarded like every other command. The
+owning computer reconstructs the request and runs it through its own API boundary, and
+the response crosses back on the one-shot response stream. The transport carries no
+per-route vocabulary and no read-specific command set for API-originated work.
+
+<!-- /planned:relay-computer-addressed-requests -->
+
 ## Failure modes
 
 - **Redis Unavailable**: Daemon starts without Redis transport. Cross-computer commands fail. Local and Telegram operations unaffected.
