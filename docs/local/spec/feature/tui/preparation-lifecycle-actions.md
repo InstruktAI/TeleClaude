@@ -42,12 +42,11 @@ other todo.
 
 **The cursor's row names its own computer.** A project header sits under a
 computer, and every row beneath it — the todo and each of its files — carries
-that computer. Everything done from the row is addressed to that computer and
-executes there: a lifecycle action, an artifact action, opening a file to view
-or edit, saving an edit, and following the operation the action submitted. The
-view never acts on the local computer in a remote row's place, and it offers a
-remote row the same actions it offers a local one
+that computer. Everything done from the row — a lifecycle action, an artifact
+action, opening a file to view or edit, saving an edit, and following the
+operation the action submitted — is addressed to that computer
 (`local/projects/teleclaude/spec/feature/integration/computer-addressed-execution`).
+A remote row is offered the same actions as a local one.
 
 <!-- /planned:relay-computer-addressed-requests -->
 
@@ -181,36 +180,6 @@ Then it also asks the operator to choose its kind: feature, change, bug, or task
 And the created todo carries the chosen kind and enters that kind's lane
 And the view creates no todo until a kind is chosen
 ```
-
-<!-- planned:relay-computer-addressed-requests -->
-
-#### UC-PLA-11: An action on a row under another computer's project executes on that computer
-
-```gherkin
-Given a human operator at the TUI has the cursor on a todo row under a project header that sits under another computer
-When the operator removes, prepares, starts work on, freezes, holds, or stamps that todo from its row
-Then the action is addressed to that computer and executes there against that computer's project
-And nothing is changed in any project on the operator's own computer
-And the view follows the submitted operation on the computer its receipt names
-When the other computer refuses the action with a deliberately published work refusal
-Then the operator is notified at error severity with that refusal
-```
-
-#### UC-PLA-12: Opening an artifact of a todo on another computer shows that computer's content
-
-```gherkin
-Given a human operator at the TUI has expanded a live todo under another computer's project header
-When the operator opens one of that todo's files
-Then the viewer shows the content stored for that artifact on the other computer
-When the operator saves an edit there
-Then the edit is stored on the other computer, for that todo's artifact alone
-And the other computer's refusal, if it refuses the edit, reaches the operator at error severity
-Given instead the todo under the other computer's header is delivered or removed
-When the operator opens one of its files
-Then the viewer shows the other computer's stored content read-only, exactly as for a local todo in that state
-```
-
-<!-- /planned:relay-computer-addressed-requests -->
 
 ## See Also
 

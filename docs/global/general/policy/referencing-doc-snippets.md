@@ -48,7 +48,10 @@ visibility: 'public'
   gist followed by the owner's backticked id — _orient the human before a
   consequential move (`general/policy/leadership`)_. The gist carries the rule's
   force where the reader acts; the id routes the reader to the single place that
-  states it in full, with its reason.
+  states it in full, with its reason. A Gherkin scenario is a rule for this
+  purpose: a predicate another spec owns is not re-authored as a use case under
+  a different actor or surface; the citing spec carries its one-sentence
+  contribution and the owner's id.
 - A bare backticked id is a pointer, not a citation. Use it where the reader
   needs to know where something lives, not what it requires.
 - Cite by id only — never by file path, never by section anchor. A rule that can
