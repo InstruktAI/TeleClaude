@@ -15,17 +15,7 @@ visibility: 'public'
 
 ## Preconditions
 
-<!-- planned-change:master-owned-providers -->
-
 - Telegram bot token configured for the alert scripts.
-
-<!-- change:master-owned-providers -->
-
-- Run on the master. The alert scripts read the master's `telegram` section, the
-  only one in the fleet (`local/projects/teleclaude/spec/teleclaude-config`,
-  scope), and send only when that section's effective `enabled` holds.
-
-<!-- /planned-change:master-owned-providers -->
 
 ## Steps
 
@@ -41,12 +31,4 @@ Note: these scripts are not wired by default; you must schedule them (cron/launc
 
 ## Recovery
 
-<!-- planned-change:master-owned-providers -->
-
 - If delivery fails, verify bot token and `TELEGRAM_ALERT_USERNAME`, then retry with `bin/send_telegram.py`.
-
-<!-- change:master-owned-providers -->
-
-- If delivery fails, verify on the master that `telegram` is enabled and that its bot token and `TELEGRAM_ALERT_USERNAME` resolve, then retry with `bin/send_telegram.py`.
-
-<!-- /planned-change:master-owned-providers -->

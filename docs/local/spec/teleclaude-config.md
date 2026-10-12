@@ -478,8 +478,11 @@ consult the process environment directly.
 environment_variables:
   # Telegram adapter
   - TELEGRAM_BOT_TOKEN
+<!-- planned-change:master-owned-providers -->
   - TELEGRAM_ALERT_USERNAME
   - TELEGRAM_ALERT_CHAT_ID
+<!-- change:master-owned-providers -->
+<!-- /planned-change:master-owned-providers -->
   # Discord adapter
   - DISCORD_TOKEN
   - DISCORD_GUILD_ID
@@ -619,8 +622,11 @@ services:
 telegram:
   enabled: boolean
   bot_token: string | null # normally ${TELEGRAM_BOT_TOKEN}
+<!-- planned-change:master-owned-providers -->
   alert_username: string | null # normally ${TELEGRAM_ALERT_USERNAME}
   alert_chat_id: string | null # normally ${TELEGRAM_ALERT_CHAT_ID}
+<!-- change:master-owned-providers -->
+<!-- /planned-change:master-owned-providers -->
 discord:
   enabled: boolean
   token: string | null # sensitive; ${DISCORD_TOKEN}
