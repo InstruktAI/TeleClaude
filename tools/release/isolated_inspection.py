@@ -48,6 +48,7 @@ _CODEX_ENVIRONMENT_KEYS = frozenset({"CODEX_HOME"})
 _CLAUDE_ENVIRONMENT_KEYS = frozenset({"CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN"})
 _LAUNCHER_SOURCE = Path(__file__).with_name("inspector_exec.py")
 _ACCESS_SOURCE = Path(__file__).with_name("inspector_access.py")
+_SANDBOX_SOURCE = Path(__file__).with_name("inspector_sandbox.py")
 _LAUNCHER_DIRECTORY = "inspector-launcher"
 _FILESYSTEM_HELPER = Path(__file__).with_name("inspector_fs.py")
 _LAUNCHER_PAYLOAD_SEPARATOR = b"\n"
@@ -210,7 +211,7 @@ def _stage_launcher(controller_directory: Path) -> None:
     """Copy only trusted launcher code into controller-owned, provider-readable storage."""
     directory = controller_directory / _LAUNCHER_DIRECTORY
     directory.mkdir(mode=_PRIVATE_ROOT_INITIAL_MODE)
-    for source in (_LAUNCHER_SOURCE, _ACCESS_SOURCE):
+    for source in (_LAUNCHER_SOURCE, _ACCESS_SOURCE, _SANDBOX_SOURCE):
         if source.is_symlink() or not source.is_file():
             raise ValueError(_LAUNCHER_INVALID)
         target = directory / source.name
@@ -249,6 +250,11 @@ def inspector_access_helper(controller_directory: Path) -> Path:
 def inspector_python() -> Path:
     """Return the public system interpreter selected by the execution boundary."""
     return Path(_system_binary(_PYTHON_BINARY))
+
+
+def inspector_sandbox_helper(controller_directory: Path) -> Path:
+    """Return verified metadata code readable by the dedicated sandbox probe UID."""
+    return _staged_launcher(controller_directory, _SANDBOX_SOURCE)
 
 
 def principal_layout_paths(role: InspectorRole, root: Path) -> tuple[Path, Path, Path]:

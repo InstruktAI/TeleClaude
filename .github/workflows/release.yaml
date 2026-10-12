@@ -234,10 +234,17 @@ jobs:
         run: |
           uv run python -m tools.ci.install_inspector_runtime --evidence "$RUNNER_TEMP/release-evidence"
           uv run python -m tools.ci.install_age
+      - name: Probe native Codex sandbox before credential restoration
+        id: codex_preflight
+        continue-on-error: true
+        if: ${{ steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
+        run: >-
+          uv run python -m tools.ci.inspector_sandbox_preflight
+          --output-directory "$RUNNER_TEMP/release-analysis/codex-preflight"
       - name: Restore Codex state and write begin checkpoint
         id: codex_prepare
         continue-on-error: true
-        if: ${{ steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
+        if: ${{ steps.codex_preflight.outcome == 'success' && steps.codex_preflight.outputs.codex_sandbox_ready == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODEX_AUTH_AGE_IDENTITY: ${{ secrets.CODEX_AUTH_AGE_IDENTITY }}
@@ -304,6 +311,7 @@ jobs:
             !cancelled() &&
             steps.capture.outputs.capture_status == 'ready' &&
             steps.capture.outputs.decision_mode == 'automatic' &&
+            steps.codex_preflight.outputs.codex_boundary_closed == 'true' &&
             steps.codex_run.outputs.codex_boundary_closed != 'false' &&
             steps.codex_settled_confirm.outputs.codex_success != 'true'
           }}

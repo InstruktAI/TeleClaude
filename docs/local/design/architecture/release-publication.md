@@ -111,6 +111,25 @@ Codex auth must also be readable through its provider UID before the begin
 checkpoint. Failed checks preserve refusal rather than opening existing private
 ancestry. Runtime paths and private layouts travel explicitly to both adapters.
 
+Before credential restoration or an auth-use checkpoint, a separate Python CI
+preflight runs the pinned Codex native sandbox with the same named permission
+profile, managed requirements and `/bin/true` under the dedicated UID. It first
+runs without tracing; a failure permits at most one narrow diagnostic trace.
+The retained, typed evidence contains only allowlisted platform/process facts,
+observed executable identities, native syscall outcomes and output hashes.
+Runtime policy observations are distinct from declared configuration; unavailable
+helper, policy, LSM or audit facts remain explicit gaps. Bundled helpers executed
+through file descriptors are included when observable. Raw output, argv,
+environment, configuration and credential data are never retained.
+
+A failed preflight records an unexpected primary execution/platform failure and
+skips restoration, begin checkpoint and provider execution. Its status is not a
+provider assessment exit code or an auth-settlement failure. Claude fallback
+remains available after the Codex UID settles; shared bootstrap readiness stays
+independent. Cleanup retains ownership of the namespace and both UIDs. The
+preflight changes no kernel, LSM, permission, network or approval settings and
+establishes no repair of an unobserved hosted fault.
+
 Provider-private path resolution, containment and symlink checks, and exclusive
 directory/file creation run together under the privileged controller filesystem
 boundary. Descriptor-relative traversal refuses symlinks instead of requiring
