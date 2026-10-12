@@ -25,12 +25,11 @@ never the control payload itself. Handing a payload to this surface is delivery
 from the producer's perspective: the producer neither tracks nor retries beyond
 the handoff.
 
-Stop-hook responses carry checkpoint obligations only; control payloads remain
-pending through that boundary. A checkpoint continuation offers its subsequent
+Stop-hook responses carry checkpoint obligations only
+(`sdlc/principle/design-fundamentals`); control payloads remain pending through
+that boundary. A checkpoint continuation offers its subsequent
 mid-turn boundaries for eligible payloads. An accepted stop records the turn end
-and wakes pending work through the existing session-input surface. This separation
-follows `sdlc/principle/design-fundamentals`: checkpoint continuation and control
-delivery have independent responsibilities. Runtime adapters declare their
+and wakes pending work through the existing session-input surface. Runtime adapters declare their
 supported injection boundaries, including invocation boundaries where a native
 post-tool hook cannot carry context.
 
