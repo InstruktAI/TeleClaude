@@ -147,6 +147,8 @@ _CONTROLLER_ROOT_OPTION = "--controller-root"
 _BOOTSTRAP_RECEIPT_OPTION = "--bootstrap-receipt"
 _CLAUDE_RESULT_DIRECTORY = "claude-result"
 _PROVIDER_TIMEOUT = 900
+_AUTH_SETTLEMENT_FAILED_KEY = "auth_settlement_failed"
+_DIAGNOSTIC_PATH_KEY = "diagnostic_path"
 
 
 class ProviderPhase(StrEnum):
@@ -154,6 +156,14 @@ class ProviderPhase(StrEnum):
 
     PREPARATION = "preparation"
     INSPECTION = "inspection"
+
+
+class InspectionProgress(StrEnum):
+    """Adapter entry/return facts, deliberately separate from proof of native client execution."""
+
+    NOT_ENTERED = "not_entered"
+    ENTERED = "entered"
+    RESULT_RETURNED = "result_returned"
 
 
 class CodexCheckpointDirectory(StrEnum):
@@ -186,6 +196,8 @@ class ProviderOperation(StrEnum):
     WRITE_STATE = "write_state"
     INSPECT = "inspect"
     WRITE_RESULT = "write_result"
+    POST_INSPECTION_AUTH_READ = "post_inspection_auth_read"
+    ENCRYPTED_SETTLEMENT = "encrypted_settlement"
 
 
 class ProviderSetupDiagnostic(BaseModel):
@@ -200,6 +212,7 @@ class ProviderSetupDiagnostic(BaseModel):
     errno: int | None
     native_status: int | None
     filesystem_operation: FilesystemOperation | None
+    inspection_progress: InspectionProgress | None = None
 
 
 class CodexControllerState(BaseModel):
@@ -392,14 +405,23 @@ def run_codex(state_directory: Path, report_output_directory: Path) -> bool:
     """Run the isolated Codex client and encrypt its post-run cache before fallback."""
     state = _read_state(state_directory)
     result_directory = state.result_directory
+    phase = ProviderPhase.PREPARATION
+    operation = ProviderOperation.VALIDATE_INPUT
+    progress = InspectionProgress.NOT_ENTERED
     try:
         if state.begin_reference is None:
             raise ValueError(_AUTH_FAILURE)
+        operation = ProviderOperation.BOOTSTRAP_PREFLIGHT
         bootstrap = load_bootstrap(_job_temporary_parent() / BOOTSTRAP_RECEIPT_FILENAME)
         if state.controller_root != bootstrap.controller or state.evidence_directory != bootstrap.evidence:
             raise ValueError(_SETUP_FAILURE)
         verify_provider_paths(bootstrap, InspectorRole.CODEX)
         lease = state.lease
+        operation = ProviderOperation.INITIAL_AUTH_READ
+        auth_before = _read_principal_auth(state)
+        phase = ProviderPhase.INSPECTION
+        operation = ProviderOperation.INSPECT
+        progress = InspectionProgress.ENTERED
         result = run_codex_inspection(
             bootstrap.executable(InspectorRole.CODEX),
             state.evidence_directory,
@@ -408,12 +430,14 @@ def run_codex(state_directory: Path, report_output_directory: Path) -> bool:
             state.principal_temp,
             state.codex_home,
             result_directory,
-            _read_principal_auth(state),
+            auth_before,
             _PROVIDER_TIMEOUT,
             runtime_path=bootstrap.runtime_path,
         )
-        append_output("codex_boundary_closed", _TRUE)
+        progress = InspectionProgress.RESULT_RETURNED
+        operation = ProviderOperation.WRITE_RESULT
         state.provider_attempt = result.attempt
+        append_output("codex_boundary_closed", _TRUE)
         _write_attempt(result_directory / _CODEX_ATTEMPT_FILENAME, result.attempt)
         if result.report is not None:
             report_output_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -421,7 +445,9 @@ def run_codex(state_directory: Path, report_output_directory: Path) -> bool:
                 result.report.model_dump_json(indent=_JSON_INDENT) + _NEWLINE,
                 encoding=_UTF8,
             )
+        operation = ProviderOperation.POST_INSPECTION_AUTH_READ
         auth_after = _read_principal_auth(state)
+        operation = ProviderOperation.ENCRYPTED_SETTLEMENT
         settled_directory = _codex_checkpoint_directory(state_directory, CodexCheckpointDirectory.SETTLED)
         settled_envelope, settled_name = write_settled_auth_state(
             lease,
@@ -435,22 +461,35 @@ def run_codex(state_directory: Path, report_output_directory: Path) -> bool:
         state.settled_name = settled_name
         state.settled_generation = settled_envelope.generation
         state.auth_settlement_failed = False
+        operation = ProviderOperation.WRITE_STATE
         append_output("codex_settled_name", settled_name)
         append_output(CodexCheckpointOutput.SETTLED, str(settled_directory))
         append_output("codex_settlement_artifact", _TRUE)
         _write_state(state_directory, state)
         return True
-    except InspectorBoundaryError:
+    except InspectorBoundaryError as error:
+        diagnostic = _write_provider_setup_diagnostic(
+            result_directory, ProviderName.CODEX, phase, operation, error, inspection_progress=progress
+        )
+        _write_attempt_failure(
+            result_directory / _CODEX_ATTEMPT_FILENAME, ProviderFailure.EXECUTION, diagnostic_path=diagnostic
+        )
         append_output("codex_boundary_closed", _FALSE)
         state.auth_settlement_failed = True
         _write_state(state_directory, state)
         raise
-    except (OSError, RuntimeError, ValueError, ValidationError, GitHubArtifactError, KeyError):
+    except (OSError, RuntimeError, ValueError, ValidationError, GitHubArtifactError, KeyError) as error:
+        diagnostic = _write_provider_setup_diagnostic(
+            result_directory, ProviderName.CODEX, phase, operation, error, inspection_progress=progress
+        )
         prior = state.provider_attempt
         if prior is None:
-            _write_attempt_failure(result_directory / _CODEX_ATTEMPT_FILENAME, ProviderFailure.EXECUTION)
+            _write_attempt_failure(
+                result_directory / _CODEX_ATTEMPT_FILENAME, ProviderFailure.EXECUTION, diagnostic_path=diagnostic
+            )
         else:
-            attempt = prior.model_copy(update={"auth_settlement_failed": True})
+            attempt = prior.model_copy(update={_AUTH_SETTLEMENT_FAILED_KEY: True, _DIAGNOSTIC_PATH_KEY: diagnostic})
+            state.provider_attempt = attempt
             _write_attempt(result_directory / _CODEX_ATTEMPT_FILENAME, attempt)
         state.auth_settlement_failed = True
         _write_state(state_directory, state)
@@ -900,7 +939,9 @@ def cleanup_inspectors(controller_root: Path) -> None:
 
 
 def _read_principal_auth(state: CodexControllerState) -> bytes:
-    return read_principal_file(InspectorRole.CODEX, state.codex_home / CODEX_AUTH_FILENAME)
+    path = state.codex_home / CODEX_AUTH_FILENAME
+    validate_principal_file(InspectorRole.CODEX, state.controller_root, path)
+    return read_principal_file(InspectorRole.CODEX, path)
 
 
 def _write_attempt(path: Path, attempt: ProviderAttempt) -> None:
@@ -937,6 +978,8 @@ def _write_provider_setup_diagnostic(
     phase: ProviderPhase,
     operation: ProviderOperation,
     error: Exception,
+    *,
+    inspection_progress: InspectionProgress | None = None,
 ) -> str:
     """Retain only classified setup metadata, never message, traceback or exception payloads."""
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -949,6 +992,7 @@ def _write_provider_setup_diagnostic(
         errno=setup_error.errno if setup_error else error.errno if isinstance(error, OSError) else None,
         native_status=setup_error.native_status if setup_error else None,
         filesystem_operation=setup_error.filesystem_operation if setup_error else None,
+        inspection_progress=inspection_progress,
     )
     path = directory / _SETUP_DIAGNOSTIC_FILENAME
     path.write_text(diagnostic.model_dump_json(indent=_JSON_INDENT) + _NEWLINE, encoding=_UTF8)

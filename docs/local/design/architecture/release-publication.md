@@ -235,8 +235,10 @@ its own lint, hosted runtime acceptance and installer proof.
   remains repair work; fallback does not erase it. With no complete valid report,
   the attempt cannot prepare an ordinary release candidate.
 - The provider controller's covered exception handlers retain classified
-  diagnostics under the Inspector contract in
+  phase/operation diagnostics and Codex adapter progress under the Inspector contract in
   `local/projects/teleclaude/spec/feature/release/publication`.
+  An exception after entering Codex inspection can precede or follow client
+  execution; absent result or settlement evidence does not prove no invocation.
   Failures handled inside the Claude inspector adapter return generic diagnostic
   text without supplying exception metadata to the controller's diagnostic writer.
 - Failed proof leaves publication untouched and retains the failure evidence.

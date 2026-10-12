@@ -66,7 +66,7 @@ the evidence. Successful fallback does not erase an unexpected fault or discharg
 its repair; the release maintainer receives that failure as actionable diagnostic
 evidence. A valid no-release decision is terminal and selects no second inspector.
 
-Exceptions caught by the `prepare_codex` or `run_claude` controller handlers in
+Exceptions caught by the `prepare_codex`, `run_codex` or `run_claude` controller handlers in
 `tools/ci/release_stage.py` reference a retained diagnostic file through the
 provider attempt's `diagnostic_path`. It identifies
 the provider, explicit phase and operation, exception type, and available errno
@@ -74,6 +74,15 @@ or native command status. Evidence contains no raw exception message, traceback,
 environment, argv, payload or credential content. A failure before provider
 launch leaves the provider `exit_code` null; a setup command's status is
 diagnostic metadata, not a provider exit code.
+
+Codex run diagnostics distinguish bootstrap preflight, initial auth read,
+inspection, result persistence, post-inspection auth read and encrypted settlement.
+They also record whether the inspection adapter was not entered, entered without
+returning a result, or returned a result. An error inside inspection leaves actual
+client execution unknown: neither a null provider exit code nor missing settled
+state proves that the client never ran or refreshed its login. Recovery does not
+reuse an older login on that evidence alone. A returned provider result retains
+its exit code when a later controller operation fails.
 
 When Claude exits unsuccessfully without a parseable event result, its attempt
 references retained sanitized stderr. Sanitized stdout remains available as event

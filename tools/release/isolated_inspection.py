@@ -323,7 +323,7 @@ def read_principal_file(role: InspectorRole, path: Path, max_bytes: int = _MAX_P
         [_SUDO_USER_FLAG, account.pw_name, _SUDO_SEPARATOR, stat_binary, _STAT_SIZE_ARGUMENT, str(path)]
     )
     if stat_result.returncode != 0:
-        raise RuntimeError(_INSPECTOR_COMMAND_FAILED)
+        raise InspectorSetupError(exception_type=RuntimeError.__name__, native_status=stat_result.returncode)
     try:
         size = int(stat_result.stdout.strip())
     except ValueError:
@@ -334,8 +334,10 @@ def read_principal_file(role: InspectorRole, path: Path, max_bytes: int = _MAX_P
     read_result = _run_controller_command(
         [_SUDO_USER_FLAG, account.pw_name, _SUDO_SEPARATOR, cat, _OPTION_END, str(path)]
     )
-    if read_result.returncode != 0 or len(read_result.stdout) > max_bytes:
-        raise RuntimeError(_INSPECTOR_COMMAND_FAILED)
+    if read_result.returncode != 0:
+        raise InspectorSetupError(exception_type=RuntimeError.__name__, native_status=read_result.returncode)
+    if len(read_result.stdout) > max_bytes:
+        raise ValueError(_PRIVATE_FILE_TOO_LARGE)
     return read_result.stdout
 
 
