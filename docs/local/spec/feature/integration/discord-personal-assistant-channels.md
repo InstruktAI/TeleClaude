@@ -36,6 +36,14 @@ the master-routing contract in
 Provisioning ownership and conversation-input ownership are separate facts:
 resolving an existing channel on a peer supplies no authority to deliver its input.
 
+A message containing attachments and accompanying text resolves its designated
+channel once. Each accepted attachment and the accompanying text reach that
+conversation once, including at first entry and after revival. With multiple
+attachments the accompanying text appears once across the delivered material.
+Audio input delivers its transcription and accompanying message text under the
+same contract. The existing input-delivery boundary owns occurrence identity
+(`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
+
 ## Canonical fields
 
 ### Use cases
@@ -101,4 +109,28 @@ Scenario Outline: shared Team input through <modality>
     | audio    |
     | image    |
     | file     |
+```
+
+#### UC-DPAC-6: Combined attachment and text input is delivered once
+
+```gherkin
+Scenario Outline: combined message at <state>
+  Given a designated Team assistant channel has <state>
+  When its person sends <attachments> with accompanying text
+  Then the channel is resolved once to its continuing conversation
+  And every accepted attachment reaches that conversation once
+  And accompanying text reaches it once across the delivered material
+  And attachment-derived content and accompanying text are both retained
+
+  Examples:
+    | state                  | attachments    |
+    | no session             | an image       |
+    | an open session        | an image       |
+    | a closed session       | an image       |
+    | no session             | multiple files |
+    | an open session        | multiple files |
+    | a closed session       | multiple files |
+    | no session             | audio          |
+    | an open session        | audio          |
+    | a closed session       | audio          |
 ```
