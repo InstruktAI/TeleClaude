@@ -141,6 +141,10 @@ requirements and approval settings remain explicit. Claude retains subscription-
 compatible restricted safe mode, only Read/Grep/Glob tools, denied outside reads,
 empty MCP configuration and managed customization checks. Source symlinks are
 data. Unsupported policy, hooks, MCP or tools refuse rather than widening access.
+Claude file-tool validation judges evidence containment, including absolute Glob
+patterns with an unambiguous evidence-root prefix. Outside paths, parent
+traversal, resolved symlink escapes and ambiguous absolute patterns refuse;
+addressing syntax alone does not make a contained request unsafe.
 
 Claude's native `StructuredOutput` capability produces report data rather than
 file access. Tool requests/results correlate uniquely, in order, within session

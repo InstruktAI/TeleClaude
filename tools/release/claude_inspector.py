@@ -119,6 +119,11 @@ _READ_TOOL_NAME = "Read"
 _GLOB_TOOL_NAME = "Glob"
 _HOOK_EVENT_SUBTYPES = frozenset({"hook_started", "hook_progress", "hook_response"})
 _ALLOWED_TOOL_NAMES = frozenset({"Read", "Glob", "Grep"})
+_AMBIGUOUS_ABSOLUTE_GLOB_CHARACTERS = frozenset("{}()|!\\")
+_GLOB_ROOT_METACHARACTERS = _AMBIGUOUS_ABSOLUTE_GLOB_CHARACTERS | frozenset("*?[]")
+_GLOB_NEGATION_PREFIX = "!"
+_NULL_BYTE = "\0"
+_PATH_SEPARATOR = "/"
 _UNEXPECTED_HOOK_EVENT = "Claude emitted an unapproved managed hook event."
 _UNEXPECTED_TOOL_EVENT = "Claude emitted a tool invocation outside its read-only allowlist."
 _UNEXPECTED_TOOL_PATH = "Claude requested a file path outside the prepared evidence root."
@@ -607,11 +612,25 @@ def _validate_tool_invocation(invocation: ClaudeToolUse, evidence_directory: Pat
             paths = [path_value]
         else:
             paths = path_value
+    root = evidence_directory.resolve()
     if invocation.name == _GLOB_TOOL_NAME and file_input.pattern is not None:
         pattern_path = PurePosixPath(file_input.pattern)
-        if pattern_path.is_absolute() or any(part == _PARENT_DIRECTORY_PART for part in pattern_path.parts):
+        if (
+            _NULL_BYTE in file_input.pattern
+            or any(part == _PARENT_DIRECTORY_PART for part in pattern_path.parts)
+            or (
+                file_input.pattern.startswith(_GLOB_NEGATION_PREFIX)
+                and PurePosixPath(file_input.pattern.removeprefix(_GLOB_NEGATION_PREFIX)).is_absolute()
+            )
+        ):
             raise InspectorBoundaryError(_UNEXPECTED_TOOL_PATH)
-    root = evidence_directory.resolve()
+        if pattern_path.is_absolute() and (
+            not file_input.pattern.startswith(str(root) + _PATH_SEPARATOR)
+            or any(character in str(root) for character in _GLOB_ROOT_METACHARACTERS)
+            or any(character in file_input.pattern for character in _AMBIGUOUS_ABSOLUTE_GLOB_CHARACTERS)
+            or not Path(file_input.pattern).resolve().is_relative_to(root)
+        ):
+            raise InspectorBoundaryError(_UNEXPECTED_TOOL_PATH)
     for path_text in paths:
         pure_path = PurePosixPath(path_text)
         if any(part == _PARENT_DIRECTORY_PART for part in pure_path.parts):
