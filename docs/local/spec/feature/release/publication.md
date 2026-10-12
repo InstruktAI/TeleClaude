@@ -103,6 +103,14 @@ Classification is owned by
 `local/projects/teleclaude/spec/release-inspector-prompt`, and the report contract
 by `local/projects/teleclaude/spec/release-report-schema`.
 
+An explicit verified reseed establishes a recovery boundary for its selected
+predecessor chain. Settled descendants continue from that boundary without being
+blocked by earlier unfinished attempts. Unfinished auth use at or after the
+boundary still refuses restoration. Required chain records must retain their
+exact producer, recipient, artifact digest and predecessor identities; missing,
+expired or conflicting records cannot establish a boundary. An unrelated reseed
+record supplies no recovery authority. Historical records remain unchanged.
+
 ### Release notes
 
 Both decision paths use git-cliff over the exact completed-baseline-to-source

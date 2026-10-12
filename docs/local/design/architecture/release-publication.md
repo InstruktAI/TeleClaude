@@ -185,7 +185,12 @@ After the client and its descendants finish, it settles the resulting cache and
 retains an immutable encrypted final state even when inspection failed. A later
 potentially refreshing attempt without settlement makes older state unusable.
 Initial seeding and reseeding are explicit operations, separate from ordinary
-restoration failure. Key changes and seeding use the same serialized stream.
+restoration failure. A verified explicit reseed bounds earlier uncertainty for
+its selected chain, including later settled descendants. Recovery follows exact
+verified predecessor and begin records; unrelated reseeds do not supply that
+boundary, and unfinished use at or after it remains a refusal. Required chain
+records that are missing, expired or conflicting stop restoration. Key changes
+and seeding use the same serialized stream.
 
 ## Primary flows
 

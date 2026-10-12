@@ -461,22 +461,23 @@ def restore_latest_auth_state(
         envelope = _read_envelope(downloaded.extracted_directory)
         recipient_fingerprint = _age_recipient_fingerprint(identity_text, controller_directory)
         _verify_envelope(envelope, coordinates, workflow, repository, artifact, recipient_fingerprint)
-        _verify_unsettled_history(envelope, begin_by_generation, terminal_by_generation, generation)
-        if envelope.phase is AuthArtifactPhase.SETTLED:
-            _verify_predecessor_state(
-                client,
-                repository,
-                envelope,
-                terminal_by_generation,
-                recipient_fingerprint,
-                controller_directory,
-            )
-            _verify_begin_checkpoint(
-                client,
-                repository,
-                envelope,
-                begin_by_generation.get(generation),
-            )
+        reseed_generation = _verify_selected_auth_chain(
+            client,
+            repository,
+            envelope,
+            begin_by_generation,
+            terminal_by_generation,
+            recipient_fingerprint,
+            controller_directory,
+            inspect_ancestry=bool(set(begin_by_generation) - set(terminal_by_generation)),
+        )
+        _verify_unsettled_history(
+            envelope,
+            begin_by_generation,
+            terminal_by_generation,
+            generation,
+            reseed_generation=reseed_generation,
+        )
         ciphertext = (downloaded.extracted_directory / _AUTH_CIPHERTEXT_FILENAME).read_bytes()
         if _sha256(ciphertext) != envelope.ciphertext_sha256:
             raise RuntimeError(_AGE_ENVELOPE_MISMATCH)
@@ -645,7 +646,7 @@ def _verify_predecessor_state(
     terminal: dict[int, tuple[ArtifactMetadata, AuthArtifactCoordinates, WorkflowAttempt]],
     recipient_fingerprint: str,
     controller_directory: Path,
-) -> None:
+) -> AuthEnvelope:
     """Require a settled candidate to follow the exact retained immediately prior state."""
     predecessor_generation = envelope.generation - 1
     predecessor = terminal.get(predecessor_generation)
@@ -683,6 +684,33 @@ def _verify_predecessor_state(
         raise RuntimeError(_AGE_ENVELOPE_MISMATCH)
     if _artifact_reference(artifact, coordinates, previous_envelope) != envelope.predecessor:
         raise RuntimeError(_PREDECESSOR_MISMATCH)
+    return previous_envelope
+
+
+def _verify_selected_auth_chain(
+    client: GitHubArtifactClient,
+    repository: str,
+    envelope: AuthEnvelope,
+    begun: dict[int, tuple[ArtifactMetadata, AuthArtifactCoordinates, WorkflowAttempt]],
+    terminal: dict[int, tuple[ArtifactMetadata, AuthArtifactCoordinates, WorkflowAttempt]],
+    recipient_fingerprint: str,
+    controller_directory: Path,
+    *,
+    inspect_ancestry: bool,
+) -> int | None:
+    """Find recovery authority only through exact verified predecessor and begin records."""
+    current = envelope
+    while current.phase is AuthArtifactPhase.SETTLED:
+        previous = _verify_predecessor_state(
+            client, repository, current, terminal, recipient_fingerprint, controller_directory
+        )
+        _verify_begin_checkpoint(client, repository, current, begun.get(current.generation))
+        current = previous
+        if not inspect_ancestry:
+            return None
+    if current.phase is AuthArtifactPhase.SEEDED and current.reseed:
+        return current.generation
+    return None
 
 
 def _verify_unsettled_history(
@@ -690,11 +718,13 @@ def _verify_unsettled_history(
     begun: dict[int, tuple[ArtifactMetadata, AuthArtifactCoordinates, WorkflowAttempt]],
     terminal: dict[int, tuple[ArtifactMetadata, AuthArtifactCoordinates, WorkflowAttempt]],
     generation: int,
+    *,
+    reseed_generation: int | None = None,
 ) -> None:
-    """Reject every unfinished prior refresh unless a later explicit reseed superseded it."""
+    """Reject unfinished use except history older than the selected chain's verified reseed."""
     unresolved = set(begun) - set(terminal)
-    can_reseed = envelope.phase is AuthArtifactPhase.SEEDED and envelope.reseed
-    if unresolved and (not can_reseed or any(item >= generation for item in unresolved)):
+    boundary = generation if envelope.phase is AuthArtifactPhase.SEEDED and envelope.reseed else reseed_generation
+    if unresolved and (boundary is None or any(item >= boundary for item in unresolved)):
         raise RuntimeError(_AUTH_STATE_UNCERTAIN)
     if any(
         begun_generation in terminal and terminal[begun_generation][1].phase is not AuthArtifactPhase.SETTLED
