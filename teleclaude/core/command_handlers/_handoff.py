@@ -2,7 +2,6 @@
 
 import asyncio
 import shlex
-import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -33,7 +32,7 @@ from teleclaude.core.session_transcript_chain import append_transcript_once
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.types.commands import HandoffAgentCommand
 
-from . import _agent
+from ._restart import RELAUNCH_QUIET_S, StopDeadlineAnchor, stop_agent_process
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -94,10 +93,8 @@ async def execute_handoff(
         )
         if starts_with_prompt:
             successor_command = f"{successor_command} {shlex.quote(handoff_envelope)}"
-        stop_attempt = await _agent._terminate_agent_process(session.tmux_session_name)
-        if not await _agent._wait_for_restart_barrier(
-            session, stop_attempt=stop_attempt, stop_deadline=time.monotonic() + _agent._RESTART_STOP_TIMEOUT_S
-        ):
+        stop = await stop_agent_process(session, deadline_anchor=StopDeadlineAnchor.AFTER_TERMINATION)
+        if not stop.exited:
             raise RuntimeError(_HANDOFF_STOP_FAILED_ERROR)
         await db.update_session(
             session.session_id,
@@ -136,7 +133,7 @@ async def execute_handoff(
                 session=current,
                 session_id=current.session_id,
                 ready_future=ready_future,
-                quiet_s=_agent._RESTART_QUIET_S,
+                quiet_s=RELAUNCH_QUIET_S,
                 timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
             )
         finally:
@@ -151,7 +148,7 @@ async def execute_handoff(
                 message=handoff_envelope,
                 authority=InjectedInputAuthority.INTERFACE,
                 ready_future=ready_future,
-                quiet_s=_agent._RESTART_QUIET_S,
+                quiet_s=RELAUNCH_QUIET_S,
                 timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
                 delivery_mode=AgentStartupDeliveryMode.HANDOFF,
             )

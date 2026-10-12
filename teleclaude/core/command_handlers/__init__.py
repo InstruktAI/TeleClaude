@@ -4,7 +4,6 @@ Re-exports all public names from submodules for backward compatibility.
 """
 
 from ._agent import (
-    agent_restart,
     handoff_agent,
     resume_agent,
     run_agent_command,
@@ -30,6 +29,7 @@ from ._message import (
     notify_delivery_exhausted,
     process_message,
 )
+from ._restart import agent_restart
 from ._session import (
     close_session,
     create_session,
