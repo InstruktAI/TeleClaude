@@ -35,7 +35,7 @@ before rendering. For show, exactly one computer is allowed.
 Given an operator runs `telec history search <terms> --computer A --computer B`
 When the search is dispatched
 Then the search is sent to A and to B in parallel
-And local mirrors are NOT included in the merged result
+And local mirrors are included in the merged result only when the dispatching computer's own name is among the named computers
 And the merged rows are sorted by sort_timestamp DESC and rendered with a "computer" column
 ```
 
