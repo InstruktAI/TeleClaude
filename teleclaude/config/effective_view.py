@@ -1,0 +1,232 @@
+"""The effective view of one configuration subject: references resolved, secrets masked.
+
+Each section resolves its environment references from the environment its configuration surface
+owns and leaves out a whole-value reference that has no value there, exactly as the loader does.
+Every set value of a field its model declares ``SENSITIVE`` is masked. The stored documents and
+their revisions are untouched; this view is for reading only.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from types import UnionType
+from typing import Annotated, Final, Union, get_args, get_origin
+
+from pydantic import TypeAdapter, ValidationError
+
+from teleclaude.closed_model import MASKED_INPUT, ClosedModel, field_is_sensitive, mask_sensitive_values
+from teleclaude.config._environment import expand_environment_references, read_environment_file
+from teleclaude.config._machine_build import drop_unresolved_machine_fields
+from teleclaude.config._models import TeleclaudeConfig
+from teleclaude.config._unresolved import NO_OVERRIDES, drop_unresolved_fields
+from teleclaude.config.identity_schema import PersonEntry
+from teleclaude.config.machine_environment import machine_runtime_environment
+from teleclaude.config.person_resource import IDENTITY_SECTION, SETTINGS_SECTION
+from teleclaude.config.resource_contract import SubjectView
+from teleclaude.config.schema import CompanyConfig, GlobalConfig, PersonConfig, ProjectConfig
+from teleclaude.config_subjects import ConfigSubjectKind
+from teleclaude.paths import ConfigFileName
+
+
+@dataclass(frozen=True)
+class _SectionBinding:
+    """How one section of a subject view resolves: its model and its owning environment."""
+
+    model: type[ClosedModel]
+    source_index: int
+    owner_only: bool
+
+
+_TIER_BINDINGS: Final[Mapping[ConfigSubjectKind, _SectionBinding]] = {
+    ConfigSubjectKind.GLOBAL: _SectionBinding(GlobalConfig, 0, owner_only=False),
+    ConfigSubjectKind.PROJECT: _SectionBinding(ProjectConfig, 0, owner_only=False),
+    ConfigSubjectKind.COMPANY: _SectionBinding(CompanyConfig, 0, owner_only=True),
+}
+
+_PERSON_BINDINGS: Final[Mapping[str, _SectionBinding]] = {
+    IDENTITY_SECTION: _SectionBinding(PersonEntry, 0, owner_only=False),
+    SETTINGS_SECTION: _SectionBinding(PersonConfig, 1, owner_only=True),
+}
+
+
+_TYPED_SCALARS: Final = (bool, int, float)
+
+_PATCH_MODELS: Final[Mapping[ConfigSubjectKind, tuple[type[ClosedModel], ...]]] = {
+    ConfigSubjectKind.COMPUTER: (TeleclaudeConfig,),
+    ConfigSubjectKind.GLOBAL: (GlobalConfig,),
+    ConfigSubjectKind.PROJECT: (ProjectConfig,),
+    ConfigSubjectKind.COMPANY: (CompanyConfig,),
+    ConfigSubjectKind.PERSON: (PersonEntry, PersonConfig),
+}
+
+
+def effective_sections(view: SubjectView) -> dict[str, object]:  # guard: loose-dict - rendered config view
+    """Return the view's sections with references resolved and sensitive values masked."""
+    return _EFFECTIVE_SECTIONS[view.ref.kind](view)
+
+
+def without_masked_values(
+    kind: ConfigSubjectKind, patch: Mapping[str, object]
+) -> dict[str, object]:  # guard: loose-dict - caller-supplied RFC 7386 patch document
+    """Return the patch minus every sensitive leaf still carrying the mask the view rendered.
+
+    A patch built from the effective view then leaves each stored secret as it is.
+    """
+    return _without_masked(patch, _PATCH_MODELS[kind])
+
+
+def _without_masked(
+    value: Mapping[str, object], models: tuple[type[ClosedModel], ...]
+) -> dict[str, object]:  # guard: loose-dict - caller-supplied RFC 7386 patch document
+    kept: dict[str, object] = {}  # guard: loose-dict - caller-supplied RFC 7386 patch document
+    for key, item in value.items():
+        field_info = next((model.model_fields[key] for model in models if key in model.model_fields), None)
+        if field_info is None:
+            kept[key] = item
+        elif field_is_sensitive(field_info):
+            if item != MASKED_INPUT:
+                kept[key] = item
+        else:
+            kept[key] = _without_masked_nested(item, field_info.annotation)
+    return kept
+
+
+def _without_masked_nested(value: object, annotation: object) -> object:
+    nested = _nested_models(annotation)
+    if not nested:
+        return value
+    if isinstance(value, Mapping):
+        return _without_masked(value, nested)
+    if isinstance(value, list):
+        return [_without_masked(item, nested) if isinstance(item, Mapping) else item for item in value]
+    return value
+
+
+def _nested_models(annotation: object) -> tuple[type[ClosedModel], ...]:
+    """The closed models an annotation holds directly, in an optional, or as list items."""
+    options = get_args(annotation) if get_origin(annotation) in (Union, UnionType) else (annotation,)
+    models: list[type[ClosedModel]] = []
+    for option in options:
+        candidates = get_args(option) if get_origin(option) is list else (option,)
+        models.extend(
+            candidate for candidate in candidates if isinstance(candidate, type) and issubclass(candidate, ClosedModel)
+        )
+    return tuple(models)
+
+
+def _computer_sections(view: SubjectView) -> dict[str, object]:  # guard: loose-dict - rendered config view
+    environment = machine_runtime_environment()
+    return {
+        name: _resolved_masked(section, environment, TeleclaudeConfig, drop_unresolved_machine_fields)
+        for name, section in view.sections.items()
+    }
+
+
+def _tier_sections(view: SubjectView) -> dict[str, object]:  # guard: loose-dict - rendered config view
+    binding = _TIER_BINDINGS[view.ref.kind]
+    return {name: _bound_section(view, section, binding) for name, section in view.sections.items()}
+
+
+def _person_sections(view: SubjectView) -> dict[str, object]:  # guard: loose-dict - rendered config view
+    return {
+        name: _bound_section(view, section, _PERSON_BINDINGS[name]) if name in _PERSON_BINDINGS else section
+        for name, section in view.sections.items()
+    }
+
+
+def _bound_section(view: SubjectView, section: object, binding: _SectionBinding) -> object:
+    source: Path = view.sources[binding.source_index]
+    environment = read_environment_file(source.with_name(ConfigFileName.ENV), owner_only=binding.owner_only)
+    return _resolved_masked(section, environment, binding.model, _drop_unresolved_tier_fields)
+
+
+def _drop_unresolved_tier_fields(value: object, model_type: type[ClosedModel]) -> object:
+    return drop_unresolved_fields(value, model_type, NO_OVERRIDES)
+
+
+def _resolved_masked(
+    section: object,
+    environment: Mapping[str, str],
+    model: type[ClosedModel],
+    drop_unresolved: Callable[[object, type[ClosedModel]], object],
+) -> object:
+    resolved = expand_environment_references(section, environment, preserve_unresolved=True)
+    return mask_sensitive_values(model, _typed_scalars(drop_unresolved(resolved, model), model))
+
+
+def _typed_scalars(value: object, annotation: object) -> object:
+    """Render plain values, giving each text the boolean or numeric meaning its declared field type assigns it."""
+    if isinstance(value, str):
+        return _typed_scalar(str(value), annotation)
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    if isinstance(value, Mapping):
+        nested = _nested_models(annotation)
+        value_annotation = _mapping_value_annotation(annotation)
+        return {
+            str(key): _typed_field(key, item, nested) if nested else _typed_scalars(item, value_annotation)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_typed_scalars(item, _list_item_annotation(annotation)) for item in value]
+    return value
+
+
+def _typed_field(key: object, value: object, models: tuple[type[ClosedModel], ...]) -> object:
+    for model in models:
+        if isinstance(key, str) and key in model.model_fields:
+            return _typed_scalars(value, model.model_fields[key].annotation)
+    return _typed_scalars(value, object)
+
+
+def _typed_scalar(value: str, annotation: object) -> object:
+    if not any(isinstance(base, type) and base in _TYPED_SCALARS for base in _scalar_bases(annotation)):
+        return value
+    try:
+        typed: object = TypeAdapter(annotation).validate_python(value)
+    except ValidationError:
+        return value
+    return typed if isinstance(typed, _TYPED_SCALARS) else value
+
+
+def _scalar_bases(annotation: object) -> tuple[object, ...]:
+    if get_origin(annotation) is Annotated:
+        return _scalar_bases(get_args(annotation)[0])
+    if get_origin(annotation) in (Union, UnionType):
+        return tuple(base for option in get_args(annotation) for base in _scalar_bases(option))
+    return (annotation,)
+
+
+def _list_item_annotation(annotation: object) -> object:
+    for option in _options(annotation):
+        if get_origin(option) is list and get_args(option):
+            return get_args(option)[0]
+    return object
+
+
+def _mapping_value_annotation(annotation: object) -> object:
+    for option in _options(annotation):
+        if get_origin(option) is dict and len(get_args(option)) == 2:
+            return get_args(option)[1]
+    return object
+
+
+def _options(annotation: object) -> tuple[object, ...]:
+    return get_args(annotation) if get_origin(annotation) in (Union, UnionType) else (annotation,)
+
+
+type _RenderedSections = dict[str, object]  # guard: loose-dict - rendered config view
+
+_EFFECTIVE_SECTIONS: Final[Mapping[ConfigSubjectKind, Callable[[SubjectView], _RenderedSections]]] = {
+    ConfigSubjectKind.COMPUTER: _computer_sections,
+    ConfigSubjectKind.GLOBAL: _tier_sections,
+    ConfigSubjectKind.PROJECT: _tier_sections,
+    ConfigSubjectKind.COMPANY: _tier_sections,
+    ConfigSubjectKind.PERSON: _person_sections,
+}

@@ -7,6 +7,7 @@ from typing import TypedDict
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config._environment import whole_reference_name
 from teleclaude.config.validation import is_section_available, missing_required_fields
 
 logger = get_logger(__name__)
@@ -106,7 +107,7 @@ def _source_kind(value: object) -> str:
     """Classify a raw scalar without recording its value."""
     if value is None:
         return SOURCE_ABSENT
-    if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+    if isinstance(value, str) and whole_reference_name(value) is not None:
         return SOURCE_PLACEHOLDER
     return SOURCE_LITERAL
 

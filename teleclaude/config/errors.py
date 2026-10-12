@@ -7,7 +7,11 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from teleclaude.config._environment import CompanyCredentialsError, MissingEnvironmentReferenceError
+from teleclaude.config._environment import (
+    CompanyCredentialsError,
+    InvalidEnvironmentReferenceError,
+    MissingEnvironmentReferenceError,
+)
 
 _LOCATION_SEPARATOR = "."
 _FINDING = "{location}: {message}"
@@ -39,7 +43,12 @@ class InboundSecretDeclarationError(ValueError):
 
 
 # Causes whose text is written by the config context and names variables and paths, never values.
-_SELF_DESCRIBING_CAUSES = (MissingEnvironmentReferenceError, CompanyCredentialsError, InboundSecretDeclarationError)
+_SELF_DESCRIBING_CAUSES = (
+    MissingEnvironmentReferenceError,
+    InvalidEnvironmentReferenceError,
+    CompanyCredentialsError,
+    InboundSecretDeclarationError,
+)
 
 
 def load_error_findings(error: ConfigLoadError) -> list[str]:

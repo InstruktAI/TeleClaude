@@ -14,9 +14,11 @@ from dotenv import dotenv_values
 
 from teleclaude.file_transaction import file_transaction
 
-_ENV_REFERENCE_PREFIX: Final = "${"
-_ENV_REFERENCE_SUFFIX: Final = "}"
-_ENV_REFERENCE_PATTERN: Final = re.compile(r"\$\{([^}]+)\}")
+_ENV_REFERENCE_PATTERN: Final = re.compile(r"\$\{([^}]*)\}")
+_ENV_REFERENCE_BODY: Final = re.compile(r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?::-(?P<default>.*))?", re.DOTALL)
+_INVALID_REFERENCE_MESSAGE: Final = (
+    "Invalid environment reference at '{location}': expected ${{NAME}} or ${{NAME:-default}}"
+)
 _ENV_ASSIGNMENT: Final = "="
 _ENV_EXPORT_PREFIX: Final = "export "
 _NEWLINE: Final = "\n"
@@ -32,16 +34,29 @@ class MissingEnvironmentReferenceError(ValueError):
     """Raised when an overlay reference is absent from its supplied environment."""
 
 
+class InvalidEnvironmentReferenceError(ValueError):
+    """Raised when a ``${...}`` token is neither ``${NAME}`` nor ``${NAME:-default}``."""
+
+
 @dataclass(frozen=True)
 class EnvironmentReference:
     """One placeholder occurrence in a structured configuration document."""
 
     name: str
     path: tuple[str | int, ...]
+    default: str | None = None
+
+
+@dataclass(frozen=True)
+class _ParsedReference:
+    """One ``${NAME}`` or ``${NAME:-default}`` token."""
+
+    name: str
+    default: str | None
 
 
 def find_environment_references(value: object, path: tuple[str | int, ...] = ()) -> list[EnvironmentReference]:
-    """Return every non-empty ``${NAME}`` placeholder in a structured value."""
+    """Return every ``${NAME}`` and ``${NAME:-default}`` reference in a structured value."""
     if isinstance(value, Mapping):
         references: list[EnvironmentReference] = []
         for key, child in value.items():
@@ -53,7 +68,10 @@ def find_environment_references(value: object, path: tuple[str | int, ...] = ())
             references.extend(find_environment_references(child, (*path, index)))
         return references
     if isinstance(value, str):
-        return [EnvironmentReference(name, path) for name in _reference_names(value)]
+        return [
+            EnvironmentReference(reference.name, path, reference.default)
+            for reference in _parse_references(value, path)
+        ]
     return []
 
 
@@ -113,15 +131,25 @@ def _expand_environment_references(
         ]
     if not isinstance(value, str):
         return value
-    references = _reference_names(value)
-    if not references:
+    if not _parse_references(value, path):
         return value
     # Only a value that is one whole reference can be absent; a reference embedded in a longer
     # value has no absent form, so it resolves or fails.
     preserve_whole_value = preserve_unresolved and whole_reference_name(value) is not None
     return _ENV_REFERENCE_PATTERN.sub(
-        lambda match: _resolve_reference(match.group(1), environment, config_path, preserve_whole_value, path), value
+        lambda match: _resolve_reference(match, environment, config_path, preserve_whole_value, path), value
     )
+
+
+def resolve_whole_reference(value: str, environment: Mapping[str, str]) -> str | None:
+    """Resolve a value that is one whole reference; ``None`` when it has no value in ``environment``."""
+    match = _ENV_REFERENCE_PATTERN.fullmatch(value)
+    if match is None:
+        return value
+    reference = _parse_reference(match.group(1), ())
+    if reference.name in environment:
+        return environment[reference.name]
+    return reference.default
 
 
 def read_environment_file(path: Path, *, owner_only: bool = False) -> dict[str, str]:
@@ -250,7 +278,7 @@ def _reconcile(
         return _reconcile_list(raw, effective, environment, updates, path)
     if not isinstance(raw, str):
         return effective if effective is not None else raw
-    references = _reference_names(raw)
+    references = _parse_references(raw, path)
     if not references:
         return effective if effective is not None else raw
     name = whole_reference_name(raw)
@@ -261,7 +289,7 @@ def _reconcile(
     if effective is None:
         return raw
     next_value = str(effective)
-    prior_value = environment.get(name)
+    prior_value = environment.get(name, references[0].default)
     if next_value != prior_value:
         prior_update = updates.setdefault(name, next_value)
         if prior_update != next_value:
@@ -270,33 +298,53 @@ def _reconcile(
 
 
 def whole_reference_name(value: str) -> str | None:
-    """Return the name when the whole value is exactly one ``${NAME}`` reference, else ``None``."""
+    """Return the name when the whole value is exactly one well-formed reference, else ``None``."""
     match = _ENV_REFERENCE_PATTERN.fullmatch(value)
-    return match.group(1) if match is not None else None
+    body = _ENV_REFERENCE_BODY.fullmatch(match.group(1)) if match is not None else None
+    return body.group("name") if body is not None else None
 
 
-def _reference_names(value: str) -> list[str]:
-    """Return every non-empty placeholder name embedded in a string value."""
-    return [match.group(1) for match in _ENV_REFERENCE_PATTERN.finditer(value) if match.group(1)]
+def _parse_references(value: str, path: tuple[str | int, ...]) -> list[_ParsedReference]:
+    """Return every reference embedded in a string value, rejecting any malformed ``${...}`` token."""
+    return [_parse_reference(match.group(1), path) for match in _ENV_REFERENCE_PATTERN.finditer(value)]
+
+
+def _parse_reference(body: str, path: tuple[str | int, ...]) -> _ParsedReference:
+    match = _ENV_REFERENCE_BODY.fullmatch(body)
+    if match is None:
+        raise InvalidEnvironmentReferenceError(_invalid_reference_message(path))
+    return _ParsedReference(match.group("name"), match.group("default"))
 
 
 def _resolve_reference(
-    name: str,
+    match: re.Match[str],
     environment: Mapping[str, str],
     config_path: Path | None,
     preserve_unresolved: bool,
     path: tuple[str | int, ...],
 ) -> str:
-    if name in environment:
-        return environment[name]
+    reference = _parse_reference(match.group(1), path)
+    if reference.name in environment:
+        return environment[reference.name]
+    if reference.default is not None:
+        return reference.default
     if preserve_unresolved:
-        return f"{_ENV_REFERENCE_PREFIX}{name}{_ENV_REFERENCE_SUFFIX}"
-    raise MissingEnvironmentReferenceError(_missing_reference_message(EnvironmentReference(name, path), config_path))
+        return match.group(0)
+    raise MissingEnvironmentReferenceError(
+        _missing_reference_message(EnvironmentReference(reference.name, path), config_path)
+    )
 
 
 def _expand_embedded_reference_value(value: str, environment: Mapping[str, str]) -> str:
     """Resolve a loaded reference-bearing string without consulting ambient state."""
-    return _ENV_REFERENCE_PATTERN.sub(lambda match: environment.get(match.group(1), match.group(0)), value)
+    return _ENV_REFERENCE_PATTERN.sub(lambda match: _embedded_value(match, environment), value)
+
+
+def _embedded_value(match: re.Match[str], environment: Mapping[str, str]) -> str:
+    reference = _parse_reference(match.group(1), ())
+    if reference.name in environment:
+        return environment[reference.name]
+    return reference.default if reference.default is not None else match.group(0)
 
 
 def _reconcile_list(
@@ -345,7 +393,7 @@ def _matches_effective_value(raw: object, effective: object, environment: Mappin
     """Match a raw item by its non-placeholder structure while treating references as values."""
     if isinstance(raw, str) and whole_reference_name(raw) is not None:
         return True
-    if isinstance(raw, str) and isinstance(effective, str) and _reference_names(raw):
+    if isinstance(raw, str) and isinstance(effective, str) and _parse_references(raw, ()):
         return _expand_embedded_reference_value(raw, environment) == effective
     if isinstance(raw, Mapping) and isinstance(effective, Mapping):
         return _mapping_matches_effective_value(raw, effective, environment)
@@ -375,7 +423,7 @@ def _mapping_matches_effective_value(
 def _contains_environment_reference(value: object) -> bool:
     """Report whether a structured value contains a raw environment reference."""
     if isinstance(value, str):
-        return bool(_reference_names(value))
+        return bool(_parse_references(value, ()))
     if isinstance(value, Mapping):
         return any(_contains_environment_reference(child) for child in value.values())
     if isinstance(value, list):
@@ -387,6 +435,10 @@ def _missing_reference_message(reference: EnvironmentReference, config_path: Pat
     location = _render_reference_path(reference.path)
     source = str(config_path) if config_path is not None else "configuration"
     return f"Missing local environment reference '{reference.name}' at '{location}' in {source}"
+
+
+def _invalid_reference_message(path: tuple[str | int, ...]) -> str:
+    return _INVALID_REFERENCE_MESSAGE.format(location=_render_reference_path(path))
 
 
 def _conflicting_reference_message(name: str, path: tuple[str | int, ...]) -> str:

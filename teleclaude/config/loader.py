@@ -127,7 +127,7 @@ def resolve_overlay_references(
     unresolved = {
         reference.path: reference.name
         for reference in find_environment_references(document)
-        if reference.name not in environment
+        if reference.name not in environment and reference.default is None
     }
     if unresolved:
         logger.debug(_UNRESOLVED_REFERENCES_EVENT, path=str(path), names=sorted(set(unresolved.values())))

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from teleclaude.config._environment import whole_reference_name
+
 
 def is_unresolved_placeholder(value: object) -> bool:
     """Return True when a config value is empty or an unresolved ``${VAR}``.
@@ -24,7 +26,7 @@ def is_unresolved_placeholder(value: object) -> bool:
         return True
     if isinstance(value, str):
         stripped = value.strip()
-        return not stripped or (stripped.startswith("${") and stripped.endswith("}"))
+        return not stripped or whole_reference_name(stripped) is not None
     return False
 
 

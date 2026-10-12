@@ -10,7 +10,6 @@ and exits non-zero before any configuration is read.
 from __future__ import annotations
 
 import asyncio
-import copy
 import dataclasses
 import json
 import sys
@@ -53,7 +52,7 @@ from teleclaude.cli.telec.surface import (
     CONFIG_PROJECT_LIST,
     CONFIG_PROJECT_PATCH,
 )
-from teleclaude.config._environment import environment_reference_at_path
+from teleclaude.config.effective_view import effective_sections, without_masked_values
 from teleclaude.config.machine import config
 from teleclaude.config.person_voice import configure_person_discord_voice_bot
 from teleclaude.config.project_subject_init import adopt_project_subject, create_project_subject
@@ -74,7 +73,6 @@ from teleclaude.config.resources import (
 )
 from teleclaude.config.revision import StaleRevision
 from teleclaude.config.roster import RosterOutcome, RosterRefused
-from teleclaude.config.surface import machine_config_surface
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.core.configuration_clearance import (
     ConfigurationOperation,
@@ -135,7 +133,6 @@ _CREATE_USAGE_ERROR = (
 _CREATE_FORM_CONFLICT_ERROR = "Error: --company and --path never combine."
 _NO_PERSON_HOME_ERROR = "Error: creating in your own home needs a registered person."
 _SLUG_FIELD = "slug"
-_INLINE_SENSITIVE_VALUE = "<withheld: inline sensitive value>"
 _HELP_DESK_LINKS_VERB = "help-desk-links"
 _DESK_NOT_ENABLED_ERROR = "Error: help desk of {kind} {slug} is not enabled{request}"
 _DESK_NOT_HOSTED_ERROR = "Error: this computer does not host the help desk of {kind} {slug}{request}"
@@ -303,66 +300,6 @@ def _handle_list(kind: str, subject_kind: ConfigSubjectKind, args: list[str], re
 # --- get ---
 
 
-def _withhold_inline_sensitive_leaf(
-    document: dict[str, object],  # guard: loose-dict - raw YAML config
-    path: tuple[str, ...],
-) -> None:
-    """Replace one schema-declared sensitive leaf in place unless it is a pure environment reference."""
-    node: object = document
-    for part in path[:-1]:
-        if not isinstance(node, dict) or part not in node:
-            return
-        node = node[part]
-    if not isinstance(node, dict) or node.get(path[-1]) is None:
-        return
-    if environment_reference_at_path(document, path) is None:
-        node[path[-1]] = _INLINE_SENSITIVE_VALUE
-
-
-def _withhold_inline_sensitive_machine_values(
-    computer_section: Mapping[str, object],
-) -> dict[str, object]:  # guard: loose-dict - raw YAML config
-    """Render the machine view with every inline sensitive value withheld, for every caller alike."""
-    rendered = _to_plain(computer_section)
-    if not isinstance(rendered, dict):
-        return dict(computer_section)
-    for descriptor in machine_config_surface():
-        if descriptor.sensitive:
-            _withhold_inline_sensitive_leaf(rendered, descriptor.path)
-    return rendered
-
-
-def _drop_withheld_leaf(
-    document: dict[str, object],  # guard: loose-dict - caller-supplied RFC 7386 patch document
-    path: tuple[str, ...],
-) -> None:
-    """Remove one sensitive leaf that carries the withheld marker, then any parents the removal emptied."""
-    parents = [document]
-    for part in path[:-1]:
-        child = parents[-1].get(part)
-        if not isinstance(child, dict):
-            return
-        parents.append(child)
-    if parents[-1].get(path[-1]) != _INLINE_SENSITIVE_VALUE:
-        return
-    del parents[-1][path[-1]]
-    for depth in range(len(path) - 1, 0, -1):
-        if parents[depth]:
-            return
-        del parents[depth - 1][path[depth - 1]]
-
-
-def _without_withheld_sensitive_values(
-    patch: Mapping[str, object],
-) -> dict[str, object]:  # guard: loose-dict - caller-supplied RFC 7386 patch document
-    """Return the patch minus every sensitive leaf still carrying the marker `get` rendered, so the stored value stays."""
-    remaining = copy.deepcopy(dict(patch))
-    for descriptor in machine_config_surface():
-        if descriptor.sensitive:
-            _drop_withheld_leaf(remaining, descriptor.path)
-    return remaining
-
-
 def _handle_get(kind: str, subject_kind: ConfigSubjectKind, args: list[str], request_id: str) -> None:
     parsed = parse_command_args(_GET_COMMAND_DEFS[kind], args)
     instance, paths = _require_instance(kind, subject_kind, parsed.positionals)
@@ -384,11 +321,7 @@ def _handle_get(kind: str, subject_kind: ConfigSubjectKind, args: list[str], req
     read_only = dict(view.read_only)
     if subject_kind is ConfigSubjectKind.PERSON and instance is not None:
         read_only["roles"] = person_roles(instance)
-    sections = dict(view.sections)
-    if subject_kind is ConfigSubjectKind.COMPUTER:
-        computer_section = sections.get(kind)
-        if isinstance(computer_section, Mapping):
-            sections[kind] = _withhold_inline_sensitive_machine_values(computer_section)
+    sections = effective_sections(view)
     merged: dict[str, object] = {**sections, **read_only}  # guard: loose-dict - heterogeneous rendered config view
     rendered = _select_subject_paths(merged, kind, list(paths)) if paths else merged
     _render({**rendered, "revision": view.revision, "request_id": request_id}, output_format)
@@ -614,8 +547,7 @@ def _handle_patch(kind: str, subject_kind: ConfigSubjectKind, args: list[str], r
         return
 
     patch = _read_patch(parsed.value(F.FLAG_CONFIG_FROM_FILE), parsed.value(F.FLAG_CONFIG_YAML))
-    if subject_kind is ConfigSubjectKind.COMPUTER:
-        patch = _without_withheld_sensitive_values(patch)
+    patch = without_masked_values(subject_kind, patch)
     ref = SubjectRef(subject_kind, instance)
     sections = affected_sections(ref, patch)
     _gate(

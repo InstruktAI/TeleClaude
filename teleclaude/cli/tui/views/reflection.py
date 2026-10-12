@@ -11,7 +11,8 @@ from typing import Any, Literal, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
-from teleclaude.config._environment import environment_reference_at_path
+from teleclaude.closed_model import field_is_sensitive
+from teleclaude.config._environment import environment_reference_at_path, resolve_whole_reference, whole_reference_name
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.tiers import (
     Tier,
@@ -49,6 +50,7 @@ class ReflectedField:
     secret_available: bool = True
     requiring_services: tuple[str, ...] = ()
     required: bool = False
+    sensitive: bool = False  # The schema declares the field SENSITIVE; its value is masked when shown
 
 
 def resolve_env_placeholders(
@@ -66,15 +68,16 @@ def resolve_env_placeholders(
             field.env_var = derived_name
             field.environment = EnvironmentProvenance(derived_name, environment_path)
             field.write_only = True
+            field.sensitive = True
             field.secret_is_set = bool(environment.get(derived_name))
             field.value = ""
             continue
         value = field.value
-        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-            var = value[2:-1]
-            field.env_var = var
-            field.environment = EnvironmentProvenance(var, environment_path)
-            field.value = environment.get(var, "")
+        variable = whole_reference_name(value) if isinstance(value, str) else None
+        if isinstance(value, str) and variable is not None:
+            field.env_var = variable
+            field.environment = EnvironmentProvenance(variable, environment_path)
+            field.value = resolve_whole_reference(value, environment) or ""
 
 
 def bind_environment_provenance(
@@ -143,6 +146,7 @@ def _reflect_field(
     value: Any,
     description: str | None,
     effective: Tier,
+    sensitive: bool = False,
 ) -> list[ReflectedField]:
     """Recurse into a nested struct/dict/list, or emit a single leaf field.
 
@@ -196,6 +200,7 @@ def _reflect_field(
             section=section,
             owning_source=owning_source,
             required=full_key.rsplit(".", 1)[-1] in required_field_names(full_key.split(".", 1)[0]),
+            sensitive=sensitive,
         )
     ]
 
@@ -218,6 +223,7 @@ def _reflect_type(
                     None,
                     field_info.description or "",
                     effective,
+                    field_is_sensitive(field_info),
                 )
             )
     return fields
@@ -254,6 +260,7 @@ def reflect_schema(
                     getattr(obj, name),
                     field_info.description or "",
                     effective,
+                    field_is_sensitive(field_info),
                 )
             )
 

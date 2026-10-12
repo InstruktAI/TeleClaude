@@ -15,7 +15,8 @@ selects another machine file.
 
 `init` creates a missing machine configuration or adds missing required
 structure to an existing file without changing operator values. `get` reports
-the declared machine view, its resolved source, and an opaque revision. `patch`
+the effective machine view (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`),
+its resolved source, and an opaque revision. `patch`
 submits semantic changes with that revision to the config owner. The owner
 holds its lock across reading, stale-revision comparison, mutation, complete
 candidate validation, and atomic replacement. A rejected candidate leaves the

@@ -23,8 +23,8 @@ _NAME_KEY = "name"
 _EMAIL_KEY = "email"
 _ROLE_KEY = "role"
 _USERNAME_KEY = "username"
-_IDENTITY_SECTION = "identity"
-_SETTINGS_SECTION = "settings"
+IDENTITY_SECTION = "identity"
+SETTINGS_SECTION = "settings"
 _PERSON_NOT_REGISTERED = "person '{slug}' is not registered"
 
 
@@ -71,7 +71,7 @@ def person_settings_section(
 
 
 def person_revision(identity: Mapping[str, object], settings: Mapping[str, object]) -> str:
-    return view_revision({_IDENTITY_SECTION: identity, _SETTINGS_SECTION: settings})
+    return view_revision({IDENTITY_SECTION: identity, SETTINGS_SECTION: settings})
 
 
 def person_view(
@@ -87,7 +87,7 @@ def person_view(
     return SubjectView(
         ref=SubjectRef(ConfigSubjectKind.PERSON, slug),
         sources=(GLOBAL_CONFIG_PATH, person_overlay_path(slug)),
-        sections={_IDENTITY_SECTION: identity, _SETTINGS_SECTION: settings},
+        sections={IDENTITY_SECTION: identity, SETTINGS_SECTION: settings},
         read_only={},
         revision=person_revision(identity, settings),
     )

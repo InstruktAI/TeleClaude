@@ -14,7 +14,7 @@ from typing import Final
 
 from pydantic import BaseModel
 
-from teleclaude.closed_model import field_is_sensitive
+from teleclaude.closed_model import MASKED_INPUT, field_is_sensitive
 from teleclaude.config._environment import CompanyCredentialsError
 from teleclaude.config.errors import ConfigLoadError
 from teleclaude.config.loader import (
@@ -26,7 +26,6 @@ from teleclaude.config.loader import (
 )
 from teleclaude.config.machine import loaded_machine_config
 
-_MASK: Final = "***"
 _SECRETS_UNKNOWN: Final = "The declared secrets cannot be read: {error}"
 
 
@@ -76,7 +75,7 @@ def sensitive_values(model: BaseModel) -> set[str]:
 def mask_secret_values(text: str, secrets: Iterable[str]) -> str:
     """Replace every occurrence of every secret with a mask, longest first."""
     for secret in sorted(set(secrets), key=len, reverse=True):
-        text = text.replace(secret, _MASK)
+        text = text.replace(secret, MASKED_INPUT)
     return text
 
 

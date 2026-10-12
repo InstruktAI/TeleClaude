@@ -81,8 +81,16 @@ A help desk's master never requires its home's local documentation
 (`general/policy/agent-artifact-governance`).
 
 `list` enumerates registered instances; for a singleton it reports that one
-subject. `get` returns the current declared view and an opaque revision for a
-subsequent write. A person view joins the identity entry in global
+subject. `get` returns the subject's effective view and an opaque revision for
+a subsequent write. In the effective view each environment reference is resolved
+from the environment its configuration surface owns
+(`local/projects/teleclaude/spec/feature/config/yaml-env-var-expansion`): a
+reference with no value there leaves its field out, and a substituted value
+carries the meaning its declared field type gives it. Every set value of a field
+the schema declares sensitive renders as the one configuration mask; every other
+value renders as resolved. The stored documents keep their references, and the
+revision identifies them. A patch built from a `get` view leaves each field that
+still carries the mask as stored. A person view joins the identity entry in global
 configuration with that person's overlay. It also reports the person's roles as
 a marked read-only projection: one entry for each scope the person holds a role
 at — the platform, or a company by name — with the role held there. An entry
@@ -309,6 +317,26 @@ Given a platform administrator
 When an agent acting for them creates a project with a path outside every home
 Then an ownerless project exists at that path, registered under its name
 And the same request naming a company, or a path inside a home, is refused before anything is written
+```
+
+#### UC-KAC19: `get` shows the effective view with only sensitive values masked
+
+```gherkin
+Given a subject's configuration holds a field that references an environment variable with a value in the owning environment
+And a field the schema declares sensitive holds a value
+When an agent reads the subject with `get`
+Then the referencing field shows the resolved value with its declared type
+And the sensitive field shows the configuration mask instead of its value
+And the stored document still holds the reference
+```
+
+#### UC-KAC20: A patch carrying the mask leaves the stored secret unchanged
+
+```gherkin
+Given an agent edits the output of `get` and submits it as a patch
+And a sensitive field still carries the configuration mask
+When the patch is applied
+Then that sensitive field keeps its stored value
 ```
 
 ## Known caveats

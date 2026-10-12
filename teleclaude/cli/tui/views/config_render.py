@@ -22,12 +22,10 @@ from teleclaude.cli.tui.views._config_constants import (
     _normal_style,
 )
 from teleclaude.cli.tui.views.reflection import ReflectedField
+from teleclaude.closed_model import MASKED_INPUT
 
 if TYPE_CHECKING:
     from teleclaude.config.identity_schema import PersonEntry
-
-# Placeholder shown in place of an env-sourced (sensitive) value when not editing.
-_MASKED_VALUE = "••••••"
 
 
 def _segment_label(segment: str) -> str:
@@ -177,7 +175,7 @@ class ConfigContentRenderMixin:
         pad = "  " * (2 + depth)
         subpad = pad + "    "
         if self._editing_var_name == f.key:  # type: ignore[attr-defined]
-            edit_value = _MASKED_VALUE if f.write_only else self._edit_buffer  # type: ignore[attr-defined]
+            edit_value = MASKED_INPUT if f.write_only else self._edit_buffer  # type: ignore[attr-defined]
             result.append(f"{pad}{prefix} {label} = {edit_value}█\n", style=row_style)
             instruction = (
                 "Enter replace/keep  Esc cancel  Ctrl+U clear"
@@ -237,8 +235,8 @@ class ConfigContentRenderMixin:
 
         else:
             value = str(f.value if f.value is not None else "")
-            # An env-sourced value is sensitive; reveal it only while editing (handled above).
-            display = _MASKED_VALUE if (f.env_var and value) else (value or "(not set)")
+            # A sensitive value is revealed only while editing (handled above).
+            display = MASKED_INPUT if (f.sensitive and value) else (value or "(not set)")
             result.append(f"{pad}{prefix} {'✔' if value else '○'} ", style=_OK if value else _DIM)
             result.append(f"{f.name}: ", style=_DIM)
             result.append(f"{display}\n", style=row_style)
@@ -263,8 +261,8 @@ class ConfigContentRenderMixin:
                 val_str = "yes" if f.value else "no"
             elif f.field_type in (list[str], list):
                 val_str = f"[{len(f.value or [])}]"
-            elif f.env_var and f.value:
-                val_str = _MASKED_VALUE
+            elif f.sensitive and f.value:
+                val_str = MASKED_INPUT
             else:
                 val_str = str(f.value if f.value is not None else "")
                 if len(val_str) > 15:

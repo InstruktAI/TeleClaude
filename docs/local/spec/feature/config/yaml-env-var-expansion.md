@@ -11,9 +11,9 @@ visibility: 'public'
 
 ## What it is
 
-Environment-backed YAML values are resolved at the configuration boundary before typed validation. Each user-facing `teleclaude.yml` overlay resolves `${NAME}` references exclusively from the `.env` file beside that overlay: global, project, company, and person configuration therefore retain independent namespaces even when they use the same variable name.
+Environment-backed YAML values are resolved at the configuration boundary before typed validation. Each user-facing `teleclaude.yml` overlay resolves `${NAME}` and `${NAME:-default}` references exclusively from the `.env` file beside that overlay: global, project, company, and person configuration therefore retain independent namespaces even when they use the same variable name.
 
-Overlay resolution never consults the process environment or another configuration tier. A value that is one whole `${NAME}` reference with no value in the owning `.env` is absent on that computer: its field takes the schema's declared default or stays unset, and a consumer that needs the value refuses, naming what it lacks. A field that a computer role needs declares so against the machine configuration (`local/projects/teleclaude/spec/teleclaude-config`, Tier declaration and editor schemas), and that computer's readiness judgment reports the declaration when the reference has no value there; the document itself still loads. A reference embedded in a longer value has no absent form, so it resolves or fails that overlay's load. Literal YAML values remain valid, and `.env` entries enter typed configuration only when a YAML value references them.
+Overlay resolution never consults the process environment or another configuration tier. A reference that carries a default resolves to that default when the owning environment holds no value for its name, so it is never absent. A value that is one whole `${NAME}` reference with no value in the owning `.env` is absent on that computer: its field takes the schema's declared default or stays unset, and a consumer that needs the value refuses, naming what it lacks. A field that a computer role needs declares so against the machine configuration (`local/projects/teleclaude/spec/teleclaude-config`, Tier declaration and editor schemas), and that computer's readiness judgment reports the declaration when the reference has no value there; the document itself still loads. A reference without a default embedded in a longer value has no absent form, so it resolves or fails that overlay's load. Literal YAML values remain valid, and `.env` entries enter typed configuration only when a YAML value references them.
 
 The machine `config.yml` and its optional `experiments.yml` remain a separate runtime surface. They resolve references from the machine runtime environment: the process environment with the TeleClaude checkout's `.env` applied at every resolution, shell-provided variables taking precedence. Every reader of the machine configuration resolves from that one environment, whether it loads, validates or writes, by the same absent-value rule.
 
@@ -37,13 +37,13 @@ No row inherits, shadows, or falls back to another row. The selected YAML path d
 ### Resolution and persistence
 
 - Resolution walks mappings, lists, and string leaves recursively before schema validation.
-- Only `${NAME}` tokens participate. Substituted values are strings; the typed schema owns any later coercion.
+- A reference is `${NAME}` or `${NAME:-default}`. Any other `${...}` token fails that configuration's load, naming the value's path. Substituted values are strings; the typed schema owns any later coercion.
 - The destination field's declared type determines scalar meaning after resolution. Boolean fields parse recognized boolean spellings by value, numeric fields use their declared numeric conversion, and text fields retain text. A value rejected by the destination type fails at the configuration boundary (`sdlc/policy/code-quality`).
 - A missing sibling `.env` is equivalent to an empty local environment: every whole-value reference is then absent.
 - Loading and resolving an overlay does not mutate the process environment.
 - A configuration file read from a committed snapshot rather than the working tree resolves from no environment file: a snapshot never carries a `.env` and receives none, so every whole-value reference in it is absent, and commit-time and publication checks judge the document alone.
 - An unresolved reference embedded in a longer value fails with the variable name and owning configuration path, without exposing any resolved value.
-- Saving an effective configuration preserves existing `${NAME}` references for values that were not explicitly replaced, including references whose value is absent on the saving computer. An environment-backed edit writes the value to the owning `.env` and retains the reference in YAML.
+- Saving an effective configuration preserves existing `${NAME}` references for values that were not explicitly replaced, including references whose value is absent on the saving computer. An environment-backed edit writes the value to the owning `.env` and retains the reference in YAML; an edit to the value the reference already resolves to, its default included, writes nothing.
 - Arbitrary `.env` entries are not injected as model fields. Consumers that need an unreferenced credential use the config context's scope-owned credential-store interface.
 
 ### Use cases
@@ -102,10 +102,11 @@ And its resolved experiments are composed with the machine configuration
 #### UC-CFG-EXPAND-6
 
 ```gherkin
-Given a YAML value contains `${NAME:-fallback}`
-When environment references are resolved
-Then the token has no default-value semantics
-And it is treated as an unresolved reference unless that exact supported name exists
+Given a YAML value is `${NAME:-fallback}`
+When the owning environment holds no value for NAME
+Then the field resolves to the fallback
+When the owning environment holds a value for NAME
+Then the field resolves to that value
 ```
 
 #### UC-CFG-EXPAND-7
@@ -135,9 +136,18 @@ When that configuration is loaded
 Then loading fails naming NAME and the value's path
 ```
 
+#### UC-CFG-EXPAND-10
+
+```gherkin
+Given a configuration value contains a `${...}` token that is neither `${NAME}` nor `${NAME:-default}`
+When that configuration is loaded
+Then loading fails naming the value's path
+And no field is silently left out in its place
+```
+
 ## Allowed values
 
-- Reference syntax: `${NAME}` where NAME is a non-empty environment-key identifier accepted by the environment-file parser.
+- Reference syntax: `${NAME}` or `${NAME:-default}`, where NAME is a letter or underscore followed by letters, digits, or underscores, and the default is the literal text up to the closing brace, possibly empty.
 - Overlay resolution source: the sibling `.env` only.
 - Machine resolution source: the machine runtime environment only.
 - Literal YAML strings remain literal and require no environment entry.
