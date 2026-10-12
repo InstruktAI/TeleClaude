@@ -13,6 +13,7 @@ from teleclaude.core.agent_dispatch import (
 from teleclaude.core.command_dispatch import RemoteDispatchError, RemoteDispatchReason
 from teleclaude.core.models import AgentDispatchMode, JsonDict, SessionEntryPoint
 from teleclaude.core.session_startup_message import StartupMessageError
+from teleclaude.core.session_utils import WorkingDirectoryUnavailableError
 
 _ROUTING_REASON_FIELD = "routing_reason"
 _AGENT_DISPATCH_DETAIL_TEMPLATE = "{reason}: {error}"
@@ -63,6 +64,9 @@ def agent_dispatch_http_refusal(error: Exception) -> HTTPException | None:
         return HTTPException(status_code=status_code, detail=detail)
     if isinstance(error, StartupMessageError):
         detail = _STARTUP_MESSAGE_DETAIL_TEMPLATE.format(error=error)
+        return DeclaredWorkRefusal(status_code=400, detail=detail, work_feedback=detail)
+    if isinstance(error, WorkingDirectoryUnavailableError):
+        detail = str(error)
         return DeclaredWorkRefusal(status_code=400, detail=detail, work_feedback=detail)
     return None
 

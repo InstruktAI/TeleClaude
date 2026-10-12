@@ -60,7 +60,7 @@ from teleclaude.core.session_listeners import establish_supervision
 from teleclaude.core.session_listing import SessionListingSelection
 from teleclaude.core.session_startup_message import prepare_startup_message
 from teleclaude.core.session_title import compose_command_session_title
-from teleclaude.core.session_utils import resolve_working_dir
+from teleclaude.core.session_utils import WorkingDirectoryUnavailableError, resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.envelope import EventHomeMarker, EventVisibility
@@ -83,6 +83,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _UNBOUND_TMUX_NAME = ""
+
+_WORKING_DIR_NOT_ABSOLUTE_TEMPLATE = "Working directory must be an absolute path: {working_dir}"
+_WORKING_DIR_MISSING_TEMPLATE = "Working directory does not exist: {working_dir}"
+_WORKING_DIR_NOT_A_DIRECTORY_TEMPLATE = "Working directory is not a directory: {working_dir}"
 
 _LISTENER_REGISTRATION_SKIPPED_EVENT = "session_listener_registration_skipped"
 _LISTENER_REGISTRATION_FAILED_EVENT = "session_listener_registration_failed"
@@ -335,11 +339,11 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     working_dir = resolve_working_dir(project_path, subfolder)
     working_dir_path = Path(working_dir)
     if not working_dir_path.is_absolute():
-        raise ValueError(f"Working directory must be an absolute path: {working_dir}")
+        raise WorkingDirectoryUnavailableError(_WORKING_DIR_NOT_ABSOLUTE_TEMPLATE.format(working_dir=working_dir))
     if not working_dir_path.exists():
-        raise ValueError(f"Working directory does not exist: {working_dir}")
+        raise WorkingDirectoryUnavailableError(_WORKING_DIR_MISSING_TEMPLATE.format(working_dir=working_dir))
     if not working_dir_path.is_dir():
-        raise ValueError(f"Working directory is not a directory: {working_dir}")
+        raise WorkingDirectoryUnavailableError(_WORKING_DIR_NOT_A_DIRECTORY_TEMPLATE.format(working_dir=working_dir))
     working_dir = str(working_dir_path)
 
     if subfolder:

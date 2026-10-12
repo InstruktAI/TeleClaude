@@ -172,6 +172,10 @@ def get_short_project_name(project_path: str | None, subdir: str | None) -> str:
     return root_name
 
 
+class WorkingDirectoryUnavailableError(ValueError):
+    """The requested working directory is not usable on the computer running the request."""
+
+
 def resolve_working_dir(project_path: str | None, subdir: str | None) -> str:
     """Resolve actual working directory from project_path and subdir."""
     if not project_path:

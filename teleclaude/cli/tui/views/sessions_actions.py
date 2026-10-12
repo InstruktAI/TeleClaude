@@ -24,6 +24,8 @@ from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.modals import ConfirmModal, NewProjectModal, NewProjectResult, StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.session_row import SessionRow
+from teleclaude.constants import LOCAL_COMPUTER
+from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import session_display_title
 
 if TYPE_CHECKING:
@@ -385,6 +387,15 @@ class SessionsViewActionsMixin:
         )
         self.app.push_screen(modal, self._on_create_session_result)  # type: ignore[attr-defined]
 
+    def _project_header_sessions(self, header: ProjectHeader) -> list[Any]:
+        """Return the listed sessions of the header's project on the header's computer."""
+        computer = header.project.computer or LOCAL_COMPUTER
+        return [
+            session
+            for session in self._sessions
+            if session.project_path == header.project.path and (session.computer or LOCAL_COMPUTER) == computer
+        ]
+
     def action_handoff_project(self) -> None:
         """o on a project header: filter live sessions by source provider for automatic handoff."""
         item = self._current_item()  # type: ignore[attr-defined]
@@ -403,11 +414,8 @@ class SessionsViewActionsMixin:
                 computer = item.project.computer or "local"
                 session_ids = [
                     session.session_id
-                    for session in self._sessions  # type: ignore[attr-defined]
-                    if session.project_path == item.project.path
-                    and (session.computer or "local") == computer
-                    and session.status != "closed"
-                    and session.active_agent == result.agent
+                    for session in self._project_header_sessions(item)
+                    if session.status != SessionLifecycleStatus.CLOSED and session.active_agent == result.agent
                 ]
                 if session_ids:
                     self.post_message(HandoffSessionsRequest(computer, session_ids))  # type: ignore[attr-defined]
@@ -420,10 +428,7 @@ class SessionsViewActionsMixin:
         if not isinstance(item, ProjectHeader):
             return
 
-        project_path = item.project.path
-        session_ids = sorted(  # type: ignore[attr-defined]
-            {s.session_id for s in self._sessions if s.project_path == project_path}
-        )
+        session_ids = sorted({session.session_id for session in self._project_header_sessions(item)})
         if not session_ids:
             self.app.notify_text(
                 f"No sessions to restart in {item.project.name}",
@@ -504,11 +509,7 @@ class SessionsViewActionsMixin:
         item = self._current_item()  # type: ignore[attr-defined]
 
         if isinstance(item, ProjectHeader):
-            scope_ids = {
-                s.session_id
-                for s in self._sessions  # type: ignore[attr-defined]
-                if s.project_path == item.project.path and (s.computer or "local") == (item.project.computer or "local")
-            }
+            scope_ids = {session.session_id for session in self._project_header_sessions(item)}
         elif isinstance(item, ComputerHeader):
             computer = item.data.computer.name
             scope_ids = {  # type: ignore[attr-defined]

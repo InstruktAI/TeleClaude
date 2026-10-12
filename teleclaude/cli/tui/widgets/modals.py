@@ -28,7 +28,9 @@ from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import CreateSessionRequest, HandoffSessionRequest
 from teleclaude.cli.tui.widgets.agent_status import build_agent_render_spec
+from teleclaude.config.machine import config
 from teleclaude.core.agents import get_enabled_agents
+from teleclaude.core.command_dispatch import is_remote_target
 from teleclaude.slug import SLUG_PATTERN
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_CHOICES, TodoDumpKind
 
@@ -541,7 +543,11 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | HandoffSessionRequest
             self._do_create()
 
     def _resolve_project_path(self) -> str | None:
-        """Validate and resolve the optional project-path input field."""
+        """Validate and resolve the optional project-path input field.
+
+        The filesystem check applies to this computer only; a path for another computer is
+        sent as entered, and that computer decides.
+        """
         if not self._path_mode:
             return self._project_path
 
@@ -551,8 +557,9 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | HandoffSessionRequest
         if not raw_path:
             path_error.update("Path is required")
             return None
-        resolved = os.path.expanduser(raw_path)
-        if not os.path.isdir(resolved):
+        remote = is_remote_target(self._computer, config.computer.name)
+        resolved = raw_path if remote else os.path.expanduser(raw_path)
+        if not remote and not os.path.isdir(resolved):
             path_error.update("Path does not exist or is not a directory")
             return None
         path_error.update("")
