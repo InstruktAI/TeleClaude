@@ -214,7 +214,6 @@ And the session does not resolve OR has a closed-at marker OR has lifecycle stat
 When the target-session validation runs
 Then the request is refused with "Session {id} not found" or "Session {id} is closed"
 And no host-pane interaction is attempted
-And a send that names no owning computer is never delivered locally to a session this computer does not own
 ```
 
 #### Delivery failure
@@ -303,14 +302,6 @@ And a further message for that session is held until the adoption resolves, inst
 ```
 
 #### UC-SID3: A send that names the owning remote computer is routed there
-
-```
-Given a session is owned by a remote computer and has no row in this computer's session ledger
-When a caller sends a message to it and names the owning computer
-Then the send is dispatched to the owning computer and delivered against that computer's ledger
-And the local ledger is not consulted to decide whether the target exists
-And the caller receives the same work-mode send response it would receive for a local send
-```
 
 #### UC-SID4 — Queued input binds durably to the transcript turn it creates
 
