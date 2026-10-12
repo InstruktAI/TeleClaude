@@ -97,14 +97,6 @@ Then the caller receives its record, including when it closed
 
 #### UC-SI7: A session on another computer is inspected through that computer
 
-```gherkin
-Given a session hosted on another computer
-When an agent inspects that session naming that computer
-Then that computer answers under its own reach for the agent's principal
-And the agent receives the grouped detail, or the complete record when it asked for it
-And a computer that cannot answer with the complete record makes the request fail explicitly rather than answer with less
-```
-
 #### UC-SI8: Help points to the neighbouring reads
 
 ```gherkin
