@@ -12,6 +12,7 @@ from pydantic.fields import FieldInfo
 from pydantic_core import ErrorDetails, InitErrorDetails, PydanticCustomError
 
 MASKED_INPUT = "********"
+_UNSET_TEXT = ""
 
 
 class SensitiveMarker:
@@ -86,7 +87,8 @@ def _masked_input_at(model: type[ClosedModel], loc: tuple[int | str, ...], value
         # loader has already expanded any secret reference it held.
         return MASKED_INPUT if scope is _MaskScope.SENSITIVE_AND_UNDECLARED else value
     if field_is_sensitive(field):
-        return MASKED_INPUT if scope is _MaskScope.SENSITIVE_AND_UNDECLARED or value not in (None, "") else value
+        unset = value is None or value == _UNSET_TEXT
+        return MASKED_INPUT if scope is _MaskScope.SENSITIVE_AND_UNDECLARED or not unset else value
     return _masked_by_annotation(field.annotation, value, scope) if len(loc) == 1 else value
 
 

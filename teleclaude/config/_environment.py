@@ -12,10 +12,17 @@ from typing import Final
 
 from dotenv import dotenv_values
 
+from teleclaude.config._coerce import as_bool
 from teleclaude.file_transaction import file_transaction
 
 _ENV_REFERENCE_PATTERN: Final = re.compile(r"\$\{([^}]*)\}")
-_ENV_REFERENCE_BODY: Final = re.compile(r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?::-(?P<default>.*))?", re.DOTALL)
+_NAME_GROUP: Final = "name"
+_DEFAULT_GROUP: Final = "default"
+_ENV_REFERENCE_BODY: Final = re.compile(
+    rf"(?P<{_NAME_GROUP}>[A-Za-z_][A-Za-z0-9_]*)(?::-(?P<{_DEFAULT_GROUP}>.*))?", re.DOTALL
+)
+_TRUE_TEXT: Final = "true"
+_FALSE_TEXT: Final = "false"
 _INVALID_REFERENCE_MESSAGE: Final = (
     "Invalid environment reference at '{location}': expected ${{NAME}} or ${{NAME:-default}}"
 )
@@ -288,20 +295,41 @@ def _reconcile(
         raise ValueError(_embedded_reference_update_message(path))
     if effective is None:
         return raw
-    next_value = str(effective)
     prior_value = environment.get(name, references[0].default)
-    if next_value != prior_value:
+    if not _same_environment_value(effective, prior_value):
+        next_value = _environment_text(effective)
         prior_update = updates.setdefault(name, next_value)
         if prior_update != next_value:
             raise ValueError(_conflicting_reference_message(name, path))
     return raw
 
 
+def _environment_text(value: object) -> str:
+    """Render a typed value as the text its environment entry holds."""
+    if isinstance(value, bool):
+        return _TRUE_TEXT if value else _FALSE_TEXT
+    return str(value)
+
+
+def _same_environment_value(value: object, text: str | None) -> bool:
+    """Whether environment ``text`` already carries typed ``value``, judged by the value's own type."""
+    if text is None:
+        return False
+    try:
+        if isinstance(value, bool):
+            return as_bool(text) is value
+        if isinstance(value, int | float):
+            return type(value)(text) == value
+    except ValueError:
+        return False
+    return str(value) == text
+
+
 def whole_reference_name(value: str) -> str | None:
     """Return the name when the whole value is exactly one well-formed reference, else ``None``."""
     match = _ENV_REFERENCE_PATTERN.fullmatch(value)
     body = _ENV_REFERENCE_BODY.fullmatch(match.group(1)) if match is not None else None
-    return body.group("name") if body is not None else None
+    return body.group(_NAME_GROUP) if body is not None else None
 
 
 def _parse_references(value: str, path: tuple[str | int, ...]) -> list[_ParsedReference]:
@@ -313,7 +341,7 @@ def _parse_reference(body: str, path: tuple[str | int, ...]) -> _ParsedReference
     match = _ENV_REFERENCE_BODY.fullmatch(body)
     if match is None:
         raise InvalidEnvironmentReferenceError(_invalid_reference_message(path))
-    return _ParsedReference(match.group("name"), match.group("default"))
+    return _ParsedReference(match.group(_NAME_GROUP), match.group(_DEFAULT_GROUP))
 
 
 def _resolve_reference(

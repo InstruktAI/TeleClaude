@@ -52,6 +52,13 @@ _PERSON_BINDINGS: Final[Mapping[str, _SectionBinding]] = {
 
 
 _TYPED_SCALARS: Final = (bool, int, float)
+_INVALID_VALUE_MESSAGE: Final = "Configuration value at '{location}' does not satisfy its declared type"
+_PATH_SEPARATOR: Final = "."
+
+
+class InvalidEffectiveValue(ValueError):
+    """A resolved configuration value is rejected by its declared field type."""
+
 
 _PATCH_MODELS: Final[Mapping[ConfigSubjectKind, tuple[type[ClosedModel], ...]]] = {
     ConfigSubjectKind.COMPUTER: (TeleclaudeConfig,),
@@ -105,11 +112,10 @@ def _without_masked_nested(value: object, annotation: object) -> object:
 
 
 def _nested_models(annotation: object) -> tuple[type[ClosedModel], ...]:
-    """The closed models an annotation holds directly, in an optional, or as list items."""
-    options = get_args(annotation) if get_origin(annotation) in (Union, UnionType) else (annotation,)
+    """The closed models an annotation holds directly, in an optional or annotated union, or as list items."""
     models: list[type[ClosedModel]] = []
-    for option in options:
-        candidates = get_args(option) if get_origin(option) is list else (option,)
+    for option in _options(annotation):
+        candidates = _options(get_args(option)[0]) if get_origin(option) is list and get_args(option) else (option,)
         models.extend(
             candidate for candidate in candidates if isinstance(candidate, type) and issubclass(candidate, ClosedModel)
         )
@@ -153,13 +159,28 @@ def _resolved_masked(
     drop_unresolved: Callable[[object, type[ClosedModel]], object],
 ) -> object:
     resolved = expand_environment_references(section, environment, preserve_unresolved=True)
-    return mask_sensitive_values(model, _typed_scalars(drop_unresolved(resolved, model), model))
+    return mask_sensitive_values(model, _typed_scalars(drop_unresolved(resolved, model), model, ()))
 
 
-def _typed_scalars(value: object, annotation: object) -> object:
+def typed_value(value: str, annotation: object, path: tuple[str | int, ...] = ()) -> object:
+    """Give text the boolean or numeric meaning its declared type assigns; other text stays text.
+
+    Raises ``InvalidEffectiveValue`` naming the path, never the value, when the type rejects it.
+    """
+    if not any(isinstance(base, type) and base in _TYPED_SCALARS for base in _options(annotation)):
+        return value
+    try:
+        typed: object = TypeAdapter(annotation).validate_python(value)
+    except ValidationError as error:
+        location = _PATH_SEPARATOR.join(str(part) for part in path)
+        raise InvalidEffectiveValue(_INVALID_VALUE_MESSAGE.format(location=location)) from error
+    return typed if isinstance(typed, _TYPED_SCALARS) else value
+
+
+def _typed_scalars(value: object, annotation: object, path: tuple[str | int, ...]) -> object:
     """Render plain values, giving each text the boolean or numeric meaning its declared field type assigns it."""
     if isinstance(value, str):
-        return _typed_scalar(str(value), annotation)
+        return typed_value(str(value), annotation, path)
     if isinstance(value, bool):
         return bool(value)
     if isinstance(value, int):
@@ -170,37 +191,24 @@ def _typed_scalars(value: object, annotation: object) -> object:
         nested = _nested_models(annotation)
         value_annotation = _mapping_value_annotation(annotation)
         return {
-            str(key): _typed_field(key, item, nested) if nested else _typed_scalars(item, value_annotation)
+            str(key): _typed_field(key, item, nested, (*path, str(key)))
+            if nested
+            else _typed_scalars(item, value_annotation, (*path, str(key)))
             for key, item in value.items()
         }
     if isinstance(value, list):
-        return [_typed_scalars(item, _list_item_annotation(annotation)) for item in value]
+        item_annotation = _list_item_annotation(annotation)
+        return [_typed_scalars(item, item_annotation, (*path, index)) for index, item in enumerate(value)]
     return value
 
 
-def _typed_field(key: object, value: object, models: tuple[type[ClosedModel], ...]) -> object:
+def _typed_field(
+    key: object, value: object, models: tuple[type[ClosedModel], ...], path: tuple[str | int, ...]
+) -> object:
     for model in models:
         if isinstance(key, str) and key in model.model_fields:
-            return _typed_scalars(value, model.model_fields[key].annotation)
-    return _typed_scalars(value, object)
-
-
-def _typed_scalar(value: str, annotation: object) -> object:
-    if not any(isinstance(base, type) and base in _TYPED_SCALARS for base in _scalar_bases(annotation)):
-        return value
-    try:
-        typed: object = TypeAdapter(annotation).validate_python(value)
-    except ValidationError:
-        return value
-    return typed if isinstance(typed, _TYPED_SCALARS) else value
-
-
-def _scalar_bases(annotation: object) -> tuple[object, ...]:
-    if get_origin(annotation) is Annotated:
-        return _scalar_bases(get_args(annotation)[0])
-    if get_origin(annotation) in (Union, UnionType):
-        return tuple(base for option in get_args(annotation) for base in _scalar_bases(option))
-    return (annotation,)
+            return _typed_scalars(value, model.model_fields[key].annotation, path)
+    return _typed_scalars(value, object, path)
 
 
 def _list_item_annotation(annotation: object) -> object:
@@ -218,7 +226,12 @@ def _mapping_value_annotation(annotation: object) -> object:
 
 
 def _options(annotation: object) -> tuple[object, ...]:
-    return get_args(annotation) if get_origin(annotation) in (Union, UnionType) else (annotation,)
+    """The alternatives an annotation admits, with ``Annotated`` metadata and unions unwrapped."""
+    if get_origin(annotation) is Annotated:
+        return _options(get_args(annotation)[0])
+    if get_origin(annotation) in (Union, UnionType):
+        return tuple(option for argument in get_args(annotation) for option in _options(argument))
+    return (annotation,)
 
 
 type _RenderedSections = dict[str, object]  # guard: loose-dict - rendered config view

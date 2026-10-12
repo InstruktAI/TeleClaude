@@ -39,9 +39,9 @@ No row inherits, shadows, or falls back to another row. The selected YAML path d
 - Resolution walks mappings, lists, and string leaves recursively before schema validation.
 - A reference is `${NAME}` or `${NAME:-default}`. Any other `${...}` token fails that configuration's load, naming the value's path. Substituted values are strings; the typed schema owns any later coercion.
 - The destination field's declared type determines scalar meaning after resolution. Boolean fields parse recognized boolean spellings by value, numeric fields use their declared numeric conversion, and text fields retain text. A value rejected by the destination type fails at the configuration boundary (`sdlc/policy/code-quality`).
-- A missing sibling `.env` is equivalent to an empty local environment: every whole-value reference is then absent.
+- A missing sibling `.env` is equivalent to an empty local environment: every whole-value reference without a default is then absent.
 - Loading and resolving an overlay does not mutate the process environment.
-- A configuration file read from a committed snapshot rather than the working tree resolves from no environment file: a snapshot never carries a `.env` and receives none, so every whole-value reference in it is absent, and commit-time and publication checks judge the document alone.
+- A configuration file read from a committed snapshot rather than the working tree resolves from no environment file: a snapshot never carries a `.env` and receives none, so every whole-value reference without a default in it is absent, and commit-time and publication checks judge the document alone.
 - An unresolved reference embedded in a longer value fails with the variable name and owning configuration path, without exposing any resolved value.
 - Saving an effective configuration preserves existing `${NAME}` references for values that were not explicitly replaced, including references whose value is absent on the saving computer. An environment-backed edit writes the value to the owning `.env` and retains the reference in YAML; an edit to the value the reference already resolves to, its default included, writes nothing.
 - Arbitrary `.env` entries are not injected as model fields. Consumers that need an unreferenced credential use the config context's scope-owned credential-store interface.

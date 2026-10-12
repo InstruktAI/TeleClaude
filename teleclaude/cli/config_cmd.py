@@ -52,7 +52,8 @@ from teleclaude.cli.telec.surface import (
     CONFIG_PROJECT_LIST,
     CONFIG_PROJECT_PATCH,
 )
-from teleclaude.config.effective_view import effective_sections, without_masked_values
+from teleclaude.config._environment import CompanyCredentialsError, InvalidEnvironmentReferenceError
+from teleclaude.config.effective_view import InvalidEffectiveValue, effective_sections, without_masked_values
 from teleclaude.config.machine import config
 from teleclaude.config.person_voice import configure_person_discord_voice_bot
 from teleclaude.config.project_subject_init import adopt_project_subject, create_project_subject
@@ -321,7 +322,11 @@ def _handle_get(kind: str, subject_kind: ConfigSubjectKind, args: list[str], req
     read_only = dict(view.read_only)
     if subject_kind is ConfigSubjectKind.PERSON and instance is not None:
         read_only["roles"] = person_roles(instance)
-    sections = effective_sections(view)
+    try:
+        sections = effective_sections(view)
+    except (InvalidEffectiveValue, InvalidEnvironmentReferenceError, CompanyCredentialsError) as error:
+        print(_INVALID_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
+        raise SystemExit(1) from error
     merged: dict[str, object] = {**sections, **read_only}  # guard: loose-dict - heterogeneous rendered config view
     rendered = _select_subject_paths(merged, kind, list(paths)) if paths else merged
     _render({**rendered, "revision": view.revision, "request_id": request_id}, output_format)

@@ -7,12 +7,13 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from types import UnionType
-from typing import Any, Literal, Union, get_args, get_origin
+from typing import Any, Final, Literal, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
 from teleclaude.closed_model import field_is_sensitive
 from teleclaude.config._environment import environment_reference_at_path, resolve_whole_reference, whole_reference_name
+from teleclaude.config.effective_view import typed_value
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.tiers import (
     Tier,
@@ -21,6 +22,8 @@ from teleclaude.config.tiers import (
     renders_in_tui,
 )
 from teleclaude.config.validation import required_field_names
+
+_UNSET_VALUE: Final = ""
 
 
 @dataclass(frozen=True)
@@ -77,7 +80,12 @@ def resolve_env_placeholders(
         if isinstance(value, str) and variable is not None:
             field.env_var = variable
             field.environment = EnvironmentProvenance(variable, environment_path)
-            field.value = resolve_whole_reference(value, environment) or ""
+            resolved = resolve_whole_reference(value, environment)
+            field.value = (
+                _UNSET_VALUE
+                if resolved is None
+                else typed_value(resolved, field.field_type, tuple(field.key.split(".")))
+            )
 
 
 def bind_environment_provenance(
