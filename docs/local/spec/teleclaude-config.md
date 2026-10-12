@@ -81,8 +81,8 @@ A machine-config section declares its **scope**: `local`, the default, or
 `master`. A master-scoped section is meaningful only on the computer where
 `computer.is_master` holds. On every other computer the configuration reader
 yields it with `enabled` false, and every surface reads that one declaration:
-the published machine schema and `telec config wizard` do not offer the section
-on a non-master, its required fields are not judged there, `telec config
+`telec config wizard` does not offer the section on a non-master, its required
+fields are not judged there, `telec config
 computer get` and the readiness report name it as master-scoped and not
 applicable, and the fleet's view of which adapters a computer runs derives from
 the same effective flag. Scope changes what a non-master consumes, never what
@@ -94,6 +94,13 @@ beneath it reads as false, whatever the document sets there. A consumer
 branches on the section's effective `enabled` and reads the section's fields on
 the enabled branch; the disabled branch is an outcome the consumer states in its
 own terms.
+
+`tts.enabled` is not the `tts` section's switch. It is the boot value of the
+runtime host-playback toggle
+(`local/projects/teleclaude/spec/feature/config/runtime-tts-toggle`), so nothing
+beneath `tts` derives from it: each TTS service, which also voices Discord rooms
+(`local/projects/teleclaude/spec/feature/integration/discord-personal-voice-conversation`),
+is governed by its own `enabled`, and each TTS event by its own.
 
 The person-facing providers — `telegram`, `whatsapp` and `email` — are
 master-scoped. `discord` is local: its token also serves the computer-owned
