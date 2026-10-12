@@ -34,9 +34,7 @@ viewing a file read-only, and reactivating the todo; a delivered todo and its
 files offer expanding and collapsing and viewing a file read-only. The workflow
 holds the same rule for every action addressed to a todo's durable identity: it
 refuses an action the todo's state does not allow and names the way forward
-(`local/projects/teleclaude/spec/feature/workflow/todo-management`). A row whose todo changed
-state after the view drew it therefore reports that refusal and acts on no
-other todo.
+(`local/projects/teleclaude/spec/feature/workflow/todo-management`).
 
 <!-- planned:relay-computer-addressed-requests -->
 
@@ -59,12 +57,9 @@ the claim, terminates the operation _successfully_ and carries the refusal in
 the operation's result. So does every other lifecycle operation that declines
 the work it was handed.
 
-The view follows every operation it submits to its terminal state. A deliberately
-published work refusal reaches the operator at error severity with its work
-explanation, whether the operation declined successfully or ended in failure.
-Technical faults and observation failures retain their diagnostics and recorded
-outcomes under the work-feedback boundary
-(`local/projects/teleclaude/spec/feature/presentation/work-feedback`).
+The view follows every operation it submits to its terminal state; what the
+operator is shown of that outcome is decided by
+`local/projects/teleclaude/spec/feature/presentation/work-feedback`.
 
 **The view decides nothing about the lifecycle.** A keypress is a request to
 the workflow, never a verdict. Whether a todo may be prepared or start work, and
@@ -76,7 +71,7 @@ read back as state, per `sdlc/principle/architecture-boundary-purity`.
 
 ### Use cases
 
-#### UC-PLA-1: Start-work targets the cursor's project and reports its declared work refusal
+#### UC-PLA-1: Start-work targets the cursor's project
 
 ```gherkin
 Given a human operator at the TUI sees two projects with todos that share a slug
@@ -84,8 +79,6 @@ And the todo outside the cursor's project is soft-removed
 And the cursor sits on the live todo under its own project header
 When the operator starts work on the cursor's row
 Then the lifecycle operation is submitted against the cursor's project
-When an operation the view submitted terminates with a deliberately published work refusal
-Then the operator is notified at error severity with that work explanation
 ```
 
 #### UC-PLA-3: Opening a trashed todo's artifact shows that removed todo's own content, read-only
@@ -142,14 +135,13 @@ Then the viewer shows the live todo's content
 And saving an edit there changes only the live todo's artifact
 ```
 
-#### UC-PLA-7: An action from a row whose todo has since been removed is refused, never retargeted
+#### UC-PLA-7: An action from a row whose todo has since been removed is never retargeted
 
 ```gherkin
 Given a human operator at the TUI sees a live todo's row in the Preparation view
 And after the view drew it, that todo was removed and a new live todo took its slug
 When the operator starts an action on the todo from that row before the view refreshes
-Then the action is refused and the new todo is left unchanged
-And the operator is notified at error severity with a refusal that names the removed state and reactivation as the way forward
+Then the new todo is left unchanged
 ```
 
 #### UC-PLA-8: A todo created where nothing names a project belongs to the project the TUI was started from
@@ -162,13 +154,12 @@ Then the new item is created in the project the TUI was started from
 And no item is created in any other project
 ```
 
-#### UC-PLA-9: Start-work on a todo that is not ready reports the workflow's refusal
+#### UC-PLA-9: Start-work on a todo that is not ready is submitted without judging readiness
 
 ```gherkin
 Given a human operator at the TUI has the cursor on a live todo that has not reached prepared
 When the operator starts work on it
 Then the view submits the work operation without judging readiness itself
-And the operator is notified at error severity with the refusal the workflow reported
 ```
 
 #### UC-PLA-10: Creating a todo from the TUI asks for its kind
