@@ -26,10 +26,11 @@ adds, renames, or drops is shown as it now is.
 An operator adds a project from the local computer's header in either view by
 naming a folder. The new-project action asks for nothing else: the project's
 name comes from the folder it adopts. The TUI hands the folder to its daemon,
-which adopts it and pushes the new list to every connected TUI; the TUI never
+which adopts it and pushes the new list to every connected TUI
+(`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`); the TUI never
 sets a project up itself and never runs a command-line tool to do so. While the
-daemon works the TUI stays responsive, and when adoption fails the operator
-sees the daemon's reason.
+daemon works the TUI stays responsive; what the operator is shown when adoption
+fails is decided by `local/projects/teleclaude/spec/feature/presentation/work-feedback`.
 
 ## Canonical fields
 
@@ -72,17 +73,9 @@ Given an operator selects the local computer's header in the Sessions or Prepara
 When the operator opens the new-project action and names a folder
 Then the action asks for no name and no description
 And the operator sees the project in both views under the name its folder gives it
-And the daemon did not restart
 ```
 
 #### UC-TUI-PL4: A failed add tells the operator why
-
-```gherkin
-Given an operator names a folder in the new-project action
-When the daemon refuses or fails to adopt it
-Then the operator sees the daemon's reason in the TUI
-And no new project appears in either view
-```
 
 #### UC-TUI-PL5: Another computer's header offers no new-project action
 
