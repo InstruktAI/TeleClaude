@@ -33,24 +33,6 @@ TeleClaudeNext repository.
 
 - **Owns:** live-session acceptance and input execution, supervised agent processes, runtime status, and session lifecycle transitions. For scheduled jobs, it also owns the shared outcome/checkpoint handoff and current-record persistence for agent procedures and script results, including agent-report correlation to the currently open run. Each job's procedure or script owns the meaning of its optional checkpoint payload; agent_runtime stores and returns that payload without interpreting it.
 
-<!-- planned-change:master-conversation-entry -->
-
-- **Owns (endpoints and conversation entry):** the core's endpoint registry —
-  each person's assistant and each help desk enabled on the master — and the one
-  resolver from an entry identifier to an endpoint's working folder; reaching the
-  person's session at the resolved endpoint, continued, revived or created with
-  the endpoint stamped beside its origin metadata; the mesh master's durable
-  conversation bindings for adapters whose messages reach every computer; the
-  rule that a conversation goes to its session, a registered person without one
-  to their own assistant, and every miss to the neutral reply; and the
-  help-desk escalation relay
-  (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`,
-  `local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`).
-  Adapters carry identifiers, and per-computer adapters look up sessions by
-  origin metadata; they hold no routing rules.
-
-<!-- change:master-conversation-entry -->
-
 - **Owns (endpoints and conversation entry):** the endpoint registry, resolved
   conversation placement, retained bindings and conversational ownership on the
   unique master. Adapters carry provider input, entry identifiers and verified
@@ -58,8 +40,6 @@ TeleClaudeNext repository.
   `local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`.
   The help-desk escalation relay remains owned by
   `local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`.
-
-<!-- /planned-change:master-conversation-entry -->
 
 - **Published contract — hosted desks:** the desks this computer hosts, each
   with its kind, slug and entry identifier. A desk home whose declaration fails

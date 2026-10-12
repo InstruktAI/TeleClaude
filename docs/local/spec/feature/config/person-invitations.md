@@ -1,7 +1,7 @@
 ---
-description: Person invitations issue and rotate on the master and return links to its canonical public conversation endpoints wherever the administrator invokes the command.
-delivered_by:
-  - master-conversation-entry
+description: Person invitations issue and rotate on the master and return links to
+  its canonical public conversation endpoints wherever the administrator invokes the
+  command.
 ---
 
 # Person Invitations — Spec

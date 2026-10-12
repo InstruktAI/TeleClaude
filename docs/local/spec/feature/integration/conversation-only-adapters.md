@@ -12,8 +12,6 @@ an external person to a personal-assistant session, accept supported input
 modalities, and return that session's response to the same origin surface.
 Discord alone carries the operator console and admin controls.
 
-<!-- planned:master-conversation-entry -->
-
 ### Receiver ownership
 
 Telegram's inbound receiver starts only on a computer whose configuration
@@ -30,8 +28,6 @@ are transport facts; they do not confer conversation ownership
 (`general/principle/trust-and-guardrails`).
 
 Person-addressed outbound delivery follows its existing messaging contract.
-
-<!-- /planned:master-conversation-entry -->
 
 ## Canonical fields
 
@@ -64,8 +60,6 @@ Then those controls are available only through Discord
 And the non-Discord adapters remain conversation input→response surfaces
 ```
 
-<!-- planned:master-conversation-entry -->
-
 #### UC-COA4: A peer does not activate a Telegram receiver
 
 ```gherkin
@@ -85,8 +79,6 @@ Then its operator surfaces remain available
 And conversational ownership does not transfer its forums to another computer
 ```
 
-<!-- /planned:master-conversation-entry -->
-
 ### Cross-context references
 
 - **integration** owns provider-boundary input normalization and response
@@ -104,12 +96,8 @@ And conversational ownership does not transfer its forums to another computer
 - Person-addressed outbound notifications use the messaging-provider contract,
   not the conversation adapter, and are unchanged by this capability.
 
-<!-- planned:master-conversation-entry -->
-
 - While more than one live computer declares itself master, each of them starts
   its Telegram receiver, but conversation entry has no owner
   (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
   Telegram updates those receivers claim during the conflict go unanswered and
   are not replayed.
-
-<!-- /planned:master-conversation-entry -->

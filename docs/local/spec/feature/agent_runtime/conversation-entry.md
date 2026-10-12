@@ -1,9 +1,5 @@
 ---
-description: How a conversation on any UI adapter reaches an endpoint — a person's
-  assistant or a home's help desk — through one entry identifier and one core
-  resolver on the master, which hosts every desk; entering continues the person's
-  own session there, and every miss gets the same neutral reply.
-visibility: public
+description: Master-owned conversational entry for Telegram, WhatsApp, Discord DMs and designated assistant channels, with durable endpoint bindings and silent non-master receivers.
 ---
 
 # Conversation Entry — Spec
@@ -27,24 +23,26 @@ who has the member or admin role at the platform or in a company
 (`local/projects/teleclaude/design/architecture/scoped-roles`), and every
 registered person has their own assistant.
 
-**Hosting.** Help desks run only on the mesh master. The master hosts every
-desk whose home is present on it with the desk enabled; no other computer hosts
-a desk, so a desk declared in a repository checked out on several computers has
-exactly one host. Every session at a desk runs on the master.
+**Hosting.** The mesh's unique master owns conversational entry for Telegram,
+WhatsApp, Discord direct messages and designated Team assistant channels. It
+resolves, creates, revives and binds those conversations and hosts their
+assistant or desk runtime. Ownership follows the configured master through the
+existing fleet resolver, independently of how many computers receive a provider
+event (`general/principle/trust-and-guardrails`).
 
-**Conversations.** A conversation is one adapter's private channel with one
-person — a chat, a direct-message channel, a phone number. Every session carries
-its adapter's origin metadata, and the endpoint it was created at is stamped
-beside it. On an adapter whose conversations belong to one computer's bot, that
-computer decides alone and finds the person's sessions by origin metadata; a
-desk identifier there reaches a desk only when that computer is the master. On
-adapters whose inbound messages reach every computer, the mesh master alone
-decides: it keeps each conversation's binding in a durable record of its own,
-and every other computer handles none of those messages. An adapter carries the person's input,
-recognised entry identifier, channel identity and any verified conversation-channel
-designation to the core. Recognition and transport belong to the adapter;
-endpoint resolution and conversation routing belong to the core
+**Conversations.** A conversation is one adapter's designated channel with one
+person. The session records its adapter identity and resolved endpoint. The
+master retains the channel's durable binding. An adapter carries the person's
+input, recognised entry identifier, channel identity and verified designation
+to the core; the core owns endpoint resolution and routing
 (`sdlc/principle/design-fundamentals`).
+
+A non-master receiver ignores conversational input before session lookup or
+creation, invitation redemption, identity binding, media retrieval, transcription
+or user-visible feedback. It forwards no such input to another computer.
+Discord computer-owned forums and their controls follow their resource owner
+under `local/projects/teleclaude/spec/feature/integration/discord-interaction-ownership`.
+Receiving an event is transport observation, not ownership of its effects.
 
 **Discord.** Discord is a members' surface and never a customer's, so it carries
 no desk entry: a desk identifier sent on Discord is a miss, and a Discord
@@ -76,8 +74,7 @@ starting, active or escalated. A session that carries no endpoint is never
 treated as a desk session to return to.
 
 **Misses.** An identifier that resolves to nothing — no such home, a desk that
-is not enabled or whose home is not on the master, a desk identifier sent to a
-computer's own bot when that computer is not the master, a desk identifier sent
+is not enabled or whose home is not on the master, a desk identifier sent
 on Discord, anything that is not exactly an identifier — and a message without
 an identifier from a person who is not registered and whose conversation has no
 session, get one **neutral reply** and no session. The reply is the same text in
@@ -85,14 +82,19 @@ every one of those cases, names no organisation, and is sent at most once per
 conversation within a cooldown window. An unrecognised invitation token keeps
 the reply member onboarding gives it.
 
-**Unavailability.** When the master cannot start or revive the session in
-time, nothing changes: the person gets the neutral reply and the conversation
-keeps its binding. While the master is unavailable, nothing routes on adapters
-whose messages reach every computer: every inbound message gets a
-temporarily-unavailable reply, at most once per conversation within a cooldown
-window, from the lowest-named live computer that runs the adapter, no session
-starts or revives, and conversations resume from the master's durable record
-when it returns.
+**Unavailability.** The existing fleet resolver must establish one live master
+running the relevant adapter before conversational input is accepted. When that
+owner is unavailable or conflicting master declarations prevent selection, no
+computer starts a conversation, consumes an invitation or answers on behalf of
+another owner. The failure is observable to operators. A non-master sends no
+fallback conversation reply. The master that cannot start or revive an otherwise
+valid endpoint uses the neutral reply and preserves the existing binding.
+
+**Invitations.** Person invitations execute on the master even when requested
+from another computer. Their issuance and public endpoint links are owned by
+`local/projects/teleclaude/spec/feature/config/person-invitations`.
+Old secondary bot addresses are outside conversational entry; their retained
+session history is not an alternative live binding.
 
 **Reflection.** Where help-desk sessions and escalations are reflected in
 Discord, and who sees them, is owned by
@@ -112,8 +114,8 @@ Discord, and who sees them, is owned by
     Discord carries no desk identifier.
 - **Session metadata** — the adapter's origin metadata and the endpoint the
   session was created at.
-- **Conversation binding** — on adapters that reach every computer, the mesh
-  master's durable record of each conversation's endpoint and session.
+- **Conversation binding** — the master's durable record of each designated
+  adapter conversation's endpoint and session.
 - **Resolution result** — the endpoint's working folder.
 - **Help-desk entry links** — rendered on the master by
   `telec config company help-desk-links <slug>` and
@@ -144,12 +146,9 @@ retain their own lifecycle. Unresolved associations remain observable without
 claiming a participant or endpoint
 (`general/principle/trust-and-guardrails`).
 
-Conversation ownership follows the existing adapter/computer routing contract.
-On a shared designated channel whose input reaches every computer, the mesh
-master alone resolves, hosts and binds the continuing conversation. Other
-receivers perform no independent session creation or input delivery. Master
-unavailability follows this spec's existing single-replier contract. A channel
-belonging to one computer's bot retains that computer's ownership.
+Every designated conversational channel follows the master ownership and
+unavailability rules above. Provider fan-out and the presence of a bot credential
+on a peer do not establish a second conversation owner.
 
 Adoption selects the eligible retained conversation on the authoritative host.
 Recorded conversations on other computers retain their history and provenance;
@@ -292,13 +291,13 @@ And the person's later messages, files and voice reach that session
 And no other computer creates a session or sends a reply
 ```
 
-#### UC-CE11: A desk identifier on a computer's own bot reaches a desk only on the master
+#### UC-CE11: A secondary bot is not a conversation entry point
 
 ```gherkin
-Given a computer that is not the master and runs its own bot
-When a person opens that bot with an enabled desk's identifier
-Then they receive the neutral reply
-And no session is created on any computer
+Given a computer is not the mesh master
+When it receives a private message or start-link token through a secondary bot
+Then it creates or revives no conversation and redeems no invitation
+And it sends no conversational reply and forwards no conversation input
 ```
 
 #### UC-CE12: The links command renders a desk's entry links on the master
@@ -372,23 +371,20 @@ Scenario Outline: invitation on <adapter>
     | WhatsApp |
 ```
 
-#### UC-CE19: Where every computer receives, only the master routes and one computer replies when it cannot
+#### UC-CE19: Conversations require one available master
 
 ```gherkin
-Scenario Outline: <case>
-  Given several computers receive every WhatsApp message
-  And <situation>
-  When the person sends a message that carries no identifier
-  Then <outcome>
+Scenario Outline: master ownership is <condition>
+  Given the fleet resolver observes <condition>
+  When a designated channel receives conversation input
+  Then no computer independently accepts the conversation or redeems an invitation
+  And non-master receivers send no fallback reply
+  And the unavailable ownership is observable to operators
 
   Examples:
-    | case                  | situation                                                                  | outcome                                                                                                                              |
-    | returning customer    | the mesh master's record binds the conversation to a closed desk session    | that session is revived on the master and no computer sends the neutral reply                                                       |
-    | stranger              | the mesh master holds no binding for the conversation                      | the mesh master alone sends the neutral reply                                                                                        |
-    | master down, entry    | the mesh master is unavailable and the person enters with an identifier     | no binding is made, no session starts, and the lowest-named live computer running the adapter sends the temporarily-unavailable reply |
-    | master down, bound    | the mesh master is unavailable and the conversation is already bound       | no session receives the message and the lowest-named live computer running the adapter sends the temporarily-unavailable reply      |
-    | master back           | the mesh master returns after being unavailable                            | the conversation's next message reaches the session its durable binding names                                                       |
-    | master too slow       | the master cannot start or revive the session in time                      | the person receives the neutral reply and the conversation keeps its binding                                                         |
+    | condition                            |
+    | no available master for the adapter   |
+    | conflicting master declarations      |
 ```
 
 #### UC-CE20: A member's bare entry gesture returns them to their assistant
@@ -544,12 +540,31 @@ And every other receiver performs no independent session creation or input deliv
 And retained records on other computers do not become competing channel bindings
 ```
 
+#### UC-CE35: Telegram ownership is independent of fan-out
+
+```gherkin
+Given a registered person's Telegram conversation reaches the canonical bot on the master
+When that person sends a supported conversation input
+Then the master resolves its durable conversation binding
+And subsequent input continues or revives that TeleClaude session
+And receipt by only one provider connection does not change ownership
+```
+
+#### UC-CE36: A recorded peer session cannot bypass ownership
+
+```gherkin
+Given a non-master retains a historical conversation session for an adapter identity
+When it receives further conversational input for that identity
+Then the retained record grants no authority to deliver the input or answer
+And its history and extraction provenance remain retained
+```
+
 ### Cross-context references
 
-- **integration** — each adapter recognises and carries the identifier; a
-  per-computer adapter keeps its session lookup by origin metadata, and the
-  others hand every message to the mesh master; none resolves anything itself
-  (`local/projects/teleclaude/spec/domain/integration`).
+- **integration** — adapters carry identifiers, channel designations and input
+  through the owning core boundary. Provider receiver lifecycle belongs to
+  `local/projects/teleclaude/spec/feature/integration/conversation-only-adapters`;
+  adapters resolve no endpoint themselves.
 - **config** — whether a home runs a desk (`help_desk.enabled`,
   `local/projects/teleclaude/spec/teleclaude-config`) and whether the master
   holds the home.

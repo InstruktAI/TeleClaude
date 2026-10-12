@@ -19,18 +19,9 @@ invitation and delivery outcome recorded truthfully.
 
 - The person to invite and the intended invitation delivery are established.
 
-<!-- planned-change:master-conversation-entry -->
-
-- The person is registered with an email address on the computer issuing the
-  invitation, and the intended public providers are configured there.
-
-<!-- change:master-conversation-entry -->
-
 - The person is registered with an email address on the unique master, and its
   intended public conversation providers are configured there. Person setup on
   that computer uses the computer-addressed configuration surface.
-
-<!-- /planned-change:master-conversation-entry -->
 
 - Configuration authority follows
   `local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`.
@@ -46,22 +37,11 @@ memberships and project assignments follow their configuration owners.
 
 ### 2. Issue the invitation
 
-<!-- planned-change:master-conversation-entry -->
-
-Run `telec config person invite <person>` on the computer whose public bot
-endpoints should appear in the invitation. The command validates the person,
-issues a token through the invitation store and resolves the configured provider
-links. A resend uses the same command and rotates the person's invitation.
-
-<!-- change:master-conversation-entry -->
-
 Run `telec config person invite <person>` from any computer. The command resolves
 its master owner automatically; the complete invitation operation and its
 result follow `local/projects/teleclaude/spec/feature/config/person-invitations`.
 Use the returned canonical links. A resend uses the same command and rotates the
 invitation through that owner.
-
-<!-- /planned-change:master-conversation-entry -->
 
 The command attempts email delivery when available and returns generated links
 when email is unavailable or fails. Use `--json` for the structured links and
