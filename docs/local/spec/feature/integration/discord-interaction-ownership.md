@@ -43,6 +43,25 @@ never cross the fleet transport.
 - Rolling deployment is safe: a peer that predates a component generation cannot
   claim that generation's interactions.
 
+<!-- planned:master-conversation-entry -->
+
+### Shared application publication and command handling
+
+The unique master publishes the shared application's guild command tree.
+Other computers register their local handlers without publishing competing
+provider definitions. Publication ownership is separate from execution:
+computer-owned project interactions still execute on their own computer
+(`general/principle/trust-and-guardrails`).
+
+Slash-command ownership is established from the addressed surface before any
+acknowledgement, including a negative or ephemeral response. A project forum's
+owner handles its supported commands; shared conversation surfaces belong to
+the master. A receiver that cannot establish ownership stays silent. Command
+support and caller authorization retain their existing contracts. In particular,
+source ownership is checked before `/cancel` answers that no active session exists.
+
+<!-- /planned:master-conversation-entry -->
+
 ### Use cases
 
 #### UC-DIO1: A project launcher executes on its owning computer
@@ -86,7 +105,51 @@ Then it attaches handling to that exact launcher message
 And it does not install a process-wide handler for matching components elsewhere
 ```
 
+<!-- planned:master-conversation-entry -->
+
+#### UC-DIO5: One computer publishes the shared command tree
+
+```gherkin
+Given multiple computers connect as one Discord application in a guild
+And the fleet establishes one master
+When their adapters start or reconnect
+Then only the master publishes the application's guild command tree
+And each computer can register the handlers for its own resources
+```
+
+#### UC-DIO6: A foreign cancel receiver stays silent
+
+```gherkin
+Given a human invokes a supported cancel command in one computer's project forum
+And another connected computer has no matching local session
+When both receive the interaction
+Then only the forum owner acknowledges and handles the command
+And the foreign receiver sends no no-session response
+```
+
+#### UC-DIO7: Shared-surface command feedback has one owner
+
+```gherkin
+Given a slash-command interaction occurs on a shared conversational surface
+And the fleet establishes one master
+When multiple computers receive that interaction
+Then the master alone applies the command's supported behavior and emits its response
+And every non-master remains silent even when its local lookup has no session
+```
+
+<!-- /planned:master-conversation-entry -->
+
 ## Known caveats
+
+<!-- planned-change:master-conversation-entry -->
+
+- Slash-command publication runs on every connected daemon. The cancel handler
+  can acknowledge a foreign interaction with a no-session response before
+  establishing source ownership.
+
+<!-- change:master-conversation-entry -->
+
+<!-- /planned-change:master-conversation-entry -->
 
 - Discord may deliver one application interaction to multiple concurrent gateway
   sessions. The ownership boundary therefore lives in the source forum's category,

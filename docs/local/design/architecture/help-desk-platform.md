@@ -71,6 +71,8 @@ The help desk is a folder of the home that owns it, never a repository of its ow
 
 #### Entry and routing
 
+<!-- planned-change:master-conversation-entry -->
+
 Entry is owned by the core, in `local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`. In outline:
 
 - An **endpoint** is a routable destination: a person's assistant in their home, or a company's or project's help desk. Its **entry identifier** is the member's invitation token or the desk's `hd-<kind>-<slug>`. One core resolver turns an identifier into the endpoint's working folder.
@@ -92,6 +94,25 @@ flowchart TD
     WHO -->|Yes| PA[Own assistant]
     WHO -->|No| NEUTRAL
 ```
+
+<!-- change:master-conversation-entry -->
+
+The core owns endpoints, designated-channel routing, master ownership and
+unavailability under
+`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`.
+Integration carries provider input and channel designation into that boundary;
+identity supplies the registered person or visitor binding. Their composition
+reaches the retained session and its endpoint without an adapter selecting a
+working folder or becoming an alternative conversation owner
+(`sdlc/principle/design-fundamentals`).
+
+Desk entry links are rendered through the help-desk link commands on their
+master owner. Person invitations use
+`local/projects/teleclaude/spec/feature/config/person-invitations`; both point
+at the canonical public providers. The operational transition is
+`local/projects/teleclaude/procedure/conversation-entry-cutover`.
+
+<!-- /planned-change:master-conversation-entry -->
 
 #### Session placement
 
@@ -334,7 +355,15 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 8. **Extraction has source-owned progress**: the memory worker reads the unprocessed stretch of the session-owned mirror and completes progress after applying its changes. Progress and failure recovery follow `local/projects/teleclaude/spec/feature/memory/memory-curation`.
 
+<!-- planned-change:master-conversation-entry -->
+
 9. **Entry names an endpoint exactly**: an identifier either resolves to an endpoint the receiving computer can serve, or the person gets the neutral reply. No identifier is interpreted as a nearby one, and no miss reveals which organisations exist.
+
+<!-- change:master-conversation-entry -->
+
+9. **Entry is runtime-owned**: integration supplies entry facts to the endpoint resolver under `local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`.
+
+<!-- /planned-change:master-conversation-entry -->
 
 10. **Closing spares resources, never the conversation**: confirmed idle compaction closes the runtime, and mirror readiness releases memory extraction. Returning input continues the same conversation (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-continuity`).
 
@@ -346,9 +375,25 @@ Each desk's `AGENTS.master.md` is its home's own source, seeded from its kind's 
 
 14. **Escalation is a help-desk act aimed at the desk's scope**: `telec sessions escalate` is accepted only from a session in a help desk; it opens a thread in that desk's escalations forum and notifies everyone in the desk's scope.
 
+<!-- planned-change:master-conversation-entry -->
+
 15. **One binding per conversation**: a conversation reaches its session — on a per-computer adapter found by origin metadata, elsewhere through the mesh master's durable record; an entry makes the person's own session at its endpoint the conversation's session, continuing or reviving it, so the latest entry wins.
 
+<!-- change:master-conversation-entry -->
+
+15. **Bindings compose with identity**: the runtime owns the conversation binding while identity owns the person or visitor it serves (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
+
+<!-- /planned-change:master-conversation-entry -->
+
+<!-- planned-change:master-conversation-entry -->
+
 16. **One authority per conversation, one host per desk**: a conversation on a per-computer bot is decided by that computer; where every computer receives inbound messages, the mesh master alone decides. Every desk runs on the master. Without the master nothing routes on the shared adapters; the only answer is the temporarily-unavailable reply.
+
+<!-- change:master-conversation-entry -->
+
+16. **Hosting follows entry ownership**: conversation ownership, desk hosting and unavailable-owner behavior come from `local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`.
+
+<!-- /planned-change:master-conversation-entry -->
 
 17. **Each desk is seen only by its scope**: a desk's sessions and escalations appear only in that desk's own Discord category, visible only to the desk's scope through per-person overwrites; no shared surface carries them.
 
@@ -473,6 +518,8 @@ sequenceDiagram
 
 ## Failure Modes
 
+<!-- planned-change:master-conversation-entry -->
+
 | Scenario                                                                                    | Behavior                                                      | Recovery                                                                                                 |
 | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key                | Personal memories not injected; the agent handles without context                                        |
@@ -484,6 +531,21 @@ sequenceDiagram
 | Compaction does not finish                                                                  | The session stays open, not compacted                         | A later pass retries; the session is never closed uncompacted                                            |
 | Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)                      | Most recent memories prioritized                                                                         |
 | Conversation mirror coverage is not ready                                                   | Extraction remains pending with its source coverage           | Successful mirror refresh or reconciliation releases the captured extraction once coverage is ready      |
+
+<!-- change:master-conversation-entry -->
+
+| Scenario                                                                                    | Behavior                                                      | Recovery                                                                                                 |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Identity resolution fails for known user                                                    | Falls back to `customer` role, no identity_key                | Personal memories not injected; the agent handles without context                                        |
+| Unregistered sender with no session and no identifier, unknown identifier, or disabled desk | One neutral reply, no session                                 | The visitor uses a working desk link                                                                     |
+| The entered desk's home is not on the master                                                | Neutral reply, no session                                     | Make the desk's home present on the master                                                               |
+| A restricted session names no enabled desk                                                  | Session creation is refused                                   | The core resolves an endpoint first or sends the neutral reply                                           |
+| A memory agent fails or stops                                                               | Completed writes remain; extraction progress stays unfinished | A later handling reads the pending mirror stretch and compares with current records before completing it |
+| Compaction does not finish                                                                  | The session stays open, not compacted                         | A later pass retries; the session is never closed uncompacted                                            |
+| Memory injection exceeds context window                                                     | Truncated by recency (existing behavior)                      | Most recent memories prioritized                                                                         |
+| Conversation mirror coverage is not ready                                                   | Extraction remains pending with its source coverage           | Successful mirror refresh or reconciliation releases the captured extraction once coverage is ready      |
+
+<!-- /planned-change:master-conversation-entry -->
 
 **Escalation failure modes:**
 

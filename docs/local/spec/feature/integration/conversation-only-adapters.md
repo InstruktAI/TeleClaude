@@ -12,6 +12,28 @@ an external person to a personal-assistant session, accept supported input
 modalities, and return that session's response to the same origin surface.
 Discord alone carries the operator console and admin controls.
 
+<!-- planned:master-conversation-entry -->
+
+### Receiver ownership
+
+Telegram's inbound receiver starts only on the unique master selected by the
+existing fleet ownership contract, including when a peer has Telegram enabled
+in its local configuration. A non-master does not claim Telegram updates or
+perform conversation-entry side effects. WhatsApp receivers and Discord's
+conversational surfaces submit input only under the owner decision in
+`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`.
+
+Discord's computer-owned operator surfaces remain active on their owning
+computers. Provider receipt, connection readiness and possession of credentials
+are transport facts; they do not confer conversation ownership
+(`general/principle/trust-and-guardrails`).
+
+Person-addressed outbound delivery follows its existing messaging contract.
+Retiring a bot requires resolving any active senders that still depend on that
+identity through `local/projects/teleclaude/procedure/conversation-entry-cutover`.
+
+<!-- /planned:master-conversation-entry -->
+
 ## Canonical fields
 
 ### Use cases
@@ -42,6 +64,29 @@ When an operator uses adapter-specific administrative controls
 Then those controls are available only through Discord
 And the non-Discord adapters remain conversation input→response surfaces
 ```
+
+<!-- planned:master-conversation-entry -->
+
+#### UC-COA4: A peer does not activate a Telegram receiver
+
+```gherkin
+Given a computer is not the unique master
+And its local Telegram configuration is enabled
+When adapters start or reconnect
+Then no Telegram inbound receiver is activated on that computer
+And no conversation input is consumed by that computer
+```
+
+#### UC-COA5: Discord operator surfaces retain their owner
+
+```gherkin
+Given a non-master computer owns project forums in Discord
+When its adapter starts under master-owned conversation entry
+Then its operator surfaces remain available
+And conversational ownership does not transfer its forums to another computer
+```
+
+<!-- /planned:master-conversation-entry -->
 
 ### Cross-context references
 

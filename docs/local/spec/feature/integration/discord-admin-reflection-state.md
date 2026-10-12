@@ -115,6 +115,19 @@ through one database-backed reflection-state repository. Adapter code does not
 write provider IDs to `config.yml` and does not introduce one-off stores for
 special cases.
 
+<!-- planned:master-conversation-entry -->
+
+### Shared provider mutations
+
+The unique master is the only writer of shared guild containers and their
+permission overwrites, including repair of existing Team channels. Peers resolve
+and verify existing shared provider objects without mutating them. This ownership
+applies independently of whether a provider object already exists
+(`general/principle/trust-and-guardrails`). Per-computer project resources retain
+their own computer's reconciliation owner.
+
+<!-- /planned:master-conversation-entry -->
+
 ### Use cases
 
 #### UC-DARS-1: Discord provider IDs are persisted only as database reflection state
@@ -406,6 +419,20 @@ Then the message reaches no session and no customer
 And the customer's conversation continues as before
 ```
 
+<!-- planned:master-conversation-entry -->
+
+#### UC-DARS-27: Shared permission repair has one writer
+
+```gherkin
+Given a shared Team channel exists and needs permission reconciliation
+And multiple connected computers resolve that channel
+When reconciliation runs
+Then only the unique master writes the shared permission overwrites
+And peers may read and retain their local mappings without changing the provider object
+```
+
+<!-- /planned:master-conversation-entry -->
+
 ### Cross-context references
 
 - The `integration` context owns the Discord provider boundary and the
@@ -436,6 +463,15 @@ And the customer's conversation continues as before
   `inconclusive`, `skipped`, `failed-closed`.
 
 ## Known caveats
+
+<!-- planned-change:master-conversation-entry -->
+
+- Non-master Team discovery can invoke permission repair for an existing channel;
+  the creation-only ownership flag does not gate that write.
+
+<!-- change:master-conversation-entry -->
+
+<!-- /planned-change:master-conversation-entry -->
 
 - Discord permissions can prevent cleanup of duplicate or stale provider
   artifacts. In that case the reconciler records the failure, preserves durable
