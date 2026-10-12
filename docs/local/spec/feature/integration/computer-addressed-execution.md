@@ -45,10 +45,11 @@ is offline, unknown, or running a version that cannot carry the request produces
 an error that names the computer and the reason, and nothing runs anywhere.
 
 **Outside the rule.** A request about the caller's own session or about the
-daemon itself names no computer. Commands that act on the invoking checkout
-without the daemon — code, formatting, local configuration — run where they are
-invoked. Connection projection and bootstrap reads serve the daemon's
-consolidated view and name no computer.
+daemon itself names no computer. Commands that act on the invoking checkout —
+code, formatting, and registering the folder they are invoked in as a project —
+run where they are invoked. A configuration command acts on state a computer
+owns and accepts the computer like every other command. Connection projection
+and bootstrap reads serve the daemon's consolidated view and name no computer.
 
 ## Canonical fields
 
