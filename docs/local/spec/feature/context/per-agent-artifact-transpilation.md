@@ -1,5 +1,5 @@
 ---
-description: 'Source artifacts (agents/commands/skills) are transformed per target agent — Claude/Codex get YAML frontmatter; Gemini commands and agents get TOML; Gemini skills get Markdown/YAML — with parameter preamble injection and Codex-specific frontmatter escaping.'
+description: 'Source artifacts render into the shared command corpus and per-agent masters and tier-local skills, with YAML frontmatter and parameter preambles emitted directly by their transforms.'
 visibility: 'public'
 ---
 
@@ -24,8 +24,7 @@ reach a corpus document through the loader message TeleClaude composes at
 dispatch, not through a runtime artifact. The transpiler rewrites command
 parameter metadata from frontmatter into an HTML-comment preamble in the
 corpus document so the loading agent sees the shape it understands, and it
-keeps target-specific transforms such as the Codex single-quote escape on the
-master.
+serializes YAML frontmatter through the shared emitter.
 
 ## Canonical fields
 
@@ -42,10 +41,10 @@ Scenario: UC-PAT3 TeleClaude command source is written to the shared command cor
 ```
 
 ```
-Scenario: Codex output escapes single-quoted scalars in frontmatter
+Scenario: Codex output preserves quoted frontmatter values
   Given a source artifact whose frontmatter contains a value with single quotes
   When the transpiler processes the artifact for the Codex target
-  Then the Codex frontmatter escape rewrites single-quote scalars
+  Then the shared YAML emitter preserves the frontmatter values
   And the emitted frontmatter is parsable by the upstream Codex YAML parser
   And the artifact is written under the Codex per-agent output directory
 ```
@@ -103,6 +102,19 @@ Scenario: Per-target skill emission is limited to tier-local packages
   And every other skill-rendering rule applies identically to both packages
 ```
 
+#### UC-PAT5: Generated artifacts require no external Markdown formatter
+
+Authored-source formatting is owned by `sdlc/policy/linting-requirements`.
+
+```gherkin
+Given committed artifact sources whose required reads can be resolved
+And no external Markdown formatter is available
+When the transpiler renders those sources for publication
+Then the generated artifacts are emitted directly by their target transforms
+And no formatter process or formatter download is started
+And frontmatter serialization, parameter preambles and self-contained entrypoint checks remain effective
+```
+
 ### Cross-context references
 
 - **agent_runtime** — Each downstream agent CLI consumes two TeleClaude
@@ -115,11 +127,6 @@ Scenario: Per-target skill emission is limited to tier-local packages
 
 ## Known caveats
 
-- The Codex single-quote escape is a transitive workaround for the upstream
-  bug filed as `openai/codex#11495`. If Codex fixes its parser upstream,
-  this normalization step becomes vestigial — but removing it requires
-  verifying the fixed parser is in the Codex version every operator has
-  installed.
 - Skill folders are the runtime identity, and every source `SKILL.md` must declare
   the same `name` plus a non-empty `description`. An upstream heading taxonomy is
   always preserved. Target transforms emit the package under its folder name.

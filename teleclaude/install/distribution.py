@@ -428,18 +428,6 @@ def dump_frontmatter(post: Post) -> str:
     return str(frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER))
 
 
-def _format_markdown(paths: list[str]) -> None:
-    """Format markdown outputs using the repo prettier setup."""
-    md_files = [p for p in paths if p.endswith(".md") and os.path.exists(p)]
-    if not md_files:
-        return
-    prettier = shutil.which("prettier")
-    if prettier:
-        subprocess.run([prettier, "--write", *md_files], check=False)
-        return
-    subprocess.run(["npx", "--yes", "prettier", "--write", *md_files], check=False)
-
-
 class SnippetIndexEntry(TypedDict, total=False):
     """Snippet entry loaded from docs index.yaml."""
 
@@ -2455,7 +2443,6 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
         os.makedirs(dist_dir)
 
         agent_master_contents: list[str] = []
-        markdown_outputs: list[str] = []
         artifact_items: dict[str, list[str]] = {spec.name: [] for spec in artifact_specs}
         for source in sources:
             if os.path.isfile(source["master"]) and source["label"] != _LOCAL_AGENTS_SOURCE_LABEL:
@@ -2496,7 +2483,6 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             command_output_path = commands_dist_dir / Path(relative_path).with_suffix(commands_config["ext"])
             command_output_path.parent.mkdir(parents=True, exist_ok=True)
             command_output_path.write_text(dump_frontmatter(prepared).rstrip(_NEWLINE) + _NEWLINE, encoding=UTF8)
-            markdown_outputs.append(str(command_output_path))
 
         built_agents: list[str] = []
         for agent_name, config in agents_config.items():
@@ -2555,12 +2541,10 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                     os.makedirs(master_dest_dir, exist_ok=True)
                 with open(master_dest_path, "w", encoding="utf-8") as f:
                     f.write(combined_agents_content)
-                markdown_outputs.append(master_dest_path)
                 if emit_repo_codex and agent_name == "codex":
                     repo_override_path = os.path.join(project_root, "AGENTS.override.md")
                     with open(repo_override_path, "w", encoding="utf-8") as f:
                         f.write(combined_agents_content)
-                    markdown_outputs.append(repo_override_path)
                     checkout_local_outputs.append(Path(repo_override_path))
 
             for spec in artifact_specs:
@@ -2629,8 +2613,6 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                                 output_path = os.path.join(dest_dir, output_filename)
                             with open(output_path, "w", encoding="utf-8") as out_f:
                                 out_f.write(transformed_content.rstrip("\n") + "\n")
-                            if output_filename.endswith(".md"):
-                                markdown_outputs.append(output_path)
                             # Copy supporting files/dirs from skill source (everything except SKILL.md)
                             if spec.kind == "skill" and output_dir:
                                 skill_source_dir = os.path.dirname(item_path)
@@ -2655,8 +2637,6 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                             raise RuntimeError(message) from e
 
             built_agents.append(agent_name)
-
-        _format_markdown(markdown_outputs)
 
         print("\nTranspilation complete.")
 
