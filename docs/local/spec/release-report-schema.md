@@ -70,7 +70,7 @@ inspector contract.
     },
     "assessment_complete": {
       "type": "boolean",
-      "description": "Whether the inspector completed the assessment of the supplied change interval."
+      "description": "Whether the inspector completed the version and breaking/upgrade assessment for the supplied change interval."
     }
   }
 }
@@ -83,6 +83,11 @@ belong to the inspector (`general/principle/intelligence-boundaries`). An
 incomplete assessment explains its gap in the rationale and supplies no
 publication authority. A successful fallback report remains associated with the
 prior provider's failure evidence; the report does not replace that evidence.
+
+Completeness follows the required version and breaking/upgrade judgment defined
+by the release-inspector prompt. Truthful summary highlights may be selective;
+their exhaustiveness does not independently determine this flag. Unresolved
+decision-relevant implications or actual evidence/execution limits require false.
 
 The report's release-notes text is the automatic release summary. The complete
 linked commit list is generated independently by the shared release-notes path.

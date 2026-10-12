@@ -97,8 +97,9 @@ SEGMENT_PROMPT = (
 DELETED_TEXT_PROMPT = "Deleted text content is present in its indexed diff segments. Binary changes remain fully listed by path and status."
 SCHEMA_PROMPT_PREFIX = "Return JSON matching "
 SCHEMA_PROMPT_SUFFIX = (
-    ". Set assessment_complete only when the interval's grouped material-impact assessment completed; "
-    "an established version tier alone does not complete unresolved consumer-impact coverage."
+    ". Set assessment_complete only when the version and breaking/upgrade assessment completed. "
+    "Continue focused reads for accessible decision-relevant unknowns; selective summary coverage is not a completion gate. "
+    "Required unresolved implications or actual evidence/execution limits require an incomplete report."
 )
 PUBLIC_CONTRACT_HEADING = "# Public contract comparison"
 INDEX_HEADING = "# Evidence index"

@@ -43,19 +43,24 @@ part of the assessment.
 
 ### Assessment completeness
 
-Version classification and material-impact coverage are separate judgments.
-A verified public-surface change establishes minor under this pre-major policy;
-unread internal changes cannot require a higher tier. That fact alone does not
-complete the interval's material assessment or consumer summary.
+Completeness concerns the version decision and its breaking/upgrade implications,
+grounded through relevant changed source and consumer reads. A verified public
+change establishes minor under this pre-major policy, but the minor ceiling and
+unchanged manifest declarations do not establish absence of breaking behavior or
+upgrade requirements. Resolve decision-relevant semantic uncertainty rather than
+inferring compatibility from declarations alone.
 
-Account for the complete changed-path inventory through coherent behavior groups.
-Use focused changed source and relevant consumers to establish each group's
-material effects, grouping repeated resources only when their shared behavior is
-demonstrated. Unchanged manifest declarations do not prove unchanged public
-semantics. Reading every diff segment or every internal line is not required.
-Unknown material implications or truncation affecting a conclusion remain gaps
-and require an incomplete report. Candidate verification and complete commit
-notes do not replace this semantic coverage.
+The consumer summary contains truthful, selective highlights. It need not cover
+every behavior group, and summary exhaustiveness is not a publication gate.
+The complete linked commit list is generated separately. Reading every diff
+segment or internal line is not required; use the complete inventory to navigate
+focused evidence relevant to the required assessment.
+
+Continue focused reads while decision-relevant unknowns remain accessible.
+Bounded retrieval does not mean an arbitrary single assessment pass. Return an
+incomplete report when required version or breaking/upgrade implications remain
+unresolved, or actual evidence/execution limits prevent completion. Disclose those
+specific gaps; candidate proofs and commit notes retain their separate purposes.
 
 ### Prompt
 
@@ -67,21 +72,26 @@ source public-contract manifests. Inspect the actual
 changed behavior and its relevant consumers through focused, bounded repository
 reads. Commit subjects are navigation hints; determine impact from evidence.
 
-Apply the classification policy in this specification. Explain the material
-contract changes and write a concise consumer-facing release summary. The
+Apply the classification policy in this specification. Ground the version decision
+and breaking/upgrade implications through relevant changed producer and consumer
+reads. Explain the verified contract changes and write truthful, selective
+consumer-facing highlights. The
 complete commit list is generated separately from the captured Git interval. Group repeated
 resource changes by demonstrated shared behavior and examine the code that consumes them.
 
-Separate the established version tier from coverage of material consumer impact.
-Account for every changed area through coherent behavior groups and focused
-source/consumer evidence; do not treat the diff-segment count as a reading checklist.
-An unchanged declaration can still have changed semantics. Avoid dumping the
+An established minor tier or unchanged declaration does not prove absence of
+breaking behavior or upgrade requirements. Resolve uncertainty relevant to those
+required conclusions; do not require exhaustive summaries of every behavior group
+or treat the diff-segment count as a reading checklist. Avoid dumping the
 whole evidence index or source tree. Narrow or resume truncated reads before
 using their unseen contents to support a conclusion.
 
-State whether this grouped material assessment completed. If material effects
-remain unresolved or necessary evidence could not be inspected,
-report an incomplete assessment and explain the gap. Return the structured report
+Continue focused reads while decision-relevant unknowns remain accessible; bounded
+retrieval is not an arbitrary single-pass stopping point. State whether the version
+and breaking/upgrade assessment completed. Report incomplete only when required
+implications remain unresolved or actual evidence/execution limits prevent completion,
+and explain the specific gap. Summary exhaustiveness does not determine completion.
+Return the structured report
 defined by the release-report schema.
 ```
 
