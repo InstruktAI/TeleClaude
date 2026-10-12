@@ -92,13 +92,6 @@ And a relayed message carrying no principal is rejected at that computer's trans
 
 #### UC-XCA5: An unreachable computer fails the command for that computer
 
-```
-Given a person runs a command naming a session on another computer
-When that computer does not answer
-Then the command fails, and the failure names that computer
-And the caller's computer does not decide the command in its place
-```
-
 #### UC-XCA6: A platform administrator's reach on other computers is unchanged
 
 ```
