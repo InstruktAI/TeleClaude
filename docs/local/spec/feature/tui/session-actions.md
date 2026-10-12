@@ -25,8 +25,6 @@ no handoff request. The view reports request acceptance as started, never as
 completed, and the handoff itself remains owned by
 `local/projects/teleclaude/spec/feature/agent_runtime/agent-handoff`.
 
-<!-- planned:tui-sessions-view-remote-row-assumptions -->
-
 Every row belongs to one computer, and the actions taken from it address that
 computer alone. `R` on a project header restarts the sessions of that project on
 the header's computer; a project at the same path on another computer is another
@@ -34,8 +32,6 @@ row. Starting a session by path on another computer sends the entered path
 without judging it on the computer running the TUI: the computer that runs the
 session decides and answers
 (`local/projects/teleclaude/spec/feature/integration/computer-addressed-execution`).
-
-<!-- /planned:tui-sessions-view-remote-row-assumptions -->
 
 Close and revive are distinct destinations that must not fire from one gesture.
 The fast-close chord routes to the session-close funnel; the headless-revive
@@ -126,8 +122,6 @@ And every attached or sticky pane reapplies the successor's agent palette
 And the operator does not need to reselect the row or reload the TUI
 ```
 
-<!-- planned:tui-sessions-view-remote-row-assumptions -->
-
 #### UC-SACT-8: Pressing `R` on a project header restarts that computer's sessions of the project
 
 ```gherkin
@@ -147,5 +141,3 @@ When the operator enters a path and confirms
 Then the view sends the path as entered to that computer without checking it on the computer running the TUI
 But for the computer running the TUI, a path that is not a directory there is refused in the form and no request is sent
 ```
-
-<!-- /planned:tui-sessions-view-remote-row-assumptions -->
