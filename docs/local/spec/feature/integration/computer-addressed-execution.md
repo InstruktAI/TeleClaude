@@ -38,7 +38,8 @@ caller the way every operation outcome does
 
 **A computer that cannot take the request says so.** An addressed computer that
 is offline, unknown, or running a version that cannot carry the request produces
-an error that names the computer and the reason, and nothing runs anywhere.
+an error that names the computer and the reason — an offline computer as one that
+did not answer — and nothing runs anywhere.
 
 **Outside the rule.** A request about the caller's own session or about the
 daemon itself names no computer. Commands that act on the invoking checkout —
@@ -90,14 +91,14 @@ And the agent reads the operation's record on the computer the receipt names
 Scenario Outline: The caller learns which computer could not take the request and why
   Given a caller addresses a command to a computer that is <condition>
   When the command is submitted
-  Then the caller receives an error naming that computer and that it is <condition>
+  Then the caller receives an error naming that computer and stating that it <reported>
   And nothing is executed on any computer
 
   Examples:
-    | condition                                      |
-    | offline                                        |
-    | unknown to this computer                       |
-    | running a version that cannot take the request |
+    | condition                                      | reported                       |
+    | offline                                        | did not answer                 |
+    | unknown to this computer                       | is unknown                     |
+    | running a version that cannot take the request | runs a build that cannot take it |
 ```
 
 #### UC-CAE6: A command addressed to this computer, or to none, runs here
