@@ -138,14 +138,12 @@ Then the command is refused with the not-permitted failure naming `customer` and
 And the machine configuration and the person registry are unchanged and unread
 ```
 
-#### UC-CCS7: A command naming another computer is decided by that computer
+#### UC-CCS7: A command naming another computer that acts on nothing held there is refused locally
 
 ```
 Given a person holding no platform role and the admin role in one company
-When the person runs `telec sessions tail` naming a session on another computer
-Then the command is sent to that computer carrying no role
-And that computer admits or refuses it by the person's role for the project the session runs in there
-But a command naming another computer that acts on nothing held there, such as listing its projects, is refused naming `customer` and sends no request
+When the person runs a command naming another computer that acts on nothing held there, such as listing its projects
+Then the command is refused naming `customer` and sends no request
 ```
 
 #### UC-CCS8: A trusted-directory name reaches its selected project
@@ -467,13 +465,12 @@ Then the new session records the agent's session as its initiator
 And the new session carries the principal the agent's session resolves to
 ```
 
-#### UC-CCA4: A command naming another computer is cleared locally and the peer receives the resolved caller
+#### UC-CCA4: A command naming another computer is cleared locally
 
 ```
 Given an agent inside a session whose system role admits `telec sessions list`
 When it lists the sessions of another computer
 Then the command is cleared in the agent's own process before any request is sent
-And the other computer answers for the caller the agent's session resolves to
 ```
 
 #### UC-CCA5: The TUI refuses an out-of-band action without asking the daemon
