@@ -333,6 +333,19 @@ Then that home's documentation and catalog entries are absent from the deployed 
 And every other home's deployed output is unchanged
 ```
 
+#### UC-SPO35: One publication shares one successfully read publisher inventory
+
+Per-operation state ownership follows `sdlc/policy/code-quality-practices`.
+
+```gherkin
+Given a publication has successfully read the available registered-project inventory
+When its later composition phases need that inventory
+Then they reuse the same ordered project roots selected by that read's tier and availability checks
+And the inventory is discarded when publication completes or fails
+And the next publication reads current registry facts
+And a missing registry or a failed read is not retained for reuse
+```
+
 ### Cross-context references
 
 - **workflow / integration** — own todo delivery state and delivery-time

@@ -41,6 +41,7 @@ from teleclaude.install.home_distribution import (
     inflate_home_entrypoints,
 )
 from teleclaude.paths import COMPANIES_ROOT, PEOPLE_DIR, TELECLAUDE_HOME, is_platform_home
+from teleclaude.project_manifest import project_registry_resolution
 from teleclaude.quality.gate import LintGateResult, run_home_guardrail_gate
 from teleclaude.snippet_validation import project_slug_resolution
 
@@ -197,7 +198,12 @@ def publish_homes(
         raise ValueError(_HOME_SCOPE_REQUIRED)
     try:
         canonical_root = git_common_root(project_root).resolve()
-        with docs_lease(DocsLockOperation.SYNCHRONIZATION), project_slug_resolution(), domain_resolution():
+        with (
+            docs_lease(DocsLockOperation.SYNCHRONIZATION),
+            project_registry_resolution(),
+            project_slug_resolution(),
+            domain_resolution(),
+        ):
             tip = _main_tip(canonical_root) if source is PublicationSource.MAIN_TIP else _installed_commit(project_root)
             if tip is None:
                 if source is PublicationSource.MAIN_TIP:

@@ -8,6 +8,9 @@ The manifest stores just the list of absolute project root paths. All metadata
 from __future__ import annotations
 
 import stat
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from enum import StrEnum
 from pathlib import Path
 from typing import NamedTuple
@@ -26,6 +29,7 @@ _DECLARATION_SHAPE_ERROR = "Registered folder's tier declaration must be a YAML 
 _DECLARATION_KIND_ERROR = "Registered folder's tier declaration has an invalid kind: {path}"
 _PROJECTS_FIELD = "projects"
 _KIND_FIELD = "kind"
+_REGISTRY_SCOPE = "project_registry_read_scope"
 
 
 class ConfigKind(StrEnum):
@@ -51,6 +55,22 @@ class RegisteredProjectEntry(NamedTuple):
     is_present: bool
     kind: ConfigKind
     former_name: str | None = None
+
+
+_PROJECT_ROOTS: ContextVar[dict[Path, tuple[Path, ...]] | None] = ContextVar(_REGISTRY_SCOPE, default=None)
+
+
+@contextmanager
+def project_registry_resolution() -> Iterator[None]:
+    """Reuse successful project-root inventories within one synchronous operation."""
+    if _PROJECT_ROOTS.get() is not None:
+        yield
+        return
+    token = _PROJECT_ROOTS.set({})
+    try:
+        yield
+    finally:
+        _PROJECT_ROOTS.reset(token)
 
 
 def _normalize_manifest_path(path: Path) -> Path:
@@ -136,8 +156,16 @@ def _declared_kind(root: Path) -> ConfigKind:
 
 
 def load_roots(path: Path = MANIFEST_PATH) -> list[Path]:
-    """Load registered project roots whose directories still exist on disk."""
-    return [entry.path for entry in load_registered_roots(path) if entry.is_present]
+    """Load available project roots, reusing the active operation's inventory."""
+    inventories = _PROJECT_ROOTS.get()
+    manifest_path = _normalize_manifest_path(path) if inventories is not None else path
+    if inventories is not None and manifest_path in inventories:
+        return list(inventories[manifest_path])
+    manifest_exists = inventories is not None and _manifest_path_exists(manifest_path)
+    roots = [entry.path for entry in load_registered_roots(manifest_path) if entry.is_present]
+    if inventories is not None and manifest_exists:
+        inventories[manifest_path] = tuple(roots)
+    return roots
 
 
 def load_registered_roots(path: Path = MANIFEST_PATH, *, strict: bool = False) -> list[RegisteredProjectRoot]:
