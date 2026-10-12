@@ -26,7 +26,9 @@ consumes the installer and update contracts through their existing boundaries.
   evidence, and a mainline metadata reconciliation when main has advanced.
 - A manually supplied version produces an operator-decided candidate through
   the same candidate and proof boundary, with deterministic commit notes and no
-  inspector invocation. A first manual publication establishes a baseline.
+  version assessment. The same isolated provider order attempts an optional
+  summary; unavailable summaries retain their outcomes and leave deterministic
+  notes publishable. A first manual publication establishes a baseline.
 
 ## Invariants
 
@@ -77,8 +79,10 @@ using the repository-owned template. Its range and version inputs are validated
 before invocation. Untrusted commit text and inspector summaries remain data,
 and do not enter an executable command string (`sdlc/policy/security-awareness`).
 The candidate owner combines automatic summaries with the generated commit notes
-and freezes the resulting section before lint and proof. Manual candidates use
-the generated notes alone. Version selection stays with the recorded decision;
+and freezes the resulting section before lint and proof. Manual candidates add a
+strict, complete summary when available, independently of their version decision.
+Summary selection and provider outcomes are retained separately from automatic
+assessment metadata. Version selection stays with the recorded decision;
 note generation does not reclassify the change.
 
 Owned release records pass through a forward migration boundary before domain
@@ -94,7 +98,8 @@ Capture freezes one source/baseline attempt and bounded evidence artifact before
 inspection. A fresh GitHub-hosted Ubuntu job runs Codex; a separate fresh Ubuntu
 job runs Claude only when Codex has no eligible complete report with confirmed
 credential settlement. Selection consumes exact artifact identities, digests and
-inventories. Manual versions and unchanged source bypass provider jobs. Missing,
+inventories. Explicit versions request a distinct summary report; unchanged
+automatic source bypasses provider jobs. Missing,
 failed, skipped or cancelled primary job evidence remains an observed failure,
 with no invented client exit or settled-auth claim. Claude does not depend on a
 cleanup signal from another machine.
@@ -150,7 +155,7 @@ Claude's native `StructuredOutput` capability produces report data rather than
 file access. Tool requests/results correlate uniquely, in order, within session
 and parent context. Only an explicitly SDK-rejected formatter may precede a valid
 retry without accepting its malformed payload. Successful formatter input
-strictly validates as `LaneReport`; the complete terminal report matches its
+strictly validates against the task's report schema; the complete terminal report matches its
 confirmed formatter. Missing, duplicate, orphaned or ambiguous correlation
 refuses. Read/Grep/Glob paths remain checked even on rejected tool attempts.
 
@@ -211,8 +216,11 @@ and seeding use the same serialized stream.
 
 A manual dispatch with an explicit valid newer version captures S and the
 completed baseline when present. It records the operator decision and generates
-the commit notes through the same git-cliff configuration, without invoking
-providers or adding an AI summary. Candidate preparation, lint, hosted runtime acceptance, full installer
+the commit notes through the same git-cliff configuration. Frozen evidence feeds
+the native Codex-first/Claude-fallback jobs with a summary-only task, including
+captured reachable history when no baseline exists. A valid settled summary is
+added before the complete notes; unsuccessful summary attempts remain visible
+and the deterministic notes remain usable. Candidate preparation, lint, hosted runtime acceptance, full installer
 proof and publication consume the same identities as the automatic flow. A
 manual dry-run finishes at proof. Automatic publication activation does not
 supply or withhold authority for an explicit-version publication.
@@ -241,7 +249,8 @@ its own lint, hosted runtime acceptance and installer proof.
   rather than silently filtering its commit denominator.
 - Provider failure remains visible after successful fallback. An unexpected fault
   remains repair work; fallback does not erase it. With no complete valid report,
-  the attempt cannot prepare an ordinary release candidate.
+  an automatic attempt cannot prepare a release candidate. An explicit-version
+  attempt can proceed with deterministic notes and its recorded version decision.
 - The provider controller's covered exception handlers retain classified
   phase/operation diagnostics and Codex adapter progress under the Inspector contract in
   `local/projects/teleclaude/spec/feature/release/publication`.

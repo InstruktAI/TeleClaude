@@ -214,7 +214,7 @@ jobs:
 
           '
       - name: Build bounded shared evidence
-        if: ${{ steps.capture.outputs.capture_status == 'ready' && steps.capture.outputs.decision_mode == 'automatic' }}
+        if: ${{ steps.capture.outputs.capture_status == 'ready' }}
         run: uv run python -m tools.ci.build_release_prompt --attempt "$RUNNER_TEMP/release-capture/attempt.json" --output-directory "$RUNNER_TEMP/release-capture/evidence"
       - name: Read checked-in publication activation
         id: activation
@@ -244,7 +244,7 @@ jobs:
     name: Native Codex assessment on a fresh runner
     needs:
       - capture-release
-    if: ${{ needs.capture-release.result == 'success' && needs.capture-release.outputs.capture_status == 'ready' && needs.capture-release.outputs.decision_mode == 'automatic' }}
+    if: ${{ needs.capture-release.result == 'success' && needs.capture-release.outputs.capture_status == 'ready' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -374,7 +374,7 @@ jobs:
       - capture-release
       - inspect-codex
     if:
-      ${{ always() && !cancelled() && needs.capture-release.result == 'success' && needs.capture-release.outputs.capture_status == 'ready' && needs.capture-release.outputs.decision_mode == 'automatic' && (needs.inspect-codex.result != 'success'
+      ${{ always() && !cancelled() && needs.capture-release.result == 'success' && needs.capture-release.outputs.capture_status == 'ready' && (needs.inspect-codex.result != 'success'
       || needs.inspect-codex.outputs.codex_success != 'true' || needs.inspect-codex.outputs.artifact_id == '' || needs.inspect-codex.outputs.artifact_digest == '' || needs.inspect-codex.outputs.artifact_manifest_sha256 == '') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -417,7 +417,7 @@ jobs:
         continue-on-error: true
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: uv run python -m tools.ci.release_stage run-claude --evidence "$RUNNER_TEMP/release-capture-download/files/evidence" --output-directory "$RUNNER_TEMP/release-claude/claude"
+        run: uv run python -m tools.ci.release_stage run-claude --attempt "$RUNNER_TEMP/release-capture-download/files/attempt.json" --evidence "$RUNNER_TEMP/release-capture-download/files/evidence" --output-directory "$RUNNER_TEMP/release-claude/claude"
       - name: Ensure typed Claude outcome exists when attempted
         if: ${{ always() }}
         run: uv run python -m tools.ci.release_stage ensure-provider-attempt --provider claude --path "$RUNNER_TEMP/release-claude/claude/claude-attempt.json"
@@ -643,6 +643,7 @@ jobs:
         run: >-
           uv run python -m tools.ci.commit_release_artifacts
           --attempt "$RUNNER_TEMP/release-analysis-download/files/attempt.json"
+          --manual-summary "$RUNNER_TEMP/release-analysis-download/files/selection/selection.json"
           --version "${{ steps.candidate_version.outputs.version }}"
           --commit-notes-file "$RUNNER_TEMP/release-commit-notes.md"
           --output-directory "$RUNNER_TEMP/release-candidate"

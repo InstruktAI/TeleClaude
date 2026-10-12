@@ -19,7 +19,7 @@ from teleclaude.git import Repo
 from tools.ci.compute_next_version import ReleaseBump, next_tag
 from tools.ci.export_manifests import export_manifests
 from tools.ci.gha import append_output, repo_root
-from tools.ci.read_inspector_report import InspectorSelection
+from tools.ci.read_inspector_report import InspectorSelection, ManualSummarySelection
 from tools.release.attempt import (
     AttemptIdentity,
     CandidateIdentity,
@@ -92,6 +92,8 @@ _REQUESTED_VERSION_KEY = "requested_version"
 _VERSION_KEY = "version"
 _DECISION_DIGEST_KEY = "decision_sha256"
 _SELECTED_PROVIDER_KEY = "selected_provider"
+_MANUAL_SUMMARY_KEY = "manual_summary"
+_MANUAL_SUMMARY_ARGUMENT = "--manual-summary"
 _ASSESSMENT_DIGEST_KEY = "assessment_sha256"
 _LEGACY_ASSESSMENT_DIGEST_KEY = "legacy_assessment_sha256"
 _COMMIT_NOTES_DIGEST_KEY = "commit_notes_sha256"
@@ -121,8 +123,12 @@ def prepare_candidate(
     version_tag: str,
     output_directory: Path,
     commit_notes_file: Path,
+    *,
+    manual_summary: ManualSummarySelection | None = None,
 ) -> CandidateIdentity:
     """Create candidate R as one child of captured S and bind its transfer bundle."""
+    if manual_summary is not None and attempt.decision_mode is not ReleaseDecisionMode.MANUAL:
+        raise ValueError(_REPORT_INVALID)
     root = repository_root.resolve()
     if output_directory.exists() or output_directory.is_symlink():
         raise ValueError(_OUTPUT_DIRECTORY_INVALID)
@@ -174,6 +180,8 @@ def prepare_candidate(
         )
         (root / _CHANGELOG).write_bytes(changelog_before)
     summary = selection.selected_report.release_notes if selection is not None else None
+    if manual_summary is not None and manual_summary.selected_summary is not None:
+        summary = manual_summary.selected_summary.release_notes
     section = assemble_section(
         version,
         datetime.now(UTC).date().isoformat(),
@@ -200,6 +208,7 @@ def prepare_candidate(
         _SELECTED_PROVIDER_KEY: selected_provider,
         _ASSESSMENT_DIGEST_KEY: assessment_digest,
         _LEGACY_ASSESSMENT_DIGEST_KEY: None,
+        _MANUAL_SUMMARY_KEY: manual_summary.model_dump(mode=_JSON_MODE) if manual_summary is not None else None,
         _CODEX_ATTEMPT_KEY: (selection.codex_attempt.model_dump(mode=_JSON_MODE) if selection is not None else None),
         _CLAUDE_ATTEMPT_KEY: (
             selection.claude_attempt.model_dump(mode=_JSON_MODE)
@@ -342,6 +351,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=_DESCRIPTION)
     parser.add_argument("--attempt", type=Path, required=True)
     parser.add_argument("--selection", type=Path)
+    parser.add_argument(_MANUAL_SUMMARY_ARGUMENT, type=Path)
     parser.add_argument("--version", required=True, help="Selected next semantic tag, such as v1.2.3.")
     parser.add_argument("--output-directory", type=Path, required=True)
     parser.add_argument("--commit-notes-file", type=Path, required=True)
@@ -356,6 +366,11 @@ def main(argv: list[str] | None = None) -> int:
             args.version,
             args.output_directory,
             args.commit_notes_file,
+            manual_summary=(
+                ManualSummarySelection.model_validate_json(args.manual_summary.read_bytes())
+                if args.manual_summary
+                else None
+            ),
         )
     except (OSError, ValidationError, ValueError, RuntimeError) as error:
         print(str(error), file=sys.stderr)

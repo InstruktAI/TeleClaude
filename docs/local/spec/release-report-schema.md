@@ -13,8 +13,8 @@ and provider availability are recorded by the invoking workflow separately.
 
 Automatically assessed publication consumes a valid, complete report under
 `local/projects/teleclaude/spec/feature/release/publication`. Its explicit-version
-path records the supplied decision independently and does not invoke this
-inspector contract.
+path records the supplied decision independently and uses the distinct optional
+summary schema below.
 
 ## Canonical fields
 
@@ -91,7 +91,17 @@ decision-relevant implications or actual evidence/execution limits require false
 
 The report's release-notes text is the automatic release summary. The complete
 linked commit list is generated independently by the shared release-notes path.
-Explicit-version releases produce that deterministic list without an AI summary.
+Explicit-version releases can add the distinct optional summary described below.
+
+### Explicit-version summary
+
+The manual summary task returns exactly `release_notes` (a non-empty string)
+and `summary_complete` (a boolean). It supplies no classification, rationale,
+contract-change decision or automatic assessment flag. A complete summary is
+eligible only with a successful matching provider attempt and, for Codex,
+confirmed durable auth settlement. Invalid or incomplete summaries remain
+ineligible; their outcomes are retained while deterministic notes remain usable.
+The supplied version and its decision digest stay independent of this report.
 
 ## See Also
 

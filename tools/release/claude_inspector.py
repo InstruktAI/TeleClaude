@@ -8,7 +8,7 @@ from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from tools.release.attempt import ProviderAttempt, ProviderFailure, ProviderName, ProviderOutcome
+from tools.release.attempt import ProviderAttempt, ProviderFailure, ProviderName, ProviderOutcome, ReleaseDecisionMode
 from tools.release.evidence_contract import PROMPT_FILENAME
 from tools.release.isolated_inspection import (
     InspectorBoundaryError,
@@ -20,7 +20,7 @@ from tools.release.isolated_inspection import (
     run_isolated_process,
     validate_principal_file,
 )
-from tools.release.report_models import LaneReport
+from tools.release.report_models import InspectorReport, report_complete, report_model
 
 _CLAUDE_AUTH_TOKEN_ENVIRONMENT = "CLAUDE_CODE_OAUTH_TOKEN"
 _CLAUDE_CONFIG_ENVIRONMENT = "CLAUDE_CONFIG_DIR"
@@ -224,7 +224,7 @@ class ClaudeInspectionResult(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
     attempt: ProviderAttempt
-    report: LaneReport | None
+    report: InspectorReport | None
     report_path: str | None
 
 
@@ -291,6 +291,7 @@ def run_claude_inspection(
     timeout_seconds: int,
     *,
     runtime_path: str = _SYSTEM_PATH,
+    decision_mode: ReleaseDecisionMode = ReleaseDecisionMode.AUTOMATIC,
 ) -> ClaudeInspectionResult:
     """Run one restricted Claude assessment with no shell, MCP, source write, or host credentials."""
     if not oauth_token:
@@ -309,7 +310,9 @@ def run_claude_inspection(
         return _failed_result(ProviderFailure.EXECUTION, None, False, _DIAGNOSTIC_SETUP_FAILURE, result_directory)
     prompt = (evidence_directory / PROMPT_FILENAME).read_bytes()
     schema = json.dumps(
-        LaneReport.model_json_schema(), ensure_ascii=_JSON_ENSURE_ASCII, separators=_JSON_SCHEMA_SEPARATOR
+        report_model(decision_mode).model_json_schema(),
+        ensure_ascii=_JSON_ENSURE_ASCII,
+        separators=_JSON_SCHEMA_SEPARATOR,
     )
     environment = {
         _HOME_ENVIRONMENT: str(principal_home),
@@ -367,6 +370,7 @@ def run_claude_inspection(
         oauth_token,
         result_directory,
         (evidence_directory, controller_directory, claude_config_directory, principal_home, principal_temp),
+        decision_mode,
     )
 
 
@@ -394,6 +398,7 @@ def _interpret_result(
     oauth_token: str,
     result_directory: Path,
     private_paths: tuple[Path, ...],
+    decision_mode: ReleaseDecisionMode = ReleaseDecisionMode.AUTOMATIC,
 ) -> ClaudeInspectionResult:
     """Read a structured CLI envelope and validate only its declared report model."""
     event_log = _write_diagnostic(
@@ -411,7 +416,7 @@ def _interpret_result(
             ProviderFailure.AVAILABILITY, process.return_code, True, _DIAGNOSTIC_TIMEOUT, result_directory, diagnostic
         )
     try:
-        response = _parse_stream_result(process.stdout, private_paths[0])
+        response = _parse_stream_result(process.stdout, private_paths[0], decision_mode)
     except (ValidationError, _ClaudeStreamOutputError):
         if process.return_code != 0:
             diagnostic = _write_diagnostic(
@@ -469,14 +474,14 @@ def _interpret_result(
         if response.type == _WRAPPER_TYPE:
             if response.subtype != _STRUCTURED_SUCCESS or response.structured_output is None:
                 return _invalid_report(process, oauth_token, result_directory, private_paths)
-            report = LaneReport.model_validate(response.structured_output)
+            report = report_model(decision_mode).model_validate(response.structured_output)
         else:
-            report = LaneReport.model_validate_json(process.stdout)
+            report = report_model(decision_mode).model_validate_json(process.stdout)
     except ValidationError:
         return _invalid_report(process, oauth_token, result_directory, private_paths)
     report_bytes = report.model_dump_json().encode(_CONFIG_ENCODING)
     report_digest = hashlib.sha256(report_bytes).hexdigest()
-    if not report.assessment_complete:
+    if not report_complete(report):
         diagnostic = _write_diagnostic(
             result_directory,
             _CLAUDE_STDOUT_FILENAME,
@@ -524,12 +529,14 @@ class NativeToolRequest(BaseModel):
     parent_tool_use_id: str | None
 
 
-def _parse_stream_result(output: bytes, evidence_directory: Path) -> ClaudeCliEnvelope:
+def _parse_stream_result(
+    output: bytes, evidence_directory: Path, decision_mode: ReleaseDecisionMode = ReleaseDecisionMode.AUTOMATIC
+) -> ClaudeCliEnvelope:
     """Correlate native outcomes without forgiving unsafe requests or malformed accepted output."""
     results: list[ClaudeCliEnvelope] = []
     pending: dict[str, NativeToolRequest] = {}
     seen: set[str] = set()
-    confirmed: dict[tuple[str, str | None], LaneReport] = {}
+    confirmed: dict[tuple[str, str | None], InspectorReport] = {}
     for line in output.splitlines():
         if not line:
             continue
@@ -550,7 +557,7 @@ def _parse_stream_result(output: bytes, evidence_directory: Path) -> ClaudeCliEn
                     raise InspectorBoundaryError(_BROKEN_TOOL_CORRELATION)
                 # Every capability other than report formatting is judged at request time, even on failure.
                 if block.name != _STRUCTURED_OUTPUT_TOOL_NAME:
-                    _validate_tool_invocation(block, evidence_directory)
+                    _validate_tool_invocation(block, evidence_directory, decision_mode)
                 else:
                     confirmed.pop((event.session_id, event.parent_tool_use_id), None)
                 seen.add(block.id)
@@ -573,7 +580,7 @@ def _parse_stream_result(output: bytes, evidence_directory: Path) -> ClaudeCliEn
                 ):
                     raise InspectorBoundaryError(_BROKEN_TOOL_CORRELATION)
                 if request.invocation.name == _STRUCTURED_OUTPUT_TOOL_NAME and block.is_error is not True:
-                    report = LaneReport.model_validate(request.invocation.input)
+                    report = report_model(decision_mode).model_validate(request.invocation.input)
                     confirmed[(request.session_id, request.parent_tool_use_id)] = report
         if event.type == _WRAPPER_TYPE:
             if pending:
@@ -585,16 +592,20 @@ def _parse_stream_result(output: bytes, evidence_directory: Path) -> ClaudeCliEn
         raise InspectorBoundaryError(_BROKEN_TOOL_CORRELATION)
     result = results[0]
     if result.subtype == _STRUCTURED_SUCCESS and result.is_error is not True and result.structured_output is not None:
-        report = LaneReport.model_validate(result.structured_output)
+        report = report_model(decision_mode).model_validate(result.structured_output)
         if not result.session_id or confirmed.get((result.session_id, result.parent_tool_use_id)) != report:
             raise InspectorBoundaryError(_FORMATTER_REPORT_MISMATCH)
     return result
 
 
-def _validate_tool_invocation(invocation: ClaudeToolUse, evidence_directory: Path) -> None:
+def _validate_tool_invocation(
+    invocation: ClaudeToolUse,
+    evidence_directory: Path,
+    decision_mode: ReleaseDecisionMode = ReleaseDecisionMode.AUTOMATIC,
+) -> None:
     """Keep each logged tool request inside the prepared source tree and tool allowlist."""
     if invocation.name == _STRUCTURED_OUTPUT_TOOL_NAME:
-        LaneReport.model_validate(invocation.input)
+        report_model(decision_mode).model_validate(invocation.input)
         return
     if invocation.name not in _ALLOWED_TOOL_NAMES or invocation.input is None:
         raise InspectorBoundaryError(_UNEXPECTED_TOOL_EVENT)

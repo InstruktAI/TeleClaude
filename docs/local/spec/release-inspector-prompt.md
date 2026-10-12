@@ -95,6 +95,20 @@ Return the structured report
 defined by the release-report schema.
 ```
 
+### Explicit-version summary task
+
+For an explicit version, summarize the frozen source interval without selecting
+a version or claiming an automatic assessment. Use focused evidence reads to
+ground truthful, selective consumer highlights and disclose relevant upgrade
+implications in those highlights. Continue relevant reads rather than stopping
+at an arbitrary bounded pass; exhaustive group summaries are unnecessary.
+With no completed baseline, use captured reachable history and current source,
+without inventing a comparison release. The complete commit list is generated
+separately. Return only the manual summary schema, marking `summary_complete`
+false when the proposed highlights cannot be grounded or execution/evidence
+limits prevent completing them. A summary's absence does not change the supplied
+version or omit commits from the deterministic notes.
+
 ## See Also
 
 - docs/local/spec/release-report-schema.md

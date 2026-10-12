@@ -23,7 +23,7 @@ from teleclaude.git import Repo
 from tools.ci.capture_release_attempt import CaptureState, CaptureStatus
 from tools.ci.gha import append_output, repo_root, required_env
 from tools.ci.publish_release import publish_proved_candidate
-from tools.ci.read_inspector_report import InspectorSelection, select_inspector_report
+from tools.ci.read_inspector_report import InspectorSelection, select_inspector_report, select_manual_summary
 from tools.release.attempt import (
     ProofIdentity,
     ProviderAttempt,
@@ -158,6 +158,7 @@ class AdditionalStageCommand(StrEnum):
     """New stage selectors owned by the static CI dispatch boundary."""
 
     COLLECT_ANALYSIS = "collect-analysis"
+    RUN_CLAUDE = "run-claude"
 
 
 _COLLECT_COMMAND = AdditionalStageCommand.COLLECT_ANALYSIS
@@ -246,6 +247,7 @@ class ProviderOperation(StrEnum):
     WRITE_STATE = "write_state"
     INSPECT = "inspect"
     WRITE_RESULT = "write_result"
+    COLLECT_ARTIFACT = "collect_artifact"
     POST_INSPECTION_AUTH_READ = "post_inspection_auth_read"
     ENCRYPTED_SETTLEMENT = "encrypted_settlement"
 
@@ -482,6 +484,7 @@ def run_codex(state_directory: Path, report_output_directory: Path) -> bool:
             auth_before,
             _PROVIDER_TIMEOUT,
             runtime_path=bootstrap.runtime_path,
+            decision_mode=load_attempt_identity(state.attempt_path).decision_mode,
         )
         progress = InspectionProgress.RESULT_RETURNED
         operation = ProviderOperation.WRITE_RESULT
@@ -588,7 +591,7 @@ def confirm_codex_settled(result_directory: Path, state_directory: Path) -> bool
     return success
 
 
-def run_claude(evidence_directory: Path, output_directory: Path) -> bool:
+def run_claude(attempt_path: Path, evidence_directory: Path, output_directory: Path) -> bool:
     """Run one native restricted Claude fallback over the same immutable evidence."""
     output_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     phase = ProviderPhase.PREPARATION
@@ -619,6 +622,7 @@ def run_claude(evidence_directory: Path, output_directory: Path) -> bool:
             oauth_token,
             _PROVIDER_TIMEOUT,
             runtime_path=bootstrap.runtime_path,
+            decision_mode=load_attempt_identity(attempt_path).decision_mode,
         )
         operation = ProviderOperation.WRITE_RESULT
         _write_attempt(output_directory / _CLAUDE_ATTEMPT_FILENAME, result.attempt)
@@ -657,16 +661,33 @@ def collect_analysis(capture_directory: Path, output_directory: Path) -> None:
     shutil.copyfile(attempt_path, output_directory / _CAPTURE_ATTEMPT)
     if state.attempt != attempt:
         raise ValueError(_SETUP_FAILURE)
-    if attempt.decision_mode is not ReleaseDecisionMode.AUTOMATIC or state.status is CaptureStatus.NO_CHANGE:
+    if state.status is CaptureStatus.NO_CHANGE:
         return
     if not (capture_directory / _CAPTURE_EVIDENCE).is_dir():
         raise ValueError(_SETUP_FAILURE)
     for provider in ProviderName:
-        _collect_provider_outcome(provider, output_directory)
+        if attempt.decision_mode is ReleaseDecisionMode.MANUAL:
+            _collect_summary_outcome(provider, output_directory)
+        else:
+            _collect_provider_outcome(provider, output_directory)
     codex_root = output_directory / _CODEX_RESULT_DIRECTORY
     claude_root = output_directory / _CLAUDE_DIRECTORY
     codex_report = codex_root / _CODEX_REPORT_FILENAME
     claude_report = claude_root / _CLAUDE_REPORT_FILENAME
+    if attempt.decision_mode is ReleaseDecisionMode.MANUAL:
+        summary = select_manual_summary(
+            codex_root / _CODEX_ATTEMPT_FILENAME,
+            codex_report if codex_report.is_file() else None,
+            (claude_root / _CLAUDE_ATTEMPT_FILENAME) if (claude_root / _CLAUDE_ATTEMPT_FILENAME).is_file() else None,
+            claude_report if claude_report.is_file() else None,
+        )
+        selection_directory = output_directory / _SELECTION_DIRECTORY
+        selection_directory.mkdir(mode=0o700)
+        (selection_directory / _SELECTION_FILENAME).write_text(
+            summary.model_dump_json(indent=_JSON_INDENT) + _NEWLINE, encoding=_UTF8
+        )
+        append_output("selected_provider", summary.selected_provider.value if summary.selected_provider else _EMPTY)
+        return
     finish_inspection(
         codex_root / _CODEX_ATTEMPT_FILENAME,
         codex_report if codex_report.is_file() else None,
@@ -674,6 +695,23 @@ def collect_analysis(capture_directory: Path, output_directory: Path) -> None:
         claude_report if claude_report.is_file() else None,
         output_directory / _SELECTION_DIRECTORY,
     )
+
+
+def _collect_summary_outcome(provider: ProviderName, output_directory: Path) -> None:
+    """Retain invalid or unavailable optional artifacts without granting them authority."""
+    try:
+        _collect_provider_outcome(provider, output_directory)
+    except (OSError, ValueError, ValidationError, GitHubArtifactError) as error:
+        root_name = _CODEX_RESULT_DIRECTORY if provider is ProviderName.CODEX else _CLAUDE_DIRECTORY
+        filename = _CODEX_ATTEMPT_FILENAME if provider is ProviderName.CODEX else _CLAUDE_ATTEMPT_FILENAME
+        result_root = output_directory / root_name
+        result_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        diagnostic = _write_provider_setup_diagnostic(
+            result_root, provider, ProviderPhase.PREPARATION, ProviderOperation.COLLECT_ARTIFACT, error
+        )
+        _write_attempt_failure(
+            result_root / filename, ProviderFailure.INVALID_REPORT, provider, diagnostic_path=diagnostic
+        )
 
 
 def _collect_provider_outcome(provider: ProviderName, output_directory: Path) -> None:
@@ -1317,7 +1355,8 @@ def main(argv: list[str] | None = None) -> int:
     confirm_settled = commands.add_parser("confirm-codex-settled")
     confirm_settled.add_argument("--state-directory", type=Path, required=True)
     confirm_settled.add_argument("--result-directory", type=Path, required=True)
-    claude_run = commands.add_parser("run-claude")
+    claude_run = commands.add_parser(AdditionalStageCommand.RUN_CLAUDE.value)
+    claude_run.add_argument("--attempt", type=Path, required=True)
     claude_run.add_argument("--evidence", type=Path, required=True)
     claude_run.add_argument("--output-directory", type=Path, required=True)
     seed = commands.add_parser("seed-codex")
@@ -1391,8 +1430,14 @@ def _collect_analysis_command(args: argparse.Namespace) -> None:
     collect_analysis(args.capture_directory, args.output_directory)
 
 
+def _run_claude_command(args: argparse.Namespace) -> None:
+    """Bind the frozen attempt to the native summary or assessment task."""
+    run_claude(args.attempt, args.evidence, args.output_directory)
+
+
 _ADDITIONAL_STAGE_HANDLERS: dict[AdditionalStageCommand, Callable[[argparse.Namespace], object]] = {
     AdditionalStageCommand.COLLECT_ANALYSIS: _collect_analysis_command,
+    AdditionalStageCommand.RUN_CLAUDE: _run_claude_command,
 }
 
 
@@ -1411,7 +1456,6 @@ def _stage_handler(args: argparse.Namespace) -> Callable[[], object]:
         "confirm-codex-begin": lambda: confirm_codex_begin(args.state_directory),
         "run-codex": lambda: run_codex(args.state_directory, args.report_output),
         "confirm-codex-settled": lambda: confirm_codex_settled(args.result_directory, args.state_directory),
-        "run-claude": lambda: run_claude(args.evidence, args.output_directory),
         "seed-codex": lambda: seed_codex_auth(args.output_directory, args.reseed),
         "confirm-seed": lambda: confirm_seed(args.output_directory, args.artifact_id, args.digest),
         "ensure-provider-attempt": lambda: ensure_provider_attempt(args.path, ProviderName(args.provider)),

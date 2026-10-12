@@ -33,7 +33,7 @@ from tools.release.evidence_contract import (
     SOURCE_CONTRACT_DIRECTORY_NAME,
     SOURCE_DIRECTORY_NAME,
 )
-from tools.release.report_models import LaneReport
+from tools.release.report_models import report_model
 
 ATTEMPT_ARGUMENT = "--attempt"
 OUTPUT_DIRECTORY_ARGUMENT = "--output-directory"
@@ -104,6 +104,15 @@ SCHEMA_PROMPT_SUFFIX = (
 PUBLIC_CONTRACT_HEADING = "# Public contract comparison"
 INDEX_HEADING = "# Evidence index"
 SCHEMA_HEADING = "# Report schema"
+EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+MANUAL_TASK_HEADING = "### Explicit-version summary task"
+SEE_ALSO_HEADING = "## See Also"
+MANUAL_TASK_PREFIX = (
+    "You are preparing an optional evidence-grounded summary for an already selected release version.\n"
+)
+MANUAL_SCHEMA_SUFFIX = ". Return only release_notes and summary_complete. The evidence index includes bounded captured-history segments when no baseline exists."
+HISTORY_FILENAME_TEMPLATE = "history-{number:06d}.txt"
+HISTORY_LOG_FORMAT = "--format=%H %s"
 SYMLINK_DATA_VALUE: Literal["symlink-data"] = "symlink-data"
 FILE_VALUE: Literal["file"] = "file"
 
@@ -144,7 +153,7 @@ class DiffSegmentEntry(EvidenceRecord):
     status: ChangeStatus
     path: str
     source_sha: str
-    baseline_sha: str
+    baseline_sha: str | None
     segments: list[str]
 
 
@@ -170,7 +179,7 @@ class PublicContractsEvidence(EvidenceRecord):
     """Source and baseline identity for all public contract manifests."""
 
     source_sha: str
-    baseline_sha: str
+    baseline_sha: str | None
     manifests: list[ContractComparison]
 
 
@@ -179,8 +188,8 @@ class EvidenceIndex(EvidenceRecord):
 
     schema_version: int
     source_sha: str
-    baseline_sha: str
-    baseline_tag: str
+    baseline_sha: str | None
+    baseline_tag: str | None
     changed_files: list[ChangedFile]
     resource_groups: list[ResourceGroup]
     diff_segments: list[DiffSegmentEntry]
@@ -188,14 +197,13 @@ class EvidenceIndex(EvidenceRecord):
     excluded_git_metadata_paths: list[str]
     public_contracts: PublicContractsEvidence
     report_schema: str
+    history_segments: list[str]
 
 
 def build_evidence(repo: Repo, attempt: AttemptIdentity, output_directory: Path) -> Path:
     """Materialize the complete source view, changed-file inventory, and bounded prompt."""
-    if (
-        attempt.decision_mode != ReleaseDecisionMode.AUTOMATIC
-        or attempt.baseline_sha is None
-        or attempt.baseline_tag is None
+    if attempt.decision_mode is ReleaseDecisionMode.AUTOMATIC and (
+        attempt.baseline_sha is None or attempt.baseline_tag is None
     ):
         raise ValueError(NO_BASELINE)
     validate_attempt_checkout(repo, attempt)
@@ -218,7 +226,7 @@ def build_evidence(repo: Repo, attempt: AttemptIdentity, output_directory: Path)
     segment_index = _write_diffs(repo, attempt, changes, output_directory)
     contract_index = _write_public_contracts(repo, attempt, output_directory)
     schema_path = output_directory / REPORT_SCHEMA_FILENAME
-    _write_json(schema_path, LaneReport.model_json_schema())
+    _write_json(schema_path, report_model(attempt.decision_mode).model_json_schema())
 
     index = EvidenceIndex(
         schema_version=EVIDENCE_SCHEMA_VERSION,
@@ -232,6 +240,7 @@ def build_evidence(repo: Repo, attempt: AttemptIdentity, output_directory: Path)
         excluded_git_metadata_paths=excluded_paths,
         public_contracts=contract_index,
         report_schema=REPORT_SCHEMA_FILENAME,
+        history_segments=_write_history(repo, attempt, output_directory),
     )
     index_path = output_directory / EVIDENCE_INDEX_FILENAME
     _write_json(index_path, index.model_dump(mode=JSON_MODE))
@@ -243,11 +252,22 @@ def build_evidence(repo: Repo, attempt: AttemptIdentity, output_directory: Path)
     return prompt_path
 
 
+def _write_history(repo: Repo, attempt: AttemptIdentity, output: Path) -> list[str]:
+    """Retain reachable commit navigation for a first manually versioned release."""
+    if attempt.baseline_sha is not None:
+        return []
+    history = str(repo.git.log(HISTORY_LOG_FORMAT, attempt.source_sha))
+    paths: list[str] = []
+    for offset in range(0, len(history), SEGMENT_CHARACTER_LIMIT):
+        name = HISTORY_FILENAME_TEMPLATE.format(number=len(paths) + 1)
+        _write_text(output / name, history[offset : offset + SEGMENT_CHARACTER_LIMIT])
+        paths.append(name)
+    return paths
+
+
 def _changed_files(repo: Repo, attempt: AttemptIdentity) -> list[ChangedFile]:
     """Read the full changed-path denominator from the captured Git objects."""
-    if attempt.baseline_sha is None:
-        raise ValueError(NO_BASELINE)
-    raw = str(repo.git.diff(*NAME_STATUS_ARGUMENTS, attempt.baseline_sha, attempt.source_sha))
+    raw = str(repo.git.diff(*NAME_STATUS_ARGUMENTS, attempt.baseline_sha or EMPTY_TREE_SHA, attempt.source_sha))
     fields = raw.split(STATUS_NAME_SEPARATOR)
     changes: list[ChangedFile] = []
     for position in range(0, len(fields) - 1, 2):
@@ -280,9 +300,7 @@ def _write_diffs(
     output_directory: Path,
 ) -> list[DiffSegmentEntry]:
     """Write a complete diff once and index its bounded, grouped segments by path."""
-    if attempt.baseline_sha is None:
-        raise ValueError(NO_BASELINE)
-    raw_diff = str(repo.git.diff(*DIFF_ARGUMENTS, attempt.baseline_sha, attempt.source_sha))
+    raw_diff = str(repo.git.diff(*DIFF_ARGUMENTS, attempt.baseline_sha or EMPTY_TREE_SHA, attempt.source_sha))
     diff_sections = _split_diff_sections(raw_diff)
     if len(diff_sections) != len(changes):
         raise ValueError(DIFF_INVENTORY_MISMATCH)
@@ -402,8 +420,6 @@ def _write_public_contracts(
     output_directory: Path,
 ) -> PublicContractsEvidence:
     """Generate source contracts without host configuration and compare the release baseline."""
-    if attempt.baseline_sha is None:
-        raise ValueError(NO_BASELINE)
     contract_root = output_directory / PUBLIC_CONTRACTS_DIRECTORY_NAME
     baseline_root = contract_root / BASELINE_DIRECTORY_NAME
     source_root = contract_root / SOURCE_CONTRACT_DIRECTORY_NAME
@@ -416,7 +432,11 @@ def _write_public_contracts(
         manifest_path = MANIFEST_DIRECTORY + PATH_SEPARATOR + manifest_name
         baseline_text: str | None
         try:
-            baseline_text = str(repo.git.show(attempt.baseline_sha + GIT_REFERENCE_SEPARATOR + manifest_path))
+            baseline_text = (
+                str(repo.git.show(attempt.baseline_sha + GIT_REFERENCE_SEPARATOR + manifest_path))
+                if attempt.baseline_sha is not None
+                else None
+            )
         except GitCommandError:
             baseline_text = None
         source_text = (source_root / manifest_name).read_text(encoding=JSON_ENCODING)
@@ -472,6 +492,9 @@ def _make_prompt(
     """Combine the canonical inspector contract with only bounded navigation facts."""
     root = Path(repo.working_tree_dir or repo.working_dir)
     contract = (root / RELEASE_PROMPT).read_text(encoding=JSON_ENCODING)
+    if attempt.decision_mode is ReleaseDecisionMode.MANUAL:
+        contract = contract.split(MANUAL_TASK_HEADING, 1)[1].split(SEE_ALSO_HEADING, 1)[0]
+        contract = MANUAL_TASK_PREFIX + contract
     index_relative = index_path.relative_to(output_directory)
     schema_relative = schema_path.relative_to(output_directory)
     source_relative = Path(SOURCE_DIRECTORY_NAME)
@@ -491,7 +514,9 @@ def _make_prompt(
             DELETED_TEXT_PROMPT,
             EMPTY,
             SCHEMA_HEADING,
-            SCHEMA_PROMPT_PREFIX + str(schema_relative) + SCHEMA_PROMPT_SUFFIX,
+            SCHEMA_PROMPT_PREFIX
+            + str(schema_relative)
+            + (MANUAL_SCHEMA_SUFFIX if attempt.decision_mode is ReleaseDecisionMode.MANUAL else SCHEMA_PROMPT_SUFFIX),
         )
     )
 

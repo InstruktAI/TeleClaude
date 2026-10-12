@@ -9,10 +9,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
-from tools.release.attempt import ProviderAttempt, ProviderName, ProviderOutcome
-from tools.release.report_models import LaneReport
+from tools.release.attempt import ProviderAttempt, ProviderName, ProviderOutcome, ReleaseDecisionMode
+from tools.release.report_models import InspectorReport, LaneReport, ManualSummaryReport, report_complete, report_model
 
 _UTF8 = "utf-8"
 _JSON_INDENT = 2
@@ -46,16 +46,48 @@ class InspectorSelection(BaseModel):
     codex_selection_failure: SelectionFailure | None
 
 
+class ManualSummarySelection(BaseModel):
+    """Optional summary and observed failures, separate from version authority."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    selected_provider: ProviderName | None
+    selected_summary: ManualSummaryReport | None
+    codex_attempt: ProviderAttempt
+    claude_attempt: ProviderAttempt | None
+    codex_selection_failure: SelectionFailure | None
+    claude_selection_failure: SelectionFailure | None
+
+    @model_validator(mode="after")
+    def validate_summary_identity(self) -> ManualSummarySelection:
+        """Require a complete settled hash-bound report whenever a summary is selected."""
+        if (self.selected_provider is None) != (self.selected_summary is None):
+            raise ValueError(_INPUT_INVALID)
+        if self.selected_provider is not None and self.selected_summary is not None:
+            attempt = self.codex_attempt if self.selected_provider is _CODEX else self.claude_attempt
+            if attempt is None:
+                raise ValueError(_INPUT_INVALID)
+            eligible, _ = _eligibility(
+                _ProviderResult(attempt=attempt, report=self.selected_summary), self.selected_provider
+            )
+            digest = hashlib.sha256(self.selected_summary.model_dump_json().encode(_UTF8)).hexdigest()
+            if not eligible or attempt.report_sha256 != digest:
+                raise ValueError(_REPORT_HASH_MISMATCH)
+        return self
+
+
 class _ProviderResult(BaseModel):
     """A strict provider attempt paired with its optionally valid report."""
 
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
     attempt: ProviderAttempt
-    report: LaneReport | None
+    report: InspectorReport | None
 
 
-def _read_provider(attempt_path: Path, report_path: Path | None) -> _ProviderResult:
+def _read_provider(
+    attempt_path: Path, report_path: Path | None, mode: ReleaseDecisionMode = ReleaseDecisionMode.AUTOMATIC
+) -> _ProviderResult:
     """Load a typed attempt and validate report identity without judging its prose."""
     try:
         attempt = ProviderAttempt.model_validate_json(attempt_path.read_bytes())
@@ -64,7 +96,7 @@ def _read_provider(attempt_path: Path, report_path: Path | None) -> _ProviderRes
     if report_path is None:
         return _ProviderResult(attempt=attempt, report=None)
     try:
-        report = LaneReport.model_validate_json(report_path.read_bytes())
+        report = report_model(mode).model_validate_json(report_path.read_bytes())
     except (OSError, ValidationError):
         return _ProviderResult(attempt=attempt, report=None)
     canonical = report.model_dump_json().encode(_UTF8)
@@ -81,7 +113,7 @@ def _eligibility(result: _ProviderResult, provider: ProviderName) -> tuple[bool,
         return False, SelectionFailure.ATTEMPT_FAILED
     if result.report is None:
         return False, SelectionFailure.INVALID_REPORT
-    if not result.report.assessment_complete:
+    if not report_complete(result.report):
         return False, SelectionFailure.INCOMPLETE_REPORT
     if provider is ProviderName.CODEX and not result.attempt.auth_settled:
         return False, SelectionFailure.AUTH_UNSETTLED
@@ -97,7 +129,7 @@ def select_inspector_report(
     """Select Codex when fully settled; otherwise select the one Claude fallback."""
     codex = _read_provider(codex_attempt_path, codex_report_path)
     codex_ok, codex_failure = _eligibility(codex, _CODEX)
-    if codex_ok and codex.report is not None:
+    if codex_ok and isinstance(codex.report, LaneReport):
         return InspectorSelection(
             selected_provider=_CODEX.value,
             selected_report=codex.report,
@@ -109,7 +141,7 @@ def select_inspector_report(
         raise ValueError(_ERROR)
     claude = _read_provider(claude_attempt_path, claude_report_path)
     claude_ok, _claude_reason = _eligibility(claude, _CLAUDE)
-    if claude_ok and claude.report is not None:
+    if claude_ok and isinstance(claude.report, LaneReport):
         return InspectorSelection(
             selected_provider=_CLAUDE.value,
             selected_report=claude.report,
@@ -118,6 +150,37 @@ def select_inspector_report(
             codex_selection_failure=codex_failure,
         )
     raise ValueError(_ERROR)
+
+
+def select_manual_summary(
+    codex_attempt_path: Path,
+    codex_report_path: Path | None,
+    claude_attempt_path: Path | None,
+    claude_report_path: Path | None,
+) -> ManualSummarySelection:
+    """Attempt the same provider order; no eligible summary leaves deterministic notes usable."""
+    codex = _read_provider(codex_attempt_path, codex_report_path, ReleaseDecisionMode.MANUAL)
+    codex_ok, codex_failure = _eligibility(codex, _CODEX)
+    claude = (
+        _read_provider(claude_attempt_path, claude_report_path, ReleaseDecisionMode.MANUAL)
+        if claude_attempt_path is not None
+        else None
+    )
+    claude_ok, claude_failure = _eligibility(claude, _CLAUDE) if claude is not None else (False, None)
+    selected_provider: ProviderName | None = None
+    selected_summary: ManualSummaryReport | None = None
+    if codex_ok and isinstance(codex.report, ManualSummaryReport):
+        selected_provider, selected_summary = _CODEX, codex.report
+    elif claude_ok and claude is not None and isinstance(claude.report, ManualSummaryReport):
+        selected_provider, selected_summary = _CLAUDE, claude.report
+    return ManualSummarySelection(
+        selected_provider=selected_provider,
+        selected_summary=selected_summary,
+        codex_attempt=codex.attempt,
+        claude_attempt=claude.attempt if claude is not None else None,
+        codex_selection_failure=codex_failure,
+        claude_selection_failure=claude_failure,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from tools.release.attempt import ProviderAttempt, ProviderFailure, ProviderName, ProviderOutcome
+from tools.release.attempt import ProviderAttempt, ProviderFailure, ProviderName, ProviderOutcome, ReleaseDecisionMode
 from tools.release.codex_auth import CODEX_AUTH_FILENAME, auth_secret_values
 from tools.release.evidence_contract import PROMPT_FILENAME, REPORT_SCHEMA_FILENAME
 from tools.release.isolated_inspection import (
@@ -23,7 +23,7 @@ from tools.release.isolated_inspection import (
     validate_principal_file,
     validate_principal_file_absent,
 )
-from tools.release.report_models import LaneReport
+from tools.release.report_models import InspectorReport, report_complete, report_model
 
 _CODEX_PROFILE_NAME = "release-inspector"
 _CODEX_PROFILE_FILE = "release-inspector.config.toml"
@@ -104,7 +104,7 @@ class InspectionRunResult(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
     attempt: ProviderAttempt
-    report: LaneReport | None
+    report: InspectorReport | None
     report_path: str | None
 
 
@@ -120,6 +120,7 @@ def run_codex_inspection(
     timeout_seconds: int,
     *,
     runtime_path: str = _SYSTEM_PATH,
+    decision_mode: ReleaseDecisionMode = ReleaseDecisionMode.AUTOMATIC,
 ) -> InspectionRunResult:
     """Run a schema-constrained native Codex assessment in its fresh hosted job."""
     if result_directory.exists() or result_directory.is_symlink():
@@ -191,6 +192,7 @@ def run_codex_inspection(
         auth_json_after,
         result_directory,
         (evidence_directory, controller_directory, codex_home, principal_home, principal_temp),
+        decision_mode,
     )
 
 
@@ -228,6 +230,7 @@ def _interpret_result(
     auth_json_after: bytes | None,
     result_directory: Path,
     private_paths: tuple[Path, ...],
+    decision_mode: ReleaseDecisionMode = ReleaseDecisionMode.AUTOMATIC,
 ) -> InspectionRunResult:
     """Classify only structured process outcomes and the typed report schema."""
     if auth_json_after is None:
@@ -277,7 +280,7 @@ def _interpret_result(
             ProviderFailure.EXECUTION, process.return_code, False, _DIAGNOSTIC_EXIT_CODE, result_directory, diagnostic
         )
     try:
-        report = LaneReport.model_validate_json(final_message)
+        report = report_model(decision_mode).model_validate_json(final_message)
     except ValidationError:
         diagnostic = _write_diagnostic(
             result_directory,
@@ -294,7 +297,7 @@ def _interpret_result(
         )
     report_bytes = report.model_dump_json().encode(_CONFIG_ENCODING)
     report_sha256 = hashlib.sha256(report_bytes).hexdigest()
-    if not report.assessment_complete:
+    if not report_complete(report):
         diagnostic = _write_diagnostic(
             result_directory,
             _STDOUT_DIAGNOSTIC_FILENAME,
