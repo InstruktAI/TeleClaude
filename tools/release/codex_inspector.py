@@ -164,12 +164,14 @@ def run_codex_inspection(
     except (OSError, RuntimeError, ValueError):
         return _failed_result(ProviderFailure.EXECUTION, None, False, _DIAGNOSTIC_SETUP_FAILURE, result_directory)
     try:
-        final_message = read_principal_file(InspectorRole.CODEX, client_report)
         auth_json_after = read_principal_file(InspectorRole.CODEX, codex_home / CODEX_AUTH_FILENAME)
         auth_secret_values(auth_json_after)
     except (OSError, RuntimeError, ValueError):
-        final_message = _EMPTY.encode(_CONFIG_ENCODING)
         auth_json_after = None
+    try:
+        final_message = read_principal_file(InspectorRole.CODEX, client_report)
+    except (OSError, RuntimeError, ValueError):
+        final_message = _EMPTY.encode(_CONFIG_ENCODING)
     return _interpret_result(
         result,
         final_message,

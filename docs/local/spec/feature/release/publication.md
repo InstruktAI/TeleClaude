@@ -89,6 +89,12 @@ references retained sanitized stderr. Sanitized stdout remains available as even
 evidence, including an empty stream. Diagnostic sanitization and output bounds
 remain owned by the inspector adapter and isolated process boundary.
 
+Codex captures and validates its post-run auth cache independently of the final
+report. A missing report does not imply unavailable auth state. When current
+auth is available, execution failures retain CLI diagnostics scrubbed against
+both pre-run and post-run credential values. If current auth cannot be read or
+validated, diagnostics retain only the existing fixed findings and output hashes.
+
 The selected inspector receives a compact change inventory and public-contract
 comparison and can retrieve focused source evidence in bounded portions. Grouped
 resource changes remain discoverable. The inspector declares whether assessment
