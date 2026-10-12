@@ -424,7 +424,7 @@ def cli_clearance(
         return CliClearance(identity=None, refusal=None)
     if identity is None:
         identity = _no_identity(False)
-    if isinstance(identity.caller, NoIdentityCliCaller):
+    if isinstance(identity.caller, NoIdentityCliCaller) or (relayed_request and not identity.principal):
         return CliClearance(identity=identity, refusal=no_identity_refusal(identity))
 
     if relayed_request:
