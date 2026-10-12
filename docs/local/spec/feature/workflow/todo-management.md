@@ -368,12 +368,6 @@ And a hold recorded before this contract, whose stored reason is the command tha
 
 #### UC-WM30: A human operator can hold an active todo from the preparation view
 
-```gherkin
-Given a human operator has selected an active todo that is not held in the preparation view
-When the operator activates Hold and submits a nonblank reason
-Then the todo becomes held with the submitted reason
-```
-
 #### UC-WM34: An identity-addressed action acts on exactly the identified todo or is refused
 
 ```gherkin
