@@ -125,7 +125,6 @@ _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
         CodeSubcommand.TEST,
         CodeSubcommand.FORMAT,
         CodeSubcommand.BLUEPRINT,
-        CodeSubcommand.MAINTENANCE,
     }
 )
 _COMMIT_SUBCOMMANDS = frozenset(
