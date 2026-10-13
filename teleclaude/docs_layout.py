@@ -13,25 +13,36 @@ to read it as input.
 caller. ``rewrite_layout_references`` applies it to a checkout's text files,
 and ``converge_root`` moves one repository and commits it through an injected
 committer, restoring only its own changes when that commit is refused.
+``repository_convergence_lock`` lets callers run one convergence at a time per
+repository.
 The contract is ``local/projects/teleclaude/spec/feature/context/documentation-layout-convergence``.
 """
 
 from __future__ import annotations
 
+import fcntl
 import fnmatch
-import hashlib
-import os
 import re
 import shutil
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
-from typing import Final
+from typing import Final, assert_never
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import TAXONOMY_TYPES
+from teleclaude.docs_layout_effects import (
+    PATHSPEC_SEPARATOR,
+    PerformedEffects,
+    apply_moves,
+    index_entries,
+    restore_own_changes,
+    split_nul,
+    stage_paths,
+)
 from teleclaude.domains import valid_domains
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.snippet_validation import (
@@ -105,17 +116,17 @@ MIGRATION_BOUNDARY_GLOBS: Final[tuple[str, ...]] = (
 
 _LS_FILES_ARGS: Final = ("-z", "--cached", "--others", "--exclude-standard")
 _LS_FILES_TRACKED_ARGS: Final = ("-z", "--cached")
-_LS_FILES_STAGE_ARGS: Final = ("-s", "-z")
 _STATUS_ARGS: Final = ("--porcelain=v1", "-z", "--untracked-files=all")
 _STATUS_UNTRACKED: Final = "??"
 _STATUS_RENAME_CODES: Final = frozenset({"R", "C"})
-_PATHSPEC_SEPARATOR: Final = "--"
-_RESET_ARGS: Final = ("-q",)
 _DIFF_TREE_ARGS: Final = ("--no-commit-id", "--name-only", "-r", "--no-renames", "-z")
 _LS_TREE_ARGS: Final = ("--name-only",)
 _WORKTREE_LIST_ARGS: Final = ("list", "--porcelain")
 _WORKTREE_LINE_PREFIX: Final = "worktree "
 _MENTION_TEMPLATE: Final = "{path}:{line}"
+
+_CONVERGENCE_LOCK_FILENAME: Final = "teleclaude-docs-layout-convergence.lock"
+_LOCK_FILE_MODE: Final = "a"
 
 _LOG_ROOT_EVENT: Final = "docs_layout_convergence_root"
 _LOG_EFFECT_FAILED_EVENT: Final = "docs_layout_convergence_effect_failed"
@@ -139,21 +150,62 @@ class LayoutConvergenceOutcome(StrEnum):
     DEFERRED_NO_IDENTITY = "deferred_no_identity"
     UNAVAILABLE = "unavailable"
     FAILED = "failed"
+    FOREIGN_CHECKOUT = "foreign_checkout"
 
 
-#: Outcomes that make a convergence run exit non-zero.
-FAILING_OUTCOMES: Final[frozenset[LayoutConvergenceOutcome]] = frozenset(
-    {
-        LayoutConvergenceOutcome.BLOCKED_BOTH_LAYOUTS,
-        LayoutConvergenceOutcome.BLOCKED_UNDECLARED_SLUG,
-        LayoutConvergenceOutcome.BLOCKED_DIRTY,
-        LayoutConvergenceOutcome.RESTORED_AFTER_REFUSED_COMMIT,
-        LayoutConvergenceOutcome.RESTORE_CONFLICT,
-        LayoutConvergenceOutcome.BLOCKED_INCOMPLETE,
-        LayoutConvergenceOutcome.DEFERRED_NO_IDENTITY,
-        LayoutConvergenceOutcome.FAILED,
-    }
-)
+class LayoutResultClass(StrEnum):
+    """What a per-root outcome means to whoever ran convergence, least to most severe."""
+
+    SETTLED = "settled"
+    HELD = "held"
+    FAILURE = "failure"
+
+
+_CLASS_SEVERITY: Final = (LayoutResultClass.SETTLED, LayoutResultClass.HELD, LayoutResultClass.FAILURE)
+
+
+def outcome_class(outcome: LayoutConvergenceOutcome) -> LayoutResultClass:
+    """Classify one outcome: settled, held for its owner or deferred, or a failure.
+
+    Held outcomes are convergence correctly leaving an owner's work alone or lacking
+    an attributable party. Failures are an operation that failed, a commit that was
+    refused, or a restore that left conflicts.
+    """
+    match outcome:
+        case (
+            LayoutConvergenceOutcome.CURRENT
+            | LayoutConvergenceOutcome.MIGRATED_COMMITTED
+            | LayoutConvergenceOutcome.MIGRATED_UNTRACKED
+            | LayoutConvergenceOutcome.PULL_REQUIRED
+            | LayoutConvergenceOutcome.UNAVAILABLE
+            | LayoutConvergenceOutcome.FOREIGN_CHECKOUT
+        ):
+            return LayoutResultClass.SETTLED
+        case (
+            LayoutConvergenceOutcome.BLOCKED_BOTH_LAYOUTS
+            | LayoutConvergenceOutcome.BLOCKED_UNDECLARED_SLUG
+            | LayoutConvergenceOutcome.BLOCKED_DIRTY
+            | LayoutConvergenceOutcome.BLOCKED_INCOMPLETE
+            | LayoutConvergenceOutcome.DEFERRED_NO_IDENTITY
+        ):
+            return LayoutResultClass.HELD
+        case (
+            LayoutConvergenceOutcome.RESTORED_AFTER_REFUSED_COMMIT
+            | LayoutConvergenceOutcome.RESTORE_CONFLICT
+            | LayoutConvergenceOutcome.FAILED
+        ):
+            return LayoutResultClass.FAILURE
+        case _:
+            return assert_never(outcome)
+
+
+def run_class(results: Iterable[LayoutConvergenceResult]) -> LayoutResultClass:
+    """The most severe class among a run's roots; a run with no roots is settled."""
+    return max(
+        (outcome_class(result.outcome) for result in results),
+        key=_CLASS_SEVERITY.index,
+        default=LayoutResultClass.SETTLED,
+    )
 
 
 class PublishedIdentityPolicy(StrEnum):
@@ -200,14 +252,6 @@ class _RewritePlan:
 
     rewrites: dict[str, tuple[bytes, bytes]] = field(default_factory=dict)
     published_mentions: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class _MovedFile:
-    """One file a move relocates: where it came from and the bytes it had before the run."""
-
-    retired_path: str
-    digest: str
 
 
 @dataclass(frozen=True)
@@ -351,12 +395,8 @@ def _is_excluded(relative_path: str, excluded: Sequence[str]) -> bool:
     return any(fnmatch.fnmatch(relative_path, pattern) for pattern in (*MIGRATION_BOUNDARY_GLOBS, *excluded))
 
 
-def _split_nul(output: str) -> list[str]:
-    return [entry for entry in output.split("\0") if entry]
-
-
 def _text_candidates(repository: Repo) -> list[str]:
-    return sorted(set(_split_nul(repository.git.ls_files(*_LS_FILES_ARGS))))
+    return sorted(set(split_nul(repository.git.ls_files(*_LS_FILES_ARGS))))
 
 
 def _read_text_file(path: Path) -> tuple[bytes, str] | None:
@@ -516,7 +556,7 @@ def _under_any(relative_path: str, directories: Iterable[PurePosixPath]) -> bool
 
 def _status_entries(repository: Repo) -> list[tuple[str, str]]:
     """Return ``(status code, path)`` for every changed or untracked path."""
-    entries = _split_nul(repository.git.status(*_STATUS_ARGS))
+    entries = split_nul(repository.git.status(*_STATUS_ARGS))
     parsed: list[tuple[str, str]] = []
     index = 0
     while index < len(entries):
@@ -566,8 +606,8 @@ def _upstream_converged(repository: Repo, fetcher: Fetcher) -> bool:
     if tracking is None or not fetcher(repository):
         return False
     try:
-        entries = set(_split_nul(repository.git.ls_tree(*_LS_TREE_ARGS, "-z", tracking.path, _DOCS_DIR + "/")))
-        entries |= set(_split_nul(repository.git.ls_tree(*_LS_TREE_ARGS, "-z", tracking.path, _AGENTS_DIR + "/")))
+        entries = set(split_nul(repository.git.ls_tree(*_LS_TREE_ARGS, "-z", tracking.path, _DOCS_DIR + "/")))
+        entries |= set(split_nul(repository.git.ls_tree(*_LS_TREE_ARGS, "-z", tracking.path, _AGENTS_DIR + "/")))
     except GitCommandError:
         return False
     retired_present = any(str(retired) in entries for retired, _ in LAYOUT_MOVES)
@@ -578,8 +618,8 @@ def _upstream_converged(repository: Repo, fetcher: Fetcher) -> bool:
 def _tracked_under(repository: Repo, directories: Sequence[PurePosixPath]) -> tuple[str, ...]:
     if not directories:
         return ()
-    output = repository.git.ls_files(*_LS_FILES_TRACKED_ARGS, _PATHSPEC_SEPARATOR, *(str(path) for path in directories))
-    return tuple(sorted(_split_nul(output)))
+    output = repository.git.ls_files(*_LS_FILES_TRACKED_ARGS, PATHSPEC_SEPARATOR, *(str(path) for path in directories))
+    return tuple(sorted(split_nul(output)))
 
 
 def _plan_convergence(
@@ -602,30 +642,6 @@ def _plan_convergence(
     return _MovePlan(moves=moves, tracked_moved=tracked_moved, rewrite_plan=rewrite_plan)
 
 
-def _index_entries(repository: Repo, paths: Sequence[str]) -> dict[str, str]:
-    if not paths:
-        return {}
-    output = repository.git.ls_files(*_LS_FILES_STAGE_ARGS, _PATHSPEC_SEPARATOR, *paths)
-    entries: dict[str, str] = {}
-    for entry in _split_nul(output):
-        metadata, path = entry.split("\t", 1)
-        entries[path] = metadata
-    return entries
-
-
-def _apply_moves(root: Path, plan: _MovePlan) -> None:
-    """Rename each retired directory on the filesystem, leaving the index to the commit.
-
-    The move is not staged as a rename: the sealed commit admits a declared
-    path only when it carries a change git will record, and a staged rename
-    hides its old side. Left unstaged, the old paths read as deleted and the new
-    ones as added, and the commit records them as renames.
-    """
-    for retired, target in plan.moves:
-        (root / target).parent.mkdir(parents=True, exist_ok=True)
-        os.rename(root / retired, root / target)
-
-
 def _expected_commit_paths(plan: _MovePlan) -> set[str]:
     rewritten = {_moved_path(path, plan.moves) for path in plan.rewrite_plan.rewrites}
     moved_targets = {_moved_path(path, plan.moves) for path in plan.tracked_moved}
@@ -633,163 +649,7 @@ def _expected_commit_paths(plan: _MovePlan) -> set[str]:
 
 
 def _committed_paths(repository: Repo, commit: str) -> set[str]:
-    return set(_split_nul(repository.git.diff_tree(*_DIFF_TREE_ARGS, commit)))
-
-
-def _digest(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def _inventory_moves(root: Path, plan: _MovePlan) -> tuple[dict[str, _MovedFile], tuple[str, ...]]:
-    """Record every file and directory each move will relocate, keyed by its new path."""
-    files: dict[str, _MovedFile] = {}
-    directories: list[str] = []
-    for retired, target in plan.moves:
-        retired_dir = root / retired
-        directories.append(str(retired))
-        for path in sorted(retired_dir.rglob("*")):
-            relative = path.relative_to(retired_dir)
-            if path.is_dir() and not path.is_symlink():
-                directories.append(str(retired / relative))
-                continue
-            files[str(target / relative)] = _MovedFile(
-                retired_path=str(retired / relative), digest=_digest(path.read_bytes())
-            )
-    return files, tuple(directories)
-
-
-def _prune_empty_directories(directory: Path) -> None:
-    if not directory.is_dir():
-        return
-    for path in sorted(directory.rglob("*"), key=lambda candidate: len(candidate.parts), reverse=True):
-        if path.is_dir() and not any(path.iterdir()):
-            path.rmdir()
-    if not any(directory.iterdir()):
-        directory.rmdir()
-
-
-def _changed_index_paths(
-    repository: Repo, touched: Sequence[str], index_snapshots: Sequence[dict[str, str]]
-) -> set[str]:
-    """Touched paths whose index entry equals none this run observed: another writer staged them."""
-    current_index = _index_entries(repository, touched)
-    return {
-        path
-        for path in touched
-        if not any(current_index.get(path) == snapshot.get(path) for snapshot in index_snapshots)
-    }
-
-
-def _restore_conflicts(
-    root: Path,
-    moved: dict[str, _MovedFile],
-    written: dict[str, tuple[bytes, bytes]],
-    changed_index: set[str],
-) -> set[str]:
-    """Establish, before anything is mutated, every path restoration must leave as found.
-
-    A file conflicts when its bytes are not the ones this run left, when its
-    original path is occupied again, or when the index entry of its current or
-    original path was changed by another writer.
-    """
-    conflicts: set[str] = set()
-    for written_path, (_, rewritten) in written.items():
-        if written_path in moved:
-            continue
-        written_file = root / written_path
-        if not written_file.is_file() or written_file.read_bytes() != rewritten or written_path in changed_index:
-            conflicts.add(written_path)
-    for new_path, record in moved.items():
-        current = root / new_path
-        if not current.exists() and not current.is_symlink():
-            original = root / record.retired_path
-            never_moved = original.is_file() and _digest(original.read_bytes()) == record.digest
-            if not never_moved:
-                conflicts.add(new_path)
-            continue
-        expected = written.get(new_path)
-        current_bytes = current.read_bytes()
-        bytes_unchanged = (
-            current_bytes == expected[1] if expected is not None else _digest(current_bytes) == record.digest
-        )
-        destination = root / record.retired_path
-        if (
-            not bytes_unchanged
-            or destination.exists()
-            or destination.is_symlink()
-            or new_path in changed_index
-            or record.retired_path in changed_index
-        ):
-            conflicts.add(new_path)
-    return conflicts
-
-
-def _restore_files(
-    root: Path,
-    plan: _MovePlan,
-    moved: dict[str, _MovedFile],
-    directories: Sequence[str],
-    written: dict[str, tuple[bytes, bytes]],
-    conflicts: set[str],
-) -> list[str]:
-    """Move this run's own files back one by one, skipping every established conflict.
-
-    Returns the conflicts plus any file under a new directory that this run did
-    not move. A preserved file keeps its bytes and address: moving files
-    individually means it is never relocated by restoring its directory.
-    """
-    left: list[str] = sorted(conflicts)
-    for written_path, (original, _) in written.items():
-        if written_path in moved or written_path in conflicts:
-            continue
-        (root / written_path).write_bytes(original)
-    for relative in directories:
-        (root / relative).mkdir(parents=True, exist_ok=True)
-    for new_path, record in moved.items():
-        current = root / new_path
-        if new_path in conflicts or (not current.exists() and not current.is_symlink()):
-            continue
-        expected = written.get(new_path)
-        if expected is not None:
-            current.write_bytes(expected[0])
-        os.rename(current, root / record.retired_path)
-    for _, target in plan.moves:
-        target_dir = root / target
-        if target_dir.is_dir():
-            left.extend(
-                str(path.relative_to(root))
-                for path in sorted(target_dir.rglob("*"))
-                if not path.is_dir() and str(path.relative_to(root)) not in moved
-            )
-            _prune_empty_directories(target_dir)
-    return left
-
-
-def _restore_own_changes(
-    root: Path,
-    repository: Repo,
-    plan: _MovePlan,
-    moved: dict[str, _MovedFile],
-    directories: Sequence[str],
-    written: dict[str, tuple[bytes, bytes]],
-    index_snapshots: Sequence[dict[str, str]],
-    touched: Sequence[str],
-) -> tuple[str, ...]:
-    """Reverse only convergence's own delta; return the paths left as found.
-
-    Every conflict is established before anything is mutated. A conflicting
-    file keeps its bytes, its address and the index entries of both its current
-    and its original path; every other touched path is reset to the committed
-    entry only when its entry still equals one this run observed.
-    """
-    changed_index = _changed_index_paths(repository, touched, index_snapshots)
-    conflicts = _restore_conflicts(root, moved, written, changed_index)
-    protected = set(changed_index) | conflicts | {moved[path].retired_path for path in conflicts if path in moved}
-    left = _restore_files(root, plan, moved, directories, written, conflicts)
-    restorable = [path for path in touched if path not in protected]
-    if restorable:
-        repository.git.reset(*_RESET_ARGS, _PATHSPEC_SEPARATOR, *restorable)
-    return tuple(sorted(set(left) | changed_index))
+    return set(split_nul(repository.git.diff_tree(*_DIFF_TREE_ARGS, commit)))
 
 
 def _incomplete_paths(repository: Repo, root: Path) -> tuple[str, ...]:
@@ -805,14 +665,38 @@ def _incomplete_paths(repository: Repo, root: Path) -> tuple[str, ...]:
         if (root / retired).exists():
             continue
         try:
-            tracked = _split_nul(
-                repository.git.ls_tree(*_LS_TREE_RECURSIVE_ARGS, _HEAD_REF, _PATHSPEC_SEPARATOR, str(retired))
+            tracked = split_nul(
+                repository.git.ls_tree(*_LS_TREE_RECURSIVE_ARGS, _HEAD_REF, PATHSPEC_SEPARATOR, str(retired))
             )
         except GitCommandError:
             continue
         if tracked:
             incomplete.append(str(retired))
     return tuple(incomplete)
+
+
+@contextmanager
+def repository_convergence_lock(root: Path, on_contention: Callable[[], None] | None = None) -> Iterator[None]:
+    """Hold the exclusive lock that lets one convergence at a time work on one repository.
+
+    The lock lives in the repository's git common directory, so every checkout and
+    every registered root of the repository contends on it and the working tree
+    never sees it. A convergence already holding it makes the caller wait;
+    ``on_contention`` is called once before it does, so the caller can say so. The
+    kernel releases the lock when its holder exits, so no run can leave it held.
+    """
+    lock_path = Path(Repo(str(root)).common_dir).resolve() / _CONVERGENCE_LOCK_FILENAME
+    with lock_path.open(_LOCK_FILE_MODE, encoding=_UTF8) as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            if on_contention is not None:
+                on_contention()
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _log_result(result: LayoutConvergenceResult) -> LayoutConvergenceResult:
@@ -896,9 +780,10 @@ def converge_root(
 
     Moves ``docs/project``/``agents/project`` to their ``local`` counterparts,
     rewrites references, and commits exactly those paths through ``committer``.
-    A refused commit or a failed write reverses only this run's own bytes, file
-    moves and index entries; anything another writer changed meanwhile is left
-    where and as found and reported as a restore conflict. A retired directory left as residue
+    A refused commit or a failed write reverses only the effects this run
+    performed: its own bytes, file moves and index entries. Anything another
+    writer changed meanwhile is left where and as found and reported as a
+    restore conflict. A retired directory left as residue
     beside its converged counterpart is removed first.
     """
     removed_residue = _remove_residue(root, Repo(str(root)))
@@ -916,25 +801,23 @@ def converge_root(
 
     expected = _expected_commit_paths(plan)
     touched = tuple(sorted(expected))
-    moved, directories = _inventory_moves(root, plan)
-    index_snapshots: list[dict[str, str]] = [_index_entries(repository, touched)]
-    written: dict[str, tuple[bytes, bytes]] = {}
+    performed = PerformedEffects(index_snapshots=[index_entries(repository, touched)])
     try:
-        _apply_moves(root, plan)
+        apply_moves(root, plan.moves, performed)
         for relative_path, (original, rewritten) in plan.rewrite_plan.rewrites.items():
             moved_path = _moved_path(relative_path, plan.moves)
             (root / moved_path).write_bytes(rewritten)
-            written[moved_path] = (original, rewritten)
+            performed.written[moved_path] = (original, rewritten)
         # Stage only the new side: the old paths stay unstaged deletions, so the
         # sealed commit can see them, and the committer has nothing left to stage
         # that this run's index snapshot does not already record.
-        added = sorted({_moved_path(path, plan.moves) for path in plan.tracked_moved} | set(written))
+        added = sorted({_moved_path(path, plan.moves) for path in plan.tracked_moved} | set(performed.written))
         if touched and added:
-            repository.git.add(_PATHSPEC_SEPARATOR, *added)
-        index_snapshots.append(_index_entries(repository, touched))
+            stage_paths(repository, added, performed)
+        performed.index_snapshots.append(index_entries(repository, touched))
     except (OSError, GitCommandError):
         logger.exception(_LOG_EFFECT_FAILED_EVENT, project_root=str(root))
-        conflicts = _restore_own_changes(root, repository, plan, moved, directories, written, index_snapshots, touched)
+        conflicts = restore_own_changes(root, repository, performed)
         return _log_result(
             LayoutConvergenceResult(
                 root=root,
@@ -982,7 +865,7 @@ def converge_root(
                 commit=current_head,
             )
         )
-    conflicts = _restore_own_changes(root, repository, plan, moved, directories, written, index_snapshots, touched)
+    conflicts = restore_own_changes(root, repository, performed)
     outcome = (
         LayoutConvergenceOutcome.RESTORE_CONFLICT
         if conflicts

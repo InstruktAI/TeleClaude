@@ -241,6 +241,7 @@ checkpoint:
     - scope:
         include:
           - teleclaude/docs_layout.py
+          - teleclaude/docs_layout_effects.py
           - teleclaude/snippet_roots.py
       actions:
         - docs-layout-convergence

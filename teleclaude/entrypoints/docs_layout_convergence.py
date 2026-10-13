@@ -3,9 +3,11 @@
 Composition root for ``teleclaude.docs_layout``: walks the project registry (or
 the roots named on the command line), resolves an attributable commit party
 before touching anything, and wires the sealed ``telec code commit`` and a
-bounded fetch into each root's convergence. Prints one line per root and one
-run line, and exits non-zero on any blocked, deferred, restored or conflicted
-root. Contract: ``local/projects/teleclaude/spec/feature/context/documentation-layout-convergence``.
+bounded fetch into each root's convergence, under a per-repository lock. Prints
+one line per root and one run line, and exits ``0`` when every root is settled,
+a dedicated status when some root is blocked or deferred and none failed, and
+``1`` when any root failed, was restored after a refused commit or is in restore
+conflict. Contract: ``local/projects/teleclaude/spec/feature/context/documentation-layout-convergence``.
 """
 
 from __future__ import annotations
@@ -27,18 +29,20 @@ from instrukt_ai_logging import get_logger
 from teleclaude.cli.session_auth import resolve_cli_identity
 from teleclaude.commit_identity import CommitIdentityUnresolvable, resolve_commit_identity_from_caller
 from teleclaude.docs_layout import (
-    FAILING_OUTCOMES,
     LayoutCommitRefused,
     LayoutConvergenceOutcome,
     LayoutConvergenceResult,
+    LayoutResultClass,
     assess_root,
     converge_root,
     registered_project_slugs,
+    repository_convergence_lock,
+    run_class,
 )
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.paths import REPO_ROOT, TELECLAUDE_HOME
 from teleclaude.project_manifest import load_registered_roots
-from teleclaude.runtime.config import require_own_checkout
+from teleclaude.runtime.config import ForeignRepositoryWriteRefusedError, require_own_checkout
 from teleclaude.snippet_roots import iter_tier_snippet_roots
 from teleclaude.snippet_scope import HOME_IDENTITY_PREFIXES
 from teleclaude.sync import HomePublicationOutcome, PublicationMode, publish_homes
@@ -66,6 +70,7 @@ _GIT_TERMINAL_PROMPT_OFF: Final = "0"
 _RERUN_COMMAND: Final = "uv run --directory {repo_root} python -m teleclaude.entrypoints.docs_layout_convergence"
 
 _ROOT_LINE: Final = "docs-layout-convergence: {root} {outcome}"
+_WAITING_LINE: Final = "docs-layout-convergence: {root} waiting for another convergence of this repository"
 _DETAIL_LINE: Final = "  {label}: {value}"
 _RUN_LINE: Final = "docs-layout-convergence run: {outcome} roots={count} run_id={run_id}"
 _REGISTRY_FAILED_LINE: Final = "docs-layout-convergence run: failed (project registry unreadable)"
@@ -90,11 +95,23 @@ _CATALOG_REFRESH_SEPARATOR: Final = "; "
 _PROJECT_CATALOG_NAME: Final = "project"
 _PLATFORM_TIER_CATALOG_NAME: Final = "platform tiers"
 _LABEL_RERUN: Final = "re-run with an agent session or terminal login"
-_RUN_OK: Final = "ok"
-_RUN_FAILED: Final = "failed"
+#: How a run reports itself and exits, by its most severe root. The held status is
+#: distinct from the failure status and from argparse's usage status; installation
+#: reads these statuses (``bin/install.sh``), so they are one published contract.
+_RUN_LABELS: Final[dict[LayoutResultClass, str]] = {
+    LayoutResultClass.SETTLED: "ok",
+    LayoutResultClass.HELD: "held",
+    LayoutResultClass.FAILURE: "failed",
+}
+EXIT_STATUSES: Final[dict[LayoutResultClass, int]] = {
+    LayoutResultClass.SETTLED: 0,
+    LayoutResultClass.HELD: 3,
+    LayoutResultClass.FAILURE: 1,
+}
 _LOG_RUN_EVENT: Final = "docs_layout_convergence_run"
 _LOG_REGISTRY_FAILED_EVENT: Final = "docs_layout_convergence_registry_unreadable"
 _LOG_ROOT_FAILED_EVENT: Final = "docs_layout_convergence_root_failed"
+_LOG_WAITING_EVENT: Final = "docs_layout_convergence_waiting"
 _PARSER_DESCRIPTION: Final = "Converge repositories to the docs/local documentation layout."
 _ROOTS_ARGUMENT: Final = "roots"
 _ROOTS_NARGS: Final = "*"
@@ -266,13 +283,28 @@ def _print_result(result: LayoutConvergenceResult) -> None:
         print(_DETAIL_LINE.format(label=_LABEL_RERUN, value=_RERUN_COMMAND.format(repo_root=REPO_ROOT)))
 
 
+def _announce_waiting(root: Path) -> None:
+    logger.info(_LOG_WAITING_EVENT, project_root=str(root))
+    print(_WAITING_LINE.format(root=root), flush=True)
+
+
 def _converge_one(root: Path, *, attributable: bool, registered_slugs: Sequence[str]) -> LayoutConvergenceResult:
-    require_own_checkout(root)
     try:
-        result = _converge_checked(root, attributable=attributable, registered_slugs=registered_slugs)
+        require_own_checkout(root)
+    except ForeignRepositoryWriteRefusedError:
+        return LayoutConvergenceResult(root=root, outcome=LayoutConvergenceOutcome.FOREIGN_CHECKOUT)
+    try:
+        with repository_convergence_lock(root, lambda: _announce_waiting(root)):
+            return _converge_and_refresh(root, attributable=attributable, registered_slugs=registered_slugs)
     except (GitCommandError, OSError):
         logger.exception(_LOG_ROOT_FAILED_EVENT, project_root=str(root))
         return LayoutConvergenceResult(root=root, outcome=LayoutConvergenceOutcome.FAILED)
+
+
+def _converge_and_refresh(
+    root: Path, *, attributable: bool, registered_slugs: Sequence[str]
+) -> LayoutConvergenceResult:
+    result = _converge_checked(root, attributable=attributable, registered_slugs=registered_slugs)
     if result.outcome not in (LayoutConvergenceOutcome.CURRENT, LayoutConvergenceOutcome.MIGRATED_COMMITTED):
         return result
     refresh_details: list[str] = []
@@ -329,13 +361,11 @@ def run(roots: Sequence[Path], present: Sequence[bool], *, slug_roots: Sequence[
             result = _converge_one(root, attributable=attributable, registered_slugs=registered_slugs)
         _print_result(result)
         results.append(result)
-    failed = any(
-        result.outcome in FAILING_OUTCOMES or result.catalog_refresh == _CATALOG_REFRESH_FAILED for result in results
-    )
-    outcome = _RUN_FAILED if failed else _RUN_OK
+    run_result = run_class(results)
+    outcome = _RUN_LABELS[run_result]
     logger.info(_LOG_RUN_EVENT, run_id=run_id, outcome=outcome, root_count=len(results), attributable=attributable)
     print(_RUN_LINE.format(outcome=outcome, count=len(results), run_id=run_id))
-    return 1 if failed else 0
+    return EXIT_STATUSES[run_result]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -348,7 +378,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except RuntimeError:
         logger.exception(_LOG_REGISTRY_FAILED_EVENT)
         print(_REGISTRY_FAILED_LINE)
-        return 1
+        return EXIT_STATUSES[LayoutResultClass.FAILURE]
     slug_roots = [entry.path for entry in registered if entry.is_present]
     if arguments.roots:
         roots = [root.expanduser().resolve() for root in arguments.roots]

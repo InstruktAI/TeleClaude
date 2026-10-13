@@ -1174,8 +1174,37 @@ converge_plumbing() {
     PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.project_setup.plumbing --plumbing-only "$INSTALL_DIR"
 }
 
+# Exit statuses the convergence entrypoint publishes (EXIT_STATUSES in
+# teleclaude/entrypoints/docs_layout_convergence.py): 0 when every repository is
+# settled, DOCS_LAYOUT_EXIT_HELD when some are blocked for their owner or deferred
+# and none failed, and any other non-zero status for a failure.
+DOCS_LAYOUT_EXIT_HELD=3
+DOCS_LAYOUT_CONVERGENCE_FAILED=false
+
+# A hold or deferral warns and the install completes; a failure is recorded and
+# fails the install where it would print its completion banner, so the stages that
+# do not depend on other repositories still run.
 converge_docs_layout() {
-    PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.entrypoints.docs_layout_convergence || print_warning "Documentation layout convergence reported deferred or blocked repositories (report above); install continues"
+    local status=0
+    PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.entrypoints.docs_layout_convergence || status=$?
+    if [ "$status" -eq 0 ]; then
+        return 0
+    fi
+    if [ "$status" -eq "$DOCS_LAYOUT_EXIT_HELD" ]; then
+        print_warning "Documentation layout convergence left repositories blocked for their owner or deferred (report above); install continues"
+        return 0
+    fi
+    print_error "Documentation layout convergence failed (report above); the install fails after its remaining stages"
+    DOCS_LAYOUT_CONVERGENCE_FAILED=true
+}
+
+fail_install_on_convergence_failure() {
+    if [ "$DOCS_LAYOUT_CONVERGENCE_FAILED" = true ]; then
+        print_header "Install Failed"
+        print_error "Documentation layout convergence failed (report above)"
+        log "Install failed: documentation layout convergence"
+        return 1
+    fi
 }
 
 publish_config_schemas() {
@@ -1638,6 +1667,7 @@ main() {
 
     if [ "$DEPS_ONLY_MODE" = true ]; then
         run_install_stage install_deps_only install_deps_only
+        fail_install_on_convergence_failure
         print_header "Install Complete"
         print_success "Project dependencies installed"
         log "Deps-only install completed"
@@ -1701,6 +1731,7 @@ main() {
         run_install_stage link_shared_scripts link_shared_scripts
     fi
 
+    fail_install_on_convergence_failure
     print_header "Install Complete"
     print_success "Binaries, Python dependencies, and machine-global tooling installed"
 
