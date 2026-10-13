@@ -6,7 +6,6 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import StrEnum
-from io import StringIO
 from typing import cast
 
 from teleclaude.agent_registry import AgentName
@@ -14,6 +13,7 @@ from teleclaude.config._defaults import DEFAULT_CONFIG
 from teleclaude.config._machine_build import build_config_from_raw
 from teleclaude.config._models import ReleaseChannel, TeleclaudeConfig
 from teleclaude.config._yaml import round_trip_yaml
+from teleclaude.config.declaration import render_machine_config
 from teleclaude.config.machine import config_path
 from teleclaude.config.migrations._carry import carry_pending
 from teleclaude.config.migrations._chain import CURRENT_VERSION, Destination, upcast
@@ -205,9 +205,7 @@ def _read_mapping(transaction: FileTransaction) -> dict[object, object]:
 
 def _write_mapping(transaction: FileTransaction, document: Mapping[object, object]) -> None:
     """Serialize one validated document through the active atomic transaction."""
-    buffer = StringIO()
-    round_trip_yaml().dump(dict(document), buffer)
-    transaction.replace_text(buffer.getvalue())
+    transaction.replace_text(render_machine_config(cast(Mapping[str, object], document)))
 
 
 def _deep_merge(base: Mapping[object, object], patch: Mapping[object, object]) -> dict[object, object]:

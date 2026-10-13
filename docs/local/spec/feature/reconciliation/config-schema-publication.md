@@ -16,6 +16,12 @@ the MCP context's source and published beside them. Publication is the only
 writer of that directory's schema files, and no repository carries a schema
 file.
 
+The computer schema describes the authored machine document, including its
+declaration fields, defaultable sections, environment references, agent
+inventory and named remote computers. Runtime-derived fields are excluded.
+Publication uses the config context's input projection of its canonical models;
+the runtime remains the authority for cross-field and operational validation.
+
 A home-tree configuration file references the published schemas directly; a
 project configuration reaches them through its root's machine-local schema
 link (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`). The

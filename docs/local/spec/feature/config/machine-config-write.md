@@ -26,6 +26,13 @@ One mutation transaction owns the complete lifecycle:
 
 Any failure before replacement leaves the committed target unchanged. Successful return means the committed document has already passed validation.
 
+Every computer-document write, including initial generation and a migration
+that persists a changed document, emits exactly one editor schema modeline as
+the first line. Its relative reference names the published computer schema in
+the home's schema directory. Existing documents acquire the reference on their
+next write; reading, initializing an existing document, and an already-current
+migration leave them untouched.
+
 ## Canonical fields
 
 ### Mutation request

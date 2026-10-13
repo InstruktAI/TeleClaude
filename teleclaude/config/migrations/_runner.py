@@ -15,7 +15,7 @@ from instrukt_ai_logging import get_logger
 from ruamel.yaml.error import YAMLError
 
 from teleclaude.config._yaml import round_trip_yaml
-from teleclaude.config.declaration import render_declared_config
+from teleclaude.config.declaration import render_declared_config, render_machine_config
 from teleclaude.config.field_constraints import FieldConstraintRefusal
 from teleclaude.config.migrations import _steps
 from teleclaude.config.migrations._carry import carry_pending
@@ -266,6 +266,8 @@ def _render(document: Mapping[str, object], subject: SubjectRef) -> str:
     """Render one migrated mapping with comments and key order preserved."""
     if subject.kind in _OVERLAY_KINDS:
         return render_declared_config(ConfigKind(subject.kind.value), document)
+    if subject.kind is ConfigSubjectKind.COMPUTER:
+        return render_machine_config(document)
     buffer = StringIO()
     round_trip_yaml().dump(document, buffer)
     return buffer.getvalue()

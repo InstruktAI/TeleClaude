@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from pydantic.json_schema import GenerateJsonSchema
 
 from teleclaude.config._environment import WHOLE_REFERENCE_SCHEMA_PATTERN
+from teleclaude.config.machine_schema import machine_document_schema
 from teleclaude.config.schema import TIER_DOCUMENT_MODELS, ConfigKind, GlobalConfig, PersonConfig, ProjectConfig
 from teleclaude.core.models import JsonDict, JsonValue
 
@@ -121,6 +122,11 @@ def export_tier_schemas() -> dict[ConfigKind, JsonDict]:
         kind: {_DIALECT_KEY: GenerateJsonSchema.schema_dialect, **_accept_references(model.model_json_schema())}
         for kind, model in TIER_DOCUMENT_MODELS.items()
     }
+
+
+def export_computer_schema() -> JsonDict:
+    """Return the computer's authored-input schema with environment references accepted."""
+    return {_DIALECT_KEY: GenerateJsonSchema.schema_dialect, **_accept_references(machine_document_schema())}
 
 
 def _accept_references(schema: JsonDict) -> JsonDict:

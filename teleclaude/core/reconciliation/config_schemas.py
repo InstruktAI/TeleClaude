@@ -12,12 +12,13 @@ from typing import Final, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.declaration import (
+    COMPUTER_SCHEMA_FILENAME,
     HOME_SCHEMA_DIRECTORY,
     PROJECT_SCHEMA_LINK_DIRECTORY,
     schema_filename,
 )
 from teleclaude.config.schema import ConfigKind
-from teleclaude.config.schema_export import export_tier_schemas
+from teleclaude.config.schema_export import export_computer_schema, export_tier_schemas
 from teleclaude.core.models import JsonDict
 from teleclaude.file_transaction import LOCK_SUFFIX
 from teleclaude.git import Repo
@@ -46,7 +47,9 @@ _PUBLICATION_CONFLICT_EVENT: Final = "config_schema_publication_conflict"
 _LINK_EVENT: Final = "project_config_schema_link"
 _SCHEMA_TARGET_CONFLICT: Final = "Configuration schema target is not a directory: {target}"
 _PUBLICATION_SUMMARY: Final = "config-schemas: target={target} written={written} unchanged={unchanged}"
-_KNOWN_SCHEMA_FILENAMES: Final = frozenset({schema_filename(kind) for kind in ConfigKind} | {MCP_SCHEMA_FILENAME})
+_KNOWN_SCHEMA_FILENAMES: Final = frozenset(
+    {schema_filename(kind) for kind in ConfigKind} | {COMPUTER_SCHEMA_FILENAME, MCP_SCHEMA_FILENAME}
+)
 
 
 class SchemaLinkDisposition(StrEnum):
@@ -97,7 +100,7 @@ class ProjectSchemaLink:
 
 
 def publish_config_schemas(target: Path | None = None) -> ConfigSchemaPublication:
-    """Publish the four tier schemas and MCP schema into a real home directory."""
+    """Publish the computer, tier and MCP schemas into a real home directory."""
     destination = target if target is not None else TELECLAUDE_HOME / HOME_SCHEMA_DIRECTORY
     source_root = Path(__file__).resolve().parents[3]
     replaced_interim_link = destination.is_symlink()
@@ -120,6 +123,7 @@ def publish_config_schemas(target: Path | None = None) -> ConfigSchemaPublicatio
     payloads: list[tuple[str, JsonDict]] = []
     for kind, schema in schemas.items():
         payloads.append((schema_filename(kind), schema))
+    payloads.append((COMPUTER_SCHEMA_FILENAME, export_computer_schema()))
     payloads.append((MCP_SCHEMA_FILENAME, cast(JsonDict, mcp_schema)))
 
     written: list[str] = []

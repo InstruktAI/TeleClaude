@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
 from enum import Enum
 from io import StringIO
 from pathlib import Path
@@ -16,12 +17,14 @@ from teleclaude.file_transaction import file_transaction
 
 HOME_SCHEMA_DIRECTORY: Final = "schemas"
 PROJECT_SCHEMA_LINK_DIRECTORY: Final = ".teleclaude/schemas"
+COMPUTER_SCHEMA_FILENAME: Final = "teleclaude-computer.schema.json"
 _SCHEMA_MODELINE_PREFIX: Final = "# yaml-language-server: $schema="
 _UTF8: Final = "utf-8"
 _NEWLINE: Final = "\n"
 _KIND_FIELD: Final = "kind"
 _SCHEMA_VERSION_FIELD: Final = "schema_version"
 _EMPTY_TEXT: Final = ""
+_COMPUTER_SCHEMA_MODELINE: Final = f"{_SCHEMA_MODELINE_PREFIX}{HOME_SCHEMA_DIRECTORY}/{COMPUTER_SCHEMA_FILENAME}"
 _SCHEMA_FILENAMES: Final[dict[ConfigKind, str]] = {
     ConfigKind.GLOBAL: "teleclaude-global.schema.json",
     ConfigKind.PROJECT: "teleclaude-project.schema.json",
@@ -65,6 +68,15 @@ def render_declared_config(
 def write_yaml_document(path: Path, document: Mapping[str, object]) -> None:
     """Atomically write a YAML document that does not carry a tier declaration."""
     _atomic_write(path, _render_yaml(document, None))
+
+
+def render_machine_config(document: Mapping[str, object]) -> str:
+    """Render stored computer input with exactly one leading editor schema reference."""
+    content = _render_yaml(deepcopy(document), None)
+    body = _EMPTY_TEXT.join(
+        line for line in content.splitlines(keepends=True) if not line.startswith(_SCHEMA_MODELINE_PREFIX)
+    )
+    return f"{_COMPUTER_SCHEMA_MODELINE}{_NEWLINE}{body}"
 
 
 def _render_document(kind: ConfigKind, document: Mapping[str, object], modeline: str | None) -> str:

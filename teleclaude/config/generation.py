@@ -6,10 +6,9 @@ from collections.abc import MutableMapping
 from copy import deepcopy
 from pathlib import Path
 
-import yaml
-
 from teleclaude.agent_registry import AgentName
 from teleclaude.config._defaults import DEFAULT_CONFIG
+from teleclaude.config.declaration import render_machine_config
 from teleclaude.config.schema import CURRENT_SCHEMA_VERSION
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.tiers import in_public_sample
@@ -44,7 +43,7 @@ def ensure_machine_config(path: Path) -> str:
             _DEFAULT_AGENT_KEY: AgentName.CLAUDE.value,
             **{agent.value: {_ENABLED_KEY: agent is AgentName.CLAUDE} for agent in AgentName},
         }
-        transaction.replace_text(yaml.safe_dump(document, sort_keys=False))
+        transaction.replace_text(render_machine_config(document))
     return "created"
 
 
