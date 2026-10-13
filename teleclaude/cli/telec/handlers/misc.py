@@ -22,6 +22,8 @@ from teleclaude.project_root import resolve_invocation_cwd
 if TYPE_CHECKING:
     from teleclaude.api_models import CreateSessionResponseDTO
 
+_CHANNEL_SERIES_TEMPLATE = "{channel} ({series})"
+
 __all__ = [
     "_attach_tmux_session",
     "_ensure_tmux_mouse_on",
@@ -63,12 +65,12 @@ def _handle_version() -> None:
     try:
         deployment = importlib.import_module("teleclaude.config.machine").config.deployment
         channel = deployment.channel
-        pinned_minor = deployment.pinned_minor
+        series = deployment.series
     except (AttributeError, OSError, TypeError, ValueError):
         channel = "alpha"
-        pinned_minor = ""
+        series = None
 
-    channel_str = f"{channel} ({pinned_minor})" if channel == "stable" and pinned_minor else channel
+    channel_str = _CHANNEL_SERIES_TEMPLATE.format(channel=channel, series=series) if series is not None else channel
     print(f"TeleClaude v{_teleclaude_version()} (channel: {channel_str}, commit: {commit_hash})")
 
 

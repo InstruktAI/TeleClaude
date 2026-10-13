@@ -311,9 +311,11 @@ def _assessment_metadata(
     assessment_digest = hashlib.sha256(report_bytes).hexdigest()
     if selected_attempt.report_sha256 != assessment_digest:
         raise ValueError(_REPORT_INVALID)
-    if report.classification not in {ReleaseBump.PATCH.value, ReleaseBump.MINOR.value}:
-        raise ValueError(_REPORT_INVALID)
-    if version_tag != next_tag(attempt.baseline_tag, ReleaseBump(report.classification)):
+    try:
+        bump = ReleaseBump(report.classification.value)
+    except ValueError:
+        raise ValueError(_REPORT_INVALID) from None
+    if version_tag != next_tag(attempt.baseline_tag, bump):
         raise ValueError(_VERSION_MISMATCH)
     return selection.selected_provider, report_bytes, assessment_digest
 

@@ -27,6 +27,7 @@ from pydantic import BaseModel, ConfigDict
 
 from teleclaude.checkpoint_model import ActivationRange
 from teleclaude.config._models import ReleaseChannel
+from teleclaude.config.compatibility_series import CompatibilitySeries
 from teleclaude.config.machine import config
 from teleclaude.core.integration.post_commit_maintenance import record_activation
 from teleclaude.deployment import parse_version, version_cmp
@@ -56,8 +57,6 @@ _PYPROJECT_FILENAME = "pyproject.toml"
 _PROJECT_TABLE = "project"
 _VERSION_KEY = "version"
 _TEXT_ENCODING = "utf-8"
-_PINNED_MINOR_SEPARATOR = "."
-_PINNED_MINOR_PARTS = 2
 _USAGE = "usage: python -m teleclaude.deployment.self_update <event-file>"
 _USAGE_EXIT_CODE = 2
 _FAILED_EXIT_CODE = 1
@@ -65,6 +64,7 @@ _DECISION_EVENT = "self_update_decision"
 _STEP_EVENT = "self_update_step"
 _FAILED_EVENT = "self_update_failed"
 _NO_VERSION_ERROR = "{path} declares no project version"
+_NO_SERIES_ERROR = "stable self-update requires a compatibility series, and this installation declares none"
 _UNKNOWN_TARGET_ERROR = "target {target!r} is not an advance this action performs"
 _MISSING_TARGET_ERROR = "target {target} is not available after fetching"
 _MIGRATION_ERROR = "migrations failed: {error}"
@@ -76,7 +76,7 @@ class SkipReason(StrEnum):
     NOT_MAIN_PUSH = "not_a_push_to_main"
     NOT_PUBLISHED_RELEASE = "not_a_published_release"
     TAG_NOT_VERSION = "release_tag_is_not_a_semantic_version"
-    OUTSIDE_PINNED_MINOR = "release_outside_pinned_minor"
+    OUTSIDE_SERIES = "release_outside_compatibility_series"
 
 
 class ConvergenceStep(StrEnum):
@@ -110,9 +110,9 @@ class ConvergenceTarget:
 
 
 def target_for_event(
-    event: ReceivedEvent, channel: ReleaseChannel, pinned_minor: str
+    event: ReceivedEvent, channel: ReleaseChannel, series: CompatibilitySeries | None
 ) -> ConvergenceTarget | SkipReason:
-    """Decide from the event and the computer's channel whether, and to what, the installation converges."""
+    """Decide from the event and the computer's channel and series whether, and to what, the installation converges."""
     if channel is ReleaseChannel.ALPHA:
         if event.type == _PUSH_EVENT_TYPE and event.data.get(_REF_FIELD) == _MAIN_REF:
             return ConvergenceTarget(ref=_ALPHA_TARGET)
@@ -124,8 +124,11 @@ def target_for_event(
         version = parse_version(tag)
     except ValueError:
         return SkipReason.TAG_NOT_VERSION
-    if channel is ReleaseChannel.STABLE and not _within_pinned_minor(version, pinned_minor):
-        return SkipReason.OUTSIDE_PINNED_MINOR
+    if channel is ReleaseChannel.STABLE:
+        if series is None:
+            raise SelfUpdateError(_NO_SERIES_ERROR)
+        if not series.admits(version):
+            return SkipReason.OUTSIDE_SERIES
     return ConvergenceTarget(ref=_tag_ref(version))
 
 
@@ -142,14 +145,6 @@ def _tag_ref(version: tuple[int, int, int]) -> str:
     """Rebuild the release tag from its parsed numbers, so no raw event text reaches git."""
     major, minor, patch = version
     return _TAG_TEMPLATE.format(major=major, minor=minor, patch=patch)
-
-
-def _within_pinned_minor(version: tuple[int, int, int], pinned_minor: str) -> bool:
-    """Whether a release falls within the pinned ``major.minor`` series."""
-    parts = pinned_minor.split(_PINNED_MINOR_SEPARATOR)
-    if len(parts) != _PINNED_MINOR_PARTS or not all(part.isdigit() for part in parts):
-        return False
-    return version[:_PINNED_MINOR_PARTS] == (int(parts[0]), int(parts[1]))
 
 
 def _checkout_version(root: Path) -> str:
@@ -245,7 +240,7 @@ def converge(event_file: Path, root: Path) -> None:
     if pending is not None:
         _complete(root, pending)
     event = ReceivedEvent.model_validate_json(event_file.read_text(encoding=_TEXT_ENCODING))
-    verdict = target_for_event(event, config.deployment.channel, config.deployment.pinned_minor)
+    verdict = target_for_event(event, config.deployment.channel, config.deployment.series)
     if isinstance(verdict, SkipReason):
         logger.info(_DECISION_EVENT, event_id=event.id, event_type=event.type, outcome=verdict)
         return
