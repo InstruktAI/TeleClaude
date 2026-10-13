@@ -81,8 +81,7 @@ description: How a configuration migration is written — one numbered step in o
   behavior, and the transformations that older stored documents need. The
   ordered schema history supplies one current-version authority to every
   consumer. Reading that metadata performs no document transformation;
-  reconciliation consumes it to advance older instance state. This keeps
-  source correctness independent of a later reconciliation run.
+  reconciliation consumes it to advance older instance state.
 - **Serialization preserves the version established with the document's
   shape.** Creation establishes a current document; transformation advances
   an older document and its version together. A serializer preserves that
@@ -100,6 +99,12 @@ description: How a configuration migration is written — one numbered step in o
   unknown wherever they reappear.
 
 ## Rationale
+
+<!-- planned:config-schema-version-authority -->
+
+One shared version authority keeps source correctness independent of a later
+reconciliation run.
+<!-- /planned:config-schema-version-authority -->
 
 A registry-named document reaches the current shape along two paths — in memory
 on every read, and on disk when a migration run or a writer persists it — and
