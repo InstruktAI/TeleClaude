@@ -58,6 +58,7 @@ _COMMIT_REFUSED = MigrationFailureReason.COMMIT_REFUSED
 _FIELD_CONSTRAINT_REFUSED = MigrationFailureReason.FIELD_CONSTRAINT_REFUSED
 _MIGRATION_SUBJECT = "chore(config): migrate {path} to configuration version {version}"
 _COMMIT_DOCUMENT_PATH = "{commit}:{path}"
+_HEAD_REFERENCE = "HEAD"
 _TELEC_EXECUTABLE = "telec"
 _TELEC_INVOCATION_CWD = "TELEC_INVOCATION_CWD"
 _PROCESS_CWD = "PWD"
@@ -379,7 +380,12 @@ def _path_is_dirty(repository: Repo, relative_path: str | None) -> bool:
 
 def _committed_text(repository: Repo, relative_path: str) -> str:
     """Read the tracked document from HEAD after a commit hook refuses it."""
-    return cast(str, repository.git.show(f"HEAD:{relative_path}"))
+    return cast(
+        str,
+        repository.git.show(
+            _COMMIT_DOCUMENT_PATH.format(commit=_HEAD_REFERENCE, path=relative_path), strip_newline_in_stdout=False
+        ),
+    )
 
 
 def _version_or_zero(document: object) -> int:
