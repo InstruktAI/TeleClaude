@@ -46,6 +46,19 @@ incorrect result, lost state or cleanup failure fails the profile. Expected
 refusals are verified against their public result and absence of side effects.
 An unexecuted required scenario is not a pass.
 
+Persistent terminal commands complete only after a whole newline-terminated
+status frame is received. The controller consumes that frame and preserves any
+following bytes for the next command. Partial numeric status is not a completed
+command result.
+
+The curation-refusal journey verifies its fresh fixture's empty memory result
+through authorized listings both before and after the attempts, against captured
+public-output snapshots rather than rendered line counts. Comparison normalizes
+PTY line endings and removes only the controller's added separator newline;
+extra content, missing output, errors and transport failures still fail. A failed
+journey retains bounded sanitized before/after listing output when those commands
+ran, alongside its refusal/failing-command evidence.
+
 ### Use cases
 
 #### UC-RA1: Cold public entry points execute from the checked source

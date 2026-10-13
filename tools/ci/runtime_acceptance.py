@@ -207,6 +207,8 @@ _COMPUTER_STATUS_FIELD = "status"
 _READY_LOCAL_COMPUTER_SNAPSHOT = Path("snapshots") / "ready-local-computer.json"
 _MEMBER_PATCH_REFUSAL_SNAPSHOT = Path("snapshots") / "member-computer-patch-refusal.txt"
 _CURATION_REFUSALS_SNAPSHOT = Path("snapshots") / "curation-refusals.txt"
+_EMPTY_MEMORY_LIST_SNAPSHOT = Path("snapshots") / "empty-memory-list.txt"
+_PTY_LINE_ENDING = "\r\n"
 _ARCHIVED_CONVERSATION_SNAPSHOT = Path("snapshots") / "archived-conversation.txt"
 _INVALID_PATCH_REFUSAL_SNAPSHOT = Path("snapshots") / "invalid-computer-patch-refusal.txt"
 _REFUSAL_REQUEST_PREFIX = " (request "
@@ -1148,7 +1150,12 @@ def _capture_scenario(
         commands=tuple(
             command
             if status is ScenarioStatus.FAILED
-            and (index == len(evidence) - 1 or command.exit_status != _PROCESS_SUCCESS or command.diagnostics)
+            and (
+                index == len(evidence) - 1
+                or command.exit_status != _PROCESS_SUCCESS
+                or command.diagnostics
+                or (scenario_id == _SCENARIO_CURATION_REFUSAL and index == 0)
+            )
             else replace(command, stdout=_EMPTY)
             for index, command in enumerate(evidence)
         ),
@@ -2518,6 +2525,7 @@ def _full_curation_refusal(resources: FullRuntimeResources, evidence: list[Comma
     terminal = resources.open_admin_terminal()
     before_status, before_listing = _record_terminal_command(resources, terminal, _MEMORIES_LIST_COMMAND, evidence)
     _require_terminal_success(before_status, before_listing, evidence)
+    _require_empty_memory_listing(before_listing)
     expected_refusals = (Path(__file__).parent / _CURATION_REFUSALS_SNAPSHOT).read_text(encoding=_UTF8).splitlines()
     for operation, expected in zip(_CURATION_REFUSED_COMMANDS, expected_refusals, strict=True):
         status, output = _record_terminal_command(
@@ -2527,7 +2535,15 @@ def _full_curation_refusal(resources: FullRuntimeResources, evidence: list[Comma
             raise ValueError(_CURATION_NOT_REFUSED_ERROR)
     after_status, after_listing = _record_terminal_command(resources, terminal, _MEMORIES_LIST_COMMAND, evidence)
     _require_terminal_success(after_status, after_listing, evidence)
-    if len(after_listing.splitlines()) != len(before_listing.splitlines()):
+    _require_empty_memory_listing(after_listing)
+
+
+def _require_empty_memory_listing(output: str) -> None:
+    """Bind the fixture's empty public result without treating PTY layout as memory state."""
+    expected = (Path(__file__).parent / _EMPTY_MEMORY_LIST_SNAPSHOT).read_text(encoding=_UTF8)
+    observed = output.replace(_PTY_LINE_ENDING, _LINE_BREAK)
+    # The terminal wrapper emits one separator newline before its status marker.
+    if not observed.endswith(_LINE_BREAK) or observed.removesuffix(_LINE_BREAK) != expected:
         raise ValueError(_CURATION_CHANGED_MEMORIES_ERROR)
 
 

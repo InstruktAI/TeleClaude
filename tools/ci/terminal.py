@@ -128,11 +128,11 @@ class PersistentTerminal:
                 if marker_index - start > self._output_limit_bytes:
                     raise TerminalFailure(_TERMINAL_OUTPUT_LIMIT, output=self._captured_output(start))
                 suffix = bytes(self._buffer[marker_index + len(encoded_marker) :])
-                status_line = suffix.splitlines()[0] if suffix.splitlines() else _EMPTY_BYTES
-                if status_line.strip().isdigit():
+                line_end = suffix.find(_BYTE_NEWLINE)
+                status_line = suffix[:line_end] if line_end >= 0 else _EMPTY_BYTES
+                if line_end >= 0 and status_line.strip().isdigit():
                     output = bytes(self._buffer[start:marker_index]).decode(_UTF8, errors=_ERROR_REPLACE_MODE)
-                    line_end = suffix.find(_BYTE_NEWLINE)
-                    self._buffer = bytearray(suffix[line_end + 1 :] if line_end >= 0 else _EMPTY_BYTES)
+                    self._buffer = bytearray(suffix[line_end + 1 :])
                     return output, int(status_line.strip())
             if self._process.poll() is not None:
                 raise TerminalFailure(_TERMINAL_EXITED, output=self._captured_output(start))
