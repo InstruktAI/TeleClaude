@@ -200,5 +200,15 @@ by the existing startup and accepted-input recovery contracts.
 
 - **Cache Warmup Timeout**: Daemon fails to start. Indicates database corruption or resource exhaustion.
 - **Unclean Shutdown (SIGKILL)**: Hooks and commands may be partially processed. Next startup recovers from outbox.
+
+<!-- planned-change:supervise-long-lived-daemon-tasks -->
+
 - **Worker Task Crash**: Background worker stops. Dependent features stall (for example, no output polling means frozen sessions). Daemon logs error but continues.
+
+<!-- change:supervise-long-lived-daemon-tasks -->
+
+- **Worker Task Crash**: A long-lived worker is supervised (`sdlc/policy/code-quality-practices`, Error Handling and Recovery). Its supervisor logs the end and starts a replacement while the worker's restart budget lasts. A worker that cannot be replaced in place, or that exhausts its budget, escalates: the daemon runs its ordinary shutdown and the service manager relaunches it (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`, UC-DL17).
+
+<!-- /planned-change:supervise-long-lived-daemon-tasks -->
+
 - **Shutdown Timeout**: Cleanup takes too long; systemd may SIGKILL and leak resources.
