@@ -6,13 +6,15 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
+from enum import StrEnum
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord.message_ops import reconcile_pending_discord_send_intents
-from teleclaude.api_server import APIServer
+from teleclaude.api_server import APIServer, RequestSurface
 from teleclaude.config.machine import config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_delivery import reconcile_outstanding_conversation_deliveries
@@ -24,6 +26,7 @@ from teleclaude.core.events import ProjectRefreshTrigger, ProjectsChangedContext
 from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
 from teleclaude.core.operations import OperationsService, get_operations_service, set_operations_service
+from teleclaude.core.restart_budget import RestartBudget
 from teleclaude.core.session_cleanup import end_legacy_restricted_sessions
 from teleclaude.core.session_config_subject import (
     backfill_session_config_subjects,
@@ -41,7 +44,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.reminders import ReminderService
-    from teleclaude.core.task_registry import TaskRegistry
+    from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
 from teleclaude.api_models import TodoDTO
 from teleclaude.core import command_handlers
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
@@ -51,6 +54,7 @@ logger = get_logger(__name__)
 _SHUTDOWN_COMPONENT_FAILED = "Shutdown component failed; continuing teardown"
 _INBOUND_SHUTDOWN_COMPONENT = "inbound_queue"
 _API_SHUTDOWN_COMPONENT = "api_server"
+_REMINDER_SHUTDOWN_COMPONENT = "reminder_scheduler"
 _STORAGE_SHUTDOWN_COMPONENT = "storage"
 
 
@@ -69,6 +73,22 @@ _DISCORD_SEND_INTENTS_RECONCILED_EVENT = "lifecycle_discord_send_intents_reconci
 _WORKTREE_HOME_RECONCILE_TASK = "worktree-home-reconcile"
 _FINAL_OUTPUT_RECONCILE_TASK = "final-output-reconcile"
 _REMINDER_SCHEDULER_TASK = "reminder-scheduler"
+
+_REQUEST_SURFACE_EXIT_CLEAN_EVENT = "Request surface exited cleanly; skipping restart"
+_REQUEST_SURFACE_EXIT_EVENT = "Request surface exit detected; scheduling restart"
+_API_RESTART_NO_LOOP_EVENT = "No running event loop to restart the request surface; requesting the daemon's shutdown"
+_API_RESTART_EXHAUSTED_EVENT = "Request surface restart limit exhausted; requesting the daemon's shutdown"
+_API_RESTART_FAILED_EVENT = "Request surface restart failed; scheduling another attempt"
+_API_RESTART_UNAVAILABLE_EVENT = "Request surface not available; cannot restart"
+_API_RESTART_ESCALATION_REASON = "request-surface-restart:{reason}"
+_EXIT_REASON = "{surface}_{kind}"
+
+
+class _ExitKind(StrEnum):
+    """How a request-surface server came to exit."""
+
+    CRASH = "crash"
+    DONE = "done"
 
 
 class DaemonLifecycle:
@@ -91,6 +111,7 @@ class DaemonLifecycle:
         api_restart_max: int,
         api_restart_window_s: float,
         api_restart_backoff_s: float,
+        escalate: Callable[[str], None],
     ) -> None:
         self.client = client
         self.cache = cache
@@ -103,14 +124,16 @@ class DaemonLifecycle:
         self._recover_session_startups = recover_session_startups
         self._event_platform_init = event_platform_init
         self._event_consumer_start = event_consumer_start
+        self._escalate = escalate
 
         self._api_restart_lock = asyncio.Lock()
-        self._api_restart_attempts = 0
-        self._api_restart_window_start = 0.0
-        self._api_restart_max = api_restart_max
-        self._api_restart_window_s = api_restart_window_s
-        self._api_restart_backoff_s = api_restart_backoff_s
+        self._api_restart_budget = RestartBudget(
+            max_restarts=api_restart_max,
+            window_s=api_restart_window_s,
+            backoff_s=api_restart_backoff_s,
+        )
         self._started = False
+        self._reminder_scheduler: SupervisedTask | None = None
         self.api_server: APIServer | None = None
 
     async def startup(self) -> None:
@@ -167,9 +190,8 @@ class DaemonLifecycle:
         logger.info("Event platform initialized in %.3fs", time.perf_counter() - event_platform_started_at)
 
         await self._complete_startup_after_adapters()
-        self.task_registry.spawn(
-            self.reminder_service.run(self.shutdown_event),
-            name=_REMINDER_SCHEDULER_TASK,
+        self._reminder_scheduler = self.task_registry.supervise(
+            _REMINDER_SCHEDULER_TASK, partial(self.reminder_service.run, self.shutdown_event), restart=True
         )
 
         api_started_at = time.perf_counter()
@@ -374,6 +396,10 @@ class DaemonLifecycle:
                 await inbound.shutdown()
                 logger.info("Inbound queue manager shut down")
 
+        if self._reminder_scheduler:
+            with shutdown_step(_REMINDER_SHUTDOWN_COMPONENT):
+                await self._reminder_scheduler.cancel()
+
         if self.api_server:
             with shutdown_step(_API_SHUTDOWN_COMPONENT):
                 await self.api_server.stop()
@@ -387,25 +413,29 @@ class DaemonLifecycle:
 
     def handle_api_server_exit(
         self,
+        surface: RequestSurface,
         exc: BaseException | None,
         started: bool | None,
         should_exit: bool | None,
         socket_exists: bool,
     ) -> None:
-        """Handle API server exit and schedule restart from a central location."""
+        """Handle a request-surface server exit and schedule restart from a central location."""
         if self.shutdown_event.is_set():
             return
         if should_exit:
             logger.info(
-                "API server exited cleanly; skipping restart",
+                _REQUEST_SURFACE_EXIT_CLEAN_EVENT,
+                surface=surface,
                 started=started,
                 should_exit=should_exit,
                 socket=socket_exists,
             )
             return
-        reason = "api_task_crash" if exc else "api_task_done"
+        kind = _ExitKind.CRASH if exc else _ExitKind.DONE
+        reason = _EXIT_REASON.format(surface=surface, kind=kind)
         logger.warning(
-            "API server exit detected; scheduling restart",
+            _REQUEST_SURFACE_EXIT_EVENT,
+            surface=surface,
             reason=reason,
             started=started,
             socket=socket_exists,
@@ -418,8 +448,8 @@ class DaemonLifecycle:
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            logger.error("No running event loop to restart API server (%s)", reason)
-            self.shutdown_event.set()
+            logger.error(_API_RESTART_NO_LOOP_EVENT, reason=reason)
+            self._escalate(_API_RESTART_ESCALATION_REASON.format(reason=reason))
             return
         loop.create_task(self._restart_api_server(reason), name="api-server-restart")
 
@@ -431,42 +461,38 @@ class DaemonLifecycle:
         async with self._api_restart_lock:
             if self.shutdown_event.is_set():
                 return False
-            now = asyncio.get_running_loop().time()
-            if (
-                self._api_restart_window_start == 0.0
-                or (now - self._api_restart_window_start) > self._api_restart_window_s
-            ):
-                self._api_restart_window_start = now
-                self._api_restart_attempts = 0
-
-            self._api_restart_attempts += 1
-            if self._api_restart_attempts > self._api_restart_max:
+            charge = self._api_restart_budget.charge(asyncio.get_running_loop().time())
+            if not charge.within_budget:
                 logger.error(
-                    "API server restart limit exceeded; leaving server down",
+                    _API_RESTART_EXHAUSTED_EVENT,
                     reason=reason,
-                    attempts=self._api_restart_attempts,
+                    attempts=charge.attempt,
+                    max_restarts=self._api_restart_budget.max_restarts,
+                    window_s=self._api_restart_budget.window_s,
                 )
+                self._escalate(_API_RESTART_ESCALATION_REASON.format(reason=reason))
                 return False
 
             logger.warning(
                 "Restarting API server",
                 reason=reason,
-                attempt=self._api_restart_attempts,
-                window_s=self._api_restart_window_s,
+                attempt=charge.attempt,
+                window_s=self._api_restart_budget.window_s,
                 server_started=getattr(getattr(self.api_server, "server", None), "started", None),
                 server_should_exit=getattr(getattr(self.api_server, "server", None), "should_exit", None),
                 server_task_done=(
                     self.api_server.server_task.done() if self.api_server and self.api_server.server_task else None
                 ),
             )
-            await asyncio.sleep(self._api_restart_backoff_s)
+            await asyncio.sleep(self._api_restart_budget.backoff_s)
             api_server = self.api_server
             if not api_server:
-                logger.error("API server not available; cannot restart")
+                logger.error(_API_RESTART_UNAVAILABLE_EVENT)
                 return False
             try:
                 await api_server.restart_server()
                 return True
-            except Exception as exc:
-                logger.error("API server restart failed: %s", exc, exc_info=True)
+            except Exception:
+                logger.error(_API_RESTART_FAILED_EVENT, reason=reason, exc_info=True)
+                self._schedule_api_restart(reason)
                 return False

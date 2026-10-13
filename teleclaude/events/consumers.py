@@ -15,7 +15,8 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from functools import partial
+from typing import TYPE_CHECKING, Any
 
 from instrukt_ai_logging import get_logger
 
@@ -25,6 +26,9 @@ from teleclaude.events.processor import EventProcessor
 from teleclaude.events.references import ReferenceKind
 from teleclaude.events.type_pattern import TypePattern
 from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, StreamEvent
+
+if TYPE_CHECKING:
+    from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
 
 logger = get_logger(__name__)
 
@@ -40,7 +44,7 @@ _NO_NAME_ERROR = "a consumer is declared with a name"
 _DUPLICATE_NAMES_ERROR = "consumer names must be unique on a computer; declared more than once: {names}"
 _NAME_SEPARATOR = ", "
 _CONSUMER_STARTED_EVENT = "Event consumer starting"
-_CONSUMER_STOPPED_ON_ERROR_EVENT = "Event consumer stopped on error"
+_CONSUMER_TASK_TEMPLATE = "event-consumer-{name}"
 
 
 @dataclass(frozen=True)
@@ -139,13 +143,17 @@ class ConsumerRuntime:
             for consumer in consumers
         ]
 
-    async def run(self, shutdown_event: asyncio.Event) -> None:
-        """Run every consumer until shutdown; a consumer that stops on an error does not stop the others."""
-        await asyncio.gather(*(self._run_one(name, processor, shutdown_event) for name, processor in self._processors))
+    def supervise(self, registry: TaskRegistry, shutdown_event: asyncio.Event) -> tuple[SupervisedTask, ...]:
+        """Run every consumer until shutdown as its own supervised task: one that ends is replaced alone."""
+        return tuple(
+            registry.supervise(
+                _CONSUMER_TASK_TEMPLATE.format(name=name),
+                partial(self._run_one, name, processor, shutdown_event),
+                restart=True,
+            )
+            for name, processor in self._processors
+        )
 
     async def _run_one(self, name: str, processor: EventProcessor[StreamEvent], shutdown_event: asyncio.Event) -> None:
         logger.info(_CONSUMER_STARTED_EVENT, consumer=name)
-        try:
-            await processor.start(shutdown_event)
-        except Exception:
-            logger.exception(_CONSUMER_STOPPED_ON_ERROR_EVENT, consumer=name)
+        await processor.start(shutdown_event)

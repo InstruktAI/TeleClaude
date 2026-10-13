@@ -51,7 +51,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: coalesced remote cache refresh with cooldown and peer loop."""
 
     if TYPE_CHECKING:
-        task_registry: TaskRegistry | None
+        task_registry: TaskRegistry
         computer_name: str
         heartbeat_interval: int
         _running: bool
@@ -78,11 +78,6 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         async def pull_remote_sessions(self, computer: str) -> bool:
             """Pull sessions from one peer (bootstrap path); True only on success."""
             _ = computer
-            raise NotImplementedError
-
-        def _log_task_exception(self, task: asyncio.Task[object]) -> None:
-            """Log an exception from an untracked background task."""
-            _ = task
             raise NotImplementedError
 
         async def _get_redis(self) -> Redis:
@@ -217,15 +212,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
         return None
 
     def _spawn_refresh_task(self, coro: Awaitable[None], *, key: str) -> asyncio.Task[object]:
-        if self.task_registry:
-            task = self.task_registry.spawn(coro, name=f"redis-refresh-{key}")  # type: ignore[var-annotated]
-        else:
-
-            async def _run_refresh() -> None:
-                await coro
-
-            task = asyncio.create_task(_run_refresh(), name=f"redis-refresh-{key}")
-            task.add_done_callback(self._log_task_exception)
+        task = self.task_registry.spawn(coro, name=f"redis-refresh-{key}")  # type: ignore[var-annotated]
 
         def _cleanup(_task: asyncio.Task[object]) -> None:
             self._refresh_tasks.pop(key, None)

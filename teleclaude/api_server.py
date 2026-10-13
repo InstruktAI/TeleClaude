@@ -17,6 +17,7 @@ import traceback as _tb
 import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import nullcontext
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -121,7 +122,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.reminders import ReminderService
-    from teleclaude.core.task_registry import TaskRegistry
+    from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
 
 logger = get_logger(__name__)
 
@@ -137,8 +138,19 @@ _WS_OPTIONS_REFUSED_LOG = "WebSocket connection options refused: %s"
 _HOOK_RECEIVER_ERROR_SOURCE = "hook_receiver"
 _WATCH_INFLIGHT_REPORT_FAILED_LOG = "API watch: in-flight request report failed"
 _METRICS_SAMPLE_FAILED_LOG = "API server metrics sample failed"
+_METRICS_TASK = "api-metrics"
+_WATCH_TASK = "api-watch-loop"
+_MCP_REAPER_TASK = "api-mcp-reaper"
 
-ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
+
+class RequestSurface(StrEnum):
+    """The long-lived servers that make up the daemon's request surface."""
+
+    API_SERVER = "api_task"
+    WEBHOOK_INGRESS = "webhook_ingress"
+
+
+ServerExitHandler = Callable[[RequestSurface, BaseException | None, bool | None, bool | None, bool], None]
 
 
 class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableOverride]
@@ -147,8 +159,8 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
     def __init__(
         self,
         client: AdapterClient,
+        task_registry: TaskRegistry,
         cache: DaemonCache | None = None,
-        task_registry: TaskRegistry | None = None,
         socket_path: str | None = None,
         runtime_settings: RuntimeSettings | None = None,
         reminder_service: ReminderService | None = None,
@@ -171,6 +183,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 port=config.api.tcp_port,
                 keep_alive_timeout_s=API_TIMEOUT_KEEP_ALIVE_S,
                 stop_timeout_s=API_STOP_TIMEOUT_S,
+                on_unexpected_exit=self._on_ingress_listener_exit,
             )
         self._setup_routes()
         configure_relay_carrier(client)
@@ -220,9 +233,9 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.socket_path = socket_path or API_SOCKET_PATH
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None
-        self._metrics_task: asyncio.Task[object] | None = None
-        self._watch_task: asyncio.Task[object] | None = None
-        self._mcp_reaper_task: asyncio.Task[object] | None = None
+        self._metrics_task: SupervisedTask | None = None
+        self._watch_task: SupervisedTask | None = None
+        self._mcp_reaper_task: SupervisedTask | None = None
         self._inflight_requests: dict[int, tuple[str, float]] = {}
         self._request_seq = 0
         self._last_watch_tick = 0.0
@@ -660,21 +673,12 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
     def _start_mcp_reaper_task(self) -> None:
         if self._mcp_reaper_task and not self._mcp_reaper_task.done():
             return
-        coro = self._mcp_reaper_loop()
-        if self.task_registry:
-            self._mcp_reaper_task = self.task_registry.spawn(coro, name="api-mcp-reaper")
-        else:
-            self._mcp_reaper_task = asyncio.create_task(coro, name="api-mcp-reaper")
+        self._mcp_reaper_task = self.task_registry.supervise(_MCP_REAPER_TASK, self._mcp_reaper_loop, restart=True)
 
     async def _stop_mcp_reaper_task(self) -> None:
         if not self._mcp_reaper_task:
             return
-        if not self._mcp_reaper_task.done():
-            self._mcp_reaper_task.cancel()
-            try:
-                await self._mcp_reaper_task
-            except asyncio.CancelledError:
-                pass
+        await self._mcp_reaper_task.cancel()
         self._mcp_reaper_task = None
 
     async def _mcp_reaper_loop(self) -> None:
@@ -691,16 +695,13 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         # Must use the event loop clock because _watch_loop measures elapsed time
         # with loop.time(). Mixing clock sources produces bogus startup lag values.
         self._last_watch_tick = asyncio.get_running_loop().time()
-        self._watch_task = asyncio.create_task(self._watch_loop(), name="api-watch-loop")
+        self._watch_task = self.task_registry.supervise(_WATCH_TASK, self._watch_loop, restart=True)
 
     async def _stop_watch_task(self) -> None:
         if not self._watch_task:
             return
-        self._watch_task.cancel()
-        try:
-            await self._watch_task
-        except asyncio.CancelledError:
-            pass
+        await self._watch_task.cancel()
+        self._watch_task = None
 
     def _dump_stacks(self, reason: str) -> None:
         now = time.monotonic()
@@ -849,22 +850,13 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         """Start periodic API server metrics logging."""
         if self._metrics_task and not self._metrics_task.done():
             return
-        coro = self._metrics_loop()
-        if self.task_registry:
-            self._metrics_task = self.task_registry.spawn(coro, name="api-metrics")
-        else:
-            self._metrics_task = asyncio.create_task(coro, name="api-metrics")
+        self._metrics_task = self.task_registry.supervise(_METRICS_TASK, self._metrics_loop, restart=True)
 
     async def _stop_metrics_task(self) -> None:
         """Stop periodic API server metrics logging."""
         if not self._metrics_task:
             return
-        if not self._metrics_task.done():
-            self._metrics_task.cancel()
-            try:
-                await self._metrics_task
-            except asyncio.CancelledError:
-                pass
+        await self._metrics_task.cancel()
         self._metrics_task = None
 
     async def _metrics_loop(self) -> None:
@@ -873,7 +865,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             try:
                 fd_count = _get_fd_count()
                 ws_count = len(self._ws_clients)
-                task_count = self.task_registry.task_count() if self.task_registry else 0
+                task_count = self.task_registry.task_count()
                 server = self.server
                 server_started = getattr(server, "started", None) if server else None
                 server_should_exit = getattr(server, "should_exit", None) if server else None
@@ -954,7 +946,14 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             )
 
         if self._on_server_exit:
-            self._on_server_exit(exc, server_started, server_should_exit, socket_exists)
+            self._on_server_exit(RequestSurface.API_SERVER, exc, server_started, server_should_exit, socket_exists)
+
+    def _on_ingress_listener_exit(self, exc: BaseException | None, should_exit: bool | None) -> None:
+        """Report the webhook ingress listener's unexpected exit through the request-surface exit handler."""
+        if self._on_server_exit:
+            self._on_server_exit(
+                RequestSurface.WEBHOOK_INGRESS, exc, True, should_exit, os.path.exists(self.socket_path)
+            )
 
 
 def _get_fd_count() -> int:

@@ -6,6 +6,7 @@ import asyncio
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 from instrukt_ai_logging import get_logger
@@ -60,6 +61,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.lifecycle import DaemonLifecycle
+    from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
 
 logger = get_logger(__name__)
 _EVENT_DB_REQUIRED_FOR_PIPELINE_CONTEXT = "_build_pipeline_context always runs after _init_event_db_storage"
@@ -67,13 +69,12 @@ _RELAY_DELIVERY_PROCESSOR_NAME = "relay-delivery"
 _RELAY_DELIVERY_GROUP_PREFIX = "relay-delivery-"
 _RELAY_DELIVERY_CONSUMER_SUFFIX = "-relay-"
 _RELAY_DELIVERY_TASK_NAME = "relay-delivery-processor"
-_RELAY_DELIVERY_LOG_TASK_NAME = "relay_delivery_processor"
 _RELAY_DELIVERY_STARTED_EVENT = "Relay delivery processor started"
 _RETIRED_GROUP_TEMPLATE = "{group}-{computer}"
 _RETIRED_GROUP_DESTROYED_EVENT = "Retired system pipeline consumer group destroyed"
 _RETIRED_GROUP_ABSENT_EVENT = "No stream yet; no retired system pipeline consumer group to destroy"
-_EVENT_CONSUMERS_TASK_NAME = "event-consumers"
-_EVENT_CONSUMERS_LOG_TASK_NAME = "event_consumers"
+_INTERNAL_EVENT_BUS_TASK_NAME = "internal-event-bus"
+_TASK_SCHEDULE_CLOCK_TASK_NAME = "task-schedule-clock"
 _EVENT_CONSUMERS_STARTED_EVENT = "Event consumer runtime started"
 _MEMORY_TRANSITION_TASK_NAME = "memory-transition"
 _MEMORY_TRANSITION_LOG_TASK_NAME = "memory_transition"
@@ -107,10 +108,11 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _event_producer: EventProducer | None
         _event_redis_client: object | None
         _event_platform_status: _EventPlatformStatus
-        _event_consumers_task: asyncio.Task[object] | None
-        _relay_delivery_task: asyncio.Task[object] | None
-        _internal_event_bus_task: asyncio.Task[object] | None
-        _task_schedule_clock_task: asyncio.Task[object] | None
+        task_registry: TaskRegistry
+        _event_consumer_tasks: tuple[SupervisedTask, ...]
+        _relay_delivery_task: SupervisedTask | None
+        _internal_event_bus_task: SupervisedTask | None
+        _task_schedule_clock_task: SupervisedTask | None
         _hook_dispatcher: HookDispatcher | None
         cache: DaemonCache
 
@@ -190,12 +192,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             db=self._event_db,
             computer=config.computer.name,
         )
-        self._event_consumers_task = asyncio.create_task(
-            runtime.run(self.shutdown_event), name=_EVENT_CONSUMERS_TASK_NAME
-        )
-        self._event_consumers_task.add_done_callback(
-            self._log_background_task_exception(_EVENT_CONSUMERS_LOG_TASK_NAME)
-        )
+        self._event_consumer_tasks = runtime.supervise(self.task_registry, self.shutdown_event)
         logger.info(_EVENT_CONSUMERS_STARTED_EVENT, consumers=[consumer.name for consumer in consumers])
 
     def _start_relay_delivery_consumer(self, dispatcher: HookDispatcher) -> None:
@@ -218,20 +215,17 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             sweep_interval_ms=reliability.sweep_interval_ms,
             dlq_destination=reliability.dlq_destination,
         )
-        self._relay_delivery_task = asyncio.create_task(
-            processor.start(self.shutdown_event), name=_RELAY_DELIVERY_TASK_NAME
+        self._relay_delivery_task = self.task_registry.supervise(
+            _RELAY_DELIVERY_TASK_NAME, partial(processor.start, self.shutdown_event), restart=True
         )
-        self._relay_delivery_task.add_done_callback(self._log_background_task_exception(_RELAY_DELIVERY_LOG_TASK_NAME))
         logger.info(_RELAY_DELIVERY_STARTED_EVENT, computer=computer_label)
 
     def _start_internal_event_bus(self, redis_client: object) -> None:
         """Configure and start the daemon role's internal EventBus consumer."""
         bus = configure_event_bus(role="daemon", redis_client=cast(RedisStreamsClient, redis_client))
-        self._internal_event_bus_task = asyncio.create_task(
-            bus.start(self.shutdown_event),
-            name="internal-event-bus",
+        self._internal_event_bus_task = self.task_registry.supervise(
+            _INTERNAL_EVENT_BUS_TASK_NAME, partial(bus.start, self.shutdown_event), restart=True
         )
-        self._internal_event_bus_task.add_done_callback(self._log_background_task_exception("internal_event_bus"))
         logger.info("Internal EventBus started", role="daemon")
 
     async def _emit_daemon_restarted_event(
@@ -258,11 +252,10 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     def _start_task_schedule_clock(self, event_producer: EventProducer) -> None:
         """Start the workflow schedule minute clock."""
-        self._task_schedule_clock_task = asyncio.create_task(
-            TaskScheduleClock(event_producer).run(self.shutdown_event),
-            name="task-schedule-clock",
+        clock = TaskScheduleClock(event_producer)
+        self._task_schedule_clock_task = self.task_registry.supervise(
+            _TASK_SCHEDULE_CLOCK_TASK_NAME, partial(clock.run, self.shutdown_event), restart=True
         )
-        self._task_schedule_clock_task.add_done_callback(self._log_background_task_exception("task_schedule_clock"))
         logger.info("Task schedule minute clock started")
 
     async def _start_event_platform_prepare(self) -> None:

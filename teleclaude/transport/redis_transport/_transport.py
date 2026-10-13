@@ -30,7 +30,7 @@ from ._request_response import _RequestResponseMixin
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
-    from teleclaude.core.task_registry import TaskRegistry
+    from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
 
 logger = get_logger(__name__)
 
@@ -65,12 +65,12 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
 
     _ALLOWED_REFRESH_REASONS = {"startup", "first_heartbeat", "ttl", "observed_stop"}
 
-    def __init__(self, adapter_client: AdapterClient, task_registry: TaskRegistry | None = None):
+    def __init__(self, adapter_client: AdapterClient, task_registry: TaskRegistry):
         """Initialize Redis transport.
 
         Args:
             adapter_client: AdapterClient instance for event emission
-            task_registry: Optional TaskRegistry for tracking background tasks
+            task_registry: TaskRegistry that tracks and supervises the transport's background tasks
         """
         super().__init__()
 
@@ -86,10 +86,7 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._cache: DaemonCache | None = None
 
         # Transport state
-        self._message_poll_task: asyncio.Task[object] | None = None
-        self._heartbeat_task: asyncio.Task[object] | None = None
-        self._peer_refresh_task: asyncio.Task[object] | None = None
-        self._connection_task: asyncio.Task[object] | None = None
+        self._transport_runtime: SupervisedTask | None = None
         self._reconnect_task: asyncio.Task[object] | None = None
         self._running = False
         self._redis_ready = asyncio.Event()

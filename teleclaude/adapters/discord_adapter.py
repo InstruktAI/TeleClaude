@@ -66,12 +66,14 @@ from teleclaude.utils.markdown import (
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
-    from teleclaude.core.task_registry import TaskRegistry
+    from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
 
 logger = get_logger(__name__)
 
 DISCORD_TYPING_INTERVAL_S = 5.0
 _DESK_RECONCILE_TASK_NAME = "discord-desk-reconcile"
+_GATEWAY_TASK_NAME = "discord-gateway"
+_GATEWAY_LIVENESS_TASK_NAME = "discord-gateway-liveness"
 _DESK_PASS_FAILED_EVENT = "discord.help_desk_pass.failed"
 
 
@@ -154,7 +156,7 @@ class DiscordAdapter(
 
     # -------------------------------------------------------------------------
 
-    def __init__(self, client: AdapterClient, *, task_registry: TaskRegistry | None = None) -> None:
+    def __init__(self, client: AdapterClient, *, task_registry: TaskRegistry) -> None:
         super().__init__(client)
         self.client = client
         self.task_registry = task_registry
@@ -165,6 +167,7 @@ class DiscordAdapter(
         self._announcements_channel_id: int | None = None
         self._general_channel_id: int | None = None
         self._gateway_task: asyncio.Task[object] | None = None
+        self._gateway_liveness: SupervisedTask | None = None
         self._ready_event = asyncio.Event()
         self._client: DiscordClientLike | None = None
         self._voice_room: VoiceRoom | None = None
@@ -202,7 +205,7 @@ class DiscordAdapter(
 
         # Output QoS scheduler: coalesces stale payloads (coalesce_only mode by default).
         qos_policy = discord_policy(config.discord.qos)
-        self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy)
+        self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy, task_registry)
 
         # No threaded output buffering — Discord uses the base class
         # edit-in-place model for threaded output delivery.
@@ -232,10 +235,7 @@ class DiscordAdapter(
         self._register_gateway_handlers()
         self._ready_event.clear()
 
-        if self.task_registry:
-            self._gateway_task = self.task_registry.spawn(self._client.start(self._token), name="discord-gateway")
-        else:
-            self._gateway_task = asyncio.create_task(self._client.start(self._token), name="discord-gateway")
+        self._gateway_task = self.task_registry.spawn(self._client.start(self._token), name=_GATEWAY_TASK_NAME)
 
         try:
             await asyncio.wait_for(self._ready_event.wait(), timeout=20.0)
@@ -245,6 +245,9 @@ class DiscordAdapter(
                 if task_exc:
                     raise RuntimeError(f"Discord gateway failed to start: {task_exc}") from task_exc
             raise RuntimeError("Discord adapter did not become ready within 20 seconds") from exc
+
+        # A gateway that ends once the adapter is ready cannot be restarted in place; its end escalates.
+        self._gateway_liveness = self.task_registry.observe(_GATEWAY_LIVENESS_TASK_NAME, self._gateway_task)
 
         # Start QoS scheduler (no-op if mode == "off").
         self._qos_scheduler.start()
@@ -274,6 +277,9 @@ class DiscordAdapter(
         if self._voice_room is not None:
             await self._voice_room.close()
             self._voice_room = None
+        if self._gateway_liveness is not None:
+            await self._gateway_liveness.cancel()
+            self._gateway_liveness = None
         if self._client is not None:
             await self._client.close()
         if self._gateway_task and not self._gateway_task.done():

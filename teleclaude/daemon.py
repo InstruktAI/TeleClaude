@@ -10,6 +10,7 @@ import sys
 import time
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
 
@@ -38,11 +39,32 @@ _CHIPTUNES_SHUTDOWN_COMPONENT = "chiptunes_manager"
 _REGISTRY_SHUTDOWN_COMPONENT = "task_registry"
 _LIFECYCLE_SHUTDOWN_COMPONENT = "lifecycle"
 _PREPARED_EXIT_WARNING = "No termination arrived within the grace after drained; completing own shutdown"
-_IDENTITY_DECLARATION_WATCH_TASK_NAME = "identity-declarations-watch"
-_IDENTITY_DECLARATION_WATCH_LABEL = "identity_declarations_watch"
 _IDENTITY_DECLARATION_WATCH_ATTR = "identity_declarations_watch_task"
 _IDENTITY_DECLARATION_WATCH_STOPPED = "Identity declaration watcher stopped"
 _IDENTITY_DECLARATION_WATCHER_STARTED = "Identity declaration watcher started"
+_WORKER_TIMED_OUT = "%s timed out after %.1fs; task was cancelled"
+
+
+class _Worker(StrEnum):
+    """The steady-state workers the daemon service supervises, by task name."""
+
+    CLEANUP = "periodic-cleanup"
+    POLLER_WATCH = "poller-watch"
+    IDLE_CYCLE = "conversation-idle-cycle"
+    CONFIG_WATCH = "config-watch"
+    PROJECTS_WATCH = "projects-watch"
+    IDENTITY_DECLARATIONS_WATCH = "identity-declarations-watch"
+    HOOK_OUTBOX = "hook-outbox-worker"
+    AGENT_STATUS_WATCHDOG = "agent-status-watchdog"
+    MIRROR_WORKER = "mirror-worker"
+    RESOURCE_MONITOR = "resource-monitor"
+    PROCESS_JANITOR = "process-janitor"
+    WAL_CHECKPOINT = "wal-checkpoint"
+    LAUNCHD_WATCH = "launchd-watch"
+    WORKFLOW_BRIDGE = "workflow-bridge"
+    IDENTITY_BRIDGE = "identity-bridge"
+    CLUSTER_BRIDGE = "cluster-bridge"
+
 
 if TYPE_CHECKING:
     from teleclaude.hooks.dispatcher import HookDispatcher
@@ -209,7 +231,7 @@ from teleclaude.core.shutdown_drain import PREPARED_TERMINATION_GRACE_SECONDS, g
 _record_import_timing("teleclaude.core.shutdown_drain", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.task_registry import TASK_REGISTRY_SHUTDOWN_TIMEOUT_S, TaskRegistry
+from teleclaude.core.task_registry import TASK_REGISTRY_SHUTDOWN_TIMEOUT_S, SupervisedTask, TaskRegistry
 
 _record_import_timing("teleclaude.core.task_registry", _t)
 
@@ -325,6 +347,7 @@ init_voice_handler = voice_message_handler.init_voice_handler
 SLOW_STARTUP_WARNING_S = 30.0
 _RELAY_DELIVERY_TASK_ATTRIBUTE = "_relay_delivery_task"
 _RELAY_DELIVERY_STOPPED = "Relay delivery processor stopped"
+_EVENT_CONSUMER_STOPPED = "Event consumer stopped"
 # Startup retry configuration
 STARTUP_MAX_RETRIES = 3
 STARTUP_RETRY_DELAYS = [10, 20, 40]  # Exponential backoff in seconds
@@ -337,7 +360,8 @@ API_RESTART_BACKOFF_S = config.daemon.api_restart_backoff_s
 # Resource monitoring
 RESOURCE_SNAPSHOT_INTERVAL_S = config.daemon.resource_snapshot_interval_s
 LAUNCHD_WATCH_INTERVAL_S = config.daemon.launchd_watch_interval_s
-LAUNCHD_WATCH_ENABLED = config.daemon.launchd_watch_enabled
+# The launchd probe returns at once off macOS, so it is supervised only where it runs for the daemon's lifetime.
+LAUNCHD_WATCH_ENABLED = config.daemon.launchd_watch_enabled and sys.platform == "darwin"
 
 
 def _is_retryable_startup_error(error: Exception) -> bool:
@@ -402,8 +426,8 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.output_poller = OutputPoller()
 
         # Initialize task registry for tracking background tasks
-        self.task_registry = TaskRegistry()
         self.drain = get_shutdown_drain()
+        self.task_registry = TaskRegistry(drain=self.drain, escalate=self.request_shutdown)
 
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient(task_registry=self.task_registry)
@@ -519,29 +543,29 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._hook_outbox_last_backlog_warn_at: dict[str, float] = {}
         self._hook_outbox_last_lag_warn_at: dict[str, float] = {}
         self._hook_outbox_claim_paused_sessions: set[str] = set()
-        self.resource_monitor_task: asyncio.Task[object] | None = None
-        self.process_janitor_task: asyncio.Task[object] | None = None
-        self.launchd_watch_task: asyncio.Task[object] | None = None
-        self.config_watch_task: asyncio.Task[object] | None = None
-        self.projects_watch_task: asyncio.Task[object] | None = None
-        self.identity_declarations_watch_task: asyncio.Task[object] | None = None
+        self.resource_monitor_task: SupervisedTask | None = None
+        self.process_janitor_task: SupervisedTask | None = None
+        self.launchd_watch_task: SupervisedTask | None = None
+        self.config_watch_task: SupervisedTask | None = None
+        self.projects_watch_task: SupervisedTask | None = None
+        self.identity_declarations_watch_task: SupervisedTask | None = None
         self._start_time = time.time()
         self._shutdown_reason: str | None = None
         self.prepared_exit_task: asyncio.Task[object] | None = None
-        self.hook_outbox_task: asyncio.Task[object] | None = None
-        self.agent_status_watchdog_task: asyncio.Task[object] | None = None
+        self.hook_outbox_task: SupervisedTask | None = None
+        self.agent_status_watchdog_task: SupervisedTask | None = None
         self._event_db: EventDB | None = None
         self._fleet_capability_map_provider: Callable[[], FleetCapabilityMap] | None = None
-        self.mirror_worker_task: asyncio.Task[object] | None = None
-        self._event_consumers_task: asyncio.Task[object] | None = None
-        self._relay_delivery_task: asyncio.Task[object] | None = None
-        self._internal_event_bus_task: asyncio.Task[object] | None = None
-        self._task_schedule_clock_task: asyncio.Task[object] | None = None
-        self._workflow_bridge_task: asyncio.Task[object] | None = None
+        self.mirror_worker_task: SupervisedTask | None = None
+        self._event_consumer_tasks: tuple[SupervisedTask, ...] = ()
+        self._relay_delivery_task: SupervisedTask | None = None
+        self._internal_event_bus_task: SupervisedTask | None = None
+        self._task_schedule_clock_task: SupervisedTask | None = None
+        self._workflow_bridge_task: SupervisedTask | None = None
         self._workflow_bridge: WorkflowBridge | None = None
-        self._identity_bridge_task: asyncio.Task[object] | None = None
+        self._identity_bridge_task: SupervisedTask | None = None
         self._identity_bridge: IdentityBridge | None = None
-        self._cluster_bridge_task: asyncio.Task[object] | None = None
+        self._cluster_bridge_task: SupervisedTask | None = None
         self._cluster_bridge: ClusterBridge | None = None
         self._hook_dispatcher: HookDispatcher | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -561,6 +585,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             api_restart_max=API_RESTART_MAX,
             api_restart_window_s=API_RESTART_WINDOW_S,
             api_restart_backoff_s=API_RESTART_BACKOFF_S,
+            escalate=self.request_shutdown,
         )
 
         self.monitoring_service = MonitoringService(
@@ -953,25 +978,21 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self._apply_chiptunes_startup_state()
 
             # Start periodic cleanup task (runs every hour)
-            self.cleanup_task = asyncio.create_task(
-                self.maintenance_service.periodic_cleanup(), name="periodic-cleanup"
+            self.cleanup_task = self.task_registry.supervise(
+                _Worker.CLEANUP, self.maintenance_service.periodic_cleanup, restart=True
             )
-            self.cleanup_task.add_done_callback(self._log_background_task_exception("periodic_cleanup"))
             logger.info(
                 "Periodic cleanup task started (closed sessions soft-deleted after retention window, inbound queue trimmed at 7d)"
             )
 
             # Start polling watcher (keeps pollers aligned with tmux foreground state)
-            self.poller_watch_task = asyncio.create_task(
-                self.maintenance_service.poller_watch_loop(), name="poller-watch"
+            self.poller_watch_task = self.task_registry.supervise(
+                _Worker.POLLER_WATCH, self.maintenance_service.poller_watch_loop, restart=True
             )
-            self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
             logger.info("Poller watch task started")
 
-            self.idle_cycle_task = asyncio.create_task(
-                ConversationIdleCycle(self.client, session_compaction_owner).run(), name="conversation-idle-cycle"
-            )
-            self.idle_cycle_task.add_done_callback(self._log_background_task_exception("conversation_idle_cycle"))
+            idle_cycle = ConversationIdleCycle(self.client, session_compaction_owner)
+            self.idle_cycle_task = self.task_registry.supervise(_Worker.IDLE_CYCLE, idle_cycle.run, restart=True)
             logger.info("Conversation idle cycle started")
 
             # Watch every file the config loader reads — config.yml, the sibling
@@ -979,39 +1000,35 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             # The handler hot-reloads live sections and restarts only when a
             # connection-bound section changed.
             config_watch_paths = [config_path, config_path.parent / "experiments.yml", dotenv_path]
-            self.config_watch_task = asyncio.create_task(
-                ConfigWatcher(config_watch_paths, self._on_config_files_changed).run(),
-                name="config-watch",
+            config_watcher = ConfigWatcher(config_watch_paths, self._on_config_files_changed)
+            self.config_watch_task = self.task_registry.supervise(
+                _Worker.CONFIG_WATCH, config_watcher.run, restart=True
             )
-            self.config_watch_task.add_done_callback(self._log_background_task_exception("config_watch"))
             logger.info("Config watcher started (config.yml + .env)")
 
-            self.projects_watch_task = asyncio.create_task(
-                ConfigWatcher([PROJECTS_MANIFEST_PATH], self._on_projects_registry_changed).run(),
-                name="projects-watch",
+            projects_watcher = ConfigWatcher([PROJECTS_MANIFEST_PATH], self._on_projects_registry_changed)
+            self.projects_watch_task = self.task_registry.supervise(
+                _Worker.PROJECTS_WATCH, projects_watcher.run, restart=True
             )
-            self.projects_watch_task.add_done_callback(self._log_background_task_exception("projects_watch"))
             logger.info("Project registry watcher started (%s)", PROJECTS_MANIFEST_PATH)
 
-            self.identity_declarations_watch_task = asyncio.create_task(
-                ConfigWatcher(_identity_declaration_watch_paths, self._on_identity_declarations_changed).run(),
-                name=_IDENTITY_DECLARATION_WATCH_TASK_NAME,
+            identity_declarations_watcher = ConfigWatcher(
+                _identity_declaration_watch_paths, self._on_identity_declarations_changed
             )
-            self.identity_declarations_watch_task.add_done_callback(
-                self._log_background_task_exception(_IDENTITY_DECLARATION_WATCH_LABEL)
+            self.identity_declarations_watch_task = self.task_registry.supervise(
+                _Worker.IDENTITY_DECLARATIONS_WATCH, identity_declarations_watcher.run, restart=True
             )
             logger.info(_IDENTITY_DECLARATION_WATCHER_STARTED)
 
-            self.hook_outbox_task = asyncio.create_task(self._hook_outbox_worker(), name="hook-outbox-worker")
-            self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
+            self.hook_outbox_task = self.task_registry.supervise(
+                _Worker.HOOK_OUTBOX, self._hook_outbox_worker, restart=True
+            )
             logger.info("Hook outbox worker started")
 
-            self.agent_status_watchdog_task = asyncio.create_task(
-                run_agent_status_watchdog(self.shutdown_event, self.agent_coordinator),
-                name="agent-status-watchdog",
-            )
-            self.agent_status_watchdog_task.add_done_callback(
-                self._log_background_task_exception("agent_status_watchdog")
+            self.agent_status_watchdog_task = self.task_registry.supervise(
+                _Worker.AGENT_STATUS_WATCHDOG,
+                lambda: run_agent_status_watchdog(self.shutdown_event, self.agent_coordinator),
+                restart=True,
             )
             logger.info("Agent status watchdog started")
 
@@ -1020,8 +1037,9 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 archive_adopter=threadsafe_archive_adopter(db, mirror_loop),
                 coverage_reporter=threadsafe_coverage_reporter(mirror_loop),
             )
-            self.mirror_worker_task = asyncio.create_task(mirror_worker.run(), name="mirror-worker")
-            self._track_background_task(self.mirror_worker_task, "mirror-worker")
+            self.mirror_worker_task = self.task_registry.supervise(
+                _Worker.MIRROR_WORKER, mirror_worker.run, restart=True
+            )
             logger.info("Mirror worker started")
 
             # Event platform producer prep runs inside lifecycle.startup() before
@@ -1040,30 +1058,28 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             await self._start_identity_bridge()
             await self._start_cluster_bridge()
 
-            self.resource_monitor_task = asyncio.create_task(
-                self.monitoring_service.resource_monitor_loop(), name="resource-monitor"
+            self.resource_monitor_task = self.task_registry.supervise(
+                _Worker.RESOURCE_MONITOR, self.monitoring_service.resource_monitor_loop, restart=True
             )
-            self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
             logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
 
-            self.process_janitor_task = asyncio.create_task(
-                self.process_janitor_service.scan_loop(), name="process-janitor"
+            self.process_janitor_task = self.task_registry.supervise(
+                _Worker.PROCESS_JANITOR, self.process_janitor_service.scan_loop, restart=True
             )
-            self.process_janitor_task.add_done_callback(self._log_background_task_exception("process_janitor"))
             logger.info("Process janitor started (interval=%ss)", config.process_janitor.scan_interval_seconds)
 
-            self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop(), name="wal-checkpoint")
-            self._wal_checkpoint_task.add_done_callback(self._log_background_task_exception("wal_checkpoint"))
+            self._wal_checkpoint_task = self.task_registry.supervise(
+                _Worker.WAL_CHECKPOINT, self._wal_checkpoint_loop, restart=True
+            )
 
             logger.info("WAL checkpoint task started (interval=300s)")
 
             self.monitoring_service.log_resource_snapshot("startup")
 
             if LAUNCHD_WATCH_ENABLED:
-                self.launchd_watch_task = asyncio.create_task(
-                    self.monitoring_service.launchd_watch_loop(), name="launchd-watch"
+                self.launchd_watch_task = self.task_registry.supervise(
+                    _Worker.LAUNCHD_WATCH, self.monitoring_service.launchd_watch_loop, restart=True
                 )
-                self.launchd_watch_task.add_done_callback(self._log_background_task_exception("launchd_watch"))
                 logger.info("Launchd watch task started (interval=%.0fs)", LAUNCHD_WATCH_INTERVAL_S)
 
             logger.info("TeleClaude is running. Press Ctrl+C to stop.")
@@ -1111,7 +1127,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             ("agent_status_watchdog_task", "Agent status watchdog stopped"),
             ("mirror_worker_task", "Mirror worker stopped"),
         ):
-            await self._cancel_task_attr(attr_name, log_message)
+            await self._stop_worker_attr(attr_name, log_message)
 
         await self._stop_session_outbox_workers()
 
@@ -1119,24 +1135,25 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         if workflow_bridge is not None:
             with shutdown_step(_WORKFLOW_SHUTDOWN_COMPONENT):
                 await workflow_bridge.stop()
-        await self._await_task_attr("_workflow_bridge_task", "Workflow Redis bridge stopped", timeout=5.0)
+        await self._await_worker_attr("_workflow_bridge_task", "Workflow Redis bridge stopped", timeout=5.0)
 
         identity_bridge = getattr(self, "_identity_bridge", None)
         if identity_bridge is not None:
             with shutdown_step(_IDENTITY_SHUTDOWN_COMPONENT):
                 await identity_bridge.stop()
-        await self._await_task_attr("_identity_bridge_task", "Identity Redis bridge stopped", timeout=5.0)
+        await self._await_worker_attr("_identity_bridge_task", "Identity Redis bridge stopped", timeout=5.0)
 
         cluster_bridge = getattr(self, "_cluster_bridge", None)
         if cluster_bridge is not None:
             with shutdown_step(_CLUSTER_SHUTDOWN_COMPONENT):
                 await cluster_bridge.stop()
-        await self._await_task_attr("_cluster_bridge_task", "Cluster Redis bridge stopped", timeout=5.0)
+        await self._await_worker_attr("_cluster_bridge_task", "Cluster Redis bridge stopped", timeout=5.0)
 
-        await self._await_task_attr("_task_schedule_clock_task", "Task schedule clock stopped", timeout=5.0)
-        await self._await_task_attr("_internal_event_bus_task", "Internal EventBus stopped", timeout=5.0)
-        await self._await_task_attr("_event_consumers_task", "Event consumers stopped", timeout=5.0)
-        await self._await_task_attr(_RELAY_DELIVERY_TASK_ATTRIBUTE, _RELAY_DELIVERY_STOPPED, timeout=5.0)
+        await self._await_worker_attr("_task_schedule_clock_task", "Task schedule clock stopped", timeout=5.0)
+        await self._await_worker_attr("_internal_event_bus_task", "Internal EventBus stopped", timeout=5.0)
+        for consumer_task in self._event_consumer_tasks:
+            await self._await_worker(consumer_task, consumer_task.name, _EVENT_CONSUMER_STOPPED, timeout=5.0)
+        await self._await_worker_attr(_RELAY_DELIVERY_TASK_ATTRIBUTE, _RELAY_DELIVERY_STOPPED, timeout=5.0)
 
         for attr_name, log_message in (
             ("config_watch_task", "Config watcher stopped"),
@@ -1147,7 +1164,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             ("_wal_checkpoint_task", "WAL checkpoint task stopped"),
             ("launchd_watch_task", "Launchd watch task stopped"),
         ):
-            await self._cancel_task_attr(attr_name, log_message)
+            await self._stop_worker_attr(attr_name, log_message)
 
         # Close event DB
         if self._event_db:
@@ -1203,27 +1220,35 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 pass
             logger.info(log_message)
 
-    async def _await_task_attr(self, attr_name: str, log_message: str, *, timeout: float) -> None:
-        """Await an optional task attribute without cancelling it first.
-
-        Used for tasks that already honor shutdown_event and perform their own
-        cleanup on exit. Falls back to cancellation if graceful stop times out.
-        """
-        task = getattr(self, attr_name, None)
-        if task is None:
+    async def _stop_worker_attr(self, attr_name: str, log_message: str) -> None:
+        """Stop an optional supervised worker, cancelling it and waiting for it to end."""
+        worker = getattr(self, attr_name, None)
+        if worker is None:
             return
         with shutdown_step(attr_name):
-            try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
-            except TimeoutError:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-                logger.warning("%s timed out after %.1fs; task was cancelled", attr_name, timeout)
-            except asyncio.CancelledError:
-                pass
+            await worker.cancel()
+            logger.info(log_message)
+
+    async def _await_worker_attr(self, attr_name: str, log_message: str, *, timeout: float) -> None:
+        """Stop an optional supervised worker that honors shutdown_event, then wait for it to end by itself.
+
+        Used for workers that perform their own cleanup on exit. Falls back to
+        cancellation if the graceful stop times out.
+        """
+        await self._await_worker(getattr(self, attr_name, None), attr_name, log_message, timeout=timeout)
+
+    async def _await_worker(
+        self, worker: SupervisedTask | None, label: str, log_message: str, *, timeout: float
+    ) -> None:
+        """Stop a supervised worker that honors shutdown_event, then wait for it to end by itself.
+
+        Falls back to cancellation if the graceful stop times out.
+        """
+        if worker is None:
+            return
+        with shutdown_step(label):
+            if not await worker.wait(timeout=timeout):
+                logger.warning(_WORKER_TIMED_OUT, label, timeout)
             logger.info(log_message)
 
     async def _stop_session_outbox_workers(self) -> None:
@@ -1420,8 +1445,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             dispatch=self._dispatch_workflow_event,
         )
         self._workflow_bridge = bridge
-        self._workflow_bridge_task = asyncio.create_task(bridge.run(), name="workflow-bridge")
-        self._workflow_bridge_task.add_done_callback(self._log_background_task_exception("workflow_bridge"))
+        self._workflow_bridge_task = self.task_registry.supervise(_Worker.WORKFLOW_BRIDGE, bridge.run, restart=True)
         logger.info("Workflow Redis bridge attached to shared RedisTransport")
 
     def _dispatch_workflow_event(self, envelope: WorkflowEnvelope) -> None:
@@ -1475,8 +1499,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             dispatch=self._dispatch_identity_event,
         )
         self._identity_bridge = bridge
-        self._identity_bridge_task = asyncio.create_task(bridge.run(), name="identity-bridge")
-        self._identity_bridge_task.add_done_callback(self._log_background_task_exception("identity_bridge"))
+        self._identity_bridge_task = self.task_registry.supervise(_Worker.IDENTITY_BRIDGE, bridge.run, restart=True)
         logger.info("Identity Redis bridge attached to shared RedisTransport")
 
     def _dispatch_identity_event(self, envelope: IdentityEnvelope) -> None:
@@ -1519,8 +1542,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             registry=DEFAULT_FEATURE_ID_REGISTRY,
         )
         self._cluster_bridge = bridge
-        self._cluster_bridge_task = asyncio.create_task(bridge.run(), name="cluster-bridge")
-        self._cluster_bridge_task.add_done_callback(self._log_background_task_exception("cluster_bridge"))
+        self._cluster_bridge_task = self.task_registry.supervise(_Worker.CLUSTER_BRIDGE, bridge.run, restart=True)
 
         async def _redis_provider() -> Any:
             return await redis_adapter.get_redis()

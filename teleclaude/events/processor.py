@@ -28,6 +28,13 @@ CONSUMER_GROUP = "event-processor"
 #: Pause between in-place attempts at one entry in ordered mode.
 ORDERED_RETRY_PAUSE_S = 1.0
 _STREAM_ENTRY_IDENTITY = "{stream}/{entry_id}"
+_CONSUME_TASK_NAME = "event-consume"
+_RECOVERY_SWEEP_TASK_NAME = "event-recovery-sweep"
+_RECOVERY_SWEEP_ENDED = "The stale-pending recovery sweep ended while the processor was running"
+
+
+class RecoverySweepEnded(Exception):
+    """The stale-pending recovery sweep returned while its processor was still running, so the processor's run ends."""
 
 
 class StreamEntryPipeline[DecodedT](Protocol):
@@ -132,37 +139,40 @@ class EventProcessor[DecodedT: BaseModel]:
             ordered=self._ordered,
         )
 
-        sweep_task: asyncio.Task[None] | None = None
-        if not shutdown_event.is_set() and not self._ordered:
-            sweep_task = asyncio.create_task(self._run_periodic_recovery(shutdown_event), name="event-recovery-sweep")
-        try:
-            while not shutdown_event.is_set():
-                try:
-                    entries = await self._redis.xreadgroup(
-                        self._group,
-                        self._consumer,
-                        {self._stream: ">"},
-                        count=10,
-                        block=1000,
-                    )
-                    if not entries:
-                        await asyncio.sleep(0)
-                        continue
-                    await self._process_entries(entries)
-                except asyncio.CancelledError:
-                    break
-                except Exception:
-                    logger.exception("EventProcessor read loop error; sleeping 1s")
-                    await asyncio.sleep(1.0)
-        finally:
-            if sweep_task is not None:
-                sweep_task.cancel()
-                try:
-                    await sweep_task
-                except asyncio.CancelledError:
-                    pass
+        # The read loop and the recovery sweep are one unit: either ending while the processor runs ends the run.
+        async with asyncio.TaskGroup() as group:
+            group.create_task(self._read_until_shutdown(shutdown_event), name=_CONSUME_TASK_NAME)
+            if not shutdown_event.is_set() and not self._ordered:
+                group.create_task(self._sweep_until_shutdown(shutdown_event), name=_RECOVERY_SWEEP_TASK_NAME)
 
         logger.info("EventProcessor stopped")
+
+    async def _read_until_shutdown(self, shutdown_event: asyncio.Event) -> None:
+        """Read and process stream entries until shutdown is requested."""
+        while not shutdown_event.is_set():
+            try:
+                entries = await self._redis.xreadgroup(
+                    self._group,
+                    self._consumer,
+                    {self._stream: ">"},
+                    count=10,
+                    block=1000,
+                )
+                if not entries:
+                    await asyncio.sleep(0)
+                    continue
+                await self._process_entries(entries)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("EventProcessor read loop error; sleeping 1s")
+                await asyncio.sleep(1.0)
+
+    async def _sweep_until_shutdown(self, shutdown_event: asyncio.Event) -> None:
+        """Run the periodic recovery sweep; its return before shutdown is an end of the processor's run."""
+        await self._run_periodic_recovery(shutdown_event)
+        if not shutdown_event.is_set():
+            raise RecoverySweepEnded(_RECOVERY_SWEEP_ENDED)
 
     async def _ensure_consumer_group(self) -> None:
         """Create the Redis consumer group if it does not already exist."""
