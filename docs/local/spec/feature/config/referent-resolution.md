@@ -55,7 +55,7 @@ reference resolves unchanged.
 
 ### Use cases
 
-#### UC-CFG-REF1: A registered referent resolves to its record
+#### UC-CFG-REF1:
 
 ```gherkin
 Scenario Outline: A reference to something registered here resolves
@@ -73,7 +73,7 @@ Scenario Outline: A reference to something registered here resolves
     | domain a registered project publishes |
 ```
 
-#### UC-CFG-REF2: An unregistered referent is refused with its registration surface
+#### UC-CFG-REF2:
 
 ```gherkin
 Scenario Outline: A reference to something not registered here is refused
@@ -92,7 +92,7 @@ Scenario Outline: A reference to something not registered here is refused
     | domain a registered project publishes |
 ```
 
-#### UC-CFG-REF3: Registering the referent makes the same reference resolve
+#### UC-CFG-REF3:
 
 ```gherkin
 Given an agent session whose reference was refused because its referent was not registered on this computer

@@ -123,7 +123,7 @@ Examples:
 
 <!-- change:missing-publisher-owner-surfacing -->
 
-#### UC-CFG-MEMBER-8: A declaration naming an unregistered company or project is refused
+#### UC-CFG-MEMBER-8:
 
 <!-- /planned-change:missing-publisher-owner-surfacing -->
 

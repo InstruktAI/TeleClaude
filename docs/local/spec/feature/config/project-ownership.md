@@ -112,7 +112,7 @@ And the project is left with no owner rather than a partial one
 
 <!-- change:missing-publisher-owner-surfacing -->
 
-#### UC-POWN-5: An unregistered owner is refused
+#### UC-POWN-5:
 
 <!-- /planned-change:missing-publisher-owner-surfacing -->
 
