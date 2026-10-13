@@ -82,6 +82,30 @@ title or prose. Persisted launch intents that belong to a row are migrated to th
 result, `unmapped` included; queued caller snapshots keep their recorded
 labels as provenance (UC-SRM3).
 
+### Declarations at the cutover
+
+The procedure a row resolves to and the job declarations its job name resolves
+through are read for the canonical checkout of the row's project, never for a
+linked todo worktree the row was recorded in. The role such a row takes is the
+one the entry declaration in force at this cutover names, as `context` answers
+the declaration state for that checkout: the declaration the procedure's live
+document carries, or, while the delivery that ships the migration has not yet
+folded its documentation, the declaration pending in that same delivery. The
+code reaches the canonical checkout before its documentation folds, and the
+migration runs at whichever start comes first; it neither waits for the fold
+nor holds the runtime down until it lands
+(`local/projects/teleclaude/policy/daemon-availability`). A declaration pending
+only in another delivery, or none, is a procedure that declares no role. The
+report records, for each such mapping, whether the declaration was live or
+pending.
+
+A declaration source the mapping needs and cannot read — the documentation
+publishers, or the job configuration of a project whose checkout exists — makes
+the migration not ready: it stops before the report or any row changes, its
+error names the unreadable source, the migration stays unrecorded, and the next
+start runs it again. A project whose checkout no longer exists carries no job
+declaration.
+
 ### Continuation of migrated sessions
 
 A session recorded before the migration has no persisted resolved invocation.
@@ -167,10 +191,37 @@ Scenario Outline: Disagreeing recorded values are unmappable
     | an adoption pair under a retired `general/run-job` whose job no declaration carries |
 ```
 
+#### UC-SRM7: A declaration not yet folded maps as its delivery publishes it
+
+```gherkin
+Given a job or activation session whose procedure's role is declared only by a replacement pending in the delivery that ships the migration
+When the migration runs before that delivery's documentation folds
+Then the session carries the role that pending declaration names
+And the report records that the declaration was pending
+```
+
+#### UC-SRM8: An unreadable declaration source changes nothing
+
+```gherkin
+Given a declaration source the mapping needs cannot be read
+When the migration runs
+Then it stops with an error naming that source before the report or any row changes
+And every row keeps its recorded values
+And the next start runs the migration again
+```
+
+#### UC-SRM9: A row recorded in a todo worktree resolves against the canonical checkout
+
+```gherkin
+Given a job or activation session recorded with a project path inside a linked todo worktree
+When the migration resolves the row's job and procedure
+Then it reads the job declarations and the entry declaration state of that repository's canonical checkout
+```
+
 ### Cross-context references
 
 - **identity** — owns the catalog the mapping resolves roles against and the refusal of an unknown recorded role.
-- **context** — publishes each procedure's declared role, which the job-runner and tasker rows resolve through.
+- **context** — answers which entry declaration a checkout holds for a procedure — live, pending in a named delivery, or none — and reports an unreadable source; the job-runner and tasker rows resolve their role through that answer.
 - **config** — owns which scheduled job names which procedure.
 - **session_mirrors** — owns the mirror store's own classification and attribution records.
 
@@ -179,6 +230,9 @@ Scenario Outline: Disagreeing recorded values are unmappable
 - Which procedure an old scheduled job ran is established by the row's recorded procedure ID where it names one, otherwise by the declaration currently carrying the row's job name; the ledger records which, and a changed pointer in the meantime is not detectable from the row.
 - A row marked unmappable is a defect to resolve by an operator reading the
   report; the migration never guesses.
+- A procedure whose role is pending only in another delivery declares no role
+  at this cutover, so its rows are unmapped and reported even after that
+  delivery folds.
 
 ## See Also
 

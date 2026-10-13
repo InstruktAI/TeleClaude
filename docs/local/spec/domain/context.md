@@ -158,6 +158,13 @@ any location.
   them at a procedure entry; none of them re-derives them. A procedure read
   inside a session, whether or not it declares them, has none of them
   interpreted.
+- **Also owns (entry declaration state):** the answer, for one procedure as
+  one checkout's publishers resolve it, to which entry declaration that
+  checkout holds — the one the procedure's live document carries, the one a
+  pending replacement carries together with the delivery that carries it, or
+  none — and the report of a documentation source it cannot read as
+  unreadable, never as none. What a pending declaration means for an act is
+  decided by the context performing that act.
 
 <!-- /planned:procedure-role-capability-composition -->
 
