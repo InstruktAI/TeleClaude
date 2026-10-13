@@ -96,8 +96,6 @@ stored through the in-memory migration, and a later migration run stores them.
 
 <!-- /planned:config-migration-before-runtime-replacement -->
 
-<!-- planned:release-tag-checkout-activation -->
-
 The installed release checkout's project declaration is retained source under
 `local/projects/teleclaude/spec/feature/reconciliation/release-checkout`.
 A migration run evaluates that declaration through the ordinary read-time
@@ -107,7 +105,6 @@ retained source evaluated in memory from a stored schema migration. A failed
 read or unsupported shape is a failed outcome. Other registered documents retain
 the persistence rules above; an explicit configuration writer retains its own
 write contract.
-<!-- /planned:release-tag-checkout-activation -->
 
 A migration run commits what it persists. A document tracked in a git
 repository that had no uncommitted changes gets one migration commit in that
@@ -193,20 +190,6 @@ Then the load fails naming the document, its version, and the installation's cur
 And the document is not loaded in any shape
 ```
 
-<!-- planned-change:release-tag-checkout-activation -->
-
-#### UC-CFG-MIG-3: A change to the migration list persists every registered document before restart
-
-```gherkin
-Given canonical main advances with a change to the configuration migration list
-And documents the tier registries name are at older versions
-When commit-boundary maintenance runs
-Then each of those documents is stored at the current version before the daemon restarts
-And an agent reading the structured records observes one outcome per document
-```
-
-<!-- change:release-tag-checkout-activation -->
-
 #### UC-CFG-MIG-3: A change to the migration list persists every registered document before restart
 
 ```gherkin
@@ -217,8 +200,6 @@ Then each writable document is stored at the current version before the daemon r
 And an installed release declaration is evaluated without changing its stored source
 And an agent reading the structured records observes one outcome per document
 ```
-
-<!-- /planned-change:release-tag-checkout-activation -->
 
 #### UC-CFG-MIG-4: A clean tracked document gets one migration commit in its own repository
 
@@ -364,8 +345,6 @@ Then the installation's output names that document's subject and the reason it f
 And installation stops before validating configuration
 ```
 
-<!-- planned:release-tag-checkout-activation -->
-
 #### UC-CFG-MIG-17: Release maintenance preserves the installed declaration
 
 ```gherkin
@@ -393,8 +372,6 @@ Scenario Outline: A retained declaration receives ordinary validation
     | an invalid enumerated value    |
     | an invalid field relationship  |
 ```
-
-<!-- /planned:release-tag-checkout-activation -->
 
 #### UC-CFG-MIG-18: Repeated compatible reads stay quiet
 

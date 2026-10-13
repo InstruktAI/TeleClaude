@@ -24,8 +24,6 @@ The behavioral contract for how an installation keeps its own running version cu
 
 - **stable** — converges to later published releases within the selected compatibility series: the same minor while the major is zero, and the same major from 1.0 onward. Crossing that boundary requires explicit enrollment in the next series. Configuration owns the series declaration (`local/projects/teleclaude/spec/feature/config/stable-channel-pinning-rule`); release classification owns the compatibility promise (`local/projects/teleclaude/spec/release-inspector-prompt`).
 
-<!-- planned:release-tag-checkout-activation -->
-
 ### Supported release transitions
 
 A beta or stable source advance selects a strictly later release whose committed
@@ -44,7 +42,6 @@ Convergence retains its pending evidence when that handoff is refused or fails;
 only an explicitly recorded owed set or an explicitly empty owed set completes
 the recording step. Workflow owns those recording outcomes under
 `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`.
-<!-- /planned:release-tag-checkout-activation -->
 
 ### Use cases
 
@@ -124,8 +121,6 @@ Then the installation does NOT converge
 And only a change or release of the platform's own repository can start convergence
 ```
 
-<!-- planned:release-tag-checkout-activation -->
-
 #### UC-CSU-8: Release adoption selects the exact admitted source
 
 ```gherkin
@@ -172,8 +167,6 @@ And it does not report the transition as complete
 And a later replay uses the same original source and target identity
 ```
 
-<!-- /planned:release-tag-checkout-activation -->
-
 <!-- planned:installation-activation-inspection -->
 
 #### UC-CSU-10: Recorded maintenance alone does not complete adoption
@@ -198,23 +191,11 @@ And completion awaits the assessment of the actual running revision
 
 ## Known caveats
 
-<!-- planned-change:release-tag-checkout-activation -->
-
-- The current checkout updater advances by fast-forward and skips a target
-  already contained in the local checkout. An installation enrolled from a
-  newer mainline checkout can therefore remain ahead of its release channel,
-  or report divergence when the selected release is on a different line of
-  ancestry. Changing channels does not itself reconcile that checkout history.
-
-<!-- change:release-tag-checkout-activation -->
-
 - A deliberate enrollment into older source needs a supported data transition;
   unsupported transitions leave the current installation intact and report the
   unmet condition. Selecting a channel alone supplies no backward data migration.
   Installed/development source selection follows
   `local/projects/teleclaude/spec/feature/reconciliation/release-checkout`.
-
-<!-- /planned-change:release-tag-checkout-activation -->
 
 - **Version-agnostic by construction.** This spec names no transport, language, or build tool. Detection (webhook vs poll), fetch (pull vs download), build, and restart mechanics live in the domain spec and the delivering implementation, not here. The swap test applies: every scenario must hold if the entire implementation is replaced.
 - **Exactly-once is per target version, not per signal.** Duplicate or replayed signals are expected and must be absorbed idempotently.

@@ -59,8 +59,6 @@ extra content, missing output, errors and transport failures still fail. A faile
 journey retains bounded sanitized before/after listing output when those commands
 ran, alongside its refusal/failing-command evidence.
 
-<!-- planned:release-tag-checkout-activation -->
-
 ### Release checkout journeys
 
 The full profile exercises the release checkout scenarios in
@@ -76,8 +74,6 @@ automation. Their synthetic event files are inputs to those entry points; they
 do not replace application decisions or establish a caller identity. The
 controller owns cleanup and reports which release journeys ran. The existing
 cold profile remains limited to startup and safe entry paths.
-
-<!-- /planned:release-tag-checkout-activation -->
 
 <!-- planned:release-development-checkouts -->
 

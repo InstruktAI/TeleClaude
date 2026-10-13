@@ -49,8 +49,6 @@ contract governs only what happens when maintenance runs.
   `local/projects/teleclaude/design/architecture/checkpoint-system`. Actions run
   in declared precedence waves; a failure does not cancel later waves.
 
-<!-- planned:release-tag-checkout-activation -->
-
 - **Recording outcome.** The activation boundary distinguishes an owed set
   durably recorded, an explicitly empty owed set, and a refused activation with
   its reason. Repeating an already-recorded owed set remains a recorded outcome.
@@ -60,21 +58,10 @@ contract governs only what happens when maintenance runs.
   files. The immutable-range and source-preservation requirements follow
   `sdlc/policy/version-control-safety`.
 
-<!-- /planned:release-tag-checkout-activation -->
-
 - **Blueprint.** In code-enabled projects, every canonical-main activation
   owes the Blueprint action. Its committed snapshot, current-query guarantee,
   and recovery are owned by `sdlc/spec/codebase-blueprint` and realized by
   `local/projects/teleclaude/spec/feature/workflow/blueprint-freshness`.
-
-<!-- planned-change:release-tag-checkout-activation -->
-
-- **Location.** Maintenance performs the owed `main_only` actions only from the
-  canonical checkout on the main branch. The integration worktree may create the
-  delivered commit, but only canonical main's activation range executes
-  maintenance; a commit or merge elsewhere performs none.
-
-<!-- change:release-tag-checkout-activation -->
 
 - **Location.** Maintenance performs the owed `main_only` actions from canonical
   main, or from the installed release checkout identified by reconciliation
@@ -84,8 +71,6 @@ contract governs only what happens when maintenance runs.
   or integration worktree gains no eligibility from its branch posture.
   The integration worktree can create a delivery, but its commits and merges
   perform no installed maintenance.
-
-<!-- /planned-change:release-tag-checkout-activation -->
 
 - **Reporting.** Every attempt and every outcome is emitted through the
   structured logging boundary, carrying the commit, the resolved action set,
@@ -106,17 +91,6 @@ contract governs only what happens when maintenance runs.
   begins. A failing action is reported and the remaining actions still run;
   no failure withdraws, amends, or blocks the commit.
 
-<!-- planned-change:release-tag-checkout-activation -->
-
-- **Committed source.** A publication action is selected by its recorded range
-  and publishes the homes that range touched at the repository's committed
-  `main` tip, read under publication serialization
-  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
-  Every other repository remains at its previously activated revision until its
-  own maintenance or `telec sync` runs. Working-tree files are never inputs.
-
-<!-- change:release-tag-checkout-activation -->
-
 - **Committed source.** A publication action is selected by its recorded range
   and consumes the committed-source selection owned by
   `local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`:
@@ -124,20 +98,6 @@ contract governs only what happens when maintenance runs.
   release publication reads the selected installed commit. Every other
   repository remains at its previously activated revision until its own
   maintenance or `telec sync` runs. Working-tree files are never inputs.
-
-<!-- /planned-change:release-tag-checkout-activation -->
-
-<!-- planned-change:release-tag-checkout-activation -->
-
-- **Recovery.** A failed action is replayed through this executor for its
-  original recorded range and action id, with the same attempt and outcome
-  records as the first run; a replayed publication converges to the committed
-  `main` tip and never substitutes the working tree. Where no action was
-  recorded, or maintenance did not run or left a root unconverged, `telec sync`
-  in the affected root performs that root's maintenance on demand through this
-  executor (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`).
-
-<!-- change:release-tag-checkout-activation -->
 
 - **Recovery.** A failed action is replayed through this executor for its
   original recorded range and action id, with the same attempt and outcome
@@ -147,8 +107,6 @@ contract governs only what happens when maintenance runs.
   unconverged, `telec sync` in the affected root performs that root's maintenance
   on demand through this executor
   (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`).
-
-<!-- /planned-change:release-tag-checkout-activation -->
 
 - **Absence.** A commit made where the hook is not installed performs no
   maintenance and raises no signal. Nothing detects that absence here:

@@ -116,8 +116,6 @@ The source/deployment separation follows `sdlc/principle/design-fundamentals`
 and preserves existing source work under `sdlc/policy/version-control-safety`.
 <!-- /planned:release-development-checkouts -->
 
-<!-- planned:release-tag-checkout-activation -->
-
 ### Immutable installed source
 
 The deployment action pins the admitted immutable target for its convergence
@@ -128,7 +126,6 @@ The installation's actual source is assessed against that exact target rather
 than ancestry containment. Installed maintenance and publication consume the
 installed source identity; alpha retains ordinary main activation. This contract
 is independent of whether a development companion has been provisioned.
-<!-- /planned:release-tag-checkout-activation -->
 
 <!-- planned:reviewed-pr-contributions -->
 

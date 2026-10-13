@@ -117,8 +117,6 @@ on-demand publication retain the installed generation. Other projects retain
 their existing activated generations.
 <!-- /planned:release-development-checkouts -->
 
-<!-- planned:release-tag-checkout-activation -->
-
 ### Installed release publication
 
 For the installed release checkout identified by
@@ -130,8 +128,6 @@ publishes the currently selected installed source; it does not reinstall an
 older release or read a different local main tip. The installed commit's
 identity is checked again before distribution. If source selection changed,
 publication reports the conflict and leaves that attempt incomplete.
-
-<!-- /planned:release-tag-checkout-activation -->
 
 ## Canonical fields
 
@@ -319,21 +315,6 @@ But a reference naming that domain's generated baseline bundle resolves against 
 And its absence before first deployment is not a finding
 ```
 
-<!-- planned-change:release-tag-checkout-activation -->
-
-#### UC-SPO34: Installation publishes the commit it installed
-
-```gherkin
-Given a checkout whose installed commit is a release tag, or the tip of its main branch
-When the full installer publishes the installed checkout's home
-Then the deployed documentation and agent artifacts are those committed at the installed commit
-And a home that already records that commit is left unchanged
-And a deployed generation from a different commit is replaced by the installed commit's
-And the installer is told whether that home was published, already current, or skipped with its build error
-```
-
-<!-- change:release-tag-checkout-activation -->
-
 #### UC-SPO34: Installed publication uses the selected commit
 
 ```gherkin
@@ -360,8 +341,6 @@ Examples:
 | on-demand maintenance |
 | local catalog refresh |
 ```
-
-<!-- /planned-change:release-tag-checkout-activation -->
 
 #### UC-SPO29: telec sync refuses outside a home
 

@@ -1,8 +1,7 @@
 ---
-description: Release-channel installations select an admitted tag in detached HEAD and continue updating and maintaining that exact installed source.
+description: Release-channel installations select an admitted tag in detached HEAD
+  and continue updating and maintaining that exact installed source.
 visibility: public
-delivered_by:
-  - release-tag-checkout-activation
 ---
 
 # Release Checkout — Spec

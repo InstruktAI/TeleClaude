@@ -34,22 +34,11 @@ Publication is one of those steps and keeps its own contract
 
 ## Canonical fields
 
-<!-- planned-change:release-tag-checkout-activation -->
-
-- **Location.** A run acts only from the canonical checkout on its main branch.
-  From a worktree, from a canonical checkout on another branch, or from a
-  directory holding no `teleclaude.yml`, it refuses before any step runs and
-  names where to run it instead.
-
-<!-- change:release-tag-checkout-activation -->
-
 - **Location.** A run acts from an eligible maintenance checkout under
   `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`:
   canonical main or the identified installed release checkout. From any other
   checkout or a directory holding no `teleclaude.yml`, it refuses before any
   step runs and names the eligible location.
-
-<!-- /planned-change:release-tag-checkout-activation -->
 
 - **Steps.** The owed steps run in the registry's declared order through the
   commit-boundary executor, with the same structured attempt and outcome
@@ -106,8 +95,6 @@ Publication is one of those steps and keeps its own contract
 - **Repetition.** A run repeated with nothing changed leaves deployed output and
   machine state as the previous run left them.
 
-<!-- planned:release-tag-checkout-activation -->
-
 ### Installed release source
 
 An on-demand run in an installed release checkout resolves its declaration and
@@ -115,7 +102,6 @@ committed-source consumers from the selected installed commit. Publication uses
 `local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`.
 The on-demand run preserves the release checkout's selected source and its
 ordinary disruptive-step deferral contract.
-<!-- /planned:release-tag-checkout-activation -->
 
 ### Use cases
 
@@ -193,19 +179,6 @@ Then the agent sees the steps a run would perform there, in order
 And no step runs and no record is written
 ```
 
-<!-- planned-change:release-tag-checkout-activation -->
-
-#### UC-ODM9: A run outside canonical main refuses
-
-```gherkin
-Given an agent in a todo worktree, or in a canonical checkout on a branch other than main
-When the agent runs telec sync
-Then telec sync refuses before any step runs
-And the agent is told to run it from the canonical checkout on main
-```
-
-<!-- change:release-tag-checkout-activation -->
-
 #### UC-ODM9: A run outside an eligible maintenance checkout refuses
 
 ```gherkin
@@ -214,23 +187,6 @@ When the agent runs telec sync
 Then telec sync refuses before any step runs
 And the agent is told to run it from an eligible maintenance checkout
 ```
-
-<!-- /planned-change:release-tag-checkout-activation -->
-
-<!-- planned-change:release-tag-checkout-activation -->
-
-#### UC-ODM10: Uncommitted edits are named, and never published
-
-```gherkin
-Given a root whose working tree holds uncommitted edits
-When an agent runs telec sync there
-Then before the first step the agent sees those uncommitted paths and, where known, the sessions holding them
-And every step runs
-And publication publishes the committed main tip
-And no uncommitted edit appears in the published output
-```
-
-<!-- change:release-tag-checkout-activation -->
 
 #### UC-ODM10: Uncommitted edits are named, and never published
 
@@ -242,8 +198,6 @@ And every step runs
 And publication publishes the committed source selected for that checkout
 And no uncommitted edit appears in the published output
 ```
-
-<!-- /planned-change:release-tag-checkout-activation -->
 
 #### UC-ODM11: A run during automatic maintenance does not collide with it
 
