@@ -79,6 +79,7 @@ async def list_computers(
             user=info.user,
             host=info.host,
             is_local=True,
+            tmux_binary=config.computer.tmux_binary,
         )
         return [local, *_known_remote_computers()]
     except Exception as e:

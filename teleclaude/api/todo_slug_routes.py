@@ -1,7 +1,7 @@
 """Slug-addressed todo reads and actions: list, show, freeze, unfreeze, and deliver.
 
 These requests answer for the project the caller names, on the computer that
-holds it; the CLI's local path runs the same workflow functions in place.
+holds it. Every addressing form of an action runs the same workflow function.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
+from teleclaude.api.person_display import with_person_chips_on_todos
 from teleclaude.api.todo_routes import _default_cwd, _get_todos_db_from_cwd
 from teleclaude.api_models import TodoDTO
 from teleclaude.constants import SLUG_NOT_FOUND_DETAIL
@@ -27,7 +28,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 
-def _project_root(cwd: str | None) -> Path:
+def request_project_root(cwd: str | None) -> Path:
     """Resolve the project root a request names, or refuse it as a 400."""
     try:
         return resolve_project_root(cwd or _default_cwd())
@@ -42,14 +43,15 @@ async def list_todos(
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> list[TodoDTO]:
     """List every todo of the project with its status; callers section the list as they present it."""
-    project_root = _project_root(cwd)
-    return await asyncio.to_thread(
+    project_root = request_project_root(cwd)
+    todos = await asyncio.to_thread(
         get_work_service(str(project_root)).todo.entries,
         include_icebox=True,
         include_delivered=True,
         include_removed=True,
         delivered_since=delivered_since or None,
     )
+    return with_person_chips_on_todos(todos)
 
 
 @router.get("/show/{slug}")
@@ -61,7 +63,7 @@ async def show_todo(
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> object:
     """Return the diagnostic state payload of one todo."""
-    todos_db = await _get_todos_db_from_cwd(str(_project_root(cwd)))
+    todos_db = await _get_todos_db_from_cwd(str(request_project_root(cwd)))
     payload = await assemble_show_payload(
         todos_db,
         slug,
@@ -80,7 +82,7 @@ async def freeze_by_slug(
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - JSON body of a route response
     """Move a todo to the icebox."""
-    return (await freeze_todo(_project_root(cwd), slug)).to_dict()
+    return (await freeze_todo(request_project_root(cwd), slug)).to_dict()
 
 
 @router.post("/{slug}/unfreeze")
@@ -90,7 +92,7 @@ async def unfreeze_by_slug(
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - JSON body of a route response
     """Return an iceboxed todo to the active list."""
-    return (await unfreeze_todo(_project_root(cwd), slug)).to_dict()
+    return (await unfreeze_todo(request_project_root(cwd), slug)).to_dict()
 
 
 @router.post("/{slug}/deliver")
@@ -101,5 +103,5 @@ async def deliver_by_slug(
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> dict[str, object]:  # guard: loose-dict - JSON body of a route response
     """Mark a todo delivered and clean up what its delivery leaves behind."""
-    result: SlugActionResult = await deliver_todo(_project_root(cwd), slug, commit)
+    result: SlugActionResult = await deliver_todo(request_project_root(cwd), slug, commit)
     return result.to_dict()

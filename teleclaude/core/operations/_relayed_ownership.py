@@ -9,14 +9,12 @@ from teleclaude.core.db_models import Operation
 from teleclaude.core.models._types import JsonDict
 from teleclaude.core.operations._kinds import (
     _COMMAND_TYPE_TO_OPERATION_KIND,
-    OPERATION_KIND_AGENT_HANDOFF,
-    OPERATION_KIND_AGENT_RESTART,
-    OPERATION_KIND_SESSION_CLOSE,
+    OperationKind,
 )
 from teleclaude.types.command_wire import command_from_dict
 
 _SESSION_OPERATION_KINDS = frozenset(
-    {OPERATION_KIND_SESSION_CLOSE, OPERATION_KIND_AGENT_RESTART, OPERATION_KIND_AGENT_HANDOFF}
+    {OperationKind.SESSION_CLOSE, OperationKind.AGENT_RESTART, OperationKind.AGENT_HANDOFF}
 )
 
 

@@ -67,6 +67,7 @@ class _Worker(StrEnum):
 
 
 if TYPE_CHECKING:
+    from teleclaude.api.chiptunes_routes import TrackPreferences
     from teleclaude.hooks.dispatcher import HookDispatcher
 
 
@@ -484,7 +485,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.tts_manager.set_chiptunes_manager(self.chiptunes_manager)
         from teleclaude.api import chiptunes_routes  # startup boundary
 
-        chiptunes_routes.configure(manager=self.chiptunes_manager)
+        chiptunes_routes.configure(manager=self.chiptunes_manager, publish_state=self._broadcast_chiptunes_state)
         logger.info("ChiptunesManager initialized (music_dir=%s)", chiptunes_music_dir)
 
         # Mutable runtime settings with debounced JSON persistence
@@ -619,7 +620,8 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         Called from the chiptunes worker thread — bridges to the async event loop
         using call_soon_threadsafe so the broadcast runs on the event loop thread.
         """
-        from teleclaude.api_models import ChiptunesTrackEventDTO  # startup boundary
+        from teleclaude.api import chiptunes_routes  # startup boundary
+        from teleclaude.api_models_chiptunes import ChiptunesTrackEventDTO  # startup boundary
 
         api_server = getattr(self.lifecycle, "api_server", None)
         loop = getattr(self, "_loop", None)
@@ -633,11 +635,17 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         if api_server is None:
             return
 
-        payload = ChiptunesTrackEventDTO(track=track_label, sid_path=sid_path).model_dump()
+        track_preferences = chiptunes_routes.track_preferences(sid_path)
+        payload = ChiptunesTrackEventDTO(
+            track=track_label,
+            sid_path=sid_path,
+            favorited=track_preferences.favorited,
+            disliked=track_preferences.disliked,
+        ).model_dump()
         if loop is not None and loop.is_running():
             logger.info("ChipTunes: scheduling WS broadcast (ws_clients=%d)", len(api_server._ws_clients))
             loop.call_soon_threadsafe(api_server._broadcast_payload, "chiptunes_track", payload)
-            loop.call_soon_threadsafe(self._broadcast_chiptunes_state)
+            loop.call_soon_threadsafe(self._broadcast_chiptunes_state, track_preferences)
         else:
             logger.warning("ChipTunes: no running event loop, skipping track broadcast")
 
@@ -646,11 +654,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         state: ChiptunesState,
     ) -> None:
         """Broadcast chiptunes_state WebSocket events from worker thread callbacks."""
+        from teleclaude.api import chiptunes_routes  # startup boundary
+
         if hasattr(self, "tts_manager"):
             self.tts_manager.on_chiptunes_state_change()
         loop = getattr(self, "_loop", None)
         if loop is not None and loop.is_running():
-            loop.call_soon_threadsafe(self._broadcast_chiptunes_state)
+            loop.call_soon_threadsafe(
+                self._broadcast_chiptunes_state, chiptunes_routes.track_preferences(str(state.get("track_path", "")))
+            )
         else:
             logger.debug("ChipTunes: no running event loop, skipping state broadcast")
 
@@ -660,10 +672,10 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         chiptunes_routes.clear_pending(command_id)
 
-    def _broadcast_chiptunes_state(self) -> None:
-        """Broadcast the current chiptunes playback state."""
+    def _broadcast_chiptunes_state(self, track_preferences: "TrackPreferences") -> None:
+        """Broadcast the current chiptunes playback state, with the preference marks of its track."""
         from teleclaude.api import chiptunes_routes  # startup boundary
-        from teleclaude.api_models import ChiptunesStateEventDTO  # startup boundary
+        from teleclaude.api_models_chiptunes import ChiptunesStateEventDTO  # startup boundary
 
         api_server = getattr(self.lifecycle, "api_server", None)
         manager = getattr(self, "chiptunes_manager", None)
@@ -678,12 +690,15 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         payload = ChiptunesStateEventDTO(
             playback=playback,  # type: ignore[arg-type]
             state_version=chiptunes_routes._state_version,
+            configured=chiptunes_routes.chiptunes_configured(),
             loaded=manager.enabled,
             playing=playback == "playing",
             paused=playback == "paused",
             position_seconds=float(state.get("position_seconds", 0.0)),
             track=track_label,
             sid_path=track_path,
+            favorited=track_preferences.favorited,
+            disliked=track_preferences.disliked,
             pending_command_id=chiptunes_routes._pending_command_id,
             pending_action=chiptunes_routes._pending_action,  # type: ignore[arg-type]
         ).model_dump()
@@ -1386,6 +1401,9 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self.tts_manager.reload()
         if "chiptunes" in changed:
             self.chiptunes_manager.reload()
+            from teleclaude.api import chiptunes_routes  # startup boundary
+
+            self._broadcast_chiptunes_state(await asyncio.to_thread(chiptunes_routes.current_track_preferences))
         restart = restart_required_sections(changed)
         if restart:
             logger.info("Config change in restart-required section(s) %s; restarting to apply", sorted(restart))

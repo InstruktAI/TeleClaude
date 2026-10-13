@@ -6,7 +6,7 @@ import json
 
 import aiosqlite
 
-from teleclaude.core.operations._kinds import OPERATION_KIND_PROCEDURE_ACTIVATION
+from teleclaude.core.operations._kinds import OperationKind
 from teleclaude.docs_subscriptions import SubscriptionIdentity
 
 _IDENTITY_FIELD = "identity"
@@ -22,7 +22,7 @@ async def up(db: aiosqlite.Connection) -> None:
     """Set the home identity on each stored activation payload that lacks one; idempotent."""
     await db.execute(_BEGIN_SQL)
     try:
-        async with db.execute(_SELECT_ACTIVATIONS_SQL, (OPERATION_KIND_PROCEDURE_ACTIVATION,)) as cursor:
+        async with db.execute(_SELECT_ACTIVATIONS_SQL, (OperationKind.PROCEDURE_ACTIVATION.value,)) as cursor:
             operations = await cursor.fetchall()
         for operation_id_raw, payload_json_raw in operations:
             operation_id = str(operation_id_raw)

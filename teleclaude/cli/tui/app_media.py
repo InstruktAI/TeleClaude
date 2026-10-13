@@ -9,9 +9,8 @@ from instrukt_ai_logging import get_logger
 from textual import work
 from textual.css.query import NoMatches
 
-from teleclaude.api_models import ChiptunesStatusDTO, SettingsPatchDTO, TTSSettingsPatchDTO
-from teleclaude.chiptunes.dislikes import is_disliked, remove_dislike, save_dislike
-from teleclaude.chiptunes.favorites import is_favorited, remove_favorite, save_favorite
+from teleclaude.api_models import SettingsPatchDTO, TTSSettingsPatchDTO
+from teleclaude.api_models_chiptunes import ChiptunesStatusDTO
 from teleclaude.cli.api_client import APIError
 from teleclaude.cli.tui.animation_colors import palette_registry
 from teleclaude.cli.tui.animation_engine import AnimationPriority
@@ -23,7 +22,6 @@ from teleclaude.cli.tui.header_frames import build_header_frames
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
-from teleclaude.config import machine as config_mod
 
 logger = get_logger(__name__)
 _TTS_UPDATE_FAILURE = "TTS setting update failed"
@@ -32,16 +30,12 @@ _CHIPTUNES_PLAY_PAUSE_FAILURE = "ChipTunes play/pause request failed"
 _CHIPTUNES_NEXT_FAILURE = "ChipTunes next-track request failed"
 _CHIPTUNES_PREV_FAILURE = "ChipTunes previous-track request failed"
 _CHIPTUNES_STOP_FAILURE = "ChipTunes stop request failed"
-_FAVORITE_REMOVE_FAILURE = "Failed to remove ChipTunes favorite"
-_FAVORITE_SAVE_FAILURE = "Failed to save ChipTunes favorite"
-_DISLIKE_REMOVE_FAILURE = "Failed to remove ChipTunes dislike"
-_DISLIKE_SAVE_FAILURE = "Failed to save ChipTunes dislike"
+_FAVORITE_ADDED = "Added to favorites"
+_FAVORITE_REMOVED = "Removed from favorites"
+_DISLIKE_REMOVED = "Removed from dislikes"
+_FAVORITE_UPDATE_FAILURE = "Failed to update ChipTunes favorite"
+_DISLIKE_UPDATE_FAILURE = "Failed to update ChipTunes dislike"
 _CHIPTUNES_RECONCILE_FAILURE = "ChipTunes state reconciliation failed"
-
-
-def _chiptunes_gate_enabled() -> bool:
-    chiptunes_config = config_mod.config.chiptunes
-    return bool(chiptunes_config and chiptunes_config.enabled)
 
 
 class TelecAppMediaMixin:
@@ -169,6 +163,8 @@ class TelecAppMediaMixin:
         try:
             await self.api.chiptunes_stop()  # type: ignore[attr-defined]
             self._apply_chiptunes_footer_state(
+                favorited=False,
+                disliked=False,
                 loaded=False,
                 playback="cold",
                 state_version=None,
@@ -185,6 +181,9 @@ class TelecAppMediaMixin:
     def _apply_chiptunes_footer_state(
         self,
         *,
+        configured: bool | None = None,
+        favorited: bool | None = None,
+        disliked: bool | None = None,
         loaded: bool,
         playback: str,
         state_version: int | None,
@@ -200,7 +199,8 @@ class TelecAppMediaMixin:
             self._chiptunes_state_version = state_version  # type: ignore[attr-defined]
 
         footer = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
-        footer.chiptunes_enabled = _chiptunes_gate_enabled()
+        if configured is not None:
+            footer.chiptunes_enabled = configured
         footer.chiptunes_loaded = loaded
         footer.chiptunes_playback = playback
         footer.chiptunes_playing = playing
@@ -208,11 +208,16 @@ class TelecAppMediaMixin:
         footer.chiptunes_sid_path = sid_path
         footer.chiptunes_pending_command_id = pending_command_id
         footer.chiptunes_pending_action = pending_action
-        footer.chiptunes_favorited = is_favorited(sid_path) if sid_path else False
-        footer.chiptunes_disliked = is_disliked(sid_path) if sid_path else False
+        if favorited is not None:
+            footer.chiptunes_favorited = favorited
+        if disliked is not None:
+            footer.chiptunes_disliked = disliked
 
     def _apply_chiptunes_status(self, status: ChiptunesStatusDTO) -> None:
         self._apply_chiptunes_footer_state(
+            configured=status.configured,
+            favorited=status.favorited,
+            disliked=status.disliked,
             loaded=bool(getattr(status, "loaded", False)),
             playback=str(getattr(status, "playback", "cold")),
             state_version=int(getattr(status, "state_version", 0)),
@@ -269,30 +274,17 @@ class TelecAppMediaMixin:
         if not footer.chiptunes_sid_path:
             return
 
-        sid_path = footer.chiptunes_sid_path
-        track = footer.chiptunes_track
-
-        already_favorited = await asyncio.to_thread(is_favorited, sid_path)
-        if already_favorited:
-            try:
-                removed = await asyncio.to_thread(remove_favorite, sid_path)
-            except OSError as e:
-                self._report_media_failure(_FAVORITE_REMOVE_FAILURE, e)
-                return
-
-            if removed:
-                footer.chiptunes_favorited = False
-                self.notify("Removed from favorites")  # type: ignore[attr-defined]
-            return
-
+        marked = not footer.chiptunes_favorited
         try:
-            await asyncio.to_thread(save_favorite, track, sid_path)
-        except OSError as e:
-            self._report_media_failure(_FAVORITE_SAVE_FAILURE, e)
+            status = await self.api.set_chiptunes_favorite(  # type: ignore[attr-defined]
+                footer.chiptunes_sid_path, footer.chiptunes_track, marked=marked
+            )
+        except Exception as e:
+            self._report_media_failure(_FAVORITE_UPDATE_FAILURE, e)
             return
 
-        footer.chiptunes_favorited = True
-        self.notify("Added to favorites")  # type: ignore[attr-defined]
+        footer.chiptunes_favorited = status.favorited
+        self.notify(_FAVORITE_ADDED if marked else _FAVORITE_REMOVED)  # type: ignore[attr-defined]
 
     @work(exclusive=False, group="settings")
     async def _chiptunes_dislike(self) -> None:
@@ -303,29 +295,19 @@ class TelecAppMediaMixin:
         if not footer.chiptunes_sid_path:
             return
 
-        sid_path = footer.chiptunes_sid_path
-        track = footer.chiptunes_track
-
-        already_disliked = await asyncio.to_thread(is_disliked, sid_path)
-        if already_disliked:
-            try:
-                removed = await asyncio.to_thread(remove_dislike, sid_path)
-            except OSError as e:
-                self._report_media_failure(_DISLIKE_REMOVE_FAILURE, e)
-                return
-
-            if removed:
-                footer.chiptunes_disliked = False
-                self.notify("Removed from dislikes")  # type: ignore[attr-defined]
-            return
-
+        marked = not footer.chiptunes_disliked
         try:
-            await asyncio.to_thread(save_dislike, track, sid_path)
-        except OSError as e:
-            self._report_media_failure(_DISLIKE_SAVE_FAILURE, e)
+            status = await self.api.set_chiptunes_dislike(  # type: ignore[attr-defined]
+                footer.chiptunes_sid_path, footer.chiptunes_track, marked=marked
+            )
+        except Exception as e:
+            self._report_media_failure(_DISLIKE_UPDATE_FAILURE, e)
             return
 
-        footer.chiptunes_disliked = True
+        footer.chiptunes_disliked = status.disliked
+        if not marked:
+            self.notify(_DISLIKE_REMOVED)  # type: ignore[attr-defined]
+            return
         self.notify("Disliked — skipping track")  # type: ignore[attr-defined]
         # Auto-skip to next track
         self._chiptunes_next()  # type: ignore[attr-defined]

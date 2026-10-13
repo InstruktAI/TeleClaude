@@ -18,6 +18,14 @@ class ConfigSubjectKind(StrEnum):
     PROJECT = "project"
 
 
+class ConfigEnvironment(StrEnum):
+    """The environments a configuration surface owns: the machine's, the global configuration's, or one person's."""
+
+    MACHINE = "machine"
+    GLOBAL = "global"
+    PERSON = "person"
+
+
 class SubjectSource(StrEnum):
     """Authority behind a configuration subject used to interpret a document."""
 

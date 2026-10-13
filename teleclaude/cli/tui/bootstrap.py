@@ -13,6 +13,7 @@ BOOTSTRAP_PILLARS: tuple[TuiBootstrapPillar, ...] = (
     "jobs",
     "settings",
     "chiptunes",
+    "ownership",
 )
 BOOTSTRAP_INITIAL_RETRY_DELAY_S = 1.0
 BOOTSTRAP_MAX_RETRY_DELAY_S = 60.0
@@ -24,6 +25,7 @@ _PILLAR_FIELDS: dict[TuiBootstrapPillar, str] = {
     "jobs": "jobs",
     "settings": "settings",
     "chiptunes": "chiptunes",
+    "ownership": "ownership",
 }
 
 

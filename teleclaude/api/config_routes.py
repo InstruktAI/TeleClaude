@@ -10,13 +10,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, carried_caller
+from teleclaude.config.operation_answers import CONFIG_API_PREFIX, CONFIG_OPERATIONS_ROUTE
 from teleclaude.config.subject_operations import ConfigOutcome, ConfigRequest, run_config_operation
 from teleclaude.core.configuration_clearance import standing_for_caller
 
-router = APIRouter(prefix="/config", tags=["config"])
+router = APIRouter(prefix=CONFIG_API_PREFIX, tags=["config"])
 
 
-@router.post("/operations")
+@router.post(CONFIG_OPERATIONS_ROUTE)
 async def run_operation(
     request: ConfigRequest,
     identity: CallerIdentity = Depends(carried_caller),

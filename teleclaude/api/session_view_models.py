@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING
 
+from teleclaude.api.person_display import with_person_chips_on_sessions
 from teleclaude.api_models import SessionDTO
 from teleclaude.api_session_attachment import (
     LocalSessionAttachmentDTO,
@@ -63,7 +64,7 @@ def project_session_dtos(
                 }
             )
         )
-    return _enrich_human_names(dtos)
+    return with_person_chips_on_sessions(_enrich_human_names(dtos))
 
 
 def _enrich_human_names(dtos: list[SessionDTO]) -> list[SessionDTO]:

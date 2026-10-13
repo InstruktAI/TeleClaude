@@ -1,4 +1,4 @@
-"""Chiptunes dislikes persistence — local JSON file, no daemon API."""
+"""Chiptunes dislikes persistence — a local JSON file the daemon's chiptunes routes own writes to, read by track discovery."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import CHIPTUNES_DISLIKES_PATH
 
 logger = get_logger(__name__)
@@ -14,12 +15,12 @@ logger = get_logger(__name__)
 DISLIKES_PATH = CHIPTUNES_DISLIKES_PATH
 
 
-def load_dislikes() -> list[dict[str, str]]:  # guard: loose-dict - dislikes entry
-    """Load dislikes from disk. Returns empty list if file is missing or corrupt."""
-    try:
-        data = json.loads(DISLIKES_PATH.read_text())
-    except FileNotFoundError:
+def _parse_dislikes(raw: str) -> list[dict[str, str]]:  # guard: loose-dict - dislikes entry
+    """Parse dislikes content. Returns empty list if it is empty or corrupt."""
+    if not raw:
         return []
+    try:
+        data = json.loads(raw)
     except json.JSONDecodeError:
         logger.warning("Chiptunes dislikes file is corrupted: %s", DISLIKES_PATH, exc_info=True)
         return []
@@ -31,34 +32,42 @@ def load_dislikes() -> list[dict[str, str]]:  # guard: loose-dict - dislikes ent
     return data
 
 
+def load_dislikes() -> list[dict[str, str]]:  # guard: loose-dict - dislikes entry
+    """Load dislikes from disk. Returns empty list if file is missing or corrupt."""
+    try:
+        raw = DISLIKES_PATH.read_text()
+    except FileNotFoundError:
+        return []
+    return _parse_dislikes(raw)
+
+
 def save_dislike(track_name: str, sid_path: str) -> None:
     """Append a new dislike entry, deduplicating by sid_path."""
-    dislikes = load_dislikes()
-    if any(d.get("sid_path") == sid_path for d in dislikes):
-        return
+    with file_transaction(DISLIKES_PATH) as transaction:
+        dislikes = _parse_dislikes(transaction.read_text())
+        if any(d.get("sid_path") == sid_path for d in dislikes):
+            return
 
-    dislikes.append(
-        {
-            "track_name": track_name,
-            "sid_path": sid_path,
-            "saved_at": datetime.now(UTC).isoformat(),
-        }
-    )
-
-    DISLIKES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    DISLIKES_PATH.write_text(json.dumps(dislikes, indent=2))
+        dislikes.append(
+            {
+                "track_name": track_name,
+                "sid_path": sid_path,
+                "saved_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        transaction.replace_text(json.dumps(dislikes, indent=2))
 
 
 def remove_dislike(sid_path: str) -> bool:
     """Remove a dislike entry by sid_path. Returns True when an entry was removed."""
-    dislikes = load_dislikes()
-    kept = [d for d in dislikes if d.get("sid_path") != sid_path]
-    if len(kept) == len(dislikes):
-        return False
+    with file_transaction(DISLIKES_PATH) as transaction:
+        dislikes = _parse_dislikes(transaction.read_text())
+        kept = [d for d in dislikes if d.get("sid_path") != sid_path]
+        if len(kept) == len(dislikes):
+            return False
 
-    DISLIKES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    DISLIKES_PATH.write_text(json.dumps(kept, indent=2))
-    return True
+        transaction.replace_text(json.dumps(kept, indent=2))
+        return True
 
 
 def is_disliked(sid_path: str) -> bool:

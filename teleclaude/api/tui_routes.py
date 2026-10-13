@@ -19,10 +19,10 @@ from teleclaude.api import (
     settings_routes,
 )
 from teleclaude.api.auth import CallerIdentity, carried_caller
+from teleclaude.api.person_display import ownership_surface, with_person_chips_on_todos
 from teleclaude.api.session_listing_route import ListSessionsQuery
 from teleclaude.api_models import (
     AgentAvailabilityDTO,
-    ChiptunesStatusDTO,
     ComputerDTO,
     JobDTO,
     ProjectWithTodosDTO,
@@ -33,6 +33,8 @@ from teleclaude.api_models import (
     TuiBootstrapErrorDTO,
     TuiBootstrapPillar,
 )
+from teleclaude.api_models_chiptunes import ChiptunesStatusDTO
+from teleclaude.api_models_identity import OwnershipSurfaceDTO
 
 if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
@@ -50,6 +52,7 @@ _DEFAULT_PILLARS: tuple[TuiBootstrapPillar, ...] = (
     "jobs",
     "settings",
     "chiptunes",
+    "ownership",
 )
 
 
@@ -104,7 +107,7 @@ async def _load_projects_with_todos(
             description=project.description,
             subject=project.subject,
             owner=project.owner,
-            todos=todo_map.get((project.computer, project.path), []),
+            todos=with_person_chips_on_todos(todo_map.get((project.computer, project.path), [])),
         )
         for project in projects
     ]
@@ -139,6 +142,11 @@ async def _load_chiptunes() -> ChiptunesStatusDTO:
     return await chiptunes_routes.chiptunes_status()
 
 
+async def _load_ownership() -> OwnershipSurfaceDTO:
+    """Load the ownership-surface pillar."""
+    return ownership_surface()
+
+
 def _error_from_exception(pillar: TuiBootstrapPillar, error: Exception) -> TuiBootstrapErrorDTO:
     """Normalize a pillar exception into an API DTO."""
     message = str(error.detail) if isinstance(error, HTTPException) else str(error)
@@ -167,6 +175,8 @@ def _assign_result(data: TuiBootstrapDataDTO, pillar: TuiBootstrapPillar, value:
             return data.model_copy(update={"settings": value})
         case "chiptunes":
             return data.model_copy(update={"chiptunes": value})
+        case "ownership":
+            return data.model_copy(update={"ownership": value})
 
 
 def _build_loader(
@@ -192,6 +202,8 @@ def _build_loader(
             return _load_settings
         case "chiptunes":
             return _load_chiptunes
+        case "ownership":
+            return _load_ownership
 
 
 async def _load_pillar(

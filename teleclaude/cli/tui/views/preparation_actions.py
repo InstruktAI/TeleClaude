@@ -15,8 +15,8 @@ from textual import work
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.caller_identity import ProjectPath, RoleTarget
 from teleclaude.cli.clearance import ClearanceScope
-from teleclaude.cli.telec.addressing import remote_computer
 from teleclaude.cli.tool_client import ToolAPIError, ToolQueryParams, tool_api_request
+from teleclaude.cli.tui.local_computer import remote_computer
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest, StateChanged
 from teleclaude.cli.tui.tree import project_collapse_key
 from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action

@@ -26,6 +26,8 @@ _ROLE_KEY = "role"
 _USERNAME_KEY = "username"
 IDENTITY_SECTION = "identity"
 SETTINGS_SECTION = "settings"
+# A person patch key whose mapping is addressed to the overlay alone, for a field both documents declare.
+OVERLAY_PATCH_KEY = "overlay"
 
 
 def person_overlay_path(slug: str) -> Path:

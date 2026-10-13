@@ -40,6 +40,7 @@ _REQUIRED_MODULES = ("teleclaude", "jobs.base")
 _API_DISPATCH_FLAG = "--api-dispatch"
 _STORE_TRUE_ACTION = "store_true"
 _RUN_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
+_OWN_PROJECT_UNREGISTERED = "this runner's own project is not registered, so a job named without a project has none"
 _RUNTIME_ERROR = (
     "cron_runner requires the installed project runtime at {interpreter}. "
     "Create it with `uv sync --project {project_root}`."
@@ -101,11 +102,13 @@ logger = get_logger(__name__)
 
 try:
     from teleclaude.config.job_scope import JobScope
+    from teleclaude.cron.dispatch_record import DispatchRefusal, DispatchReporter, JobDispatchRecord
     from teleclaude.cron.listing import compose_job_listing
     from teleclaude.cron.runner import (
         load_job_state,
         run_due_jobs,
     )
+    from teleclaude.cron.state import compose_job_key, split_job_key
     from teleclaude.services.project_catalog import (
         get_project_catalog_service,
     )
@@ -131,6 +134,34 @@ def _describe_schedule(schedule: object) -> str:
             return f"at {at}"
     schedule_str = getattr(schedule, "schedule", None)
     return schedule_str or "none"
+
+
+def _write_dispatch_record(record: JobDispatchRecord) -> None:
+    """Tell the process that launched this runner which run it opened, or why it opened none.
+
+    The launcher has what it needs once the record is out, so later output goes nowhere: it must neither
+    block on the launcher's pipe nor break when the launcher stops reading.
+    """
+    print(record.render(), flush=True)
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull, sys.stdout.fileno())
+    os.close(devnull)
+
+
+def _own_project_filter(job: str, dispatch: DispatchReporter) -> str | None:
+    """A manual dispatch names one project: the job as given when it names one, else this runner's own project.
+
+    Answers None, after telling the launcher, when this runner's own project is not registered.
+    """
+    if split_job_key(job) is not None:
+        return job
+    catalog = get_project_catalog_service()
+    catalog.refresh()
+    own_project = catalog.get_by_root(_REPO_ROOT)
+    if own_project is None:
+        dispatch.refused(DispatchRefusal.NO_SUCH_JOB, detail=_OWN_PROJECT_UNREGISTERED)
+        return None
+    return compose_job_key(own_project.slug, job)
 
 
 def main() -> int:
@@ -185,10 +216,18 @@ def main() -> int:
 
     logger.info("cron runner starting", force=args.force, dry_run=args.dry_run)
 
+    dispatch = DispatchReporter(_write_dispatch_record) if args.api_dispatch else None
+    job_filter = args.job
+    if dispatch is not None and job_filter:
+        job_filter = _own_project_filter(job_filter, dispatch)
+        if job_filter is None:
+            return 0
+
     results = run_due_jobs(
         force=args.force,
-        job_filter=args.job,
+        job_filter=job_filter,
         dry_run=args.dry_run,
+        dispatch=dispatch,
     )
 
     if not results:

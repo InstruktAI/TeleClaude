@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import sys
 import uuid
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from http import HTTPMethod
 from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
 from teleclaude.cli.telec import flags as F
@@ -191,50 +191,43 @@ def _validate_slugs(*slugs: str | None) -> None:
 
 
 class _SlugAction(StrEnum):
-    """Slug-addressed todo actions the daemon serves and the workflow store runs in place."""
+    """Slug-addressed todo actions the daemon serves."""
 
     FREEZE = "freeze"
     UNFREEZE = "unfreeze"
     DELIVER = "deliver"
 
 
+_CWD_FIELD = "cwd"
+_COMMIT_FIELD = "commit"
+_SLUG_ACTION_PATH = "/todos/{slug}/{action}"
+_QUICK_ACTION_TIMEOUT_SECONDS = 30.0
+# Delivery reconciles lifecycle markers through a hook-bearing git commit and then cleans up the
+# worktree and branches, each git step under its own bound. A request cut short while the daemon
+# completes the delivery would leave the outcome unknown, so the budget covers the whole chain.
+_DELIVER_TIMEOUT_SECONDS = 300.0
+_SLUG_ACTION_TIMEOUT_SECONDS: dict[_SlugAction, float] = {
+    _SlugAction.FREEZE: _QUICK_ACTION_TIMEOUT_SECONDS,
+    _SlugAction.UNFREEZE: _QUICK_ACTION_TIMEOUT_SECONDS,
+    _SlugAction.DELIVER: _DELIVER_TIMEOUT_SECONDS,
+}
+
+
 def _perform_slug_action(action: _SlugAction, slug: str, commit: str | None = None) -> SlugActionResult:
-    """Run one slug-addressed action in the local workflow store, or ask the addressed computer to run it."""
-    from teleclaude.cli.telec.handlers._todo_roots import (  # noqa: PLC0415 - command boundary: local workflow store.
-        _resolve_project_root_or_exit,
+    """Ask the daemon of the addressed computer, or of this one, to run one slug-addressed action."""
+    from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - command boundary: daemon API client.
+    from teleclaude.services.work.slug_actions import SlugActionResult  # noqa: PLC0415 - command boundary: result.
+
+    body: dict[str, str] = {_CWD_FIELD: project_reference()}
+    if commit is not None:
+        body[_COMMIT_FIELD] = commit
+    answer = tool_api_call(
+        HTTPMethod.POST,
+        _SLUG_ACTION_PATH.format(slug=slug, action=action.value),
+        json_body=body,
+        timeout=_SLUG_ACTION_TIMEOUT_SECONDS[action],
     )
-    from teleclaude.core.todos_db import close_todos_db_instances  # noqa: PLC0415 - command boundary: local store.
-    from teleclaude.services.work.slug_actions import (  # noqa: PLC0415 - command boundary: workflow actions.
-        SlugActionResult,
-        deliver_todo,
-        freeze_todo,
-        unfreeze_todo,
-    )
-
-    if addressed_computer() is not None:
-        from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - command boundary: daemon API client.
-
-        body: dict[str, str] = {"cwd": project_reference()}
-        if commit is not None:
-            body["commit"] = commit
-        return SlugActionResult.from_dict(tool_api_call("POST", f"/todos/{slug}/{action.value}", json_body=body))
-
-    project_root = _resolve_project_root_or_exit()
-    local: Coroutine[object, object, SlugActionResult]
-    if action is _SlugAction.FREEZE:
-        local = freeze_todo(project_root, slug)
-    elif action is _SlugAction.UNFREEZE:
-        local = unfreeze_todo(project_root, slug)
-    else:
-        local = deliver_todo(project_root, slug, commit)
-
-    async def run() -> SlugActionResult:
-        try:
-            return await local
-        finally:
-            await close_todos_db_instances()
-
-    return asyncio.run(run())
+    return SlugActionResult.from_dict(answer)
 
 
 def _handle_todo_freeze(args: list[str]) -> None:

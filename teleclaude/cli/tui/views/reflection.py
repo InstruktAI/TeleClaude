@@ -5,15 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from types import UnionType
 from typing import Any, Final, Literal, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
 from teleclaude.closed_model import field_is_sensitive
-from teleclaude.config._environment import environment_reference_at_path, resolve_whole_reference, whole_reference_name
-from teleclaude.config.effective_view import typed_value
+from teleclaude.config.operation_answers import EnvironmentReferenceRow
 from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.tiers import (
     Tier,
@@ -22,6 +20,7 @@ from teleclaude.config.tiers import (
     renders_in_tui,
 )
 from teleclaude.config.validation import required_field_names
+from teleclaude.config_subjects import ConfigEnvironment
 
 _UNSET_VALUE: Final = ""
 _KEY_SEPARATOR: Final = "."
@@ -29,10 +28,10 @@ _KEY_SEPARATOR: Final = "."
 
 @dataclass(frozen=True)
 class EnvironmentProvenance:
-    """The environment file that owns a reflected placeholder value."""
+    """The environment that owns a reflected field's variable."""
 
     name: str
-    path: Path
+    owner: ConfigEnvironment
 
 
 @dataclass
@@ -58,10 +57,16 @@ class ReflectedField:
     declared_type: Any = None  # The field's full declared annotation, conversion rules included
 
 
-def resolve_env_placeholders(
-    fields: list[ReflectedField], environment: Mapping[str, str], environment_path: Path
+def apply_machine_environment(
+    fields: list[ReflectedField],
+    references: Mapping[str, EnvironmentReferenceRow],
+    variable_is_set: Mapping[str, bool],
 ) -> None:
-    """Attach schema-declared environment provenance without retaining sensitive values."""
+    """Attach the environment state the daemon projected: sensitive fields by schema, others by reference.
+
+    A sensitive field's variable is the one its schema path derives. A field whose stored value is a reference
+    shows an empty value while its variable has none. No value ever reaches this view.
+    """
     sensitive_names = {
         descriptor.dotted_path: descriptor.environment_name
         for descriptor in machine_config_surface()
@@ -71,41 +76,47 @@ def resolve_env_placeholders(
         derived_name = sensitive_names.get(field.key)
         if derived_name is not None:
             field.env_var = derived_name
-            field.environment = EnvironmentProvenance(derived_name, environment_path)
-            field.write_only = True
-            field.sensitive = True
-            field.secret_is_set = bool(environment.get(derived_name))
-            field.value = ""
+            field.environment = EnvironmentProvenance(derived_name, ConfigEnvironment.MACHINE)
+            field.secret_is_set = variable_is_set.get(derived_name, False)
             continue
-        value = field.value
-        variable = whole_reference_name(value) if isinstance(value, str) else None
-        if isinstance(value, str) and variable is not None:
-            field.env_var = variable
-            field.environment = EnvironmentProvenance(variable, environment_path)
-            resolved = resolve_whole_reference(value, environment)
-            field.value = (
-                _UNSET_VALUE
-                if resolved is None
-                else typed_value(
-                    resolved,
-                    field.declared_type if field.declared_type is not None else field.field_type,
-                    tuple(field.key.split(_KEY_SEPARATOR)),
-                )
-            )
+        _bind_reference(field, references.get(field.key))
+    mark_write_only(fields)
 
 
-def bind_environment_provenance(
-    fields: list[ReflectedField], raw_config: object, environment_path: Path, field_prefix: str
+def bind_environment_references(
+    fields: list[ReflectedField], references: Mapping[str, EnvironmentReferenceRow], field_prefix: str
 ) -> None:
-    """Attach environment ownership from raw YAML without exposing resolved values."""
-    prefix = f"{field_prefix}."
+    """Attach environment ownership from the daemon's reference projection to the fields under a prefix."""
+    prefix = f"{field_prefix}{_KEY_SEPARATOR}"
     for field in fields:
         if field.key.startswith(prefix):
-            path = tuple(field.key.removeprefix(prefix).split("."))
-            variable = environment_reference_at_path(raw_config, path)
-            if variable is not None:
-                field.env_var = variable
-                field.environment = EnvironmentProvenance(variable, environment_path)
+            _bind_reference(field, references.get(field.key.removeprefix(prefix)))
+
+
+def mark_write_only(fields: list[ReflectedField]) -> None:
+    """Make every field the schema declares sensitive write-only, whichever subject it belongs to.
+
+    Applied after environment binding: a reference-backed field keeps its environment as the write target and
+    its set state from the reference; a literal field is set when `get` rendered a value for it. Either way the
+    displayed value is dropped, so no edit can start from, or submit back, what the daemon masked.
+    """
+    for field in fields:
+        if not field.sensitive:
+            continue
+        if field.environment is None:
+            field.secret_is_set = bool(field.value)
+        field.write_only = True
+        field.value = _UNSET_VALUE
+
+
+def _bind_reference(field: ReflectedField, reference: EnvironmentReferenceRow | None) -> None:
+    if reference is None:
+        return
+    field.env_var = reference.variable
+    field.environment = EnvironmentProvenance(reference.variable, reference.environment)
+    field.secret_is_set = reference.has_value
+    if not reference.has_value:
+        field.value = _UNSET_VALUE
 
 
 def _unpack_union(t: Any) -> list[Any]:

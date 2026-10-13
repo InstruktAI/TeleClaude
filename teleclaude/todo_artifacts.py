@@ -20,18 +20,6 @@ def _require_todos_db(project_root: Path) -> Path:
     return db_path
 
 
-def read_artifact_content(project_root: Path, slug: str, artifact_name: str) -> str:
-    """Read a todo artifact through the TodosDb sync API."""
-    _require_todos_db(project_root)
-    return get_todos_db_sync(project_root).read_artifact_sync(slug, artifact_name)
-
-
-def read_artifact_content_by_id(project_root: Path, todo_id: str, artifact_name: str) -> str:
-    """Read a todo artifact by the owning todo's durable id."""
-    _require_todos_db(project_root)
-    return get_todos_db_sync(project_root).read_artifact_sync_by_id(todo_id, artifact_name)
-
-
 def write_artifact_content(project_root: Path, slug: str, artifact_name: str, content: str) -> None:
     """Write a todo artifact through the TodosDb sync API and append version history."""
     _require_todos_db(project_root)

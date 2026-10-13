@@ -3,19 +3,27 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from http import HTTPMethod
 
 import httpx
 from pydantic import TypeAdapter
 
 from teleclaude.api_models import (
-    ChiptunesCommandReceiptDTO,
-    ChiptunesStatusDTO,
     CreateSessionResponseDTO,
     SettingsDTO,
     SettingsPatchDTO,
 )
+from teleclaude.api_models_chiptunes import (
+    ChiptunesCommandReceiptDTO,
+    ChiptunesPreference,
+    ChiptunesPreferenceRequest,
+    ChiptunesStatusDTO,
+)
 from teleclaude.cli.api_client_request import JsonBody, RequestOptions
 from teleclaude.cli.clearance import ClearanceScope
+from teleclaude.config.operation_answers import CONFIG_OPERATIONS_PATH
+
+_CONFIG_OPERATION_TIMEOUT_SECONDS = 60.0
 
 _MEMORY_ROWS = TypeAdapter(list[dict[str, object]])  # guard: loose-dict - JSON response from daemon memory API
 
@@ -82,10 +90,40 @@ class TelecRuntimeAPI:
         """Stop chiptunes playback and kill the worker process."""
         await self._request("POST", "/api/chiptunes/stop")
 
+    async def set_chiptunes_favorite(self, sid_path: str, track_name: str, *, marked: bool) -> ChiptunesStatusDTO:
+        """Mark or unmark a track as a favourite; the answer is the playback state it altered."""
+        return await self._set_chiptunes_preference(ChiptunesPreference.FAVORITE, sid_path, track_name, marked=marked)
+
+    async def set_chiptunes_dislike(self, sid_path: str, track_name: str, *, marked: bool) -> ChiptunesStatusDTO:
+        """Mark or unmark a track as disliked; the answer is the playback state it altered."""
+        return await self._set_chiptunes_preference(ChiptunesPreference.DISLIKE, sid_path, track_name, marked=marked)
+
+    async def _set_chiptunes_preference(
+        self, preference: ChiptunesPreference, sid_path: str, track_name: str, *, marked: bool
+    ) -> ChiptunesStatusDTO:
+        request = ChiptunesPreferenceRequest(sid_path=sid_path, track_name=track_name, marked=marked)
+        resp = await self._request(
+            HTTPMethod.PUT, preference.path, request_options=RequestOptions(json_body=request.model_dump())
+        )
+        return TypeAdapter(ChiptunesStatusDTO).validate_json(resp.text)
+
     async def get_chiptunes_status(self) -> ChiptunesStatusDTO:
         """Fetch current chiptunes playback state."""
         resp = await self._request("GET", "/api/chiptunes/status")
         return TypeAdapter(ChiptunesStatusDTO).validate_json(resp.text)
+
+    async def run_config_operation(self, request_body: JsonBody, command_path: str) -> str:
+        """Run one configuration operation on the daemon, cleared as the `telec config` command that performs it.
+
+        The request and the answer are the operation's JSON; the caller owns their typed models.
+        """
+        resp = await self._request(
+            HTTPMethod.POST,
+            CONFIG_OPERATIONS_PATH,
+            timeout=_CONFIG_OPERATION_TIMEOUT_SECONDS,
+            request_options=RequestOptions(json_body=request_body, clearance_scope=ClearanceScope.verb(command_path)),
+        )
+        return resp.text
 
     async def revive_session(
         self, session_id: str, *, agent: str | None = None, project: str | None = None, computer: str | None = None

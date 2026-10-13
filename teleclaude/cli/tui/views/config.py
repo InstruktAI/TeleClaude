@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import asyncio
 from typing import Any
 from uuid import uuid4
 
-import yaml
 from instrukt_ai_logging import get_logger
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -17,15 +16,7 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from teleclaude.cli.config_handlers import (
-    EnvVarStatus,
-    ValidationResult,
-    check_env_vars,
-    get_person_config,
-    get_person_mcp_secret_statuses,
-    list_people,
-    validate_all,
-)
+from teleclaude.cli.config_handlers import EnvVarStatus, ValidationResult
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
@@ -37,12 +28,21 @@ from teleclaude.cli.tui.views._config_constants import (
     project_adapter_sections,
 )
 from teleclaude.cli.tui.views.config_editing import ConfigContentEditingMixin
+from teleclaude.cli.tui.views.config_operations import (
+    ConfigOperationFailed,
+    ConfigOperations,
+    PersonSecretInventory,
+    SubjectSnapshot,
+)
 from teleclaude.cli.tui.views.config_render import ConfigContentRenderMixin
+from teleclaude.cli.tui.views.lenient_model import lenient_model
 from teleclaude.cli.tui.views.reflection import (
+    EnvironmentProvenance,
     ReflectedField,
-    bind_environment_provenance,
+    apply_machine_environment,
+    bind_environment_references,
+    mark_write_only,
     reflect_schema,
-    resolve_env_placeholders,
 )
 from teleclaude.config._chiptunes import ChiptunesConfig
 from teleclaude.config._defaults import DEFAULT_CONFIG
@@ -61,14 +61,14 @@ from teleclaude.config._models import (
 )
 from teleclaude.config._summarizer import SummarizerConfig
 from teleclaude.config.identity_schema import PersonEntry
-from teleclaude.config.loader import find_person_config_path
-from teleclaude.config.machine_config_mutation import inspect_machine_config
-from teleclaude.config.machine_environment import machine_runtime_environment
-from teleclaude.config.person_secrets import PersonSecretStorageError
-from teleclaude.config.surface import sections_outside_scope
+from teleclaude.config.operation_answers import EnvironmentReferenceRow
+from teleclaude.config.person_resource import IDENTITY_SECTION, SETTINGS_SECTION
+from teleclaude.config.schema import PersonConfig
+from teleclaude.config.subject_operations import ConfigFailureKind
 from teleclaude.config.tiers import Tier
+from teleclaude.config_subjects import ConfigEnvironment, ConfigSubjectKind
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
-from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, ConfigFileName
+from teleclaude.project_manifest import ConfigKind
 
 __all__ = ["ConfigContent", "ConfigView"]
 
@@ -83,15 +83,6 @@ def _default_section(name: str) -> dict[str, Any]:  # guard: loose-dict - DEFAUL
     """Return a DEFAULT_CONFIG section as a plain dict for safe merge/unpack."""
     section = DEFAULT_CONFIG.get(name, {})
     return section if isinstance(section, dict) else {}
-
-
-def _load_overlay_raw_config(path: Path) -> dict[str, Any]:  # guard: loose-dict - YAML overlay data
-    """Read a non-machine config document used solely for TUI overlay projection."""
-    with path.open(encoding="utf-8") as handle:
-        raw = yaml.safe_load(handle) or {}
-    if not isinstance(raw, dict):
-        raise ValueError("Configuration document must be a YAML mapping.")
-    return raw
 
 
 def _apply_tts_applicability(tts: TTSConfig, fields: list[ReflectedField]) -> list[ReflectedField]:
@@ -121,6 +112,44 @@ def _apply_tts_applicability(tts: TTSConfig, fields: list[ReflectedField]) -> li
         if field.key == "tts.events.session_start.messages" and not field.value:
             field.value = list(SESSION_START_MESSAGES)
     return kept
+
+
+_COMPUTER_SECTION = "computer"
+_KIND_FIELD = "kind"
+_SLUG_FIELD = "slug"
+_OVERLAY_UNPRESENTABLE = "The overlay of {slug} cannot be presented"
+_IDENTITY_PREFIX = "identity"
+_OVERLAY_PREFIX = "overlay"
+_IDENTITY_SECTION_LABEL = "Global Identity"
+_OVERLAY_SECTION_LABEL = "Overlay Settings"
+_SECRETS_SECTION_LABEL = "Secrets"
+_IDENTITY_SOURCE = "global"
+_OVERLAY_SOURCE = "per-person"
+_SECRET_SOURCE = "personal-mcp-secret"
+_SECRET_KEY_PREFIX = "secrets."
+_PERSON_CACHE_KEY = "person:{slug}"
+_OUTPUT_VISIBILITY_FIELDS = ("system_messages", "tool_calls")
+_STATUS_TEMPLATE = "{prefix}: {error}"
+_LOAD_MACHINE_FAILED = "Failed to load machine configuration"
+_LOAD_ENV_FAILED = "Failed to load env vars"
+_LOAD_PEOPLE_FAILED = "Failed to load people"
+_LOAD_SECRETS_FAILED = "Failed to load personal secrets"
+_API_ATTRIBUTE = "api"
+_LOAD_GROUP = "config-load"
+_SECRETS_GROUP = "config-secrets"
+_VALIDATE_GROUP = "config-validate"
+_DAEMON_UNAVAILABLE = "The daemon is not reachable."
+
+
+def _person_entry(slug: str, identity: dict[str, object]) -> PersonEntry:  # guard: loose-dict - effective view
+    """The identity entry of a person, built from the effective identity section the daemon answered."""
+    declared = {name: value for name, value in identity.items() if name in PersonEntry.model_fields}
+    return PersonEntry.model_construct(**declared, slug=slug)
+
+
+def _person_overlay(slug: str, settings: dict[str, object]) -> PersonConfig:  # guard: loose-dict - effective view
+    """The typed overlay of a person from its effective settings; a partial projection keeps the values it holds."""
+    return lenient_model(PersonConfig, {**settings, _KIND_FIELD: ConfigKind.PERSON.value, _SLUG_FIELD: slug})
 
 
 class ConfigView(Widget, can_focus=True):
@@ -414,7 +443,14 @@ class ConfigContent(
         self._row_click_map: dict[int, tuple[str, Any]] = {}  # {content_row: action_tuple}
         self._expanded_person: str | None = None
         self._person_field_cursor: int = 0
-        self._raw_config: dict[str, Any] = {}  # guard: loose-dict - raw config.yml tree
+        self._raw_config: dict[str, Any] = {}  # guard: loose-dict - the daemon's effective machine document
+        self._machine_revision: str | None = None
+        self._machine_references: dict[str, EnvironmentReferenceRow] = {}
+        self._variable_is_set: dict[str, bool] = {}
+        self._people: dict[str, SubjectSnapshot] = {}
+        self._person_secrets: dict[str, PersonSecretInventory] = {}
+        self._write_lock = asyncio.Lock()
+        self._load_pending = True
         self._list_element_idx: int = 0
         self._reflected_cache: dict[Subtab, list[ReflectedField]] = {}
 
@@ -433,7 +469,7 @@ class ConfigContent(
         render_cycle_id = str(uuid4())
         observe_config_tui(ConfigTuiOutcome.RENDER_REQUESTED, render_cycle_id=render_cycle_id, subtab=tab.value)
         fields = self._build_reflected_fields(tab)
-        resolve_env_placeholders(fields, machine_runtime_environment(), PROJECT_ENV_PATH)
+        apply_machine_environment(fields, self._machine_references, self._variable_is_set)
         observe_config_tui(
             ConfigTuiOutcome.RENDERED,
             render_cycle_id=render_cycle_id,
@@ -632,56 +668,59 @@ class ConfigContent(
         if self._expanded_person is None:
             return []
 
-        cache_key = f"person:{self._expanded_person}"
-        cached = self._reflected_cache.get(cache_key)  # type: ignore[arg-type]
+        cache_key = _PERSON_CACHE_KEY.format(slug=self._expanded_person)
+        cached = self._reflected_cache.get(cache_key)  # type: ignore[call-overload]
         if cached is not None:
             return cached
 
-        person_entry = next((p for p in self._people_data if (p.slug or p.name) == self._expanded_person), None)
-        if person_entry is None:
+        slug = self._expanded_person
+        person_entry = next((p for p in self._people_data if (p.slug or p.name) == slug), None)
+        snapshot = self._people.get(slug)
+        if person_entry is None or snapshot is None:
             return []
 
-        person_config = get_person_config(self._expanded_person)
         render_cycle_id = str(uuid4())
         logger.info("config_tui_person_overlay_requested", schema="PersonConfig", render_cycle_id=render_cycle_id)
 
         entry_fields = reflect_schema(
-            person_entry, prefix="identity", section="Global Identity", owning_source="global", inherited_tier=Tier.TUI
-        )
-        overlay_fields = reflect_schema(
-            person_config,
-            prefix="overlay",
-            section="Overlay Settings",
-            owning_source="per-person",
+            person_entry,
+            prefix=_IDENTITY_PREFIX,
+            section=_IDENTITY_SECTION_LABEL,
+            owning_source=_IDENTITY_SOURCE,
             inherited_tier=Tier.TUI,
         )
-
-        global_raw = _load_overlay_raw_config(GLOBAL_CONFIG_PATH)
-        global_people = global_raw.get("people", [])
-        raw_person = next(
-            (
-                person
-                for person in global_people
-                if isinstance(person, dict) and person.get("slug") == person_entry.slug
-            ),
-            {},
-        )
-        bind_environment_provenance(
-            entry_fields, raw_person, GLOBAL_CONFIG_PATH.with_name(ConfigFileName.ENV), "identity"
-        )
-        person_path = find_person_config_path(person_entry)
-        if person_path is not None:
-            bind_environment_provenance(
-                overlay_fields,
-                _load_overlay_raw_config(person_path),
-                person_path.with_name(ConfigFileName.ENV),
-                "overlay",
-            )
         try:
-            secret_statuses = get_person_mcp_secret_statuses(self._expanded_person)
-        except PersonSecretStorageError:
-            secret_statuses = []
-            secret_fields = [
+            overlay_fields = reflect_schema(
+                _person_overlay(slug, snapshot.section(SETTINGS_SECTION)),
+                prefix=_OVERLAY_PREFIX,
+                section=_OVERLAY_SECTION_LABEL,
+                owning_source=_OVERLAY_SOURCE,
+                inherited_tier=Tier.TUI,
+            )
+        except (TypeError, ValueError, AttributeError) as error:
+            self._report_failure(_OVERLAY_UNPRESENTABLE.format(slug=slug), error)
+            return []
+        bind_environment_references(entry_fields, snapshot.references_under(IDENTITY_SECTION), _IDENTITY_PREFIX)
+        bind_environment_references(overlay_fields, snapshot.references_under(SETTINGS_SECTION), _OVERLAY_PREFIX)
+        mark_write_only(entry_fields)
+        mark_write_only(overlay_fields)
+        secret_fields = self._person_secret_fields(self._person_secrets.get(slug))
+        fields = entry_fields + overlay_fields + secret_fields
+        logger.info(
+            "config_tui_person_overlay_rendered",
+            render_cycle_id=render_cycle_id,
+            output_visibility_fields=list(_OUTPUT_VISIBILITY_FIELDS),
+        )
+        self._reflected_cache[cache_key] = fields  # type: ignore[index]
+        return fields
+
+    @staticmethod
+    def _person_secret_fields(inventory: PersonSecretInventory | None) -> list[ReflectedField]:
+        """The write-only secret rows of a person: their inventory, or the note that their store is unavailable."""
+        if inventory is None:
+            return []
+        if not inventory.available:
+            return [
                 ReflectedField(
                     key="secrets.unavailable",
                     name="Personal MCP secrets",
@@ -694,62 +733,75 @@ class ConfigContent(
                     description="Personal secret storage is unavailable.",
                 )
             ]
-        else:
-            secret_fields = [
-                ReflectedField(
-                    key=f"secrets.{status.name}",
-                    name=status.name,
-                    field_type=str,
-                    value="",
-                    section="Secrets",
-                    owning_source="personal-mcp-secret",
-                    write_only=True,
-                    secret_is_set=status.is_set,
-                    requiring_services=status.requiring_servers,
-                )
-                for status in secret_statuses
-            ]
-        fields = entry_fields + overlay_fields + secret_fields
-        logger.info(
-            "config_tui_person_overlay_rendered",
-            render_cycle_id=render_cycle_id,
-            output_visibility_fields=["system_messages", "tool_calls"],
-        )
-        self._reflected_cache[cache_key] = fields  # type: ignore[index]
-        return fields
+        return [
+            ReflectedField(
+                key=f"{_SECRET_KEY_PREFIX}{secret.name}",
+                name=secret.name,
+                field_type=str,
+                value="",
+                section=_SECRETS_SECTION_LABEL,
+                owning_source=_SECRET_SOURCE,
+                environment=EnvironmentProvenance(secret.name, ConfigEnvironment.PERSON),
+                write_only=True,
+                secret_is_set=secret.is_set,
+                requiring_services=secret.requiring_servers,
+            )
+            for secret in inventory.secrets
+        ]
 
     @property
     def person_editable_fields(self) -> list[str]:
         """Return the keys of person_reflected_fields."""
         return [f.key for f in self.person_reflected_fields]
 
+    def _operations(self) -> ConfigOperations | None:
+        """The daemon requests of this tab, or None while the TUI has not connected to the daemon."""
+        api = getattr(self.app, _API_ATTRIBUTE, None)
+        if api is None or not api.is_connected:
+            return None
+        return ConfigOperations(api)
+
     def refresh_data(self) -> None:
-        """Reload env vars, people, derived projections, and config.yml from disk."""
-        self._reflected_cache.clear()
+        """Ask the daemon for the machine configuration, environment state, and people, and show them."""
+        operations = self._operations()
+        if operations is None:
+            self._load_pending = True
+            return
+        self._load_pending = False
+        self.run_worker(self._load_snapshot(operations), exclusive=True, group=_LOAD_GROUP)
+
+    def load_when_connected(self) -> None:
+        """Load the first snapshot once the TUI has connected to the daemon."""
+        if self._load_pending:
+            self.refresh_data()
+
+    async def _load_snapshot(self, operations: ConfigOperations) -> None:
+        """Read the subjects this tab shows, each failure reported where it happened."""
         try:
-            self._raw_config = dict(inspect_machine_config().raw)  # type: ignore[assignment]
+            machine = await operations.get(ConfigSubjectKind.COMPUTER)
+            self._raw_config = machine.section(_COMPUTER_SECTION)
+            self._machine_revision = machine.revision
+            self._machine_references = machine.references_under(_COMPUTER_SECTION)
+            self._outside_scope = machine.outside_scope
         except Exception as exc:
             self._raw_config = {}
-            self._status_message = f"Failed to load config.yml: {exc}"
-            self._status_is_error = True
-        self._outside_scope = sections_outside_scope(self._raw_config)
+            self._machine_revision = None
+            self._machine_references = {}
+            self._outside_scope = ()
+            self._report_failure(_LOAD_MACHINE_FAILED, exc)
 
         try:
-            self._env_data = [status for status in check_env_vars() if status.info.adapter not in self._outside_scope]
+            statuses = await operations.environment_variables()
+            self._variable_is_set = {status.info.name: status.is_set for status in statuses}
+            self._env_data = [status for status in statuses if status.info.adapter not in self._outside_scope]
         except Exception as exc:
+            self._variable_is_set = {}
             self._env_data = []
-            self._status_message = f"Failed to load env vars: {exc}"
-            self._status_is_error = True
+            self._report_failure(_LOAD_ENV_FAILED, exc)
 
         self._adapter_sections = project_adapter_sections(self._env_data)
-
-        try:
-            self._people_data = list_people()
-        except Exception as exc:
-            self._people_data = []
-            self._status_message = f"Failed to load people: {exc}"
-            self._status_is_error = True
-
+        await self._load_people(operations)
+        self._reflected_cache.clear()
         self._clamp_current_cursor()
 
         if self._guided_mode:
@@ -758,10 +810,73 @@ class ConfigContent(
 
         self.refresh(layout=True)
 
+    async def _load_people(self, operations: ConfigOperations) -> None:
+        """Read the people the operator may see: all of them for an administrator, else their own."""
+        self._people = {}
+        self._people_data = []
+        try:
+            try:
+                slugs = await operations.list_instances(ConfigSubjectKind.PERSON)
+            except ConfigOperationFailed as refusal:
+                if refusal.kind is not ConfigFailureKind.REFUSED:
+                    raise
+                own_slug = await operations.own_person_slug()
+                if own_slug is None:
+                    raise
+                slugs = [own_slug]
+            snapshots = await asyncio.gather(*(operations.get(ConfigSubjectKind.PERSON, slug) for slug in slugs))
+        except Exception as exc:
+            self._report_failure(_LOAD_PEOPLE_FAILED, exc)
+            return
+        self._people = dict(zip(slugs, snapshots, strict=True))
+        self._people_data = [
+            _person_entry(slug, snapshot.section(IDENTITY_SECTION)) for slug, snapshot in self._people.items()
+        ]
+        if self._expanded_person is not None and self._expanded_person in self._people:
+            await self._load_person_secrets(operations, self._expanded_person)
+
+    async def _load_person_secrets(self, operations: ConfigOperations, slug: str) -> None:
+        try:
+            self._person_secrets[slug] = await operations.person_secrets(slug)
+        except Exception as exc:
+            self._report_failure(_LOAD_SECRETS_FAILED, exc)
+        self._reflected_cache.pop(_PERSON_CACHE_KEY.format(slug=slug), None)  # type: ignore[call-overload]
+
+    def _person_overlay_model(self, slug: str) -> PersonConfig:
+        """The typed overlay of a person, as the daemon's effective settings give it."""
+        snapshot = self._people.get(slug)
+        return _person_overlay(slug, snapshot.section(SETTINGS_SECTION) if snapshot is not None else {})
+
+    def load_expanded_person_secrets(self) -> None:
+        """Read the expanded person's personal secret inventory from the daemon."""
+        operations = self._operations()
+        slug = self._expanded_person
+        if operations is None or slug is None:
+            return
+        self.run_worker(self._reload_person_secrets(operations, slug), exclusive=True, group=_SECRETS_GROUP)
+
+    async def _reload_person_secrets(self, operations: ConfigOperations, slug: str) -> None:
+        await self._load_person_secrets(operations, slug)
+        self.refresh(layout=True)
+
+    def _report_failure(self, prefix: str, error: Exception) -> None:
+        """Show a failed request in the status line: the daemon's refusal as it worded it, else the failure."""
+        self._status_message = _STATUS_TEMPLATE.format(prefix=prefix, error=error)
+        self._status_is_error = True
+
     def run_validation(self) -> None:
         """Run the full config validation suite and surface the summary."""
+        operations = self._operations()
+        if operations is None:
+            self._status_message = _DAEMON_UNAVAILABLE
+            self._status_is_error = True
+            self.refresh(layout=True)
+            return
+        self.run_worker(self._validate(operations), exclusive=True, group=_VALIDATE_GROUP)
+
+    async def _validate(self, operations: ConfigOperations) -> None:
         try:
-            self._validation_results = validate_all()
+            self._validation_results = await operations.validate()
             passed = sum(1 for result in self._validation_results if result.passed)
             self._status_message = f"Validation complete: {passed}/{len(self._validation_results)} checks passed"
             self._status_is_error = passed != len(self._validation_results)

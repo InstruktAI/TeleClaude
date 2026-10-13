@@ -2,42 +2,60 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from teleclaude.core.events import EventType
 from teleclaude.types.commands import CommandType
 
-OPERATION_KIND_TODO_WORK = "todo_work"
-OPERATION_KIND_TASK_RUN = "task_run"
-OPERATION_KIND_TODO_INTEGRATE = "todo_integrate"
-OPERATION_KIND_TODO_CREATE = "todo_create"
-OPERATION_KIND_TODO_PREPARE = "todo_prepare"
-OPERATION_KIND_TODO_RENAME = "todo_rename"
-OPERATION_KIND_TODO_REMOVE = "todo_remove"
-OPERATION_KIND_SESSION_CLOSE = "session_close"
-OPERATION_KIND_AGENT_RESTART = "agent_restart"
-OPERATION_KIND_AGENT_HANDOFF = "agent_handoff"
-OPERATION_KIND_PROCEDURE_ACTIVATION = "procedure_activation"
-_OUTCOME_EVENTS: dict[str, tuple[EventType, EventType]] = {
-    OPERATION_KIND_TODO_WORK: ("operation.todo_work.completed", "operation.todo_work.failed"),
-    OPERATION_KIND_TASK_RUN: ("operation.task_run.completed", "operation.task_run.failed"),
-    OPERATION_KIND_TODO_INTEGRATE: ("operation.todo_integrate.completed", "operation.todo_integrate.failed"),
-    OPERATION_KIND_TODO_CREATE: ("operation.todo_create.completed", "operation.todo_create.failed"),
-    OPERATION_KIND_TODO_PREPARE: ("operation.todo_prepare.completed", "operation.todo_prepare.failed"),
-    OPERATION_KIND_TODO_RENAME: ("operation.todo_rename.completed", "operation.todo_rename.failed"),
-    OPERATION_KIND_TODO_REMOVE: ("operation.todo_remove.completed", "operation.todo_remove.failed"),
-    OPERATION_KIND_SESSION_CLOSE: ("session.close.completed", "session.close.failed"),
-    OPERATION_KIND_AGENT_RESTART: ("agent.restart.completed", "agent.restart.failed"),
-    OPERATION_KIND_AGENT_HANDOFF: ("agent_runtime.handoff.completed", "agent_runtime.handoff.failed"),
-    OPERATION_KIND_PROCEDURE_ACTIVATION: (
+
+class OperationKind(StrEnum):
+    """The closed set of operation kinds a receipt-backed operation can carry."""
+
+    TODO_WORK = "todo_work"
+    TASK_RUN = "task_run"
+    TODO_INTEGRATE = "todo_integrate"
+    TODO_CREATE = "todo_create"
+    TODO_PREPARE = "todo_prepare"
+    TODO_RENAME = "todo_rename"
+    TODO_REMOVE = "todo_remove"
+    SESSION_CLOSE = "session_close"
+    AGENT_RESTART = "agent_restart"
+    AGENT_HANDOFF = "agent_handoff"
+    PROCEDURE_ACTIVATION = "procedure_activation"
+    JOB_RUN = "job_run"
+
+
+_OUTCOME_EVENTS: dict[OperationKind, tuple[EventType, EventType]] = {
+    OperationKind.TODO_WORK: ("operation.todo_work.completed", "operation.todo_work.failed"),
+    OperationKind.TASK_RUN: ("operation.task_run.completed", "operation.task_run.failed"),
+    OperationKind.TODO_INTEGRATE: ("operation.todo_integrate.completed", "operation.todo_integrate.failed"),
+    OperationKind.TODO_CREATE: ("operation.todo_create.completed", "operation.todo_create.failed"),
+    OperationKind.TODO_PREPARE: ("operation.todo_prepare.completed", "operation.todo_prepare.failed"),
+    OperationKind.TODO_RENAME: ("operation.todo_rename.completed", "operation.todo_rename.failed"),
+    OperationKind.TODO_REMOVE: ("operation.todo_remove.completed", "operation.todo_remove.failed"),
+    OperationKind.SESSION_CLOSE: ("session.close.completed", "session.close.failed"),
+    OperationKind.AGENT_RESTART: ("agent.restart.completed", "agent.restart.failed"),
+    OperationKind.AGENT_HANDOFF: ("agent_runtime.handoff.completed", "agent_runtime.handoff.failed"),
+    OperationKind.PROCEDURE_ACTIVATION: (
         "agent_runtime.procedure_activation.completed",
         "agent_runtime.procedure_activation.failed",
     ),
+    OperationKind.JOB_RUN: ("operation.job_run.completed", "operation.job_run.failed"),
 }
-_COMMAND_TYPE_TO_OPERATION_KIND: dict[CommandType, str] = {
-    CommandType.CLOSE_SESSION: OPERATION_KIND_SESSION_CLOSE,
-    CommandType.RESTART_AGENT: OPERATION_KIND_AGENT_RESTART,
-    CommandType.HANDOFF_AGENT: OPERATION_KIND_AGENT_HANDOFF,
-    CommandType.ACTIVATE_PROCEDURE: OPERATION_KIND_PROCEDURE_ACTIVATION,
+_COMMAND_TYPE_TO_OPERATION_KIND: dict[CommandType, OperationKind] = {
+    CommandType.CLOSE_SESSION: OperationKind.SESSION_CLOSE,
+    CommandType.RESTART_AGENT: OperationKind.AGENT_RESTART,
+    CommandType.HANDOFF_AGENT: OperationKind.AGENT_HANDOFF,
+    CommandType.ACTIVATE_PROCEDURE: OperationKind.PROCEDURE_ACTIVATION,
 }
+
+
+def outcome_events_for(kind: str) -> tuple[EventType, EventType] | None:
+    """The success and failure events of a stored kind, or None for a kind that is no longer declared."""
+    try:
+        return _OUTCOME_EVENTS[OperationKind(kind)]
+    except (ValueError, KeyError):
+        return None
 
 
 def all_outcome_events() -> tuple[EventType, ...]:

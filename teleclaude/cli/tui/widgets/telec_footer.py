@@ -13,6 +13,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
 
+from teleclaude.agent_registry import AgentName
 from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.messages import SettingsChanged, StateChanged
 from teleclaude.cli.tui.theme import get_neutral_color
@@ -24,7 +25,12 @@ from teleclaude.cli.tui.widgets._status_controls import (
     get_persisted_state,
     load_persisted_state,
 )
-from teleclaude.core.agents import get_enabled_agents
+from teleclaude.cli.tui.widgets.agent_status import enabled_agents
+
+_AGENT_PILL_ID = "footer-agent-{agent}"
+_AGENT_PILL_SELECTOR = "#footer-agent-{agent}"
+_AGENT_PILL_CLASSES = "footer-token footer-agent-token"
+_LAST_AGENT_CLASS = "-last-agent"
 
 
 class FooterActionButton(Static, can_focus=False):
@@ -198,12 +204,10 @@ class TelecFooter(Widget):
         yield Static(id="footer-global-row")
         with Horizontal(id="footer-controls-row"):
             with Horizontal(id="footer-agents"):
-                enabled_agents = get_enabled_agents()
-                for idx, agent in enumerate(enabled_agents):
-                    classes = "footer-token footer-agent-token"
-                    if idx == len(enabled_agents) - 1:
-                        classes += " -last-agent"
-                    yield Static("", id=f"footer-agent-{agent}", classes=classes)
+                for agent in AgentName:
+                    pill = Static("", id=_AGENT_PILL_ID.format(agent=agent.value), classes=_AGENT_PILL_CLASSES)
+                    pill.display = False
+                    yield pill
             yield Static("", id="footer-controls-spacer")
             with Horizontal(id="footer-actions"):
                 yield Static("", id="footer-pane-toggle", classes="footer-token")
@@ -310,12 +314,21 @@ class TelecFooter(Widget):
         self._refresh_controls()
         self._refresh_hint_rows()
 
+    def _refresh_agent_pills(self) -> None:
+        """Show a pill for each agent the daemon projects as enabled, and none before it has."""
+        enabled = enabled_agents(self._agent_availability)
+        for agent in AgentName:
+            pill = self.query_one(_AGENT_PILL_SELECTOR.format(agent=agent.value), Static)
+            pill.display = agent.value in enabled
+            pill.set_class(bool(enabled) and agent.value == enabled[-1], _LAST_AGENT_CLASS)
+            if agent.value in enabled:
+                pill.update(self._build_agent_pill(agent.value))
+
     def _refresh_controls(self) -> None:
         if not self.is_mounted:
             return
 
-        for agent in get_enabled_agents():
-            self._set_token(f"#footer-agent-{agent}", self._build_agent_pill(agent))
+        self._refresh_agent_pills()
 
         pane_toggle = Text()
         for cell_char, cell_style in self._build_pane_theming_cells():

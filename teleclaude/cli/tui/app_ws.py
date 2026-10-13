@@ -10,8 +10,6 @@ from textual.widgets import TabbedContent
 from teleclaude.api_models import (
     AgentActivityEventDTO,
     AgentAvailabilityEventDTO,
-    ChiptunesStateEventDTO,
-    ChiptunesTrackEventDTO,
     ErrorEventDTO,
     ProjectDTO,
     ProjectsInitialEventDTO,
@@ -22,14 +20,17 @@ from teleclaude.api_models import (
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
 )
+from teleclaude.api_models_chiptunes import ChiptunesStateEventDTO, ChiptunesTrackEventDTO
+from teleclaude.api_models_identity import OwnershipSurfaceDTO
 from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
 from teleclaude.cli.models import WsEvent
 from teleclaude.cli.tui.animation_triggers import ActivityTrigger
+from teleclaude.cli.tui.local_computer import local_computer_name
 from teleclaude.cli.tui.messages import AgentActivity, SessionClosed, SessionStarted, SessionUpdated
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
-from teleclaude.config.machine import config
+from teleclaude.cli.tui.widgets.chip import adopt_ownership_surface
 
 logger = get_logger(__name__)
 
@@ -74,11 +75,14 @@ class TelecAppWsMixin:
             prep_view.reconcile_sessions(sessions, computer=None)
             pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)  # type: ignore[attr-defined]
             pane_bridge.update_sessions(sessions)
+            ownership_changed = self._adopt_ownership(event.data.ownership)
             sessions_view.update_data(
                 computers=computers,
                 projects=projects,
                 sessions=sessions,
             )
+            if ownership_changed:
+                self._reapply_human_filters(sessions_view, prep_view)
             return True
 
         if isinstance(event, ProjectsInitialEventDTO):
@@ -101,6 +105,7 @@ class TelecAppWsMixin:
                 incoming=incoming,
                 computer=event.data.computer,
             )
+            ownership_changed = self._adopt_ownership(event.data.ownership)
             prep_view.update_data(projects_with_todos)
             sessions_view.update_data(
                 computers=computers,
@@ -115,9 +120,22 @@ class TelecAppWsMixin:
                 ],
                 sessions=sessions,
             )
+            if ownership_changed:
+                self._reapply_human_filters(sessions_view, prep_view)
             return True
 
         return False
+
+    @staticmethod
+    def _adopt_ownership(surface: OwnershipSurfaceDTO | None) -> bool:
+        """Take the ownership fact a snapshot carries; True when chips and the filter now apply differently."""
+        return surface is not None and adopt_ownership_surface(surface)
+
+    @staticmethod
+    def _reapply_human_filters(sessions_view: SessionsView, prep_view: PreparationView) -> None:
+        """Bring both views' rows in line with the ownership surface just adopted."""
+        sessions_view.reapply_human_filter()
+        prep_view.reapply_human_filter()
 
     def _handle_session_event(self, event: WsEvent) -> bool:
         """Handle websocket events that become Textual session messages."""
@@ -181,6 +199,8 @@ class TelecAppWsMixin:
             if event.track:
                 self.notify_text(f"♪ Loading: {event.track}", timeout=4)  # type: ignore[attr-defined]
             self._apply_chiptunes_footer_state(  # type: ignore[attr-defined]
+                favorited=event.favorited,
+                disliked=event.disliked,
                 loaded=True,
                 playback="loading",
                 state_version=None,
@@ -194,6 +214,9 @@ class TelecAppWsMixin:
 
         if isinstance(event, ChiptunesStateEventDTO):
             self._apply_chiptunes_footer_state(  # type: ignore[attr-defined]
+                configured=event.configured,
+                favorited=event.favorited,
+                disliked=event.disliked,
                 loaded=event.loaded,
                 playback=event.playback,
                 state_version=event.state_version,
@@ -269,7 +292,7 @@ class TelecAppWsMixin:
         per-remote event replaces only that remote and keeps the others, with no
         duplicated or stranded rows.
         """
-        local_name = config.computer.name
+        local_name = local_computer_name() or ""
         replaced = {(p.computer or local_name) for p in incoming}
         if computer is not None:
             replaced.add(local_name if computer in ("", "local") else computer)

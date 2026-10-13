@@ -6,7 +6,7 @@ import json
 
 import aiosqlite
 
-from teleclaude.core.operations._kinds import OPERATION_KIND_PROCEDURE_ACTIVATION
+from teleclaude.core.operations._kinds import OperationKind
 from teleclaude.docs_subscriptions import EventDeliveryMode
 
 _BEGIN_SQL = "BEGIN"
@@ -81,7 +81,7 @@ async def up(db: aiosqlite.Connection) -> None:
     try:
         for statement in _SCHEMA_STATEMENTS:
             await db.execute(statement)
-        async with db.execute(_SELECT_ACTIVATIONS_SQL, (OPERATION_KIND_PROCEDURE_ACTIVATION,)) as cursor:
+        async with db.execute(_SELECT_ACTIVATIONS_SQL, (OperationKind.PROCEDURE_ACTIVATION.value,)) as cursor:
             operations = await cursor.fetchall()
         for operation_id_raw, payload_json_raw in operations:
             operation_id = str(operation_id_raw)

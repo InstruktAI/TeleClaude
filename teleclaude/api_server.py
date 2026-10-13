@@ -86,6 +86,7 @@ from teleclaude.checkout_head import read_checkout_head
 from teleclaude.config.machine import config
 from teleclaude.config.person_secrets import resolve_person_mcp_secret_values
 from teleclaude.constants import API_SOCKET_PATH
+from teleclaude.core.configuration_clearance import standing_for_caller
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
@@ -604,6 +605,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 email=email,
                 session_id=identity.session_id or None,
                 config_subject=session.config_subject if session is not None else None,
+                person_slug=standing_for_caller(caller).person_slug,
             )
 
         @self.app.websocket("/ws")

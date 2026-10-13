@@ -24,7 +24,7 @@ from teleclaude.cli.tui.theme import (
     resolve_style,
 )
 from teleclaude.cli.tui.utils.formatters import DATE_SUFFIX_WIDTH, format_time, truncate_text
-from teleclaude.cli.tui.widgets.chip import resolve_owner_chip, resolve_person_chip
+from teleclaude.cli.tui.widgets.chip import build_owner_chip
 from teleclaude.core.session_utils import session_display_title
 from teleclaude.slug import strip_slug_token
 
@@ -197,10 +197,8 @@ class SessionRow(TelecMixin, Widget):
         # Owner chip — the owning human's initials right after the agent/mode
         # segment; the separating space sits outside the styled chip region.
         principal = getattr(self.session, "principal", None)
-        if principal is None:
-            chip = resolve_person_chip(getattr(self.session, "human_email", None))
-        else:
-            chip = resolve_owner_chip(principal)
+        owner = self.session.human_email if principal is None else principal
+        chip = build_owner_chip(owner, self.session.person_chip)
         self._chip_region = None
         self._chip_email = None
         if chip is not None:

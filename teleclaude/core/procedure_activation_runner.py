@@ -43,7 +43,7 @@ from teleclaude.core.models import (
     SessionLaunchKind,
 )
 from teleclaude.core.models._adapter import session_is_unattended
-from teleclaude.core.operations._kinds import OPERATION_KIND_PROCEDURE_ACTIVATION
+from teleclaude.core.operations._kinds import OperationKind
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.procedure_event_delivery import (
     ProcedureActivationFailureReason,
@@ -443,7 +443,7 @@ async def activate(cmd: ActivateProcedureCommand) -> ProcedureActivationResult:
             await wake_procedure_events_if_pending(session_id=resolution.session.session_id)
 
         operation_row = await db.get_operation_by_request(
-            kind=OPERATION_KIND_PROCEDURE_ACTIVATION, caller_session_id=None, client_request_id=cmd.request_id or ""
+            kind=OperationKind.PROCEDURE_ACTIVATION, caller_session_id=None, client_request_id=cmd.request_id or ""
         )
         logger.info(
             _PROCEDURE_ACTIVATION_RESOLVED_EVENT,

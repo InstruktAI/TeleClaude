@@ -63,23 +63,14 @@ from teleclaude.core.operations._delivery import (
 )
 from teleclaude.core.operations._kinds import (
     _COMMAND_TYPE_TO_OPERATION_KIND,
-    _OUTCOME_EVENTS,
-    OPERATION_KIND_AGENT_HANDOFF,
-    OPERATION_KIND_AGENT_RESTART,
-    OPERATION_KIND_PROCEDURE_ACTIVATION,
-    OPERATION_KIND_SESSION_CLOSE,
-    OPERATION_KIND_TASK_RUN,
-    OPERATION_KIND_TODO_CREATE,
-    OPERATION_KIND_TODO_INTEGRATE,
-    OPERATION_KIND_TODO_PREPARE,
-    OPERATION_KIND_TODO_REMOVE,
-    OPERATION_KIND_TODO_RENAME,
-    OPERATION_KIND_TODO_WORK,
+    OperationKind,
+    outcome_events_for,
 )
 from teleclaude.core.operations._outcome import OperationCompletion
 from teleclaude.core.operations._receipt import recovery_command
 from teleclaude.core.operations._relayed_ownership import was_started_by_principal
 from teleclaude.core.operations._rename_payload import ensure_rename_target_matches, rename_payload
+from teleclaude.core.operations.job_run import JobRunRequest, job_project_path, job_run_payload, run_job_run_operation
 from teleclaude.core.operations.todo_identity import (
     pin_operation_todo_identity,
     todo_operation_context,
@@ -261,20 +252,20 @@ class OperationsService:
         (and a slug-less or stateless start) resolves to ``todo_work``.
         """
         if slug is None:
-            return OPERATION_KIND_TODO_WORK
+            return OperationKind.TODO_WORK
         project_root = self._require_resolved_checkout(cwd)
         todos_db = await get_todos_db(project_root)
         state = await todos_db.read_state(slug)
         if state is None:
-            return OPERATION_KIND_TODO_WORK
+            return OperationKind.TODO_WORK
         raw_kind = state.get("kind")
         if not isinstance(raw_kind, str):
-            return OPERATION_KIND_TODO_WORK
+            return OperationKind.TODO_WORK
         try:
             kind = canonical_kind(raw_kind)
         except ValueError:
-            return OPERATION_KIND_TODO_WORK
-        return OPERATION_KIND_TASK_RUN if kind == KIND_TASK else OPERATION_KIND_TODO_WORK
+            return OperationKind.TODO_WORK
+        return OperationKind.TASK_RUN if kind == KIND_TASK else OperationKind.TODO_WORK
 
     async def submit_todo_integrate(
         self,
@@ -292,7 +283,7 @@ class OperationsService:
         """
         payload_json = json.dumps(
             {
-                "kind": OPERATION_KIND_TODO_INTEGRATE,
+                "kind": OperationKind.TODO_INTEGRATE,
                 "slug": slug,
                 "cwd": cwd,
                 "abandon": abandon,
@@ -300,7 +291,7 @@ class OperationsService:
             sort_keys=True,
         )
         return await self._submit_operation(
-            kind=OPERATION_KIND_TODO_INTEGRATE,
+            kind=OperationKind.TODO_INTEGRATE,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=slug,
@@ -320,11 +311,11 @@ class OperationsService:
     ) -> SerializedOperation:
         """Create or reattach a receipt-backed todo-create operation."""
         payload_json = json.dumps(
-            {"kind": OPERATION_KIND_TODO_CREATE, "slug": slug, "cwd": cwd},
+            {"kind": OperationKind.TODO_CREATE, "slug": slug, "cwd": cwd},
             sort_keys=True,
         )
         return await self._submit_operation(
-            kind=OPERATION_KIND_TODO_CREATE,
+            kind=OperationKind.TODO_CREATE,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=slug,
@@ -344,14 +335,14 @@ class OperationsService:
         """Create or reattach a receipt-backed todo-prepare operation."""
         self._require_resolved_checkout(cwd)
         payload_json, existing_match_ok, on_existing = todo_operation_submission(
-            kind=OPERATION_KIND_TODO_PREPARE,
+            kind=OperationKind.TODO_PREPARE,
             slug=slug,
             cwd=cwd,
             addressed_todo_id=addressed_todo_id,
             client_request_id=client_request_id,
         )
         return await self._submit_operation(
-            kind=OPERATION_KIND_TODO_PREPARE,
+            kind=OperationKind.TODO_PREPARE,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=slug,
@@ -373,7 +364,7 @@ class OperationsService:
     ) -> SerializedOperation:
         """Create or reattach a receipt-backed todo-remove operation."""
         payload_json, existing_match_ok, on_existing = todo_operation_submission(
-            kind=OPERATION_KIND_TODO_REMOVE,
+            kind=OperationKind.TODO_REMOVE,
             slug=slug,
             cwd=cwd,
             addressed_todo_id=addressed_todo_id,
@@ -381,7 +372,7 @@ class OperationsService:
             force=force,
         )
         return await self._submit_operation(
-            kind=OPERATION_KIND_TODO_REMOVE,
+            kind=OperationKind.TODO_REMOVE,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=slug,
@@ -403,7 +394,7 @@ class OperationsService:
         """Create or reattach a receipt-backed todo-rename operation."""
         payload_json = json.dumps(
             {
-                "kind": OPERATION_KIND_TODO_RENAME,
+                "kind": OperationKind.TODO_RENAME,
                 "old_slug": old_slug,
                 "new_slug": new_slug,
                 "cwd": cwd,
@@ -411,13 +402,33 @@ class OperationsService:
             sort_keys=True,
         )
         return await self._submit_operation(
-            kind=OPERATION_KIND_TODO_RENAME,
+            kind=OperationKind.TODO_RENAME,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=old_slug,
             client_request_id=client_request_id,
             payload_json=payload_json,
             on_existing=lambda op: ensure_rename_target_matches(op, new_slug),
+        )
+
+    async def submit_job_run(
+        self,
+        *,
+        name: str,
+        project: str | None,
+        caller_session_id: str | None,
+        client_request_id: str | None,
+    ) -> SerializedOperation:
+        """Create a receipt-backed manual run of one job; the operation ends with the run's outcome."""
+        request = JobRunRequest(name=name, project=project)
+        return await self._submit_operation(
+            kind=OperationKind.JOB_RUN,
+            caller_session_id=caller_session_id,
+            cwd=None,
+            session_project_path=job_project_path(request),
+            slug=None,
+            client_request_id=client_request_id,
+            payload_json=job_run_payload(OperationKind.JOB_RUN, request),
         )
 
     async def submit(
@@ -440,9 +451,9 @@ class OperationsService:
         session_project_path = None
         session_id = getattr(command, "session_id", None)
         if isinstance(session_id, str) and kind in {
-            OPERATION_KIND_SESSION_CLOSE,
-            OPERATION_KIND_AGENT_RESTART,
-            OPERATION_KIND_AGENT_HANDOFF,
+            OperationKind.SESSION_CLOSE,
+            OperationKind.AGENT_RESTART,
+            OperationKind.AGENT_HANDOFF,
         }:
             session = await self._db.get_session(session_id)
             session_project_path = session.project_path if session is not None else None
@@ -605,7 +616,7 @@ class OperationsService:
         self,
         operation_id: str,
         *,
-        kind: str = OPERATION_KIND_TODO_WORK,
+        kind: str = OperationKind.TODO_WORK,
         unit: OwnedUnit | None = None,
     ) -> None:
         """Run the operation in a task that owns `unit` until its outcome is delivered.
@@ -615,19 +626,20 @@ class OperationsService:
         """
         unit = unit or get_shutdown_drain().register(_OPERATION_WORK_TEMPLATE.format(kind=kind))
         factories: dict[str, Callable[[Operation], Awaitable[str | OperationCompletion]]] = {
-            OPERATION_KIND_TODO_WORK: self._run_todo_work,
-            OPERATION_KIND_TASK_RUN: self._run_task_run,
-            OPERATION_KIND_TODO_INTEGRATE: lambda op: next_integrate(
+            OperationKind.TODO_WORK: self._run_todo_work,
+            OperationKind.TASK_RUN: self._run_task_run,
+            OperationKind.TODO_INTEGRATE: lambda op: next_integrate(
                 self._db, op.slug, todo_operation_context(op)[0], abandon=_operation_payload_abandon(op)
             ),
-            OPERATION_KIND_TODO_CREATE: lambda op: next_create(self._db, op.slug, todo_operation_context(op)[0]),
-            OPERATION_KIND_TODO_PREPARE: self._run_todo_prepare,
-            OPERATION_KIND_TODO_RENAME: self._run_todo_rename,
-            OPERATION_KIND_TODO_REMOVE: lambda op: run_todo_remove_operation(self._db, op),
-            OPERATION_KIND_SESSION_CLOSE: self._run_command_backed_operation,
-            OPERATION_KIND_AGENT_RESTART: self._run_command_backed_operation,
-            OPERATION_KIND_AGENT_HANDOFF: self._run_command_backed_operation,
-            OPERATION_KIND_PROCEDURE_ACTIVATION: self._run_command_backed_operation,
+            OperationKind.TODO_CREATE: lambda op: next_create(self._db, op.slug, todo_operation_context(op)[0]),
+            OperationKind.TODO_PREPARE: self._run_todo_prepare,
+            OperationKind.TODO_RENAME: self._run_todo_rename,
+            OperationKind.TODO_REMOVE: lambda op: run_todo_remove_operation(self._db, op),
+            OperationKind.SESSION_CLOSE: self._run_command_backed_operation,
+            OperationKind.AGENT_RESTART: self._run_command_backed_operation,
+            OperationKind.AGENT_HANDOFF: self._run_command_backed_operation,
+            OperationKind.PROCEDURE_ACTIVATION: self._run_command_backed_operation,
+            OperationKind.JOB_RUN: run_job_run_operation,
         }
         factory = factories.get(kind)
         if factory is None:
@@ -931,7 +943,7 @@ class OperationsService:
         await self._record_progress(operation_id, phase, decision, reason)
 
     def _emit_outcome_event(self, kind: str, operation_id: str, *, error: str | None = None) -> None:
-        events = _OUTCOME_EVENTS.get(kind)
+        events = outcome_events_for(kind)
         if events is None:
             return
         success_event, failure_event = events
@@ -961,7 +973,7 @@ class OperationsService:
             "recovery_command": recovery_command(operation.operation_id),
             "computer": config.computer.name,
         }
-        events = _OUTCOME_EVENTS.get(operation.kind)
+        events = outcome_events_for(operation.kind)
         if events is not None:
             payload["success_event"], payload["failure_event"] = events
         if operation.slug is not None:

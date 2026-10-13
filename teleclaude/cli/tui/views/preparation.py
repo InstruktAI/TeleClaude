@@ -23,7 +23,6 @@ from teleclaude.api_models import (
     SessionDTO,
     TodoDTO,
 )
-from teleclaude.cli.telec.addressing import remote_computer
 from teleclaude.cli.tui.artifact_panes import (
     EDITOR_MODULE,
     FLAG_ARTIFACT_COMPUTER,
@@ -44,6 +43,7 @@ from teleclaude.cli.tui.creator_session import (
     resolve_creator_row_state,
     resolve_session_row_state,
 )
+from teleclaude.cli.tui.local_computer import local_computer_name, remote_computer
 from teleclaude.cli.tui.messages import CreateSessionRequest, StateChanged, TodoSelected
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.tree import (
@@ -69,7 +69,6 @@ from teleclaude.cli.tui.widgets.todo_creation_record_row import TodoSessionRow
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import DEPENDENCY_FLASH_CLASS, TodoRow
 from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
-from teleclaude.config.machine import config
 from teleclaude.constants import TodoStatus
 from teleclaude.core.todo_tree import FlatRow, build_todo_sections, flatten
 from teleclaude.todo_artifacts import artifact_display_filename
@@ -307,6 +306,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 getattr(t, "updated_at", None) or "",
                 getattr(t, "todo_id", None) or "",
                 getattr(t, "removed_at", None) or "",
+                t.person_chip.model_dump_json() if t.person_chip is not None else "",
                 *_session_row_fingerprint(Lineage.parse(t.lineage or "").acting_session, lookup),
                 *_session_row_fingerprint(t.prepared_session_id, lookup),
             )
@@ -366,8 +366,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         def in_scope(value: str | None) -> bool:
             if computer is None:
                 return True
-            if _is_local_name(computer, config.computer.name):
-                return _is_local_name(value or "", config.computer.name)
+            if _is_local_name(computer, local_computer_name()):
+                return _is_local_name(value or "", local_computer_name())
             return value == computer
 
         for session_id, info in tuple(lookup.items()):
@@ -509,6 +509,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 delivered_at=dto.delivered_at,
                 is_holder=is_holder,
                 lineage=dto.lineage,
+                person_chip=dto.person_chip,
                 entry_point=dto.entry_point,
                 human_involved=dto.human_involved,
             )
@@ -616,7 +617,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 computer_order.append(comp_name)
                 computer_to_projects[comp_name] = []
             computer_to_projects[comp_name].append(project)
-        computer_order.sort(key=lambda name: _computer_order_key(name, config.computer.name))
+        computer_order.sort(key=lambda name: _computer_order_key(name, local_computer_name()))
 
         # Collect all widgets first, then batch-mount to minimize layout reflows
         widgets_to_mount: list[Widget] = []
@@ -632,7 +633,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 status="online",
                 user="",
                 host=comp_name,
-                is_local=_is_local_name(comp_name, config.computer.name),
+                is_local=_is_local_name(comp_name, local_computer_name()),
             )
             comp_display = ComputerDisplayInfo(
                 computer=comp_info,
@@ -822,6 +823,10 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 self.post_message(TodoSelected(slug))
                 return True
         return False
+
+    def reapply_human_filter(self) -> None:
+        """Apply the current human filter again, after the ownership surface it depends on changed."""
+        self._apply_human_filter()
 
     def set_human_filter(self, human_filter: str | None) -> None:
         """Set the shared human filter and apply it to the current rows."""

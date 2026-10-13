@@ -21,16 +21,29 @@ from typing import Final, cast
 from pydantic import BaseModel, ConfigDict, Field
 from redis.exceptions import RedisError
 
-from teleclaude.cli.config_handlers import check_env_vars, validate_all
+from teleclaude.cli.config_handlers import check_env_vars, get_person_mcp_secret_statuses, validate_all
+from teleclaude.closed_model import MASKED_INPUT
 from teleclaude.config._environment import (
     CompanyCredentialsError,
     InvalidEnvironmentReferenceError,
+    mutate_environment_value,
     write_environment_value,
 )
-from teleclaude.config.effective_view import InvalidEffectiveValue, effective_sections, without_masked_values
+from teleclaude.config.effective_view import (
+    InvalidEffectiveValue,
+    effective_sections,
+    environment_references,
+    without_masked_values,
+)
 from teleclaude.config.jobs import plan_job_subscription
 from teleclaude.config.loader import load_global_config
 from teleclaude.config.machine import config
+from teleclaude.config.operation_answers import EnvironmentChangeAnswer, PersonSecretRow, PersonSecretsAnswer
+from teleclaude.config.person_secrets import (
+    PersonSecretStorageError,
+    clear_person_mcp_secret,
+    replace_person_mcp_secret,
+)
 from teleclaude.config.person_voice import configure_person_discord_voice_bot
 from teleclaude.config.project_subject_init import create_project_subject
 from teleclaude.config.resource_contract import (
@@ -51,8 +64,7 @@ from teleclaude.config.resources import (
 from teleclaude.config.revision import StaleRevision
 from teleclaude.config.roster import RosterRefused
 from teleclaude.config.validation import is_section_available
-from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER
+from teleclaude.config_subjects import ConfigEnvironment, ConfigSubjectKind, SubjectRef
 from teleclaude.core.configuration_clearance import (
     ConfigurationOperation,
     ConfigurationStanding,
@@ -70,7 +82,7 @@ from teleclaude.core.inbound.fleet import observe_fleet_from_heartbeats
 from teleclaude.core.models import HelpDeskKind
 from teleclaude.core.organization import person_roles
 from teleclaude.invite import InvitationOwnerUnavailable, admit_invitation_here, invite_person, render_help_desk_links
-from teleclaude.paths import PROJECT_ENV_PATH
+from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, ConfigFileName
 from teleclaude.project_setup.init_flow import (
     CompanyHomeDestination,
     PersonHomeDestination,
@@ -85,7 +97,7 @@ _DESK_KIND_BY_SUBJECT: Final = {
     ConfigSubjectKind.PROJECT: HelpDeskKind.PROJECT,
 }
 _ROLES_FIELD = "roles"
-_FORBIDDEN_FOR_CUSTOMER = "Permission denied. This operation requires member role or higher."
+_JSON_MODE: Final = "json"
 _NO_PERSON_HOME = "creating in your own home needs a registered person."
 _RELATIVE_DESTINATION = "a project destination path must be absolute: {path}"
 _DESK_NOT_ENABLED = "help desk of {kind} {slug} is not enabled"
@@ -102,6 +114,18 @@ INVITE_UNAVAILABLE_PROVIDERS_KEY = "unavailable_providers"
 INVITE_EMAIL_ENABLED_KEY = "email_enabled"
 # The validation answer's field carrying a result row's informational notes.
 VALIDATE_NOTES_KEY = "notes"
+# The `get` answer's read-only projection naming each field whose stored value is an environment reference.
+ENVIRONMENT_REFERENCES_KEY = "environment_references"
+_REFERENCE_KINDS = frozenset({ConfigSubjectKind.COMPUTER, ConfigSubjectKind.GLOBAL, ConfigSubjectKind.PERSON})
+# The subject that owns each environment; an environment request is cleared as a patch of it.
+_ENVIRONMENT_OWNER: Final = {
+    ConfigEnvironment.MACHINE: ConfigSubjectKind.COMPUTER,
+    ConfigEnvironment.GLOBAL: ConfigSubjectKind.GLOBAL,
+    ConfigEnvironment.PERSON: ConfigSubjectKind.PERSON,
+}
+_PATCH_FIELDS_REQUIRED = "a patch names its subject kind, the patch, and the revision it was built from"
+_INSTANCE_REQUIRED = "this operation names one {kind} instance"
+_ENVIRONMENT_PERSON_REQUIRED = "a person's environment request names the person"
 _PROJECT_SECTION = "project"
 _JOBS_SECTION = "jobs"
 _INVALID_PROJECT_SECTION = "Project subject has no writable project section"
@@ -123,6 +147,7 @@ class ConfigVerb(StrEnum):
     VALIDATE = "validate"
     ENV_LIST = "env-list"
     ENV_SET = "env-set"
+    PERSON_SECRETS = "person-secrets"
     JOB_SUBSCRIPTION = "job-subscription"
 
 
@@ -153,6 +178,10 @@ class ConfigRequest(BaseModel):
     company: str | None = None
     path: str | None = None
     env_pairs: list[list[str]] = Field(default_factory=list)
+    # The environment an `env-set` request changes; the machine's when absent. A person's names that person in `instance`.
+    environment: ConfigEnvironment | None = None
+    # Variables an `env-set` request clears; a pair with an empty value leaves its variable as it is.
+    env_clear: list[str] = Field(default_factory=list)
     job: str | None = None
     enabled: bool = True
     # The project the command acts on, which the computer answering judges the caller's role at.
@@ -262,6 +291,10 @@ async def _get(standing: ConfigurationStanding, request: ConfigRequest) -> Confi
         if request.kind is ConfigSubjectKind.PERSON and request.instance is not None:
             read_only[_ROLES_FIELD] = person_roles(request.instance)
         sections = effective_sections(view)
+        if view.ref.kind in _REFERENCE_KINDS:
+            read_only[ENVIRONMENT_REFERENCES_KEY] = [
+                entry.model_dump(mode=_JSON_MODE) for entry in environment_references(view)
+            ]
     except SubjectNotFound as error:
         return _failed(ConfigFailureKind.NOT_FOUND, error)
     except (InvalidEffectiveValue, InvalidEnvironmentReferenceError, CompanyCredentialsError) as error:
@@ -288,15 +321,20 @@ async def _init(standing: ConfigurationStanding, request: ConfigRequest) -> Conf
 
 
 async def _patch(standing: ConfigurationStanding, request: ConfigRequest) -> ConfigOutcome:
-    assert request.kind is not None and request.patch is not None and request.revision is not None
+    if request.kind is None or request.patch is None or request.revision is None:
+        return _invalid(_PATCH_FIELDS_REQUIRED)
     ref = _subject_ref(request)
     patch = without_masked_values(request.kind, request.patch)
+    try:
+        sections = affected_sections(ref, patch)
+    except (InvalidCandidate, ReadOnlyProjection) as error:
+        return _failed(ConfigFailureKind.INVALID, error)
     refused = _refusal(
         standing,
         request,
         ConfigurationOperation.PATCH,
         instance=request.instance,
-        sections=affected_sections(ref, patch),
+        sections=sections,
     )
     if refused is not None:
         return refused
@@ -488,17 +526,95 @@ async def _env_list(_standing: ConfigurationStanding, _request: ConfigRequest) -
     )
 
 
-async def _env_set(standing: ConfigurationStanding, request: ConfigRequest) -> ConfigOutcome:
-    if standing.platform_role == HUMAN_ROLE_CUSTOMER:
-        return ConfigOutcome(failure=ConfigFailure(kind=ConfigFailureKind.REFUSED, message=_FORBIDDEN_FOR_CUSTOMER))
+def _environment_refusal(
+    standing: ConfigurationStanding, request: ConfigRequest, environment: ConfigEnvironment
+) -> ConfigOutcome | None:
+    """Clearance for changing an environment: as a patch of the subject that owns it."""
+    owner = request.model_copy(update=dict(kind=_ENVIRONMENT_OWNER[environment]))
+    instance = request.instance if environment is ConfigEnvironment.PERSON else None
+    return _refusal(standing, owner, ConfigurationOperation.PATCH, instance=instance)
+
+
+def _apply_environment(request: ConfigRequest, environment: ConfigEnvironment) -> EnvironmentChangeAnswer:
+    """Set and clear the request's variables in the one environment it names."""
     updated: list[str] = []
+    cleared: list[str] = []
     for key, value in request.env_pairs:
-        if not key or not value:
+        if not key or not value or value == MASKED_INPUT:
             continue
-        write_environment_value(PROJECT_ENV_PATH, key, value)
-        os.environ[key] = value  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
+        _set_environment_value(request, environment, key, value)
         updated.append(key)
-    return _done({"updated": updated})
+    for key in request.env_clear:
+        _clear_environment_value(request, environment, key)
+        cleared.append(key)
+    return EnvironmentChangeAnswer(updated=updated, cleared=cleared)
+
+
+def _set_environment_value(request: ConfigRequest, environment: ConfigEnvironment, key: str, value: str) -> None:
+    match environment:
+        case ConfigEnvironment.MACHINE:
+            write_environment_value(PROJECT_ENV_PATH, key, value)
+            os.environ[key] = value  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
+        case ConfigEnvironment.GLOBAL:
+            write_environment_value(GLOBAL_CONFIG_PATH.with_name(ConfigFileName.ENV), key, value)
+        case ConfigEnvironment.PERSON:
+            assert request.instance is not None
+            replace_person_mcp_secret(request.instance, key, value)
+
+
+def _clear_environment_value(request: ConfigRequest, environment: ConfigEnvironment, key: str) -> None:
+    match environment:
+        case ConfigEnvironment.MACHINE:
+            mutate_environment_value(PROJECT_ENV_PATH, key, None)
+            os.environ.pop(key, None)  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
+        case ConfigEnvironment.GLOBAL:
+            mutate_environment_value(GLOBAL_CONFIG_PATH.with_name(ConfigFileName.ENV), key, None)
+        case ConfigEnvironment.PERSON:
+            assert request.instance is not None
+            clear_person_mcp_secret(request.instance, key)
+
+
+async def _env_set(standing: ConfigurationStanding, request: ConfigRequest) -> ConfigOutcome:
+    environment = request.environment or ConfigEnvironment.MACHINE
+    if environment is ConfigEnvironment.PERSON and request.instance is None:
+        return _invalid(_ENVIRONMENT_PERSON_REQUIRED)
+    refused = _environment_refusal(standing, request, environment)
+    if refused is not None:
+        return refused
+    try:
+        if environment is ConfigEnvironment.PERSON and request.instance is not None:
+            await asyncio.to_thread(read_subject, SubjectRef(ConfigSubjectKind.PERSON, request.instance))
+        answer = await asyncio.to_thread(_apply_environment, request, environment)
+    except SubjectNotFound as error:
+        return _failed(ConfigFailureKind.NOT_FOUND, error)
+    except (OSError, ValueError, PersonSecretStorageError) as error:
+        return _failed(ConfigFailureKind.INVALID, error)
+    return _done(answer.model_dump(mode=_JSON_MODE))
+
+
+async def _person_secrets(standing: ConfigurationStanding, request: ConfigRequest) -> ConfigOutcome:
+    """The registry-derived inventory of a person's personal MCP secrets: names and set state, never values."""
+    if request.instance is None:
+        return _invalid(_INSTANCE_REQUIRED.format(kind=ConfigSubjectKind.PERSON.value))
+    owner = request.model_copy(update=dict(kind=ConfigSubjectKind.PERSON))
+    refused = _refusal(standing, owner, ConfigurationOperation.GET, instance=request.instance)
+    if refused is not None:
+        return refused
+    try:
+        await asyncio.to_thread(read_subject, SubjectRef(ConfigSubjectKind.PERSON, request.instance))
+        statuses = await asyncio.to_thread(get_person_mcp_secret_statuses, request.instance)
+    except SubjectNotFound as error:
+        return _failed(ConfigFailureKind.NOT_FOUND, error)
+    except PersonSecretStorageError:
+        return _done(PersonSecretsAnswer(available=False).model_dump(mode=_JSON_MODE))
+    answer = PersonSecretsAnswer(
+        available=True,
+        secrets=[
+            PersonSecretRow(name=status.name, is_set=status.is_set, requiring_servers=list(status.requiring_servers))
+            for status in statuses
+        ],
+    )
+    return _done(answer.model_dump(mode=_JSON_MODE))
 
 
 def _jobs_array_from_view(view: SubjectView) -> list[Mapping[str, object]]:
@@ -572,6 +688,7 @@ _OPERATIONS: Final[Mapping[ConfigVerb, Callable[[ConfigurationStanding, ConfigRe
     ConfigVerb.VALIDATE: _validate,
     ConfigVerb.ENV_LIST: _env_list,
     ConfigVerb.ENV_SET: _env_set,
+    ConfigVerb.PERSON_SECRETS: _person_secrets,
     ConfigVerb.JOB_SUBSCRIPTION: _job_subscription,
 }
 

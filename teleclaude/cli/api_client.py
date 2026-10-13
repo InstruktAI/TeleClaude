@@ -31,6 +31,7 @@ from teleclaude.api_models import (
     TuiBootstrapDTO,
     TuiBootstrapPillar,
 )
+from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.api_session_actions_models import AgentRestartResponseDTO
 from teleclaude.caller_identity import CarriedIdentity
 from teleclaude.cli.api_client_health import TelecHealthAPI
@@ -848,8 +849,8 @@ class _TelecSessionAPI:
         )
         return TypeAdapter(list[JobDTO]).validate_json(resp.text)
 
-    async def run_job(self, name: str, project: str | None = None) -> bool:
-        """Run a scheduled job immediately."""
+    async def run_job(self, name: str, project: str | None = None) -> OperationStatusDTO:
+        """Ask for one run of a job; the receipt's terminal outcome is the run's outcome."""
         params = {"project": project} if project else None
         resp = await self._request(
             "POST",
@@ -857,8 +858,7 @@ class _TelecSessionAPI:
             timeout=30.0,
             request_options=RequestOptions(params=params, clearance_scope=ClearanceScope.ungoverned()),
         )
-        data = resp.json()
-        return data.get("status") == "success"
+        return TypeAdapter(OperationStatusDTO).validate_json(resp.text)
 
     async def agent_restart(
         self,

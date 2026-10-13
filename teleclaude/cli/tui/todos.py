@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from teleclaude.api_models_identity import PersonChipDTO
 from teleclaude.constants import TodoStatus
 
 
@@ -46,5 +47,6 @@ class TodoItem:
     removed_at: str | None = None
     delivered_at: str | None = None
     lineage: str | None = None
+    person_chip: PersonChipDTO | None = None
     entry_point: str | None = None
     human_involved: bool = False

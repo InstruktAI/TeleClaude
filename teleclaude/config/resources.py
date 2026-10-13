@@ -47,6 +47,7 @@ from teleclaude.config.migrations.read import upcast_for_read
 from teleclaude.config.notification_interests import new_person_document
 from teleclaude.config.person_registry import without_person
 from teleclaude.config.person_resource import (
+    OVERLAY_PATCH_KEY,
     append_person_candidate,
 )
 from teleclaude.config.person_resource import (
@@ -122,6 +123,10 @@ _GLOBAL_SECTION = "global"
 _IDENTITY_SECTION = "identity"
 _SETTINGS_SECTION = "settings"
 _ORGANIZATION_SECTION = "organization"
+_ORGANIZATION_READ_ONLY = "the `organization` section is a read-only projection, not writable here"
+_SLUG_IMMUTABLE = "`slug` is immutable and cannot be patched"
+_OVERLAY_KEY_MAPPING = "the `overlay` patch key takes a mapping of overlay fields"
+_OVERLAY_FIELD_ADDRESSED_TWICE = "overlay fields named both at the top level and under `overlay`: {fields}"
 _COMPANY_SECTION = "company"
 _PROJECT_SECTION = "project"
 _PERSON_IDENTITY_FIELDS = frozenset({"name", "email", "username", "role", "preferences", "expertise"})
@@ -220,14 +225,35 @@ def _split_person_patch(
     the person overlay), so a patch key belongs to whichever set names it;
     anything else falls to settings, which stays forward-compatible with new
     `PersonConfig` fields without this module tracking their names.
+
+    A field both documents declare (`name`) is ambiguous in a flat patch and goes to the identity
+    entry. The `overlay` key addresses the overlay alone: its mapping is that document's patch. A
+    patch naming one overlay field both flat and under `overlay` carries two values for it and is
+    refused rather than resolved by precedence.
     """
-    if _ORGANIZATION_SECTION in patch:
-        raise ReadOnlyProjection("the `organization` section is a read-only projection, not writable here")
-    if _SLUG_KEY in patch:
-        raise InvalidCandidate("`slug` is immutable and cannot be patched")
-    identity_patch = {key: value for key, value in patch.items() if key in _PERSON_IDENTITY_FIELDS}
-    settings_patch = {key: value for key, value in patch.items() if key not in _PERSON_IDENTITY_FIELDS}
-    return identity_patch, settings_patch
+    overlay_patch = _overlay_patch_of(patch)
+    flat = {key: value for key, value in patch.items() if key != OVERLAY_PATCH_KEY}
+    for document in (flat, overlay_patch):
+        if _ORGANIZATION_SECTION in document:
+            raise ReadOnlyProjection(_ORGANIZATION_READ_ONLY)
+        if _SLUG_KEY in document:
+            raise InvalidCandidate(_SLUG_IMMUTABLE)
+    identity_patch = {key: value for key, value in flat.items() if key in _PERSON_IDENTITY_FIELDS}
+    settings_patch = {key: value for key, value in flat.items() if key not in _PERSON_IDENTITY_FIELDS}
+    addressed_twice = settings_patch.keys() & overlay_patch.keys()
+    if addressed_twice:
+        raise InvalidCandidate(_OVERLAY_FIELD_ADDRESSED_TWICE.format(fields=sorted(addressed_twice)))
+    return identity_patch, {**settings_patch, **overlay_patch}
+
+
+def _overlay_patch_of(patch: Mapping[str, object]) -> dict[str, object]:  # guard: loose-dict - RFC 7386 patch source
+    """The mapping a person patch addresses to the overlay alone; empty when it carries none."""
+    if OVERLAY_PATCH_KEY not in patch:
+        return {}
+    overlay = patch[OVERLAY_PATCH_KEY]
+    if not isinstance(overlay, Mapping):
+        raise InvalidCandidate(_OVERLAY_KEY_MAPPING)
+    return {str(key): value for key, value in overlay.items()}
 
 
 # --- company helpers ---

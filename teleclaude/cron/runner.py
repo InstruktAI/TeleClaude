@@ -26,7 +26,7 @@ import os
 import re
 import sys
 import threading
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -46,7 +46,12 @@ from teleclaude.config.loader import load_person_config
 from teleclaude.config.machine import config as global_config
 from teleclaude.config.schema import JobCategory, JobScheduleConfig, JobSubscription, JobWhenConfig, is_agent_job
 from teleclaude.constants import SlashCommand
-from teleclaude.core.models import HumanActionIntent
+from teleclaude.cron.dispatch_record import DispatchRefusal, DispatchReporter
+from teleclaude.cron.outcome_emission import (
+    drain_pending_emissions,
+    pending_emission_for_result,
+    pending_emission_for_stall,
+)
 from teleclaude.cron.result_store import (
     job_result_transaction,
     load_job_result_in_transaction,
@@ -57,23 +62,9 @@ from teleclaude.cron.state import (
     CronState,
     JobRunStatus,
     JobState,
-    PendingEmission,
     compose_job_key,
-    project_slug_for_job_key,
     split_job_key,
 )
-from teleclaude.events.envelope import (
-    EventHomeKind,
-    EventHomeMarker,
-    EventHomeRef,
-    EventLevel,
-    EventVisibility,
-    occurrence_id,
-)
-from teleclaude.events.producer import ensure_event_producer
-from teleclaude.events.references import JobRef
-from teleclaude.events.schemas.jobs import JobRunData, JobRunEventType, JobRunFailed, JobRunStalled, JobRunSucceeded
-from teleclaude.events.wire import LegacyFacts
 from teleclaude.file_transaction import FileTransaction
 from teleclaude.paths import CRON_PID_PATH, TELECLAUDE_HOME, ConfigFileName
 from teleclaude.project_root import resolve_project_root
@@ -94,6 +85,8 @@ _SCRIPT_RESULT_PERSISTENCE_FAILED_LOG: Final = "unable to persist script job res
 _AGENT_RESULT_PERSISTENCE_FAILED: Final = "Agent dispatch result persistence failed: "
 _AGENT_RESULT_PERSISTENCE_FAILED_LOG: Final = "unable to persist agent dispatch failure result"
 _INVALID_JOB_KEY_ERROR: Final = "Scheduled job identity is not project-qualified"
+_SCRIPT_NOT_FOUND = "the job declares no script"
+_SCRIPT_OUTSIDE_ROOT = "the job's script is outside its declaration root"
 _AGENT_SESSION_SPAWN_FAILED: Final = "agent session spawn failed"
 _STALLED_RUN_MESSAGE: Final = "{job_name} stalled after {timeout_seconds:.0f}s"
 
@@ -510,39 +503,6 @@ def _dispatch_agent_job(
     return _run_agent_job(job_name, schedule_config, project_root)
 
 
-def _pending_emission_for_result(
-    job_name: str,
-    result: JobResult,
-    *,
-    run_started_at: datetime,
-) -> PendingEmission:
-    status = JobRunStatus.SUCCESS if result.success else JobRunStatus.FAILED
-    event_type = JobRunEventType.SUCCEEDED if result.success else JobRunEventType.FAILED
-    return PendingEmission(
-        idempotency_key=f"{job_name}:{run_started_at.isoformat()}",
-        event_type=event_type.value,
-        job_name=job_name,
-        status=status,
-        message=result.message,
-        items=result.items_processed,
-        actionable=not result.success,
-        run_started_at=run_started_at.isoformat(),
-    )
-
-
-def _pending_emission_for_stall(job_name: str, *, run_started_at: datetime, message: str) -> PendingEmission:
-    return PendingEmission(
-        idempotency_key=f"{job_name}:{run_started_at.isoformat()}",
-        event_type=JobRunEventType.STALLED.value,
-        job_name=job_name,
-        status=JobRunStatus.STALLED,
-        message=message,
-        items=0,
-        actionable=True,
-        run_started_at=run_started_at.isoformat(),
-    )
-
-
 def _close_run_with_emission(
     state: CronState,
     job_name: str,
@@ -563,7 +523,7 @@ def _close_run_with_emission_locked(
 ) -> None:
     state.close_run(job_name, result, persist=False)
     state.add_pending_emission(
-        _pending_emission_for_result(job_name, result, run_started_at=run_started_at), persist=False
+        pending_emission_for_result(job_name, result, run_started_at=run_started_at), persist=False
     )
     state.save()
 
@@ -577,81 +537,9 @@ def _mark_stalled_with_emission_locked(
 ) -> None:
     state.mark_stalled(job_name, message, persist=False)
     state.add_pending_emission(
-        _pending_emission_for_stall(job_name, run_started_at=run_started_at, message=message),
+        pending_emission_for_stall(job_name, run_started_at=run_started_at, message=message),
         persist=False,
     )
-    state.save()
-
-
-def _event_level_for_status(status: JobRunStatus) -> EventLevel:
-    if status is JobRunStatus.SUCCESS:
-        return EventLevel.WORKFLOW
-    return EventLevel.OPERATIONAL
-
-
-_JOB_RUN_EVENTS: Final[Mapping[JobRunEventType, type[JobRunSucceeded | JobRunFailed | JobRunStalled]]] = {
-    JobRunEventType.SUCCEEDED: JobRunSucceeded,
-    JobRunEventType.FAILED: JobRunFailed,
-    JobRunEventType.STALLED: JobRunStalled,
-}
-
-
-def _event_for_pending_emission(
-    emission: PendingEmission,
-) -> tuple[JobRunSucceeded | JobRunFailed | JobRunStalled, LegacyFacts]:
-    """Build the job-run outcome a pending emission reports: about the job, with the run start as data."""
-    human_action = None
-    if emission.status in (JobRunStatus.FAILED, JobRunStatus.STALLED):
-        human_action = HumanActionIntent(
-            topic="Recurring job needs attention",
-            summary=emission.message,
-            action="Investigate the job",
-        )
-    project_slug = project_slug_for_job_key(emission.job_name)
-    home = EventHomeRef(EventHomeKind.PROJECT, project_slug) if project_slug is not None else EventHomeMarker.UNKNOWN
-    event_class = _JOB_RUN_EVENTS[JobRunEventType(emission.event_type)]
-    event = event_class(
-        id=occurrence_id(emission.idempotency_key, emission.event_type),
-        subject=JobRef(emission.job_name),
-        home=home,
-        data=JobRunData(
-            job_name=emission.job_name,
-            status=emission.status.value,
-            message=emission.message,
-            items=emission.items,
-            run_started_at=emission.run_started_at,
-        ),
-    )
-    legacy = LegacyFacts(
-        producer="cron.runner",
-        level=_event_level_for_status(emission.status),
-        domain="jobs",
-        description=emission.message,
-        visibility=EventVisibility.CLUSTER,
-        entity=emission.job_name,
-        idempotency_key=emission.idempotency_key,
-        human_action=human_action,
-        payload_extras={"actionable": emission.actionable},
-    )
-    return event, legacy
-
-
-def _drain_pending_emissions(state: CronState) -> None:
-    pending = state.iter_pending_emissions()
-    if not pending:
-        return
-    producer = ensure_event_producer()
-
-    async def _drain() -> list[str]:
-        published: list[str] = []
-        for emission in pending:
-            await producer.emit(*_event_for_pending_emission(emission))
-            published.append(emission.idempotency_key)
-        return published
-
-    published_keys = asyncio.run(_drain())
-    for key in published_keys:
-        state.remove_pending_emission(key, persist=False)
     state.save()
 
 
@@ -771,6 +659,7 @@ def _run_due_agent_job(
     schedule_config: JobScheduleConfig,
     *,
     project_root: Path,
+    dispatch: DispatchReporter | None = None,
 ) -> bool:
     run_started_at = datetime.now(UTC)
     with _job_result_transaction(job_name) as transaction:
@@ -778,8 +667,12 @@ def _run_due_agent_job(
         if session_id:
             state.open_run(job_name, started_at=run_started_at, session_id=session_id, persist=False)
             state.save()
+            if dispatch is not None:
+                dispatch.opened(job_name, run_started_at.isoformat(), session_id)
             return True
         result = JobResult(success=False, message=refusal_detail or _AGENT_SESSION_SPAWN_FAILED)
+        if dispatch is not None:
+            dispatch.refused(DispatchRefusal.START_FAILED, job_key=job_name, detail=result.message)
         try:
             write_job_result_in_transaction(
                 transaction,
@@ -804,6 +697,7 @@ def _run_due_script_job(
     schedule_config: JobScheduleConfig | None,
     project_root: Path,
     project_slug: str,
+    dispatch: DispatchReporter | None = None,
 ) -> tuple[bool, bool]:
     try:
         run_started_at = datetime.now(UTC)
@@ -815,6 +709,8 @@ def _run_due_script_job(
             current_result = load_job_result_in_transaction(transaction)
             state.open_run(job_name, started_at=run_started_at, persist=False)
             state.save()
+        if dispatch is not None:
+            dispatch.opened(job_name, run_started_at.isoformat())
         result, timed_out = _run_script_job(
             script_job,
             JobRunContext(
@@ -845,6 +741,8 @@ def _run_due_script_job(
             logger.error("job failed", name=job_name, message=result.message, errors=result.errors)
         return result.success, timed_out
     except Exception as e:
+        if dispatch is not None:
+            dispatch.refused(DispatchRefusal.START_FAILED, job_key=job_name, detail=str(e))
         run_started_at = state.get_job(job_name).run_started_at or datetime.now(UTC)
         _close_run_with_emission(
             state,
@@ -863,7 +761,74 @@ def _run_pre_dispatch_sweeps(
 ) -> None:
     _close_reported_agent_runs(state, schedules)
     _mark_stalled_runs(state, schedules, now=now)
-    _drain_pending_emissions(state)
+    drain_pending_emissions(state)
+
+
+def _dispatch_job(
+    state: CronState,
+    project: ProjectNode,
+    effective_job: EffectiveJob,
+    *,
+    now: datetime,
+    force: bool,
+    dry_run: bool,
+    dispatch: DispatchReporter | None,
+) -> tuple[bool, bool] | None:
+    """Open one run of a job when it is free and due; answers its success and whether it timed out, or None if it ran nothing."""
+    job_name = compose_job_key(project.slug, effective_job.identity)
+    schedule_config = effective_job.declaration
+    agent_job = is_agent_job(schedule_config)
+
+    job_state = state.ensure_first_seen(job_name, now)
+
+    if job_state.last_status is JobRunStatus.RUNNING:
+        logger.info("job already has an open run, skipping dispatch", name=job_name)
+        if dispatch is not None:
+            dispatch.refused(DispatchRefusal.RUN_ALREADY_OPEN, job_key=job_name)
+        return None
+
+    if state.has_unnotified_actionable(job_name):
+        logger.info("job has an actionable pending outcome, skipping dispatch", name=job_name)
+        if dispatch is not None:
+            dispatch.refused(DispatchRefusal.UNDELIVERED_OUTCOME, job_key=job_name)
+        return None
+
+    if not _job_is_due(
+        job_name,
+        effective_job.identity,
+        job_state.last_run,
+        job_state.first_seen_at,
+        schedule_config,
+        state,
+        now,
+        force=force,
+        root=project.root,
+    ):
+        logger.debug("job not due", name=job_name, last_run=job_state.last_run)
+        return None
+
+    logger.info("job due", name=job_name, type="agent" if agent_job else "python")
+
+    if dry_run:
+        return True, False
+
+    if agent_job:
+        return _run_due_agent_job(state, job_name, schedule_config, project_root=project.root, dispatch=dispatch), False
+
+    script = schedule_config.script
+    if not script:
+        logger.error("script job not found", name=job_name)
+        if dispatch is not None:
+            dispatch.refused(DispatchRefusal.START_FAILED, job_key=job_name, detail=_SCRIPT_NOT_FOUND)
+        return False, False
+    module_name = _script_to_module_name(script, root=effective_job.origin.root)
+    if module_name is None:
+        logger.error("configured job script is outside declaration root", name=job_name)
+        if dispatch is not None:
+            dispatch.refused(DispatchRefusal.START_FAILED, job_key=job_name, detail=_SCRIPT_OUTSIDE_ROOT)
+        return False, False
+    script_job = ScriptJob(name=job_name, script=script, origin=effective_job.origin.root)
+    return _run_due_script_job(state, job_name, script_job, schedule_config, project.root, project.slug, dispatch)
 
 
 def run_due_jobs(
@@ -872,6 +837,7 @@ def run_due_jobs(
     job_filter: str | None = None,
     dry_run: bool = False,
     root: Path | None = None,
+    dispatch: DispatchReporter | None = None,
 ) -> dict[str, bool]:
     """Run all jobs that are due based on their teleclaude.yml schedule.
 
@@ -885,10 +851,13 @@ def run_due_jobs(
     System-category jobs follow the schedule in ``teleclaude.yml`` directly.
 
     Each pass closes reported/stalled runs, drains queued event emissions, and
-    opens new due runs without treating dispatch as success.
+    opens new due runs without treating dispatch as success. A manual dispatch passes
+    ``dispatch``, which is told once which run was opened or why none was.
     """
     if not _acquire_pidlock():
         logger.info("another cron runner is active, skipping")
+        if dispatch is not None:
+            dispatch.refused(DispatchRefusal.RUNNER_LOCK_HELD)
         return {}
 
     catalog = get_project_catalog_service()
@@ -922,71 +891,22 @@ def run_due_jobs(
         job_name = compose_job_key(project.slug, effective_job.identity)
         if job_filter and job_filter not in {job_name, effective_job.identity}:
             continue
-
-        schedule_config = effective_job.declaration
-        agent_job = is_agent_job(schedule_config)
-
-        job_state = state.ensure_first_seen(job_name, now)
-
-        if job_state.last_status is JobRunStatus.RUNNING:
-            logger.info("job already has an open run, skipping dispatch", name=job_name)
-            continue
-
-        if state.has_unnotified_actionable(job_name):
-            logger.info("job has an actionable pending outcome, skipping dispatch", name=job_name)
-            continue
-
-        if not _job_is_due(
-            job_name,
-            effective_job.identity,
-            job_state.last_run,
-            job_state.first_seen_at,
-            schedule_config,
-            state,
-            now,
-            force=force,
-            root=project.root,
-        ):
-            logger.debug("job not due", name=job_name, last_run=job_state.last_run)
-            continue
-
-        logger.info("job due", name=job_name, type="agent" if agent_job else "python")
-
-        if dry_run:
-            results[job_name] = True
-            continue
-
-        if agent_job:
-            results[job_name] = _run_due_agent_job(
-                state,
-                job_name,
-                schedule_config,
-                project_root=project.root,
-            )
-            continue
-
-        script = schedule_config.script
-        if not script:
-            logger.error("script job not found", name=job_name)
-            results[job_name] = False
-            continue
-        module_name = _script_to_module_name(script, root=effective_job.origin.root)
-        if module_name is None:
-            logger.error("configured job script is outside declaration root", name=job_name)
-            results[job_name] = False
-            continue
-        script_job = ScriptJob(name=job_name, script=script, origin=effective_job.origin.root)
-
-        success, timed_out = _run_due_script_job(
-            state, job_name, script_job, schedule_config, project.root, project.slug
+        dispatched = _dispatch_job(
+            state, project, effective_job, now=now, force=force, dry_run=dry_run, dispatch=dispatch
         )
+        if dispatched is None:
+            continue
+        success, timed_out = dispatched
         results[job_name] = success
         if timed_out:
             return results
 
+    if dispatch is not None and not dispatch.reported:
+        dispatch.refused(DispatchRefusal.NO_SUCH_JOB, job_key=job_filter)
+
     if not dry_run:
         try:
-            _drain_pending_emissions(state)
+            drain_pending_emissions(state)
         except Exception as exc:
             logger.error("job outcome emission drain failed", error=str(exc))
 

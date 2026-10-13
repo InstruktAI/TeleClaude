@@ -14,6 +14,7 @@ from textual.widget import Widget
 
 from teleclaude.api_models import ComputerDTO, ProjectDTO, SessionDTO
 from teleclaude.cli.tui.layout_model import enforce_i1
+from teleclaude.cli.tui.local_computer import local_computer_name
 from teleclaude.cli.tui.messages import FocusPaneRequest, PreviewChanged, ReviveSessionRequest, StateChanged
 from teleclaude.cli.tui.session_attachability import is_attachable_session, is_headless_session
 from teleclaude.cli.tui.tree import (
@@ -39,7 +40,6 @@ from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.session_row import SessionRow
-from teleclaude.config.machine import config
 
 if TYPE_CHECKING:
     from textual.timer import Timer
@@ -443,7 +443,7 @@ class SessionsView(
             computer_display,
             self._projects,
             sorted_sessions,
-            local_computer_name=config.computer.name,
+            local_computer_name=local_computer_name(),
         )
 
         for node in tree:
@@ -490,6 +490,10 @@ class SessionsView(
 
         # Apply pending auto-select after tree rebuild
         self._apply_pending_selection()
+
+    def reapply_human_filter(self) -> None:
+        """Apply the current human filter again, after the ownership surface it depends on changed."""
+        self._apply_human_filter()
 
     def set_human_filter(self, human_filter: str | None) -> None:
         """Set the shared human filter and apply it to the current rows."""

@@ -2,30 +2,25 @@
 
 from __future__ import annotations
 
-import subprocess
-import sys
 from datetime import UTC, datetime
 from typing import Final
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api_models import JobDTO
+from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.config.schema import JobScheduleConfig
+from teleclaude.core.operations import get_operations_service
+from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.cron import state as cron_state_module
 from teleclaude.cron.listing import compose_job_listing
-from teleclaude.paths import REPO_ROOT
 from teleclaude.services.project_catalog import get_project_catalog_service
 
 logger = get_logger(__name__)
 
-_CRON_RUNNER_JOB_FLAG = "--job"
-_CRON_RUNNER_FORCE_FLAG = "--force"
-_CRON_RUNNER_API_DISPATCH_FLAG = "--api-dispatch"
-_CRON_RUNNER_STARTUP_PROBE_SECONDS = 1
-_CRON_RUNNER_START_FAILURE_DETAIL = "Failed to start job runner."
-_CRON_RUNNER_START_FAILURE_LOG = "Failed to start cron runner process"
 _UTC_OFFSET_SUFFIX: Final[str] = "+00:00"
 _UTC_MARKER: Final[str] = "Z"
 
@@ -77,55 +72,19 @@ def _format_job_timestamp(value: datetime | None) -> str | None:
     return utc_value.isoformat(timespec="seconds").replace(_UTC_OFFSET_SUFFIX, _UTC_MARKER)
 
 
-class _CronRunnerStartupError(Exception):
-    def __init__(self, exit_status: int) -> None:
-        super().__init__()
-        self.exit_status = exit_status
-
-
-def _spawn_cron_runner(name: str, project: str | None) -> None:
-    """Start a detached runner and check its outcome during a bounded startup probe.
-
-    An API-launched runner returns zero after recording a job outcome. Any
-    nonzero early exit therefore means no outcome was recorded by that path.
-    """
-    script = REPO_ROOT / "scripts" / "cron_runner.py"
-    job_filter = f"{project}:{name}" if project else name
-    # The runner process boundary contains hung in-process jobs; no daemon-native helper can reap that thread.
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            str(script),
-            _CRON_RUNNER_JOB_FLAG,
-            job_filter,
-            _CRON_RUNNER_FORCE_FLAG,
-            _CRON_RUNNER_API_DISPATCH_FLAG,
-        ],
-        cwd=str(REPO_ROOT),
-        stdout=subprocess.DEVNULL,
-        stderr=None,
-        start_new_session=True,
+@router.post("/{name:path}/run", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
+async def run_job(
+    name: str,
+    project: str | None = None,
+    identity: CallerIdentity = Depends(carried_caller),
+) -> SerializedOperation:
+    """Ask for one run of a job and answer with the operation receipt that ends with the run's outcome."""
+    return await get_operations_service().submit_job_run(
+        name=name,
+        project=project,
+        caller_session_id=identity.session_id or None,
+        client_request_id=None,
     )
-    try:
-        exit_status = process.wait(timeout=_CRON_RUNNER_STARTUP_PROBE_SECONDS)
-    except subprocess.TimeoutExpired:
-        return
-    if exit_status != 0:
-        raise _CronRunnerStartupError(exit_status)
-
-
-@router.post("/{name:path}/run", status_code=202)
-async def run_job(name: str, project: str | None = None) -> dict[str, object]:  # guard: loose-dict - API boundary
-    """Start a scheduled job and report failures observed during startup."""
-    try:
-        await run_in_threadpool(_spawn_cron_runner, name, project)
-    except _CronRunnerStartupError as exc:
-        logger.error(_CRON_RUNNER_START_FAILURE_LOG, job=name, project=project, exit_status=exc.exit_status)
-        raise HTTPException(status_code=502, detail=_CRON_RUNNER_START_FAILURE_DETAIL) from exc
-    except OSError as exc:
-        logger.error(_CRON_RUNNER_START_FAILURE_LOG, job=name, project=project, errno=exc.errno)
-        raise HTTPException(status_code=502, detail=_CRON_RUNNER_START_FAILURE_DETAIL) from exc
-    return {"status": "accepted", "job": name, "project": project}
 
 
 def _describe_schedule(declaration: JobScheduleConfig) -> str | None:

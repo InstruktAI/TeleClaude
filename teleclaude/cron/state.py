@@ -6,9 +6,10 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
-from typing import NotRequired, TypedDict, cast
+from typing import Final, NotRequired, TypedDict, cast
 
 from jobs.base import JobResult
 from teleclaude.cron.result_store import job_result_transaction
@@ -18,6 +19,28 @@ from teleclaude.file_transaction import file_transaction
 from teleclaude.paths import CRON_STATE_PATH
 
 _JOB_KEY_SEPARATOR = ":"
+# How long a closed run's outcome stays readable by its identity. It is far longer than the interval at which
+# the job-run operation reads run state: a live operation reads a run within one interval of its closing, and a
+# daemon restart stales the operation, so no operation acknowledges an outcome and the runner stays the only writer.
+CLOSED_RUN_RETENTION: Final = timedelta(hours=24)
+# The single closed-run slot a job entry held before outcomes were kept per run.
+_SLOT_STARTED_AT: Final = "closed_run_started_at"
+_SLOT_STATUS: Final = "closed_run_status"
+_SLOT_ERROR: Final = "closed_run_error"
+# The stored keys the closed-run outcomes and their migration name; each is a field of `JobStateDict` or `ClosedRunDict`.
+_CLOSED_RUNS: Final = "closed_runs"
+_LAST_RUN: Final = "last_run"
+_OUTCOME_STATUS: Final = "status"
+_OUTCOME_ERROR: Final = "error"
+_OUTCOME_CLOSED_AT: Final = "closed_at"
+
+
+class ClosedRunDict(TypedDict):
+    """Serialized outcome of one closed run."""
+
+    status: str
+    error: str | None
+    closed_at: str
 
 
 class JobStateDict(TypedDict, total=False):
@@ -29,6 +52,7 @@ class JobStateDict(TypedDict, total=False):
     last_error: str | None
     run_started_at: str | None
     run_session_id: str | None
+    closed_runs: dict[str, ClosedRunDict]
 
 
 class PendingEmissionDict(TypedDict):
@@ -119,6 +143,62 @@ def _parse_status(raw: str | None) -> JobRunStatus:
         return JobRunStatus.NEVER
 
 
+@dataclass(frozen=True)
+class ClosedRun:
+    """How one run of a job ended, and when."""
+
+    status: JobRunStatus
+    error: str | None
+    closed_at: datetime
+
+    def to_dict(self) -> ClosedRunDict:
+        """Serialize the closed run to a dictionary."""
+        return {
+            _OUTCOME_STATUS: self.status.value,
+            _OUTCOME_ERROR: self.error,
+            _OUTCOME_CLOSED_AT: self.closed_at.isoformat(),
+        }
+
+
+def _parse_closed_runs(raw: dict[str, ClosedRunDict] | None) -> dict[datetime, ClosedRun]:
+    """The stored outcomes keyed by the run's start; an entry that does not parse is not an outcome."""
+    closed: dict[datetime, ClosedRun] = {}
+    for started_raw, outcome in (raw or {}).items():
+        started_at = _parse_datetime(started_raw)
+        closed_at = _parse_datetime(outcome.get(_OUTCOME_CLOSED_AT))
+        if started_at is None or closed_at is None:
+            continue
+        closed[started_at] = ClosedRun(
+            status=_parse_status(outcome.get(_OUTCOME_STATUS)), error=outcome.get(_OUTCOME_ERROR), closed_at=closed_at
+        )
+    return closed
+
+
+def _keyed_closed_runs(job_data: JobStateDict) -> tuple[JobStateDict, bool]:
+    """The stored job entry in the current shape, and whether it had to change.
+
+    An entry that still holds the single closed-run slot has it moved into the keyed outcomes, closed when
+    the entry's last run completed.
+    """
+    stored = cast(dict[str, object], job_data)  # guard: loose-dict - a stored entry before it is migrated
+    if _SLOT_STARTED_AT not in stored and _SLOT_STATUS not in stored and _SLOT_ERROR not in stored:
+        return job_data, _CLOSED_RUNS not in job_data
+    current = {key: value for key, value in stored.items() if key not in (_SLOT_STARTED_AT, _SLOT_STATUS, _SLOT_ERROR)}
+    started_raw = stored.get(_SLOT_STARTED_AT)
+    status_raw = stored.get(_SLOT_STATUS)
+    if isinstance(started_raw, str) and isinstance(status_raw, str):
+        error = stored.get(_SLOT_ERROR)
+        closed_at = job_data.get(_LAST_RUN) or started_raw
+        keyed = dict(job_data.get(_CLOSED_RUNS) or {})
+        keyed[started_raw] = {
+            _OUTCOME_STATUS: status_raw,
+            _OUTCOME_ERROR: error if isinstance(error, str) else None,
+            _OUTCOME_CLOSED_AT: closed_at,
+        }
+        current[_CLOSED_RUNS] = keyed
+    return cast(JobStateDict, current), True
+
+
 @dataclass
 class JobState:
     """State for a single job."""
@@ -129,6 +209,9 @@ class JobState:
     last_error: str | None = None
     run_started_at: datetime | None = None
     run_session_id: str | None = None
+    # Each recently closed run's outcome by the run's start, kept apart from `last_status` so a successor
+    # opening or closing does not erase how an earlier run ended.
+    closed_runs: dict[datetime, ClosedRun] = field(default_factory=dict)
 
     def to_dict(self) -> JobStateDict:
         """Serialize job state to a dictionary."""
@@ -139,6 +222,7 @@ class JobState:
             "last_error": self.last_error,
             "run_started_at": self.run_started_at.isoformat() if self.run_started_at else None,
             "run_session_id": self.run_session_id,
+            _CLOSED_RUNS: {started_at.isoformat(): closed.to_dict() for started_at, closed in self.closed_runs.items()},
         }
 
     @classmethod
@@ -151,6 +235,7 @@ class JobState:
             last_error=data.get("last_error"),
             run_started_at=_parse_datetime(data.get("run_started_at")),
             run_session_id=data.get("run_session_id"),
+            closed_runs=_parse_closed_runs(data.get(_CLOSED_RUNS)),
         )
 
 
@@ -186,9 +271,11 @@ class CronState:
                 )
                 jobs_obj = data.get("jobs", {})
                 jobs = cast(dict[str, JobStateDict], jobs_obj) if isinstance(jobs_obj, dict) else {}
-                for job_name, job_data in jobs.items():
+                for job_name, stored_job in jobs.items():
+                    job_data, reshaped = _keyed_closed_runs(stored_job)
                     if (
-                        "run_started_at" not in job_data
+                        reshaped
+                        or "run_started_at" not in job_data
                         or "run_session_id" not in job_data
                         or "last_notified" in job_data
                     ):
@@ -221,8 +308,10 @@ class CronState:
                     needs_migration = True
                 legacy_jobs_obj = data.get("legacy_jobs", {})
                 if isinstance(legacy_jobs_obj, dict):
-                    for job_name, job_data in cast(dict[str, JobStateDict], legacy_jobs_obj).items():
-                        state.legacy_jobs[job_name] = JobState.from_dict(job_data)
+                    for job_name, stored_job in cast(dict[str, JobStateDict], legacy_jobs_obj).items():
+                        legacy_data, reshaped = _keyed_closed_runs(stored_job)
+                        needs_migration = needs_migration or reshaped
+                        state.legacy_jobs[job_name] = JobState.from_dict(legacy_data)
                 legacy_pending_obj = data.get("legacy_pending_emissions", {})
                 if isinstance(legacy_pending_obj, dict):
                     for key, emission_data in cast(dict[str, PendingEmissionDict], legacy_pending_obj).items():
@@ -293,6 +382,7 @@ class CronState:
             job.last_run = closed_at or datetime.now(UTC)
             job.last_status = JobRunStatus.SUCCESS if result.success else JobRunStatus.FAILED
             job.last_error = None if result.success else result.message
+            _record_closed_run(job, job.last_run)
             job.run_started_at = None
             job.run_session_id = None
             if persist:
@@ -313,6 +403,7 @@ class CronState:
             job.last_run = stalled_at or datetime.now(UTC)
             job.last_status = JobRunStatus.STALLED
             job.last_error = error
+            _record_closed_run(job, job.last_run)
             job.run_started_at = None
             job.run_session_id = None
             if persist:
@@ -346,6 +437,51 @@ class CronState:
             for name, job in sorted(self.jobs.items())
             if job.last_status is JobRunStatus.RUNNING and job.run_started_at is not None
         ]
+
+
+def _record_closed_run(job: JobState, closed_at: datetime) -> None:
+    """Keep how the open run ended under its start, and drop outcomes older than the retention window."""
+    if job.run_started_at is not None:
+        job.closed_runs[job.run_started_at] = ClosedRun(job.last_status, job.last_error, closed_at)
+    expiry = closed_at - CLOSED_RUN_RETENTION
+    job.closed_runs = {
+        started_at: closed for started_at, closed in job.closed_runs.items() if closed.closed_at > expiry
+    }
+
+
+class RunLookup(StrEnum):
+    """Whether a run is still open, has closed, or has neither an open run nor a retained outcome."""
+
+    OPEN = "open"
+    CLOSED = "closed"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class RunState:
+    """The state of one run of a job: whether it is open, and when closed how it ended."""
+
+    lookup: RunLookup
+    status: JobRunStatus | None = None
+    error: str | None = None
+
+
+def read_run_state(job_key: str, run_started_at: datetime) -> RunState:
+    """Whether the run a job opened at `run_started_at` is open or closed, and how a closed run ended.
+
+    Reads the persisted state without writing it: the runner is its only writer. A closed run's outcome is
+    found by its start, so a successor opening or closing never replaces it; a run is unknown once it is
+    neither the open run nor within the closed-run retention window.
+    """
+    job = CronState.load(persist_migrations=False).jobs.get(job_key)
+    if job is None:
+        return RunState(RunLookup.UNKNOWN)
+    if job.last_status is JobRunStatus.RUNNING and job.run_started_at == run_started_at:
+        return RunState(RunLookup.OPEN)
+    closed = job.closed_runs.get(run_started_at)
+    if closed is not None:
+        return RunState(RunLookup.CLOSED, status=closed.status, error=closed.error)
+    return RunState(RunLookup.UNKNOWN)
 
 
 def compose_job_key(project_slug: str, job_identity: str) -> str:

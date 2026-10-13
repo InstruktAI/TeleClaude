@@ -37,7 +37,7 @@ from teleclaude.cli.tui.theme import (
     _TELECLAUDE_LIGHT_AGENT_THEME,
     _TELECLAUDE_LIGHT_THEME,
 )
-from teleclaude.todo_artifacts import artifact_display_filename, read_artifact_content, read_artifact_content_by_id
+from teleclaude.todo_artifacts import artifact_display_filename
 
 _ARTIFACT_WRITE_BY_ID_PATH_TEMPLATE = "/todos/by-id/{todo_id}/artifacts/{name}"
 _ARTIFACT_WRITE_BY_SLUG_PATH_TEMPLATE = "/todos/artifacts/{slug}/{name}"
@@ -45,21 +45,22 @@ _URL_QUOTE_SAFE = ""
 _HTTP_METHOD_POST = "POST"
 _HTTP_METHOD_GET = "GET"
 _COMPUTER_PARAM = "computer"
+_CWD_PARAM = "cwd"
 _ARTIFACT_READ_BY_ID_PATH_TEMPLATE = "/todos/by-id/{todo_id}/artifacts/{name}"
 _ARTIFACT_READ_VERB = "todo artifacts read"
 _ARTIFACT_WRITE_VERB = "todo artifacts write"
 
 
-def _read_remote_artifact(
+def _read_artifact(
     project_root: Path,
     slug: str,
     artifact_name: str,
     todo_id: str | None,
     *,
-    computer: str,
+    computer: str | None,
     identity: ResolvedCliIdentity,
 ) -> str:
-    """Read an artifact from the computer that holds it: the identified todo's own, else the slug's."""
+    """Read an artifact through the daemon: the identified todo's own, else the slug's, on the named computer or this one."""
     if todo_id is not None:
         path = _ARTIFACT_READ_BY_ID_PATH_TEMPLATE.format(
             todo_id=quote(todo_id, safe=_URL_QUOTE_SAFE), name=quote(artifact_name, safe=_URL_QUOTE_SAFE)
@@ -68,10 +69,13 @@ def _read_remote_artifact(
         path = _ARTIFACT_WRITE_BY_SLUG_PATH_TEMPLATE.format(
             slug=quote(slug, safe=_URL_QUOTE_SAFE), name=quote(artifact_name, safe=_URL_QUOTE_SAFE)
         )
+    params = {_CWD_PARAM: str(project_root)}
+    if computer is not None:
+        params[_COMPUTER_PARAM] = computer
     answer = tool_api_request(
         _HTTP_METHOD_GET,
         path,
-        params={"cwd": str(project_root), _COMPUTER_PARAM: computer},
+        params=params,
         clearance_scope=ClearanceScope.verb(_ARTIFACT_READ_VERB, target_computer=computer),
         clearance_identity=identity,
     )
@@ -103,17 +107,12 @@ class MaterializedArtifact:
         computer: str | None = None,
         clearance_identity: ResolvedCliIdentity,
     ) -> MaterializedArtifact:
-        """Materialize an artifact into a temporary file: from the computer that holds it, else from todos.db here."""
+        """Materialize an artifact into a temporary file, read through the daemon of the computer that holds it."""
         temp_dir = Path(tempfile.mkdtemp(prefix="teleclaude-artifact-"))
         file_path = temp_dir / artifact_display_filename(artifact_name)
-        if computer is not None:
-            content = _read_remote_artifact(
-                project_root, slug, artifact_name, todo_id, computer=computer, identity=clearance_identity
-            )
-        elif todo_id is not None:
-            content = read_artifact_content_by_id(project_root, todo_id, artifact_name)
-        else:
-            content = read_artifact_content(project_root, slug, artifact_name)
+        content = _read_artifact(
+            project_root, slug, artifact_name, todo_id, computer=computer, identity=clearance_identity
+        )
         file_path.write_text(content, encoding="utf-8")
         return cls(
             project_root=project_root,

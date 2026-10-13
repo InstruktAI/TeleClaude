@@ -1066,6 +1066,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Run a job in the current project",
                 args="<name>",
                 flags=[F.FLAG_HELP],
+                notes=[_RECEIPT_RETURN_NOTE],
                 auth=_JOBS_RUN_AUTH,
             ),
             JobsSubcommand.REPORT.value: CommandDef(

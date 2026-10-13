@@ -12,21 +12,27 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import UnionType
-from typing import Annotated, Final, Union, get_args, get_origin
+from typing import Annotated, Final, Union, cast, get_args, get_origin
 
 from pydantic import TypeAdapter, ValidationError
 
 from teleclaude.closed_model import MASKED_INPUT, ClosedModel, field_is_sensitive, mask_sensitive_values
-from teleclaude.config._environment import expand_environment_references, read_environment_file
+from teleclaude.config._environment import (
+    expand_environment_references,
+    find_environment_references,
+    read_environment_file,
+    whole_reference_name,
+)
 from teleclaude.config._machine_build import drop_unresolved_machine_fields
 from teleclaude.config._models import TeleclaudeConfig
 from teleclaude.config._unresolved import NO_OVERRIDES, drop_unresolved_fields
 from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.machine_environment import machine_runtime_environment
-from teleclaude.config.person_resource import IDENTITY_SECTION, SETTINGS_SECTION
+from teleclaude.config.operation_answers import EnvironmentReferenceRow
+from teleclaude.config.person_resource import IDENTITY_SECTION, OVERLAY_PATCH_KEY, SETTINGS_SECTION
 from teleclaude.config.resource_contract import SubjectView
 from teleclaude.config.schema import CompanyConfig, GlobalConfig, PersonConfig, ProjectConfig
-from teleclaude.config_subjects import ConfigSubjectKind
+from teleclaude.config_subjects import ConfigEnvironment, ConfigSubjectKind
 from teleclaude.paths import ConfigFileName
 
 
@@ -74,6 +80,65 @@ def effective_sections(view: SubjectView) -> dict[str, object]:  # guard: loose-
     return _EFFECTIVE_SECTIONS[view.ref.kind](view)
 
 
+def environment_references(view: SubjectView) -> list[EnvironmentReferenceRow]:
+    """Every field of a computer, global, or person view whose stored value is one whole environment reference.
+
+    Resolved from the environment its section's configuration surface owns, the way the effective
+    view resolves. A reference with no value there is listed although the effective view leaves its
+    field out; the value itself is never carried.
+    """
+    entries: list[EnvironmentReferenceRow] = []
+    for name, section in view.sections.items():
+        owner = _reference_owner(view, name)
+        if owner is None:
+            continue
+        environment, environment_name = owner
+        for reference in find_environment_references(section):
+            leaf = _value_at(section, reference.path)
+            if not isinstance(leaf, str) or whole_reference_name(leaf) is None:
+                continue
+            entries.append(
+                EnvironmentReferenceRow(
+                    path=_PATH_SEPARATOR.join((name, *(str(part) for part in reference.path))),
+                    variable=reference.name,
+                    environment=environment_name,
+                    has_value=reference.name in environment or reference.default is not None,
+                )
+            )
+    return entries
+
+
+def _reference_owner(view: SubjectView, section_name: str) -> tuple[Mapping[str, str], ConfigEnvironment] | None:
+    """The environment values and the environment name that own a section's references, if the kind projects any."""
+    match view.ref.kind:
+        case ConfigSubjectKind.COMPUTER:
+            return machine_runtime_environment(), ConfigEnvironment.MACHINE
+        case ConfigSubjectKind.GLOBAL:
+            return _environment_beside(view, 0, owner_only=False), ConfigEnvironment.GLOBAL
+        case ConfigSubjectKind.PERSON:
+            if section_name == IDENTITY_SECTION:
+                return _environment_beside(view, 0, owner_only=False), ConfigEnvironment.GLOBAL
+            return _environment_beside(view, 1, owner_only=True), ConfigEnvironment.PERSON
+        case _:
+            return None
+
+
+def _environment_beside(view: SubjectView, source_index: int, *, owner_only: bool) -> Mapping[str, str]:
+    return read_environment_file(view.sources[source_index].with_name(ConfigFileName.ENV), owner_only=owner_only)
+
+
+def _value_at(document: object, path: tuple[str | int, ...]) -> object:
+    current = document
+    for part in path:
+        if isinstance(current, Mapping):
+            current = current.get(part)
+        elif isinstance(current, list) and isinstance(part, int):
+            current = current[part]
+        else:
+            return None
+    return current
+
+
 def without_masked_values(
     kind: ConfigSubjectKind, patch: Mapping[str, object]
 ) -> dict[str, object]:  # guard: loose-dict - caller-supplied RFC 7386 patch document
@@ -81,6 +146,13 @@ def without_masked_values(
 
     A patch built from the effective view then leaves each stored secret as it is.
     """
+    if kind is ConfigSubjectKind.PERSON and isinstance(patch.get(OVERLAY_PATCH_KEY), Mapping):
+        overlay = cast(Mapping[str, object], patch[OVERLAY_PATCH_KEY])  # guard: loose-dict - caller patch
+        rest = {key: value for key, value in patch.items() if key != OVERLAY_PATCH_KEY}
+        return {
+            **_without_masked(rest, _PATCH_MODELS[kind]),
+            OVERLAY_PATCH_KEY: _without_masked(overlay, (PersonConfig,)),
+        }
     return _without_masked(patch, _PATCH_MODELS[kind])
 
 

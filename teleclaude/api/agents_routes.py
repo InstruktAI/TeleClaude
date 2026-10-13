@@ -14,7 +14,7 @@ from teleclaude.api.event_serialization import availability_legacy_fields
 from teleclaude.api_models import AgentAvailabilityDTO, AgentStatusRequest, ModelAvailabilityDTO
 from teleclaude.config.machine import config
 from teleclaude.core.agent_availability import AgentAvailabilityStatus, AvailabilityState
-from teleclaude.core.agents import get_known_agents, normalize_agent_name
+from teleclaude.core.agents import get_known_agents, is_agent_enabled, normalize_agent_name
 from teleclaude.core.db import db
 
 logger = get_logger(__name__)
@@ -45,6 +45,7 @@ def _build_agent_dto(
     return AgentAvailabilityDTO(
         agent=agent,
         available=available,
+        enabled=is_agent_enabled(agent),
         status=state.status,
         status_until=state.status_until,
         unavailable_until=unavailable_until,
@@ -82,6 +83,7 @@ async def get_agent_availability(
             result[agent] = AgentAvailabilityDTO(
                 agent=agent,
                 available=False,
+                enabled=is_agent_enabled(agent),
                 status=AgentAvailabilityStatus.UNAVAILABLE,
                 reason="Disabled in config.yml",
             )
@@ -95,6 +97,7 @@ async def get_agent_availability(
             result[agent] = AgentAvailabilityDTO(
                 agent=agent,
                 available=None,  # Unknown due to DB error
+                enabled=is_agent_enabled(agent),
                 error=str(exc),
             )
             continue

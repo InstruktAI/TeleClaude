@@ -27,7 +27,6 @@ from teleclaude.cli.tui.color_utils import (
     letter_color_floor,
     relative_luminance,
 )
-from teleclaude.config.machine import config
 from teleclaude.core.session_status import AgentStatusValue
 
 # Re-export color utilities that consumers import from theme
@@ -48,6 +47,7 @@ class _ThemeRuntime:
     terminal_bg_cache: str | None = None
     tui_focused: bool = True
     pane_theming_mode_override: str | None = None
+    tmux_binary: str | None = None
     agent_rich_colors: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
@@ -58,8 +58,9 @@ def _get_tmux_socket_path() -> str | None:
     return tmux_env.split(",", 1)[0] or None
 
 
-def _get_tmux_appearance_mode() -> str | None:
-    tmux_bin = config.computer.tmux_binary
+def _get_tmux_appearance_mode(tmux_bin: str | None) -> str | None:
+    if tmux_bin is None:
+        return None
     socket_path = _get_tmux_socket_path()
     cmd = [tmux_bin]
     if socket_path:
@@ -114,10 +115,10 @@ def get_system_dark_mode() -> bool | None:
     return mode == THEME_MODE_DARK
 
 
-def _detect_dark_mode() -> bool:
+def _detect_dark_mode(tmux_bin: str | None = None) -> bool:
     """Probe system dark mode (spawns subprocesses — call sparingly).
 
-    Precedence: 1) APPEARANCE_MODE env  2) Host system  3) tmux  4) dark default
+    Precedence: 1) APPEARANCE_MODE env  2) Host system  3) tmux (once its binary is known)  4) dark default
     """
     env_mode = _get_env_appearance_mode()
     if env_mode:
@@ -125,7 +126,7 @@ def _detect_dark_mode() -> bool:
     system_mode = _get_system_appearance_mode()
     if system_mode:
         return system_mode == THEME_MODE_DARK
-    tmux_mode = _get_tmux_appearance_mode()
+    tmux_mode = _get_tmux_appearance_mode(tmux_bin)
     if tmux_mode:
         return tmux_mode == THEME_MODE_DARK
     return True
@@ -147,11 +148,19 @@ def get_current_mode() -> bool:
 
 def refresh_mode() -> None:
     """Re-probe system appearance and rebuild all mode-dependent color tables."""
-    current_mode = _detect_dark_mode()
+    current_mode = _detect_dark_mode(_THEME_RUNTIME.tmux_binary)
     globals()["_is_dark_mode"] = current_mode
     _THEME_RUNTIME.is_dark_mode = current_mode
     _THEME_RUNTIME.terminal_bg_cache = None
     _build_rich_colors()
+
+
+def use_tmux_binary(tmux_bin: str) -> bool:
+    """Take the tmux binary the daemon projects and re-probe with it; True when the dark/light mode changed."""
+    _THEME_RUNTIME.tmux_binary = tmux_bin
+    previous_mode = _is_dark_mode
+    refresh_mode()
+    return _is_dark_mode != previous_mode
 
 
 # =============================================================================

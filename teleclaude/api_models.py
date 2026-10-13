@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from teleclaude.agent_registry import AgentName
+from teleclaude.api_models_chiptunes import ChiptunesStatusDTO
+from teleclaude.api_models_identity import OwnershipSurfaceDTO, PersonChipDTO
 from teleclaude.api_session_attachment import SessionAttachmentDestinationDTO
 from teleclaude.api_session_readiness import SessionReadinessDTOFields
 from teleclaude.config.job_scope import JobScope
@@ -200,6 +202,7 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
     subdir: str | None = None
     config_subject: str | None = None
     subject_owner: str | None = None
+    person_chip: PersonChipDTO | None = None
     command: str | None = None
     working_slug: str | None = None
     thinking_mode: str | None = None
@@ -289,6 +292,7 @@ class ComputerDTO(BaseModel):
     user: str | None = None
     host: str | None = None
     is_local: bool
+    tmux_binary: str | None = None
 
 
 class ProjectDTO(BaseModel):
@@ -361,6 +365,7 @@ class TodoDTO(BaseModel):
     entry_point: str | None = None
     human_involved: bool = False
     context: str | None = None
+    person_chip: PersonChipDTO | None = None
 
 
 class BugListEntryDTO(BaseModel):
@@ -413,6 +418,7 @@ class AgentAvailabilityDTO(BaseModel):
 
     agent: AgentName
     available: bool | None
+    enabled: bool = True
     status: AgentAvailabilityStatus | None = None
     status_until: str | None = None
     unavailable_until: str | None = None
@@ -544,6 +550,7 @@ class SessionsInitialDataDTO(BaseModel):
 
     sessions: list[SessionDTO]
     computer: str | None = None
+    ownership: OwnershipSurfaceDTO | None = None
 
 
 class SessionsInitialEventDTO(BaseModel):
@@ -562,6 +569,7 @@ class ProjectsInitialDataDTO(BaseModel):
 
     projects: list[ProjectWithTodosDTO | ProjectDTO]
     computer: str | None = None
+    ownership: OwnershipSurfaceDTO | None = None
 
 
 class ProjectsInitialEventDTO(BaseModel):
@@ -674,61 +682,6 @@ class ErrorEventDTO(BaseModel):
 
     event: Literal["error"] = "error"
     data: ErrorEventDataDTO
-
-
-class ChiptunesTrackEventDTO(BaseModel):
-    """WebSocket event when a new chiptunes track starts playing."""
-
-    model_config = ConfigDict(frozen=True)
-
-    event: Literal["chiptunes_track"] = "chiptunes_track"
-    track: str
-    sid_path: str = ""
-
-
-class ChiptunesStatusDTO(BaseModel):
-    """Current chiptunes playback state."""
-
-    model_config = ConfigDict(frozen=True)
-
-    playback: Literal["cold", "loading", "playing", "paused"] = "cold"
-    state_version: int = 0
-    loaded: bool = False
-    playing: bool = False
-    paused: bool = False
-    position_seconds: float = 0.0
-    track: str = ""
-    sid_path: str = ""
-    pending_command_id: str = ""
-    pending_action: Literal["", "resume", "pause", "next", "prev"] = ""
-
-
-class ChiptunesStateEventDTO(BaseModel):
-    """WebSocket event for chiptunes playback state transitions."""
-
-    model_config = ConfigDict(frozen=True)
-
-    event: Literal["chiptunes_state"] = "chiptunes_state"
-    playback: Literal["cold", "loading", "playing", "paused"] = "cold"
-    state_version: int = 0
-    loaded: bool = False
-    playing: bool = False
-    paused: bool = False
-    position_seconds: float = 0.0
-    track: str = ""
-    sid_path: str = ""
-    pending_command_id: str = ""
-    pending_action: Literal["", "resume", "pause", "next", "prev"] = ""
-
-
-class ChiptunesCommandReceiptDTO(BaseModel):
-    """Receipt for accepted chiptunes command (asynchronous execution)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    status: Literal["accepted"] = "accepted"
-    command_id: str
-    action: Literal["resume", "pause", "next", "prev"]
 
 
 class SessionLifecycleStatusEventDTO(BaseModel):
@@ -895,6 +848,7 @@ type TuiBootstrapPillar = Literal[
     "jobs",
     "settings",
     "chiptunes",
+    "ownership",
 ]
 
 
@@ -925,6 +879,7 @@ class TuiBootstrapDataDTO(BaseModel):
     jobs: list[JobDTO] | None = None
     settings: SettingsDTO | None = None
     chiptunes: ChiptunesStatusDTO | None = None
+    ownership: OwnershipSurfaceDTO | None = None
 
 
 class TuiBootstrapDTO(BaseModel):

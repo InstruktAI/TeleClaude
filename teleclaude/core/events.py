@@ -28,6 +28,8 @@ EventType = Literal[
     "agent_runtime.handoff.completed",
     "agent_runtime.handoff.failed",
     "error",
+    "operation.job_run.completed",
+    "operation.job_run.failed",
     "operation.todo_create.completed",
     "operation.todo_create.failed",
     "operation.todo_integrate.completed",

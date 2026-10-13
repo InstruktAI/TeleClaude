@@ -9,7 +9,6 @@ from enum import StrEnum
 from typing import cast
 
 from teleclaude.agent_registry import AgentName
-from teleclaude.config._defaults import DEFAULT_CONFIG
 from teleclaude.config._machine_build import build_config_from_raw
 from teleclaude.config._models import ReleaseChannel, TeleclaudeConfig
 from teleclaude.config._yaml import round_trip_yaml
@@ -52,7 +51,6 @@ class MachineConfigOperation(StrEnum):
 
     PATCH = "patch"
     REMOVE = "remove"
-    FIELD = "field"
     DEPLOYMENT = "deployment"
     AGENTS = "agents"
 
@@ -116,13 +114,6 @@ def patch_machine_config_at(
 def remove_machine_config_fields(field_paths: tuple[tuple[str, ...], ...]) -> MachineConfigMutationResult:
     """Remove declared field paths from the latest committed machine configuration."""
     return _mutate(MachineConfigOperation.REMOVE, lambda raw: _remove_fields(raw, field_paths))
-
-
-def set_machine_field(field_path: tuple[str, ...], value: object) -> MachineConfigMutationResult:
-    """Set one typed field through the config-owned transaction."""
-    if field_path and field_path[0] == _SCHEMA_VERSION:
-        raise ReadOnlyDeclaration(_READ_ONLY_SCHEMA_VERSION_ERROR)
-    return _mutate(MachineConfigOperation.FIELD, lambda raw: _set_sparse_field(raw, field_path, value))
 
 
 def set_deployment(channel: ReleaseChannel, compatibility_series: str) -> MachineConfigMutationResult:
@@ -210,7 +201,11 @@ def _write_mapping(transaction: FileTransaction, document: Mapping[object, objec
 
 
 def _deep_merge(base: Mapping[object, object], patch: Mapping[object, object]) -> dict[object, object]:
-    """Merge-patch (RFC 7386): mapping keys merge, a `None` leaf value removes the key."""
+    """Merge-patch (RFC 7386): mapping keys merge, a `None` leaf value removes the key.
+
+    A mapping that a removal leaves empty is removed as well, so the document never keeps an empty
+    section that only a removal produced.
+    """
     result = deepcopy(dict(base))
     for key, value in patch.items():
         if value is None:
@@ -218,7 +213,11 @@ def _deep_merge(base: Mapping[object, object], patch: Mapping[object, object]) -
             continue
         current = result.get(key)
         if isinstance(current, dict) and isinstance(value, Mapping):
-            result[key] = _deep_merge(current, value)
+            merged = _deep_merge(current, value)
+            if merged or not current:
+                result[key] = merged
+            else:
+                result.pop(key)
         else:
             result[key] = deepcopy(value)
     return result
@@ -239,64 +238,6 @@ def _remove_fields(raw: dict[object, object], field_paths: tuple[tuple[str, ...]
             raise KeyError(_MISSING_FIELD_ERROR)
         target.pop(field_path[-1])
     return raw
-
-
-def _set_field(raw: dict[object, object], field_path: tuple[str, ...], value: object) -> dict[object, object]:
-    """Set one nested field, creating only parent containers owned by the path."""
-    if not field_path:
-        raise ValueError(_INVALID_FIELD_PATH_ERROR)
-    target = raw
-    for segment in field_path[:-1]:
-        nested = target.get(segment)
-        if nested is None:
-            nested = {}
-            target[segment] = nested
-        if not isinstance(nested, dict):
-            raise ValueError(_INVALID_FIELD_PATH_ERROR)
-        target = nested
-    target[field_path[-1]] = deepcopy(value)
-    return raw
-
-
-def _set_sparse_field(raw: dict[object, object], field_path: tuple[str, ...], value: object) -> dict[object, object]:
-    """Write a field or omit its stored representation when the schema default applies."""
-    default = _default_for_field(field_path)
-    if default is not _MISSING_DEFAULT and value == default:
-        _remove_field_if_present(raw, field_path)
-        return raw
-    return _set_field(raw, field_path, value)
-
-
-_MISSING_DEFAULT = object()
-
-
-def _default_for_field(field_path: tuple[str, ...]) -> object:
-    """Find a scalar default in the schema-owned defaults tree."""
-    current: object = DEFAULT_CONFIG
-    for segment in field_path:
-        if not isinstance(current, Mapping) or segment not in current:
-            return _MISSING_DEFAULT
-        current = current[segment]
-    return current
-
-
-def _remove_field_if_present(raw: dict[object, object], field_path: tuple[str, ...]) -> None:
-    """Omit a default-valued path and prune empty owned parent mappings."""
-    if not field_path:
-        return
-    current = raw
-    parents: list[tuple[dict[object, object], str]] = []
-    for segment in field_path[:-1]:
-        nested = current.get(segment)
-        if not isinstance(nested, dict):
-            return
-        parents.append((current, segment))
-        current = nested
-    current.pop(field_path[-1], None)
-    for parent, segment in reversed(parents):
-        nested = parent.get(segment)
-        if isinstance(nested, dict) and not nested:
-            parent.pop(segment)
 
 
 def _configure_agents(

@@ -2,23 +2,14 @@
 
 from __future__ import annotations
 
-import os
+from collections.abc import Awaitable, Callable
+from enum import Enum, StrEnum
 from typing import TYPE_CHECKING, Any, get_args
 from uuid import uuid4
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
-from teleclaude.cli.config_handlers import (
-    EnvVarStatus,
-    PersonMcpSecretManagementError,
-    clear_person_mcp_secret_value,
-    get_global_config,
-    get_person_config,
-    replace_person_mcp_secret_value,
-    save_global_config,
-    save_person_config,
-    set_env_var,
-)
+from teleclaude.cli.config_handlers import EnvVarStatus
 from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
     _GUIDED_STEPS,
@@ -28,12 +19,36 @@ from teleclaude.cli.tui.views._config_constants import (
     Subtab,
     observe_config_tui,
 )
+from teleclaude.cli.tui.views.config_operations import ConfigOperationFailed, ConfigOperations
 from teleclaude.cli.tui.views.reflection import ReflectedField, deserialize_value
-from teleclaude.config._environment import mutate_environment_value
+from teleclaude.config._defaults import DEFAULT_CONFIG
 from teleclaude.config.identity_schema import PersonEntry
-from teleclaude.config.machine import reload_config
-from teleclaude.config.machine_config_mutation import set_machine_field
-from teleclaude.config.validation import is_unresolved_placeholder
+from teleclaude.config.person_resource import OVERLAY_PATCH_KEY, SETTINGS_SECTION
+from teleclaude.config.subject_operations import ConfigFailureKind
+from teleclaude.config_subjects import ConfigEnvironment, ConfigSubjectKind
+
+_WRITE_GROUP = "config-write"
+_IDENTITY_PREFIX = "identity"
+_OVERLAY_PREFIX = "overlay"
+_MACHINE_SOURCE = "machine"
+_GLOBAL_SOURCE = "global"
+_PERSON_SOURCE = "per-person"
+_NESTED_SEPARATOR = ":"
+_KEY_SEPARATOR = "."
+_STALE_REVISION_MESSAGE = "{label}: Changed elsewhere since it was read; reloaded."
+_CLEARED = "Cleared {label}."
+_KEPT = "Kept {label}."
+_SAVED = "Saved {label}."
+_SAVED_FIELD = "Saved {label} successfully."
+_UPDATED = "Updated {label}."
+_SAVE_FAILED = "Failed to save {label}: {error}"
+_CONFIG_SOURCE = "config"
+_ENVIRONMENT_SOURCE = "environment"
+_JSON_MODE = "json"
+_DAEMON_UNAVAILABLE = "The daemon is not reachable."
+
+type WriteAction = Callable[[ConfigOperations], Awaitable[None]]
+type PatchBody = dict[str, object]  # guard: loose-dict - RFC 7386 merge patch
 
 
 def _zero_value(annotation: Any) -> Any:
@@ -78,6 +93,81 @@ def _instantiate_nested_config_model(annotation: Any) -> BaseModel:
         if isinstance(candidate, type) and issubclass(candidate, BaseModel):
             return _blank_model(candidate)
     raise TypeError(f"Cannot instantiate nested config field for {annotation!r}")
+
+
+_REDIS_URL_KEY = "redis.url"
+_NOT_READ = "the configuration has not been read from the daemon yet"
+_NO_PERSON = ""
+_MISSING_DEFAULT = object()
+
+
+def _default_for(path: tuple[str, ...]) -> object:
+    """The schema default of a machine field, or the sentinel when the schema declares none."""
+    current: object = DEFAULT_CONFIG
+    for segment in path:
+        if not isinstance(current, dict) or segment not in current:
+            return _MISSING_DEFAULT
+        current = current[segment]
+    return current
+
+
+def _nested_patch(parts: list[str], value: object) -> PatchBody:
+    """The merge patch that sets one leaf at a nested path."""
+    patch: PatchBody = {parts[-1]: value.value if isinstance(value, Enum) else value}
+    for part in reversed(parts[:-1]):
+        patch = {part: patch}
+    return patch
+
+
+def _machine_patch(path: tuple[str, ...], value: object) -> PatchBody:
+    """The merge patch for one machine field: an edit back to the schema default removes the field (UC-14)."""
+    default = _default_for(path)
+    return _nested_patch(list(path), None if default is not _MISSING_DEFAULT and value == default else value)
+
+
+def _covered_by_reference(path: str, referenced: set[str]) -> bool:
+    """Whether a stored environment reference sits at the path or beneath it."""
+    return any(reference == path or reference.startswith(f"{path}{_KEY_SEPARATOR}") for reference in referenced)
+
+
+def _overlay_patch(overlay: BaseModel, parts: list[str], value: object, referenced: set[str]) -> PatchBody:
+    """The merge patch for one overlay field; an unset submodel is written whole with its required siblings seeded.
+
+    A sibling whose stored value is an environment reference (`referenced` holds their paths) is never seeded,
+    so a stored reference is not replaced by a placeholder.
+    """
+    patch: PatchBody = {}
+    cursor = patch
+    node: BaseModel | None = overlay
+    for depth, part in enumerate(parts[:-1]):
+        child = getattr(node, part, None) if node is not None else None
+        if child is None and node is not None:
+            child = _instantiate_nested_config_model(type(node).model_fields[part].annotation)
+            parent_path = _KEY_SEPARATOR.join(parts[: depth + 1])
+            seeded = {
+                key: item
+                for key, item in child.model_dump(mode=_JSON_MODE, exclude_none=True).items()
+                if not _covered_by_reference(f"{parent_path}{_KEY_SEPARATOR}{key}", referenced)
+            }
+            cursor[part] = seeded
+            cursor = seeded
+        else:
+            existing = cursor.get(part)
+            if not isinstance(existing, dict):
+                existing = {}
+                cursor[part] = existing
+            cursor = existing
+        node = child if isinstance(child, BaseModel) else None
+    cursor[parts[-1]] = value.value if isinstance(value, Enum) else value
+    return patch
+
+
+class _RedisUrl(StrEnum):
+    """How the Redis URL stands for guided setup: left to its default, waiting on a variable, or set."""
+
+    DEFAULT = "default"
+    UNRESOLVED = "unresolved"
+    EXPLICIT = "explicit"
 
 
 class ConfigContentEditingMixin:
@@ -161,6 +251,7 @@ class ConfigContentEditingMixin:
                         selected_person = self._people_data[cursor]  # type: ignore[attr-defined]
                         self._expanded_person = selected_person.slug or selected_person.name  # type: ignore[attr-defined]
                         self._person_field_cursor = 0  # type: ignore[attr-defined]
+                        self.load_expanded_person_secrets()  # type: ignore[attr-defined]
                         self._status_message = (
                             f"Expanded {self._expanded_person}. Press Esc to collapse / navigate to other people."  # type: ignore[attr-defined]
                         )
@@ -199,8 +290,8 @@ class ConfigContentEditingMixin:
             self._status_message = f"Editing {field_or_status.name}. Enter saves, Esc cancels."  # type: ignore[attr-defined]
         else:
             self._editing_var_name = field_or_status.info.name  # type: ignore[attr-defined]
-            # guard: direct-env-read - allowed: environment-file management
-            self._edit_buffer = os.environ.get(field_or_status.info.name, "")  # type: ignore[attr-defined]
+            # The stored value is never shown or loaded; submitting nothing leaves it unchanged.
+            self._edit_buffer = ""  # type: ignore[attr-defined]
             self._status_message = f"Editing {field_or_status.info.name}. Enter saves, Esc cancels."  # type: ignore[attr-defined]
         self._status_is_error = False  # type: ignore[attr-defined]
         self.refresh(layout=True)  # type: ignore[attr-defined]
@@ -244,41 +335,46 @@ class ConfigContentEditingMixin:
         self.refresh(layout=True)  # type: ignore[attr-defined]
 
     def clear_personal_secret_or_edit_buffer(self) -> None:
-        """Clear a write-only personal secret, or clear an ordinary active buffer."""
+        """Clear a stored value as a deliberate action, or clear an ordinary active buffer."""
         if not self.is_editing:  # type: ignore[attr-defined]
             return
-        field = self._active_personal_secret_field()
-        if field is None:
-            reflected = next(
-                (candidate for candidate in self.reflected_fields if candidate.key == self._editing_var_name),
-                None,  # type: ignore[attr-defined]
-            )
-            if reflected is not None and reflected.write_only and reflected.environment is not None:
-                mutate_environment_value(reflected.environment.path, reflected.environment.name, None)
-                self._editing_var_name = None  # type: ignore[attr-defined]
-                self._edit_buffer = ""  # type: ignore[attr-defined]
-                self.refresh_data()  # type: ignore[attr-defined]
-                return
+        name = self._editing_var_name  # type: ignore[attr-defined]
+        target = self._clear_target()
+        if name is None or target is None:
             self.clear_edit_buffer()
             return
+        label, action = target
         operation_id = str(uuid4())
-        observe_config_tui(ConfigTuiOutcome.SAVE_REQUESTED, operation_id=operation_id, field_paths=[field.key])
-        try:
-            clear_person_mcp_secret_value(self._expanded_person, field.name)  # type: ignore[attr-defined]
-        except PersonMcpSecretManagementError:
-            observe_config_tui(
-                ConfigTuiOutcome.FAILED, operation_id=operation_id, field_paths=[field.key], source="config"
-            )
-            self._status_message = "Personal MCP secret management failed."  # type: ignore[attr-defined]
-            self._status_is_error = True  # type: ignore[attr-defined]
-            self.refresh(layout=True)  # type: ignore[attr-defined]
-            return
+        observe_config_tui(ConfigTuiOutcome.SAVE_REQUESTED, operation_id=operation_id, field_paths=[name])
         self._editing_var_name = None  # type: ignore[attr-defined]
         self._edit_buffer = ""  # type: ignore[attr-defined]
-        self._status_message = f"Cleared {field.name}."  # type: ignore[attr-defined]
-        self._status_is_error = False  # type: ignore[attr-defined]
-        observe_config_tui(ConfigTuiOutcome.SAVED, operation_id=operation_id, field_paths=[field.key], source="config")
-        self.refresh_data()  # type: ignore[attr-defined]
+        self._submit_write(
+            operation_id=operation_id,
+            field_paths=[name],
+            label=label,
+            success_message=_CLEARED.format(label=label),
+            action=action,
+        )
+
+    def _clear_target(self) -> tuple[str, WriteAction] | None:
+        """The label and the daemon request that removes the stored value the active edit is of."""
+        name = self._editing_var_name  # type: ignore[attr-defined]
+        field = self._active_write_only_field()
+        if field is not None:
+            return field.name, self._field_clear_action(field)
+        if _SUBTABS[self.active_subtab] == Subtab.ENV and name is not None:  # type: ignore[attr-defined]
+            return name, lambda operations: operations.set_environment(ConfigEnvironment.MACHINE, clear=[name])
+        return None
+
+    def _field_clear_action(self, f: ReflectedField) -> WriteAction:
+        """Remove a write-only field's value where it lives: its environment variable, or the field itself."""
+        if f.environment is None:
+            return self._field_write_action(f, f.key, None)
+        environment = f.environment
+        instance = self._expanded_person if environment.owner is ConfigEnvironment.PERSON else None  # type: ignore[attr-defined]
+        return lambda operations: operations.set_environment(
+            environment.owner, instance=instance, clear=[environment.name]
+        )
 
     def save_edit(self) -> None:
         """Persist the current env-var or reflected field edit."""
@@ -296,19 +392,23 @@ class ConfigContentEditingMixin:
             self._save_reflected_field(var_name, self._edit_buffer)  # type: ignore[attr-defined]
             return
 
-        try:
-            target_path = set_env_var(var_name, self._edit_buffer)  # type: ignore[attr-defined]
-        except Exception as exc:
-            self._status_message = f"Failed to save {var_name}: {exc}"  # type: ignore[attr-defined]
-            self._status_is_error = True  # type: ignore[attr-defined]
-            self.refresh(layout=True)  # type: ignore[attr-defined]
-            return
-
+        value = self._edit_buffer  # type: ignore[attr-defined]
         self._editing_var_name = None  # type: ignore[attr-defined]
         self._edit_buffer = ""  # type: ignore[attr-defined]
-        self._status_message = f"Saved {var_name} to {target_path}"  # type: ignore[attr-defined]
-        self._status_is_error = False  # type: ignore[attr-defined]
-        self.refresh_data()  # type: ignore[attr-defined]
+        if not value:
+            self._status_message = _KEPT.format(label=var_name)  # type: ignore[attr-defined]
+            self._status_is_error = False  # type: ignore[attr-defined]
+            self.refresh(layout=True)  # type: ignore[attr-defined]
+            return
+        operation_id = str(uuid4())
+        observe_config_tui(ConfigTuiOutcome.SAVE_REQUESTED, operation_id=operation_id, field_paths=[var_name])
+        self._submit_write(
+            operation_id=operation_id,
+            field_paths=[var_name],
+            label=var_name,
+            success_message=_SAVED.format(label=var_name),
+            action=lambda operations: operations.set_environment(ConfigEnvironment.MACHINE, values=[(var_name, value)]),
+        )
 
     @property
     def is_on_enum_field(self) -> bool:
@@ -392,7 +492,7 @@ class ConfigContentEditingMixin:
                 self._save_reflected_field(f.key, items)
 
     def _save_reflected_field(self, key: str, raw_value: Any) -> None:
-        """Parse, validate, and write a reflected field value back to its source."""
+        """Parse a reflected field value and write it through the daemon to the subject that owns it."""
         operation_id = str(uuid4())
         observe_config_tui(ConfigTuiOutcome.SAVE_REQUESTED, operation_id=operation_id, field_paths=[key])
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
@@ -405,143 +505,164 @@ class ConfigContentEditingMixin:
         if f is None:
             return
 
-        if f.write_only and f.environment is not None:
-            if not str(raw_value).strip():
-                self._editing_var_name = None  # type: ignore[attr-defined]
-                self._edit_buffer = ""  # type: ignore[attr-defined]
-                self.refresh(layout=True)  # type: ignore[attr-defined]
-                return
-            set_env_var(f.environment.name, str(raw_value), f.environment.path)
-            self._editing_var_name = None  # type: ignore[attr-defined]
-            self._edit_buffer = ""  # type: ignore[attr-defined]
-            self.refresh_data()  # type: ignore[attr-defined]
-            return
-
         if f.write_only:
-            try:
-                self._save_personal_secret(f, str(raw_value), operation_id)
-            except PersonMcpSecretManagementError:
-                observe_config_tui(
-                    ConfigTuiOutcome.FAILED,
-                    operation_id=operation_id,
-                    field_paths=[key],
-                    source="config",
-                )
-                self._status_message = "Personal MCP secret management failed."  # type: ignore[attr-defined]
-                self._status_is_error = True  # type: ignore[attr-defined]
-                self.refresh(layout=True)  # type: ignore[attr-defined]
+            self._save_write_only_field(f, str(raw_value), operation_id)
             return
 
         try:
             deserialized = deserialize_value(raw_value, f.field_type, f.choices)
-
-            if f.environment is not None:
-                # ${VAR}-backed field: persist to .env, leave the placeholder in config.yml.
-                set_env_var(f.environment.name, str(deserialized), f.environment.path)
-                if f.owning_source == "machine":
-                    reload_config()
-            elif f.owning_source == "machine":
-                result = set_machine_field(tuple(key.split(".")), deserialized)
-                self._raw_config = dict(result.raw)  # type: ignore[attr-defined]
-            elif f.owning_source == "global":
-                global_config = get_global_config()
-                person_key = self._expanded_person  # type: ignore[attr-defined]
-                for p in global_config.people:
-                    if (p.slug or p.name) == person_key:
-                        key_without_prefix = key.split(".", 1)[1]
-                        if ":" in key_without_prefix:
-                            parent, child = key_without_prefix.split(":", 1)
-                            raw_parent = getattr(p, parent, None)
-                            if not isinstance(raw_parent, dict):
-                                raw_parent = {}
-                                setattr(p, parent, raw_parent)
-                            raw_parent[child] = deserialized
-                        else:
-                            # Editing the name updates the display field only; the
-                            # slug and the workspace folder are immutable.
-                            setattr(p, key_without_prefix, deserialized)
-                        break
-                save_global_config(global_config)
-            elif f.owning_source == "per-person":
-                person_key = self._expanded_person  # type: ignore[attr-defined]
-                person_config = get_person_config(person_key)
-
-                key_without_prefix = key.split(".", 1)[1]
-                parts = key_without_prefix.split(".")
-
-                obj = person_config
-                for part in parts[:-1]:
-                    val = getattr(obj, part)
-                    if val is None:
-                        field_info = type(obj).model_fields[part]
-                        val = _instantiate_nested_config_model(field_info.annotation)
-                        setattr(obj, part, val)
-                    obj = val
-
-                setattr(obj, parts[-1], deserialized)
-
-                # A nested optional submodel (e.g. a credential block) is instantiated
-                # on demand above; refuse to persist it while a required sibling is
-                # still unset, rather than writing a structurally invalid overlay.
-                try:
-                    type(person_config).model_validate(person_config.model_dump())
-                except ValidationError as exc:
-                    self._status_message = (
-                        f"Cannot save {f.name} yet: {exc.error_count()} required field(s) still missing."  # type: ignore[attr-defined]
-                    )
-                    self._status_is_error = True  # type: ignore[attr-defined]
-                    return
-
-                save_person_config(person_key, person_config)
-            self._editing_var_name = None  # type: ignore[attr-defined]
-            self._edit_buffer = ""  # type: ignore[attr-defined]
-            self._status_message = f"Saved {f.name} successfully."  # type: ignore[attr-defined]
-            self._status_is_error = False  # type: ignore[attr-defined]
-            observe_config_tui(
-                ConfigTuiOutcome.SAVED,
-                operation_id=operation_id,
-                field_paths=[key],
-                source="environment" if f.env_var else "config",
-            )
-            self.refresh_data()  # type: ignore[attr-defined]
-
+            action = self._field_write_action(f, key, deserialized)
         except Exception as exc:
             observe_config_tui(
-                ConfigTuiOutcome.FAILED,
-                operation_id=operation_id,
-                field_paths=[key],
-                source="environment" if f.env_var else "config",
+                ConfigTuiOutcome.FAILED, operation_id=operation_id, field_paths=[key], source=_CONFIG_SOURCE
             )
-            self._status_message = f"Failed to save {f.name}: {exc}"  # type: ignore[attr-defined]
+            self._status_message = _SAVE_FAILED.format(label=f.name, error=exc)  # type: ignore[attr-defined]
             self._status_is_error = True  # type: ignore[attr-defined]
             self.refresh(layout=True)  # type: ignore[attr-defined]
-
-    def _active_personal_secret_field(self) -> ReflectedField | None:
-        """Return the currently edited write-only personal secret field, if any."""
-        if self._expanded_person is None:  # type: ignore[attr-defined]
-            return None
-        return next(
-            (
-                field
-                for field in self.person_reflected_fields
-                if field.key == self._editing_var_name and field.write_only  # type: ignore[attr-defined]
-            ),
-            None,
-        )
-
-    def _save_personal_secret(self, field: ReflectedField, value: str, operation_id: str) -> None:
-        """Keep or replace a personal secret without placing its prior value in UI state."""
-        if value:
-            replace_person_mcp_secret_value(self._expanded_person, field.name, value)  # type: ignore[attr-defined]
-            outcome = f"Updated {field.name}."
-        else:
-            outcome = f"Kept {field.name}."
+            return
         self._editing_var_name = None  # type: ignore[attr-defined]
         self._edit_buffer = ""  # type: ignore[attr-defined]
-        self._status_message = outcome  # type: ignore[attr-defined]
-        self._status_is_error = False  # type: ignore[attr-defined]
-        observe_config_tui(ConfigTuiOutcome.SAVED, operation_id=operation_id, field_paths=[field.key], source="config")
-        self.refresh_data()  # type: ignore[attr-defined]
+        self._submit_write(
+            operation_id=operation_id,
+            field_paths=[key],
+            label=f.name,
+            success_message=_SAVED_FIELD.format(label=f.name),
+            action=action,
+            source=_ENVIRONMENT_SOURCE if f.env_var else _CONFIG_SOURCE,
+        )
+
+    def _save_write_only_field(self, f: ReflectedField, value: str, operation_id: str) -> None:
+        """Replace a sensitive or personal secret value, or keep it when nothing was entered; never read it back."""
+        self._editing_var_name = None  # type: ignore[attr-defined]
+        self._edit_buffer = ""  # type: ignore[attr-defined]
+        if not value.strip():
+            self._status_message = _KEPT.format(label=f.name)  # type: ignore[attr-defined]
+            self._status_is_error = False  # type: ignore[attr-defined]
+            self.refresh(layout=True)  # type: ignore[attr-defined]
+            return
+        self._submit_write(
+            operation_id=operation_id,
+            field_paths=[f.key],
+            label=f.name,
+            success_message=_UPDATED.format(label=f.name),
+            action=self._field_write_action(f, f.key, deserialize_value(value, f.field_type, f.choices)),
+        )
+
+    def _field_write_action(self, f: ReflectedField, key: str, value: Any) -> WriteAction:
+        """The daemon request that writes a field's value to the subject that owns the field."""
+        if f.environment is not None:
+            # A reference-backed field keeps its reference in the document; the value goes to the environment.
+            environment = f.environment
+            instance = self._expanded_person if environment.owner is ConfigEnvironment.PERSON else None  # type: ignore[attr-defined]
+            return lambda operations: operations.set_environment(
+                environment.owner, instance=instance, values=[(environment.name, str(value))]
+            )
+        if f.owning_source == _MACHINE_SOURCE:
+            return self._machine_patch_action(_machine_patch(tuple(key.split(_KEY_SEPARATOR)), value))
+        return self._person_patch_action(self._person_patch(key, value))
+
+    def _machine_patch_action(self, patch: PatchBody) -> WriteAction:
+        async def write(operations: ConfigOperations) -> None:
+            revision = self._machine_revision  # type: ignore[attr-defined]
+            if revision is None:
+                raise ConfigOperationFailed(ConfigFailureKind.INVALID, _NOT_READ)
+            await operations.patch(ConfigSubjectKind.COMPUTER, None, revision, patch)
+
+        return write
+
+    def _person_patch_action(self, patch: PatchBody) -> WriteAction:
+        slug = self._expanded_person  # type: ignore[attr-defined]
+
+        async def write(operations: ConfigOperations) -> None:
+            snapshot = self._people.get(slug) if slug is not None else None  # type: ignore[attr-defined]
+            if slug is None or snapshot is None:
+                raise ConfigOperationFailed(ConfigFailureKind.INVALID, _NOT_READ)
+            await operations.patch(ConfigSubjectKind.PERSON, slug, snapshot.revision, patch)
+
+        return write
+
+    def _person_patch(self, key: str, value: Any) -> PatchBody:
+        """The merge patch for one person field: an identity field, or an overlay field with its submodels seeded."""
+        prefix, _, remainder = key.partition(_KEY_SEPARATOR)
+        parts = remainder.replace(_NESTED_SEPARATOR, _KEY_SEPARATOR).split(_KEY_SEPARATOR)
+        if prefix == _IDENTITY_PREFIX:
+            return _nested_patch(parts, value)
+        slug = self._expanded_person or _NO_PERSON  # type: ignore[attr-defined]
+        snapshot = self._people.get(slug)  # type: ignore[attr-defined]
+        referenced = snapshot.references_under(SETTINGS_SECTION) if snapshot is not None else {}
+        # The envelope addresses the overlay alone, so `name` cannot be taken for the identity entry's.
+        return {OVERLAY_PATCH_KEY: _overlay_patch(self._person_overlay_model(slug), parts, value, set(referenced))}  # type: ignore[attr-defined]
+
+    def _submit_write(
+        self,
+        *,
+        operation_id: str,
+        field_paths: list[str],
+        label: str,
+        success_message: str,
+        action: WriteAction,
+        source: str = _CONFIG_SOURCE,
+    ) -> None:
+        """Run one write on the daemon, in order after the writes before it, then show the subject as it now is."""
+        operations = self._operations()  # type: ignore[attr-defined]
+        if operations is None:
+            self._status_message = _DAEMON_UNAVAILABLE  # type: ignore[attr-defined]
+            self._status_is_error = True  # type: ignore[attr-defined]
+            self.refresh(layout=True)  # type: ignore[attr-defined]
+            return
+        self.run_worker(  # type: ignore[attr-defined]
+            self._perform_write(operations, operation_id, field_paths, label, success_message, action, source),
+            exclusive=False,
+            group=_WRITE_GROUP,
+        )
+
+    async def _perform_write(
+        self,
+        operations: ConfigOperations,
+        operation_id: str,
+        field_paths: list[str],
+        label: str,
+        success_message: str,
+        action: WriteAction,
+        source: str,
+    ) -> None:
+        async with self._write_lock:  # type: ignore[attr-defined]
+            try:
+                await action(operations)
+            except ConfigOperationFailed as failure:
+                observe_config_tui(
+                    ConfigTuiOutcome.FAILED, operation_id=operation_id, field_paths=field_paths, source=source
+                )
+                stale = failure.kind is ConfigFailureKind.STALE_REVISION
+                self._status_message = (  # type: ignore[attr-defined]
+                    _STALE_REVISION_MESSAGE.format(label=label)
+                    if stale
+                    else _SAVE_FAILED.format(label=label, error=failure)
+                )
+                self._status_is_error = True  # type: ignore[attr-defined]
+            except Exception as exc:
+                observe_config_tui(
+                    ConfigTuiOutcome.FAILED, operation_id=operation_id, field_paths=field_paths, source=source
+                )
+                self._status_message = _SAVE_FAILED.format(label=label, error=exc)  # type: ignore[attr-defined]
+                self._status_is_error = True  # type: ignore[attr-defined]
+            else:
+                observe_config_tui(
+                    ConfigTuiOutcome.SAVED, operation_id=operation_id, field_paths=field_paths, source=source
+                )
+                self._status_message = success_message  # type: ignore[attr-defined]
+                self._status_is_error = False  # type: ignore[attr-defined]
+            await self._load_snapshot(operations)  # type: ignore[attr-defined]
+
+    def _active_write_only_field(self) -> ReflectedField | None:
+        """Return the currently edited write-only field, if any."""
+        tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
+        fields = (
+            self.person_reflected_fields  # type: ignore[attr-defined]
+            if tab == Subtab.PEOPLE and self._expanded_person is not None  # type: ignore[attr-defined]
+            else self.reflected_fields  # type: ignore[attr-defined]
+        )
+        return next((field for field in fields if field.key == self._editing_var_name and field.write_only), None)  # type: ignore[attr-defined]
 
     def cancel_edit(self) -> None:
         """Cancel the current env-var or person-field edit."""
@@ -622,14 +743,15 @@ class ConfigContentEditingMixin:
         if step.subtab == Subtab.INFRA:
             redis = self._raw_config.get("redis", {})  # type: ignore[attr-defined]
             redis_url = redis.get("url") if isinstance(redis, dict) else None
-            if redis_url is None:
-                disposition = "default"
+            reference = self._machine_references.get(_REDIS_URL_KEY)  # type: ignore[attr-defined]
+            if reference is not None and not reference.has_value:
+                disposition = _RedisUrl.UNRESOLVED
                 complete = False
-            elif is_unresolved_placeholder(redis_url):
-                disposition = "unresolved"
+            elif redis_url is None:
+                disposition = _RedisUrl.DEFAULT
                 complete = False
             else:
-                disposition = "explicit"
+                disposition = _RedisUrl.EXPLICIT
                 complete = True
             observe_config_tui(
                 ConfigTuiOutcome.GUIDED_COMPLETENESS,

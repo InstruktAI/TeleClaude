@@ -6,6 +6,7 @@ from teleclaude.api_models import (
     ModelAvailabilityDeltaDTO,
 )
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
+from teleclaude.core.agents import is_agent_enabled
 from teleclaude.core.events import AgentAvailabilityContext
 
 
@@ -49,6 +50,7 @@ def agent_availability_event_dto(context: AgentAvailabilityContext) -> AgentAvai
         data=AgentAvailabilityDTO(
             agent=context.agent,
             available=available,
+            enabled=is_agent_enabled(context.agent),
             status=context.status,
             status_until=context.status_until,
             unavailable_until=unavailable_until,

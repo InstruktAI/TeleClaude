@@ -95,6 +95,7 @@ class OperationSucceededEventDTO(BaseModel):
         "agent.restart.completed",
         "agent_runtime.handoff.completed",
         "agent_runtime.procedure_activation.completed",
+        "operation.job_run.completed",
     ]
     operation_id: str
     work_feedback: str | None = None
@@ -117,6 +118,7 @@ class OperationFailedEventDTO(BaseModel):
         "agent.restart.failed",
         "agent_runtime.handoff.failed",
         "agent_runtime.procedure_activation.failed",
+        "operation.job_run.failed",
     ]
     operation_id: str
     error: str

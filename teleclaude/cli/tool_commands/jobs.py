@@ -24,7 +24,8 @@ from teleclaude.cli.telec.surface import (
     CommandDef,
 )
 from teleclaude.cli.telec.surface_types import JobsSubcommand
-from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.cli.tool_client import tool_api_call
+from teleclaude.cli.tool_commands._receipt import render_receipt
 from teleclaude.config.jobs import (
     SubscriptionChange,
     load_effective_jobs,
@@ -192,7 +193,8 @@ def handle_jobs_run(args: list[str]) -> None:
         _JOB_RUN_PATH.format(name=job_name),
         params={"project": project_slug},
     )
-    print_json(result)
+    # A computer on an older build answers with its own shape, not a receipt; render_receipt prints it as that computer's answer.
+    render_receipt(result)
 
 
 def _handle_job_subscription(args: list[str], command: CommandDef, *, enabled: bool) -> None:

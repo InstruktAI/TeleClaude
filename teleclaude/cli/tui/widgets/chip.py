@@ -1,9 +1,10 @@
 """Person chip resolution for TUI rows.
 
 A person chip is the owning human's uppercase initials painted in that person's
-configured colors. One resolver feeds both the todo-row and session-row
-renderers so initials and color fallback stay consistent. Unset color cells fall
-back to the theme-derived neutral defaults for the active mode.
+configured colors. The daemon projects the person's display facts onto each row;
+one builder feeds both the todo-row and session-row renderers so initials and
+color fallback stay consistent. Unset color cells fall back to the
+theme-derived neutral defaults for the active mode.
 """
 
 from __future__ import annotations
@@ -12,10 +13,9 @@ from dataclasses import dataclass
 
 from rich.style import Style
 
+from teleclaude.api_models_identity import ChipColorPairDTO, OwnershipSurfaceDTO, PersonChipDTO
 from teleclaude.cli.tui.theme import get_neutral_color, get_selection_fg_hex, is_dark_mode
-from teleclaude.config.schema import PersonChipColor
-from teleclaude.core.identity import derive_initials, get_identity_resolver
-from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX
+from teleclaude.types.creation_record import SYSTEM_ROOT_PREFIX
 
 _HUMAN_PRINCIPAL_PREFIX = "human:"
 _SYSTEM_CHIP_INITIALS = "S"
@@ -82,15 +82,14 @@ class SystemChip:
 type OwnerChip = PersonChip | SystemChip
 
 
-def _color_cell(color: PersonChipColor | None, attr: str, *, dark: bool) -> str | None:
+def _color_cell(pair: ChipColorPairDTO | None, *, dark: bool) -> str | None:
     """Read one theme-split color cell, or None when unset."""
-    if color is None:
+    if pair is None:
         return None
-    pair = getattr(color, attr)
     return pair.dark if dark else pair.light
 
 
-def _chip_colors(color: PersonChipColor | None) -> tuple[str, str, bool]:
+def _chip_colors(chip: PersonChipDTO | None) -> tuple[str, str, bool]:
     """Resolve (background, text, custom_background) from cells and theme defaults.
 
     The resting chip is a low-contrast fill: the neutral ``subtle`` background
@@ -101,10 +100,25 @@ def _chip_colors(color: PersonChipColor | None) -> tuple[str, str, bool]:
     custom hue but pushes a neutral default to its pole. See ``PersonChip.style``.
     """
     dark = is_dark_mode()
-    background_cell = _color_cell(color, "background", dark=dark)
+    background_cell = _color_cell(chip.background if chip else None, dark=dark)
     background = background_cell or get_neutral_color("subtle")
-    text = _color_cell(color, "text", dark=dark) or get_neutral_color("highlight")
+    text = _color_cell(chip.text if chip else None, dark=dark) or get_neutral_color("highlight")
     return background, text, background_cell is not None
+
+
+@dataclass
+class _OwnershipSurfaceHolder:
+    enabled: bool = False
+
+
+_OWNERSHIP_SURFACE = _OwnershipSurfaceHolder()
+
+
+def adopt_ownership_surface(surface: OwnershipSurfaceDTO) -> bool:
+    """Take the daemon's ownership-surface fact, which chips and the filter follow; True when it changed."""
+    changed = _OWNERSHIP_SURFACE.enabled != surface.enabled
+    _OWNERSHIP_SURFACE.enabled = surface.enabled
+    return changed
 
 
 def ownership_surface_enabled() -> bool:
@@ -112,47 +126,31 @@ def ownership_surface_enabled() -> bool:
 
     The ownership surface is multi-user-gated: with a sole registered person
     there is no ownership to disambiguate, so chips and the filter are
-    suppressed. Reads the one shared multi-user determination.
+    suppressed. The daemon projects that determination; it is off until it has.
     """
-    return get_identity_resolver().is_multi_user
+    return _OWNERSHIP_SURFACE.enabled
 
 
-def resolve_person_chip(principal: str | None) -> PersonChip | None:
-    """Resolve the owner chip for a todo/session principal.
+def build_owner_chip(owner: str | None, person_chip: PersonChipDTO | None) -> OwnerChip | None:
+    """Build the owner chip of a row from its owner and the person facts the daemon projected onto it.
 
-    Returns ``None`` when the human is unresolvable (no principal, or an email
-    that matches no registered person) or when the ownership surface is
-    suppressed (single-user mode) — the row renders no chip and closes the gap
-    rather than reserving width. The cheap principal check runs first so a
-    chip-less row never touches the identity resolver.
+    ``owner`` is a lineage root, a human principal, or a bare email. Returns
+    ``None`` when the human is unresolvable (no owner, or no person facts on the
+    row) or when the ownership surface is suppressed (single-user mode) — the row
+    renders no chip and closes the gap rather than reserving width.
     """
-    email = principal_to_email(principal)
-    if not email:
+    if not owner or not ownership_surface_enabled():
         return None
-    if not ownership_surface_enabled():
+    if owner.startswith(SYSTEM_ROOT_PREFIX):
+        return SystemChip()
+    email = principal_to_email(owner)
+    if not email or person_chip is None:
         return None
-    context = get_identity_resolver().resolve_by_email(email)
-    if not context.person_name:
-        return None
-    initials = derive_initials(context.person_name)
-    if not initials:
-        return None
-    background, text, custom_background = _chip_colors(context.chip_color)
+    background, text, custom_background = _chip_colors(person_chip)
     return PersonChip(
-        initials=initials,
+        initials=person_chip.initials,
         person_email=email.lower(),
         background=background,
         text=text,
         custom_background=custom_background,
     )
-
-
-def resolve_owner_chip(lineage_root: str | None) -> OwnerChip | None:
-    """Resolve a lineage root to its person or system owner chip."""
-    if not lineage_root or not ownership_surface_enabled():
-        return None
-    if lineage_root.startswith(SYSTEM_ROOT_PREFIX):
-        return SystemChip()
-    if lineage_root.startswith(HUMAN_ROOT_PREFIX):
-        return resolve_person_chip(lineage_root)
-    return None

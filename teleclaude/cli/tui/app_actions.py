@@ -41,6 +41,9 @@ _APP_ACTION_FAILURE_EVENT = "tui.app_action_failed"
 _APP_ACTION_RESULT_FAILURE_EVENT = "tui.app_action_result_failed"
 
 
+_JOB_REQUESTED = "Job '{job}' requested for {project}"
+
+
 class _AppAction(StrEnum):
     CREATE_SESSION = "create_session"
     END_SESSION = "end_session"
@@ -318,7 +321,8 @@ class TelecAppActionsMixin:
         """Run a footer-triggered background job and surface the result."""
         try:
             await self.api.run_job(job_name, project)  # type: ignore[attr-defined]
-            self.notify_text(f"Job '{job_name}' started for {project}")  # type: ignore[attr-defined]
+            # The receipt ends with the run's outcome; a failed run reaches the TUI as an operation outcome event.
+            self.notify_text(_JOB_REQUESTED.format(job=job_name, project=project))  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
             self._report_action_failure(_AppAction.RUN_JOB, error, job_name=job_name, project=project)
 

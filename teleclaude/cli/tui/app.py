@@ -49,6 +49,7 @@ from teleclaude.cli.tui.bootstrap import (
     projects_from_projects_with_todos,
 )
 from teleclaude.cli.tui.creator_session import SessionInfo, SessionLookup
+from teleclaude.cli.tui.local_computer import adopt_local_computer
 from teleclaude.cli.tui.messages import (
     DataRefreshed,
     DocEditRequest,
@@ -93,13 +94,13 @@ from teleclaude.cli.tui.views.config import ConfigContent, ConfigView
 from teleclaude.cli.tui.views.jobs import JobsView
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
-from teleclaude.cli.tui.widgets.agent_status import AgentRenderStatus, classify_agent_render_status
+from teleclaude.cli.tui.widgets.agent_status import AgentRenderStatus, classify_agent_render_status, enabled_agents
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
+from teleclaude.cli.tui.widgets.chip import adopt_ownership_surface
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 from teleclaude.cli.tui.work_feedback import WorkFeedbackPresenter
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
-from teleclaude.core.agents import get_enabled_agents
 from teleclaude.core.session_listing import SESSION_LISTING_MAX_IDS
 from teleclaude.types.creation_record import Lineage
 
@@ -162,7 +163,6 @@ RELOAD_EXIT = "__RELOAD__"
 class AvailabilityObservationSource(StrEnum):
     """Closed source vocabulary for TUI availability observations."""
 
-    COLD_START = "cold_start"
     REFRESH = "refresh"
     DELTA = "delta"
     WEBSOCKET_CONNECT = "websocket_connect"
@@ -183,7 +183,6 @@ class AvailabilityObservationOutcome(StrEnum):
 class AvailabilityObservationReason(StrEnum):
     """Closed reason vocabulary for TUI availability observations."""
 
-    APP_MOUNTED = "app_mounted"
     BOOTSTRAP_REQUEST = "bootstrap_request"
     RECONNECT = "reconnect"
     RETRY = "retry"
@@ -194,7 +193,6 @@ class AvailabilityObservationReason(StrEnum):
     FIELD_OMITTED = "field_omitted"
     PILLAR_MISSING = "pillar_missing"
     DELTA_MERGED = "delta_merged"
-    NO_SNAPSHOT = "no_snapshot"
     API_ERROR = "api_error"
     RETRY_SCHEDULED = "retry_scheduled"
 
@@ -243,6 +241,9 @@ class _RefreshStateSnapshot:
     jobs: list[JobDTO]
     tts_enabled: bool
     session_lookup: SessionLookup
+    chiptunes_configured: bool
+    chiptunes_favorited: bool
+    chiptunes_disliked: bool
     chiptunes_loaded: bool
     chiptunes_playback: str
     chiptunes_state_version: int
@@ -603,7 +604,6 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         self._wire_animation_widgets()
         self._media_state.animation_requested_mode = status_bar.animation_mode
         self._apply_animation_runtime()
-        self._project_cold_start_availability()
 
         start_tab = self._resolve_start_tab()
         tabs = self.query_one("#main-tabs", TabbedContent)
@@ -689,8 +689,18 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         """Re-fetch computer list on computer_updated event."""
         try:
             self._runtime_state.computers = await self.api.list_computers()
+            self._adopt_local_computer(self._runtime_state.computers)
         except APP_DATA_ERRORS:
             logger.exception("Computer refresh failed")
+
+    def _adopt_local_computer(self, computers: list[ComputerDTO]) -> None:
+        """Take the local computer the daemon projects, and bring tmux-dependent surfaces up with its binary."""
+        local = adopt_local_computer(computers)
+        if local is None or local.tmux_binary is None:
+            return
+        self.query_one(PaneManagerBridge).attach_tmux(local.tmux_binary)
+        if theme.use_tmux_binary(local.tmux_binary):
+            self._appearance_refresh()
 
     @work(group="refresh")
     async def _refresh_data(
@@ -836,6 +846,8 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         lookup = session_lookup if session_lookup is not None else current.session_lookup
 
         self._runtime_state.computers = computers
+        if data.ownership is not None:
+            adopt_ownership_surface(data.ownership)
         return DataRefreshed(
             computers,
             projects_from_projects_with_todos(projects_with_todos),
@@ -848,6 +860,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             missing_pillars=list(missing),
             operation_id=operation_id,
             parent_operation_id=parent_operation_id,
+            chiptunes_configured=chiptunes_status.configured if chiptunes_status else current.chiptunes_configured,
+            chiptunes_favorited=chiptunes_status.favorited if chiptunes_status else current.chiptunes_favorited,
+            chiptunes_disliked=chiptunes_status.disliked if chiptunes_status else current.chiptunes_disliked,
             chiptunes_loaded=(
                 bool(getattr(chiptunes_status, "loaded", False)) if chiptunes_status else current.chiptunes_loaded
             ),
@@ -1006,6 +1021,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             jobs=list(getattr(jobs_view, "_jobs", [])),
             tts_enabled=bool(getattr(status_bar, "tts_enabled", False)),
             session_lookup=dict(getattr(prep_view, "_session_lookup", {})),
+            chiptunes_configured=status_bar.chiptunes_enabled,
+            chiptunes_favorited=status_bar.chiptunes_favorited,
+            chiptunes_disliked=status_bar.chiptunes_disliked,
             chiptunes_loaded=bool(getattr(status_bar, "chiptunes_loaded", False)),
             chiptunes_playback=str(getattr(status_bar, "chiptunes_playback", "cold")),
             chiptunes_state_version=int(getattr(self, "_chiptunes_state_version", 0)),
@@ -1033,6 +1051,8 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         jobs_view = self.query_one("#jobs-view", JobsView)
         status_bar = self.query_one("#telec-footer", TelecFooter)
 
+        self._adopt_local_computer(message.computers)
+        self.query_one(ConfigContent).load_when_connected()
         sessions_view.update_data(
             computers=message.computers,
             projects=message.projects,
@@ -1067,6 +1087,9 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             )
         status_bar.tts_enabled = message.tts_enabled
         self._apply_chiptunes_footer_state(
+            configured=message.chiptunes_configured,
+            favorited=message.chiptunes_favorited,
+            disliked=message.chiptunes_disliked,
             loaded=message.chiptunes_loaded,
             playback=message.chiptunes_playback,
             state_version=message.chiptunes_state_version,
@@ -1205,29 +1228,6 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             observation_reason=AvailabilityObservationReason.RECONNECT,
         )
 
-    def _project_cold_start_availability(self) -> None:
-        """Project an honest unknown state before the first snapshot arrives."""
-        operation_id = str(uuid4())
-        before_projection = self._classified_availability_projection()
-        self._observe_availability_ingress(
-            source=AvailabilityObservationSource.COLD_START,
-            outcome=AvailabilityObservationOutcome.ACCEPTED,
-            reason=AvailabilityObservationReason.APP_MOUNTED,
-            operation_id=operation_id,
-            parent_operation_id=None,
-            before_projection=before_projection,
-        )
-        self._project_agent_availability()
-        self._observe_availability_commit(
-            source=AvailabilityObservationSource.COLD_START,
-            outcome=AvailabilityObservationOutcome.PROJECTED,
-            reason=AvailabilityObservationReason.NO_SNAPSHOT,
-            operation_id=operation_id,
-            parent_operation_id=None,
-            before_projection=before_projection,
-            after_projection=self._classified_availability_projection(),
-        )
-
     def _project_agent_availability(self) -> None:
         """Project the App-owned availability cache to read-only UI copies."""
         availability = dict(self._runtime_state.availability)
@@ -1271,10 +1271,8 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
 
     def _classified_availability_projection(self) -> dict[str, AgentRenderStatus]:
         """Return the complete configured-agent presentation projection."""
-        return {
-            agent: classify_agent_render_status(self._runtime_state.availability.get(agent))
-            for agent in get_enabled_agents()
-        }
+        availability = self._runtime_state.availability
+        return {agent: classify_agent_render_status(availability.get(agent)) for agent in enabled_agents(availability)}
 
     def _observe_availability_ingress(
         self,

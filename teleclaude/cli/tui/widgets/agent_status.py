@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -37,6 +38,11 @@ class AgentRenderSpec:
     selectable: bool
     status: AgentRenderStatus
     indicator: str
+
+
+def enabled_agents(availability: Mapping[str, AgentAvailabilityDTO]) -> tuple[str, ...]:
+    """The agents the daemon projects as enabled, in the projection's order."""
+    return tuple(agent for agent, info in availability.items() if info.enabled)
 
 
 def classify_agent_render_status(info: AgentAvailabilityDTO | None) -> AgentRenderStatus:

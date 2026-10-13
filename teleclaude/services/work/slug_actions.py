@@ -1,10 +1,10 @@
 """Slug-addressed todo actions: freeze, unfreeze, and deliver.
 
 Each action runs against the project's workflow store and answers with a
-structured result. The CLI's local path and the daemon's routes both run these
-functions, so a todo acted on from another computer is acted on by the same
-rule as one acted on in place; the caller renders the result and decides
-nothing about the todo's state.
+structured result. Only the daemon's routes run these functions, so a todo
+acted on from any client or computer is acted on by the same rule, and the
+daemon's own commit hooks follow from it; the caller renders the result and
+decides nothing about the todo's state.
 """
 
 from __future__ import annotations

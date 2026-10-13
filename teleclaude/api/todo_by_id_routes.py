@@ -12,8 +12,11 @@ from pydantic import BaseModel, ConfigDict
 
 from teleclaude.api import todo_artifact_routes, todo_routes, todo_stamp_routes
 from teleclaude.api.auth import CallerIdentity, carried_caller
+from teleclaude.api.todo_slug_routes import request_project_root
+from teleclaude.api.todo_update_support import require_slug_found
 from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api_models_operations import OperationStatusDTO
+from teleclaude.constants import SLUG_NOT_IN_ICEBOX_DETAIL
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.todos_db import (
@@ -23,6 +26,7 @@ from teleclaude.core.todos_db import (
     TodosDb,
 )
 from teleclaude.core.todos_db._identity_pin import todo_identity_pin
+from teleclaude.services.work.slug_actions import SlugActionOutcome, freeze_todo, unfreeze_todo
 
 logger = get_logger(__name__)
 
@@ -30,6 +34,7 @@ router = APIRouter(prefix="/todos", tags=["todos"])
 
 _IDENTITY_ACTION_EVENT = "workflow.todo.identity_action"
 _CWD_REQUIRED_DETAIL = "cwd required: working directory not provided"
+_STATUS_OK = "ok"
 
 
 class _IdentityAction(StrEnum):
@@ -261,6 +266,22 @@ async def todo_remove_by_id(
     )
 
 
+async def _freeze(resolution: TodoIdentityResolution, effective_cwd: str) -> todo_routes._SlugStatusResponse:
+    result = await freeze_todo(request_project_root(effective_cwd), resolution.slug)
+    require_slug_found(resolution.slug, found=result.outcome is not SlugActionOutcome.NOT_FOUND)
+    return todo_routes._SlugStatusResponse(status=_STATUS_OK, slug=resolution.slug, warnings=result.warnings)
+
+
+async def _unfreeze(resolution: TodoIdentityResolution, effective_cwd: str) -> todo_routes._SlugStatusResponse:
+    result = await unfreeze_todo(request_project_root(effective_cwd), resolution.slug)
+    require_slug_found(
+        resolution.slug,
+        found=result.outcome is not SlugActionOutcome.NOT_FOUND,
+        detail=SLUG_NOT_IN_ICEBOX_DETAIL,
+    )
+    return todo_routes._SlugStatusResponse(status=_STATUS_OK, slug=resolution.slug, warnings=result.warnings)
+
+
 @router.post("/by-id/{todo_id}/freeze")
 async def todo_freeze_by_id(
     todo_id: str,
@@ -272,7 +293,7 @@ async def todo_freeze_by_id(
         action=_IdentityAction.FREEZE,
         todo_id=todo_id,
         cwd=cwd,
-        perform=lambda resolution, effective_cwd: todo_routes.todo_freeze(resolution.slug, effective_cwd),
+        perform=_freeze,
     )
 
 
@@ -287,7 +308,7 @@ async def todo_unfreeze_by_id(
         action=_IdentityAction.UNFREEZE,
         todo_id=todo_id,
         cwd=cwd,
-        perform=lambda resolution, effective_cwd: todo_routes.todo_unfreeze(resolution.slug, effective_cwd),
+        perform=_unfreeze,
     )
 
 

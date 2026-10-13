@@ -26,11 +26,9 @@ from textual.widgets import Button, Input, Label, Select, TextArea
 
 from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.base import TelecMixin
+from teleclaude.cli.tui.local_computer import is_remote_computer
 from teleclaude.cli.tui.messages import CreateSessionRequest, HandoffSessionRequest
-from teleclaude.cli.tui.widgets.agent_status import build_agent_render_spec
-from teleclaude.config.machine import config
-from teleclaude.core.agents import get_enabled_agents
-from teleclaude.core.command_dispatch import is_remote_target
+from teleclaude.cli.tui.widgets.agent_status import build_agent_render_spec, enabled_agents
 from teleclaude.slug import SLUG_PATTERN
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_CHOICES, TodoDumpKind
 
@@ -42,6 +40,7 @@ _CREATE_KIND_SELECT_SELECTOR = "#kind-select"
 _CREATE_KIND_SELECT_PROMPT = "Choose a kind"
 _PRESET_KIND_LABEL_TEMPLATE = "Kind: {kind}"
 _CREATE_KIND_REQUIRED_ERROR = "Choose a todo kind"
+_NO_AGENT_ENABLED = "No agent is enabled on this computer"
 
 
 @dataclass
@@ -380,7 +379,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | HandoffSessionRequest
         self._title = title
         self._handoff_session_id = handoff_session_id
         self._handoff_source_selection = handoff_source_selection
-        self._agents = tuple(get_enabled_agents())
+        self._agents = enabled_agents(self._agent_availability)
 
     def compose(self) -> ComposeResult:
         project_name = self._project_path.rsplit("/", 1)[-1]
@@ -413,7 +412,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | HandoffSessionRequest
                     )
                 else:
                     yield Label(
-                        "No enabled agents in config.yml (set agents.<name>.enabled: true)",
+                        _NO_AGENT_ENABLED,
                         id="agent-disabled-note",
                     )
 
@@ -557,7 +556,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | HandoffSessionRequest
         if not raw_path:
             path_error.update("Path is required")
             return None
-        remote = is_remote_target(self._computer, config.computer.name)
+        remote = is_remote_computer(self._computer)
         resolved = raw_path if remote else os.path.expanduser(raw_path)
         if not remote and not os.path.isdir(resolved):
             path_error.update("Path does not exist or is not a directory")

@@ -16,6 +16,7 @@ _PILLAR_VERBS: dict[TuiBootstrapPillar, str | None] = {
     "jobs": None,
     "settings": None,
     "chiptunes": None,
+    "ownership": None,
 }
 
 

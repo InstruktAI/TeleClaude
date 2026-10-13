@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from rich.style import Style
@@ -26,6 +27,20 @@ from teleclaude.closed_model import MASKED_INPUT
 
 if TYPE_CHECKING:
     from teleclaude.config.identity_schema import PersonEntry
+
+
+class _SecretState(StrEnum):
+    """How a write-only field is presented: whether it holds a value, never the value."""
+
+    UNAVAILABLE = "unavailable"
+    SET = "set"
+    UNSET = "unset"
+
+
+def _secret_state(field: ReflectedField) -> _SecretState:
+    if not field.secret_available:
+        return _SecretState.UNAVAILABLE
+    return _SecretState.SET if field.secret_is_set else _SecretState.UNSET
 
 
 def _segment_label(segment: str) -> str:
@@ -186,7 +201,7 @@ class ConfigContentRenderMixin:
             return
 
         if f.write_only:
-            status = "unavailable" if not f.secret_available else "set" if f.secret_is_set else "unset"
+            status = _secret_state(f)
             result.append(
                 f"{pad}{prefix} {'✔' if f.secret_is_set else '○'} ",
                 style=_OK if f.secret_is_set and f.secret_available else _DIM,
@@ -235,8 +250,7 @@ class ConfigContentRenderMixin:
 
         else:
             value = str(f.value if f.value is not None else "")
-            # A sensitive value is revealed only while editing (handled above).
-            display = MASKED_INPUT if (f.sensitive and value) else (value or "(not set)")
+            display = value or "(not set)"
             result.append(f"{pad}{prefix} {'✔' if value else '○'} ", style=_OK if value else _DIM)
             result.append(f"{f.name}: ", style=_DIM)
             result.append(f"{display}\n", style=row_style)
@@ -261,8 +275,8 @@ class ConfigContentRenderMixin:
                 val_str = "yes" if f.value else "no"
             elif f.field_type in (list[str], list):
                 val_str = f"[{len(f.value or [])}]"
-            elif f.sensitive and f.value:
-                val_str = MASKED_INPUT
+            elif f.write_only:
+                val_str = _secret_state(f)
             else:
                 val_str = str(f.value if f.value is not None else "")
                 if len(val_str) > 15:

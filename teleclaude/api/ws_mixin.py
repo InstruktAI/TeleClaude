@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from fastapi import WebSocket, WebSocketDisconnect
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api.person_display import ownership_surface, with_person_chips_on_todos
 from teleclaude.api.session_view_models import project_session_dtos
 from teleclaude.api.ws_constants import (
     API_WS_CONTROL_EVENTS,
@@ -288,7 +289,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             serving_computer=config.computer.name,
             computer_registry=cache.get_computers(),
         )
-        event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions))
+        event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions, ownership=ownership_surface()))
         self._enqueue_ws_payload(websocket, event.event, event.model_dump(exclude_none=True))
 
     def _queue_projects_snapshot(self, websocket: WebSocket, stream: WsStream, include_removed: bool) -> None:
@@ -314,7 +315,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                         subject=proj.subject,
                         owner=proj.owner,
                         has_todo=False,
-                        todos=[
+                        todos=with_person_chips_on_todos(
                             t.model_copy(
                                 update={
                                     _REFRESH_COMPUTER_FIELD: comp or config.computer.name,
@@ -322,7 +323,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                                 }
                             )
                             for t in todos
-                        ],
+                        ),
                     )
                 )
             else:
@@ -339,7 +340,9 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
 
         event = ProjectsInitialEventDTO(
             event=_PROJECT_STREAM_EVENTS[stream],
-            data=ProjectsInitialDataDTO(projects=projects, computer=_LOCAL_COMPUTER_NAME),
+            data=ProjectsInitialDataDTO(
+                projects=projects, computer=_LOCAL_COMPUTER_NAME, ownership=ownership_surface()
+            ),
         )
         self._enqueue_ws_payload(websocket, event.event, event.model_dump(exclude_none=True))
 

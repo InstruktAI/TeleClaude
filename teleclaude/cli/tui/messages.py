@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
+from typing import Final
 
 from textual.message import Message
 
@@ -20,6 +21,19 @@ from teleclaude.cli.tui.types import DocPreviewState
 
 # --- Data refresh messages ---
 
+_CHIPTUNES_FIELDS: Final = {
+    "chiptunes_configured": "configured",
+    "chiptunes_favorited": "favorited",
+    "chiptunes_disliked": "disliked",
+    "chiptunes_loaded": "loaded",
+    "chiptunes_playback": "playback",
+    "chiptunes_state_version": "state_version",
+    "chiptunes_playing": "playing",
+    "chiptunes_track": "track",
+    "chiptunes_sid_path": "sid_path",
+    "chiptunes_pending_command_id": "pending_command_id",
+    "chiptunes_pending_action": "pending_action",
+}
 _PAYLOAD_ARITY_MESSAGE = "DataRefreshed expects {expected} positional payload values"
 
 
@@ -31,6 +45,9 @@ class _ChiptunesPendingCommand:
 
 @dataclass(frozen=True)
 class _ChiptunesState:
+    configured: bool = False
+    favorited: bool = False
+    disliked: bool = False
     loaded: bool = False
     playback: str = "cold"
     state_version: int = 0
@@ -79,16 +96,7 @@ class DataRefreshed(Message):
         chiptunes_state: dict[str, object],  # guard: loose-dict - dynamic payload
     ) -> _ChiptunesState:  # guard: loose-dict - dynamic payload
         """Normalize optional chiptunes fields into an immutable payload."""
-        expected = {
-            "chiptunes_loaded": "loaded",
-            "chiptunes_playback": "playback",
-            "chiptunes_state_version": "state_version",
-            "chiptunes_playing": "playing",
-            "chiptunes_track": "track",
-            "chiptunes_sid_path": "sid_path",
-            "chiptunes_pending_command_id": "pending_command_id",
-            "chiptunes_pending_action": "pending_action",
-        }
+        expected = _CHIPTUNES_FIELDS
         unknown = set(chiptunes_state) - set(expected)
         if unknown:
             unknown_names = ", ".join(sorted(unknown))
@@ -136,6 +144,21 @@ class DataRefreshed(Message):
     def session_lookup(self) -> SessionLookup:
         """Return the session id -> live/closed classification lookup."""
         return self._payload.session_lookup
+
+    @property
+    def chiptunes_configured(self) -> bool:
+        """Return whether machine configuration turns chiptunes on."""
+        return self._chiptunes.configured
+
+    @property
+    def chiptunes_favorited(self) -> bool:
+        """Return whether the current track is a favourite."""
+        return self._chiptunes.favorited
+
+    @property
+    def chiptunes_disliked(self) -> bool:
+        """Return whether the current track is disliked."""
+        return self._chiptunes.disliked
 
     @property
     def chiptunes_loaded(self) -> bool:

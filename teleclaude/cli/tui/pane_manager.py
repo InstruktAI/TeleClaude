@@ -34,7 +34,6 @@ from teleclaude.cli.tui.pane_layout import (
 )
 from teleclaude.cli.tui.pane_theming import PaneThemingMixin
 from teleclaude.cli.tui.types import DocPreviewState
-from teleclaude.config.machine import config
 from teleclaude.core.shell_identity import require_shell_safe_identifier
 
 if TYPE_CHECKING:
@@ -154,13 +153,15 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
 
     TUI_SESSION_PREFIX = "tc_tui"
 
-    def __init__(self, *, is_reload: bool = False) -> None:
+    def __init__(self, *, tmux_binary: str, is_reload: bool = False) -> None:
         """Initialize pane manager.
 
         Args:
+            tmux_binary: The tmux executable the daemon projects for this computer.
             is_reload: True on SIGUSR2 reload — preserve existing panes
                        instead of killing orphans.
         """
+        self._tmux_binary = tmux_binary
         self.state = PaneState()
         self._in_tmux = bool(os.environ.get("TMUX"))  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         self._layout_state = _PaneLayoutState()
@@ -559,7 +560,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         """
         try:
             result = subprocess.run(
-                [config.computer.tmux_binary, *args],
+                [self._tmux_binary, *args],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -747,7 +748,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             raise ValueError(_ATTACHMENT_DESTINATION_UNAVAILABLE_DETAIL)
 
         # Local: use configured tmux binary with nested attach
-        tmux = config.computer.tmux_binary
+        tmux = self._tmux_binary
         cmd = f"env -u TMUX TERM=tmux-256color {tmux} -u {attach_cmd}"
         logger.debug("Local attach cmd for %s: %s", tmux_session_name, cmd)
         return cmd

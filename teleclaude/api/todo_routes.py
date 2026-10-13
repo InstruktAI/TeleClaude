@@ -32,7 +32,6 @@ from teleclaude.api.todo_update_support import (
     apply_unclaim_update,
     normalize_hold_reason,
     normalize_schedule_request,
-    require_slug_found,
     require_slug_in_todo,
     resolve_current_group_slug,
     should_emit_route_update,
@@ -52,7 +51,6 @@ from teleclaude.constants import (
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
     SLUG_NOT_FOUND_DETAIL,
-    SLUG_NOT_IN_ICEBOX_DETAIL,
     TodoStatus,
 )
 from teleclaude.core.db import db as runtime_db
@@ -774,30 +772,6 @@ async def todo_remove(  # pyright: ignore
         client_request_id=client_request_id,
         force=force,
     )
-
-
-async def todo_freeze(
-    slug: str,
-    cwd: str | None = None,
-) -> _SlugStatusResponse:
-    """Move a todo to icebox."""
-    effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    require_slug_found(slug, found=await todos_db.freeze(slug))
-    warnings = dependency_warnings.freeze_dependent_warnings(slug, await todos_db.get_open_dependents(slug))
-    return _SlugStatusResponse(status="ok", slug=slug, warnings=warnings)
-
-
-async def todo_unfreeze(
-    slug: str,
-    cwd: str | None = None,
-) -> _SlugStatusResponse:
-    """Restore a todo from icebox to active todo list."""
-    effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    require_slug_found(slug, found=await todos_db.unfreeze(slug), detail=SLUG_NOT_IN_ICEBOX_DETAIL)
-    warnings = dependency_warnings.unfreeze_frozen_dep_warnings(slug, await todos_db.get_deps_with_status(slug))
-    return _SlugStatusResponse(status="ok", slug=slug, warnings=warnings)
 
 
 @router.post("/{slug}/reactivate")

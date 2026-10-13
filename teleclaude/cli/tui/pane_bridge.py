@@ -131,8 +131,9 @@ class PaneManagerBridge(TelecMixin, Widget):
 
     def __init__(self, *, is_reload: bool = False, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self.pane_manager = TmuxPaneManager(is_reload=is_reload)
-        self._writer = PaneWriter(self.pane_manager)
+        self._is_reload = is_reload
+        self.pane_manager: TmuxPaneManager | None = None
+        self._writer: PaneWriter | None = None
         self._sessions: list[SessionDTO] = []
         self._preview_intent: PreviewIntent = None
         self._sticky_session_ids: list[str] = []
@@ -140,6 +141,17 @@ class PaneManagerBridge(TelecMixin, Widget):
         self._pending_focus: bool = False
         self._preview_revision = 0
         self._session_snapshot_ready = not is_reload
+
+    def attach_tmux(self, tmux_binary: str) -> None:
+        """Build the pane manager once the daemon has projected this computer's tmux binary.
+
+        Layout requested before then stays dirty and is applied on attach.
+        """
+        if self.pane_manager is not None:
+            return
+        self.pane_manager = TmuxPaneManager(tmux_binary=tmux_binary, is_reload=self._is_reload)
+        self._writer = PaneWriter(self.pane_manager)
+        self._mark_layout_dirty()
 
     def _mark_layout_dirty(self, *, focus: bool = False) -> None:
         """Mark layout as needing recalculation.
@@ -171,7 +183,9 @@ class PaneManagerBridge(TelecMixin, Widget):
         PaneWriter thread.  If multiple _apply calls fire before the
         writer processes one, only the latest snapshot is executed.
         """
-        if not self._session_snapshot_ready:
+        pane_manager = self.pane_manager
+        writer = self._writer
+        if pane_manager is None or writer is None or not self._session_snapshot_ready:
             return
         # Snapshot mutable state for the writer thread
         sessions = self._sessions
@@ -180,15 +194,15 @@ class PaneManagerBridge(TelecMixin, Widget):
         preview_revision = self._preview_revision
 
         def _do_layout() -> None:
-            self.pane_manager.update_session_catalog(sessions)
-            if self.pane_manager.has_reload_panes():
-                self.pane_manager.seed_for_reload(
+            pane_manager.update_session_catalog(sessions)
+            if pane_manager.has_reload_panes():
+                pane_manager.seed_for_reload(
                     active_doc_preview=self._artifact_preview(preview_intent),
                     adopt_discovered_artifact=(
                         preview_revision == 0 and not isinstance(preview_intent, ArtifactPreviewIntent)
                     ),
                 )
-            restored_doc = self.pane_manager.adopted_doc_preview()
+            restored_doc = pane_manager.adopted_doc_preview()
             effective_intent = preview_intent
             if (
                 restored_doc is not None
@@ -197,20 +211,20 @@ class PaneManagerBridge(TelecMixin, Widget):
             ):
                 effective_intent = ArtifactPreviewIntent(restored_doc)
                 self.post_message(DocPreviewRestored(restored_doc, preview_revision))
-            self.pane_manager.apply_layout(
+            pane_manager.apply_layout(
                 active_session_id=self._session_preview_id(effective_intent),
                 sticky_session_ids=sticky_ids,
                 active_doc_preview=self._artifact_preview(effective_intent),
                 focus=False,
             )
 
-        self._writer.schedule(_do_layout, coalesce=True)
+        writer.schedule(_do_layout, coalesce=True)
         doc_preview = self._artifact_preview(preview_intent)
         focus_id = self._session_preview_id(preview_intent) or (
             doc_pane_key(doc_preview.doc_id) if doc_preview is not None else None
         )
         if focus and focus_id is not None:
-            self._writer.schedule(lambda: self.pane_manager.focus_pane_for_session(focus_id))
+            writer.schedule(lambda: pane_manager.focus_pane_for_session(focus_id))
 
     @staticmethod
     def _session_preview_id(intent: PreviewIntent) -> str | None:
@@ -292,7 +306,10 @@ class PaneManagerBridge(TelecMixin, Widget):
     def on_focus_pane_request(self, message: FocusPaneRequest) -> None:
         """Handle explicit focus request (non-blocking)."""
         session_id = message.session_id
-        self._writer.schedule(lambda: self.pane_manager.focus_pane_for_session(session_id))
+        pane_manager = self.pane_manager
+        if pane_manager is None or self._writer is None:
+            return
+        self._writer.schedule(lambda: pane_manager.focus_pane_for_session(session_id))
 
     def on_doc_preview_request(self, message: DocPreviewRequest) -> None:
         """Handle doc preview request — view mode without focus."""
@@ -310,9 +327,13 @@ class PaneManagerBridge(TelecMixin, Widget):
 
     def reapply_colors(self) -> None:
         """Re-apply agent colors after theme change (non-blocking)."""
+        if self.pane_manager is None or self._writer is None:
+            return
         self._writer.schedule(self.pane_manager.reapply_agent_colors)
 
     def cleanup(self) -> None:
         """Clean up all panes on exit."""
+        if self.pane_manager is None or self._writer is None:
+            return
         self._writer.stop()
         self.pane_manager.cleanup()

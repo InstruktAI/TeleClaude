@@ -5,8 +5,6 @@ from __future__ import annotations
 from teleclaude.api_models import (
     AgentActivityEventDTO,
     AgentAvailabilityEventDTO,
-    ChiptunesStateEventDTO,
-    ChiptunesTrackEventDTO,
     ErrorEventDTO,
     ProjectsInitialEventDTO,
     RefreshEventDTO,
@@ -16,6 +14,7 @@ from teleclaude.api_models import (
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
 )
+from teleclaude.api_models_chiptunes import ChiptunesStateEventDTO, ChiptunesTrackEventDTO
 from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
 
 __all__ = [
