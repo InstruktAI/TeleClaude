@@ -59,7 +59,7 @@ reference resolves unchanged.
 
 ```gherkin
 Scenario Outline: A reference to something registered here resolves
-  Given an agent session or a human operator working against this computer
+  Given an agent session working against this computer
   And a <referent> registered on this computer
   When their declaration or request names it by slug
   Then it resolves to that referent's record on this computer
@@ -77,11 +77,11 @@ Scenario Outline: A reference to something registered here resolves
 
 ```gherkin
 Scenario Outline: A reference to something not registered here is refused
-  Given an agent session or a human operator working against this computer
+  Given an agent session working against this computer
   And a well-formed slug that names no <referent> registered on this computer
   When their declaration or request names it
-  Then they are refused rather than given a partial or substituted record
-  And the refusal they read names the kind and slug, the computer that answered, and how to register that kind there
+  Then the agent is refused rather than given a partial or substituted record
+  And the refusal the agent reads names the kind and slug, the computer that answered, and how to register that kind there
   And the refusal does not present the reference as malformed
 
   Examples:
@@ -95,9 +95,9 @@ Scenario Outline: A reference to something not registered here is refused
 #### UC-CFG-REF3: Registering the referent makes the same reference resolve
 
 ```gherkin
-Given an agent session or a human operator whose reference was refused because its referent was not registered on this computer
+Given an agent session whose reference was refused because its referent was not registered on this computer
 And the referent has since been registered here through the surface the refusal named
-When they resolve the same reference, unchanged
+When the agent resolves the same reference, unchanged
 Then it resolves to the referent's record
 ```
 
