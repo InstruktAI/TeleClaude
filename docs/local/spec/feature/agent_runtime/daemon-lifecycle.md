@@ -76,23 +76,6 @@ And orphan host-pane / workspace / per-session tmpdir detection is the responsib
 
 #### Post-startup background workers
 
-<!-- planned-change:supervise-long-lived-daemon-tasks -->
-
-```
-Given startup has completed
-When the service's start sequence continues
-Then it spawns the following tracked background workers (each wired to a structured exception logger):
-  - Periodic cleanup (first iteration runs immediately, then every hour)
-  - Poller watch
-  - Hook outbox worker (one worker per session, parallel across sessions)
-  - Mirror worker — transcript mirroring
-  - Workflow bridge and identity bridge — translators that bring v2 envelopes into v1 cache invalidation
-  - Resource monitor, write-ahead-log checkpoint, optional supervisor watch
-And only after these are scheduled does the service log that it is running
-```
-
-<!-- change:supervise-long-lived-daemon-tasks -->
-
 ```
 Given startup has completed
 When the service's start sequence continues
@@ -105,8 +88,6 @@ Then it starts the following background workers, each supervised as UC-DL17 stat
   - Resource monitor, write-ahead-log checkpoint, optional supervisor watch
 And only after these are scheduled does the service log that it is running
 ```
-
-<!-- /planned-change:supervise-long-lived-daemon-tasks -->
 
 #### UC-DL2 — Turn delivery state is reconciled before adapters can emit output
 
@@ -172,19 +153,6 @@ Then shutdown completes without reporting a playback-cancellation validation fai
 
 #### Request-surface exit detection
 
-<!-- planned-change:supervise-long-lived-daemon-tasks -->
-
-```
-Given the embedded request-surface task exits while the service is NOT shutting down
-When the wired exit-handler callback fires with the relevant flags
-Then if the shutdown event is set, it returns immediately
-And if the should-exit flag is true, it logs "request surface exited cleanly; skipping restart" and returns
-And otherwise it logs a warning identifying whether the exit was a crash or a clean task completion, and schedules a restart
-And external watchdogs may also request a restart via the schedule-restart hook
-```
-
-<!-- change:supervise-long-lived-daemon-tasks -->
-
 ```
 Given the embedded request-surface task, or the webhook ingress listener it starts, exits while the service is NOT shutting down
 When the wired exit-handler callback fires with the relevant flags
@@ -194,25 +162,7 @@ And otherwise it logs a warning identifying which surface exited and whether the
 And external watchdogs may also request a restart via the schedule-restart hook
 ```
 
-<!-- /planned-change:supervise-long-lived-daemon-tasks -->
-
 #### Request-surface restart loop
-
-<!-- planned-change:supervise-long-lived-daemon-tasks -->
-
-```
-Given a restart is scheduled while the loop is alive
-When the restart task acquires the restart lock
-Then it tracks a sliding restart window: if the time since window-start exceeds the configured window, the counter resets and the window restarts
-And it increments the attempt counter
-And if attempts exceed the configured maximum, it logs "restart limit exceeded; leaving surface down" and returns failure
-And otherwise it sleeps the backoff and asks the request-surface to restart
-And on success returns success
-And on failure logs the exception and returns failure
-And the service does NOT exit when the restart limit is reached — the surface stays down, the service stays up, and an external watchdog (supervisor) is expected to react
-```
-
-<!-- change:supervise-long-lived-daemon-tasks -->
 
 ```
 Given a restart is scheduled while the loop is alive
@@ -225,8 +175,6 @@ And on success returns success
 And on failure logs the exception and schedules another restart, counted in the same window
 And the service never stays up with its request surface left down
 ```
-
-<!-- /planned-change:supervise-long-lived-daemon-tasks -->
 
 #### UC-CW1: Chiptunes registry paths are durable home-root control files
 
@@ -445,8 +393,6 @@ And admission never reopens in the prepared process before it exits
 And a caller that terminates the daemon within the grace sees the ordinary stop or restart
 ```
 
-<!-- planned:supervise-long-lived-daemon-tasks -->
-
 #### UC-DL17: A long-lived task that ends is replaced, or the daemon restarts
 
 ```gherkin
@@ -459,8 +405,6 @@ And when the task cannot be replaced in place, or its restart budget is exhauste
 And the service manager relaunches the service on its installed code
 And the agent never finds the capability silently absent while the daemon reports itself healthy
 ```
-
-<!-- /planned:supervise-long-lived-daemon-tasks -->
 
 <!-- planned:record-what-holds-a-stopped-daemon -->
 
@@ -515,17 +459,9 @@ evidence requirement (`general/principle/grounding`).
 - **Cache warm is durable-storage-only.** The lifecycle does not match cached snapshots against live host panes. A session row marked active in storage with no corresponding host pane will appear in the cache until a downstream operation (poller watch, periodic cleanup) discovers the mismatch.
 - **Orphan host-pane/workspace/tmpdir sweeps are amortized into the steady-state cleanup loop**, not into startup. The first periodic cleanup iteration runs immediately after startup completes, so the practical effect is sweep-on-boot — but it happens after the started flag is set and after the request surface is accepting traffic, not before.
 
-<!-- planned-change:supervise-long-lived-daemon-tasks -->
-
-- **Request-surface restart leaves the service up on exhaustion.** When restart attempts exceed the configured maximum inside the configured window, the service does NOT exit — the external surface stays down and the service process keeps running. An external supervisor is the expected next layer of recovery.
-
-<!-- change:supervise-long-lived-daemon-tasks -->
-
 - **A failure that recurs on every start becomes a relaunch cycle.** A supervised task that fails again after each replacement, and again after each relaunch, escalates on every run. The service manager's relaunch pacing bounds the cycle; the daemon log records every end and every escalation, and nothing ends the cycle until the cause is removed.
 - **Supervision stops once shutdown preparation begins.** A long-lived task that ends while the daemon is draining or stopping is neither replaced nor escalated; the daemon already reports itself draining, and its own shutdown follows.
 - **Per-session and per-client tasks are replaced on demand, not supervised.** Output pollers, per-session hook-outbox and inbound workers, and per-client senders are started again by their owners at the next demand — the poller watch, the next enqueue, the next message — so between one ending and that demand, the affected session or client waits.
-
-<!-- /planned-change:supervise-long-lived-daemon-tasks -->
 
 - **The should-exit flag is the only clean-exit signal.** A request-surface task that exited because should-exit was set is treated as intentional and does NOT trigger restart. Anything else (raised exception, task done without should-exit) is treated as a crash.
 - **Slow startup is a warning, not a failure.** Startup elapsed time at or beyond the slow-startup threshold (30s) emits a warning; the warm cache also emits a per-stage breakdown when warm takes 5s or more. Neither aborts the boot.
