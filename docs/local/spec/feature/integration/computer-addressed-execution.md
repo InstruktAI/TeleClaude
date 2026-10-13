@@ -110,3 +110,17 @@ When the caller runs a daemon-backed command naming that same computer, or namin
 Then the command runs on that computer as it always has
 And no request crosses to any other computer
 ```
+
+<!-- planned:relay-intake-dies-on-unhandled-refusal -->
+
+#### UC-CAE7: A command the other computer fails or refuses leaves that computer answering
+
+```gherkin
+Given a caller addresses a command to another computer
+And running that command on the other computer fails or is refused
+When the command is submitted
+Then the caller receives the error that computer produced
+And commands addressed to that computer afterwards run there and return its answers
+```
+
+<!-- /planned:relay-intake-dies-on-unhandled-refusal -->
