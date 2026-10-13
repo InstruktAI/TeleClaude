@@ -16,6 +16,8 @@ Recorded-commit publication invokes its internal deployment entry after
 validating the committed source. Direct invocation builds for inspection only.
 Deployment runs two phases:
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 1. **Global phase** — sources from `agents/global/` (domain-partitioned
    commands from every repository for the domains it publishes, `general`
    included, and global skills from the mother alone) are built under a
@@ -24,6 +26,16 @@ Deployment runs two phases:
    `~/.teleclaude/commands/<domain>/`, and the global skill catalog. A
    repository carrying global artifacts outside its declared reach fails
    validation rather than being silently skipped.
+
+<!-- change:procedure-role-capability-composition -->
+
+1. **Global phase** — sources from `agents/global/` (global skills from the
+   mother alone) are built under a transient distribution directory and
+   deployed to the global consumers: the per-agent user-home roots and the
+   global skill catalog. A repository carrying global artifacts outside its
+   declared reach fails validation rather than being silently skipped.
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 2. **Local phase** — sources from `agents/local/` (any repository) are
    built under a transient distribution directory and then deployed to that
@@ -42,6 +54,8 @@ listing is rendered on demand by `general/procedure/skill-use` — reached from
 catalog stays lazy. Tier-local skills are the ones that reach native CLI
 directories, eager-indexed in their context's generated entrypoint.
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 TeleClaude command artifacts are not runtime artifacts at all: global command
 documents deploy to `~/.teleclaude/commands/<domain>/` from the global phase,
 a project command source is validated by the local phase and written to no
@@ -53,6 +67,18 @@ corpus document directly. The corpus is the `~/.teleclaude/commands/`
 directory, reusable across projects. The shape of a canonical command name and
 how the loader resolves it are the agent runtime's contract
 (`local/projects/teleclaude/spec/feature/agent_runtime/run-session-with-command`).
+<!-- change:procedure-role-capability-composition -->
+
+No command artifact exists and no command corpus is deployed. What a session is
+assigned is a published procedure, reached exclusively through the loader
+message TeleClaude composes at procedure entry, which instructs the session to
+read the brief materialized from that publication. How a procedure is resolved
+and its brief materialized is the agent runtime's contract
+(`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`). A
+deployed `~/.teleclaude/commands/` directory left by an earlier publication is
+retracted by the owning repository's next publication as an obsolete owned
+destination.
+<!-- /planned-change:procedure-role-capability-composition -->
 
 Global skills compose to `~/.teleclaude/skills/` and are discovered through the
 catalog the master points at; they reach no runtime home. Tier-local skills — the
@@ -132,6 +158,8 @@ rather than restating it.
 
 ### Use cases
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Scenario: UC-ARD1 Mother project full sync with deploy
   Given the project is the Mother project
@@ -145,6 +173,24 @@ Scenario: UC-ARD1 Mother project full sync with deploy
   And docs/global/ is composed per domain into the ~/.teleclaude/docs/ root
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+```
+Scenario: UC-ARD1 Mother project full sync with deploy
+  Given the project is the Mother project
+  And sync is invoked in deploy mode
+  When the distribution pipeline runs
+  Then the entrypoint master deploys to each enabled runtime's home
+  And global skill packages compose to ~/.teleclaude/skills/
+  And no global skill or subagent artifact is written into any runtime home
+  And AGENTS.override.md is written to the project root for Codex override detection
+  And docs/global/ is composed per domain into the ~/.teleclaude/docs/ root
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
   Given the project is not the Mother project
@@ -155,6 +201,21 @@ Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
   And the local phase writes no command artifact and no subagent definition into any runtime home
   And each domain the project owns in business.publishes is materialized into the deployed documentation snapshot
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```
+Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
+  Given the project is not the Mother project
+  And sync is invoked in deploy mode
+  When the distribution pipeline runs
+  Then the global phase produces no agent-home artifact writes
+  And the local phase materializes the repository's own skill packages into the project-root CLI skill directories
+  And the local phase writes no subagent definition into any runtime home
+  And each domain the project owns in business.publishes is materialized into the deployed documentation snapshot
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-ARD3: Deploy is refused from a slug worktree
 
@@ -271,6 +332,8 @@ Scenario: UC-ARD9 A published domain's activatable procedures surface only in it
   And no such procedure is dropped from its domain bundle
 ```
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-ARD12: Deleted command sources are retracted from the shared commands directory
 
 ```
@@ -281,6 +344,20 @@ Scenario: UC-ARD12 A removed command source disappears from ~/.teleclaude/comman
   And commands owned by other source scopes remain in ~/.teleclaude/commands/
   And a destination file with no ownership record is preserved
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-ARD12: Deployed command documents are retracted
+
+```
+Scenario: UC-ARD12 Every command document a repository deployed disappears from ~/.teleclaude/commands/ on its next deploy
+  Given command documents previously deployed to ~/.teleclaude/commands/ by a deploy-mode sync under a repository's ownership
+  When a deploy-mode sync runs again for that repository
+  Then every deployed copy that repository owned is removed from ~/.teleclaude/commands/
+  And a destination file with no ownership record is preserved
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-ARD40: A retiring command stays deployed until its delivery folds
 

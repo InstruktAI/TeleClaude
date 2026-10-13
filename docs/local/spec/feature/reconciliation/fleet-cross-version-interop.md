@@ -25,6 +25,12 @@ The behavioral contract that keeps a permanently multi-version fleet working tog
 - **Removing or breaking a shared shape waits for the slowest node.** A field or behavior the whole fleet relies on may be removed only after every live node — including the slowest channel — no longer needs it.
 - **Capabilities that require agreement refuse rather than guess.** A change that two nodes must agree on to stay safe (a coordination protocol) is not silently bypassed by an unaware node; it holds until both sides support it.
 
+<!-- planned:procedure-role-capability-composition -->
+
+- **Procedure entry is a capability that requires agreement.** A node advertises `procedure-entry` when it creates sessions by naming a published procedure. A session-create request naming a procedure that is forwarded to a node not advertising it is refused before any side effect, naming the missing capability; a request naming a retired command that reaches a node advertising it is refused naming the unknown command. No node translates between the two shapes. The agent role a session carries travels on an additive `role` field; the older `system_role` and `job_role` fields stay populated with the role name verbatim for transport and are authority for nothing.
+
+<!-- /planned:procedure-role-capability-composition -->
+
 ### Use cases
 
 #### UC-FXI-1: An older node tolerates a newer node's added field

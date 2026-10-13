@@ -47,6 +47,8 @@ An invalid manual selection is rejected; it never substitutes another agent.
 substitutes another agent. A scheduled job is never fixed work: its declaration carries a
 preference list, not a binding.
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ### Command dispatch policy
 
 Ordinary command-driven work uses the command matrix for automatic candidates and
@@ -102,6 +104,38 @@ The result is an effective thinking mode, not a concrete model. Mapping that mod
 to an ordered model chain, filtering model-scoped availability, and recovering from
 model-specific quota exhaustion belong downstream and remain outside caller- and
 job-policy-facing thinking-mode resolution.
+<!-- change:procedure-role-capability-composition -->
+
+### Procedure dispatch declaration
+
+Ordinary assignment work takes its automatic candidates and default thinking
+mode from the entry procedure's `dispatch` declaration
+(`general/spec/snippet-authoring-schema`): an ordered agent preference list
+and one of `fast`, `med`, `slow`. Scheduled jobs instead receive their
+candidate order and execution settings from the effective job declaration; a
+job's declaration is never unioned with its procedure's. Role and job remain
+identity facts and never participate in agent selection.
+
+The global automatic order is Claude, Codex, Gemini, DeepSeek. It applies to
+generic session creation with no procedure; an entry procedure without a
+dispatch declaration is a publication defect and is refused before any session
+exists.
+
+### Thinking-mode resolution
+
+Run-session dispatch reads the same declaration. An explicit caller mode
+overrides the procedure default. A doc-only commit review passes explicit
+`med`.
+
+Run-session mode resolution has one owner beside agent routing. Run-session
+formatters, clients, and API models preserve omission and never independently
+substitute `slow`; other session-creation contracts remain unchanged.
+
+The result is an effective thinking mode, not a concrete model. Mapping that mode
+to an ordered model chain, filtering model-scoped availability, and recovering from
+model-specific quota exhaustion belong downstream and remain outside caller- and
+job-policy-facing thinking-mode resolution.
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ### Eligibility and ordering
 
@@ -141,6 +175,8 @@ startup context.
 
 ### Use cases
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-RAAD-1: Automatic dispatch follows the complete command policy
 
 ```gherkin
@@ -150,6 +186,20 @@ When TeleClaude selects the session agent
 Then the initial candidate order is the complete row for that command
 And configuration iteration order does not change the result
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-RAAD-1: Automatic dispatch follows the procedure's complete declaration
+
+```gherkin
+Given an agent caller creates fresh work without selecting an agent
+And the work's entry procedure declares an ordered agent list
+When TeleClaude selects the session agent
+Then the initial candidate order is that complete list
+And configuration iteration order does not change the result
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-RAAD-3: Automatic eligibility is strict
 
@@ -169,6 +219,8 @@ Then it uses the same eligible ordered candidate set as any other automatic fres
 And the agent used by the initiating or producing session does not change the result
 ```
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-RAAD-5: Unmapped work remains operable and deterministic
 
 ```gherkin
@@ -177,6 +229,19 @@ When TeleClaude selects the session agent
 Then it uses Claude, Codex, Gemini, DeepSeek in that order
 And a known command missing from the matrix is surfaced as a policy defect
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-RAAD-5: Generic work remains operable and deterministic
+
+```gherkin
+Given an agent caller creates generic fresh work with no procedure
+When TeleClaude selects the session agent
+Then it uses Claude, Codex, Gemini, DeepSeek in that order
+And an entry procedure without a dispatch declaration is refused as a publication defect
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-RAAD-6: Manual agent selection never substitutes
 
@@ -244,6 +309,8 @@ Then human-facing routing explanation is absent from startup context and machine
 And the automated caller receives the selected agent and typed routing reason or a required typed failure
 ```
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-RAAD-13: Explicit thinking mode overrides command policy
 
 ```gherkin
@@ -258,6 +325,27 @@ Examples:
   | human       |
   | agent       |
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-RAAD-13: Explicit thinking mode overrides the procedure's declaration
+
+```gherkin
+Scenario Outline: Explicit thinking mode overrides the declared mode
+Given an authenticated <caller kind> caller invokes sessions run with an explicit valid thinking mode
+And the procedure declares a thinking mode
+When TeleClaude resolves the fresh-session request
+Then the explicit thinking mode is used
+
+Examples:
+  | caller kind |
+  | human       |
+  | agent       |
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
 
 #### UC-RAAD-14: A command mode resolves caller omission
 
@@ -275,6 +363,28 @@ Examples:
   | agent       |
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-RAAD-14: A declared mode resolves caller omission
+
+```gherkin
+Scenario Outline: The procedure's declared mode resolves omission
+Given an authenticated <caller kind> caller invokes sessions run for a procedure declaring a thinking mode
+And its caller omits a thinking mode
+When TeleClaude resolves the request
+Then the declared mode is used
+And the session is created without asking the caller to choose
+
+Examples:
+  | caller kind |
+  | human       |
+  | agent       |
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-RAAD-15: Work outside the command matrix requires an explicit thinking mode
 
 ```gherkin
@@ -286,6 +396,21 @@ And the caller is told to assess the work and retry with a supported thinking mo
 And one structured ERROR records thinking_mode_required without prompt or command-argument content
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-RAAD-15: An entry procedure without a dispatch declaration is refused
+
+```gherkin
+Given a caller invokes sessions run for a procedure that declares a role but no dispatch defaults
+When TeleClaude resolves the request
+Then the request is rejected before session creation as a publication defect naming the procedure
+And one structured ERROR records the missing declaration without prompt or argument content
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-RAAD-16: A recognized command resolves its matrix mode
 
 ```gherkin
@@ -296,6 +421,21 @@ Then TeleClaude uses that command's matrix thinking mode
 And the selected agent's corresponding model chain resolves the launch model
 And caller system role does not change the result
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-RAAD-16: A resolved procedure supplies its declared mode
+
+```gherkin
+Given a caller invokes sessions run for a published entry procedure
+And the caller omits a thinking mode
+When TeleClaude resolves the request
+Then TeleClaude uses that procedure's declared thinking mode
+And the selected agent's corresponding model chain resolves the launch model
+And caller role does not change the result
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-RAAD-17: A system-role agent preference cannot reserve degraded capacity
 

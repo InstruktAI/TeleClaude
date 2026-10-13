@@ -11,7 +11,13 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 The run-session-with-command flow creates a brand-new agent session whose first agent input loads and runs a selected TeleClaude command from the shared command corpus — not a free-form user message. The CLI verb `telec sessions run --command <cmd> --args ... --path ... --agent ... --mode ...` (a leading slash on the command is tolerated and stripped) normalizes the request, resolves the effective agent, composes the command loader startup message, sets the session title from the structured fields as `<cmd> <args>`, builds a typed launch intent that asks the agent_runtime service to start the agent and then deliver that message, and hands the request to session creation. The new session boots in its host pane with the resolved agent CLI; once the agent is ready, the loader message is delivered and polling begins. The loader is identical for every enabled runtime — no agent-specific rewrite exists. This is conceptually distinct from `sessions start` because the session is preloaded with a TeleClaude command: the very first thing the agent sees is the loader, not a human turn.
+<!-- change:procedure-role-capability-composition -->
+
+The run-session-with-command flow creates a brand-new agent session whose first agent input loads and runs a published entry procedure — not a free-form user message. The CLI verb `telec sessions run --command <procedure-id> --args ... --path ... --agent ... --mode ...` normalizes the request, resolves the procedure's declared role, parameters and dispatch defaults under `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`, resolves the effective agent, materializes the brief and composes the loader startup message naming it, sets the session title from the structured fields as `<procedure-id> <args>`, builds a typed launch intent that asks the agent_runtime service to start the agent and then deliver that message, and hands the request to session creation. The new session boots in its host pane with the resolved agent CLI; once the agent is ready, the loader message is delivered and polling begins. The loader is identical for every enabled runtime — no agent-specific rewrite exists. This is conceptually distinct from `sessions start` because the session is preloaded with an assignment: the very first thing the agent sees is the loader, not a human turn.
+<!-- /planned-change:procedure-role-capability-composition -->
 
 How the startup message reaches the agent depends on the agent CLI's own launch surface. An agent CLI that accepts an initial prompt as a launch argument receives the startup message that way — the message is part of the command that starts the agent, so the CLI consumes it when its own startup completes and there is no separate delivery step to time. An agent CLI with no such argument receives the startup message through prompt-state delivery once the readiness gate opens.
 
@@ -38,6 +44,8 @@ And degraded or unavailable candidates fall through to the normal automatic orde
 And the response carries the selected agent and typed routing reason
 ```
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Given a run-session request that omits the "agent" field
 When the agent_runtime service resolves the dispatch
@@ -49,6 +57,18 @@ And uses that job role's exhaustive ordered agent row
 And a prepare-orchestrator request additionally uses the todo kind to select its row
 And an unmapped command uses the global Claude, Codex, Gemini order with a warning
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```
+Given a run-session request that omits the "agent" field
+When the agent_runtime service resolves the dispatch
+Then it treats the request as automatic preference
+And uses the ordered agent list the entry procedure's dispatch declaration carries
+And a prepare-orchestrator request additionally uses the todo kind to select its row
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ```
 Given an automatic-preference run-session request has a preferred agent
@@ -156,12 +176,27 @@ When the request is validated
 Then it is rejected with "project required"
 ```
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Given a request whose normalized command is in the worker-lifecycle command set (build, review-build, finalize)
 And the args field is empty after trimming
 When the run-session preparation validates the request
 Then it is rejected with "<command> requires a slug argument"
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```
+Given a request whose procedure declares a required `slug` parameter
+And the args field is empty after trimming
+When the run-session preparation validates the request
+Then it is rejected naming the missing parameter
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
 
 #### UC-CLR6: Startup-message assembly composes the runtime-identical loader
 
@@ -174,6 +209,23 @@ And the public full-command (used for the human-visible initial-input echo) carr
 And structured lifecycle metadata such as role, job, and `working_slug` is resolved from the normalized command and args before or alongside loader assembly, never from the loader message
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-CLR6: Startup-message assembly composes the runtime-identical loader
+
+```
+Given a run-session request whose command token resolves to a published entry procedure
+When startup-message assembly runs
+Then the startup message is the loader: a structural marker line "TELECLAUDE COMMAND: <procedure-id> [<args>]" followed by an instruction to read the materialized brief as the active instruction set, with the args labelled as its provided inputs
+And the loader is identical for every enabled runtime
+And the public full-command (used for the human-visible initial-input echo) carries the bare "<procedure-id> <args>" form
+And structured lifecycle metadata such as role, job, and `working_slug` is resolved from the procedure's declarations and the bound args before or alongside loader assembly, never from the loader message
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-CLR4: A canonical command name is a bare token or exactly one domain segment plus a token
 
 ```
@@ -183,6 +235,21 @@ Then both forms are accepted as canonical names
 And the loader is composed for the corpus document that name resolves to
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-CLR4: A dispatch names its procedure by domain-qualified snippet ID
+
+```
+Given a run-session request whose command is "sdlc/procedure/lifecycle/work/build"
+When loader composition validates the name before any publication read
+Then the ID is accepted as a canonical snippet identity
+And the loader is composed for the published entry procedure that ID resolves to
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-CLR5: Unsafe names compose no loader and read no file
 
 ```
@@ -191,6 +258,21 @@ When loader composition validates the name before any corpus read
 Then no loader is composed and no file is read
 And the request is rejected naming the offending token
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-CLR5: Unsafe names compose no loader and read no file
+
+```
+Given a run-session request whose command contains traversal ("../x") or is not a well-formed snippet identity
+When loader composition validates the name before any publication read
+Then no loader is composed and no file is read
+And the request is rejected naming the offending token
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
 
 #### UC-CLR11: A declared dispatch whose command resolves to no document is refused
 
@@ -203,6 +285,23 @@ And the refusal reaches an API caller as a 400
 And no launch delivers the raw command text in place of the loader
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-CLR11: A declared dispatch whose procedure resolves to no published entry procedure is refused
+
+```
+Given a session launch that declares the procedure it dispatches
+And that ID is safe but resolves to no published entry procedure — unknown, pending, not a procedure, or declaring no role
+When loader composition runs
+Then no session is created and the request is refused naming the unresolved procedure and the cause
+And the refusal reaches an API caller as a 400
+And no launch delivers the raw command text in place of the loader
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-CLR1: Whether a command may run without arguments is decided at the dispatch door
 
 ```
@@ -212,6 +311,22 @@ Then whether empty arguments are acceptable is decided by the dispatch door's ow
 And loader composition applies no argument rule of its own
 And a command the dispatch door admits with empty arguments reaches loader composition
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-CLR1: Whether a procedure may run without arguments is its parameter declaration's decision
+
+```
+Given a session launch for a procedure whose arguments are empty
+When the launch is validated
+Then whether empty arguments are acceptable is decided by the procedure's declared parameters — none required, or defaults for every required one
+And loader composition applies no argument rule of its own
+And a launch the parameters admit with empty arguments reaches loader composition
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
 
 #### UC-CLR2: Empty arguments produce the loader message
 
@@ -223,6 +338,21 @@ Then the startup message is the command loader for ~/.teleclaude/commands/<comma
 And its marker line carries the command with no argument token
 And its provided-inputs section is empty rather than absent
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-CLR2: Empty arguments produce the loader message
+
+```
+Given loader composition runs for a published entry procedure
+And the args field is empty
+When the startup message is composed
+Then the startup message is the loader naming the materialized brief
+And its marker line carries the procedure ID with no argument token
+And its provided-inputs section is empty rather than absent
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-CLR3: A dispatched session's title reflects its record fields and is read by nothing
 
@@ -303,6 +433,8 @@ And the context appears after the loader, never inside the marker line and never
 And this holds whether the request supplies command arguments or none
 ```
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-CLR12: An agent dispatches a global command by domain, or by a bare name that names exactly one
 
 ```
@@ -317,6 +449,20 @@ And given the agent dispatches a bare name no domain carries
 Then no session is started and the refusal names the unknown command
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-CLR12: An agent dispatches an entry procedure by its snippet ID and nothing shorter
+
+```
+Given an agent dispatches a session with the command sdlc/procedure/lifecycle/work/build
+When the session starts
+Then it loads that procedure and no other
+And given the agent instead dispatches a retired command name such as sdlc/build or a bare token such as build
+Then no session is started and the refusal names the unknown command
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
 #### UC-CLR13: An orchestrator finds the session it dispatched by the command it dispatched
 
 ```
@@ -328,6 +474,8 @@ And the session's recorded command and title carry the command exactly as dispat
 
 #### Dispatch privilege enforcement
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Given the resolved command maps to a target system role
 And the calling identity carries a system role of its own
@@ -336,12 +484,37 @@ And the target role is NOT in the caller's allowed dispatch set
 Then it is rejected with "role '<caller>' cannot dispatch <command> (requires dispatch privilege for '<target>')"
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+```
+Given the resolved procedure declares a target role of some class
+And the calling identity carries a role of its own that is not full-reach
+When the run-session preparation checks dispatch privilege
+And the caller holds no dispatch grant for that class
+Then it is rejected with "role '<caller>' cannot dispatch <procedure> (requires dispatch privilege for '<target role>')"
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Given a caller carrying the integrator system role
 When it dispatches a worker-role command (e.g. /review-commits for the commits it merged)
 Then dispatch is permitted — the integrator may spawn worker sessions
 And dispatching an orchestrator-role command is still rejected, because the integrator's grant is worker-only
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```
+Given a caller carrying the integrator role
+When it dispatches a worker-class procedure (e.g. the review-commits procedure for the commits it merged)
+Then dispatch is permitted — the integrator holds `dispatch-worker` and is full-reach
+And a full-reach caller is permitted every target class
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-DPE4: Orchestrator may dispatch an integrator-role session
 
@@ -352,6 +525,8 @@ Then dispatch is permitted — the orchestrator's grant covers worker, orchestra
 And the integrator's singleton lease still decides whether the new session drains or yields
 ```
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-DPE1: Tasker may dispatch a worker-role session
 
 ```
@@ -359,6 +534,22 @@ Given a caller carrying the tasker system role — a /prepare-task or /run-task 
 When it dispatches a worker-role command (e.g. /review-commits for a commit its task authored)
 Then dispatch is permitted — tasker may spawn worker sessions, same grant as integrator
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-DPE1: A contained role with a dispatch grant starts only its granted class
+
+```
+Given a caller whose role is not full-reach and holds `dispatch-worker`
+When it dispatches a worker-class procedure
+Then dispatch is permitted
+And when it dispatches a procedure declaring a role of another class
+Then it is rejected naming the dispatch privilege it lacks
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
 
 #### UC-DPE3: Tasker may not dispatch an orchestrator-role command or drive the todo state machine
 
@@ -369,6 +560,21 @@ Then it is rejected — the tasker's dispatch grant is worker-only
 And the tasker drives no todo state machine, which only an orchestrator runs (`local/projects/teleclaude/design/cli-authorization-matrix`)
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-DPE3: A task-lane session is full-reach
+
+```
+Given a caller carrying the task-runner role
+When it dispatches an orchestrator procedure (the prepare or work overview)
+Then dispatch is permitted — the task-lane roles are full-reach
+And whether a second driver may bind the same todo remains the driver-start dedup's decision
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-DPE5: The coordinator dispatches no lifecycle command
 
 ```
@@ -377,6 +583,19 @@ When it dispatches any command that maps to a system role (a worker, orchestrato
 Then it is rejected — the coordinator's dispatch grant is empty
 And a peer session it starts without a lifecycle command is not a dispatch and is admitted
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-DPE5: The coordinator is full-reach
+
+```
+Given a caller carrying the coordinator role
+When it dispatches any entry procedure
+Then dispatch is permitted — the coordinator is full-reach
+And what it does with that reach is its procedure's discipline, which drives no todo state machine
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### Lifecycle driver-start dedup
 

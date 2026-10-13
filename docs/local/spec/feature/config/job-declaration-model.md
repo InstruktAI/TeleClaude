@@ -177,6 +177,19 @@ Then the load fails with an error naming the job and the pointer
 And no agent session can be dispatched for it
 ```
 
+<!-- planned:procedure-role-capability-composition -->
+
+#### UC-JDM-23: A job's procedure declares the role its session carries
+
+```
+Given a job declaration whose `job` pointer names a delivered procedure that declares no role
+When the config is loaded
+Then the load fails with an error naming the job, the pointer and the missing role
+And a declaration whose procedure declares a role loads, and its runs carry that role
+```
+
+<!-- /planned:procedure-role-capability-composition -->
+
 #### UC-JDM-12:
 
 ```gherkin

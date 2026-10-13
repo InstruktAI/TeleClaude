@@ -27,23 +27,61 @@ to claim work and adopt the corresponding role through its own operations.
 - Shorthand recognition is enabled by the TUI New Session submission and by
   Discord's human-to-agent text ingress. It is not inferred from terminal
   identity, a session's historical origin, or message text claiming an origin.
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 - The leading token is resolved exactly against the installed command corpus;
   the remaining text supplies the command's arguments. No natural-language
   intent classification, fuzzy matching, or command allowlist copied from the
   lifecycle role map participates in recognition.
+
+<!-- change:procedure-role-capability-composition -->
+
+- The leading token is resolved exactly against the published entry
+  procedures by snippet ID; the remaining text supplies the procedure's
+  arguments. No natural-language intent classification, fuzzy matching, or
+  allowlist copied from any role table participates in recognition.
+
+<!-- /planned-change:procedure-role-capability-composition -->
+<!-- planned-change:procedure-role-capability-composition -->
+
 - The command-input owner reuses the canonical document resolver and loader.
   Transport edges declare input intent and carry caller evidence; they do not
   author a parallel loader or decide role permissions.
+
+<!-- change:procedure-role-capability-composition -->
+
+- The command-input owner reuses the procedure-entry resolution and loader.
+  Transport edges declare input intent and carry caller evidence; they do not
+  author a parallel loader or decide role permissions.
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
 - Human input that does not resolve to an installed command remains ordinary
   conversation. Quoted examples and fenced code do not become commands merely
   because they contain a command name. A recognized invocation that violates
   an existing argument or authorization rule is refused visibly.
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 - For a newly created command session, command identity and applicable role,
   job, working-slug metadata, and required execution context are established
   through canonical command creation. Worktree-bound commands derive their
   execution context from the command and work item without extra modal input.
   Existing-session normalization preserves that session's authority; an
   invoked operation retains its own claim/adoption contract.
+
+<!-- change:procedure-role-capability-composition -->
+
+- For a newly created session, the procedure, its declared role, working-slug
+  metadata, and required execution context are established through the
+  procedure-entry contract. Worktree-bound procedures derive their execution
+  context from the procedure and work item without extra modal input.
+  Existing-session normalization preserves that session's authority and role;
+  an invoked operation retains its own claim/adoption contract.
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
 - Discord sender identity is evaluated for the current message. Permission to
   converse in a channel does not confer permission to create a privileged role.
 - Discord invitation, bot filtering, channel ownership, customer/help-desk,

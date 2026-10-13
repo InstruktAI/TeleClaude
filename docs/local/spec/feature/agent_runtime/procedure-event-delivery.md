@@ -7,11 +7,24 @@ description: Procedure activation briefs establish the assignment while durable 
 
 ## What it is
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 A subscribed procedure receives its assignment through the canonical command
 startup brief and its activation data through durable hook delivery. The brief
 loads the procedure's complete effective required-read closure. The agent
 applies that contract before processing the initial event and throughout later
 activations (`general/principle/priming`, `general/principle/grounding`).
+<!-- change:procedure-role-capability-composition -->
+
+A subscribed procedure receives its assignment through the procedure-entry
+startup brief (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`)
+and its activation data through durable hook delivery. The brief carries the
+procedure's complete effective required-read closure and the event-handling
+instructions an activation implies, and the session carries the procedure's
+declared role from its creation. The agent applies that contract before
+processing the initial event and throughout later activations
+(`general/principle/priming`, `general/principle/grounding`).
+<!-- /planned-change:procedure-role-capability-composition -->
 
 Context publishes two independent delivery declarations under
 `general/spec/snippet-authoring-schema`. Runtime enforces their timing and

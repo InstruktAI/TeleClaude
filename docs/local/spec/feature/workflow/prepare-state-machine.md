@@ -9,7 +9,13 @@ visibility: 'public'
 
 The prepare state machine is the workflow capability that drives a Todo through its preparation Phases — from the initial `draft` Phase, through `prd_drafting`, `prd_human_approval`, optionally `architecture_drafting` / `architecture_review`, then `plan_drafting` / `plan_review`, and finally `prepared`. Each call by the orchestrator advances exactly one logical step: it reads the persisted Todo state, derives the current Phase from artifact presence and review verdicts, and returns a verbatim instruction telling the orchestrator what to do next — load a drafting procedure inline, dispatch a reviewer worker, request a human approval Stamp, or recognize that the Todo is now `prepared`.
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 A `kind=task` Todo does not enter this machine. Task preparation is a separate non-SDLC lane: `/sdlc/prepare-task` reads `input`, writes the `task-plan`, and requests human authorization — dispatched by the lifecycle runner, never by this state machine or `telec todo prepare`. The phase advances to `prepared` on `task-plan` presence without any PRD, architecture, implementation-plan, or reviewer verdict.
+<!-- change:procedure-role-capability-composition -->
+
+A `kind=task` Todo does not enter this machine. Task preparation is a separate non-SDLC lane: `sdlc/procedure/lifecycle/task/prepare-task` reads `input`, writes the `task-plan`, and requests human authorization — dispatched by the lifecycle runner, never by this state machine or `telec todo prepare`. The phase advances to `prepared` on `task-plan` presence without any PRD, architecture, implementation-plan, or reviewer verdict.
+<!-- /planned-change:procedure-role-capability-composition -->
 
 Preparation is local-first and runs on the project's `main` branch with no worktree, which is what authorizes it to write artifacts and snippets to the canonical doc layer. The machine itself owns no UI or worker code; it owns the invariants on transitions and the resolution of which next instruction matches the current evidence. When the entrypoint is a structural holder, prepare refuses to operate on the holder directly and routes the operator to the runnable direct children instead. When tracked artifacts have drifted along any of the classes enumerated in `@spec/feature/workflow/drift-detection` (code, upstream-artifact, owned-snippet, upstream-snippet, age), the machine surfaces drift as a blocker and routes to a drift-analyzer worker before the Todo may reach `prepared`; the per-artifact collapsed status follows the `substantive > pending > cosmetic > fresh` priority rule. A loop guard bounds in-call internal transitions so a misconfigured state always surfaces an explicit error rather than spinning silently.
 
@@ -35,6 +41,8 @@ And refuses to advance until that approval Stamp is recorded
 
 #### UC-WPS15: Independent PRD review precedes human approval
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```gherkin
 Given a feature Todo has a freshly written prd Artifact
 And no approve verdict for the current prd digest exists at prd_review
@@ -45,6 +53,22 @@ And it does not present the prd for human approval until prd_review approves the
 And rewriting the prd invalidates the prior verdict and returns the Todo to prd_review
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+```gherkin
+Given a feature Todo has a freshly written prd Artifact
+And no approve verdict for the current prd digest exists at prd_review
+When the orchestrator calls "telec todo prepare my-feature"
+Then the machine derives lifecycle_phase=prd_review before prd_human_approval
+And dispatches the sdlc/procedure/lifecycle/prepare/review-prd worker through the normal reviewer-session path
+And it does not present the prd for human approval until prd_review approves the current digest
+And rewriting the prd invalidates the prior verdict and returns the Todo to prd_review
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Given a Todo with prd_approved whose architecture_drafting authored design directly into the affected domain-spec / architecture-v2 snippets plus a thin architecture index Artifact
 When the orchestrator calls "telec todo prepare my-feature"
@@ -53,6 +77,19 @@ And dispatches the sdlc/review-architecture worker via a verbatim tool-call inst
 And the orchestrator is told to call "telec todo prepare my-feature" again when the reviewer idles
 And the architecture-review verdict (approve | needs_work | needs_decision) drives the next derivation
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```
+Given a Todo with prd_approved whose architecture_drafting authored design directly into the affected domain-spec / architecture-v2 snippets plus a thin architecture index Artifact
+When the orchestrator calls "telec todo prepare my-feature"
+Then the machine derives lifecycle_phase=architecture_review
+And dispatches the sdlc/procedure/lifecycle/prepare/review-architecture worker via a verbatim tool-call instruction
+And the orchestrator is told to call "telec todo prepare my-feature" again when the reviewer idles
+And the architecture-review verdict (approve | needs_work | needs_decision) drives the next derivation
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ```
 Given a Todo whose architecture is intentionally not needed for this work
@@ -147,6 +184,8 @@ And a non-plan drafting phase (e.g. diagnose) dispatch carries no dispatch-reaso
 
 #### UC-WPS6: Task todos bypass the prepare machine
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```gherkin
 Given a Todo has kind="task" at lifecycle_phase="task_plan_drafting"
 When an operator runs `telec todo prepare my-task`
@@ -154,6 +193,18 @@ Then the prepare state machine does not own task preparation
 And it routes the operator to the task lane (`/sdlc/prepare-task`, dispatched by the lifecycle runner)
 And it requires no PRD, architecture, implementation-plan, or reviewer verdict for the task
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```gherkin
+Given a Todo has kind="task" at lifecycle_phase="task_plan_drafting"
+When an operator runs `telec todo prepare my-task`
+Then the prepare state machine does not own task preparation
+And it routes the operator to the task lane (`sdlc/procedure/lifecycle/task/prepare-task`, dispatched by the lifecycle runner)
+And it requires no PRD, architecture, implementation-plan, or reviewer verdict for the task
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ```
 Given an entrypoint slug is a structural holder with direct children child-a and child-b
@@ -174,6 +225,8 @@ And the prepare state machine runs in the invoking session
 And no separate orchestrator session is dispatched for my-todo
 ```
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```gherkin
 Given a Todo with no live holder (active_runner is empty)
 And an unbound operator START invokes "telec todo prepare my-todo" from a caller that does not resolve to a bindable live session
@@ -181,6 +234,20 @@ When the lifecycle operation runs
 Then it spawns a `/sdlc/prepare` orchestrator session for my-todo, writing active_runner and manually_started with the spawn
 And the spawned session — not the unbound caller — becomes the live driver
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```gherkin
+Given a Todo with no live holder (active_runner is empty)
+And an unbound operator START invokes "telec todo prepare my-todo" from a caller that does not resolve to a bindable live session
+When the lifecycle operation runs
+Then it spawns a `sdlc/procedure/lifecycle/prepare/overview` orchestrator session for my-todo, writing active_runner and manually_started with the spawn
+And the spawned session — not the unbound caller — becomes the live driver
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
 
 ```
 Given a Todo at lifecycle_phase=plan_review with an approved plan
@@ -192,6 +259,21 @@ And requires a "--drift-reviewed" stamp for every pending artifact before the To
 And on substantive verdict clears the affected artifact's review verdict and every downstream review verdict, then routes back to that artifact's drafting phase
 And on cosmetic verdict records the evidence anchor at which the verdict was made so the verdict expires lazily when current evidence moves past the anchor
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```
+Given a Todo at lifecycle_phase=plan_review with an approved plan
+And any tracked artifact's per-class drift derivation (see @spec/feature/workflow/drift-detection) collapses to pending or substantive
+When the orchestrator calls "telec todo prepare my-feature"
+Then the machine derives a blocking drift status for the affected artifact
+And dispatches the sdlc/procedure/lifecycle/prepare/drift-analyze worker with the pending classes named per artifact
+And requires a "--drift-reviewed" stamp for every pending artifact before the Todo may reach prepared
+And on substantive verdict clears the affected artifact's review verdict and every downstream review verdict, then routes back to that artifact's drafting phase
+And on cosmetic verdict records the evidence anchor at which the verdict was made so the verdict expires lazily when current evidence moves past the anchor
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ```
 Given a Todo whose state has somehow accumulated a contradictory phase that the machine cannot resolve
@@ -375,11 +457,21 @@ through the ordinary lifecycle-session start path, which records the spawned
 driver as the child's `active_runner`; no reservation, expiry, or other
 pre-ownership state participates.
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 This supersedes parent-worker reuse for child prepare. A prepare session must
 not send a new `/sdlc/prepare` instruction to itself, must not rebind a parent
 worker to a child slug, and must not rely on the parent worker's live context as
 the child's execution substrate. The child's context is recovered from frozen
 artifacts/snippets and normal docs retrieval.
+<!-- change:procedure-role-capability-composition -->
+
+This supersedes parent-worker reuse for child prepare. A prepare session must
+not send a new `sdlc/procedure/lifecycle/prepare/overview` instruction to itself, must not rebind a parent
+worker to a child slug, and must not rely on the parent worker's live context as
+the child's execution substrate. The child's context is recovered from frozen
+artifacts/snippets and normal docs retrieval.
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ### Use cases
 
@@ -407,6 +499,8 @@ And it emits no auto-continue operation
 
 #### UC-WPS5: PREPARED emits a runner wake-up, not a child dispatch
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```gherkin
 Given "parent" reaches lifecycle_phase=PREPARED
 And "child-a" and "child-b" may now have their prepare gates satisfied
@@ -417,6 +511,21 @@ And it does not emit `telec sessions send <parent_worker>` for any child
 And it does not emit a fresh `/sdlc/prepare` run for any child
 And the lifecycle runner handles child eligibility and dispatch from the event wake-up
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```gherkin
+Given "parent" reaches lifecycle_phase=PREPARED
+And "child-a" and "child-b" may now have their prepare gates satisfied
+When the orchestrator calls "telec todo prepare parent" and the machine derives PREPARED
+Then the v1 phase-transition seam emits or bridges the target phase-advanced wake-up for "parent"
+And returns only "parent" cleanup/terminal instructions
+And it does not emit `telec sessions send <parent_worker>` for any child
+And it does not emit a fresh `sdlc/procedure/lifecycle/prepare/overview` run for any child
+And the lifecycle runner handles child eligibility and dispatch from the event wake-up
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-WPS19: PREPARED with an in-flight build ends its orchestrator like any other
 
@@ -511,7 +620,16 @@ And the script contains neither remembered child identifiers nor a manual child-
 - The prepare loop limit is a contradiction detector, not a workload knob. Hitting it means the derived Phase keeps changing without converging — fix the underlying state, do not raise the limit.
 - The machine does not auto-add the slug to the todo list when called on a holder; auto-add happens only after holder resolution confirms the slug is a leaf prepare target.
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 - **Auto-continue at PREPARED is concrete, not advisory.** When a parent reaches `PREPARED` it unblocks the **prepare** gate (not the work gate) of its dependents — so the dependents' prepare auto-continues immediately, while their work still waits for the parent's delivery (see `@spec/feature/workflow/dependency-graph`). The continuation is dispatched, not suggested to the human.
 - **Worker reuse preserves context.** Auto-continue prefers reusing the parent's open prepare worker via `telec sessions send` (the existing reuse-or-spawn dispatch keyed by parent slug + `/sdlc/prepare`), because that worker holds the parent's just-frozen design. One worker thus carries multiple slugs in context across the dependency chain. A fresh `telec sessions run` is the fallback only when no parent worker is live; the parent's design is still recoverable from its now-frozen artifacts and snippets. No session↔slug rebinding is required: the reuse lookup is always keyed by the _parent_ slug (whose worker title is intact), and that worker then drives the child inline.
+
+<!-- change:procedure-role-capability-composition -->
+
+- **Auto-continue at PREPARED is concrete, not advisory.** When a parent reaches `PREPARED` it unblocks the **prepare** gate (not the work gate) of its dependents — so the dependents' prepare auto-continues immediately, while their work still waits for the parent's delivery (see `@spec/feature/workflow/dependency-graph`). The continuation is dispatched, not suggested to the human.
+- **Worker reuse preserves context.** Auto-continue prefers reusing the parent's open prepare worker via `telec sessions send` (the existing reuse-or-spawn dispatch keyed by parent slug + `sdlc/procedure/lifecycle/prepare/overview`), because that worker holds the parent's just-frozen design. One worker thus carries multiple slugs in context across the dependency chain. A fresh `telec sessions run` is the fallback only when no parent worker is live; the parent's design is still recoverable from its now-frozen artifacts and snippets. No session↔slug rebinding is required: the reuse lookup is always keyed by the _parent_ slug (whose worker title is intact), and that worker then drives the child inline.
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 - **Runner-owned dependent dispatch supersedes PREPARED auto-continue.** The two current caveats above describe the pre-runner target. After `runner-dispatch`, the concrete dispatch still happens automatically, but it is performed by `workflow.lifecycle_runner` from the emitted wake-up event, not by the parent prepare state-machine response. Parent-worker reuse is forbidden for child dispatch; each child session is explicitly bound to its own slug.

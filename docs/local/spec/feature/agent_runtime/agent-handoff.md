@@ -39,6 +39,8 @@ And no headless or initializing lifecycle transition is authored by handoff
 
 #### UC-AH3: Selection reuses fresh-agent dispatch
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```gherkin
 Given a runnable session records a command and the caller omits a successor
 When handoff resolves the successor
@@ -46,6 +48,18 @@ Then it uses the existing fresh-agent dispatch policy for that recorded command
 And a caller-supplied agent is treated through the existing explicit-preference rules
 And a refusal reaches the caller before the predecessor is terminated
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```gherkin
+Given a runnable session records a procedure and the caller omits a successor
+When handoff resolves the successor
+Then it uses the existing fresh-agent dispatch policy for that recorded procedure's declaration
+And a caller-supplied agent is treated through the existing explicit-preference rules
+And a refusal reaches the caller before the predecessor is terminated
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-AH4: The native binding rotates without stale projection
 
@@ -61,6 +75,8 @@ And projection never treats the predecessor transcript as the successor's curren
 
 #### UC-AH5: The successor receives one classified continuation
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```gherkin
 Given the successor launch is ready to accept its first input
 When handoff continues the session
@@ -70,6 +86,20 @@ And it names the predecessor agent, TeleClaude session id, predecessor transcrip
 And it is classified as platform control rather than human input
 And it does not replace the session's last visible human input or reflect onto human conversation surfaces
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```gherkin
+Given the successor launch is ready to accept its first input
+When handoff continues the session
+Then it receives exactly one platform-authored handoff envelope through the canonical startup-message delivery path
+And the envelope carries the session's loader, rebuilt from the resolved invocation persisted at creation, when a recorded procedure exists
+And it names the predecessor agent, TeleClaude session id, predecessor transcript when present, and the need to inspect the working tree and re-derive state
+And it is classified as platform control rather than human input
+And it does not replace the session's last visible human input or reflect onto human conversation surfaces
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-AH6: Accepted input waits behind the swap boundary
 

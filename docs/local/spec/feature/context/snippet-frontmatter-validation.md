@@ -335,6 +335,38 @@ values, defaults, and implied required reads are owned by
 declaration for publication, retrieval, and activation routing
 (`sdlc/principle/design-fundamentals`).
 
+<!-- planned:procedure-role-capability-composition -->
+
+#### UC-SFV11: A procedure's role declaration names a catalog role
+
+```
+Given a procedure declares `role`
+When snippet validation runs
+Then a value the agent role catalog does not name is a finding naming the snippet and the value
+And the field on a non-procedure snippet is a finding
+And a procedure declaring `subscriptions` without `role` is a finding
+```
+
+#### UC-SFV12: A procedure's parameters are well-formed
+
+```
+Given a procedure declares `parameters` beside `role`
+When snippet validation runs
+Then a duplicate parameter name, a `rest` entry that is not last, or a non-string default is a finding
+And `parameters` on a snippet declaring no `role` is a finding
+```
+
+#### UC-SFV13: A procedure's dispatch defaults are well-formed
+
+```
+Given a procedure declares `dispatch` beside `role`
+When snippet validation runs
+Then an empty agent list, an unknown agent name, or an unknown thinking mode is a finding
+And `dispatch` on a snippet declaring no `role` is a finding
+```
+
+<!-- /planned:procedure-role-capability-composition -->
+
 ### Cross-context references
 
 - workflow and integration own lifecycle state transitions and delivery-time

@@ -23,11 +23,24 @@ cross-computer federation layer calls.
 The search composes free-text terms (AND-combined), an agent filter
 (`claude`, `codex`, `gemini`, comma-separated, or `all`), an optional
 computer filter, and a default exclusion of dispatched-worker mirrors
+<!-- planned-change:procedure-role-capability-composition -->
+
 (`is_worker = 0`) that a caller opts out of to search worker sessions
 too. Whether a mirror is a worker is the system role its session record
 carries, so orchestrators, taskers and the integrator stay searchable —
 they drive the work and carry the reasoning a later search is looking
 for. Subagent transcripts are never mirrored, so they cannot appear.
+<!-- change:procedure-role-capability-composition -->
+
+(`is_worker = 0`) that a caller opts out of to search worker sessions
+too. Whether a mirror is a worker is whether the role its session record
+carries is of the worker class in the agent role catalog
+(`local/projects/teleclaude/spec/feature/identity/agent-roles`), so
+orchestrators, task-lane sessions and the integrator stay searchable — they
+drive the work and carry the reasoning a later search is looking for.
+Subagent transcripts are never mirrored, so they cannot appear.
+<!-- /planned-change:procedure-role-capability-composition -->
+
 Role-scoped access (see
 `role-scoped-history-access`) further constrains visibility before the
 store query runs. Results sort by `timestamp_start` falling back to
@@ -89,6 +102,8 @@ Then the capability refuses the request before any mirror is read
 
 #### UC-HCS-4: Dispatched-worker sessions are excluded, driving sessions are not
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Given the mirror store holds human sessions, dispatched-worker mirrors (is_worker = 1), and orchestrator, tasker and integrator mirrors
 When a search executes without the worker opt-in
@@ -103,6 +118,25 @@ When a search executes
 Then the is_worker predicate is not applied and worker mirrors are eligible alongside every other mirror
 And every other filter — agent, role band, limit — applies unchanged
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```
+Given the mirror store holds human sessions, dispatched-worker mirrors (is_worker = 1), and orchestrator, task-lane and integrator mirrors
+When a search executes without the worker opt-in
+Then only mirrors with is_worker = 0 are eligible for results
+And a session whose record carries a worker-class role never appears
+And orchestrator, task-lane and integrator sessions are eligible like any human session
+And a session with no record, or a record carrying a role of another class, is eligible rather than excluded
+And the exclusion applies identically to the CLI path and the service search wire path
+
+Given the caller opts in to worker sessions on the local path
+When a search executes
+Then the is_worker predicate is not applied and worker mirrors are eligible alongside every other mirror
+And every other filter — agent, role band, limit — applies unchanged
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### Recency ordering and missing-store tolerance
 

@@ -1,0 +1,209 @@
+---
+description: 'Drift analysis phase. Classify each pending prepare-artifact drift across every applicable drift class as cosmetic or substantive and stamp the verdict so the lifecycle can continue or re-derive the affected layer.'
+visibility: 'public'
+role: drift-analyzer
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [codex, claude, gemini, deepseek]
+  thinking_mode: fast
+---
+
+# Drift Analyze — Procedure
+
+## Goal
+
+Classify each pending prepare-artifact drift across every applicable drift
+class. Stamp `cosmetic` when the artifact remains valid despite the
+evidence change. Stamp `substantive` when the artifact must be re-derived
+to match current reality. The same procedure handles drift dispatched from
+the prepare BLOCKED branch AND drift dispatched from the work-entry bounce
+to prepare — the procedure does not care which entry point routed the
+worker; it reads the pending classes per artifact and stamps verdicts.
+
+## Preconditions
+
+- The prepare state machine reported one or more artifacts with a
+  collapsed `drift.<artifact>` status of `pending` and recommended this
+  worker. The orchestrator script names the pending classes per artifact.
+- The slug is active and not delivered.
+
+## Steps
+
+### 1. Identify pending artifacts and pending classes
+
+Read the prepare state machine output (or `telec todo show {slug}`) to
+enumerate which artifacts are pending drift review and, for each, which
+classes are pending. The collapsed per-artifact status is the
+most-blocking class status; the analyzer must consider every pending
+class, not only the one that drove the collapse.
+
+The drift classes:
+
+- **code** — `codebase_sha_at_write` vs current `origin/main` HEAD,
+  scoped to `referenced_paths`.
+- **upstream-artifact** — `upstream_digests` (persisted-state field
+  name; aka `upstream_artifact_digests` in spec/documentation) vs
+  current digest of each named upstream artifact.
+- **owned-snippet** — `owned_snippet_digests` vs current digest of each
+  snippet the Todo owns via its `delivered_by` membership at write time.
+- **upstream-snippet** — `referenced_snippet_digests` vs current digest
+  of each non-owned snippet the artifact references by validator-
+  accepted inline reference extraction (`@<HOME>/.teleclaude/docs/...`
+  for global snippets, `@docs/...` for project snippets — per
+  `teleclaude/resource_validation/_snippet.py:124`), mapped to
+  canonical snippet IDs.
+- **age** — `produced_at` vs the artifact-kind's configured freshness
+  window (policy-driven; disabled when unset).
+- **dependency-artifact** — `dependency_artifact_digests` vs the current
+  digest of each recorded dependency's intent and prepared artifacts, for
+  dependencies still in the `after` set that have not delivered.
+
+### 2. For each pending (artifact, class)
+
+- Read the artifact: `telec todo artifacts read {slug} <artifact>`.
+- Read the recorded provenance for the class from `telec todo show {slug}`.
+- Inspect the evidence change scoped to the artifact:
+  - **code** — `git fetch origin main` then
+    `git log <codebase_sha_at_write>..origin/main -- <referenced-paths>`
+    and `git diff <codebase_sha_at_write>..origin/main -- <referenced-paths>`.
+    Always compare against `origin/main`, never local HEAD, so the
+    derivation matches the write-time anchor captured by
+    `get_origin_main_sha(cwd)`.
+  - **upstream-artifact** — read the named upstream artifact at its
+    current digest (`telec todo artifacts read {slug} <upstream>`) and
+    compare to the recorded digest's content. The state machine has
+    already detected the digest mismatch; the analyzer's job is to read
+    the upstream change and judge whether THIS artifact's claims still
+    hold.
+  - **owned-snippet** — read each owned snippet's current body through
+    this todo's pending view (`telec docs get <snippet-id> --target {slug}`);
+    the default view omits the body of a snippet still pending under a
+    todo. Read the edit itself from the snippet source file's history over
+    the same window as the code class:
+    `git log --follow -p <codebase_sha_at_write>..origin/main -- <snippet-file>`.
+    A sibling delivery may have edited a snippet this todo owns via
+    `delivered_by`; judge whether the edit changes anything THIS artifact
+    relies on.
+  - **upstream-snippet** — read each referenced non-owned snippet's
+    current body with `telec docs get <snippet-id>`, adding
+    `--target <owner-slug>` when `telec docs index` lists the snippet as
+    delivered by another todo, and read the edit from its source file's
+    history as for owned-snippet. Judge whether the referenced snippet's
+    edit changes the contract THIS artifact references.
+  - **age** — the artifact has aged past its configured freshness window.
+    Re-ground against current code/snippets/deps and judge whether the
+    artifact still holds; an aged artifact whose claims happen to remain
+    accurate is `cosmetic`, an aged artifact whose grounding has drifted
+    is `substantive`.
+  - **dependency-artifact** — read each moved dependency artifact at its
+    current digest (`telec todo artifacts read <dependency> <artifact>`),
+    never the plan's own account of it, and find every place the plan relies
+    on that dependency: a task premise or an ordering or file-overlap claim.
+    `substantive` when any of those no longer holds against the dependency's
+    current contract; `cosmetic` when every such reliance still holds. A
+    dependency artifact that is itself pending drift in its own Todo is not a
+    contract to rely on — read that Todo's newest intent instead.
+- Apply the verdict rubric:
+  - **`cosmetic`** — the artifact's intent and claims still hold. The
+    evidence change is real but does not invalidate this artifact.
+    Examples: rename/refactor that preserves behavior; constants
+    extraction; formatting; an upstream snippet's `delivered_by`
+    frontmatter churn that did not change the body; a dep delivering
+    without affecting this artifact's plan tasks.
+  - **`substantive`** — the artifact's claims are now wrong, its
+    referenced surfaces no longer exist as described, or its grounding
+    no longer matches reality. The artifact's owning layer must
+    re-derive.
+
+### 3. Stamp the verdict per artifact
+
+Stamping is per-artifact, not per-(artifact, class). The CLI signature
+is unchanged:
+
+```bash
+telec todo stamp {slug} --drift-reviewed <artifact> cosmetic <reason>
+# or
+telec todo stamp {slug} --drift-reviewed <artifact> substantive <reason>
+```
+
+The reason text MUST name each class evaluated and what was found:
+"code: cosmetic — rename of `foo()` to `bar()` preserves the call
+contract the plan references. upstream-snippet: cosmetic — the
+referenced domain spec gained a clarifying paragraph that does not
+change the contract the architecture depends on." The reason is the
+audit trail per class for the per-artifact stamp.
+
+When ANY class for an artifact is `substantive`, the overall verdict
+for that artifact is `substantive` — substantive on any class clears the
+review verdict for the artifact and every downstream artifact's review
+verdict per the spec's re-derivation contract. Only when EVERY pending
+class is cosmetic does the artifact get a `cosmetic` stamp.
+
+The state-stamping boundary captures the **evidence anchor** at stamp time
+automatically (`head_sha_at_review`, `upstream_digests_at_review`,
+`snippet_digests_at_review`, `dependency_digests_at_review`). The analyzer does
+not pass these as flags; they are read from current state by
+`_apply_drift_reviewed_stamp` and persisted on the `DriftReviewedStamp`.
+A cosmetic verdict at this anchor expires lazily on a future derivation
+if evidence has moved past the anchor on any anchored dimension; the
+analyzer is re-dispatched at that point. A substantive verdict does not
+need lazy expiry — re-derivation produces a fresh artifact whose write
+clears the drift stamps.
+
+### 4. Go idle
+
+After every pending artifact has a stamp, end the worker turn. The turn
+ends at the stamp — do not state what any state machine does next. The
+dispatching session follows its own machine's process, not this worker's
+narration.
+
+## Outputs
+
+- One `--drift-reviewed <artifact> cosmetic|substantive <reason>` stamp
+  per pending artifact, with the reason naming each class evaluated and
+  its per-class finding.
+
+## Discipline
+
+Classify drift only. Do not rewrite prepare artifacts, do not approve
+gates, do not start build work. Do not narrate or instruct the next
+process step: the turn ends at its `--drift-reviewed` stamp(s), and the
+dispatching session's own machine owns what happens next. Substantive drift
+is re-derived by the owning layer (intake, architecture, plan) under that
+machine's control, never on this worker's prompting.
+
+A `cosmetic` verdict must be grounded in the actual evidence change for
+EVERY pending class, not assumed. If any pending class cannot be cleanly
+classified — provenance unreadable, upstream digest unresolvable,
+referenced snippet not found, baseline SHA missing — stamp `substantive`
+and let the owning layer re-derive.
+
+The same per-class evaluation discipline applies whether the analyzer
+was dispatched from the prepare BLOCKED branch or from a work-entry
+bounce. The work-entry path produces no separate verdict semantics — it
+is the same stamp on the same artifact, evaluated against the same
+evidence.
+
+## Recovery
+
+- If a referenced path cannot be read (deleted, renamed without rename
+  detection), stamp `substantive` on the code class and explain in the
+  reason — the owning layer must re-derive against the new reality.
+- If a baseline SHA cannot be resolved (history rewrite, missing
+  object), stamp `substantive` — provenance cannot be verified.
+- If a referenced upstream artifact's recorded digest cannot be matched
+  against any current artifact version (e.g., the upstream was rewritten
+  multiple times since the recorded digest), stamp `substantive` on
+  upstream-artifact — the chain must re-derive.
+- If a referenced snippet ID no longer resolves (`telec docs get` errors
+  or the snippet was removed), stamp `substantive` on
+  upstream-snippet — the artifact's grounding is now incomplete.
+- If the project's age window for the artifact kind is unset (`0` or
+  absent), the age class is disabled and does not appear in the
+  pending-class set; do not stamp on it.
+
+## See Also
+
+- ~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/overview.md

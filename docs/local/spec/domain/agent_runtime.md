@@ -80,12 +80,26 @@ TeleClaudeNext repository.
   additive: existing queries and payloads are unchanged.
 - **Published contracts:** session commands, queries, and lifecycle signals
   exposed to integration, workflow, identity, and session mirrors.
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 - **Also owns:** resolving a canonical command name to one corpus document
   at dispatch — a domain-qualified name directly, a bare token to its single
   global match, ambiguity refused by name — and the session record, title, and
   live-session attribution query that carry and match the value as dispatched.
   It reads the corpus `context` publishes and the canonical value the command's
   semantic owner emits, and decides neither reach, layout, nor vocabulary.
+
+<!-- change:procedure-role-capability-composition -->
+
+- **Also owns:** resolving the procedure a dispatch names to one published
+  procedure at entry — by its domain-qualified snippet ID, ambiguity and
+  absence refused by name — and the session record, title, and live-session
+  attribution query that carry and match the procedure as dispatched. It reads
+  the publication `context` produces and decides neither reach, layout, nor
+  vocabulary.
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 - **Owns (procedure activation runner):** on the computer that emitted an
   event, one standing agent per procedure per activation home — a company, a
@@ -143,6 +157,23 @@ TeleClaudeNext repository.
   attendance changes nothing about which agent answers an activation, where it
   works, what it may do, or how its work is recorded. A session started by
   hand, or by an agent, is attended.
+
+<!-- planned:procedure-role-capability-composition -->
+
+- **Owns (procedure entry):** every assignment's session is created by naming
+  a published procedure. This context resolves the procedure's declared role,
+  parameters and dispatch defaults from `context`'s publication before the
+  session exists, binds the arguments, applies dispatch privilege against
+  `identity`'s catalog, materializes the procedure's complete brief as one
+  artifact, composes the loader naming it, and persists the resolved
+  invocation on the session's launch state for continuation. A scheduled job
+  run, an activation, a lifecycle dispatch, interactive command input and a
+  hand-started run all enter this way; an entry type adds typed context and
+  the required reads it implies, never a role. A procedure read inside a
+  session changes nothing about that session. The behavioral contract is
+  `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`.
+
+<!-- /planned:procedure-role-capability-composition -->
 
 - **Owns (session company):** a session has a company only when it is created
   with `--company` or started from a session that has one; the company is

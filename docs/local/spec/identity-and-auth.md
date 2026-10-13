@@ -44,8 +44,21 @@ resolved for its caller (§6):
   session key on it.
 - `x-caller-principal`: the caller's principal — `human:<email>` or the carried
   system principal.
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 - `x-caller-system-role`: the system role the caller's session resolves to, when
   it has one.
+
+<!-- change:procedure-role-capability-composition -->
+
+- `x-caller-role`: the agent role the caller's session resolves to, when it has
+  one. `x-caller-system-role` is still sent beside it, carrying the same value
+  verbatim for computers that read only the older name; neither is authority
+  for anything beyond the carried identity.
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
 - `x-caller-human-role`: the person role that authorizes the caller, when the
   caller is a person.
 - `x-caller-email`: the person's email, when the caller is a person.

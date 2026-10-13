@@ -1,0 +1,571 @@
+---
+description: 'Prepare-stage orchestration. Audit intent, enter the kind-specific preparation lane, and drive its state-machine-owned derivation and review cycle to PREPARED or BLOCKED.'
+activation_trigger: 'Use when asked to prepare a todo, become its prepare orchestrator, or drive telec todo prepare for a slug.'
+visibility: 'public'
+role: prepare-orchestrator
+parameters:
+  - name: slug
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: slow
+---
+
+# Prepare Overview — Procedure
+
+## Required reads
+
+- @~/.teleclaude/docs/sdlc/bundle.md
+- @~/.teleclaude/docs/general/principle/session-lifecycle.md
+- @~/.teleclaude/docs/general/concept/orchestrator.md
+- @~/.teleclaude/docs/general/procedure/orchestration.md
+- @~/.teleclaude/docs/general/concept/agent-characteristics.md
+- @~/.teleclaude/docs/sdlc/principle/architectural-defaults.md
+- @~/.teleclaude/docs/sdlc/concept/architect.md
+- @~/.teleclaude/docs/sdlc/procedure/lifecycle/overview.md
+- @~/.teleclaude/docs/sdlc/policy/process-change-authority.md
+- @~/.teleclaude/docs/general/policy/human-involvement-recording.md
+- @~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
+
+## Goal
+
+Route a todo into the preparation lane defined by its kind and drive that lane
+from initial intent capture to its ready state. Feature, change, and bug work
+use the prepare state machine; task work diverts to its non-SDLC task-plan
+procedure. One session retains ownership while each routed phase loads its
+focused procedure and advances through the machine-owned transitions.
+
+### Defaults — read these once and carry them through every phase
+
+1. **One session drives the whole prepare lifecycle.** The session you are
+   in loads each phase's procedure in turn, does the work itself, advances the
+   state machine, and loads the next procedure when the state machine routes
+   there.
+
+2. **Each phase has its own focus, sharpened by a hat:**
+   - **BA hat** for intake — loaded by reading `~/.teleclaude/commands/sdlc/prepare-intake.md`
+   - **Architect hat** for architecture — loaded by reading `~/.teleclaude/commands/sdlc/prepare-architecture.md`
+   - **Planner hat** for plan — loaded by reading `~/.teleclaude/commands/sdlc/prepare-plan.md`
+
+   Putting on a hat sharpens focus for the current phase; it does not erase
+   the lifecycle awareness underneath. The hat comes off when the phase ends
+   and the next procedure loads.
+
+3. **Reviewers are independently dispatched.** When the state machine
+   routes to a review step, dispatch the reviewer as a separate session via
+   `telec sessions run` and tail it. The reviewer writes its findings to the
+   findings artifact and a verdict to its review stamp; the active phase
+   procedure reads them on the next state-machine advance.
+
+   Each PRD, architecture, and plan review phase admits reviewer passes through
+   review cycles. A valid substantive drift stamp starts a new cycle for every
+   review target it invalidates. The machine persists cumulative history before
+   returning each reviewer instruction, and target or report rewrites without a
+   substantive stamp reset nothing. At the configured threshold it reports the
+   count once; it refuses no pass, summons no one, and preserves the active
+   prepare session. This session owns continuation: it requests another pass
+   only when it can establish what remains unresolved and why the next act
+   resolves it within the frozen scope, and when continuation stops it records
+   the grounded cause and routes the next contribution
+   (`sdlc/procedure/lifecycle/review`). Escalation follows
+   `general/policy/human-contract` rather than the review count.
+   Legacy prepare-review state that predates cycle identity initializes through
+   the one-time migration rule in the shared review procedure.
+
+4. **Human PRD approval belongs to the feature lane only.** A drafted feature
+   PRD first passes `prd_review`; the human then judges product intent and
+   stamps `prd_approved`. Architecture and implementation plans advance on
+   reviewer verdict alone. Task-plan authorization follows the separate task
+   procedure and is not a PRD approval.
+
+The bug lane is the one named exception to the first default, and it is narrow: a
+dispatched peer authors the `diagnosis`, investigating and concluding in one act, while
+the driving session triages before that peer is spent, interrogates the written mechanism
+after as a skeptical examiner rather than a second diagnostician, stamps the cause once
+every causal transition is evidenced and the strongest rival is eliminated, and resumes as
+planner from a conclusion it did not write. The driver stays alive while its peer is active and does not poll it;
+normal completion or material communication wakes the next action. When the filing already
+carries an independently auditable causal account that triage confirms in full against its
+cited sources, the driver settles that account and dispatches no peer. See
+`sdlc/procedure/lifecycle/prepare/diagnose`.
+
+## Preconditions
+
+- Slug exists in the todo list, or is created during the session at the moment
+  intent is concrete enough.
+- Session was invoked via `/prepare [slug]`, or auto-spawned to work a
+  todo already on the list.
+- Either a human is in the conversation or none is. The session reads that from
+  the conversation it is having; nothing declares it and nothing carries it in.
+
+## Steps
+
+### 0. Resolve the entry mode
+
+Before doing anything else, resolve which of three live-entry modes this session
+is in — the slug's presence and the human's presence determine the posture:
+
+- **No slug + a human in the conversation.** The conversation itself is the source
+  for `@input`. Shape a concrete todo with the human, and once the intent is
+  concrete create it held with the hidden specialist control
+  `telec todo create <slug> <content> --kind <kind> --hold --reason "<why this waits, or the gate or owner it waits on>"`.
+  The `--hold` keeps the runner from claiming the new todo before you continue,
+  while the reason records why the brake exists. Then continue as the owning
+  prepare orchestrator from Step 1.
+- **Slug + a human in the conversation.** Treat this as the human reassessing or
+  refining that todo, not autonomous continuation. Do not call `telec todo
+prepare {slug}` before assessing the conversation and the human's intent for
+  the slug; advance only once that intent is clear, then proceed from Step 1.
+- **Slug + no human in the conversation.** Proceed directly from the artifacts
+  through the prepare state machine (Step 1 onward). A human who joins later
+  governs only the acts from that point on and rewrites no involvement record
+  already stamped.
+
+`--hold` is the create-time dispatch brake reserved for this orchestration
+context; release it with `telec todo update <slug> --release` once the todo is
+ready to enter its normal lane.
+
+### 0a. Audit the creation record and input
+
+Before deriving preparation artifacts, audit the todo against the current
+`input` and its mechanically recorded creation record. Perform the initial
+audit read-only and identify required input repairs; apply them through Step 2.
+The creation record establishes how the todo entered the system and which
+session lineage carried it; it does not establish what a human decided.
+
+1. Read the creation record and the current `input`.
+2. Take the `input` as the authorized basis for derivation. Its content is the
+   creating agent's shaping of the work, which is trusted like any agent's.
+3. Recover the meaning that basis was compressed from. `input` is written from a
+   conversation, and the summary loses what the work is for. The sessions that
+   still hold it are the ones that wrote the artifacts: `telec todo artifacts
+list {slug}` names each artifact's writers. Read every writer that is not
+   this session. An artifact this session wrote is not corroborated here —
+   this session is the one that compressed it, and the review lane in
+   `sdlc/procedure/lifecycle/prepare/review-plan` owns it.
+   Read the human's
+   own turns — a user entry outside any complete recognized platform envelope is
+   that human, per `general/policy/message-identity-headers`, while an envelope
+   span is a peer or the platform. Sessions with no human turns carry nothing to
+   recover; that is the ordinary case and costs nothing. A writer the record
+   does not name is read, not skipped: an unknown writer is not evidence of a
+   foreign one.
+
+   Where human turns exist, compare substance: an outcome-level requirement
+   present in the conversation and absent from `input` is a compression loss,
+   and an in-place `input` repair is carried into Step 2
+   (`general/policy/human-contract`).
+
+   Carry the substance, never its provenance. The repaired `input` states the
+   requirement and defends it on its merits; it never records that a human
+   said, decided, or asked for anything (`general/policy/human-contract`).
+
+   Do not repair, and say so in the audit instead, when:
+   - no shaping session is identifiable, its transcript is unavailable, or its
+     recorded coverage is incomplete for the relevant range;
+   - a shaping session is still live and the conversation is still forming;
+   - the omission is mechanism rather than outcome — how to build it is plan
+     and build's, and restoring it would reinsert the HOW that `input`
+     deliberately excludes;
+   - the clause was superseded later in the same conversation, where the later
+     position governs;
+   - the reading is genuinely ambiguous between alternatives that produce
+     different work; or
+   - a standing contract already determines the question.
+
+   Record what was compared and what came of it.
+
+   Performed at entry, this reads sessions this one did not author. Repeated
+   under item 7 after this session has itself rewritten `input`, it re-reads
+   the same turns against the new text; the comparison still holds, but it is
+   this session checking its own compression and carries that much less weight.
+
+4. Derive the work from that basis by kind — the outcome and constraints for
+   `feature` and `change`; the reported concern, symptom, and
+   expected-versus-observed behavior for `bug`, where causal and scope claims
+   remain hypotheses diagnosis still tests; and the action boundary, result,
+   recipient, and timing for `task`.
+5. A technical choice needed for safe and correct delivery is plan and build's
+   to make; it is not enlarged into product or business intent merely because
+   the input mentions it. This is a scope discipline on derivation, not a test
+   of whether the human said it.
+6. Establish the owning project, repeat the bounded overlap check when its
+   evidence is absent, apply the governing creation and process-authority
+   contracts, and confirm that functionality work carries its required pending
+   documentation.
+7. If the input changes later in the prepare flow, repeat this audit before
+   deriving from the revision.
+
+Retire only a confirmed duplicate, work whose owning project cannot be repaired
+in place, process intent defensible from neither authorized intent nor
+applicable principles, or a todo for which no defensible intent remains.
+Classify only the underlying consequence under the human contract; process
+mechanics themselves remain agent-owned. `hold` and scheduling are not changed
+by this audit. A task performs the same bounded audit before entering its
+task-specific preparation lane.
+
+### 1. Pre-flight input viability
+
+Before calling the state machine, read the `input` artifact and decide whether
+intake can proceed at all. This gate exists because intake — especially with no
+human to ask — will otherwise invent scope from a sparse or accidental input,
+producing artifacts that look real but encode nothing.
+
+Read the input via `telec todo artifacts read {slug} input`. Apply the
+viability check:
+
+- **Hard-stop signals** (any one disqualifies the input as-is):
+  - Input is a single short phrase or noun phrase with no goal, no actor, no
+    outcome — fewer than ~10 meaningful words.
+  - Slug carries a raw timestamp suffix (e.g., `…-1778958052`) indicating an
+    auto-generated dump, with no companion context from a prior session.
+  - Input is empty, placeholder text, or matches a known smoke-test pattern.
+
+- **Resolution depends on whether a human is present:**
+  - No human in the conversation → **hard-stop and escalate.** Do not dispatch
+    intake. Nothing supplies the missing intent, and no conversation is
+    available to complete it. Surface: "Input too sparse and no human to ask;
+    needs human elaboration or removal." Stop the prepare flow.
+  - A human in the conversation → **soft-stop and elicit before dispatch.** Point the
+    human at `@input` (do not paste it back), name the gap, ask one direct
+    question to surface the goal/actor/outcome. Assess the elaborated input for
+    viability, then carry the required input update into Step 2.
+
+Substantive inputs (clear intent, concrete outcome, identifiable actor — even
+if short) pass the gate and proceed to Step 1a.
+
+### 1a. Process-change governance gate
+
+Apply `sdlc/policy/process-change-authority` before artifact
+derivation. Assess whether delivery changes a process-layer contract: lifecycle
+state, gate composition, review lanes, lifecycle procedures, or todo semantics.
+
+- **No process change implied** (including descriptive edits and restoring code
+  to the current contract) → proceed to Step 2.
+- **The current process contract already binds every implied behavior** →
+  proceed to Step 2 and reference that contract as implementation scope.
+- **The work changes process behavior** → keep the work in its ordinary lane.
+  Identify the pending process-contract changes during preflight and carry
+  their authoring into Step 2. Complete them on `main` before planning, record
+  the material reason and before/after guarantee, and route them through
+  independent documentation and plan review. If the delta relaxes a validation
+  or delivery control, the reviewer must be separate and have no stake in the
+  work the relaxation would unblock.
+- **An underlying consequence belongs to the human** → surface only that
+  outcome under `general/policy/human-contract`. Once decided, absorb it into
+  the owning artifact and continue; technical process design remains agent-owned.
+
+### 1b. Route by todo kind
+
+Read the todo's recorded kind and enter only the lane it owns. Kind determines
+which preparation artifacts exist; the feature chain is not a universal
+template.
+
+| Kind      | Entry route                                                                                                                      | Preparation outputs                                                                                  |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `feature` | Intake → PRD review and human approval → optional architecture and review → implementation plan and review                       | `prd`, behavioral feature-spec reflection, optional `architecture`, `implementation-plan`            |
+| `change`  | Implementation-plan drafting and review                                                                                          | `implementation-plan`; no PRD or feature intake                                                      |
+| `bug`     | Diagnosis, by a dispatched peer or settled at triage from a confirmed reporter account → implementation-plan drafting and review | `diagnosis`, `implementation-plan`; no PRD or feature intake                                         |
+| `task`    | Load `sdlc/procedure/lifecycle/task/prepare-task` and leave this SDLC flow                                                       | `task-plan` plus human authorization; no PRD, architecture, implementation plan, or reviewer verdict |
+
+If the recorded kind does not match the intent, reclassify it with `telec todo
+update {slug} --kind <feature|change|bug|task>` before deriving artifacts. Never
+force an intent through the wrong lane to preserve an already chosen kind.
+
+A `bug` keeps its lane when a current contract states the behavior its report
+expected. Open the contract the report states and confirm it says that. A
+report that states none, about behavior a current contract plainly states, has
+a repairable omission: add that contract to `input` and keep the lane. A report
+filed against the wrong owner is corrected in place under Step 0a. Whether the
+evidence shows the claimed behavior is diagnose triage's judgment
+(`sdlc/procedure/lifecycle/prepare/diagnose`), not this step's.
+
+A report whose premise is that nothing followed up is checked first against the platform-gap
+rule in `sdlc/policy/todo-creation-discipline`: an unattempted sanctioned recovery is
+operational work and creates no todo, and a request to change the recovery contract itself is
+a `change`, whatever the failure that prompted it.
+
+When no current contract states the expected behavior, the report is not a bug,
+and is one of two things (`sdlc/policy/todo-creation-discipline`):
+
+- **A change request** — the report names an outcome someone wants.
+  Reclassify it to `change` before calling `telec todo prepare {slug}`.
+- **An invalid bug report** — a report of behavior its contract permits,
+  asking for no outcome anyone wants. Record the reason in the todo's `log`.
+  An agent-originated report is rejected with `telec todo remove {slug}`, and
+  the session ends as at any terminal outcome. A report carrying a human's
+  request in their own words is that human's to withdraw: hold it with
+  `telec todo update {slug} --hold --reason <reason>` and stay open with why it
+  breaks no contract, so the human can read it and talk it through with this
+  session (`general/principle/session-lifecycle`). When they withdraw it,
+  remove it and end. When they restate it as a change, record the restatement
+  in `input`, release the hold with `telec todo update {slug} --release`, and
+  reclassify it to `change` before calling `telec todo prepare {slug}`. An
+  invalid report is never reclassified to keep it alive.
+
+### 1c. Settled change
+
+At audited entry, before drafting or review starts, the owning prepare session
+may apply the in-context criteria in `sdlc/policy/todo-creation-discipline` to a
+`change`. This path requires an explicit `doc_impact_none` basis, no pending
+documentation or uncommitted delivery fold for the slug, and no prior build work
+or unresolved review to bypass. Otherwise continue through ordinary
+preparation. A `bug` never takes this path, and is never reclassified to reach
+it.
+
+Execute on canonical `main`, commit and resolve independent review under
+`general/policy/commits`. Record the eligibility basis, delivery commits, review
+reference and remaining publication obligation in the todo's `log`.
+
+The integrator retains direct-main publication and its maintenance obligations.
+Keep ownership of delivery bookkeeping while publication is pending; use the
+reminder service and yield. Before delivery, refresh remote state, confirm the
+recorded completion commit is contained in `origin/main`, and re-establish that
+the reviewed outcome remains delivered and that cleanup would discard no
+slug-owned work or pending material and commit nothing new. Then run
+`telec todo deliver {slug} --commit <recorded-completion-sha>`, verify the
+terminal state, and perform terminal session cleanup.
+
+If eligibility fails before execution, enter the ordinary change lane. If a
+later finding requires preparation, retain the commits and unresolved evidence
+and route the remaining work through normal recovery; do not mark the todo
+delivered.
+
+### 2. Call the state machine
+
+For `feature`, `change`, and `bug`, make the initial `telec todo prepare {slug}`
+call after the read-only entry assessment establishes settled, viable intent
+and before preparation writes. This call establishes the registered prepare
+role in the existing session, retaining its slug claim. Fresh prepare entry
+follows this order; a session already in preparation advances at the existing
+phase boundaries. A session that holds the slug in the work lane is refused:
+work returns to preparation only through a fresh prepare orchestrator the
+lifecycle runner dispatches.
+
+The call returns an operation receipt and does not wait for the machine; the
+outcome reaches this session through its wake and is read with
+`telec operations get <operation_id>` (`general/procedure/orchestration`).
+Entry has succeeded once that outcome carries the phase's
+execution script rather than a refusal. After successful entry, apply the input
+repairs and pending process-contract changes identified during preflight, then
+perform the preparation work.
+
+The machine's outcome is a verbatim execution script for the current phase. The script
+describes either a procedure load (load
+the next phase's procedure and do its work), a reviewer dispatch (dispatch a
+separate reviewer session and tail it), an approval pause (present to the real
+human and wait), or a terminal state (`PREPARED` or `BLOCKED`).
+
+Complete the entry obligations above before executing the script verbatim.
+The script's flexibility belongs to
+in-conversation moments with the user: fresh questions, refinements, scope
+clarifications.
+
+### 3. Load the recommended procedure and do the work
+
+When the state machine routes you to a phase, load the corresponding procedure
+and do its focused work. Each procedure ends by calling `telec todo prepare
+{slug}` to advance — that's how the lifecycle proceeds.
+
+| Phase               | Kind(s)              | Procedure                                             | Focus                       |
+| ------------------- | -------------------- | ----------------------------------------------------- | --------------------------- |
+| Intake              | Feature              | `~/.teleclaude/commands/sdlc/prepare-intake.md`       | BA                          |
+| PRD review          | Feature              | `~/.teleclaude/commands/sdlc/review-prd.md`           | Reviewer                    |
+| Diagnose            | Bug                  | `~/.teleclaude/commands/sdlc/prepare-diagnose.md`     | Diagnoser (dispatched peer) |
+| Architecture        | Feature              | `~/.teleclaude/commands/sdlc/prepare-architecture.md` | Architect                   |
+| Architecture review | Feature              | `~/.teleclaude/commands/sdlc/review-architecture.md`  | Reviewer                    |
+| Plan                | Feature, change, bug | `~/.teleclaude/commands/sdlc/prepare-plan.md`         | Planner                     |
+| Plan review         | Feature, change, bug | `~/.teleclaude/commands/sdlc/review-plan.md`          | Reviewer                    |
+
+Intake's focused work includes situating the premise against the existing todo
+landscape — reconciling overlap and undeclared dependencies with sibling todos
+before scoping (intake procedure, step 1.6).
+
+### 4. Honor the feature PRD approval gate
+
+In the feature lane, the PRD is the only SDLC artifact gated by human approval, and internal review
+precedes that gate. When intake writes or rewrites the PRD, the state machine
+routes to a dispatched PRD reviewer. `needs_work` returns the findings to
+intake; `approve` binds the verdict to the current PRD digest and opens human
+approval.
+
+Present only the reviewed PRD, its stated horizon, and genuine human-owned
+decisions. On confirm, stamp `prd_approved`. On refinement, capture the delta,
+rewrite the PRD, and let the machine invalidate and rerun `prd_review`; the
+rewritten PRD returns to the human only when the approval does not carry.
+
+The human approves intent, not a digest. Once the human has approved a PRD, a
+later revision returns to them only when it carries intent they have not
+already decided. Every other revision carries their approval. The independent
+PRD reviewer judges whether it does, in its report on the revised digest
+(`sdlc/procedure/lifecycle/prepare/review-prd`); the claimant never classifies
+its own revision. When the current `prd_review` approves and its report
+concludes that the approval carries, the prepare claimant stamps `prd_approved`
+without asking. A revision carries the approval when each of its changes is
+one of these:
+
+- a decision the human gave in the live conversation, applied as given;
+- removal or narrowing of scope that the `input` does not carry and the human
+  never asked for;
+- a correction of reasoning, evidence, wording, or mechanism that leaves every
+  outcome and success criterion as the human approved it.
+
+For the first ground, the claimant records the human's direction and the
+session that carries it in the todo `log` before the review is dispatched, so
+the reviewer judges it against the source.
+
+A revision that adds or widens an outcome, changes a success criterion beyond
+the human's own direction, or raises a new decision in the human's closed lane
+(`general/policy/human-contract`) returns to the human, and so does one whose
+classification remains uncertain. A carried approval never skips
+`prd_review`. Before stamping, the claimant records in the todo `log` the
+approved digest it carries forward and the review report that carried it. The human
+is not asked to confirm a carried approval and receives no separate notice of
+it.
+
+A PRD the human has never approved is never stamped `prd_approved` by an
+agent: the first approval is the human's, given directly in the live
+conversation, and no signal about how the session started supplies,
+withholds, or propagates it.
+
+### 5. Skip phases that don't earn their place
+
+In feature intake, the BA assesses size and stamps a skip with reason when warranted:
+
+- `architecture_skipped: <reason>` — e.g., "single-file change, no
+  cross-service implications."
+
+The state machine respects the skip when deriving the current phase.
+
+### 6. Handle drift
+
+When the state machine reports drift (codebase changed in artifact-referenced
+paths since the artifact was authored), dispatch a lean drift-analysis
+worker:
+
+```
+telec sessions run --command /drift-analyze --agent codex --args {slug}
+```
+
+The worker reads the diffs scoped to referenced paths, assesses impact per
+affected artifact, and reports findings. The `/drift-analyze` worker is
+the sole author of `--drift-reviewed`. Substantive verdicts trigger
+re-derivation of the affected phase; cosmetic verdicts allow the chain to
+continue.
+
+Doctrine drift is not machine-detected. On resuming a todo whose artifacts
+were reviewed before a change to applicable doctrine — a principle, policy, or
+procedure the artifact is judged against — re-read the artifact against the
+doctrine changed since its last review. Doctrine drift alone never invalidates
+an approval; only a material conflict between the artifact and current doctrine
+triggers kickback and re-review of the affected phase.
+
+### 7. Handle refinement
+
+When the human refines (proposes changes to an artifact at any layer),
+classify the refinement scope and re-enter the appropriate phase:
+
+- **Intent-level** (new thinking, scope changes) → repeat kind routing. A
+  feature re-enters intake; a change re-enters plan; a bug re-enters diagnosis
+  or plan according to whether the causal conclusion changed. Invalidate the
+  affected downstream approvals.
+- **Architecture-level** (design-snippet change in a feature) → re-enter
+  architecture. Plan approval invalidated.
+- **Plan-level** (task adjustment) → re-enter plan phase. No further
+  downstream to invalidate.
+
+Clear the relevant approval stamps and re-run the affected phases.
+
+### 8. Terminal state
+
+Before deriving `PREPARED`, the state machine checks the commits this session
+authored on main while holding the claim. Each needs an `approve`
+commit-review stamp: a reviewer's verdict, or this session's own discard of a
+commit that owes no review (`general/policy/commits`). While any lacks one,
+the machine returns those SHAs instead of `PREPARED`; dispatch review for the
+ones that need it, stamp the rest, and call again. A `request_changes` stamp
+keeps its commits pending until their remediation is approved.
+
+When all required phases have approval stamps and grounding is fresh, the
+state machine derives `PREPARED`. Deriving `PREPARED` releases this session's
+claim on the todo, whether or not the todo carries an in-flight build, and the
+work lane takes the todo up from there. The returned terminal
+script ends the prepare lifecycle's child sessions — Step 2's "execute the
+script verbatim" rule applies here too. Report `PREPARED` to the human, then
+assess departure per `general/principle/session-lifecycle`; staying for an
+unfinished human conversation never holds the todo. Hand-off means releasing,
+never calling `telec todo work {slug}` yourself.
+
+If reviewer verdicts cannot be resolved through normal revision rounds, or if
+drift cannot be cleanly re-derived, the state machine derives `BLOCKED`.
+Classify the remaining decision under `general/policy/human-contract` and
+record its evidence, next contribution and owner. Review halts follow
+`sdlc/procedure/lifecycle/review` §6. `BLOCKED` is a work
+state, not a declaration that the human owns its recovery.
+
+## Outputs
+
+- Every lane begins from the `input` as its authorized basis.
+- Feature: digest-bound `prd_review`, human-approved `prd`, behavioral feature
+  spec reflection, optional reviewer-approved `architecture`, and a
+  reviewer-approved `implementation-plan`.
+- Change: reviewer-approved `implementation-plan`, with no PRD or feature
+  intake artifacts.
+
+- Bug: a `diagnosis` authored by a dispatched peer, or transcribed from a confirmed
+  reporter account, followed by a reviewer-approved `implementation-plan`, with no PRD or
+  feature intake artifacts.
+
+- Task: a `task-plan` and human authorization request from the task procedure;
+  no SDLC prepare-state-machine output.
+- SDLC lanes carry fresh grounding stamps and end in `PREPARED` or `BLOCKED`.
+
+## Recovery
+
+- **Creation record is absent or incomplete.** Derive from the input and prior
+  artifacts; never solicit an attestation from the creator. Reading a named
+  session's transcript under Step 0a recovers meaning and is not solicitation.
+- **The input is too thin to derive from.** Recover intent from the input, the
+  creation record, prior artifacts, and the sessions Step 0a names; do not
+  manufacture product detail. If no defensible basis remains after that, stop
+  before kind-specific derivation and surface the gap.
+- **A bug concern is faithfully recovered but not yet proven.** Proceed to
+  diagnosis. Filing fidelity establishes what was reported, not whether the
+  report is correct or what caused it.
+- **Input changed after creation audit.** Repeat Step 0a before deriving or
+  re-deriving preparation artifacts.
+
+- **Input fails the viability gate with no human in the conversation.** Do not dispatch
+  intake. Surface the gap by referencing `@input` (do not paste its text), and
+  recommend either human elaboration or removal (`telec todo remove {slug}`).
+  The prepare flow stops until the input is fixed or the todo is removed.
+- **Input fails the viability gate with a human in the conversation.** Stop before
+  dispatch, reference `@input` (do not paste it back), and ask one direct
+  question to surface the missing goal/actor/outcome. Update the input artifact
+  with the human's elaboration, then repeat the authority and kind gates before
+  entering the routed lane.
+- **State machine returns an unfamiliar recommendation.** Read its governing
+  contract and route any unresolved technical discrepancy to its agent owner
+  under `general/policy/human-contract`; do not improvise a state transition.
+- **Procedure loading fails.** Report the failure; do not proceed without the
+  procedure loaded.
+- **A preparation write was refused before entry.** Complete Step 2 and retry
+  the in-scope write against the current state. If it remains refused, inspect
+  the registered role and operation outcome while retaining the session and
+  claim. Ground recovery in that fresh evidence
+  (`general/principle/grounding`).
+- **Reviewer dispatch fails repeatedly.** Preserve the failure evidence and
+  apply `general/procedure/orchestration` recovery. The attempts do not
+  substitute for reviewer verification or establish human ownership.
+- **Human disengages mid-flow.** State machine retains current state; next
+  session resumes where things were left.
+- **Conflict between an autonomously produced artifact and later human intent.**
+  When the human refines an autonomously produced artifact substantially, treat the
+  refinement as authoritative and re-derive downstream — even if downstream
+  had already been auto-produced. The human's artifact-level decision is the
+  source of truth for that refinement only.
+
+## See Also
+
+- ~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/intake.md
+- ~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/architecture.md
+- ~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/plan-draft.md

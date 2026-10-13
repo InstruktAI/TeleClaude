@@ -19,11 +19,21 @@ One-off operations (e.g., initial YouTube subscription fetch during onboarding) 
 
 ### Execution ownership
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 An agent job executes the procedure named by its declaration. That procedure owns
 the task, its artifacts, and its recovery steps; the `run-job` brief binds
 the job role and submits its structured outcome. A script job runs in-process
 and returns its outcome directly. Scheduling, dispatch, and outcome notification
 belong to the runner.
+<!-- change:procedure-role-capability-composition -->
+
+An agent job executes the procedure named by its declaration. That procedure owns
+the task, its artifacts, its recovery steps and the role its session carries;
+the brief a job entry materializes adds the outcome-reporting instructions.
+A script job runs in-process and returns its outcome directly. Scheduling,
+dispatch, and outcome notification belong to the runner.
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ### The generic closed-loop run lifecycle
 
@@ -282,10 +292,19 @@ checkpoint meaning belongs to the job's procedure or script.
    outputs and recovery, and sync it so its ID resolves.
 2. Register in `teleclaude.yml` with a `name` and `job` carrying the procedure's snippet ID.
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 The runner dispatches `/run-job <name>` through the canonical command-session contract,
 rooted at the project the run belongs to, and opens a run keyed by that project and name. The
 run boundary gives the session both the job's name and the procedure its declaration points
 at.
+<!-- change:procedure-role-capability-composition -->
+
+The runner enters the job's procedure through the procedure-entry contract with the job's
+name as entry context, rooted at the project the run belongs to, and opens a run keyed by
+that project and name. The session carries the role the procedure declares and records the
+job's name as its instance identity.
+<!-- /planned-change:procedure-role-capability-composition -->
 
 The agent loads the procedure with its required-read closure, does its work, reads the latest checkpoint when needed, and submits the outcome through one `telec jobs report <name> --success <true|false> --message '<summary>' [--state-json '<object>']` call. The optional object follows the shared checkpoint-update contract in `local/projects/teleclaude/spec/feature/agent_runtime/agent-job-reporting`. The CLI writes the current record at `STATE_DIR/runs/<project_slug>/<job_name>.json`; the agent does not write it directly. It then stops.
 
@@ -399,6 +418,14 @@ cron_runner.py --list       List available jobs and their status
 
 ### Job procedures
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 An agent job's complete mandate is the procedure its `job` pointer names. There is no
 separate job document: the procedure carries the workflow and its dependencies;
 the `run-job` brief supplies the job-role boundary and structured close-out.
+<!-- change:procedure-role-capability-composition -->
+
+An agent job's complete mandate is the procedure its `job` pointer names. There is no
+separate job document: the procedure carries the workflow, its dependencies and its
+declared role; the job entry adds the structured close-out instructions to the brief.
+<!-- /planned-change:procedure-role-capability-composition -->

@@ -129,11 +129,26 @@ rule it relies on is stated by its owner:
   is possible; the same per-procedure-and-home serialization covers every
   subject in the home.
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 - **One thin command starts every activated agent.** The canonical command
   loader supplies the procedure identity and home and requests the procedure's
   effective required-read closure. Context composes the shared handling
   instructions from the published declaration; domain work and lifecycle remain
   the loaded procedure's responsibility.
+
+<!-- change:procedure-role-capability-composition -->
+
+- **The procedure entry starts every activated agent.** The activation runner
+  enters the procedure-entry contract with the procedure's identity and the
+  home, subject, attendance and delivery facts as entry context; the session
+  carries the procedure's declared role and reads a brief holding the
+  procedure's effective required-read closure and the shared handling
+  instructions Context composes from the published declaration. Domain work
+  and lifecycle remain the loaded procedure's responsibility.
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
 - **Activation data enters through hooks.** Runtime records the initial event
   before bootstrap can offer its initial hook. The initial brief is the startup
   instruction, and its activation hook carries event data. Later idle deliveries
@@ -190,6 +205,8 @@ rule it relies on is stated by its owner:
 
 ### Reused mechanisms
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 | Step                                     | Existing mechanism                                                                      | Relation                                                                                                                   |
 | ---------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | Event reaches the consumer               | The consumer runtime on the platform event stream                                       | Reused: activation is one consumer, interested in every type, its own computer's events, and known homes                   |
@@ -205,6 +222,26 @@ rule it relies on is stated by its owner:
 | Outcome record                           | Durable operation outcomes, receipt-first                                               | Reused: the procedure-activation completed/failed event pair                                                               |
 | Company on the session                   | Session record                                                                          | Reused for a company home                                                                                                  |
 | Company for tools inside the session     | Caller resolution from the session identity document's session id (`telec auth whoami`) | Reused unchanged                                                                                                           |
+
+<!-- change:procedure-role-capability-composition -->
+
+| Step                                     | Existing mechanism                                                                      | Relation                                                                                                                   |
+| ---------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Event reaches the consumer               | The consumer runtime on the platform event stream                                       | Reused: activation is one consumer, interested in every type, its own computer's events, and known homes                   |
+| Source, subject, and home travel with it | Event envelope attributes set by the producer                                           | Reused unchanged                                                                                                           |
+| Repeat suppression per event             | The consumer runtime's duplicate protection by event id                                 | Reused unchanged                                                                                                           |
+| Pattern matching and validation          | The event catalog's type-pattern matcher                                                | Reused at declaration, publication, and matching                                                                           |
+| Subscription becomes matchable           | Publication index read                                                                  | Adapted: entries carry patterns, the declared home kind, and the publishing tier; re-read when the published index changes |
+| Start or wake crosses into the runtime   | Local command dispatch with a durable operation receipt                                 | Adapted: the request identity is derived from the event, procedure, and home instead of minted per submission              |
+| Find or create the standing agent        | Inbound resolve-or-create seam used by WhatsApp and Discord                             | Adapted: serialized per procedure and home                                                                                 |
+| Locate the home                          | Registered company, person, and project folders; the platform's own checkout            | Reused through `config`'s answer and the platform checkout's existing owner                                                |
+| Start                                    | The procedure-entry contract, as the scheduled-job runner uses                          | Reused with the home and delivery facts carried as entry context                                                           |
+| Event delivery on start and wake         | Durable hook delivery with a content-free idle wake                                     | Adapted: eligibility and cardinality follow the procedure declaration; activation identity absorbs replay                  |
+| Outcome record                           | Durable operation outcomes, receipt-first                                               | Reused: the procedure-activation completed/failed event pair                                                               |
+| Company on the session                   | Session record                                                                          | Reused for a company home                                                                                                  |
+| Company for tools inside the session     | Caller resolution from the session identity document's session id (`telec auth whoami`) | Reused unchanged                                                                                                           |
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ### Activation
 

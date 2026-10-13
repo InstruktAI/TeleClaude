@@ -94,6 +94,9 @@ contracts and never creates shared ownership.
   membership — which of the repository's paths are retained; `agent_runtime`
   asks, and neither decides membership nor substitutes an answer where none is
   published.
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 - A command's name belongs to the context that owns the command, and that
   context emits it domain-qualified; the shared name table holds the values
   without owning them. Semantic owner and corpus domain are independent:
@@ -104,10 +107,24 @@ contracts and never creates shared ownership.
   that admits a source into it, read from `config`'s publishing declaration;
   `agent_runtime` owns resolving an emitted name to one corpus document at
   dispatch, and owns the session record, title, and live-session attribution
-  query that carry and match the dispatched value, which callers such as
-  `workflow` consume. None restates another's rule: a caller never inspects the
-  corpus or matches sessions itself, `context` never composes a dispatch, and
-  `agent_runtime` never decides reach or command vocabulary.
+
+<!-- change:procedure-role-capability-composition -->
+
+- A dispatch names a procedure by its domain-qualified snippet ID, and the
+  context whose contract governs the dispatch emits that ID: `workflow` emits
+  its todo-lifecycle procedures, while `config` hands the scheduler the
+  procedure a job declaration points at. `context` owns the publication those
+  IDs resolve in and the reach that admits a source into it, read from
+  `config`'s publishing declaration; `agent_runtime` owns resolving an emitted
+  ID to one published procedure at entry, and owns the session record, title,
+  and live-session attribution
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+query that carry and match the dispatched value, which callers such as
+`workflow` consume. None restates another's rule: a caller never inspects the
+corpus or matches sessions itself, `context` never composes a dispatch, and
+`agent_runtime` never decides reach or command vocabulary.
 
 - `context` publishes each procedure's declared subscription patterns, the home
   kind it answers, and its publication tier; `integration` runs one platform

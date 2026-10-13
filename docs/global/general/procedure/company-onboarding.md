@@ -65,10 +65,19 @@ repository. This creates the baseline for the next re-onboard diff.
 
 ### 4. Start the analysis session
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 Check `telec sessions list` for an open `/companies-analyze` session on this company
 root first; the sessions surface does not deduplicate on the caller's behalf. Then start
 `telec sessions run --command /companies-analyze --path ~/.teleclaude/companies/{slug}`
 with:
+<!-- change:procedure-role-capability-composition -->
+
+Check `telec sessions list` for an open `/companies-analyze` session on this company
+root first; the sessions surface does not deduplicate on the caller's behalf. Then start
+`telec sessions run --command general/procedure/company-analysis --path ~/.teleclaude/companies/{slug}`
+with:
+<!-- /planned-change:procedure-role-capability-composition -->
 
 - The company slug and inbox path as context.
 - The list of new/changed files to process.
