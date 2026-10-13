@@ -695,6 +695,13 @@ tts:
     <service>: { ..., voices: [{ name, voice_id? }], discord_voice: string } # discord_voice is one name from that service's own voices list; defaults to the first entry, and is absent when the service declares no voices, which keeps that service out of the room chain; a name outside the list fails validation naming the service
 ```
 
+The common TTS voice shape above is specialized for `tts.services.voxcpm` by
+`VoxCPMServiceConfig` and `VoxCPMVoiceConfig` in `teleclaude/config/_models.py`.
+VoxCPM declares service-level `params` and per-voice `voices[].params`; their
+merge precedence, synthesis use and cache identity are specified in
+`local/projects/teleclaude/design/architecture/tts-system`. Other providers
+retain the common voice shape.
+
 Summary/title generation tries `local` (when `enabled` + `base_url`) first, then the
 cloud providers in `provider_priority`, each skipped silently when its typed
 `api_key` field is absent. `local`, `openai`, and `google` share the OpenAI SDK;
