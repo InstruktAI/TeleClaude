@@ -78,8 +78,8 @@ And the installed checkout still selects the same release commit
 ```gherkin
 Given an operator's installation runs a release from detached HEAD
 When a newer published release is admitted by its channel
-Then the installation selects that release's exact commit in detached HEAD
-And its owed activation steps use that source and return it to a healthy runtime
+And the channel-owned activation completes
+Then the installed checkout remains in detached HEAD
 ```
 
 #### UC-RC4: Installed maintenance uses the selected source
@@ -110,8 +110,11 @@ Then detachment alone does not authorize installed-runtime activation there
 
 ## Known caveats
 
-- Detached HEAD prevents ordinary tracking-branch pulls; an operator can still
-  deliberately select or modify source through explicit Git operations.
+- Detached HEAD alone does not determine argument-less pull behavior: Git can
+  select a configured fetch ref in a single-branch clone. The installed
+  checkout's Git configuration participates in UC-RC2's refusal guarantee. An
+  operator can still deliberately select or modify source through explicit Git
+  operations.
 - A selected commit identifies repository source, not the outcome of migrations,
   publication or daemon startup. Healthy activation still requires the evidence
   owned by the channel-update contract.
