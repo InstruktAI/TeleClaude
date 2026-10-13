@@ -284,11 +284,17 @@ Manage agent dispatch status and availability
 
 Get current availability for all agents
 
+**Usage:** `telec agents availability [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
 ### `telec agents status`
 
 Set dispatch status for a specific agent
 
-**Usage:** `telec agents status <agent> [--status <val>] [--reason <text>] [--model <model>] [--until <ts>] [--clear]`
+**Usage:** `telec agents status <agent> [--status <val>] [--reason <text>] [--model <model>] [--until <ts>] [--clear] [--computer <host>]`
 
 **Flags:**
 
@@ -297,6 +303,7 @@ Set dispatch status for a specific agent
 - `--model`: Scope the status to one declared model
 - `--until`: ISO8601 UTC expiry for unavailable or degraded
 - `--clear`: Reset to available immediately
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ## `telec operations`
 
@@ -411,7 +418,7 @@ Copy todo state to other computers
 
 Create a todo with substantive content
 
-**Usage:** `telec todo create <slug> <content> --kind <feature|change|bug|task> [--approved] [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved <reason>]`
+**Usage:** `telec todo create <slug> <content> --kind <feature|change|bug|task> [--approved] [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved <reason>] [--computer <host>]`
 
 **Flags:**
 
@@ -424,6 +431,7 @@ Create a todo with substantive content
 - `--group`: Attach the new todo as a child of <parent-slug>, making the parent a holder. Grouping moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and delivered_by membership naming the parent is rewritten to that child and committed as part of the same transition.
 - `--plan`: For --kind change, content seeds implementation-plan as a draft basis; for --kind task, content is the pre-authorized task-plan.
 - `--human-involved`: Report a human's presence at this act, measured from their last input. The non-empty reason stays ephemeral; an observation outside the recency window records false without failing the act; omission records false and never inherits from another action.
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -440,7 +448,7 @@ Create a todo with substantive content
 
 List todo entries (source of truth for todo status)
 
-**Usage:** `telec todo list [--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--include-removed] [--removed-only] [--since <when>] [--json]`
+**Usage:** `telec todo list [--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--include-removed] [--removed-only] [--since <when>] [--json] [--computer <host>]`
 
 **Flags:**
 
@@ -452,6 +460,7 @@ List todo entries (source of truth for todo status)
 - `--removed-only`: Show only soft-removed items
 - `--since`: Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.
 - `--json`: Output as a sectioned JSON object (active/delivered/icebox/removed trees)
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -466,17 +475,22 @@ List todo entries (source of truth for todo status)
 
 Run the creative state machine
 
-**Usage:** `telec todo design [<slug>]`
+**Usage:** `telec todo design [<slug>] [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec todo remove`
 
 Soft-remove a todo: the durable record (todo entry + state + all artifacts and version history) is retained for a fixed grace window; the working resources (worktree + branch + workspace) are released immediately. After the window elapses, background maintenance hard-purges the row by id. Reactivation is row-id-addressed (see the downstream recovery surface) and fail-closed on a live same-slug twin.
 
-**Usage:** `telec todo remove <slug> [--force]`
+**Usage:** `telec todo remove <slug> [--force] [--computer <host>]`
 
 **Flags:**
 
 - `--force`: Override live-work removal refusal
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -486,29 +500,38 @@ Soft-remove a todo: the durable record (todo entry + state + all artifacts and v
 
 Move todo to icebox
 
-**Usage:** `telec todo freeze <slug>`
+**Usage:** `telec todo freeze <slug> [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec todo unfreeze`
 
 Promote todo from icebox
 
-**Usage:** `telec todo unfreeze <slug>`
+**Usage:** `telec todo unfreeze <slug> [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec todo deliver`
 
 Move todo to delivered
 
-**Usage:** `telec todo deliver <slug> [--commit <hash>]`
+**Usage:** `telec todo deliver <slug> [--commit <hash>] [--computer <host>]`
 
 **Flags:**
 
 - `--commit`: The commit that delivered the slug. The integrator always supplies its own pushed commit and withholds delivery until that commit is confirmed on origin/main. Never inferred from HEAD, which is routinely an unrelated commit. It is required for feature, change, and bug deliveries; task deliveries may omit it.
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec todo update`
 
 Update a todo slug, group, dependencies, or kind
 
-**Usage:** `telec todo update <slug> [--slug <new>] [--group <parent-slug>] [--after <dep>]... [--schedule <value>] [--kind <feature|change|bug|task>] [--hold --reason <text>] [--release] [--unclaim] [--force]`
+**Usage:** `telec todo update <slug> [--slug <new>] [--group <parent-slug>] [--after <dep>]... [--schedule <value>] [--kind <feature|change|bug|task>] [--hold --reason <text>] [--release] [--unclaim] [--force] [--computer <host>]`
 
 **Flags:**
 
@@ -522,6 +545,7 @@ Update a todo slug, group, dependencies, or kind
 - `--release`: Release the per-todo automatic dispatch brake
 - `--unclaim`: Release the caller-owned runner claim without ending the session
 - `--force`: Allow permanent orphan-artifact handling for kind migrations
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -540,7 +564,11 @@ Update a todo slug, group, dependencies, or kind
 
 Run the Phase A (prepare) state machine
 
-**Usage:** `telec todo prepare <slug>`
+**Usage:** `telec todo prepare <slug> [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -550,7 +578,11 @@ Run the Phase A (prepare) state machine
 
 Run the Phase B (work) state machine
 
-**Usage:** `telec todo work [<slug>]`
+**Usage:** `telec todo work [<slug>] [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -560,11 +592,12 @@ Run the Phase B (work) state machine
 
 Run the Phase C (integrate) state machine
 
-**Usage:** `telec todo integrate [<slug>] [--abandon]`
+**Usage:** `telec todo integrate [<slug>] [--abandon] [--computer <host>]`
 
 **Flags:**
 
 - `--abandon`: Park the current CONTENT_GATE_BLOCKED candidate as an ungroundable content-gate concern. The state machine resets the integration worktree to the frozen pre-merge SHA and parks — refused when the checkpoint is not at that phase.
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -578,19 +611,31 @@ Manage todo artifacts in the database
 
 List artifacts for a todo
 
-**Usage:** `telec todo artifacts list <slug>`
+**Usage:** `telec todo artifacts list <slug> [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 #### `telec todo artifacts read`
 
 Read a todo artifact
 
-**Usage:** `telec todo artifacts read <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
+**Usage:** `telec todo artifacts read <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 #### `telec todo artifacts write`
 
 Write a todo artifact
 
-**Usage:** `telec todo artifacts write <slug> <name: input|prd|architecture|diagnosis|investigation|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|log|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>`
+**Usage:** `telec todo artifacts write <slug> <name: input|prd|architecture|diagnosis|investigation|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|log|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content> [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -600,7 +645,11 @@ Write a todo artifact
 
 Show a unified diff between two artifact versions
 
-**Usage:** `telec todo artifacts diff <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>`
+**Usage:** `telec todo artifacts diff <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest> [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -611,7 +660,11 @@ Show a unified diff between two artifact versions
 
 Remove a todo artifact and its version history
 
-**Usage:** `telec todo artifacts remove <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings>`
+**Usage:** `telec todo artifacts remove <slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -622,22 +675,24 @@ Remove a todo artifact and its version history
 
 Show diagnostic state payload for a todo; artifact bodies are omitted by default
 
-**Usage:** `telec todo show <slug> [--include-removed] [--include-artifact-content]`
+**Usage:** `telec todo show <slug> [--include-removed] [--include-artifact-content] [--computer <host>]`
 
 **Flags:**
 
 - `--include-removed`: Also search soft-removed entries
 - `--include-artifact-content`: Include artifact body content under artifact_content in the payload
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec todo reactivate`
 
 Restore a soft-removed todo
 
-**Usage:** `telec todo reactivate <slug> | --id <row-id>`
+**Usage:** `telec todo reactivate <slug> | --id <row-id> [--computer <host>]`
 
 **Flags:**
 
 - `--id`: Restore a specific retained row by durable id
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -649,7 +704,7 @@ Restore a soft-removed todo
 
 Stamp a verdict or readiness marker into todo state
 
-**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--task-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--build-complete] [--finalize-ready] [--kickback --reason <reason>] [--task-outcome <success|error> [--reason <text>]] [--diagnosis-settled] [--diagnosis-unresolved --reason <reason>]`
+**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--prd-approved] [--task-approved] [--architecture-skipped <reason>] [--drift-reviewed <artifact> <verdict> <reason>] [--build-complete] [--finalize-ready] [--kickback --reason <reason>] [--task-outcome <success|error> [--reason <text>]] [--diagnosis-settled] [--diagnosis-unresolved --reason <reason>] [--computer <host>]`
 
 **Flags:**
 
@@ -666,6 +721,7 @@ Stamp a verdict or readiness marker into todo state
 - `--task-outcome`: Durable task firing outcome: success delivers/clears, error holds with --reason
 - `--diagnosis-settled`: Bug lane: record the diagnosis artifact's current digest as the settled cause; a later revision invalidates the stamp
 - `--diagnosis-unresolved`: Bug lane: hold the todo when the dispatched peer's diagnosis could not be settled; requires --reason
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ## `telec bugs`
 
@@ -675,7 +731,7 @@ Bug reporting and tracking
 
 Interrogate the pre-filing decisions before scaffolding a bug; a completed filing enters the bug lane and the lifecycle router dispatches /prepare
 
-**Usage:** `telec bugs report <description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved <reason>]`
+**Usage:** `telec bugs report <description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved <reason>] [--computer <host>]`
 
 **Flags:**
 
@@ -683,6 +739,7 @@ Interrogate the pre-filing decisions before scaffolding a bug; a completed filin
 - `--body`: Detailed description body for bug.md
 - `--project`: Project that owns the defective code (registry name or slug). Defaults to the invoking cwd — where the symptom was OBSERVED, which is often not where the code lives. Set it whenever the two differ.
 - `--human-involved`: Report a human's presence at this act, measured from their last input. The non-empty reason stays ephemeral; an observation outside the recency window records false without failing the act; omission records false and never inherits from another action.
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -697,11 +754,17 @@ Interrogate the pre-filing decisions before scaffolding a bug; a completed filin
 
 List in-flight bug fixes with status
 
+**Usage:** `telec bugs list [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
 ### `telec bugs suppress`
 
 Register a known-issue suppression so the log bug hunter stops re-filing a triaged signal
 
-**Usage:** `telec bugs suppress "<pattern>" --reason <r> [--match substring|regex] [--disposition expected|wontfix] [--project <name>] [--source-bug <slug>] [--expires <when>]`
+**Usage:** `telec bugs suppress "<pattern>" --reason <r> [--match substring|regex] [--disposition expected|wontfix] [--project <name>] [--source-bug <slug>] [--expires <when>] [--computer <host>]`
 
 **Flags:**
 
@@ -711,6 +774,7 @@ Register a known-issue suppression so the log bug hunter stops re-filing a triag
 - `--project`: Project name or slug from the project registry
 - `--source-bug`: Slug of the originating bug whose triage produced this suppression
 - `--expires`: Optional ISO-8601 expiry after which the suppression lapses
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -722,21 +786,23 @@ Register a known-issue suppression so the log bug hunter stops re-filing a triag
 
 List the active known-issue suppressions for a project
 
-**Usage:** `telec bugs suppressions [--project <name>]`
+**Usage:** `telec bugs suppressions [--project <name>] [--computer <host>]`
 
 **Flags:**
 
 - `--project`: Project name or slug from the project registry
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec bugs unsuppress`
 
 Remove a known-issue suppression by id so its signal is eligible for filing again
 
-**Usage:** `telec bugs unsuppress <id> [--project <name>]`
+**Usage:** `telec bugs unsuppress <id> [--project <name>] [--computer <host>]`
 
 **Flags:**
 
 - `--project`: Project name or slug from the project registry
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ## `telec content`
 
@@ -769,27 +835,51 @@ Recurring job commands
 
 List jobs visible to the current project
 
+**Usage:** `telec jobs list [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
 ### `telec jobs status`
 
 Show runtime status for jobs visible to the current project
+
+**Usage:** `telec jobs status [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec jobs enable`
 
 Subscribe the current project to a published job
 
-**Usage:** `telec jobs enable <name>`
+**Usage:** `telec jobs enable <name> [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec jobs disable`
 
 Unsubscribe the current project from a published job
 
-**Usage:** `telec jobs disable <name>`
+**Usage:** `telec jobs disable <name> [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec jobs run`
 
 Run a job in the current project
 
-**Usage:** `telec jobs run <name>`
+**Usage:** `telec jobs run <name> [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec jobs report`
 
@@ -909,25 +999,38 @@ Machine configuration
 
 List computer subjects (singleton)
 
+**Usage:** `telec config computer list [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
 #### `telec config computer get`
 
 Get the machine configuration
 
-**Usage:** `telec config computer get [paths...] [--format <fmt>]`
+**Usage:** `telec config computer get [paths...] [--format <fmt>] [--computer <host>]`
 
 **Flags:**
 
 - `--format` (`-f`): Output format: yaml or json
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 #### `telec config computer init`
 
 Converge the machine configuration without overwriting existing values
 
+**Usage:** `telec config computer init [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
 #### `telec config computer patch`
 
 Patch the machine configuration
 
-**Usage:** `telec config computer patch --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>]`
+**Usage:** `telec config computer patch --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>] [--computer <host>]`
 
 **Flags:**
 
@@ -935,6 +1038,7 @@ Patch the machine configuration
 - `--yaml` (`-y`): Inline YAML patch
 - `--from-file`: Read patch YAML from this file path
 - `--format` (`-f`): Output format: yaml or json
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec config global`
 
@@ -944,25 +1048,38 @@ Global configuration (cross-project overlay)
 
 List global subjects (singleton)
 
+**Usage:** `telec config global list [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
 #### `telec config global get`
 
 Get the global configuration
 
-**Usage:** `telec config global get [paths...] [--format <fmt>]`
+**Usage:** `telec config global get [paths...] [--format <fmt>] [--computer <host>]`
 
 **Flags:**
 
 - `--format` (`-f`): Output format: yaml or json
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 #### `telec config global init`
 
 Converge the global configuration without overwriting existing values
 
+**Usage:** `telec config global init [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
 #### `telec config global patch`
 
 Patch the global configuration
 
-**Usage:** `telec config global patch --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>]`
+**Usage:** `telec config global patch --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>] [--computer <host>]`
 
 **Flags:**
 
@@ -970,6 +1087,7 @@ Patch the global configuration
 - `--yaml` (`-y`): Inline YAML patch
 - `--from-file`: Read patch YAML from this file path
 - `--format` (`-f`): Output format: yaml or json
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec config person`
 
@@ -983,21 +1101,28 @@ Person configuration (identity + settings)
 
 List registered person slugs
 
+**Usage:** `telec config person list [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
 #### `telec config person get`
 
 Get one person's configuration
 
-**Usage:** `telec config person get <slug> [paths...] [--format <fmt>]`
+**Usage:** `telec config person get <slug> [paths...] [--format <fmt>] [--computer <host>]`
 
 **Flags:**
 
 - `--format` (`-f`): Output format: yaml or json
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 #### `telec config person init`
 
 Create or converge a person without overwriting existing values
 
-**Usage:** `telec config person init <name> --email <email> [--slug <slug>] [--role <role>] [--username <username>]`
+**Usage:** `telec config person init <name> --email <email> [--slug <slug>] [--role <role>] [--username <username>] [--computer <host>]`
 
 **Flags:**
 
@@ -1005,12 +1130,13 @@ Create or converge a person without overwriting existing values
 - `--slug`: Person slug (optional; derived from the name when omitted)
 - `--role`: Person's role
 - `--username`: Person's username
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 #### `telec config person patch`
 
 Patch one person's configuration, or remove the person
 
-**Usage:** `telec config person patch <slug> --revision <rev> [--yaml '...' | --from-file <path>] [--remove] [--delete-dir] [--format <fmt>]`
+**Usage:** `telec config person patch <slug> --revision <rev> [--yaml '...' | --from-file <path>] [--remove] [--delete-dir] [--format <fmt>] [--computer <host>]`
 
 **Flags:**
 
@@ -1020,26 +1146,35 @@ Patch one person's configuration, or remove the person
 - `--remove`: Remove the addressed instance instead of patching it
 - `--delete-dir`: Also delete the person's directory under ~/.teleclaude/people
 - `--format` (`-f`): Output format: yaml or json
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 #### `telec config person invite`
 
-Generate (or rotate) invite links for a person
+Generate (or rotate) invite links for a person on the mesh master
 
-**Usage:** `telec config person invite <slug> [--json]`
+**Usage:** `telec config person invite <slug> [--json] [--computer <host>]`
 
 **Flags:**
 
 - `--json`: Emit machine-readable JSON output
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
+**Notes:**
+
+- The invitation runs on the mesh master from any computer: the token is issued there, where it is redeemed, and the links name the master's public bot endpoints.
+- With no unique live master the command fails and changes nothing; addressing a computer that is not the master is refused with the master's name.
+- A configured provider whose endpoint cannot be resolved is reported as unavailable; the other links are still returned, and so are all links when the email is not delivered.
 
 #### `telec config person discord-voice-bot`
 
 Bind the active Discord bot credential to a person's voice configuration
 
-**Usage:** `telec config person discord-voice-bot <slug> [--json]`
+**Usage:** `telec config person discord-voice-bot <slug> [--json] [--computer <host>]`
 
 **Flags:**
 
 - `--json`: Emit machine-readable JSON output
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec config company`
 
@@ -1049,31 +1184,39 @@ Company configuration (roster, projects)
 
 List registered company slugs
 
+**Usage:** `telec config company list [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
 #### `telec config company get`
 
 Get one company's configuration
 
-**Usage:** `telec config company get <slug> [paths...] [--format <fmt>]`
+**Usage:** `telec config company get <slug> [paths...] [--format <fmt>] [--computer <host>]`
 
 **Flags:**
 
 - `--format` (`-f`): Output format: yaml or json
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 #### `telec config company init`
 
 Scaffold a company without overwriting existing values
 
-**Usage:** `telec config company init <name> [--slug <slug>]`
+**Usage:** `telec config company init <name> [--slug <slug>] [--computer <host>]`
 
 **Flags:**
 
 - `--slug`: Company slug (optional; derived from the name when omitted)
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 #### `telec config company patch`
 
 Patch one company's roster or fields
 
-**Usage:** `telec config company patch <slug> --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>]`
+**Usage:** `telec config company patch <slug> --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>] [--computer <host>]`
 
 **Flags:**
 
@@ -1081,16 +1224,18 @@ Patch one company's roster or fields
 - `--yaml` (`-y`): Inline YAML patch
 - `--from-file`: Read patch YAML from this file path
 - `--format` (`-f`): Output format: yaml or json
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 #### `telec config company help-desk-links`
 
 Print the entry links of a company's help desk, hosted on the mesh master
 
-**Usage:** `telec config company help-desk-links <slug> [--json]`
+**Usage:** `telec config company help-desk-links <slug> [--json] [--computer <host>]`
 
 **Flags:**
 
 - `--json`: Emit machine-readable JSON output
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -1104,26 +1249,34 @@ Project configuration
 
 List registered project slugs
 
+**Usage:** `telec config project list [--computer <host>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
 #### `telec config project get`
 
 Get one project's configuration
 
-**Usage:** `telec config project get <slug> [paths...] [--format <fmt>]`
+**Usage:** `telec config project get <slug> [paths...] [--format <fmt>] [--computer <host>]`
 
 **Flags:**
 
 - `--format` (`-f`): Output format: yaml or json
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 #### `telec config project create`
 
 Create a new, empty project
 
-**Usage:** `telec config project create <name> [--company <slug> | --path <dir>]`
+**Usage:** `telec config project create <name> [--company <slug> | --path <dir>] [--computer <host>]`
 
 **Flags:**
 
 - `--company`: Create the project in this company's home, owned by the company (company members)
 - `--path`: Create an ownerless platform project at this folder outside every home (platform administrators)
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -1146,7 +1299,7 @@ Register the folder you stand in as a project, where it is
 
 Patch one project's configuration
 
-**Usage:** `telec config project patch <slug> --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>]`
+**Usage:** `telec config project patch <slug> --revision <rev> [--yaml '...' | --from-file <path>] [--format <fmt>] [--computer <host>]`
 
 **Flags:**
 
@@ -1154,6 +1307,7 @@ Patch one project's configuration
 - `--yaml` (`-y`): Inline YAML patch
 - `--from-file`: Read patch YAML from this file path
 - `--format` (`-f`): Output format: yaml or json
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -1163,11 +1317,12 @@ Patch one project's configuration
 
 Print the entry links of a project's help desk, hosted on the mesh master
 
-**Usage:** `telec config project help-desk-links <slug> [--json]`
+**Usage:** `telec config project help-desk-links <slug> [--json] [--computer <host>]`
 
 **Flags:**
 
 - `--json`: Emit machine-readable JSON output
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -1177,9 +1332,12 @@ Print the entry links of a project's help desk, hosted on the mesh master
 
 Full validation
 
+**Usage:** `telec config validate [--computer <host>]`
+
 **Flags:**
 
 - `--json`: Emit machine-readable JSON output
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec config env`
 
@@ -1189,19 +1347,23 @@ Manage environment variables
 
 List environment variables
 
+**Usage:** `telec config env list [--computer <host>]`
+
 **Flags:**
 
 - `--json`: Emit machine-readable JSON output
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 #### `telec config env set`
 
 Set environment variables
 
-**Usage:** `telec config env set <KEY=VALUE> ... [--json]`
+**Usage:** `telec config env set <KEY=VALUE> ... [--json] [--computer <host>]`
 
 **Flags:**
 
 - `--json`: Emit machine-readable JSON output
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec config tts`
 
@@ -1211,11 +1373,12 @@ Manage TTS dependency provisioning
 
 Disable TTS and remove the TTS-exclusive optional dependencies
 
-**Usage:** `telec config tts deprovision [--yes]`
+**Usage:** `telec config tts deprovision [--yes] [--computer <host>]`
 
 **Flags:**
 
 - `--yes`: Confirm the destructive dependency removal
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -1293,55 +1456,114 @@ Delete a personal-preference observation by ID (typically run by the human while
 
 ### `telec memories scope`
 
-Show the scope a conversation session defines for curation: its person, memory namespace, read point, current memories and, for a desk, the prospects already recorded.
+Show the scope an identity (and desk) names for curation: its current memories, including those held under the person's bound provider accounts at the desk.
 
-**Usage:** `telec memories scope --session <session_id>`
+**Usage:** `telec memories scope --identity <identity> [--desk <desk-id>]`
 
 **Flags:**
 
+- `--identity`: The person (person:<slug>) or provider account (<provider>:<account>) memories are about
+- `--desk`: The help desk (hd-company-<slug> or hd-project-<slug>) the memories are kept at
 - `--session` (`-s`): The conversation session whose memories are curated
+
+**Notes:**
+
+- --session <session_id> remains accepted from workers that began before identity addressing.
 
 ### `telec memories add`
 
-Add a current memory about the session's person.
+Add a current memory about the extraction's person, in the scope the extraction prepared.
 
-**Usage:** `telec memories add --session <session_id> --type <type> <text>`
+**Usage:** `telec memories add --identity <identity> [--desk <desk-id>] --extraction <id> --type <type> <text>`
 
 **Flags:**
 
+- `--identity`: The person (person:<slug>) or provider account (<provider>:<account>) memories are about
+- `--desk`: The help desk (hd-company-<slug> or hd-project-<slug>) the memories are kept at
+- `--extraction`: The extraction the change is made for
 - `--session` (`-s`): The conversation session whose memories are curated
 - `--type`: Observation type
+
+**Notes:**
+
+- --session <session_id> remains accepted from workers that began before identity addressing.
 
 ### `telec memories update`
 
-Replace the statement of a current memory in the session's scope.
+Replace the statement of a current memory in the extraction's scope.
 
-**Usage:** `telec memories update <id> --session <session_id> <text>`
+**Usage:** `telec memories update <memory-id> --identity <identity> [--desk <desk-id>] --extraction <id> <text>`
 
 **Flags:**
 
+- `--identity`: The person (person:<slug>) or provider account (<provider>:<account>) memories are about
+- `--desk`: The help desk (hd-company-<slug> or hd-project-<slug>) the memories are kept at
+- `--extraction`: The extraction the change is made for
 - `--session` (`-s`): The conversation session whose memories are curated
+
+**Notes:**
+
+- --session <session_id> remains accepted from workers that began before identity addressing.
 
 ### `telec memories retire`
 
-Retire a current memory in the session's scope: it leaves use and stays recorded.
+Retire a current memory in the extraction's scope: it leaves use and stays recorded.
 
-**Usage:** `telec memories retire <id> --session <session_id>`
+**Usage:** `telec memories retire <memory-id> --identity <identity> [--desk <desk-id>] --extraction <id>`
 
 **Flags:**
 
+- `--identity`: The person (person:<slug>) or provider account (<provider>:<account>) memories are about
+- `--desk`: The help desk (hd-company-<slug> or hd-project-<slug>) the memories are kept at
+- `--extraction`: The extraction the change is made for
 - `--session` (`-s`): The conversation session whose memories are curated
+
+**Notes:**
+
+- --session <session_id> remains accepted from workers that began before identity addressing.
 
 ### `telec memories prospect`
 
-Collect a business item from a desk conversation as a prospect for the home that owns the desk.
+Collect a business item from the extraction's desk conversation as a prospect for the desk's home.
 
-**Usage:** `telec memories prospect --session <session_id> --type <type> <text>`
+**Usage:** `telec memories prospect --desk <desk-id> --extraction <id> --type <type> <text>`
 
 **Flags:**
 
+- `--desk`: The help desk (hd-company-<slug> or hd-project-<slug>) the memories are kept at
+- `--extraction`: The extraction the change is made for
 - `--session` (`-s`): The conversation session whose memories are curated
 - `--type`: Observation type
+
+**Notes:**
+
+- --session <session_id> remains accepted from workers that began before identity addressing.
+
+### `telec memories extraction`
+
+Read an extraction's conversation material, or declare it finished or failed.
+
+#### `telec memories extraction read`
+
+Show the extraction's bounded conversation material, its coverage and scope, and the prospects already recorded from its source.
+
+**Usage:** `telec memories extraction read <id>`
+
+#### `telec memories extraction complete`
+
+Declare the extraction's memory and prospect changes finished, including a read with none.
+
+**Usage:** `telec memories extraction complete <id>`
+
+#### `telec memories extraction fail`
+
+Report that the extraction could not be finished; its stretch stays eligible.
+
+**Usage:** `telec memories extraction fail <id> --reason <reason>`
+
+**Flags:**
+
+- `--reason`: Why the extraction could not be finished
 
 ### `telec memories advance`
 
@@ -1353,6 +1575,10 @@ Advance a conversation session's read point to the newest entry read; it never m
 
 - `--session` (`-s`): The conversation session whose memories are curated
 - `--to`: Timestamp (ISO8601) of the newest conversation entry read
+
+**Notes:**
+
+- Accepted only from workers that began before identity addressing, and only while no extraction is open.
 
 ### `telec memories timeline`
 

@@ -57,7 +57,7 @@
   name="TeleClaude"
   readme="README.md"
   requires-python=">=3.12,<3.15"
-  version="0.7.0"
+  version="0.8.0"
 
   [project.optional-dependencies]
     # TTS-exclusive deps: excluded from a baseline install, provisioned on demand the
