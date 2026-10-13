@@ -81,12 +81,23 @@ the operation's target, not the running command's implementation. A missing
 controller capability is reported through the installed contract rather than
 executing development code against live state.
 
-The association also identifies the delivery purpose: upstream mainline authoring
-or contributor proposal handoff. A contributor's delivery operations consume
-`local/projects/teleclaude/spec/feature/workflow/contribution-export` rather than
-the mainline publication path. Project addresses name the logical identity;
-checkout selection is explicit and never inferred from a `-dev` suffix.
+Project addresses name the logical identity; checkout selection is explicit and
+never inferred from a `-dev` suffix. Source delivery at this boundary retains the
+existing upstream-mainline contract; provisioning a companion alone provides no
+public contribution handler.
 <!-- /planned:release-development-checkouts -->
+
+<!-- planned:reviewed-pr-contributions -->
+
+### Contribution delivery purpose
+
+The association additionally identifies upstream-mainline authoring or
+contributor-proposal delivery. A contributor handoff consumes
+`local/projects/teleclaude/spec/feature/workflow/contribution-export` in its
+recorded development checkout. This purpose becomes selectable together with
+its export/adoption handler; missing capability is reported without entering
+the upstream-mainline publication path.
+<!-- /planned:reviewed-pr-contributions -->
 
 ## Invariants
 

@@ -58,15 +58,22 @@ each decision point until the queue is drained.
 ### Resolve the delivery assignment
 
 Resolve the source checkout and delivery purpose before starting the queue
-watcher or entering the integration state machine. This procedure owns upstream
-mainline delivery. A contributor handoff follows its project's contribution
-contract and retains PR acceptance as a separate fact. Installation-only
+watcher or entering the integration state machine. This procedure owns upstream mainline delivery. Installation-only
 assessment enters `sdlc/procedure/maintenance/installation-inspection` with its
 retained activation rather than this source-delivery loop. When source delivery
 owes runtime judgment, consume the installed activation's assessment through
 its owning surface; do not start competing recovery
 (`general/principle/trust-and-guardrails`).
 <!-- /planned:installation-activation-inspection -->
+
+<!-- planned:reviewed-pr-contributions -->
+
+### Contributor handoff
+
+A contributor assignment follows its project's contribution contract and retains
+PR acceptance as a separate fact. Its source handoff uses that contract's
+proposal operation before any mainline queue watcher or integration call.
+<!-- /planned:reviewed-pr-contributions -->
 
 ## Steps
 

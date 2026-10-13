@@ -1,5 +1,6 @@
 ---
 description: Stable enrollment names the compatibility series an installation automatically follows, with minor-series selection before 1.0 and major-series selection afterward.
+visibility: public
 ---
 
 # Stable Channel Pinning Rule — Spec

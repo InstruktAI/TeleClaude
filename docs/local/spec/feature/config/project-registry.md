@@ -293,14 +293,7 @@ And project-wide work still has one logical project identity
 And repeating the association creates no additional entry
 ```
 
-#### UC-CFG-REG14: Unrelated duplicate identities remain conflicts
-
-```gherkin
-Given a registered project already holds an identity
-When an agent attempts to register an unrelated checkout under that identity
-Then registration reports the existing owner
-And the existing association is unchanged
-```
+#### UC-CFG-REG14:
 
 <!-- /planned:release-development-checkouts -->
 

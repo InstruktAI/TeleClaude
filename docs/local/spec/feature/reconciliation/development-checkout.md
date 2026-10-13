@@ -47,15 +47,27 @@ The companion's own dependency installation is development preparation; it
 performs no host-service or installed-runtime provisioning. Checkout purpose
 comes from the association, never from a directory-name guess.
 
-### Installation and contribution
+### Development participation
 
 Provisioning a development resource starts no agent work on its own. Existing
-workflow dispatch policy governs local work. Publishing a contribution follows
-the operator's standing contribution enrollment under
+workflow dispatch policy governs local work, and source delivery retains the
+supported upstream-mainline contract. Workspace readiness supplies no public
+contribution handler or publishing authorization.
+
+<!-- planned:reviewed-pr-contributions -->
+
+### Installation and contribution
+
+Publishing a contribution follows the operator's standing contribution
+enrollment under
 `local/projects/teleclaude/spec/feature/workflow/contribution-export`.
 Installation explains both the local workspace and whether public contribution
 is enabled; unattended runs consume the same declared choice without prompting
 (`local/projects/teleclaude/spec/feature/reconciliation/fresh-machine-bootstrap`).
+Public contribution becomes selectable with the export/adoption capability;
+missing capability is reported while the existing development workspace remains
+available.
+<!-- /planned:reviewed-pr-contributions -->
 
 ### Use cases
 

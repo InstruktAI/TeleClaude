@@ -261,9 +261,8 @@ And installation does not report success and its result is non-zero
 Full installation composes the durable companion provisioning operation under
 `local/projects/teleclaude/spec/feature/reconciliation/development-checkout`.
 Dependency-only preparation in a registered development checkout stays in that
-checkout's environment. Full installation reports the companion's result and
-contribution enrollment along with runtime readiness; it claims completion only
-when the required provisioning operations succeeded.
+checkout's environment. Full installation reports the companion's result along with runtime readiness;
+it claims completion only when the required provisioning operations succeeded.
 <!-- /planned:release-development-checkouts -->
 
 ## Known caveats

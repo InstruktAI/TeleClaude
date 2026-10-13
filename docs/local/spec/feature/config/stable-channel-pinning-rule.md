@@ -1,5 +1,6 @@
 ---
 description: Machine deployment configuration requires a non-empty minor pin for stable enrollment.
+visibility: public
 ---
 
 # Stable Channel Pinning Rule — Spec

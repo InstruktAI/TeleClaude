@@ -119,15 +119,21 @@ channel re-enrollment into older source requires a supported data transition
 before activation. The reconciliation record retains the attempted target and
 its outcome rather than treating an ahead checkout as converged.
 
+The source/deployment separation follows `sdlc/principle/design-fundamentals`
+and preserves existing source work under `sdlc/policy/version-control-safety`.
+<!-- /planned:release-development-checkouts -->
+
+<!-- planned:reviewed-pr-contributions -->
+
+### Contribution and upstream release
+
 Public contribution is the workflow handoff in
 `local/projects/teleclaude/spec/feature/workflow/contribution-export` and
 `local/projects/teleclaude/spec/feature/workflow/contribution-adoption`.
 Its upstream integration feeds the existing immutable release pipeline.
 Contribution creation, source acceptance, release publication and local adoption
-remain independently observable. This source/deployment separation follows
-`sdlc/principle/design-fundamentals` and preserves existing source work under
-`sdlc/policy/version-control-safety`.
-<!-- /planned:release-development-checkouts -->
+remain independently observable.
+<!-- /planned:reviewed-pr-contributions -->
 
 ## Inputs/Outputs
 
