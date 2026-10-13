@@ -38,6 +38,10 @@ review — uses them.
 
   "Someone could" names no actor and is not a path.
 
+- **Family site** — a site a settled diagnosis's family census marks as matching
+  its mechanism (`sdlc/procedure/debugging`). It carries that diagnosis's
+  occurrence as its evidence, and the session governing the diagnosis files it.
+
 - **Real-use input** — an input real use produces, shown rather than asserted:
   an observed instance of it in real use, even one that triggered no defect, or
   a producer the code actually receives input from that emits it. The

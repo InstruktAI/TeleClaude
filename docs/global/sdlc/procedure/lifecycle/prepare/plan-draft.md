@@ -251,7 +251,8 @@ the Blueprint unavailable, state the gap in the plan and fall back to manual
 exploration; a stale answer is still used, with its named range checked as that
 procedure describes; never silently skip the step.
 
-For a bug whose diagnosis identifies a shared-contract root, seed discovery from
+For a bug, seed discovery from every matching site in the diagnosis's family
+census. For a bug whose diagnosis identifies a shared-contract root, seed it also from
 the contract owner and every producer, entry path, and consumer in the diagnosis's
 implementation census — not only from files already expected to change. Reconcile
 the intended change surface against every census entry: name how it uses the single
@@ -358,14 +359,18 @@ the briefing instead.
 
 ### 3c. Bug-scope clamp (kind == bug)
 
-A bug plan delivers the smallest change that removes the diagnosed root cause
-(`diagnosis#root-cause`), plus a scenario-bound regression test where the
-project opts into tests. Except for a structural-ratchet deepening permitted
-below, every task traces to one of those. Any other task that does not —
-hardening, extra validation layers, defensive defaults,
-fallbacks, adjacent refactors, new capability, or any scenario beyond the single
-regression scenario below — is a scope violation to strike before the plan is
-written, regardless of how prudent it looks. Tracing a task to a scenario or
+A bug plan removes the diagnosed mechanism (`diagnosis#mechanism`) from every
+matching site in the family census (`diagnosis#family-census`), with the
+smallest change that does so, plus a scenario-bound regression test where the
+project opts into tests. Each census site is fixed in this delivery, or filed
+by this session as its own bug citing the original occurrence when it belongs
+to another owner or would make this delivery incoherent; the plan records which.
+Except for a structural-ratchet deepening permitted below, every task traces to
+one of those. Guards against causes no diagnosis has established — extra
+validation layers, defensive defaults, fallbacks — and adjacent refactors, new
+capability, or any scenario beyond the single regression scenario below, are
+scope violations to strike before the plan is written, regardless of how
+prudent they look. Tracing a task to a scenario or
 snippet this same prepare pass authored does not create scope; the `diagnosis`
 and the `input` symptom are the only scope authorities for a bug
 (`sdlc/procedure/debugging`, step 5).

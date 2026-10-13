@@ -254,6 +254,10 @@ confirmation record is the evidence the three conditions are read from.
   accounts for why comparable non-failing cases are not caught by it.
 - A shared-contract root carries an evidence-backed census of every producer, entry path, and
   consumer within the system boundary; no sibling implementation is left unexplained.
+- The mechanism is stated as a shape decidable at one site, and the family census records
+  its two searches and every site found, each marked matching or undecided
+  (`sdlc/procedure/debugging`). A census that investigated a site's reachability, or
+  searched beyond its two searches, is returned to the peer to be cut back.
 - Every causal transition cites the observations that carry it, names what would falsify it,
   and bottoms out in independently auditable observation. Repeatability limits, where they
   exist, are stated rather than hidden.

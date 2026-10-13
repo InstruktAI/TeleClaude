@@ -84,9 +84,22 @@ appears is not diligence; it is this lane spending hours that belong to the fix.
 candidate commits inside the first-bad search. Eliminating every supplied candidate does
 not complete the provenance check; run the search whether or not they survive.
 
-**A named commit's siblings are evidence, not scope.** Record what else a named commit
-touched and surface it for its own triage. It never widens the present fix; the
-`preparation-artifact-quality` rule that evidence does not reallocate ownership governs.
+**Name the mechanism.** State the root cause twice: the instance where this failure
+occurred, and the mechanism that produced it. Write the mechanism as a code shape a reader
+can confirm or reject at a single site by reading that site. A shape that reading one site
+cannot decide is too broad; narrow it before searching.
+
+**The family census is a lane that ends.** Its full extent is two searches: the diff of
+the commit that introduced the mechanism, when provenance named one, and one search of the
+codebase for the mechanism's shape. Each site found either matches the shape on reading or
+does not. A matching site is in the family. Its reachability, likelihood, and impact are
+not investigated; the match is the finding. A site that reading alone cannot decide is
+recorded as undecided and stays out. Record the searches run and the sites found. A short
+census is a complete one.
+
+**What a named commit touched beyond the mechanism is evidence, not scope.** Record it and
+surface it for its own triage; the `preparation-artifact-quality` rule that evidence does
+not reallocate ownership governs.
 
 **Backward call-chain tracing:** When the bug manifests deep in the stack, trace backward to find the original trigger:
 
