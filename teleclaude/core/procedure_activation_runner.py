@@ -24,6 +24,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.caller_identity import SYSTEM_PRINCIPAL_PREFIX
 from teleclaude.config.machine import config
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.registered_homes import registered_home_folder
 from teleclaude.config_subjects import ConfigSubjectKind
 from teleclaude.constants import ROLE_TASKER, SlashCommand
@@ -94,7 +95,6 @@ _COMMAND_DOCUMENT_MISSING_ERROR = "generic activation command document is missin
 _CREATE_RETURNED_NO_SESSION_ERROR = "procedure activation session creation returned no session_id"
 _CREATED_SESSION_MISSING_ERROR = "procedure activation session row missing: {session_id}"
 _REVIVAL_FAILED_ERROR = "procedure activation could not revive session {session_id} bound to {subject}"
-_HOME_ABSENT_ERROR = "activation home is not registered on this computer: {home}"
 _COMMAND_LINE_TEMPLATE = "/{command} {procedure_id} {home}"
 _NO_SESSION_ERROR = "procedure activation could not resolve a session: {procedure_id} / {home}"
 
@@ -137,7 +137,7 @@ def _home_folder(home: ActivationHome) -> Path:
     if folder is None:
         raise ProcedureActivationTerminalError(
             ProcedureActivationFailureReason.HOME_UNAVAILABLE,
-            _HOME_ABSENT_ERROR.format(home=home.to_token()),
+            str(unregistered_referent(ReferentKind(home.kind.value), home.slug)),
         )
     return folder
 

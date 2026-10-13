@@ -74,6 +74,7 @@ from teleclaude.config.person_resource import (
     person_view as _person_view,
 )
 from teleclaude.config.project_home import require_home_owner
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.resource_catalog import list_subjects as _list_subjects
 from teleclaude.config.resource_catalog import load_mapping, raw_people
 from teleclaude.config.resource_contract import (
@@ -257,7 +258,7 @@ def _company_view(slug: str, raw: Mapping[str, object]) -> SubjectView:
 def _project_root(slug: str) -> Path:
     node = get_project_catalog_service().get_by_slug(slug)
     if node is None:
-        raise SubjectNotFound(f"project '{slug}' is not registered")
+        raise SubjectNotFound(str(unregistered_referent(ReferentKind.PROJECT, slug)))
     return node.root
 
 
@@ -314,7 +315,7 @@ def _read_company(ref: SubjectRef) -> SubjectView:
     path = _company_path(slug)
     with file_transaction(path) as transaction:
         if not path.exists():
-            raise SubjectNotFound(f"company '{slug}' is not registered")
+            raise SubjectNotFound(str(unregistered_referent(ReferentKind.COMPANY, slug)))
         raw = _upcast_mapping(load_mapping(transaction.read_text(), path), path)
     return _company_view(slug, raw)
 
@@ -674,7 +675,7 @@ def _patch_person(
             None,
         )
         if index is None:
-            raise SubjectNotFound(f"person '{slug}' is not registered")
+            raise SubjectNotFound(str(unregistered_referent(ReferentKind.PERSON, slug)))
         entry_raw = cast(dict[str, object], people_raw[index])  # guard: loose-dict - raw YAML config
         overlay_stored = load_mapping(o_txn.read_text(), overlay_path)
         overlay_raw = dict(upcast(overlay_stored, ref))
@@ -746,7 +747,7 @@ def _patch_company(
     path = _company_path(slug)
     with file_transaction(path) as transaction:
         if not path.exists():
-            raise SubjectNotFound(f"company '{slug}' is not registered")
+            raise SubjectNotFound(str(unregistered_referent(ReferentKind.COMPANY, slug)))
         stored = load_mapping(transaction.read_text(), path)
         raw = dict(upcast(stored, ref))
         current_section = _company_section(raw)
@@ -906,7 +907,7 @@ def _remove_person_subject(slug: str, evidence: OwnEvidence, *, delete_dir: bool
         global_ref = SubjectRef(ConfigSubjectKind.GLOBAL)
         global_raw = dict(upcast(global_stored, global_ref))
         if _find_person_raw(raw_people(global_raw), slug) is None:
-            raise SubjectNotFound(f"person '{slug}' is not registered")
+            raise SubjectNotFound(str(unregistered_referent(ReferentKind.PERSON, slug)))
 
         committed_companies: dict[str, CompanyConfig] = {}
         committed_texts: dict[str, str] = {}

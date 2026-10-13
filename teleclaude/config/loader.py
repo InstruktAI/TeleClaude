@@ -42,6 +42,7 @@ from teleclaude.config.migrations._chain import Destination, RegistrySubjectRequ
 from teleclaude.config.migrations._registry import registered_subject
 from teleclaude.config.migrations.read import upcast_for_read
 from teleclaude.config.project_home import require_home_owner
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.schema import (
     TIER_DOCUMENT_MODELS,
     AppConfig,
@@ -64,8 +65,6 @@ _PERSON_SLUG_FIELD = "slug"
 _UNRESOLVED_REFERENCES_EVENT = "config_references_unresolved_here"
 _COMPANY_UNREADABLE_EVENT = "company_declaration_unreadable"
 _PERSON_CLAIM_MISMATCH = "Person config claim '{claim}' does not match save target '{target}'"
-_UNRESOLVED_COMPANY_OWNER = "Project declares unresolved company owner: {owner}"
-_UNRESOLVED_PERSON_OWNER = "Project declares unresolved person owner: {owner}"
 _UTF8 = "utf-8"
 _CONTENT_READ_FAILURE = "Failed to read config content for {path}: {error}"
 _VALIDATION_FAILURE = "Failed to validate config file {path}: {error}"
@@ -815,11 +814,11 @@ def load_app_config(workspace: Path) -> AppConfig:
     if project_config is not None and project_config.company:
         company_config = load_company_config_for_slug(project_config.company, COMPANIES_ROOT)
         if company_config is None:
-            raise ValueError(_UNRESOLVED_COMPANY_OWNER.format(owner=project_config.company))
+            raise unregistered_referent(ReferentKind.COMPANY, project_config.company)
     if project_config is not None and project_config.person:
         person_owner = find_person_entry(people=global_config.people, person_slug=project_config.person)
         if person_owner is None:
-            raise ValueError(_UNRESOLVED_PERSON_OWNER.format(owner=project_config.person))
+            raise unregistered_referent(ReferentKind.PERSON, project_config.person)
 
     return AppConfig(
         global_=global_config,

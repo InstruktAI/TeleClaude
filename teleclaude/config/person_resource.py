@@ -8,6 +8,7 @@ from typing import cast
 
 from teleclaude.config.identity_schema import PersonEntry
 from teleclaude.config.person_registry import with_person
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.resource_catalog import load_mapping, raw_people
 from teleclaude.config.resource_contract import SubjectNotFound, SubjectView
 from teleclaude.config.revision import view_revision
@@ -25,7 +26,6 @@ _ROLE_KEY = "role"
 _USERNAME_KEY = "username"
 IDENTITY_SECTION = "identity"
 SETTINGS_SECTION = "settings"
-_PERSON_NOT_REGISTERED = "person '{slug}' is not registered"
 
 
 def person_overlay_path(slug: str) -> Path:
@@ -81,7 +81,7 @@ def person_view(
 ) -> SubjectView:
     entry_raw = find_person_raw(raw_people(global_raw), slug)
     if entry_raw is None:
-        raise SubjectNotFound(_PERSON_NOT_REGISTERED.format(slug=slug))
+        raise SubjectNotFound(str(unregistered_referent(ReferentKind.PERSON, slug)))
     identity = person_identity_section(entry_raw)
     settings = person_settings_section(overlay_raw)
     return SubjectView(

@@ -44,6 +44,7 @@ from teleclaude.caller_identity import (
 from teleclaude.cli import CommandScope
 from teleclaude.cli.telec.auth import command_scope, is_command_allowed
 from teleclaude.config.machine import config
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.registered_homes import project_folder
 from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core.db import db
@@ -94,7 +95,6 @@ _REFUSED_EVENT = "relay_request_refused"
 _LATE_DETAIL = "{method} {path} reached {computer} after its deadline; nothing was run."
 _NO_COMMAND_DETAIL = "the request to {computer} names no command it was cleared as; nothing was run."
 _NOT_PERMITTED_DETAIL = "role '{role}' is not permitted to call {command} on {computer}"
-_UNREGISTERED_PROJECT_DETAIL = "project '{project}' is not registered on {computer}; nothing was run."
 _APP_UNAVAILABLE_DETAIL = "{computer} has no API to carry the request into"
 _REENTRY_FAILED_DETAIL = "the request could not be carried into the API: {error}"
 
@@ -183,7 +183,7 @@ def _resolve_project_folder(reference: str) -> Path:
     if folder is None:
         raise _RelayRefused(
             HTTPStatus.NOT_FOUND,
-            _UNREGISTERED_PROJECT_DETAIL.format(project=reference, computer=config.computer.name),
+            str(unregistered_referent(ReferentKind.PROJECT, reference)),
         )
     return folder
 
