@@ -129,6 +129,18 @@ TeleClaudeNext.
   no project publishes a domain by that name. The consumers that tell people
   read interests through that answer and never parse them.
 
+<!-- planned:missing-publisher-owner-surfacing -->
+
+- **Also published:** referent resolution — whether a company, person,
+  project, or documentation domain a declaration or request names is
+  registered on this computer, and the one refusal for one that is not,
+  naming what is missing, where, and the registration surface that supplies it
+  (`local/projects/teleclaude/spec/feature/config/referent-resolution`). Every
+  consumer that meets such a name resolves it through this answer and never
+  restates the condition in its own words.
+
+<!-- /planned:missing-publisher-owner-surfacing -->
+
 **Configuration subjects are reachable through the daemon.** Every `telec config`
 operation on a subject — list, get, init, patch, project creation, person
 invitation, the voice-bot declaration, help-desk links, validation, and the
@@ -143,6 +155,12 @@ addressed to this computer, the command still runs in the process that invokes i
 #### Use cases (index of feature specs)
 
 - **project-registry** — `docs/local/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry
+
+<!-- planned:missing-publisher-owner-surfacing -->
+
+- **referent-resolution** — `docs/local/spec/feature/config/referent-resolution.md` — how a named company, person, project, or domain resolves on one computer, and the one refusal for one that is not registered there
+
+<!-- /planned:missing-publisher-owner-surfacing -->
 
 ### Installation registration and environment defaults
 

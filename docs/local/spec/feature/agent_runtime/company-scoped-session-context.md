@@ -28,10 +28,23 @@ source; no human origin is fabricated for an event. A person with exactly one
 eligible company needs no selection for a tool to resolve that company, but the
 session carries no profile for it.
 
+<!-- planned-change:missing-publisher-owner-surfacing -->
+
 Resolution happens once. A requested company is validated against the
 requester's membership where the context is resolved, and what the session
 publishes is already validated. Consumers read that answer rather than
 re-deriving it.
+
+<!-- change:missing-publisher-owner-surfacing -->
+
+Resolution happens once. A requested company resolves on the computer where
+the session would run
+(`local/projects/teleclaude/spec/feature/config/referent-resolution`) and is
+validated against the requester's membership where the context is resolved;
+what the session publishes is already validated. Consumers read that answer
+rather than re-deriving it.
+
+<!-- /planned-change:missing-publisher-owner-surfacing -->
 
 The company is recorded on the session record and nowhere else. A tool running
 inside the session reads the context through the session it belongs to: its
@@ -169,6 +182,8 @@ Scenario Outline: The profile follows the session's company, never its location
     | stands in a company's project and was created without a company | carries no company profile        |
 ```
 
+<!-- planned-change:missing-publisher-owner-surfacing -->
+
 #### UC-CSC14: A company that does not exist is an error
 
 ```gherkin
@@ -177,6 +192,18 @@ When a session is created or work is dispatched selecting that name
 Then the request fails with an error naming the unknown company
 And no session is started
 ```
+
+<!-- change:missing-publisher-owner-surfacing -->
+
+#### UC-CSC14: A company that does not exist is an error
+
+```gherkin
+Given a company selection that does not resolve on the computer where the session would run
+When a session is created or work is dispatched selecting it
+Then no session is started
+```
+
+<!-- /planned-change:missing-publisher-owner-surfacing -->
 
 ### Cross-context references
 

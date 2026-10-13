@@ -200,6 +200,8 @@ And the caller's depth on that home decides whether its content or a withheld no
 And a person's local identity is retrieved only by that person or a system principal
 ```
 
+<!-- planned-change:missing-publisher-owner-surfacing -->
+
 #### UC-3PR13: An identity that names no home or domain is unknown
 
 ```gherkin
@@ -210,6 +212,26 @@ When the caller runs telec docs get on that ID
 Then the output includes "ERROR: Unknown snippet IDs: <id>"
 And no other home is searched for a similar identity
 ```
+
+<!-- change:missing-publisher-owner-surfacing -->
+
+#### UC-3PR13: An identity that names no home or domain is unknown
+
+```gherkin
+Given a snippet ID whose first segment is none of local, a published domain, general, a third-party root, or a home prefix
+Or whose home prefix and slug name no registered project, declared person, or declared company
+Or that names a project home without the local/ prefix
+When the caller runs telec docs get on that ID
+Then the output includes "ERROR: Unknown snippet IDs: <id>"
+And no other home is searched for a similar identity
+```
+
+An identity whose first segment is a well-formed domain name that no project
+registered on this computer publishes is answered with config's refusal for
+that domain alongside the unknown-identity line
+(`local/projects/teleclaude/spec/feature/config/referent-resolution`).
+
+<!-- /planned-change:missing-publisher-owner-surfacing -->
 
 #### UC-3PR14: Naming a home lists one of its halves from any location
 

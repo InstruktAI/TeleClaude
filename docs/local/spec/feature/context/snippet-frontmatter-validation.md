@@ -24,6 +24,16 @@ where the type is derived from the path, not from frontmatter.
 id-to-path check. A person or company tier source that authors any of them
 receives a finding naming each authored field.
 
+<!-- planned:missing-publisher-owner-surfacing -->
+
+A Required read or inline reference whose address is well-formed but names a
+domain that no project registered on this computer publishes is reported with
+config's refusal for that domain
+(`local/projects/teleclaude/spec/feature/config/referent-resolution`), never as
+a malformed reference; the snippet carrying it is otherwise validated in full.
+
+<!-- /planned:missing-publisher-owner-surfacing -->
+
 Frontmatter shape is always validated: `delivered_by`, when present, must be a
 non-empty list of slug strings; absence means the snippet is current. No
 `status` field is validated or required. When publication runs with the

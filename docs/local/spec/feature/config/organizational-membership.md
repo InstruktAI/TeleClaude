@@ -31,10 +31,22 @@ Assignment is not ownership. Which person or company owns a project is declared
 on the project itself and owned by another contract; this one states only who
 may work in a project, and never settles or implies whose project it is.
 
+<!-- planned-change:missing-publisher-owner-surfacing -->
+
 A declaration is refused rather than stored when it names a company or project
 that is not registered. Refusing an invalid declaration at write time is this
 contract's own validation; it is not a decision about what any consumer may do
 with a valid one.
+
+<!-- change:missing-publisher-owner-surfacing -->
+
+A declaration is refused rather than stored when it names a person, company, or
+project that does not resolve
+(`local/projects/teleclaude/spec/feature/config/referent-resolution`). Refusing
+an invalid declaration at write time is this contract's own validation; it is
+not a decision about what any consumer may do with a valid one.
+
+<!-- /planned-change:missing-publisher-owner-surfacing -->
 
 ## Canonical fields
 
@@ -91,6 +103,8 @@ Then the assignment declaration is accepted and persisted
 And the administrator can later withdraw that assignment through the same surface
 ```
 
+<!-- planned-change:missing-publisher-owner-surfacing -->
+
 #### UC-CFG-MEMBER-8: A declaration naming an unregistered company or project is refused
 
 ```gherkin
@@ -106,6 +120,12 @@ Examples:
   | company  |
   | project  |
 ```
+
+<!-- change:missing-publisher-owner-surfacing -->
+
+#### UC-CFG-MEMBER-8: A declaration naming an unregistered company or project is refused
+
+<!-- /planned-change:missing-publisher-owner-surfacing -->
 
 #### UC-CFG-MEMBER-11: An assignment to a company's project requires membership in that company
 
