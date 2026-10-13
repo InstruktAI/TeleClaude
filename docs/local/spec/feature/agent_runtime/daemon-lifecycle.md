@@ -484,6 +484,7 @@ evidence requirement (`general/principle/grounding`).
 
 - **The exit record ends at the interpreter's exit callbacks.** Reaching the exit callbacks is the last milestone the process records. Interpreter finalization continues after it and can still stall, and a process that ends without reaching it records nothing more. A record that stops at a milestone shows only the last point the process reached, never whether or why the process ended.
 - **Threads without an interpreter thread state are not observed.** A thread the interpreter runs outside Python's threading registry is recorded with no name, daemon flag or starting code. A native thread that never runs Python code is not observed at all.
+- **The exit record waits on the daemon log.** At its exit callbacks the process finishes the record already being written, then writes the rest, through the daemon log. It waits for that log as long as the logging system's own shutdown, which runs next, would wait. A daemon log that cannot be written leaves the process waiting in its exit callbacks, and the record ends at the last record written.
 
 ## See Also
 
