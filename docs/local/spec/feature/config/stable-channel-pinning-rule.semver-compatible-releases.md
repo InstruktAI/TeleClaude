@@ -102,3 +102,8 @@ Scenario Outline: An operator's existing pin is brought forward
 - Selecting another series changes release eligibility. Availability and health
   of a release remain separate decisions under the release and installation
   contracts.
+- A series supplied through an environment-variable reference lies outside the
+  configuration document. Migration translates a reference's declared default
+  but never the variable's value. A legacy positive-major `major.minor` value
+  held in the variable is refused at load, with a diagnostic naming the value,
+  until the operator replaces it with its major.
