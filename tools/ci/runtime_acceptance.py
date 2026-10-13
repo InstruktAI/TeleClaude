@@ -414,7 +414,7 @@ _CURATION_REFUSED_COMMANDS = (
 _ARCHIVE_ADOPTION_ERROR = "The archived transcript did not become exactly one conversation with a TeleClaude identity."
 _ARCHIVE_RETRIEVAL_ERROR = "History retrieval did not return the archived conversation."
 _CURATION_NOT_REFUSED_ERROR = "A memory-curation operation was not refused for a caller that is not a procedure agent."
-_CURATION_CHANGED_MEMORIES_ERROR = "A refused memory-curation attempt changed the memory listing."
+_CURATION_MEMORY_LISTING_ERROR = "The authorized memory listing does not match the captured empty fixture result."
 _JOBS_LIST_COMMAND = ("bin/telec", "jobs", "list")
 _JOBS_STATUS_COMMAND = ("bin/telec", "jobs", "status")
 _ENV_OWNER_NAME_VARIABLE = "TELECLAUDE_OWNER_NAME"
@@ -2544,7 +2544,7 @@ def _require_empty_memory_listing(output: str) -> None:
     observed = output.replace(_PTY_LINE_ENDING, _LINE_BREAK)
     # The terminal wrapper emits one separator newline before its status marker.
     if not observed.endswith(_LINE_BREAK) or observed.removesuffix(_LINE_BREAK) != expected:
-        raise ValueError(_CURATION_CHANGED_MEMORIES_ERROR)
+        raise ValueError(_CURATION_MEMORY_LISTING_ERROR)
 
 
 def _cold_entrypoint_scenario(
