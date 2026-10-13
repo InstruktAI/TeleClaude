@@ -4,6 +4,30 @@ All notable changes to TeleClaude are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.0] - 2026-10-13
+
+> VoxCPM supports per-voice synthesis parameters and refreshes cached Discord audio when effective parameters change. Documentation convergence now serializes repository operations, distinguishes held work from failures, and improves rollback after partial operations. Upgrade scripts should recognize convergence status 3; actual convergence failures now fail installation. Full-root platform-home sync can recover missing legacy publication history. Daemon teardown continues after ordinary cleanup faults, and Redis intake handles a broader range of request failures.
+
+
+- [b2ea6e8](https://github.com/InstruktAI/TeleClaude/commit/b2ea6e800ddf7342754709343c0eea500c77322a) chore(docs): reconcile lifecycle markers for missing-publisher-owner-surfacing
+- [47315e0](https://github.com/InstruktAI/TeleClaude/commit/47315e01370eb8b34fb10dffbd25a09970198432) fix(convergence): serialize layout migration and report real install failures
+- [f91ce5e](https://github.com/InstruktAI/TeleClaude/commit/f91ce5e4e609e74669fa633924337cf8dad8dc5c) chore(docs): reconcile lifecycle markers for convergence-overlap-and-failure-reporting
+- [fffb990](https://github.com/InstruktAI/TeleClaude/commit/fffb99065e4490a809ed1b6bca85c9ffe2f0049d) fix(relay): contain message failures without terminating intake
+- [32ae917](https://github.com/InstruktAI/TeleClaude/commit/32ae917da38c6f83274003dbf9a5bb7a3c85b587) chore(docs): reconcile lifecycle markers for relay-intake-dies-on-unhandled-refusal
+- [61a16c5](https://github.com/InstruktAI/TeleClaude/commit/61a16c5220b89a3f7f9fd8814f871e69bf3d2166) fix(tts): preserve and apply VoxCPM voice parameter overrides
+- [6001bb6](https://github.com/InstruktAI/TeleClaude/commit/6001bb6521795636d937abfa1138bd28f3a120bf) chore: reconcile release metadata for v0.8.0 [skip ci]
+- [dd51c73](https://github.com/InstruktAI/TeleClaude/commit/dd51c736577da6d7f57c76ce7f422448f026769e) docs(sdlc): scope a bug fix to every site of its diagnosed mechanism
+- [6a4f78f](https://github.com/InstruktAI/TeleClaude/commit/6a4f78f4f03d99886c7e979f5f2a5624f3e596ad) docs(config): expose the VoxCPM voice override contract
+- [66bb909](https://github.com/InstruktAI/TeleClaude/commit/66bb909acaa8664f9d0bb7df35b72f07ef947fdc) docs(sdlc): bind family-site obligations to confirmed matches and admitted evidence
+- [0538030](https://github.com/InstruktAI/TeleClaude/commit/0538030d9b93afc946c5544301bd465741addbd8) fix(runtime): isolate post-settlement teardown failures
+- [a753c2f](https://github.com/InstruktAI/TeleClaude/commit/a753c2fc4e2d6c5f4ad58e5c5c590571350fe6fe) fix(runtime): align shutdown cleanup diagnostics
+- [6e12d9c](https://github.com/InstruktAI/TeleClaude/commit/6e12d9c13d2fccd6f931b2536d3953a13aa96936) fix(context): rebuild homes with unavailable legacy history
+- [d527def](https://github.com/InstruktAI/TeleClaude/commit/d527def32ab3bc92201a4cf74166d8e60ca8083d) fix(context): require native full-length publication IDs
+- [9d62db3](https://github.com/InstruktAI/TeleClaude/commit/9d62db3299076bc0f39e2e8dd88649b59860384e) fix(context): own Git storage format vocabulary
+- [9b3ace9](https://github.com/InstruktAI/TeleClaude/commit/9b3ace98c71415b35d4c5b7335a9b726caac693b) docs(delivery): separate release operation from contributor development [skip ci]
+
+**Full diff:** [v0.8.0...v0.9.0](https://github.com/InstruktAI/TeleClaude/compare/v0.8.0...v0.9.0)
+
 ## [0.8.0] - 2026-10-13
 
 > Target computer-owned workflows with --computer/-c, issue invitations through the mesh master, and curate conversation memories through identity-addressed extractions. New extraction-request and mirror-coverage events coordinate memory processing. Session pruning retains records, and history tracks conversation lineage and coverage.
