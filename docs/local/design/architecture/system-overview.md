@@ -7,7 +7,15 @@ visibility: 'public'
 
 ## Purpose
 
+<!-- planned-change:web-console -->
+
 TeleClaude acts as a terminal bridge between user-facing interfaces (telec API/TUI and Telegram) and tmux execution environments.
+<!-- change:web-console -->
+
+TeleClaude acts as a terminal bridge between user-facing interfaces (telec API/TUI, the web console and Telegram) and tmux execution environments.
+<!-- /planned-change:web-console -->
+
+<!-- planned-change:web-console -->
 
 ```mermaid
 flowchart LR
@@ -72,9 +80,90 @@ flowchart LR
     Redis --> RedisIngress
 ```
 
+<!-- change:web-console -->
+
+```mermaid
+flowchart LR
+    subgraph Clients
+        TelecCLI["Telec CLI (TUI)"]
+        WebConsole["Web console (web service)"]
+        TGUser["Telegram User"]
+        Automation["Automation / Jobs"]
+    end
+
+    subgraph ServiceInterfaces["Service Interfaces"]
+        RESTServer["API Server"]
+        TGAdapter["Telegram Adapter"]
+        RedisIngress["Redis Transport Listener"]
+    end
+
+    subgraph Core["Core (Command Pipeline)"]
+        Ingress["Command Ingress"]
+        Queue["Command Queue (SQLite)"]
+        Worker["Command Worker"]
+        Sessions["Session Manager"]
+        Poller["Output Poller"]
+        Hooks["Hook Receiver + Agent Coordinator"]
+        Events["Domain Events"]
+        Cache["Read Cache (Snapshots)"]
+        NextMachine["Next Machine (Orchestrator)"]
+    end
+
+    subgraph Infrastructure
+        SQLite["SQLite DB"]
+        Redis["Redis Transport"]
+        TMUX["tmux"]
+        FS["Filesystem / Artifacts"]
+    end
+
+    TelecCLI --> RESTServer
+    WebConsole --> RESTServer
+    TGUser --> TGAdapter
+    Automation --> RESTServer
+
+    RESTServer --> Ingress
+    TGAdapter --> Ingress
+    RedisIngress --> Ingress
+
+    Ingress --> Queue
+    Queue --> Worker
+
+    Worker --> Sessions
+    Worker --> TMUX
+    Worker --> Poller
+    Worker --> FS
+
+    Poller --> Events
+    Hooks --> Events
+    Sessions --> Events
+    Events --> Cache
+
+    Sessions --> SQLite
+    Queue --> SQLite
+    Hooks --> SQLite
+    Cache --> SQLite
+
+    RedisIngress --> Redis
+    Redis --> RedisIngress
+```
+
+<!-- /planned-change:web-console -->
+
+<!-- planned-change:web-console -->
+
 1. **Service Interfaces**:
    - **Telegram Adapter**: Normalizes chat interactions.
    - **API Server**: Resource-first REST/WS interface for telec and automation clients.
+
+<!-- change:web-console -->
+
+1. **Service Interfaces**:
+   - **Telegram Adapter**: Normalizes chat interactions.
+   - **API Server**: Resource-first REST/WS interface for telec, the web console and automation clients, over the Unix socket.
+   - **Web console**: A native web service on the master that authenticates people and acts on the API server as a socket client with carried identity (`local/projects/teleclaude/design/architecture/web-console`).
+
+<!-- /planned-change:web-console -->
+
 2. **Core Pipeline**:
    - **Command Ingress**: Normalizes all inputs into Command objects.
    - **Command Queue**: SQLite-backed durable execution.

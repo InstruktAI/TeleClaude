@@ -744,6 +744,11 @@ hook_outbox:
   warn_log_interval_s: 15
   max_lag_samples: 2048
   staleness_ttl_s: 300
+<!-- planned:web-console -->
+web_console:
+  port: integer # LAN port the web service serves HTTPS on with the certificate generated at install; read only where computer.is_master holds; defaulted by the runtime config defaults
+  trusted_proxy: string | null # the one address the web service accepts connections from — the ingress computer's reverse proxy; loopback when the proxy and the web service share a host; defaulted by the runtime config defaults
+<!-- /planned:web-console -->
 api:
   tcp_port: integer # public; loopback HTTP listener port on 127.0.0.1, defaulted by the runtime config defaults and carried in every machine configuration; opened only when computer.is_ingress_node is true, as the reverse proxy's webhook upstream
   watch_interval_s: 5
