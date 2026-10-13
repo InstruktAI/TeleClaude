@@ -53,11 +53,16 @@ class _Field(StrEnum):
     MESSAGE = "message"
 
 
-_OBJECT = "object"
-_ARRAY = "array"
-_STRING = "string"
-_NULL = "null"
-_INTEGER = "integer"
+class _ValueType(StrEnum):
+    OBJECT = "object"
+    ARRAY = "array"
+    STRING = "string"
+    NULL = "null"
+    INTEGER = "integer"
+    BOOLEAN = "boolean"
+    NUMBER = "number"
+
+
 _COMPUTER = "computer"
 _REF_PREFIX = "#/$defs/"
 _COMPUTER_MODEL = "ComputerConfig"
@@ -76,11 +81,9 @@ _DEFAULTED_ENABLED_MODELS = (
 _HOOK_MODEL = "HookOutboxConfig"
 _WATERMARKS = frozenset({"session_claim_high_watermark", "session_claim_low_watermark"})
 _FUNCTION: Final = "function"
-_BOOLEAN = "boolean"
-_NUMBER = "number"
 _PATTERN = "pattern"
 _BOOLEAN_PATTERN = r"^\s*([Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|1|[Oo][Nn]|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|0|[Oo][Ff][Ff])?\s*$"
-_SCALAR_TYPES = (_STRING, _NUMBER, _BOOLEAN, _NULL)
+_SCALAR_TYPES = (_ValueType.STRING, _ValueType.NUMBER, _ValueType.BOOLEAN, _ValueType.NULL)
 _SUMMARIZER_MODEL = "SummarizerConfig"
 _PROVIDER_PRIORITY = "provider_priority"
 _SCALAR_SCHEMAS: dict[Callable[..., object], JsonDict] = {
@@ -90,14 +93,18 @@ _SCALAR_SCHEMAS: dict[Callable[..., object], JsonDict] = {
     _coerce._optional_int_lenient: {_Key.ANY_OF: [{_Key.TYPE: kind} for kind in _SCALAR_TYPES]},
     _coerce._flag: {
         _Key.ANY_OF: [
-            {_Key.TYPE: _BOOLEAN},
-            {_Key.TYPE: _NULL},
-            {_Key.TYPE: _STRING, _PATTERN: _BOOLEAN_PATTERN},
+            {_Key.TYPE: _ValueType.BOOLEAN},
+            {_Key.TYPE: _ValueType.NULL},
+            {_Key.TYPE: _ValueType.STRING, _PATTERN: _BOOLEAN_PATTERN},
         ]
     },
-    _coerce._int_strict: {_Key.ANY_OF: [{_Key.TYPE: _INTEGER}, {_Key.TYPE: _STRING, _PATTERN: r"^\s*[+-]?\d+\s*$"}]},
-    _coerce._float_strict: {_Key.ANY_OF: [{_Key.TYPE: _NUMBER}, {_Key.TYPE: _STRING}]},
-    _coerce._int_lenient: {_Key.ANY_OF: [{_Key.TYPE: kind} for kind in (_NUMBER, _STRING, _BOOLEAN)]},
+    _coerce._int_strict: {
+        _Key.ANY_OF: [{_Key.TYPE: _ValueType.INTEGER}, {_Key.TYPE: _ValueType.STRING, _PATTERN: r"^\s*[+-]?\d+\s*$"}]
+    },
+    _coerce._float_strict: {_Key.ANY_OF: [{_Key.TYPE: _ValueType.NUMBER}, {_Key.TYPE: _ValueType.STRING}]},
+    _coerce._int_lenient: {
+        _Key.ANY_OF: [{_Key.TYPE: kind} for kind in (_ValueType.NUMBER, _ValueType.STRING, _ValueType.BOOLEAN)]
+    },
 }
 
 
@@ -127,16 +134,18 @@ def machine_document_schema() -> JsonDict:
     _optional_fields(definitions[_HOOK_MODEL], _WATERMARKS)
     summarizer = cast(dict[str, JsonDict], definitions[_SUMMARIZER_MODEL][_Key.PROPERTIES])
     summarizer[_PROVIDER_PRIORITY] = _nullable(summarizer[_PROVIDER_PRIORITY])
-    cast(dict[str, JsonDict], definitions[_EVENT_MODEL][_Key.PROPERTIES])[_Field.MESSAGE] = {_Key.TYPE: _STRING}
+    cast(dict[str, JsonDict], definitions[_EVENT_MODEL][_Key.PROPERTIES])[_Field.MESSAGE] = {
+        _Key.TYPE: _ValueType.STRING
+    }
     properties[_Field.AGENTS] = {
         **_agents_schema(agent),
         TIER_METADATA_KEY: properties[_Field.AGENTS][TIER_METADATA_KEY],
     }
     properties[_Field.REMOTE_COMPUTERS] = _nullable(
-        {_Key.TYPE: _OBJECT, _Key.ADDITIONAL: {_Key.REF: _REF_PREFIX + _REMOTE_MODEL}}
+        {_Key.TYPE: _ValueType.OBJECT, _Key.ADDITIONAL: {_Key.REF: _REF_PREFIX + _REMOTE_MODEL}}
     )
     properties[_Field.KIND] = {_Key.CONST: _COMPUTER}
-    properties[_Field.SCHEMA_VERSION] = {_Key.TYPE: _INTEGER, _Key.CONST: CURRENT_SCHEMA_VERSION}
+    properties[_Field.SCHEMA_VERSION] = {_Key.TYPE: _ValueType.INTEGER, _Key.CONST: CURRENT_SCHEMA_VERSION}
     schema[_Key.REQUIRED] = [_Field.COMPUTER, _Field.AGENTS]
     for field, default in DEFAULT_CONFIG.items():
         if field in properties and isinstance(default, Mapping):
@@ -183,8 +192,10 @@ def _agents_schema(agent: JsonDict) -> JsonDict:
         protocol = AGENT_PROTOCOL[name.value]
         fields[_Field.PROFILES] = _nullable(
             {
-                _Key.TYPE: _OBJECT,
-                _Key.PROPERTIES: {profile: {_Key.TYPE: _STRING} for profile in protocol[_Field.PROFILES.value]},
+                _Key.TYPE: _ValueType.OBJECT,
+                _Key.PROPERTIES: {
+                    profile: {_Key.TYPE: _ValueType.STRING} for profile in protocol[_Field.PROFILES.value]
+                },
                 _Key.ADDITIONAL: False,
             }
         )
@@ -192,7 +203,7 @@ def _agents_schema(agent: JsonDict) -> JsonDict:
         chain[_Key.MIN_ITEMS] = 1
         fields[_Field.MODEL_CHAINS] = _nullable(
             {
-                _Key.TYPE: _OBJECT,
+                _Key.TYPE: _ValueType.OBJECT,
                 _Key.PROPERTIES: {
                     mode: deepcopy(chain) for mode in protocol[_Field.MODE_CHAINS.value] if mode != _Field.DEFAULT
                 },
@@ -201,7 +212,7 @@ def _agents_schema(agent: JsonDict) -> JsonDict:
         )
         properties[name.value] = _nullable(entry)
     return {
-        _Key.TYPE: _OBJECT,
+        _Key.TYPE: _ValueType.OBJECT,
         _Key.PROPERTIES: properties,
         _Key.REQUIRED: [_Field.DEFAULT],
         _Key.ADDITIONAL: False,
@@ -243,5 +254,5 @@ def _optional_fields(schema: JsonDict, fields: frozenset[str]) -> None:
 
 
 def _nullable(schema: JsonDict) -> JsonDict:
-    branches: list[JsonValue] = [schema, {_Key.TYPE: _NULL}]
+    branches: list[JsonValue] = [schema, {_Key.TYPE: _ValueType.NULL}]
     return {_Key.ANY_OF: branches}
