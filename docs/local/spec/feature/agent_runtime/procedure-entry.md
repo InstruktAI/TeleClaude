@@ -54,7 +54,7 @@ persisted invocation.
 : A procedure read inside a session as a hat or a dependency. Whether or not it declares entry fields, none is interpreted and nothing about the session changes; the same procedure may be the launch root of another session.
 
 **Resolved invocation**
-: The procedure ID, the bound parameters, the raw argument text, the entry context, and the brief reference, persisted on the session's launch state.
+: The procedure ID, the bound parameters, the raw argument text, the entry context, the additional context supplied at launch, and the brief reference, persisted on the session's launch state; continuation rebuilds the brief from it in full.
 
 **Brief**
 : The one artifact the loader names: the role's framing line, the parameter preamble, the procedure's required-read closure, the entry type's required reads — `general/procedure/scheduled-job-run` for a scheduled job, the event-handling closure the delivery settings imply for an activation — and additional context once. It carries no command listing of its own; what commands the session reaches is the role catalog's decision, and a role-scoped command surface in the brief is a separate delivery (`local/projects/teleclaude/spec/feature/identity/agent-roles`, Known caveats).

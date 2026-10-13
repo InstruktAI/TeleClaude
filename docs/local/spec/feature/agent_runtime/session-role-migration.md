@@ -19,11 +19,12 @@ inventories every distinct recorded combination, maps the combinations the
 catalog can name through an explicit table, reduces the job field to the
 instance identity a scheduled run or an activation carries, and leaves every
 other row with its original representation recorded, refused at runtime and
-reported. It migrates the persisted launch state and the queued caller
-snapshots that serialize a session's role beside the sessions, because a
-reader of either sees the new shape after the migration. Historical
-attribution recorded on authored turns is carried as provenance and never
-re-derived from a session's migrated role; the session mirrors keep their own
+reported. It migrates the persisted launch state that drives a session's continuation
+beside the sessions, because continuation reads the new shape after the
+migration. Everything that records who acted at an occurrence — the labels on
+authored turns and the caller snapshots on queued inputs — is provenance: it
+keeps its recorded value and is never re-derived from a session's migrated
+role; the session mirrors keep their own
 record under their own contract
 (`local/projects/teleclaude/spec/feature/session_mirrors/historical-conversation-search`).
 
@@ -57,8 +58,9 @@ reason in the migration ledger, which is the report an operator reads. The
 evidence the migration reads is the row's own recorded values and, for a job
 name, the declaration currently carrying that name; no other history exists,
 so a binding the row does not record is not inferred. Nothing is elevated by
-title or prose. Persisted launch intents and queued caller snapshots that
-belong to a row are migrated to that row's result, `unmapped` included.
+title or prose. Persisted launch intents that belong to a row are migrated to that row's
+result, `unmapped` included; queued caller snapshots keep their recorded
+labels as provenance (UC-SRM3).
 
 ### Continuation of migrated sessions
 
@@ -83,7 +85,7 @@ the session stays inspectable.
 Given a session recorded with a system role and a job the mapping names
 When the migration runs
 Then the session carries the mapped role and the job field holds only its instance identity, or nothing
-And its persisted launch state and any queued caller snapshot carry the same role
+And its persisted launch state carries the same role
 ```
 
 #### UC-SRM2: Unmappable rows are kept, refused and reported
