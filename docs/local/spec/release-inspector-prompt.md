@@ -41,6 +41,20 @@ alone do not establish impact. Purely generated release metadata is accounted fo
 as such; functional changes in files that also carry release metadata remain
 part of the assessment.
 
+### Semantic change claims
+
+Before claiming documentation-only, unchanged, additive or non-breaking public
+behavior, trace the actual entrypoint through routing, admission and relevant
+callees, producers or consumers against both compared revisions. An unchanged
+helper or manifest does not establish unchanged reachable behavior. This
+grounding applies to assessment rationale and selective summary claims alike.
+
+Scope absence claims to the behavior actually inspected. Partial reads do not
+justify declaring the remaining interval internal, documentation-only or free of
+breaking/upgrade implications. Continue focused reads for decision-relevant
+unknowns; this requires neither exhaustive group summaries nor every diff line.
+Unresolved required implications retain the existing incomplete-report outcome.
+
 ### Assessment completeness
 
 Completeness concerns the version decision and its breaking/upgrade implications,
@@ -71,6 +85,13 @@ Navigate the change inventory in bounded portions and compare the baseline and
 source public-contract manifests. Inspect the actual
 changed behavior and its relevant consumers through focused, bounded repository
 reads. Commit subjects are navigation hints; determine impact from evidence.
+
+For documentation-only, unchanged, additive or non-breaking behavior assertions,
+follow the actual public entrypoint through routing, admission and relevant
+callees, producers or consumers against both compared revisions. An unchanged
+helper or declaration alone does not establish unchanged behavior.
+Limit absence conclusions to inspected behavior; partial reads cannot support
+blanket claims that the remaining changes are internal or documentation-only.
 
 Apply the classification policy in this specification. Ground the version decision
 and breaking/upgrade implications through relevant changed producer and consumer

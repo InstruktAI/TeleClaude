@@ -94,7 +94,13 @@ INDEX_PROMPT_SUFFIX = (
     "It retains the complete changed-path denominator and every indexed segment; those segments are not a reading checklist."
 )
 SOURCE_TREE_PROMPT_PREFIX = "The captured source tree is available under "
-SOURCE_TREE_PROMPT_SUFFIX = " for consumer inspection."
+SOURCE_TREE_PROMPT_SUFFIX = (
+    " for entrypoint and consumer inspection. Before asserting documentation-only, unchanged, additive or "
+    "non-breaking public behavior, trace the actual entrypoint through routing, admission and relevant callees, "
+    "producers or consumers against both compared revisions; "
+    "an unchanged helper or manifest alone does not establish unchanged reachable behavior. "
+    "Scope absence claims to inspected behavior instead of labeling unread changes internal or documentation-only."
+)
 SEGMENT_PROMPT = (
     "Read segments by their index entries; each segment is bounded and retains its source/baseline identities."
 )
