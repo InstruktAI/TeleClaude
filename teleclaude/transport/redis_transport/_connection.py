@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import random
 import time
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -18,18 +19,27 @@ logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
-    from teleclaude.core.task_registry import TaskRegistry
+    from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
+
+_TRANSPORT_RUNTIME_TASK = "redis-transport"
+_RECONNECT_TASK = "redis-reconnect"
+_MESSAGE_POLL_LOOP = "redis-message-poll"
+_HEARTBEAT_LOOP = "redis-heartbeat"
+_PEER_REFRESH_LOOP = "redis-peer-refresh"
+_STARTUP_RECONNECT_REASON = "startup"
+_LOOP_ENDED = "Redis transport loop {name} ended while the transport was running"
+
+
+class TransportLoopEnded(Exception):
+    """A transport loop returned while the transport was running, so the transport's run ends."""
 
 
 class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: Redis connection lifecycle, reconnect loop, start/stop."""
 
     if TYPE_CHECKING:
-        task_registry: TaskRegistry | None
-        _connection_task: asyncio.Task[object] | None
-        _message_poll_task: asyncio.Task[object] | None
-        _heartbeat_task: asyncio.Task[object] | None
-        _peer_refresh_task: asyncio.Task[object] | None
+        task_registry: TaskRegistry
+        _transport_runtime: SupervisedTask | None
         _reconnect_task: asyncio.Task[object] | None
         _running: bool
         _idle_poll_last_log_at: float | None
@@ -96,22 +106,6 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
         self._idle_poll_last_log_at = now
         self._idle_poll_suppressed = 0
 
-    def _log_task_exception(self, task: asyncio.Task[object]) -> None:
-        """
-        Log exceptions from untracked background tasks.
-
-        Used as done callback for tasks spawned without TaskRegistry to prevent
-        silent failures.
-
-        Args:
-            task: The completed task
-        """
-        if task.cancelled():
-            return
-        exc = task.exception()
-        if exc:
-            logger.error("Untracked task %s failed: %s", task.get_name(), exc, exc_info=exc)
-
     @property
     def is_redis_ready(self) -> bool:
         """Whether Redis has connected at least once (non-blocking read)."""
@@ -126,22 +120,19 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
         self._running = True
 
         # Start connection orchestration without blocking daemon boot
-        if self.task_registry:
-            self._connection_task = self.task_registry.spawn(
-                self._ensure_connection_and_start_tasks(), name="redis-connection"
-            )
-        else:
-            # Fallback: untracked task with explicit exception logging
-            self._connection_task = asyncio.create_task(
-                self._ensure_connection_and_start_tasks(), name="redis-connection"
-            )
-            self._connection_task.add_done_callback(self._log_task_exception)
+        self._transport_runtime = self.task_registry.supervise(
+            _TRANSPORT_RUNTIME_TASK, self._run_transport, restart=True
+        )
         logger.info("RedisTransport start triggered (connection handled asynchronously)")
 
-    async def _ensure_connection_and_start_tasks(self) -> None:
-        """Connect and launch background tasks with retry, without blocking daemon startup."""
+    async def _run_transport(self) -> None:
+        """Run the transport: connect, fill the cache, then run the message poll, heartbeat and peer refresh as one unit.
 
-        self._schedule_reconnect("startup")
+        Any of the three loops ending while the transport is running ends the run and cancels the others, so the
+        supervisor replaces the whole unit: it reconnects when needed, fills the cache again and restarts all three.
+        """
+        if not self._redis_ready.is_set():
+            self._schedule_reconnect(_STARTUP_RECONNECT_REASON)
         await self._await_redis_ready()
 
         if not self._running:
@@ -149,20 +140,18 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
 
         await self._populate_initial_cache()
 
-        # Start background tasks once connected
-        if self.task_registry:
-            self._message_poll_task = self.task_registry.spawn(self._poll_redis_messages(), name="redis-message-poll")
-            self._heartbeat_task = self.task_registry.spawn(self._heartbeat_loop(), name="redis-heartbeat")
-            self._peer_refresh_task = self.task_registry.spawn(self._peer_refresh_loop(), name="redis-peer-refresh")
-        else:
-            self._message_poll_task = asyncio.create_task(self._poll_redis_messages(), name="redis-message-poll")
-            self._message_poll_task.add_done_callback(self._log_task_exception)
-            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name="redis-heartbeat")
-            self._heartbeat_task.add_done_callback(self._log_task_exception)
-            self._peer_refresh_task = asyncio.create_task(self._peer_refresh_loop(), name="redis-peer-refresh")
-            self._peer_refresh_task.add_done_callback(self._log_task_exception)
-
         logger.info("RedisTransport connected and background tasks started")
+        async with asyncio.TaskGroup() as group:
+            group.create_task(self._run_loop_while_running(_MESSAGE_POLL_LOOP, self._poll_redis_messages))
+            group.create_task(self._run_loop_while_running(_HEARTBEAT_LOOP, self._heartbeat_loop))
+            group.create_task(self._run_loop_while_running(_PEER_REFRESH_LOOP, self._peer_refresh_loop))
+
+    async def _run_loop_while_running(self, name: str, loop: Callable[[], Awaitable[None]]) -> None:
+        """Run a transport loop; its return while the transport runs and is not being cancelled is an end of the run."""
+        await loop()
+        current = asyncio.current_task()
+        if self._running and current is not None and current.cancelling() == 0:
+            raise TransportLoopEnded(_LOOP_ENDED.format(name=name))
 
     async def _populate_initial_cache(self) -> None:
         """Populate cache with remote computers and projects on startup."""
@@ -212,11 +201,7 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
             logger.info("Redis startup connect scheduled")
         else:
             logger.warning("Redis connection unhealthy; scheduling reconnect (reason=%s)", reason)
-        if self.task_registry:
-            self._reconnect_task = self.task_registry.spawn(self._reconnect_loop(reason), name="redis-reconnect")
-        else:
-            self._reconnect_task = asyncio.create_task(self._reconnect_loop(reason), name="redis-reconnect")
-            self._reconnect_task.add_done_callback(self._log_task_exception)
+        self._reconnect_task = self.task_registry.spawn(self._reconnect_loop(reason), name=_RECONNECT_TASK)
 
     async def _reconnect_loop(self, reason: str) -> None:
         """Reconnect loop with capped backoff and jitter."""
@@ -272,36 +257,13 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
 
         self._running = False
 
-        # Cancel connection orchestrator
-        if self._connection_task:
-            self._connection_task.cancel()
-            try:
-                await self._connection_task
-            except asyncio.CancelledError:
-                pass
+        # Stop the transport runtime: it cancels the message poll, heartbeat and peer refresh with it
+        if self._transport_runtime:
+            await self._transport_runtime.cancel()
         if self._reconnect_task:
             self._reconnect_task.cancel()
             try:
                 await self._reconnect_task
-            except asyncio.CancelledError:
-                pass
-
-        # Cancel background tasks
-        if self._message_poll_task:
-            self._message_poll_task.cancel()
-            self._message_poll_task = None
-
-        if self._heartbeat_task:
-            self._heartbeat_task.cancel()
-            try:
-                await self._heartbeat_task
-            except asyncio.CancelledError:
-                pass
-
-        if self._peer_refresh_task:
-            self._peer_refresh_task.cancel()
-            try:
-                await self._peer_refresh_task
             except asyncio.CancelledError:
                 pass
 

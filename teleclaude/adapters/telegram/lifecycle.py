@@ -8,7 +8,8 @@ Exports TelegramApp type alias for re-use in telegram_adapter.py.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Coroutine
+import re
+from collections.abc import Awaitable, Callable, Coroutine
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
@@ -38,8 +39,11 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
+    from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
 
     class _LifecycleHost(Protocol):
+        task_registry: TaskRegistry
+        _receiving_liveness: SupervisedTask | None
         bot_token: str
         computer_name: str
         is_master: bool
@@ -54,6 +58,33 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+# The names python-telegram-bot assigns to the long-lived tasks that receive updates, as of the pinned release.
+_UPDATE_FETCHER_TASK_NAME = re.compile(r"Application:\d+:update_fetcher")
+_POLLING_TASK_NAME = re.compile(r"Updater:start_polling:polling_task")
+_RECEIVING_LIVENESS_TASK_NAME = "telegram-receiving-liveness"
+_RECEIVING_TASK_NOT_FOUND = "Expected exactly one new {description} task after the call, found {found}"
+_UPDATE_FETCHER_DESCRIPTION = "update fetcher"
+_POLLING_DESCRIPTION = "update polling"
+
+
+class TelegramReceivingTaskNotFound(AdapterError):
+    """The dependency did not create exactly one receiving task of the expected name, so it cannot be observed."""
+
+
+async def _start_capturing_task(
+    start: Callable[[], Awaitable[object]], name: re.Pattern[str], description: str
+) -> asyncio.Task[object]:
+    """Run a dependency start call and return the one new task it created whose name matches `name`."""
+    before = asyncio.all_tasks()
+    await start()
+    created = [task for task in asyncio.all_tasks() - before if name.fullmatch(task.get_name())]
+    if len(created) != 1:
+        raise TelegramReceivingTaskNotFound(
+            _RECEIVING_TASK_NOT_FOUND.format(description=description, found=len(created))
+        )
+    return created[0]
+
 
 # Type alias for python-telegram-bot's Application generic.
 # The library uses dict for user/chat/bot data storage — intentional design.
@@ -194,11 +225,24 @@ class LifecycleMixin:
 
         # Start the bot
         await self.app.initialize()
-        await self.app.start()
+        receiving_tasks: list[asyncio.Task[object]] = []
         # Polling is what claims Telegram updates: only the declared master receives them.
         receiver_active = bool(host.is_master)
-        if receiver_active:
-            await self.app.updater.start_polling()
+        try:
+            receiving_tasks.append(
+                await _start_capturing_task(self.app.start, _UPDATE_FETCHER_TASK_NAME, _UPDATE_FETCHER_DESCRIPTION)
+            )
+            if receiver_active:
+                receiving_tasks.append(
+                    await _start_capturing_task(
+                        self.app.updater.start_polling, _POLLING_TASK_NAME, _POLLING_DESCRIPTION
+                    )
+                )
+        except TelegramReceivingTaskNotFound:
+            # The application is running unobserved; a failed start leaves nothing of it behind.
+            await self.stop()
+            raise
+        host._receiving_liveness = host.task_registry.observe(_RECEIVING_LIVENESS_TASK_NAME, *receiving_tasks)
 
         handlers = [handler for group in self.app.handlers.values() for handler in group]
         command_handlers = [handler for handler in handlers if isinstance(handler, CommandHandler)]
@@ -228,6 +272,10 @@ class LifecycleMixin:
             except asyncio.CancelledError:
                 pass
             host._startup_housekeeping_task = None
+
+        if host._receiving_liveness is not None:
+            await host._receiving_liveness.cancel()
+            host._receiving_liveness = None
 
         if self.app and self.app.updater:
             if self.app.updater.running:

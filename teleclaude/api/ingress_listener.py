@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+from collections.abc import Callable
 from typing import Final
 
 import uvicorn
@@ -43,11 +44,13 @@ class WebhookIngressListener:
         port: int,
         keep_alive_timeout_s: int,
         stop_timeout_s: float,
+        on_unexpected_exit: Callable[[BaseException | None, bool | None], None],
     ) -> None:
         self._app = app
         self._port = port
         self._keep_alive_timeout_s = keep_alive_timeout_s
         self._stop_timeout_s = stop_timeout_s
+        self._on_unexpected_exit = on_unexpected_exit
         self._server: uvicorn.Server | None = None
         self._server_task: asyncio.Task[object] | None = None
         self._running = False
@@ -169,3 +172,9 @@ class WebhookIngressListener:
             )
         elif not server.should_exit:
             logger.error(_TASK_EXITED, _API_TCP_HOST, self._port, host=_API_TCP_HOST, port=self._port)
+        else:
+            return
+
+        # A listener that never finished starting is a startup failure, which the start path owns.
+        if server.started:
+            self._on_unexpected_exit(error, server.should_exit)

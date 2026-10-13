@@ -29,12 +29,18 @@ import time
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.qos.policy import QoSPolicy
 
+if TYPE_CHECKING:
+    from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
+
 logger = get_logger(__name__)
+
+_DISPATCH_TASK_TEMPLATE = "qos-scheduler-{adapter_key}"
 
 # Interval for periodic cadence log summaries.
 _SUMMARY_INTERVAL_S = 30.0
@@ -114,12 +120,13 @@ class OutputQoSScheduler:
         "_last_summary_at": "last_summary_at",
     }
 
-    def __init__(self, policy: QoSPolicy) -> None:
+    def __init__(self, policy: QoSPolicy, task_registry: TaskRegistry) -> None:
         self._policy = policy
+        self._task_registry = task_registry
         self._queues = _SchedulerQueues()
         self._stats = _SchedulerStats()
-        # Background dispatch task.
-        self._task: asyncio.Task[None] | None = None
+        # Supervised background dispatch task.
+        self._task: SupervisedTask | None = None
 
     # ------------------------------------------------------------------
     # Typed accessors for nested state (avoids __getattr__ returning object)
@@ -193,7 +200,9 @@ class OutputQoSScheduler:
             return
         if self._task is not None and not self._task.done():
             return
-        self._task = asyncio.create_task(self._dispatch_loop(), name=f"qos-scheduler-{self._policy.adapter_key}")
+        self._task = self._task_registry.supervise(
+            _DISPATCH_TASK_TEMPLATE.format(adapter_key=self._policy.adapter_key), self._dispatch_loop, restart=True
+        )
         logger.info(
             "OutputQoSScheduler started: adapter=%s mode=%s",
             self._policy.adapter_key,
@@ -204,11 +213,7 @@ class OutputQoSScheduler:
         """Stop the background dispatch loop."""
         if self._task is None or self._task.done():
             return
-        self._task.cancel()
-        try:
-            await self._task
-        except asyncio.CancelledError:
-            pass
+        await self._task.cancel()
         self._task = None
         logger.info("OutputQoSScheduler stopped: adapter=%s", self._policy.adapter_key)
 

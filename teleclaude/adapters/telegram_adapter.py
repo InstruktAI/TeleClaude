@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.task_registry import TaskRegistry
+    from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
 
 from telegram.constants import ChatAction
 
@@ -109,7 +109,7 @@ class TelegramAdapter(
 
     # -------------------------------------------------------------------------
 
-    def __init__(self, client: AdapterClient, *, task_registry: TaskRegistry | None = None) -> None:
+    def __init__(self, client: AdapterClient, *, task_registry: TaskRegistry) -> None:
         """Initialize Telegram adapter.
 
         Args:
@@ -135,10 +135,11 @@ class TelegramAdapter(
         self._pending_edits: dict[str, EditContext] = {}  # Track pending edits (message_id -> mutable context)
         self._last_edit_hash: dict[str, str] = {}  # message_id -> content hash (skip no-op edits)
         self._startup_housekeeping_task: asyncio.Task[None] | None = None
+        self._receiving_liveness: SupervisedTask | None = None
 
         # Output QoS scheduler: coalesces stale payloads and enforces pacing budget.
         qos_policy = telegram_policy(config.telegram.qos)
-        self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy)
+        self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy, task_registry)
 
     # --- Per-adapter output message tracking ---
     # Telegram stores output tracking in origin_metadata to prevent cross-adapter races.
