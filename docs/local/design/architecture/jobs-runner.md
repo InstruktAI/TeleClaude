@@ -226,12 +226,34 @@ jobs, while retaining the same open/close lifecycle and active-run safeguards.
 
 ### Manual run (API)
 
+<!-- planned-change:client-daemon-seam -->
+
 `POST /jobs/{name}/run` launches the standalone cron runner for the named job.
 Its optional `project` query parameter selects the registered project; omission
 selects the runner's own project. The cron command receives the same project
 selection and resolves that project's effective declaration. Acceptance records
 dispatch, and the run closes through its normal outcome path. A spawn failure
 returns an explicit API error.
+
+<!-- change:client-daemon-seam -->
+
+`POST /jobs/{name}/run` asks for one run of the named job in one project and
+answers with an operation receipt
+(`local/projects/teleclaude/design/architecture/operation-receipts`). Its
+optional `project` query parameter selects the registered project; omission
+selects the runner's own project, and the run never extends to another project
+that declares a job of the same name. The operation launches the standalone
+cron runner for that job and project and learns from it which run it opened.
+The run closes through its normal outcome path, and the operation ends with it:
+a successful run completes the operation with the run's outcome, and a failed
+or stalled run fails it. When the runner opens no run — another runner pass
+holds the runner lock, the job already has an open run, an actionable outcome
+is still undelivered, or the project declares no such job — or the runner
+cannot be launched, the operation fails naming that reason, and no run is
+recorded. A daemon restart while the run is open leaves the operation stale
+while the run itself continues and closes as usual.
+
+<!-- /planned-change:client-daemon-seam -->
 
 ### Script job contract
 
@@ -327,6 +349,8 @@ keep separate notification lifecycles.
 
 ## Failure modes
 
+<!-- planned-change:client-daemon-seam -->
+
 - **Missing `teleclaude.yml`**: Engine logs a warning, no jobs run.
 - **Job has no config entry**: Silently skipped (logged at debug level).
 - **Job module fails to import**: Logged as error, run closed as failed, other jobs still run.
@@ -337,6 +361,21 @@ keep separate notification lifecycles.
 - **Event emission unavailable**: The outcome is persisted as a durable pending-emission record and re-emitted exactly once on a later sweep; the job is not re-dispatched until its actionable outcome is delivered, so it is never dropped or overwritten.
 - **Overlap (concurrent runner instances)**: Second instance detects the pidfile and exits cleanly; stale pidfiles are detected and overwritten.
 - **Daemon unavailable during an agent job**: The agent spawns without MCP tools and still reports its outcome to the filesystem; the run closes normally.
+
+<!-- change:client-daemon-seam -->
+
+- **Missing `teleclaude.yml`**: Engine logs a warning, no jobs run.
+- **Job has no config entry**: Silently skipped (logged at debug level).
+- **Job module fails to import**: Logged as error, run closed as failed, other jobs still run.
+- **Script job raises during `run()`**: Caught, run closed as failed, other jobs still run.
+- **Script job exceeds `timeout`**: The daemon-thread join records a failed `JobResult` and the runner aborts the rest of the pass so no later job runs concurrently; the hung job is hard-reaped when the runner process exits, freeing the pidlock, and the deferred jobs run on the next trigger.
+- **A job cannot start**: An agent session-creation failure — including an agent preference list with no eligible candidate — records a failed outcome carrying the dispatch refusal reason and emits the job-run failed event; a manual run whose runner cannot be launched, or which opens no run, fails its operation naming why. A start failure is never a silent skip.
+- **Agent run never reported within its window**: Marked `stalled`, emits the job-run stalled event, notifies a human.
+- **Event emission unavailable**: The outcome is persisted as a durable pending-emission record and re-emitted exactly once on a later sweep; the job is not re-dispatched until its actionable outcome is delivered, so it is never dropped or overwritten.
+- **Overlap (concurrent runner instances)**: Second instance detects the pidfile and exits cleanly; stale pidfiles are detected and overwritten.
+- **Daemon unavailable during an agent job**: The agent spawns without MCP tools and still reports its outcome to the filesystem; the run closes normally.
+
+<!-- /planned-change:client-daemon-seam -->
 
 ### Service integration
 

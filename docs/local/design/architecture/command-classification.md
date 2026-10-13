@@ -136,11 +136,25 @@ Command-to-mode mapping:
 | CloseSessionCommand       | RECEIPT                                     | `session.close.completed` / `session.close.failed`                 |
 | HandoffAgentCommand       | RECEIPT                                     | `agent_runtime.handoff.completed` / `agent_runtime.handoff.failed` |
 
+<!-- planned-change:client-daemon-seam -->
+
 Todo lifecycle work (create, prepare, work, integrate, remove, rename) and task runs
 are receipt-backed operations submitted by their routes directly to the
 `OperationsService`; they carry no `InternalCommand` type. Addressed to another
 computer, they reach that computer's route through the relay and are submitted to
 that computer's `OperationsService`.
+
+<!-- change:client-daemon-seam -->
+
+Todo lifecycle work (create, prepare, work, integrate, remove, rename), task runs
+and job runs are receipt-backed operations submitted by their routes directly to the
+`OperationsService`; they carry no `InternalCommand` type. A job run's operation
+ends when the run it started closes, not when its runner starts
+(`local/projects/teleclaude/design/architecture/jobs-runner`). Addressed to another
+computer, they reach that computer's route through the relay and are submitted to
+that computer's `OperationsService`.
+
+<!-- /planned-change:client-daemon-seam -->
 
 `RelayRequestCommand` is `IMMEDIATE` whatever the relayed route's own mode is: its
 result is that route's complete response, a receipt included. A receipt that crosses

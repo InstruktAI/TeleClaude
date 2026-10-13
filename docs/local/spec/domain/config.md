@@ -148,6 +148,17 @@ through it
 (`local/projects/teleclaude/spec/feature/integration/computer-addressed-execution`);
 addressed to this computer, the command still runs in the process that invokes it.
 
+<!-- planned:client-daemon-seam -->
+
+The TUI configuration view reaches configuration only through these daemon
+requests; it holds no write authority over a backing file
+(`local/projects/teleclaude/design/architecture/api-server`). An environment
+request names the environment it changes — the machine's, the global
+configuration's, or one person's — and sets or clears one variable there. A
+person's environment is that person's personal MCP secret store.
+
+<!-- /planned:client-daemon-seam -->
+
 #### Use cases (index of feature specs)
 
 - **project-registry** — `docs/local/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry
@@ -187,6 +198,14 @@ Keep performs no write. Replace and clear use locked atomic targeted mutation
 and preserve every unrelated key and line. Runtime and TUI consumers use this
 published contract and never parse the store or consult the process environment
 directly.
+
+<!-- planned:client-daemon-seam -->
+
+The inventory is also a daemon request on the person subject, and replacing or
+clearing a key is that person's environment request, both under the person's
+configuration target clearance. A UI reaches the store only through them.
+
+<!-- /planned:client-daemon-seam -->
 
 ### Membership declaration changes
 

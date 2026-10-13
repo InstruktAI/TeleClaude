@@ -24,6 +24,8 @@ after the fact.
 
 ### Operation kinds inventory
 
+<!-- planned-change:client-daemon-seam -->
+
 | Kind constant                 | String value     | Endpoint                            |
 | ----------------------------- | ---------------- | ----------------------------------- |
 | OPERATION_KIND_TODO_WORK      | `todo_work`      | `POST /todos/work`                  |
@@ -32,10 +34,28 @@ after the fact.
 | OPERATION_KIND_TODO_PREPARE   | `todo_prepare`   | `POST /todos/prepare`               |
 | OPERATION_KIND_TODO_RENAME    | `todo_rename`    | `POST /todos/update`                |
 | OPERATION_KIND_TODO_REMOVE    | `todo_remove`    | `POST /todos/remove`                |
-| OPERATION_KIND_TASK_RUN       | `task_run`       | `POST /tasks/run`                   |
+| OPERATION_KIND_TASK_RUN       | `task_run`       | `POST /todos/work` (a `task` todo)  |
 | OPERATION_KIND_AGENT_HANDOFF  | `agent_handoff`  | `POST /sessions/{id}/agent-restart` |
 | OPERATION_KIND_AGENT_RESTART  | `agent_restart`  | `POST /sessions/{id}/agent-restart` |
 | OPERATION_KIND_SESSION_CLOSE  | `session_close`  | `DELETE /sessions/{id}`             |
+
+<!-- change:client-daemon-seam -->
+
+| Kind constant                 | String value     | Endpoint                            |
+| ----------------------------- | ---------------- | ----------------------------------- |
+| OPERATION_KIND_TODO_WORK      | `todo_work`      | `POST /todos/work`                  |
+| OPERATION_KIND_TODO_INTEGRATE | `todo_integrate` | `POST /todos/integrate`             |
+| OPERATION_KIND_TODO_CREATE    | `todo_create`    | `POST /todos/create`                |
+| OPERATION_KIND_TODO_PREPARE   | `todo_prepare`   | `POST /todos/prepare`               |
+| OPERATION_KIND_TODO_RENAME    | `todo_rename`    | `POST /todos/update`                |
+| OPERATION_KIND_TODO_REMOVE    | `todo_remove`    | `POST /todos/remove`                |
+| OPERATION_KIND_TASK_RUN       | `task_run`       | `POST /todos/work` (a `task` todo)  |
+| OPERATION_KIND_AGENT_HANDOFF  | `agent_handoff`  | `POST /sessions/{id}/agent-restart` |
+| OPERATION_KIND_AGENT_RESTART  | `agent_restart`  | `POST /sessions/{id}/agent-restart` |
+| OPERATION_KIND_SESSION_CLOSE  | `session_close`  | `DELETE /sessions/{id}`             |
+| OPERATION_KIND_JOB_RUN        | `job_run`        | `POST /jobs/{name}/run`             |
+
+<!-- /planned-change:client-daemon-seam -->
 
 ## Inputs/Outputs
 
