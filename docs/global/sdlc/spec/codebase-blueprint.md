@@ -47,6 +47,19 @@ extraction does not activate an incomplete generation. These invariants follow
 the explicit state and concurrency ownership in
 `sdlc/policy/code-quality-practices`.
 
+<!-- planned:release-tag-checkout-activation -->
+
+### Installed source baseline
+
+When a project's installation contract selects an immutable release checkout,
+that checkout's Blueprint baseline is its selected installed commit. Generation,
+freshness checks and recovery consume the same committed-source selection from
+the owning maintenance boundary. Canonical-main baseline rules apply to other
+checkouts. Source ownership and consistent reads follow
+`sdlc/policy/domain-ownership` and `sdlc/policy/code-quality-practices`.
+
+<!-- /planned:release-tag-checkout-activation -->
+
 ### Languages
 
 Python, Rust, TypeScript — one graph spanning all three. Python and Rust are

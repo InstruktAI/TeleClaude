@@ -59,6 +59,26 @@ extra content, missing output, errors and transport failures still fail. A faile
 journey retains bounded sanitized before/after listing output when those commands
 ran, alongside its refusal/failing-command evidence.
 
+<!-- planned:release-tag-checkout-activation -->
+
+### Release checkout journeys
+
+The full profile exercises the release checkout scenarios in
+`local/projects/teleclaude/spec/feature/reconciliation/release-checkout`, the
+exact-source and replay scenarios in
+`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`,
+and retained-source migration in
+`local/projects/teleclaude/spec/feature/config/document-migration`.
+
+These journeys use disposable Git histories and installed runtime environments,
+real command processes, and the public maintenance module entry points used by
+automation. Their synthetic event files are inputs to those entry points; they
+do not replace application decisions or establish a caller identity. The
+controller owns cleanup and reports which release journeys ran. The existing
+cold profile remains limited to startup and safe entry paths.
+
+<!-- /planned:release-tag-checkout-activation -->
+
 ### Use cases
 
 #### UC-RA1: Cold public entry points execute from the checked source

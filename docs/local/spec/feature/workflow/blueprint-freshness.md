@@ -48,6 +48,19 @@ Execution serialization and coherent publication follow
 `sdlc/policy/code-quality-practices`; failure visibility and reuse of the
 maintenance substrate follow `sdlc/principle/design-fundamentals`.
 
+<!-- planned:release-tag-checkout-activation -->
+
+### Installed release baseline
+
+For an installed release checkout under
+`local/projects/teleclaude/spec/feature/reconciliation/release-checkout`, the
+maintenance source query selects the installed commit. Extraction, query
+freshness and replay use that same selection. A different local main tip does
+not change the installed checkout's baseline. The canonical-main rules above
+remain the baseline for other projects and checkouts.
+
+<!-- /planned:release-tag-checkout-activation -->
+
 ### Use cases
 
 #### UC-BPF1: Every canonical-main advance receives automatic maintenance
