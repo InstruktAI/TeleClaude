@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
+from teleclaude.core.cleanup_step import cleanup_step
 from teleclaude.transport.redis_client import create_redis_client
 
 logger = get_logger(__name__)
@@ -27,6 +28,7 @@ _MESSAGE_POLL_LOOP = "redis-message-poll"
 _HEARTBEAT_LOOP = "redis-heartbeat"
 _PEER_REFRESH_LOOP = "redis-peer-refresh"
 _STARTUP_RECONNECT_REASON = "startup"
+_RECONNECT_CLEANUP_COMPONENT = "redis_reconnect"
 _LOOP_ENDED = "Redis transport loop {name} ended while the transport was running"
 
 
@@ -262,10 +264,11 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
             await self._transport_runtime.cancel()
         if self._reconnect_task:
             self._reconnect_task.cancel()
-            try:
-                await self._reconnect_task
-            except asyncio.CancelledError:
-                pass
+            with cleanup_step(_RECONNECT_CLEANUP_COMPONENT):
+                try:
+                    await self._reconnect_task
+                except asyncio.CancelledError:
+                    pass
 
         # Close Redis connection
         if self.redis:

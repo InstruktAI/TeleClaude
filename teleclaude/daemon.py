@@ -196,7 +196,12 @@ from teleclaude.core.events import ProjectRefreshTrigger, TeleClaudeEvents
 _record_import_timing("teleclaude.core.events", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.lifecycle import DaemonLifecycle, shutdown_step
+from teleclaude.core.cleanup_step import cleanup_step
+
+_record_import_timing("teleclaude.core.cleanup_step", _t)
+
+_t = time.perf_counter()
+from teleclaude.core.lifecycle import DaemonLifecycle
 
 _record_import_timing("teleclaude.core.lifecycle", _t)
 
@@ -1133,19 +1138,19 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         workflow_bridge = getattr(self, "_workflow_bridge", None)
         if workflow_bridge is not None:
-            with shutdown_step(_WORKFLOW_SHUTDOWN_COMPONENT):
+            with cleanup_step(_WORKFLOW_SHUTDOWN_COMPONENT):
                 await workflow_bridge.stop()
         await self._await_worker_attr("_workflow_bridge_task", "Workflow Redis bridge stopped", timeout=5.0)
 
         identity_bridge = getattr(self, "_identity_bridge", None)
         if identity_bridge is not None:
-            with shutdown_step(_IDENTITY_SHUTDOWN_COMPONENT):
+            with cleanup_step(_IDENTITY_SHUTDOWN_COMPONENT):
                 await identity_bridge.stop()
         await self._await_worker_attr("_identity_bridge_task", "Identity Redis bridge stopped", timeout=5.0)
 
         cluster_bridge = getattr(self, "_cluster_bridge", None)
         if cluster_bridge is not None:
-            with shutdown_step(_CLUSTER_SHUTDOWN_COMPONENT):
+            with cleanup_step(_CLUSTER_SHUTDOWN_COMPONENT):
                 await cluster_bridge.stop()
         await self._await_worker_attr("_cluster_bridge_task", "Cluster Redis bridge stopped", timeout=5.0)
 
@@ -1168,29 +1173,29 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         # Close event DB
         if self._event_db:
-            with shutdown_step(_EVENT_DB_SHUTDOWN_COMPONENT):
+            with cleanup_step(_EVENT_DB_SHUTDOWN_COMPONENT):
                 await self._event_db.close()
                 self._event_db = None
                 logger.info("EventDB closed")
 
         if hasattr(self, "tts_manager"):
-            with shutdown_step(_TTS_SHUTDOWN_COMPONENT):
+            with cleanup_step(_TTS_SHUTDOWN_COMPONENT):
                 await self.tts_manager.shutdown()
                 logger.info("TTS manager stopped")
 
         # Disconnect from chiptunes worker (music keeps playing through restart)
         if hasattr(self, "chiptunes_manager"):
-            with shutdown_step(_CHIPTUNES_SHUTDOWN_COMPONENT):
+            with cleanup_step(_CHIPTUNES_SHUTDOWN_COMPONENT):
                 self.chiptunes_manager.shutdown()
                 logger.info("ChipTunes manager disconnected (worker persists)")
 
         # Shutdown task registry (cancel all tracked background tasks)
         if hasattr(self, "task_registry"):
-            with shutdown_step(_REGISTRY_SHUTDOWN_COMPONENT):
+            with cleanup_step(_REGISTRY_SHUTDOWN_COMPONENT):
                 await self.task_registry.shutdown(timeout=TASK_REGISTRY_SHUTDOWN_TIMEOUT_S)
                 logger.info("Task registry shutdown complete")
 
-        with shutdown_step(_LIFECYCLE_SHUTDOWN_COMPONENT):
+        with cleanup_step(_LIFECYCLE_SHUTDOWN_COMPONENT):
             await self.lifecycle.shutdown()
 
         self._release_lock()
@@ -1212,7 +1217,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         task = getattr(self, attr_name, None)
         if task is None:
             return
-        with shutdown_step(attr_name):
+        with cleanup_step(attr_name):
             task.cancel()
             try:
                 await task
@@ -1225,7 +1230,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         worker = getattr(self, attr_name, None)
         if worker is None:
             return
-        with shutdown_step(attr_name):
+        with cleanup_step(attr_name):
             await worker.cancel()
             logger.info(log_message)
 
@@ -1246,7 +1251,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         """
         if worker is None:
             return
-        with shutdown_step(label):
+        with cleanup_step(label):
             if not await worker.wait(timeout=timeout):
                 logger.warning(_WORKER_TIMED_OUT, label, timeout)
             logger.info(log_message)
@@ -1263,7 +1268,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         for worker in workers:
             worker.cancel()
         for worker in workers:
-            with shutdown_step(worker.get_name()):
+            with cleanup_step(worker.get_name()):
                 try:
                     await worker
                 except asyncio.CancelledError:

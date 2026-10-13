@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from functools import partial
 from pathlib import Path
@@ -16,6 +15,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.discord.message_ops import reconcile_pending_discord_send_intents
 from teleclaude.api_server import APIServer, RequestSurface
 from teleclaude.config.machine import config
+from teleclaude.core.cleanup_step import cleanup_step
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_delivery import reconcile_outstanding_conversation_deliveries
 from teleclaude.core.db import db
@@ -32,6 +32,7 @@ from teleclaude.core.session_config_subject import (
     backfill_session_config_subjects,
     backfill_session_subject_owners,
 )
+from teleclaude.core.todos_db import close_todos_db_instances
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.memory.store import MemoryStore
@@ -51,21 +52,11 @@ from teleclaude.core.inbound_queue import get_inbound_queue_manager
 
 logger = get_logger(__name__)
 
-_SHUTDOWN_COMPONENT_FAILED = "Shutdown component failed; continuing teardown"
 _INBOUND_SHUTDOWN_COMPONENT = "inbound_queue"
 _API_SHUTDOWN_COMPONENT = "api_server"
 _REMINDER_SHUTDOWN_COMPONENT = "reminder_scheduler"
 _STORAGE_SHUTDOWN_COMPONENT = "storage"
-
-
-@contextmanager
-def shutdown_step(component: str) -> Iterator[None]:
-    """Report an ordinary component-cleanup fault without deciding lifecycle admission or settlement."""
-    try:
-        yield
-    except Exception:
-        logger.exception(_SHUTDOWN_COMPONENT_FAILED, component=component)
-
+_TODOS_STORAGE_SHUTDOWN_COMPONENT = "todos_storage"
 
 _CUTOVER_GENERATIONS_SEEDED_EVENT = "lifecycle_cutover_generations_seeded"
 _DISCORD_SEND_INTENTS_RECONCILED_EVENT = "lifecycle_discord_send_intents_reconciled"
@@ -392,24 +383,26 @@ class DaemonLifecycle:
         except RuntimeError:
             pass  # Not initialized — skip
         else:
-            with shutdown_step(_INBOUND_SHUTDOWN_COMPONENT):
+            with cleanup_step(_INBOUND_SHUTDOWN_COMPONENT):
                 await inbound.shutdown()
                 logger.info("Inbound queue manager shut down")
 
         if self._reminder_scheduler:
-            with shutdown_step(_REMINDER_SHUTDOWN_COMPONENT):
+            with cleanup_step(_REMINDER_SHUTDOWN_COMPONENT):
                 await self._reminder_scheduler.cancel()
 
         if self.api_server:
-            with shutdown_step(_API_SHUTDOWN_COMPONENT):
+            with cleanup_step(_API_SHUTDOWN_COMPONENT):
                 await self.api_server.stop()
         for adapter_name, adapter in self.client.adapters.items():
             logger.info("Stopping %s adapter...", adapter_name)
-            with shutdown_step(adapter_name):
+            with cleanup_step(adapter_name):
                 await adapter.stop()
 
-        with shutdown_step(_STORAGE_SHUTDOWN_COMPONENT):
+        with cleanup_step(_STORAGE_SHUTDOWN_COMPONENT):
             await db.close()
+        with cleanup_step(_TODOS_STORAGE_SHUTDOWN_COMPONENT):
+            await close_todos_db_instances()
 
     def handle_api_server_exit(
         self,

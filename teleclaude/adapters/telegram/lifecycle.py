@@ -33,6 +33,8 @@ except ImportError:
 else:
     AIORateLimiter = _AIORateLimiter
 
+from teleclaude.core.cleanup_step import cleanup_step
+
 from ..base_adapter import AdapterError
 
 if TYPE_CHECKING:
@@ -66,6 +68,7 @@ _RECEIVING_LIVENESS_TASK_NAME = "telegram-receiving-liveness"
 _RECEIVING_TASK_NOT_FOUND = "Expected exactly one new {description} task after the call, found {found}"
 _UPDATE_FETCHER_DESCRIPTION = "update fetcher"
 _POLLING_DESCRIPTION = "update polling"
+_STARTUP_HOUSEKEEPING_CLEANUP_COMPONENT = "telegram_startup_housekeeping"
 
 
 class TelegramReceivingTaskNotFound(AdapterError):
@@ -267,10 +270,11 @@ class LifecycleMixin:
         startup_task = host._startup_housekeeping_task
         if startup_task and not startup_task.done():
             startup_task.cancel()
-            try:
-                await startup_task
-            except asyncio.CancelledError:
-                pass
+            with cleanup_step(_STARTUP_HOUSEKEEPING_CLEANUP_COMPONENT):
+                try:
+                    await startup_task
+                except asyncio.CancelledError:
+                    pass
             host._startup_housekeeping_task = None
 
         if host._receiving_liveness is not None:

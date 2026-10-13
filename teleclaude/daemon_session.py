@@ -22,6 +22,7 @@ from teleclaude.core.agent_startup_delivery import (
     deliver_startup_message,
 )
 from teleclaude.core.agents import _get_agent_config
+from teleclaude.core.cleanup_step import cleanup_step
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
@@ -91,6 +92,7 @@ _STARTUP_HANDOVER_OUTCOME_EVENT = "session_startup_handover_outcome"
 _STARTUP_RECOVERY_DECISION_EVENT = "session_startup_recovery_decision"
 _STARTUP_RECOVERY_FAILED_EVENT = "session_startup_recovery_failed"
 _STARTUP_REPORT_UNDELIVERED_EVENT = "session_startup_report_undelivered"
+_SESSION_OUTBOX_WORKER_CLEANUP_COMPONENT = "session_outbox_worker"
 _LAUNCH_STATUS_KEY = "status"
 _LAUNCH_STATUS_SUCCESS = "success"
 
@@ -184,10 +186,11 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         worker = self._session_outbox_workers.pop(ctx.session_id, None)
         if worker and not worker.done():
             worker.cancel()
-            try:
-                await worker
-            except asyncio.CancelledError:
-                pass
+            with cleanup_step(_SESSION_OUTBOX_WORKER_CLEANUP_COMPONENT):
+                try:
+                    await worker
+                except asyncio.CancelledError:
+                    pass
         polling_coordinator._cleanup_codex_input_state(ctx.session_id)
         try:
             await clear_active_runner_for_session_end(db, ctx.session_id)

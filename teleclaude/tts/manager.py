@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config._models import TTSConfig, VoxCPMServiceConfig
 from teleclaude.config.machine import config
+from teleclaude.core.cleanup_step import cleanup_step
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.origins import InputOrigin
@@ -30,6 +31,7 @@ logger = get_logger(__name__)
 _VOICE_REPLY_SERVICE_SKIPPED_EVENT = "voice_reply_service_skipped"
 _DEFAULT_SERVICE_PRIORITY = ["elevenlabs", "openai", "macos", "pyttsx3"]
 _NO_PARAMETER_DIGEST = ""
+_TTS_WORKER_CLEANUP_COMPONENT = "tts_worker"
 
 
 @dataclass(slots=True)
@@ -478,9 +480,10 @@ class TTSManager:
         self._worker_task = None
         if worker is not None:
             worker.cancel()
-            try:
-                await worker
-            except asyncio.CancelledError:
-                pass
+            with cleanup_step(_TTS_WORKER_CLEANUP_COMPONENT):
+                try:
+                    await worker
+                except asyncio.CancelledError:
+                    pass
         self._speech_queue = None
         self._audio_focus.reset()

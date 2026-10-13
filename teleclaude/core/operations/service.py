@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from teleclaude.caller_identity import CliCaller
 from teleclaude.config.machine import config
 from teleclaude.constants import RUNNER_NOT_DISPATCHED
+from teleclaude.core.cleanup_step import cleanup_step
 from teleclaude.core.command_dispatch import invoke_command_handler
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import Db
@@ -127,6 +128,7 @@ _OPERATION_WORK_TEMPLATE = "operation:{kind}"
 _FOLLOW_THROUGH_WORK = "operation-follow-through"
 _RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE = "{prefix}: {slug} {reason}"
 _LEASE_TOUCH_FAILED_EVENT = "operation_lease_touch_failed"
+_OPERATION_HEARTBEAT_CLEANUP_COMPONENT = "operation_heartbeat"
 
 
 def _operation_payload_abandon(operation: Operation) -> bool:
@@ -749,10 +751,11 @@ class OperationsService:
             if heartbeat_task is not None:
                 stop_heartbeat.set()
                 heartbeat_task.cancel()
-                try:
-                    await heartbeat_task
-                except asyncio.CancelledError:
-                    pass
+                with cleanup_step(_OPERATION_HEARTBEAT_CLEANUP_COMPONENT):
+                    try:
+                        await heartbeat_task
+                    except asyncio.CancelledError:
+                        pass
             async with self._live_guard:
                 self._live_tasks.pop(operation_id, None)
 

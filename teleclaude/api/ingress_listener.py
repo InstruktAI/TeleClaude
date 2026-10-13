@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api.ws_constants import API_WS_PING_INTERVAL_S, API_WS_PING_TIMEOUT_S
+from teleclaude.core.cleanup_step import cleanup_step
 
 logger = get_logger(__name__)
 
@@ -33,6 +34,7 @@ _TASK_CRASHED = "Webhook ingress listener task crashed on %s:%d"
 _TASK_EXITED = "Webhook ingress listener task exited unexpectedly on %s:%d"
 _STOP_TIMEOUT = "Timed out stopping webhook ingress listener; cancelling task"
 _NO_EXCEPTION_TYPE = "NoException"
+_INGRESS_STOP_CLEANUP_COMPONENT = "webhook_ingress_listener"
 
 
 class WebhookIngressListener:
@@ -127,17 +129,18 @@ class WebhookIngressListener:
         if not task:
             return
 
-        try:
-            await asyncio.wait_for(task, timeout=self._stop_timeout_s)
-        except TimeoutError:
-            logger.warning(_STOP_TIMEOUT)
-            task.cancel()
+        with cleanup_step(_INGRESS_STOP_CLEANUP_COMPONENT):
             try:
-                await task
+                await asyncio.wait_for(task, timeout=self._stop_timeout_s)
+            except TimeoutError:
+                logger.warning(_STOP_TIMEOUT)
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
             except asyncio.CancelledError:
                 pass
-        except asyncio.CancelledError:
-            pass
 
     async def _port_is_available(self) -> bool:
         for _ in range(_PORT_PROBE_ATTEMPTS):
