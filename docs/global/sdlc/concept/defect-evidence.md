@@ -39,10 +39,11 @@ review — uses them.
   "Someone could" names no actor and is not a path.
 
 - **Family site** — a site a settled diagnosis's family census marks as matching
-  its mechanism (`sdlc/procedure/debugging`). It carries the evidence that
-  diagnosis was admitted on, its occurrence or its dangerous path, as its own,
-  and the session governing the diagnosis files it. Its own reachability is not
-  investigated.
+  its mechanism (`sdlc/procedure/debugging`). It is a recorded lead and carries
+  no evidence: the diagnosis's occurrence or dangerous path stays with the site
+  where it happened. A family site becomes a defect claim only on evidence of
+  its own — an occurrence at that site or a dangerous path through it — against
+  a current contract that states the expected behavior.
 
 - **Real-use input** — an input real use produces, shown rather than asserted:
   an observed instance of it in real use, even one that triggered no defect, or

@@ -92,8 +92,10 @@ cannot decide is too broad; narrow it before searching.
 **The family census is a lane that ends.** Its full extent is two searches: the diff of
 the commit that introduced the mechanism, when provenance named one, and one search of the
 codebase for the mechanism's shape. Each site found is recorded with one of three
-readings: matching, not matching, or undecided. A matching site is in the family. Its
-reachability, likelihood, and impact are not investigated; the match is the finding. A
+readings: matching, not matching, or undecided. A matching site is in the family. The
+census records it for whoever next owns that site; its reachability, likelihood, and impact
+are not investigated, and a match is a lead, not evidence of a defect there
+(`sdlc/concept/defect-evidence`, family site). A
 not-matching site and a site that reading alone cannot decide stay out. Record the
 searches run and every site found with its reading. A short census is a complete one.
 

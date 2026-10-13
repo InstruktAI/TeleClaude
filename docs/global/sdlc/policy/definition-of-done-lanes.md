@@ -762,15 +762,16 @@ sharpened by the `diagnosis` root cause. Verify:
    A recorded disposition or named follow-up does not establish delivery.
 2. Root cause analysis is sound.
 3. Fix is minimal and targeted: the smallest change that removes the diagnosed
-   mechanism from every matching site in the family census, plus a scenario-bound
+   mechanism where the diagnosis places it — the reproducing site and, for a
+   shared-contract root, every entry in its implementation census — plus a scenario-bound
    regression test where the project opts into test authorship — and **nothing
    else**. A delta that removes no part of the cause — guards against causes no
    diagnosis has established, extra validation layers, defensive defaults,
    fallbacks, adjacent refactors, new capability — is a **Critical** scope
    finding, even when the approved plan contains it: for a bug, `input` +
-   `diagnosis` outrank the plan as scope authority. A matching census site left
-   neither fixed in the delivery nor filed as its own bug is an **Important**
-   finding; a site the census marks not matching or undecided owes nothing.
+   `diagnosis` outrank the plan as scope authority. A family-census site outside
+   that boundary owes nothing in this delivery (`sdlc/concept/defect-evidence`,
+   family site).
 4. Investigation and documentation sections are complete.
 5. Where the project opts into test authorship, a reproduction test exists before
    the fix, binding either a pre-existing scenario or the single regression
