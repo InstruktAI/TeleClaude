@@ -1188,7 +1188,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             await sandbox_manager.stop()
             logger.info("Sandbox container stopped")
         except Exception as exc:
-            logger.warning("Sandbox container stop error during shutdown: %s", exc)
+            logger.warning("Sandbox container stop error during shutdown: %s", exc, exc_info=True)
 
     async def _cancel_task_attr(self, attr_name: str, log_message: str) -> None:
         """Cancel an optional task attribute and wait for it to finish."""

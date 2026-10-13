@@ -56,7 +56,7 @@ _STORAGE_SHUTDOWN_COMPONENT = "storage"
 
 @contextmanager
 def shutdown_step(component: str) -> Iterator[None]:
-    """Report an ordinary post-settlement teardown fault without skipping later owners."""
+    """Report an ordinary component-cleanup fault without deciding lifecycle admission or settlement."""
     try:
         yield
     except Exception:
