@@ -196,7 +196,21 @@ def _record_payload(record: MaintenanceActionRecord) -> _CommitRecordPayload | _
 
 def read_record(path: Path) -> MaintenanceActionRecord:
     """Read one typed record from its durable JSON form, migrating an older record forward first."""
-    document = json.loads(path.read_text(encoding=_TEXT_ENCODING))
+    return _record_from_text(path, path.read_text(encoding=_TEXT_ENCODING))
+
+
+def _read_listed_record(path: Path) -> MaintenanceActionRecord | None:
+    """Read a listed record, or nothing when its file was retired after the listing."""
+    try:
+        text = path.read_text(encoding=_TEXT_ENCODING)
+    except FileNotFoundError:
+        # A confirmed success retires its record while unlocked observers list the directory.
+        return None
+    return _record_from_text(path, text)
+
+
+def _record_from_text(path: Path, text: str) -> MaintenanceActionRecord:
+    document = json.loads(text)
     upcast = _upcast_record_document(document)
     record = _record_from_document(upcast)
     if upcast is not document:
@@ -251,7 +265,8 @@ def read_records(project_root: str | Path) -> tuple[MaintenanceActionRecord, ...
     directory = maintenance_directory(project_root)
     if not directory.exists():
         return ()
-    return tuple(read_record(path) for path in sorted(directory.glob(_ACTIVATION_RECORD_GLOB)))
+    listed = (_read_listed_record(path) for path in sorted(directory.glob(_ACTIVATION_RECORD_GLOB)))
+    return tuple(record for record in listed if record is not None)
 
 
 def activation_has_records(project_root: str | Path, key: str) -> bool:
