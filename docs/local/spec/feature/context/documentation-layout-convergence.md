@@ -85,12 +85,10 @@ tag deployments. Where such a run has no attributable party, the roots it
 defers converge on that computer's next attributable run. A run's result tells
 three cases apart: every root settled; some root blocked or deferred and none
 failed; and some root failed, restored after a refused commit, or in restore
-conflict. From an install or a tag deployment, a blocked or deferred result is
-printed as a warning and the install or deployment still completes: no
-repository that convergence correctly leaves for its owner or for a later
-attributable run fails a platform upgrade. A failed result is printed as a
-failure, and the install does not report completion and exits non-zero. The
-post-merge maintenance action keeps its non-zero result in both cases.
+conflict. Both unsettled cases are non-zero, and the post-merge maintenance
+action keeps that as its result. How an install responds to each case is
+installation's contract
+(`local/projects/teleclaude/spec/feature/reconciliation/fresh-machine-bootstrap`).
 
 <!-- /planned-change:convergence-overlap-and-failure-reporting -->
 
@@ -241,8 +239,7 @@ When the post-merge maintenance or the install completes
 Then layout convergence has run over that computer's registered repositories
 And where that run had no attributable party, it deferred the roots that would converge (UC-DLC12)
 And the next attributable run on that computer converges them
-And from an install or a tag deployment the run's report is printed, and a blocked or deferred result is a warning while the install or deployment still completes
-And from an install a failed result is printed as a failure, and the install does not report completion and exits non-zero
+And from an install or a tag deployment the run's report is printed
 And from the post-merge maintenance action a non-zero result stays that action's result
 ```
 

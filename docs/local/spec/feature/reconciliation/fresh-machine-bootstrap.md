@@ -213,6 +213,31 @@ And the default INFO level omits stage timing records
 And stage ordering and existing failure handling are preserved
 ```
 
+<!-- planned:convergence-overlap-and-failure-reporting -->
+
+#### UC-FMB16: Repositories documentation layout convergence leaves alone do not fail installation
+
+```gherkin
+Given installation runs documentation layout convergence, in full or dependency-only mode
+And convergence's result has some repository blocked or deferred and none failed
+When installation completes
+Then it prints a warning that repositories were left blocked or deferred, pointing at convergence's report
+And it reports success
+```
+
+#### UC-FMB17: Installation whose documentation layout convergence failed does not succeed
+
+```gherkin
+Given installation runs documentation layout convergence, in full or dependency-only mode
+And convergence's result has a failed repository
+When installation reaches its end
+Then it prints that documentation layout convergence failed, pointing at convergence's report
+And it does not report success
+And it exits non-zero
+```
+
+<!-- /planned:convergence-overlap-and-failure-reporting -->
+
 ### Cross-context references
 
 - **config** — the person registry the owner seed is checked against and
@@ -228,6 +253,15 @@ And stage ordering and existing failure handling are preserved
   `local/projects/teleclaude/spec/feature/reconciliation/launcher-code-identity`,
   and what installation records in the home's history, under
   `local/projects/teleclaude/spec/feature/reconciliation/home-repository`.
+
+<!-- planned:convergence-overlap-and-failure-reporting -->
+
+- **context** — documentation layout convergence and the classification of
+  its result into settled, blocked or deferred, and failed, under
+  `local/projects/teleclaude/spec/feature/context/documentation-layout-convergence`.
+  Installation decides only how it completes on each class.
+
+<!-- /planned:convergence-overlap-and-failure-reporting -->
 
 ## Known caveats
 
