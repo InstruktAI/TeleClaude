@@ -99,7 +99,7 @@ When the service's start sequence continues
 Then it starts the following background workers, each supervised as UC-DL17 states:
   - Periodic cleanup (first iteration runs immediately, then every hour)
   - Poller watch
-  - Hook outbox worker (one worker per session, parallel across sessions)
+  - Hook outbox dispatcher — it starts one worker per session on demand, in parallel across sessions
   - Mirror worker — transcript mirroring
   - Workflow bridge and identity bridge — translators that bring v2 envelopes into v1 cache invalidation
   - Resource monitor, write-ahead-log checkpoint, optional supervisor watch
@@ -505,7 +505,6 @@ evidence requirement (`general/principle/grounding`).
 - **A failure that recurs on every start becomes a relaunch cycle.** A supervised task that fails again after each replacement, and again after each relaunch, escalates on every run. The service manager's relaunch pacing bounds the cycle; the daemon log records every end and every escalation, and nothing ends the cycle until the cause is removed.
 - **Supervision stops once shutdown preparation begins.** A long-lived task that ends while the daemon is draining or stopping is neither replaced nor escalated; the daemon already reports itself draining, and its own shutdown follows.
 - **Per-session and per-client tasks are replaced on demand, not supervised.** Output pollers, per-session hook-outbox and inbound workers, and per-client senders are started again by their owners at the next demand — the poller watch, the next enqueue, the next message — so between one ending and that demand, the affected session or client waits.
-- **Telegram update polling is not supervised.** The Telegram dependency owns its polling task and retries transport failures indefinitely. It stops only on a rejected bot credential or an error outside its own error family, logs that stop itself, and exposes no end the daemon observes; the daemon keeps running without Telegram updates until it next starts.
 
 <!-- /planned-change:supervise-long-lived-daemon-tasks -->
 
