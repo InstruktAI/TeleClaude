@@ -10,6 +10,7 @@ import json
 import math
 import os
 import platform
+import re
 import shutil
 import signal
 import socket
@@ -130,6 +131,18 @@ _SCENARIO_PROCEDURE_CLOSURE = "UC-RA12"
 _SCENARIO_DELIVERY_VALIDATION = "UC-RA13"
 _SCENARIO_ARCHIVED_HISTORY = "UC-RA14"
 _SCENARIO_CURATION_REFUSAL = "UC-RA15"
+_SCENARIO_RELEASE_SELECTED = "UC-RC1"
+_SCENARIO_RELEASE_PULL_REFUSED = "UC-RC2"
+_SCENARIO_RELEASE_ADOPTION = "UC-CSU-8"
+_SCENARIO_RELEASE_NEXT = "UC-RC3"
+_SCENARIO_RELEASE_REPLAY = "UC-CSU-9"
+_SCENARIO_RELEASE_UNSUPPORTED = "UC-CSU-11"
+_SCENARIO_RELEASE_RECORDING = "UC-CSU-12"
+_SCENARIO_RELEASE_CONFLICT = "UC-RC5"
+_SCENARIO_RELEASE_DEVELOPMENT_CLONE = "UC-RC6"
+_SCENARIO_RELEASE_DECLARATION = "UC-CFG-MIG-17"
+_SCENARIO_RELEASE_PUBLICATION = "UC-SPO34"
+_SCENARIO_RELEASE_BLUEPRINT = "UC-BPF1"
 _COLD_PROFILE_SCENARIOS = (_SCENARIO_COLD,)
 _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_COLD,
@@ -147,6 +160,18 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_DELIVERY_VALIDATION,
     _SCENARIO_ARCHIVED_HISTORY,
     _SCENARIO_CURATION_REFUSAL,
+    _SCENARIO_RELEASE_SELECTED,
+    _SCENARIO_RELEASE_PULL_REFUSED,
+    _SCENARIO_RELEASE_ADOPTION,
+    _SCENARIO_RELEASE_NEXT,
+    _SCENARIO_RELEASE_REPLAY,
+    _SCENARIO_RELEASE_UNSUPPORTED,
+    _SCENARIO_RELEASE_RECORDING,
+    _SCENARIO_RELEASE_CONFLICT,
+    _SCENARIO_RELEASE_DEVELOPMENT_CLONE,
+    _SCENARIO_RELEASE_DECLARATION,
+    _SCENARIO_RELEASE_BLUEPRINT,
+    _SCENARIO_RELEASE_PUBLICATION,
 )
 _PROFILE_COLD = "cold"
 _PROFILE_FULL = "full"
@@ -722,6 +747,7 @@ class FullRuntimeResources:
     original_timezone: str | None = None
     expected_timezone: str | None = None
     unrelated_computer_role: str | None = None
+    release_world: object | None = None
 
     def open_admin_terminal(self) -> PersistentTerminal:
         """Create the one administrator PTY retained for fresh CLI processes."""
@@ -944,6 +970,9 @@ def _make_cold_environment(
     source_root: Path,
     dependency_environment: Path,
     temporary_root: Path,
+    *,
+    channel: str = _SYNTHETIC_RELEASE_CHANNEL,
+    working_directory: Path | None = None,
 ) -> dict[str, str]:
     """Create disposable paths and a synthetic runtime config for cold CLI startup."""
     home = temporary_root / _SYNTHETIC_HOME_DIRECTORY
@@ -960,7 +989,7 @@ def _make_cold_environment(
             _COMPUTER_USER_FIELD: _SYNTHETIC_COMPUTER_USER,
             _COMPUTER_ROLE_FIELD: _COMPUTER_ROLE_DEFAULT,
             _COMPUTER_TIMEZONE_FIELD: _TIMEZONE_UTC,
-            _COMPUTER_WORKING_DIRECTORY_FIELD: str(source_root),
+            _COMPUTER_WORKING_DIRECTORY_FIELD: str(source_root if working_directory is None else working_directory),
             _COMPUTER_MASTER_FIELD: False,
             _COMPUTER_HOST_FIELD: _SYNTHETIC_COMPUTER_HOST,
             _COMPUTER_INGRESS_FIELD: False,
@@ -969,7 +998,7 @@ def _make_cold_environment(
             _CONFIG_DEFAULT_FIELD: _SYNTHETIC_AGENT,
             _SYNTHETIC_AGENT: {_AGENT_ENABLED_FIELD: True},
         },
-        _CONFIG_DEPLOYMENT_FIELD: {_CONFIG_CHANNEL_FIELD: _SYNTHETIC_RELEASE_CHANNEL},
+        _CONFIG_DEPLOYMENT_FIELD: {_CONFIG_CHANNEL_FIELD: channel},
     }
     (home / _CONFIG_FILENAME).write_text(json.dumps(machine_config), encoding=_UTF8)
     child_environment = {
@@ -1559,6 +1588,11 @@ def _close_full_profile_resources(resources: FullRuntimeResources) -> None:
             continue
         try:
             terminal.close()
+        except Exception:
+            failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
+    if isinstance(resources.release_world, ReleaseWorld):
+        try:
+            _close_release_world(resources.release_world)
         except Exception:
             failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
     try:
@@ -2635,6 +2669,1392 @@ def _cold_entrypoint_scenario(
     )
 
 
+_RELEASE_FIXTURE = Path("tools/ci/fixtures/release_checkout.json")
+_RELEASE_ROOT_DIRECTORY = "release"
+_RELEASE_ORIGIN_DIRECTORY = "origin"
+_RELEASE_INSTALL_DIRECTORY = "install"
+_RELEASE_AWAY_DIRECTORY = "origin-away"
+_RELEASE_PROBE_DIRECTORY = "probe"
+_RELEASE_DEVELOPMENT_DIRECTORY = "development"
+_RELEASE_SECOND_INSTALL = "second"
+_RELEASE_PRIMARY_INSTALL = "primary"
+_RELEASE_TIMEOUT_SECONDS = 180
+_RELEASE_FILE_LIST_LIMIT_BYTES = 16 * 1024 * 1024
+_RELEASE_BRANCH = "main"
+_RELEASE_CHANNEL = "beta"
+_RELEASE_BRANCH_REF = "refs/heads/main"
+_RELEASE_ATTACHED_BRANCH = "attached-release"
+_RELEASE_NOTE_FILE = "RELEASE.txt"
+_RELEASE_DEVELOPMENT_FILE = "dev.txt"
+_RELEASE_PYPROJECT = "pyproject.toml"
+_RELEASE_DECLARATION = "teleclaude.yml"
+_RELEASE_PROJECTS_REGISTRY = "projects.yaml"
+_RELEASE_PENDING_RECORD = Path("state") / "self_update_pending.json"
+_RELEASE_CONFIG_FILE = "config.yml"
+_RELEASE_VENV = ".venv"
+_RELEASE_EVENT_FILE = "release-event.json"
+_RELEASE_EVENT_TYPE = "github.release"
+_RELEASE_EVENT_SOURCE = "runtime-acceptance"
+_RELEASE_EVENT_TIME = "2026-01-01T00:00:00Z"
+_RELEASE_EVENT_HOME = "none"
+_RELEASE_EVENT_ACTION = "published"
+_RELEASE_VERSION_PATTERN = r'version\s*=\s*"[^"]+"'
+_RELEASE_VERSION_TEMPLATE = 'version="{version}"'
+_RELEASE_SCHEMA_PATTERN = r"^schema_version: (\d+)$"
+_RELEASE_DECLARATION_MAINTENANCE_INDENT = "    "
+_RELEASE_BLOCK_INDENT = "      "
+_RELEASE_POSTURE_ACTION = "release-posture"
+_RELEASE_UPDATE_ACTION = "self-update"
+_RELEASE_MARKER_ACTION = "release-marker"
+_RELEASE_MODULE_SELF_UPDATE = "teleclaude.deployment.self_update"
+_RELEASE_MODULE_POSTURE = "teleclaude.deployment.release_checkout"
+_RELEASE_MODULE_DRAIN = "teleclaude.core.integration.post_commit_maintenance"
+_RELEASE_MODULE_MIGRATIONS = "teleclaude.config.migrations"
+_RELEASE_MODULE_PUBLISH = "teleclaude.core.integration.publish_action"
+_RELEASE_MODULE_INSTALL_PUBLICATION = "teleclaude.entrypoints.install_publication"
+_RELEASE_HOME_OPTION = "--home"
+_RELEASE_HOME_ROOT = "."
+_RELEASE_PUBLICATION_STATE = Path(".teleclaude") / "publication" / "homes.yaml"
+_RELEASE_PUBLICATION_ROOT_PREFIX = ".: "
+_RELEASE_PUBLICATION_ERROR = "Publication did not deploy the installed release commit."
+_RELEASE_OUTPUT_MISSING_ERROR = "A deployed output of the installed release is missing: {output}"
+_RELEASE_OUTPUT_SOURCE_ERROR = "A deployed output does not come from the installed release commit: {output}"
+_RELEASE_PROBE_DOCUMENT = Path("docs/local/concept/release-probe.md")
+_RELEASE_PROBE_BASELINES = (Path("docs/local/baseline.md"), Path("docs/local/baseline-progressive.md"))
+_RELEASE_PROBE_COMMAND = Path("agents/global/commands/general/release-probe.md")
+_RELEASE_PROBE_SKILLS_MASTER = Path("agents/global/skills/AGENTS.master.md")
+_RELEASE_MASTER_NAME = "AGENTS.master.md"
+_RELEASE_PROBE_LABEL = "Release probe {version}"
+_RELEASE_PROBE_DEVELOPMENT_LABEL = "Release probe development {identity}"
+_RELEASE_PROBE_DOCUMENT_TEXT = (
+    "---\ndescription: {label}\n---\n\n# Release Probe — Concept\n\n## What\n\n{label}\n\n## Why\n\n"
+    "It lets the release journeys tell which commit was published.\n"
+)
+_RELEASE_PROBE_COMMAND_TEXT = (
+    "---\ndescription: {label}\n---\n\n# Release Probe\n\nYou are now the release probe.\n\n## Purpose\n\n"
+    "{label}\n\n## Steps\n\n1. Report the label above.\n\n## Discipline\n\nPerform nothing else.\n"
+)
+_RELEASE_PROBE_MASTER_TEXT = "# Release probe master\n\n{label}\n"
+_RELEASE_PROBE_SKILLS_TEXT = "# Release probe skills\n"
+_RELEASE_DEPLOYED_COMMAND = Path("commands") / "general" / "release-probe.md"
+_RELEASE_DEPLOYED_MASTER = Path("AGENTS.md")
+_RELEASE_DEPLOYED_INDEX = Path("docs") / "local" / "index.yaml"
+_RELEASE_PUBLISHED_DOMAIN = "general"
+_RELEASE_FRONTMATTER_FENCE = "---"
+_RELEASE_FIELD_SEPARATOR = ": "
+_RELEASE_ENTRY_START = "- "
+_RELEASE_ENTRY_CONTINUATION = "  "
+_RELEASE_DESCRIPTION_FIELD = "description"
+_RELEASE_CATALOG_PATH_FIELD = "path"
+_RELEASE_CATALOG_ID_FIELD = "id"
+_RELEASE_PROBE_CATALOG_ID = "local/projects/release-fixture/concept/release-probe"
+_RELEASE_BLUEPRINT_SNAPSHOT = Path("snapshots") / "release-blueprint-query.txt"
+_RELEASE_RETRY_REFUSAL_SNAPSHOT = Path("snapshots") / "release-retry-refusal.txt"
+_RELEASE_REFUSAL_ERROR = "The refused command did not return the public clearance refusal."
+_RELEASE_BLUEPRINT_QUERY_ERROR = "The Blueprint query did not answer for the installed commit with its snapshot result."
+_RELEASE_LOCAL_BIN = Path(".local") / "bin"
+_RELEASE_PERSON_EMAIL = "release-owner@probe.invalid"
+_RELEASE_GLOBAL_TEXT = (
+    "kind: global\npeople:\n- name: Release Owner\n  email: {email}\n  slug: release-owner\n  role: admin\n"
+    "schema_version: {schema_version}\n"
+)
+_RELEASE_TELEC_MODULE = "teleclaude.cli.telec"
+_RELEASE_CONVERGENCE_MODULE = "teleclaude.entrypoints.docs_layout_convergence"
+_RELEASE_NEUTRAL_STEPS = (("install", "install_command"), ("plumbing-convergence", "marker_command"))
+_RELEASE_LEGACY_ID = "id: projects/"
+_RELEASE_CURRENT_ID = "id: local/projects/"
+_RELEASE_WRITE_PROTECTED_MODE = 0o500
+_RELEASE_PROTECTED_DIRECTORY = "skills"
+_RELEASE_WRITABLE_MODE = 0o700
+_RELEASE_BLUEPRINT_MANIFEST = Path(".teleclaude") / "blueprint" / "manifest.json"
+_RELEASE_BLUEPRINT_BASELINE_FIELD = "baseline_sha"
+_RELEASE_BLUEPRINT_AFFECTED_PATH = "tools/ci/release_marker.py"
+_RELEASE_BLUEPRINT_ERROR = "Blueprint maintenance did not publish a generation for the installed release commit."
+_RELEASE_TERMINAL_ERROR = "The release journey terminal could not be prepared or a command in it failed: {argv}"
+_RELEASE_REPLAY_PRESERVE_ERROR = "A failed publication did not leave the previous deployment in place."
+_RELEASE_CATALOG_ERROR = "Catalog refresh did not rebuild the stale catalog from the installed release commit."
+_RELEASE_INVALID_DECLARATION_ERROR = "An invalid retained declaration was not refused or its stored bytes changed."
+_RELEASE_INVALID_AGENTS = "agents:\n  enabled: false"
+_RELEASE_VALID_AGENTS = "agents:\n  enabled: true"
+_RELEASE_INVALID_HELP_DESK = "help_desk:\n  enabled: true\n"
+_RELEASE_REPLAY_ACTION = "sync"
+_RELEASE_BEFORE_OPTION = "--before-sha"
+_RELEASE_MAINTENANCE_DIRECTORY = Path(".teleclaude") / "maintenance"
+_RELEASE_REPLAY_RECORD = "sync.json"
+_RELEASE_RECORD_STATE_FIELD = "state"
+_RELEASE_RECORD_FAILED = "failed"
+_RELEASE_RECORD_AFTER_FIELD = "after_sha"
+_RELEASE_RECORD_BEFORE_FIELD = "before_sha"
+_RELEASE_REPLAY_RECORD_ERROR = "The failed publication left no retained failed record."
+_RELEASE_TRIGGER_OPTION = "--trigger"
+_RELEASE_TRIGGER_MAINTENANCE = "maintenance"
+_RELEASE_ROOT_OPTION = "--root"
+_RELEASE_AFTER_OPTION = "--after-sha"
+_RELEASE_HEAD_OPTION = "--head"
+_RELEASE_SERIALIZED_OPTION = "--serialized"
+_RELEASE_SHELL_PUBLISH = 'source "$1/bin/install.sh" >/dev/null 2>&1 && publish_binary telec "$1/bin/telec"'
+_RELEASE_SHELL_SELECT = 'source "$1/bin/install.sh" >/dev/null 2>&1 && select_installed_release'
+_RELEASE_COMMIT_MESSAGE = "release {version}"
+_RELEASE_DEVELOPMENT_MESSAGE = "development work after the release"
+_RELEASE_GIT_AUTHOR_NAME = "Runtime Acceptance Release Fixture"
+_RELEASE_GIT_AUTHOR_EMAIL = "runtime-acceptance@example.invalid"
+_RELEASE_TAG_TEMPLATE = "v{version}"
+_RELEASE_VERSION_TEMPLATE_MINOR = "1.{minor}.0"
+_RELEASE_PENDING_SCHEMA_FIELD = "schema_version"
+_RELEASE_PENDING_TARGET_COMMIT_FIELD = "target_commit"
+_RELEASE_PENDING_FROM_COMMIT_FIELD = "from_commit"
+_RELEASE_PENDING_FROM_VERSION_FIELD = "from_version"
+_RELEASE_PENDING_TARGET_FIELD = "target"
+_RELEASE_PENDING_CURRENT_SCHEMA = 1
+_RELEASE_PENDING_NEWER_SCHEMA = 2
+_RELEASE_LOG_PATTERN = "*.log"
+_RELEASE_IN_MEMORY_OUTCOME = "outcome=upcast_in_memory"
+_RELEASE_PROJECT_SUBJECT = "subject_kind=project"
+_RELEASE_MAINTENANCE_TRIGGER_TEXT = "trigger=maintenance"
+_RELEASE_PERSISTED_OUTCOME = "outcome=written_untracked"
+_RELEASE_COMPUTER_SUBJECT = "subject_kind=computer"
+_RELEASE_EXPECTED_FAILURE = 1
+_RELEASE_REFUSED_COMMAND_ERROR = "A command that must refuse succeeded: {argv}"
+_RELEASE_COMMAND_ERROR = "A required release command failed: {argv}"
+_RELEASE_NOT_DETACHED_ERROR = "The installed checkout is not in detached HEAD."
+_RELEASE_TAG_ERROR = "The installed checkout does not select the expected release tag: {observed}"
+_RELEASE_COMMIT_ERROR = "The installed checkout's commit is not the release tag's full commit."
+_RELEASE_ATTACHED_ERROR = "The installed checkout is not on its branch."
+_RELEASE_MOVED_ERROR = "The installed checkout moved when it had to stay."
+_RELEASE_PULL_MOVED_ERROR = "An argument-less pull moved the installed checkout."
+_RELEASE_PULL_DEMONSTRATION_ERROR = "A detached single-branch clone did not advance on an ordinary pull."
+_RELEASE_MARKER_ERROR = "Maintenance did not run against the installed commit."
+_RELEASE_PENDING_ERROR = "The pending convergence record is not the expected current-format record."
+_RELEASE_PENDING_PRESENT_ERROR = "A completed convergence left its pending record behind."
+_RELEASE_PENDING_ABSENT_ERROR = "A refused convergence did not retain its pending record."
+_RELEASE_WORK_LOST_ERROR = "Local work did not survive a refused release transition."
+_RELEASE_BRANCH_LOST_ERROR = "An existing branch did not survive the release transition."
+_RELEASE_DEVELOPMENT_PRIVILEGE_ERROR = "A development checkout acquired installation effects."
+_RELEASE_DECLARATION_CHANGED_ERROR = "The installed declaration's stored bytes changed."
+_RELEASE_MIGRATION_COMMIT_ERROR = "A configuration migration committed to the installed release source."
+_RELEASE_OTHER_HOME_ERROR = "The other home did not receive its ordinary persisted migration."
+_RELEASE_RETAINED_RECORD_ERROR = "The installed declaration outcome did not state its retained, in-memory source."
+_RELEASE_FIXTURE_INVALID = "The release checkout fixture is malformed."
+_RELEASE_POSTURE_NOT_APPLICABLE_ERROR = "The posture operation changed a checkout that is not the installation."
+_RELEASE_SOURCE_LIST_ERROR = "The candidate source file list could not be read."
+_GIT_DIRECTORY = ".git"
+_RELEASE_COPY_ERROR = "The candidate source could not be copied into the disposable history."
+_RELEASE_BLOCK_MISSING_ERROR = "The candidate declaration lacks the maintenance action {action}."
+_RELEASE_MARKER_ARGV = "marker_command"
+_RELEASE_PRIOR_SOURCES = "prior_sources"
+_RELEASE_PENDING_RECORD_FIXTURE = "pending_record"
+_RELEASE_MARKER_FILE_FIELD = "marker_file"
+_RELEASE_DIVERGENT_INSTALL = "divergent"
+_RELEASE_SIDE_BRANCH_TEMPLATE = "release-side-{version}"
+_RELEASE_SIDE_COMMIT_MESSAGE = "release {version} on a separate history"
+_RELEASE_OLDER_VERSION = "1.0.7"
+_RELEASE_NON_INCREASING_VERSION = "1.0.8"
+_RELEASE_SIDEWAYS_PATCH_OFFSET = 9
+_RELEASE_LOCAL_WORK_FILE = "local-unpublished.txt"
+_RELEASE_LOCAL_WORK_MESSAGE = "local work that was never published"
+_RELEASE_HEADS_FORMAT = "--format=%(refname) %(objectname)"
+_RELEASE_HEADS_NAMESPACE = "refs/heads"
+_RELEASE_BLOCKER_TEXT = "occupies the activation's record directory\n"
+_RELEASE_UNSUPPORTED_MOVED_ERROR = "A refused release transition moved the installed source or its branches."
+_RELEASE_UNSUPPORTED_RECORDED_ERROR = "A refused release transition recorded maintenance for its target."
+_RELEASE_PENDING_IDENTITY_ERROR = "The retained pending convergence lost its original range or target identity."
+_RELEASE_RECORDING_ADVANCE_ERROR = "A release whose recording failed did not leave the source at its target."
+_RELEASE_RECORDING_EARLY_ERROR = "Maintenance ran although the activation was never recorded."
+_RELEASE_PROJECT_SLUG = "release-fixture"
+_RELEASE_SCHEMA_LINE = "schema_version: {version}"
+_RELEASE_UNDECLARED_KEY = (("\nschema_version: ", "\nundeclared_release_key: true\nschema_version: "),)
+_RELEASE_UNSUPPORTED_TYPE = (("docs:\n  enabled: true", "docs:\n  enabled: [1]"),)
+_RELEASE_INVALID_ENUM = (("- activation: canonical_main", "- activation: sideways"),)
+_RELEASE_INVALID_RELATIONSHIP = (
+    (_RELEASE_VALID_AGENTS, _RELEASE_INVALID_AGENTS),
+    ("\nschema_version: ", "\n" + _RELEASE_INVALID_HELP_DESK + "schema_version: "),
+)
+_RELEASE_INVALID_SHAPES = (
+    _RELEASE_UNDECLARED_KEY,
+    _RELEASE_UNSUPPORTED_TYPE,
+    _RELEASE_INVALID_ENUM,
+    _RELEASE_INVALID_RELATIONSHIP,
+)
+
+
+@dataclass(frozen=True)
+class ReleaseInstall:
+    """One disposable installation: its checkout, synthetic home and child environment."""
+
+    base: Path
+    checkout: Path
+    home: Path
+    environment: dict[str, str]
+
+
+@dataclass
+class ReleaseWorld:
+    """Disposable release history plus the installations that follow it."""
+
+    resources: FullRuntimeResources
+    fixture: Mapping[str, object]
+    dependency_environment: Path
+    root: Path
+    origin: Path
+    git_environment: dict[str, str]
+    candidate_declaration: str
+    candidate_sources: dict[str, str]
+    schema_version: int
+    copied: bool = False
+    minor: int = 0
+    primary: ReleaseInstall | None = None
+    second: ReleaseInstall | None = None
+    terminal: PersistentTerminal | None = None
+
+
+def _release_python(world: ReleaseWorld) -> str:
+    return str(world.dependency_environment / _PYTHON_ENVIRONMENT_EXECUTABLE)
+
+
+def _release_run(
+    world: ReleaseWorld,
+    evidence: list[CommandEvidence],
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    environment: Mapping[str, str],
+    expect_success: bool = True,
+) -> ProcessExecution:
+    """Run one release command in an owned process group and keep bounded, sanitized evidence."""
+    result = _run_bounded_process(argv, cwd=cwd, environment=environment, timeout_seconds=_RELEASE_TIMEOUT_SECONDS)
+    succeeded = result.exit_status == _PROCESS_SUCCESS and not result.diagnostics
+    evidence.append(
+        CommandEvidence(
+            argv=tuple(world.resources.sanitize(value) for value in argv),
+            exit_status=result.exit_status,
+            duration_seconds=result.duration_seconds,
+            stdout=world.resources.sanitize(result.stdout)[:_DIAGNOSTIC_LIMIT]
+            if succeeded != expect_success
+            else _EMPTY,
+            stderr=world.resources.sanitize(result.stderr)[:_DIAGNOSTIC_LIMIT]
+            if succeeded != expect_success
+            else _EMPTY,
+            diagnostics=result.diagnostics,
+        )
+    )
+    if result.diagnostics or succeeded != expect_success:
+        message = _RELEASE_COMMAND_ERROR if expect_success else _RELEASE_REFUSED_COMMAND_ERROR
+        raise RuntimeError(message.format(argv=" ".join(world.resources.sanitize(value) for value in argv)))
+    return result
+
+
+def _release_git(
+    world: ReleaseWorld,
+    evidence: list[CommandEvidence],
+    cwd: Path,
+    *arguments: str,
+    environment: Mapping[str, str] | None = None,
+    expect_success: bool = True,
+) -> str:
+    """Run Git for a release fixture and return its trimmed output."""
+    result = _release_run(
+        world,
+        evidence,
+        (_GIT_EXECUTABLE, *arguments),
+        cwd=cwd,
+        environment=world.git_environment if environment is None else environment,
+        expect_success=expect_success,
+    )
+    return result.stdout.strip()
+
+
+def _declaration_block(declaration: str, action: str) -> str:
+    """The lines of one maintenance action in a declaration, as the candidate states them."""
+    lines = declaration.splitlines()
+    header = f"{_RELEASE_DECLARATION_MAINTENANCE_INDENT}{action}:"
+    if header not in lines:
+        raise ValueError(_RELEASE_BLOCK_MISSING_ERROR.format(action=action))
+    start = lines.index(header)
+    block = [header]
+    for line in lines[start + 1 :]:
+        if line.strip() and not line.startswith(_RELEASE_BLOCK_INDENT):
+            break
+        block.append(line)
+    return _LINE_BREAK.join(block)
+
+
+def _fixture_declaration(world: ReleaseWorld, *, posture: bool, schema_version: int, code: bool) -> str:
+    """A minimal project declaration whose actions are the candidate's own, plus the probe action."""
+    marker_command = json.dumps(world.fixture[_RELEASE_MARKER_ARGV])
+    actions = [_declaration_block(world.candidate_declaration, _RELEASE_UPDATE_ACTION)]
+    activation_actions = [_RELEASE_MARKER_ACTION]
+    if posture:
+        actions.insert(0, _declaration_block(world.candidate_declaration, _RELEASE_POSTURE_ACTION))
+        activation_actions.insert(0, _RELEASE_POSTURE_ACTION)
+    marker = _LINE_BREAK.join(
+        (
+            f"{_RELEASE_DECLARATION_MAINTENANCE_INDENT}{_RELEASE_MARKER_ACTION}:",
+            f"{_RELEASE_BLOCK_INDENT}main_only: true",
+            f"{_RELEASE_BLOCK_INDENT}precedence: 90",
+            f"{_RELEASE_BLOCK_INDENT}command: {marker_command}",
+        )
+    )
+    neutral = [
+        _LINE_BREAK.join(
+            (
+                f"{_RELEASE_DECLARATION_MAINTENANCE_INDENT}{step}:",
+                f"{_RELEASE_BLOCK_INDENT}main_only: true",
+                f"{_RELEASE_BLOCK_INDENT}precedence: 10",
+                f"{_RELEASE_BLOCK_INDENT}command: {json.dumps(world.fixture[field])}",
+            )
+        )
+        for step, field in _RELEASE_NEUTRAL_STEPS
+    ]
+    return _LINE_BREAK.join(
+        (
+            "description: Disposable release journey project",
+            "kind: project",
+            "project_name: ReleaseFixture",
+            "project_slug: release-fixture",
+            "business:",
+            "  publishes:",
+            f"    - slug: {_RELEASE_PUBLISHED_DOMAIN}",
+            "      trigger: Disposable release journey publication",
+            "code:",
+            f"  enabled: {str(code).lower()}",
+            "docs:",
+            "  enabled: true",
+            "agents:",
+            "  enabled: true",
+            "checkpoint:",
+            "  maintenance:",
+            *actions,
+            marker,
+            *neutral,
+            "  bindings:",
+            "    - events: [github.push, github.release]",
+            f"      actions: [{_RELEASE_UPDATE_ACTION}]",
+            "    - activation: canonical_main",
+            f"      actions: [{', '.join(activation_actions)}]",
+            f"schema_version: {schema_version}",
+            _EMPTY,
+        )
+    )
+
+
+def _write_probe_sources(origin: Path, label: str) -> None:
+    """Write the bounded documentation and agent-artifact sources whose label names the commit they belong to."""
+    for relative in (
+        _RELEASE_PROBE_DOCUMENT,
+        _RELEASE_PROBE_COMMAND,
+        _RELEASE_PROBE_SKILLS_MASTER,
+        *_RELEASE_PROBE_BASELINES,
+    ):
+        (origin / relative).parent.mkdir(parents=True, exist_ok=True)
+    (origin / _RELEASE_PROBE_DOCUMENT).write_text(_RELEASE_PROBE_DOCUMENT_TEXT.format(label=label), encoding=_UTF8)
+    (origin / _RELEASE_PROBE_COMMAND).write_text(_RELEASE_PROBE_COMMAND_TEXT.format(label=label), encoding=_UTF8)
+    (origin / _RELEASE_MASTER_NAME).write_text(_RELEASE_PROBE_MASTER_TEXT.format(label=label), encoding=_UTF8)
+    (origin / _RELEASE_PROBE_SKILLS_MASTER).write_text(_RELEASE_PROBE_SKILLS_TEXT, encoding=_UTF8)
+    for baseline in _RELEASE_PROBE_BASELINES:
+        (origin / baseline).write_text(_EMPTY, encoding=_UTF8)
+
+
+def _replace_publication_sources(world: ReleaseWorld) -> None:
+    """Swap the candidate's own documentation and agent sources for the bounded probe set.
+
+    The candidate's code and declarations are the subject of the journeys; its full documentation
+    layout needs a registered company and domains that a disposable history does not carry.
+    """
+    for directory in (world.origin / "docs", world.origin / "agents"):
+        shutil.rmtree(directory, ignore_errors=True)
+    for master in list(world.origin.rglob(_RELEASE_MASTER_NAME)):
+        if _GIT_DIRECTORY not in master.relative_to(world.origin).parts:
+            master.unlink()
+
+
+def _copy_candidate_sources(world: ReleaseWorld, evidence: list[CommandEvidence]) -> None:
+    """Copy the checked candidate's tracked files into the disposable history's working tree."""
+    listing = _run_bounded_process(
+        (_GIT_EXECUTABLE, "ls-files", "-z"),
+        cwd=world.resources.source_root,
+        environment=world.git_environment,
+        timeout_seconds=_RELEASE_TIMEOUT_SECONDS,
+        output_limit_bytes=_RELEASE_FILE_LIST_LIMIT_BYTES,
+    )
+    if listing.exit_status != _PROCESS_SUCCESS:
+        raise RuntimeError(_RELEASE_SOURCE_LIST_ERROR)
+    for name in filter(None, listing.stdout.split("\0")):
+        source = world.resources.source_root / name
+        destination = world.origin / name
+        if not source.is_file() and not source.is_symlink():
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if source.is_symlink():
+                destination.symlink_to(os.readlink(source))
+            else:
+                shutil.copy2(source, destination)
+        except OSError as error:
+            raise RuntimeError(_RELEASE_COPY_ERROR) from error
+    _replace_publication_sources(world)
+    world.copied = True
+
+
+def _release_commit(
+    world: ReleaseWorld,
+    evidence: list[CommandEvidence],
+    *,
+    prior: bool,
+    schema_version: int | None = None,
+    note: str = _EMPTY,
+    code: bool = False,
+) -> str:
+    """Commit and tag the next release on the disposable history; return its tag."""
+    if not world.copied:
+        _copy_candidate_sources(world, evidence)
+    prior_sources = cast(Mapping[str, str], world.fixture[_RELEASE_PRIOR_SOURCES])
+    for relative, text in prior_sources.items():
+        (world.origin / relative).write_text(world.candidate_sources[relative] if not prior else text, encoding=_UTF8)
+    world.minor += 1
+    version = _RELEASE_VERSION_TEMPLATE_MINOR.format(minor=world.minor)
+    (world.origin / _RELEASE_DECLARATION).write_text(
+        _fixture_declaration(
+            world,
+            posture=not prior,
+            schema_version=world.schema_version if schema_version is None else schema_version,
+            code=code,
+        ),
+        encoding=_UTF8,
+    )
+    _write_probe_sources(world.origin, _RELEASE_PROBE_LABEL.format(version=version))
+    pyproject = world.origin / _RELEASE_PYPROJECT
+    pyproject.write_text(
+        re.sub(
+            _RELEASE_VERSION_PATTERN,
+            _RELEASE_VERSION_TEMPLATE.format(version=version),
+            pyproject.read_text(encoding=_UTF8),
+            count=1,
+        ),
+        encoding=_UTF8,
+    )
+    (world.origin / _RELEASE_NOTE_FILE).write_text(note or f"{version}\n", encoding=_UTF8)
+    tag = _RELEASE_TAG_TEMPLATE.format(version=version)
+    _release_git(world, evidence, world.origin, "add", "-A")
+    _release_git(
+        world, evidence, world.origin, "commit", "--quiet", "-m", _RELEASE_COMMIT_MESSAGE.format(version=version)
+    )
+    _release_git(world, evidence, world.origin, "tag", tag)
+    return tag
+
+
+def _release_development_commit(world: ReleaseWorld, evidence: list[CommandEvidence]) -> None:
+    """Advance the upstream development branch past the latest release."""
+    identity = uuid.uuid4().hex
+    (world.origin / _RELEASE_DEVELOPMENT_FILE).write_text(f"{identity}\n", encoding=_UTF8)
+    _write_probe_sources(world.origin, _RELEASE_PROBE_DEVELOPMENT_LABEL.format(identity=identity))
+    _release_git(world, evidence, world.origin, "add", "-A")
+    _release_git(world, evidence, world.origin, "commit", "--quiet", "-m", _RELEASE_DEVELOPMENT_MESSAGE)
+
+
+def _release_world(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> ReleaseWorld:
+    """The scenario-shared disposable history, created on first use."""
+    if resources.release_world is not None:
+        return cast(ReleaseWorld, resources.release_world)
+    fixture = _mapping_value(json.loads((resources.source_root / _RELEASE_FIXTURE).read_text(encoding=_UTF8)))
+    if fixture is None or _mapping_value(fixture.get(_RELEASE_PRIOR_SOURCES)) is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    declaration = (resources.source_root / _RELEASE_DECLARATION).read_text(encoding=_UTF8)
+    schema_match = re.search(_RELEASE_SCHEMA_PATTERN, declaration, flags=re.MULTILINE)
+    if schema_match is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    root = resources.temporary_root / _RELEASE_ROOT_DIRECTORY
+    origin = root / _RELEASE_ORIGIN_DIRECTORY
+    origin.mkdir(parents=True)
+    host_environment = os.environ  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
+    git_environment = {
+        _PATH_VARIABLE: host_environment.get(_PATH_VARIABLE, _EMPTY),
+        _GIT_CONFIG_GLOBAL_VARIABLE: os.devnull,
+        _GIT_CONFIG_SYSTEM_VARIABLE: os.devnull,
+        _GIT_CONFIG_SYSTEM_DISABLED_VARIABLE: _TRUE_TEXT,
+        "GIT_AUTHOR_NAME": _RELEASE_GIT_AUTHOR_NAME,
+        "GIT_AUTHOR_EMAIL": _RELEASE_GIT_AUTHOR_EMAIL,
+        "GIT_COMMITTER_NAME": _RELEASE_GIT_AUTHOR_NAME,
+        "GIT_COMMITTER_EMAIL": _RELEASE_GIT_AUTHOR_EMAIL,
+        _COLD_HOME_VARIABLE: str(root),
+    }
+    prior_sources = cast(Mapping[str, str], fixture[_RELEASE_PRIOR_SOURCES])
+    world = ReleaseWorld(
+        resources=resources,
+        fixture=fixture,
+        dependency_environment=ensure_dependency_environment(resources.source_root),
+        root=root,
+        origin=origin,
+        git_environment=git_environment,
+        candidate_declaration=declaration,
+        candidate_sources={
+            relative: (resources.source_root / relative).read_text(encoding=_UTF8) for relative in prior_sources
+        },
+        schema_version=int(schema_match.group(1)),
+    )
+    resources.release_world = world
+    _release_git(world, evidence, origin, "init", "--quiet", "-b", _RELEASE_BRANCH)
+    return world
+
+
+def _release_install(
+    world: ReleaseWorld,
+    evidence: list[CommandEvidence],
+    name: str,
+    *,
+    single_branch: bool,
+    revision: str,
+) -> ReleaseInstall:
+    """Clone the history as an installation, publish its executable through the installer and name its channel."""
+    base = world.root / name
+    base.mkdir(parents=True)
+    checkout = base / _RELEASE_INSTALL_DIRECTORY
+    environment = _make_cold_environment(
+        world.resources.source_root,
+        world.dependency_environment,
+        base,
+        channel=_RELEASE_CHANNEL,
+        working_directory=checkout,
+    )
+    environment.update(world.git_environment)
+    environment[_COLD_HOME_VARIABLE] = str(base / _SYNTHETIC_HOME_DIRECTORY)
+    host_home = world.resources.environment.get(_COLD_HOME_VARIABLE)
+    if host_home:
+        environment[_PATH_VARIABLE] = _PATH_SEPARATOR.join(
+            (str(Path(host_home) / _RELEASE_LOCAL_BIN), environment[_PATH_VARIABLE])
+        )
+    (base / _SYNTHETIC_HOME_DIRECTORY / _RELEASE_DECLARATION).write_text(
+        _RELEASE_GLOBAL_TEXT.format(email=_RELEASE_PERSON_EMAIL, schema_version=world.schema_version), encoding=_UTF8
+    )
+    clone = ["clone", "--quiet", *(["--single-branch", "--branch", _RELEASE_BRANCH] if single_branch else [])]
+    _release_git(world, evidence, base, *clone, f"file://{world.origin}", str(checkout))
+    _release_git(world, evidence, checkout, "checkout", "--quiet", revision)
+    (checkout / _RELEASE_VENV).symlink_to(world.dependency_environment, target_is_directory=True)
+    install = ReleaseInstall(
+        base=base, checkout=checkout, home=base / _SYNTHETIC_HOME_DIRECTORY, environment=environment
+    )
+    _release_run(
+        world,
+        evidence,
+        (_BASH_EXECUTABLE, "-c", _RELEASE_SHELL_PUBLISH, "install", str(checkout)),
+        cwd=checkout,
+        environment=environment,
+    )
+    return install
+
+
+def _release_event(world: ReleaseWorld, install: ReleaseInstall, tag: str) -> Path:
+    """Write one published-release announcement as the file the updater reads."""
+    path = install.base / _RELEASE_EVENT_FILE
+    path.write_text(
+        json.dumps(
+            {
+                "id": uuid.uuid4().hex,
+                "type": _RELEASE_EVENT_TYPE,
+                "source": _RELEASE_EVENT_SOURCE,
+                "time": _RELEASE_EVENT_TIME,
+                "home": _RELEASE_EVENT_HOME,
+                "data": {"action": _RELEASE_EVENT_ACTION, "release": {"tag_name": tag}},
+            }
+        ),
+        encoding=_UTF8,
+    )
+    return path
+
+
+def _release_module(
+    world: ReleaseWorld,
+    evidence: list[CommandEvidence],
+    install: ReleaseInstall,
+    module: str,
+    *arguments: str,
+    expect_success: bool = True,
+) -> ProcessExecution:
+    """Run one public module entry point from the installed checkout."""
+    return _release_run(
+        world,
+        evidence,
+        (_release_python(world), "-m", module, *arguments),
+        cwd=install.checkout,
+        environment=install.environment,
+        expect_success=expect_success,
+    )
+
+
+def _release_update(
+    world: ReleaseWorld,
+    evidence: list[CommandEvidence],
+    install: ReleaseInstall,
+    tag: str,
+    *,
+    expect_success: bool = True,
+    drain: bool = True,
+) -> None:
+    """Deliver one release announcement to the installation's updater, then settle the maintenance it recorded."""
+    event_file = _release_event(world, install, tag)
+    _release_module(
+        world, evidence, install, _RELEASE_MODULE_SELF_UPDATE, str(event_file), expect_success=expect_success
+    )
+    if expect_success and drain:
+        _release_drain(world, evidence, install)
+
+
+def _release_drain(world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall) -> None:
+    """Run the recorded maintenance through its public automation entry point."""
+    _release_module(world, evidence, install, _RELEASE_MODULE_DRAIN)
+
+
+def _head(world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall) -> str:
+    return _release_git(world, evidence, install.checkout, "rev-parse", "HEAD")
+
+
+def _require_selected(world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall, tag: str) -> None:
+    """Require detached HEAD with the release tag and its full commit observable together."""
+    _release_git(world, evidence, install.checkout, "symbolic-ref", "--quiet", "HEAD", expect_success=False)
+    observed = _release_git(world, evidence, install.checkout, "describe", "--tags", "--exact-match")
+    if observed != tag:
+        raise ValueError(_RELEASE_TAG_ERROR.format(observed=observed))
+    if _head(world, evidence, install) != _release_git(
+        world, evidence, install.checkout, "rev-parse", f"{tag}^{{commit}}"
+    ):
+        raise ValueError(_RELEASE_COMMIT_ERROR)
+
+
+def _release_marker(world: ReleaseWorld, install: ReleaseInstall) -> str:
+    """The commit recorded maintenance last ran against, or nothing when it has not run."""
+    marker = install.checkout / str(world.fixture[_RELEASE_MARKER_FILE_FIELD])
+    return marker.read_text(encoding=_UTF8).strip() if marker.exists() else _EMPTY
+
+
+def _require_marker(world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall) -> None:
+    """Require that recorded maintenance ran against the commit the installation runs."""
+    if _release_marker(world, install) != _head(world, evidence, install):
+        raise ValueError(_RELEASE_MARKER_ERROR)
+
+
+def _require_pull_refused(world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall) -> None:
+    """An argument-less pull refuses and leaves the selected commit where it was."""
+    before = _head(world, evidence, install)
+    _release_run(
+        world,
+        evidence,
+        (_GIT_EXECUTABLE, "pull"),
+        cwd=install.checkout,
+        environment=install.environment,
+        expect_success=False,
+    )
+    if _head(world, evidence, install) != before:
+        raise ValueError(_RELEASE_PULL_MOVED_ERROR)
+
+
+def _release_selected_visibly(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-RC1: the prior updater's activation leaves the new release selected in detached HEAD."""
+    world = _release_world(resources, evidence)
+    prior_tag = _release_commit(world, evidence, prior=True)
+    world.primary = install = _release_install(
+        world, evidence, _RELEASE_PRIMARY_INSTALL, single_branch=True, revision=_RELEASE_BRANCH
+    )
+    adopted_tag = _release_commit(world, evidence, prior=False)
+    probe = world.root / _RELEASE_PROBE_DIRECTORY
+    _release_git(
+        world,
+        evidence,
+        world.root,
+        "clone",
+        "--quiet",
+        "--single-branch",
+        "--branch",
+        _RELEASE_BRANCH,
+        f"file://{world.origin}",
+        str(probe),
+    )
+    _release_git(world, evidence, probe, "checkout", "--quiet", "--detach", prior_tag)
+    before = _release_git(world, evidence, probe, "rev-parse", "HEAD")
+    _release_git(world, evidence, probe, "pull", "--quiet")
+    if _release_git(world, evidence, probe, "rev-parse", "HEAD") == before:
+        raise ValueError(_RELEASE_PULL_DEMONSTRATION_ERROR)
+    _release_update(world, evidence, install, adopted_tag, drain=False)
+    if _release_git(world, evidence, install.checkout, "symbolic-ref", "--quiet", "HEAD") != _RELEASE_BRANCH_REF:
+        raise ValueError(_RELEASE_ATTACHED_ERROR)
+    _release_drain(world, evidence, install)
+    _require_selected(world, evidence, install, adopted_tag)
+    _require_marker(world, evidence, install)
+
+
+def _release_pull_refused(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-RC2: an ordinary pull cannot advance a single-branch or a normal release installation."""
+    world = _release_world(resources, evidence)
+    primary = world.primary
+    if primary is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    _release_development_commit(world, evidence)
+    _require_pull_refused(world, evidence, primary)
+    latest = _release_git(world, evidence, world.origin, "describe", "--tags", "--abbrev=0", "--match", "v*", "HEAD~1")
+    world.second = second = _release_install(
+        world, evidence, _RELEASE_SECOND_INSTALL, single_branch=False, revision=latest
+    )
+    _release_run(
+        world,
+        evidence,
+        (_BASH_EXECUTABLE, "-c", _RELEASE_SHELL_SELECT, "install", str(second.checkout)),
+        cwd=second.checkout,
+        environment=second.environment,
+    )
+    _require_selected(world, evidence, second, latest)
+    _release_development_commit(world, evidence)
+    _require_pull_refused(world, evidence, second)
+
+
+def _write_pending_record(install: ReleaseInstall, record: Mapping[str, object]) -> Path:
+    path = install.home / _RELEASE_PENDING_RECORD
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record), encoding=_UTF8)
+    return path
+
+
+def _release_adoption(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-CSU-8: a detached installation adopts the exact next release and migrates its owned pending record."""
+    world = _release_world(resources, evidence)
+    install = world.primary
+    if install is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    tag = _release_commit(world, evidence, prior=False)
+    _release_update(world, evidence, install, tag)
+    _require_selected(world, evidence, install, tag)
+    _require_marker(world, evidence, install)
+    if _release_git(world, evidence, install.checkout, "rev-parse", _RELEASE_BRANCH) == _head(world, evidence, install):
+        raise ValueError(_RELEASE_MOVED_ERROR)
+    _release_pending_record_migration(world, evidence, install)
+
+
+def _release_pending_record_migration(
+    world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall
+) -> None:
+    """The stored unversioned record is brought forward before use, and a newer one is refused untouched."""
+    legacy = cast(Mapping[str, str], world.fixture[_RELEASE_PENDING_RECORD_FIXTURE])
+    left_from = _head(world, evidence, install)
+    target = _release_commit(world, evidence, prior=False)
+    record = {**legacy, _RELEASE_PENDING_FROM_COMMIT_FIELD: left_from, _RELEASE_PENDING_TARGET_FIELD: target}
+    path = _write_pending_record(install, record)
+    away = world.root / _RELEASE_AWAY_DIRECTORY
+    world.origin.rename(away)
+    try:
+        _release_update(world, evidence, install, target, expect_success=False)
+    finally:
+        away.rename(world.origin)
+    migrated = cast(Mapping[str, object], json.loads(path.read_text(encoding=_UTF8)))
+    if (
+        migrated.get(_RELEASE_PENDING_SCHEMA_FIELD) != _RELEASE_PENDING_CURRENT_SCHEMA
+        or migrated.get(_RELEASE_PENDING_TARGET_COMMIT_FIELD) is not None
+        or any(migrated.get(field) != value for field, value in record.items())
+    ):
+        raise ValueError(_RELEASE_PENDING_ERROR)
+    _release_update(world, evidence, install, target)
+    if path.exists():
+        raise ValueError(_RELEASE_PENDING_PRESENT_ERROR)
+    _require_selected(world, evidence, install, target)
+    interrupted = {**record, _RELEASE_PENDING_FROM_COMMIT_FIELD: left_from}
+    _write_pending_record(install, interrupted)
+    reached = _head(world, evidence, install)
+    _release_update(world, evidence, install, target)
+    if _head(world, evidence, install) != reached or path.exists():
+        raise ValueError(_RELEASE_MOVED_ERROR)
+    path = _write_pending_record(install, {**record, _RELEASE_PENDING_SCHEMA_FIELD: _RELEASE_PENDING_NEWER_SCHEMA})
+    before = path.read_text(encoding=_UTF8)
+    _release_update(world, evidence, install, target, expect_success=False)
+    if path.read_text(encoding=_UTF8) != before:
+        raise ValueError(_RELEASE_PENDING_ERROR)
+    path.unlink()
+
+
+def _release_next_from_detached(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-RC3: the installation normalizes the commit it runs, then adopts the next release, staying detached."""
+    world = _release_world(resources, evidence)
+    install = world.primary
+    if install is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    current = _release_git(world, evidence, install.checkout, "describe", "--tags", "--exact-match")
+    _release_git(world, evidence, install.checkout, "checkout", "--quiet", "-b", _RELEASE_ATTACHED_BRANCH)
+    _release_update(world, evidence, install, current)
+    _require_selected(world, evidence, install, current)
+    _release_git(world, evidence, install.checkout, "rev-parse", "--verify", _RELEASE_ATTACHED_BRANCH)
+    tag = _release_commit(world, evidence, prior=False)
+    _release_update(world, evidence, install, tag)
+    _require_selected(world, evidence, install, tag)
+    _require_marker(world, evidence, install)
+
+
+def _release_replay(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-CSU-9: an older release announcement leaves the installed revision unchanged."""
+    world = _release_world(resources, evidence)
+    install = world.primary
+    if install is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    before = _head(world, evidence, install)
+    older = _release_git(world, evidence, install.checkout, "tag", "--list", "--sort=version:refname", "v*").split()[0]
+    _release_update(world, evidence, install, older)
+    if _head(world, evidence, install) != before:
+        raise ValueError(_RELEASE_MOVED_ERROR)
+    _require_selected(
+        world, evidence, install, _release_git(world, evidence, install.checkout, "describe", "--tags", "--exact-match")
+    )
+
+
+def _release_heads(world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall) -> str:
+    """Every local branch with the commit it names."""
+    return _release_git(
+        world, evidence, install.checkout, "for-each-ref", _RELEASE_HEADS_FORMAT, _RELEASE_HEADS_NAMESPACE
+    )
+
+
+def _stored_pending(install: ReleaseInstall) -> Mapping[str, object]:
+    """The pending convergence record exactly as the updater stored it."""
+    record = _mapping_value(json.loads((install.home / _RELEASE_PENDING_RECORD).read_text(encoding=_UTF8)))
+    if record is None:
+        raise ValueError(_RELEASE_PENDING_ERROR)
+    return record
+
+
+def _require_pending_identity(
+    world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall, left_from: str, tag: str
+) -> str:
+    """Require the retained pending record to keep the original source and the immutable target; return the target."""
+    target_commit = _release_git(world, evidence, install.checkout, "rev-parse", f"{tag}^{{commit}}")
+    pending = _stored_pending(install)
+    if (
+        pending.get(_RELEASE_PENDING_SCHEMA_FIELD) != _RELEASE_PENDING_CURRENT_SCHEMA
+        or pending.get(_RELEASE_PENDING_FROM_COMMIT_FIELD) != left_from
+        or pending.get(_RELEASE_PENDING_TARGET_FIELD) != tag
+        or pending.get(_RELEASE_PENDING_TARGET_COMMIT_FIELD) != target_commit
+    ):
+        raise ValueError(_RELEASE_PENDING_IDENTITY_ERROR)
+    return target_commit
+
+
+def _release_side_release(world: ReleaseWorld, evidence: list[CommandEvidence], base: str, version: str) -> str:
+    """Commit and tag a release of the given version on a branch of its own that starts at ``base``."""
+    tag = _RELEASE_TAG_TEMPLATE.format(version=version)
+    _release_git(
+        world,
+        evidence,
+        world.origin,
+        "checkout",
+        "--quiet",
+        "-b",
+        _RELEASE_SIDE_BRANCH_TEMPLATE.format(version=version),
+        base,
+    )
+    pyproject = world.origin / _RELEASE_PYPROJECT
+    pyproject.write_text(
+        re.sub(
+            _RELEASE_VERSION_PATTERN,
+            _RELEASE_VERSION_TEMPLATE.format(version=version),
+            pyproject.read_text(encoding=_UTF8),
+            count=1,
+        ),
+        encoding=_UTF8,
+    )
+    (world.origin / _RELEASE_NOTE_FILE).write_text(f"{version}\n", encoding=_UTF8)
+    _release_git(world, evidence, world.origin, "add", "-A")
+    _release_git(
+        world,
+        evidence,
+        world.origin,
+        "commit",
+        "--quiet",
+        "-m",
+        _RELEASE_SIDE_COMMIT_MESSAGE.format(version=version),
+    )
+    _release_git(world, evidence, world.origin, "tag", tag)
+    _release_git(world, evidence, world.origin, "checkout", "--quiet", _RELEASE_BRANCH)
+    return tag
+
+
+def _require_transition_refused(
+    world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall, tag: str
+) -> None:
+    """The updater refuses ``tag`` before moving anything and keeps its pending transition, which is then discarded."""
+    left_from = _head(world, evidence, install)
+    heads = _release_heads(world, evidence, install)
+    _release_update(world, evidence, install, tag, expect_success=False)
+    if _head(world, evidence, install) != left_from or _release_heads(world, evidence, install) != heads:
+        raise ValueError(_RELEASE_UNSUPPORTED_MOVED_ERROR)
+    target_commit = _require_pending_identity(world, evidence, install, left_from, tag)
+    if (install.checkout / _RELEASE_MAINTENANCE_DIRECTORY / target_commit).exists():
+        raise ValueError(_RELEASE_UNSUPPORTED_RECORDED_ERROR)
+    (install.home / _RELEASE_PENDING_RECORD).unlink()
+
+
+def _release_unsupported_transitions(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-CSU-11: a source the installation cannot move to without losing history is refused where it stands."""
+    world = _release_world(resources, evidence)
+    install = world.primary
+    if install is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    installed = _release_version(world, evidence, install, "HEAD")
+    oldest = _release_git(world, evidence, install.checkout, "tag", "--list", "--sort=version:refname", "v*").split()[0]
+    major, minor, patch = (int(part) for part in installed.split("."))
+    sideways = f"{major}.{minor}.{patch + _RELEASE_SIDEWAYS_PATCH_OFFSET}"
+    for base, version in (
+        (oldest, _RELEASE_OLDER_VERSION),
+        (oldest, sideways),
+        (_RELEASE_BRANCH, _RELEASE_NON_INCREASING_VERSION),
+    ):
+        _require_transition_refused(world, evidence, install, _release_side_release(world, evidence, base, version))
+    divergent = _release_install(
+        world, evidence, _RELEASE_DIVERGENT_INSTALL, single_branch=False, revision=_RELEASE_BRANCH
+    )
+    (divergent.checkout / _RELEASE_LOCAL_WORK_FILE).write_text(f"{uuid.uuid4().hex}\n", encoding=_UTF8)
+    _release_git(world, evidence, divergent.checkout, "add", _RELEASE_LOCAL_WORK_FILE)
+    _release_git(world, evidence, divergent.checkout, "commit", "--quiet", "-m", _RELEASE_LOCAL_WORK_MESSAGE)
+    _require_transition_refused(world, evidence, divergent, _release_commit(world, evidence, prior=False))
+    if _release_git(world, evidence, divergent.checkout, "symbolic-ref", "--quiet", "HEAD") != _RELEASE_BRANCH_REF:
+        raise ValueError(_RELEASE_ATTACHED_ERROR)
+    tag = _release_commit(world, evidence, prior=False)
+    _release_update(world, evidence, install, tag)
+    _require_selected(world, evidence, install, tag)
+    _require_marker(world, evidence, install)
+
+
+def _release_recording_refused(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-CSU-12: a transition whose maintenance cannot be recorded stays pending and completes once it can."""
+    world = _release_world(resources, evidence)
+    install = world.primary
+    if install is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    left_from = _head(world, evidence, install)
+    tag = _release_commit(world, evidence, prior=False)
+    target_commit = _release_git(world, evidence, world.origin, "rev-parse", f"{tag}^{{commit}}")
+    blocker = install.checkout / _RELEASE_MAINTENANCE_DIRECTORY / target_commit
+    blocker.parent.mkdir(parents=True, exist_ok=True)
+    blocker.write_text(_RELEASE_BLOCKER_TEXT, encoding=_UTF8)
+    _release_update(world, evidence, install, tag, expect_success=False)
+    if _head(world, evidence, install) != target_commit:
+        raise ValueError(_RELEASE_RECORDING_ADVANCE_ERROR)
+    _require_pending_identity(world, evidence, install, left_from, tag)
+    if _release_marker(world, install) == target_commit:
+        raise ValueError(_RELEASE_RECORDING_EARLY_ERROR)
+    blocker.unlink()
+    _release_update(world, evidence, install, tag)
+    if (install.home / _RELEASE_PENDING_RECORD).exists():
+        raise ValueError(_RELEASE_PENDING_PRESENT_ERROR)
+    _require_selected(world, evidence, install, tag)
+    _require_marker(world, evidence, install)
+
+
+def _release_conflict(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-RC5: conflicting local work refuses the transition and survives it."""
+    world = _release_world(resources, evidence)
+    install = world.primary
+    if install is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    reached = _head(world, evidence, install)
+    note = install.checkout / _RELEASE_NOTE_FILE
+    note.write_text("local work\n", encoding=_UTF8)
+    tag = _release_commit(world, evidence, prior=False)
+    _release_update(world, evidence, install, tag, expect_success=False)
+    if _head(world, evidence, install) != reached or note.read_text(encoding=_UTF8) != "local work\n":
+        raise ValueError(_RELEASE_WORK_LOST_ERROR)
+    if not (install.home / _RELEASE_PENDING_RECORD).exists():
+        raise ValueError(_RELEASE_PENDING_ABSENT_ERROR)
+    _release_git(world, evidence, install.checkout, "rev-parse", "--verify", _RELEASE_ATTACHED_BRANCH)
+    _release_git(world, evidence, install.checkout, "checkout", "--", _RELEASE_NOTE_FILE)
+    _release_update(world, evidence, install, tag)
+    _require_selected(world, evidence, install, tag)
+
+
+def _release_development_clone(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-RC6: a detached development checkout gains no installation effects."""
+    world = _release_world(resources, evidence)
+    install = world.primary
+    if install is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    checkout = world.root / _RELEASE_DEVELOPMENT_DIRECTORY
+    _release_git(
+        world,
+        evidence,
+        world.root,
+        "clone",
+        "--quiet",
+        "--single-branch",
+        "--branch",
+        _RELEASE_BRANCH,
+        f"file://{world.origin}",
+        str(checkout),
+    )
+    tag = _release_git(world, evidence, checkout, "describe", "--tags", "--abbrev=0", "--match", "v*", "HEAD")
+    _release_git(world, evidence, checkout, "checkout", "--quiet", "--detach", tag)
+    mapping = _release_git(world, evidence, checkout, "config", "--get-all", "remote.origin.fetch")
+    development = ReleaseInstall(
+        base=install.base, checkout=checkout, home=install.home, environment=install.environment
+    )
+    _release_module(
+        world,
+        evidence,
+        development,
+        _RELEASE_MODULE_POSTURE,
+        _RELEASE_ROOT_OPTION,
+        str(checkout),
+        _RELEASE_AFTER_OPTION,
+        _release_git(world, evidence, checkout, "rev-parse", "HEAD"),
+    )
+    _release_module(world, evidence, development, _RELEASE_MODULE_DRAIN, expect_success=False)
+    if (
+        _release_git(world, evidence, checkout, "config", "--get-all", "remote.origin.fetch") != mapping
+        or (checkout / ".teleclaude" / "maintenance").exists()
+    ):
+        raise ValueError(_RELEASE_DEVELOPMENT_PRIVILEGE_ERROR)
+    _release_git(world, evidence, checkout, "symbolic-ref", "--quiet", "HEAD", expect_success=False)
+
+
+def _release_retained_declaration(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-CFG-MIG-17: configuration migration retains the installed declaration and migrates the other home."""
+    world = _release_world(resources, evidence)
+    install = world.primary
+    if install is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    tag = _release_commit(world, evidence, prior=False, schema_version=world.schema_version - 1)
+    _release_update(world, evidence, install, tag)
+    (install.home / _RELEASE_PROJECTS_REGISTRY).write_text(f"projects:\n  - {install.checkout}\n", encoding=_UTF8)
+    declaration = install.checkout / _RELEASE_DECLARATION
+    stored = declaration.read_bytes()
+    reached = _head(world, evidence, install)
+    commits = _release_git(world, evidence, install.checkout, "rev-list", "--count", "--all")
+    machine_before = (install.home / _RELEASE_CONFIG_FILE).read_text(encoding=_UTF8)
+    _release_module(
+        world, evidence, install, _RELEASE_MODULE_MIGRATIONS, _RELEASE_TRIGGER_OPTION, _RELEASE_TRIGGER_MAINTENANCE
+    )
+    if declaration.read_bytes() != stored:
+        raise ValueError(_RELEASE_DECLARATION_CHANGED_ERROR)
+    if (
+        _head(world, evidence, install) != reached
+        or _release_git(world, evidence, install.checkout, "rev-list", "--count", "--all") != commits
+    ):
+        raise ValueError(_RELEASE_MIGRATION_COMMIT_ERROR)
+    _require_selected(world, evidence, install, tag)
+    if (install.home / _RELEASE_CONFIG_FILE).read_text(encoding=_UTF8) == machine_before:
+        raise ValueError(_RELEASE_OTHER_HOME_ERROR)
+    records = _LINE_BREAK.join(
+        log.read_text(encoding=_UTF8, errors=_UTF8_REPLACEMENT) for log in install.base.rglob(_RELEASE_LOG_PATTERN)
+    ).splitlines()
+    if not any(
+        _RELEASE_PROJECT_SUBJECT in line
+        and _RELEASE_IN_MEMORY_OUTCOME in line
+        and _RELEASE_MAINTENANCE_TRIGGER_TEXT in line
+        for line in records
+    ) or not any(
+        _RELEASE_COMPUTER_SUBJECT in line
+        and _RELEASE_PERSISTED_OUTCOME in line
+        and _RELEASE_MAINTENANCE_TRIGGER_TEXT in line
+        for line in records
+    ):
+        raise ValueError(_RELEASE_RETAINED_RECORD_ERROR)
+    _release_telec(world, evidence, install, *_release_public_load(), expect_success=True)
+    older_schema = _RELEASE_SCHEMA_LINE.format(version=world.schema_version - 1)
+    current_schema = _RELEASE_SCHEMA_LINE.format(version=world.schema_version)
+    for shape in _RELEASE_INVALID_SHAPES:
+        invalid_older = stored.decode(_UTF8)
+        for find, replacement in shape:
+            invalid_older = invalid_older.replace(find, replacement, 1)
+        for invalid in (invalid_older, invalid_older.replace(older_schema, current_schema, 1)):
+            declaration.write_text(invalid, encoding=_UTF8)
+            (install.home / _RELEASE_CONFIG_FILE).write_text(machine_before, encoding=_UTF8)
+            _release_telec(world, evidence, install, *_release_public_load(), expect_success=False)
+            _release_module(
+                world,
+                evidence,
+                install,
+                _RELEASE_MODULE_MIGRATIONS,
+                _RELEASE_TRIGGER_OPTION,
+                _RELEASE_TRIGGER_MAINTENANCE,
+                expect_success=False,
+            )
+            if (
+                declaration.read_text(encoding=_UTF8) != invalid
+                or _head(world, evidence, install) != reached
+                or _release_git(world, evidence, install.checkout, "rev-list", "--count", "--all") != commits
+            ):
+                raise ValueError(_RELEASE_INVALID_DECLARATION_ERROR)
+            if (install.home / _RELEASE_CONFIG_FILE).read_text(encoding=_UTF8) == machine_before:
+                raise ValueError(_RELEASE_OTHER_HOME_ERROR)
+            _release_git(world, evidence, install.checkout, "checkout", "--", _RELEASE_DECLARATION)
+
+
+def _release_public_load() -> tuple[str, ...]:
+    """The public command that reads the registered project's configuration the way every consumer does."""
+    return ("config", "project", "get", _RELEASE_PROJECT_SLUG)
+
+
+def _release_terminal(
+    world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall
+) -> PersistentTerminal:
+    """The authenticated terminal of the registered release owner, opened on first use."""
+    if world.terminal is None:
+        terminal = _open_terminal(install.environment)
+        world.terminal = terminal
+        if terminal.run([_SHELL_CHANGE_DIRECTORY, str(install.checkout)]).returncode != _PROCESS_SUCCESS:
+            raise RuntimeError(_FULL_TERMINAL_SETUP_ERROR)
+        _release_terminal_run(
+            world,
+            evidence,
+            install,
+            (_release_python(world), "-m", _RELEASE_TELEC_MODULE, "auth", "login", _RELEASE_PERSON_EMAIL),
+        )
+    return world.terminal
+
+
+def _release_terminal_run(
+    world: ReleaseWorld,
+    evidence: list[CommandEvidence],
+    install: ReleaseInstall,
+    argv: Sequence[str],
+    *,
+    expect_success: bool = True,
+    refusal_snapshot: Path | None = None,
+) -> str:
+    """Run one public command as the signed-in release owner and require its expected outcome.
+
+    An expected refusal must also equal its public-output snapshot, so an unrelated failure is not one.
+    """
+    terminal = world.terminal if world.terminal is not None else _release_terminal(world, evidence, install)
+    status, output = _record_terminal_command(world.resources, terminal, argv, evidence)
+    if status is None or (status == _PROCESS_SUCCESS) != expect_success or (not expect_success and not output.strip()):
+        raise RuntimeError(
+            _RELEASE_TERMINAL_ERROR.format(argv=" ".join(world.resources.sanitize(value) for value in argv))
+        )
+    if refusal_snapshot is not None:
+        expected = (Path(__file__).parent / refusal_snapshot).read_text(encoding=_UTF8)
+        if _LINE_BREAK.join(output.splitlines()).strip() + _LINE_BREAK != expected:
+            raise RuntimeError(_RELEASE_REFUSAL_ERROR)
+    return output
+
+
+def _release_telec(
+    world: ReleaseWorld,
+    evidence: list[CommandEvidence],
+    install: ReleaseInstall,
+    *arguments: str,
+    expect_success: bool = True,
+) -> str:
+    """Run the public ``telec`` command line as the signed-in release owner."""
+    return _release_terminal_run(
+        world,
+        evidence,
+        install,
+        (_release_python(world), "-m", _RELEASE_TELEC_MODULE, *arguments),
+        expect_success=expect_success,
+    )
+
+
+def _make_removable(root: Path) -> None:
+    """Restore owner access to every directory a journey left write-protected."""
+    for directory, _, _ in os.walk(root):
+        Path(directory).chmod(_RELEASE_WRITABLE_MODE)
+
+
+def _close_release_world(world: ReleaseWorld) -> None:
+    """Sign the release owner out, close its terminal and make the disposable history removable."""
+    terminal = world.terminal
+    world.terminal = None
+    try:
+        if terminal is not None:
+            try:
+                terminal.run((_release_python(world), "-m", _RELEASE_TELEC_MODULE, "auth", "logout"))
+            finally:
+                terminal.close()
+    finally:
+        _make_removable(world.root)
+
+
+def _release_version(world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall, ref: str) -> str:
+    tag = _release_git(world, evidence, install.checkout, "describe", "--tags", "--exact-match", ref)
+    return tag.removeprefix("v")
+
+
+def _deployed_outputs(install: ReleaseInstall) -> tuple[Path, ...]:
+    """The deployed agent artifact, compiled instruction file and documentation catalog of the installed home."""
+    return (
+        install.home / _RELEASE_DEPLOYED_COMMAND,
+        install.checkout / _RELEASE_DEPLOYED_MASTER,
+        install.checkout / _RELEASE_DEPLOYED_INDEX,
+    )
+
+
+def _frontmatter_fields(text: str) -> dict[str, str]:
+    """The ``key: value`` fields of a document's leading frontmatter block."""
+    fields: dict[str, str] = {}
+    lines = text.splitlines()
+    if not lines or lines[0] != _RELEASE_FRONTMATTER_FENCE:
+        return fields
+    for line in lines[1:]:
+        if line == _RELEASE_FRONTMATTER_FENCE:
+            break
+        key, separator, value = line.partition(_RELEASE_FIELD_SEPARATOR)
+        if separator:
+            fields[key] = value
+    return fields
+
+
+def _catalog_entries(path: Path) -> list[dict[str, str]]:
+    """The snippet entries of a generated documentation catalog, as field mappings."""
+    entries: list[dict[str, str]] = []
+    for line in path.read_text(encoding=_UTF8).splitlines():
+        if line.startswith(_RELEASE_ENTRY_START):
+            entries.append({})
+            line = line.removeprefix(_RELEASE_ENTRY_START)
+        elif not line.startswith(_RELEASE_ENTRY_CONTINUATION) or not entries:
+            continue
+        key, separator, value = line.strip().partition(_RELEASE_FIELD_SEPARATOR)
+        if separator:
+            entries[-1][key] = value
+    return entries
+
+
+def _committed(
+    world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall, ref: str, path: Path
+) -> str:
+    """One source file as committed at ``ref``."""
+    return _release_git(world, evidence, install.checkout, "show", f"{ref}:{path}")
+
+
+def _require_published(world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall) -> None:
+    """The deployed outputs are the installed commit's sources, while local main names different ones.
+
+    The deployed command and compiled instructions equal their sources at the installed commit and
+    differ from the sources at local main; the catalog entry carries the installed commit's document
+    description, path and identity.
+    """
+    command, master, catalog = _deployed_outputs(install)
+    for output in (command, master, catalog):
+        if not output.is_file() or not output.read_text(encoding=_UTF8).strip():
+            raise ValueError(_RELEASE_OUTPUT_MISSING_ERROR.format(output=output.name))
+    for output, source in ((command, _RELEASE_PROBE_COMMAND), (master, Path(_RELEASE_MASTER_NAME))):
+        installed = _committed(world, evidence, install, "HEAD", source)
+        if output.read_text(encoding=_UTF8).strip() != installed or installed == _committed(
+            world, evidence, install, _RELEASE_BRANCH, source
+        ):
+            raise ValueError(_RELEASE_OUTPUT_SOURCE_ERROR.format(output=output.name))
+    document = _frontmatter_fields(_committed(world, evidence, install, "HEAD", _RELEASE_PROBE_DOCUMENT))
+    probes = [
+        entry
+        for entry in _catalog_entries(catalog)
+        if entry.get(_RELEASE_CATALOG_PATH_FIELD) == str(_RELEASE_PROBE_DOCUMENT)
+    ]
+    if (
+        len(probes) != 1
+        or probes[0].get(_RELEASE_DESCRIPTION_FIELD) != document.get(_RELEASE_DESCRIPTION_FIELD)
+        or probes[0].get(_RELEASE_CATALOG_ID_FIELD) != _RELEASE_PROBE_CATALOG_ID
+        or document
+        == _frontmatter_fields(_committed(world, evidence, install, _RELEASE_BRANCH, _RELEASE_PROBE_DOCUMENT))
+    ):
+        raise ValueError(_RELEASE_OUTPUT_SOURCE_ERROR.format(output=catalog.name))
+
+
+def _release_publication(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-SPO34: every publication entry point deploys the installed commit while local main names another."""
+    world = _release_world(resources, evidence)
+    install = world.primary
+    if install is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    _release_terminal(world, evidence, install)
+    _release_update(world, evidence, install, _release_commit(world, evidence, prior=False))
+    _require_published(world, evidence, install)
+
+    for output in _deployed_outputs(install):
+        output.unlink()
+    _release_telec(world, evidence, install, "sync")
+    _require_published(world, evidence, install)
+
+    _release_update(world, evidence, install, _release_commit(world, evidence, prior=False), drain=False)
+    _release_module(world, evidence, install, _RELEASE_MODULE_INSTALL_PUBLICATION)
+    _require_published(world, evidence, install)
+    _release_drain(world, evidence, install)
+
+    index = install.checkout / _RELEASE_DEPLOYED_INDEX
+    installed = _RELEASE_PROBE_LABEL.format(version=_release_version(world, evidence, install, "HEAD"))
+    main = _RELEASE_PROBE_LABEL.format(version=_release_version(world, evidence, install, _RELEASE_BRANCH))
+    index.write_text(
+        index.read_text(encoding=_UTF8).replace(_RELEASE_CURRENT_ID, _RELEASE_LEGACY_ID).replace(installed, main),
+        encoding=_UTF8,
+    )
+    _release_terminal_run(
+        world, evidence, install, (_release_python(world), "-m", _RELEASE_CONVERGENCE_MODULE, str(install.checkout))
+    )
+    _require_published(world, evidence, install)
+
+    previous = (install.home / _RELEASE_DEPLOYED_COMMAND).read_text(encoding=_UTF8)
+    protected = install.home / _RELEASE_PROTECTED_DIRECTORY
+    protected.chmod(_RELEASE_WRITE_PROTECTED_MODE)
+    try:
+        _release_update(world, evidence, install, _release_commit(world, evidence, prior=False), drain=False)
+        _release_module(world, evidence, install, _RELEASE_MODULE_DRAIN, expect_success=False)
+    finally:
+        _make_removable(install.home)
+    if (install.home / _RELEASE_DEPLOYED_COMMAND).read_text(encoding=_UTF8) != previous:
+        raise ValueError(_RELEASE_REPLAY_PRESERVE_ERROR)
+    failed = _head(world, evidence, install)
+    command = (_RELEASE_AFTER_OPTION, failed, "--action", _RELEASE_REPLAY_ACTION)
+    _release_terminal_run(
+        world,
+        evidence,
+        install,
+        (_release_python(world), "-m", _RELEASE_TELEC_MODULE, "code", "maintenance", "retry", *command),
+        expect_success=False,
+        refusal_snapshot=_RELEASE_RETRY_REFUSAL_SNAPSHOT,
+    )
+    _release_replay_recorded_publication(world, evidence, install, failed)
+
+
+def _failed_range(install: ReleaseInstall, after_sha: str) -> Mapping[str, object]:
+    """The retained failed record of one commit activation's publication action."""
+    record = install.checkout / _RELEASE_MAINTENANCE_DIRECTORY / after_sha / _RELEASE_REPLAY_RECORD
+    payload = _mapping_value(json.loads(record.read_text(encoding=_UTF8)))
+    if payload is None or payload.get(_RELEASE_RECORD_STATE_FIELD) != _RELEASE_RECORD_FAILED:
+        raise ValueError(_RELEASE_REPLAY_RECORD_ERROR)
+    return payload
+
+
+def _release_replay_recorded_publication(
+    world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall, failed: str
+) -> None:
+    """Run the recorded publication command for a failed range after a newer release was adopted.
+
+    The command is the public module the declared ``sync`` action runs, given the immutable range of
+    the real retained failed record. The range selects the touched homes; the deployed commit is the
+    installed one, not the range's own.
+    """
+    record = _failed_range(install, failed)
+    _release_update(world, evidence, install, _release_commit(world, evidence, prior=False), drain=False)
+    arguments: tuple[str, ...] = (_RELEASE_AFTER_OPTION, str(record[_RELEASE_RECORD_AFTER_FIELD]))
+    before = record.get(_RELEASE_RECORD_BEFORE_FIELD)
+    if isinstance(before, str):
+        arguments = (*arguments, _RELEASE_BEFORE_OPTION, before)
+    _release_module(world, evidence, install, _RELEASE_MODULE_PUBLISH, *arguments)
+    _require_published(world, evidence, install)
+    if _release_version(world, evidence, install, failed) == _release_version(world, evidence, install, "HEAD"):
+        raise ValueError(_RELEASE_PUBLICATION_ERROR)
+
+
+def _release_blueprint(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-BPF1: Blueprint maintenance and queries answer for the installed commit, not for local main."""
+    world = _release_world(resources, evidence)
+    install = world.primary
+    if install is None:
+        raise ValueError(_RELEASE_FIXTURE_INVALID)
+    _release_update(world, evidence, install, _release_commit(world, evidence, prior=False, code=True))
+    installed = _head(world, evidence, install)
+    manifest = cast(
+        Mapping[str, object], json.loads((install.checkout / _RELEASE_BLUEPRINT_MANIFEST).read_text(encoding=_UTF8))
+    )
+    if manifest.get(_RELEASE_BLUEPRINT_BASELINE_FIELD) != installed or installed == _release_git(
+        world, evidence, install.checkout, "rev-parse", _RELEASE_BRANCH
+    ):
+        raise ValueError(_RELEASE_BLUEPRINT_ERROR)
+    answer = _release_telec(world, evidence, install, "code", "blueprint", "affected", _RELEASE_BLUEPRINT_AFFECTED_PATH)
+    expected = (Path(__file__).parent / _RELEASE_BLUEPRINT_SNAPSHOT).read_text(encoding=_UTF8)
+    if _LINE_BREAK.join(answer.splitlines()).strip() + _LINE_BREAK != expected:
+        raise ValueError(_RELEASE_BLUEPRINT_QUERY_ERROR)
+
+
 def run_profile(
     profile: Profile,
     *,
@@ -2706,6 +4126,40 @@ def run_profile(
                     ),
                     _SCENARIO_CURATION_REFUSAL: _bind_full_scenario(
                         _SCENARIO_CURATION_REFUSAL, resources, _full_curation_refusal
+                    ),
+                    _SCENARIO_RELEASE_SELECTED: _bind_full_scenario(
+                        _SCENARIO_RELEASE_SELECTED, resources, _release_selected_visibly
+                    ),
+                    _SCENARIO_RELEASE_PULL_REFUSED: _bind_full_scenario(
+                        _SCENARIO_RELEASE_PULL_REFUSED, resources, _release_pull_refused
+                    ),
+                    _SCENARIO_RELEASE_ADOPTION: _bind_full_scenario(
+                        _SCENARIO_RELEASE_ADOPTION, resources, _release_adoption
+                    ),
+                    _SCENARIO_RELEASE_NEXT: _bind_full_scenario(
+                        _SCENARIO_RELEASE_NEXT, resources, _release_next_from_detached
+                    ),
+                    _SCENARIO_RELEASE_REPLAY: _bind_full_scenario(_SCENARIO_RELEASE_REPLAY, resources, _release_replay),
+                    _SCENARIO_RELEASE_UNSUPPORTED: _bind_full_scenario(
+                        _SCENARIO_RELEASE_UNSUPPORTED, resources, _release_unsupported_transitions
+                    ),
+                    _SCENARIO_RELEASE_RECORDING: _bind_full_scenario(
+                        _SCENARIO_RELEASE_RECORDING, resources, _release_recording_refused
+                    ),
+                    _SCENARIO_RELEASE_CONFLICT: _bind_full_scenario(
+                        _SCENARIO_RELEASE_CONFLICT, resources, _release_conflict
+                    ),
+                    _SCENARIO_RELEASE_DEVELOPMENT_CLONE: _bind_full_scenario(
+                        _SCENARIO_RELEASE_DEVELOPMENT_CLONE, resources, _release_development_clone
+                    ),
+                    _SCENARIO_RELEASE_DECLARATION: _bind_full_scenario(
+                        _SCENARIO_RELEASE_DECLARATION, resources, _release_retained_declaration
+                    ),
+                    _SCENARIO_RELEASE_PUBLICATION: _bind_full_scenario(
+                        _SCENARIO_RELEASE_PUBLICATION, resources, _release_publication
+                    ),
+                    _SCENARIO_RELEASE_BLUEPRINT: _bind_full_scenario(
+                        _SCENARIO_RELEASE_BLUEPRINT, resources, _release_blueprint
                     ),
                 }
             )

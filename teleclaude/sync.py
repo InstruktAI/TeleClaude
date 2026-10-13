@@ -20,6 +20,7 @@ from teleclaude.artifact_ownership import retired_pointer_candidate, retract_ret
 from teleclaude.capabilities import PermissionSurface, resolve_capabilities, resolve_tier_permissions
 from teleclaude.config.schema import ConfigKind
 from teleclaude.config.tree_homes import TreeHome, group_paths_by_owning_home_tolerant, homes_at_or_beneath
+from teleclaude.deployment.release_checkout import selected_revision
 from teleclaude.docs_index import build_all_indexes, build_tier_index, reroot_index_document
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, git_common_root
@@ -71,6 +72,7 @@ _INVALID_HOME_STATE_ENTRY = "Per-home publication state has an invalid entry: {r
 _HOME_SCOPE_REQUIRED = "Publication requires exactly one directory scope or changed-path scope."
 _HOME_NOT_COMMITTED = "Home is not present in the selected committed tree: {home}"
 _INSTALLED_COMMIT_UNAVAILABLE = "Could not resolve the installed checkout's committed HEAD."
+_SELECTION_CHANGED = "The installed release changed from {tip} to {selected} during publication; nothing was deployed."
 _UNSUPPORTED_HOME_POSITION = "Home kind {kind} at {root} is outside the supported home model."
 _HOME_DECLARATION_FAILED = "Home declaration could not be read: {error}"
 _HOME_BUILD_FAILED = "Home build failed: {error}"
@@ -241,7 +243,16 @@ def publish_homes(
             project_slug_resolution(),
             domain_resolution(),
         ):
-            tip = _main_tip(canonical_root) if source is PublicationSource.MAIN_TIP else _installed_commit(project_root)
+            installed_revision = selected_revision(canonical_root) if source is PublicationSource.MAIN_TIP else None
+            if installed_revision is not None:
+                source = PublicationSource.INSTALLED_COMMIT
+                tip = installed_revision
+            else:
+                tip = (
+                    _main_tip(canonical_root)
+                    if source is PublicationSource.MAIN_TIP
+                    else _installed_commit(project_root)
+                )
             if tip is None:
                 if source is PublicationSource.MAIN_TIP:
                     return _failed_run(mode, _GIT_VERIFY_ERROR, PublicationRunFailure.MAIN_TIP_UNAVAILABLE)
@@ -310,6 +321,9 @@ def _publish_under_lease(
         return _finish_run(canonical_root, tip, mode, results, state, all_homes, tree_paths)
 
     with materialize_tree(source) as snapshot_root:
+        selected = selected_revision(canonical_root)
+        if selected is not None and selected != tip:
+            return _failed_run(mode, _SELECTION_CHANGED.format(tip=tip, selected=selected))
         for home, error in skipped:
             results[home.root.as_posix()] = _skipped_home(
                 home, tip, mode, error, canonical_root, snapshot_root, source, tree_paths

@@ -43,6 +43,7 @@ class MigrationFailureReason(StrEnum):
     MIGRATION_ERROR = "migration_error"
     COMMIT_REFUSED = "commit_refused"
     FIELD_CONSTRAINT_REFUSED = "field_constraint_refused"
+    READ_VALIDATION_REFUSED = "read_validation_refused"
 
 
 # A migration run whose document did not land committed is an anomaly, not routine progress.
@@ -119,5 +120,8 @@ def record_migration(
 def _log_level(outcome: MigrationOutcome, trigger: MigrationTrigger) -> int:
     """Return the level a migration record is logged at for its outcome and trigger."""
     if outcome is MigrationOutcome.MIGRATED_UNCOMMITTED and trigger in _EXPECTED_UNCOMMITTED_TRIGGERS:
+        return logging.INFO
+    if outcome is MigrationOutcome.UPCAST_IN_MEMORY and trigger is not MigrationTrigger.READ:
+        # A migration run that retains a document's source states that deliberately; only a read's adaptation is noise.
         return logging.INFO
     return _OUTCOME_LOG_LEVELS[outcome]

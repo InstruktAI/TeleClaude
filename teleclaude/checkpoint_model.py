@@ -82,6 +82,7 @@ __all__ = [
     "main_only_judgment_action_ids_for_files",
     "main_only_maintenance_action_ids_for_files",
     "main_only_maintenance_action_ids_for_files_and_activation",
+    "main_only_maintenance_action_ids_for_model",
     "merge_overlay",
     "scope_matches",
     "scopes_for_action",
@@ -243,7 +244,13 @@ def main_only_maintenance_action_ids_for_files_and_activation(
     files: list[str], activation: CheckpointActivation, project_root: Path
 ) -> list[str]:
     """Return ordered main-only maintenance ids selected by paths or activation."""
-    model = load_checkpoint_model(str(project_root))
+    return main_only_maintenance_action_ids_for_model(files, activation, load_checkpoint_model(str(project_root)))
+
+
+def main_only_maintenance_action_ids_for_model(
+    files: list[str], activation: CheckpointActivation, model: CheckpointModel
+) -> list[str]:
+    """Return ordered main-only maintenance ids one already-resolved declaration selects by paths or activation."""
     selected = triggered_action_ids(files, model) | activation_action_ids(model, activation)
     return sorted(
         (

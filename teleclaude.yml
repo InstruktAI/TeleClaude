@@ -27,6 +27,15 @@ business:
 # This overlay adds the runtime-specific actions below.
 checkpoint:
   maintenance:
+    release-posture:
+      main_only: true
+      precedence: 5
+      command:
+        - '{interpreter}'
+        - -m
+        - teleclaude.deployment.release_checkout
+        - --after-sha
+        - '{after_sha}'
     plumbing-convergence:
       main_only: true
       precedence: 15
@@ -263,6 +272,9 @@ checkpoint:
         - github.release
       actions:
         - self-update
+    - activation: canonical_main
+      actions:
+        - release-posture
 jobs:
   - category: system
     name: temp-reaper

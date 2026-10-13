@@ -16,7 +16,9 @@ from ruamel.yaml.error import YAMLError
 
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.declaration import render_declared_config, render_machine_config
+from teleclaude.config.errors import ConfigLoadError, describe_load_error
 from teleclaude.config.field_constraints import FieldConstraintRefusal
+from teleclaude.config.loader import load_project_config
 from teleclaude.config.migrations import _steps
 from teleclaude.config.migrations._carry import carry_pending
 from teleclaude.config.migrations._chain import (
@@ -40,9 +42,10 @@ from teleclaude.config.migrations.v004_relocate_legacy_discord_provider_ids impo
 from teleclaude.config.migrations.v009_fold_trusted_directories import RegistryConflict
 from teleclaude.config.schema import CURRENT_SCHEMA_VERSION, ConfigKind
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
+from teleclaude.deployment.release_checkout import is_release_installation
 from teleclaude.file_transaction import file_transaction
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
-from teleclaude.paths import REPO_ROOT
+from teleclaude.paths import REPO_ROOT, ConfigFileName
 
 _LOG_RUN = "config_migration_run"
 
@@ -55,6 +58,7 @@ _DESTINATION_CONFLICT = MigrationFailureReason.DESTINATION_CONFLICT
 _MIGRATION_ERROR = MigrationFailureReason.MIGRATION_ERROR
 _COMMIT_REFUSED = MigrationFailureReason.COMMIT_REFUSED
 _FIELD_CONSTRAINT_REFUSED = MigrationFailureReason.FIELD_CONSTRAINT_REFUSED
+_READ_VALIDATION_REFUSED = MigrationFailureReason.READ_VALIDATION_REFUSED
 _MIGRATION_SUBJECT = "chore(config): migrate {path} to configuration version {version}"
 _COMMIT_DOCUMENT_PATH = "{commit}:{path}"
 _HEAD_REFERENCE = "HEAD"
@@ -92,7 +96,8 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
     with file_transaction(path) as transaction:
         original = transaction.read_text(encoding=_UTF8)
         clean_before = repository is not None and tracked and not _path_is_dirty(repository, relative_path)
-        if trigger is not MigrationTrigger.WRITER:
+        retained = trigger is not MigrationTrigger.WRITER and _is_installed_release_declaration(path, subject)
+        if trigger is not MigrationTrigger.WRITER and not retained:
             _retire(subject)
         try:
             document = _parse_document(original)
@@ -141,8 +146,14 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
             )
         delivered: list[Destination] = []
         try:
-            carry_pending(document, subject, delivered=delivered.append)
+            if not retained:
+                carry_pending(document, subject, delivered=delivered.append)
             migrated = upcast(document, subject)
+            if retained:
+                outcome = _retained_outcome(path, document, migrated)
+                return record_migration(
+                    key, subject, from_version, CURRENT_SCHEMA_VERSION, trigger, outcome, None, None
+                )
             if migrated == document:
                 return record_migration(
                     key, subject, from_version, CURRENT_SCHEMA_VERSION, trigger, MigrationOutcome.CURRENT, None, None
@@ -182,6 +193,18 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 _FIELD_CONSTRAINT_REFUSED,
                 None,
                 diagnostic=str(refusal),
+            )
+        except ConfigLoadError as refusal:
+            return record_migration(
+                key,
+                subject,
+                from_version,
+                CURRENT_SCHEMA_VERSION,
+                trigger,
+                MigrationOutcome.FAILED,
+                _READ_VALIDATION_REFUSED,
+                None,
+                diagnostic=describe_load_error(refusal),
             )
         except (OSError, ValueError, TypeError):
             return record_migration(
@@ -266,6 +289,31 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
             None,
             commit,
         )
+
+
+def _is_installed_release_declaration(path: Path, subject: SubjectRef) -> bool:
+    """Whether the document is the project declaration of the installed beta or stable checkout.
+
+    That declaration is part of the selected release source: it is evaluated and validated in memory,
+    like any read, and a migration run never retires state from it, carries values out of it,
+    rewrites it or commits it. Every other document keeps the persisting contract.
+    """
+    return (
+        subject.kind is ConfigSubjectKind.PROJECT
+        and path.name == ConfigFileName.OVERLAY
+        and is_release_installation(path.resolve().parent)
+    )
+
+
+def _retained_outcome(path: Path, document: Mapping[str, object], migrated: Mapping[str, object]) -> MigrationOutcome:
+    """Evaluate the retained declaration as any read does; only a document that loads is current or adapted in memory.
+
+    Ordinary project loading judges the stored declaration (version adaptation, secret references,
+    reference expansion, the full schema and its relationships, and home ownership), so a declaration
+    the daemon would refuse is never reported as evaluated. Nothing is written.
+    """
+    load_project_config(path)
+    return MigrationOutcome.CURRENT if migrated == document else MigrationOutcome.UPCAST_IN_MEMORY
 
 
 def migrate_registered(trigger: MigrationTrigger) -> tuple[MigrationRecord, ...]:

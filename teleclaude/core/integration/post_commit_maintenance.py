@@ -18,12 +18,13 @@ from teleclaude.checkpoint_model import (
     fill_activation_range,
     fill_event_activation,
     load_checkpoint_model,
+    load_committed_checkpoint_model,
     main_only_judgment_action_ids_for_files,
-    main_only_maintenance_action_ids_for_files_and_activation,
+    main_only_maintenance_action_ids_for_model,
 )
 from teleclaude.config.errors import ConfigLoadError, describe_load_error
 from teleclaude.config.secret_masking import declared_secret_values, mask_secret_values
-from teleclaude.constants import LOG_CHECK_ACTION_ID, CheckpointActivation, MaintenanceAction
+from teleclaude.constants import LOG_CHECK_ACTION_ID, CheckpointActivation, CheckpointModel, MaintenanceAction
 from teleclaude.core.integration._maintenance_records import (
     EventActivation,
     MaintenanceActionRecord,
@@ -42,8 +43,9 @@ from teleclaude.core.integration._maintenance_records import (
     write_event_file,
     write_record,
 )
-from teleclaude.core.integration.maintenance_trigger import MaintenanceTrigger
+from teleclaude.core.integration.maintenance_trigger import DRAIN_HELD_ENV, DRAIN_HELD_VALUE, MaintenanceTrigger
 from teleclaude.core.project_state import resolve_project_state_root
+from teleclaude.deployment.release_checkout import is_release_installation, selected_revision
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, hook_free_environment
 from teleclaude.hooks.integrator_judgment_marker import (
@@ -81,8 +83,9 @@ _MAINTENANCE_ACTION_INTERRUPTED_EVENT = "post_commit_maintenance_action_interrup
 _MAINTENANCE_ACTION_RETRIED_EVENT = "post_commit_maintenance_action_retried"
 _MAINTENANCE_RESOLVED_EVENT = "post_commit_maintenance_resolved"
 _MAINTENANCE_SKIPPED_EVENT = "post_commit_maintenance_skipped"
-_SKIP_GIT_UNAVAILABLE = "git_unavailable"
-_SKIP_INELIGIBLE_LOCATION = "ineligible_location"
+_INELIGIBLE_LOCATION_DETAIL = "{root} is neither the canonical checkout on main nor the installed release checkout"
+_INVALID_RANGE_DETAIL = "the activation range is not a literal range of the checked-out source"
+_REFUSAL_NOTICE = "Maintenance for this activation was not recorded ({reason}): {detail}. Run {command} to perform it."
 _UNKNOWN_ACTION_EXIT_CODE = 127
 _SUCCESS_OUTCOME = "success"
 _REPLAY_COMMIT_COMMAND = "telec code maintenance retry --after-sha {after_sha} --action {action_id}"
@@ -116,6 +119,48 @@ class MaintenanceActionObservation:
     recovery_reference: str | None = None
 
 
+class ActivationRefusal(StrEnum):
+    """Why an activation's owed set could not be recorded."""
+
+    INELIGIBLE_LOCATION = "ineligible_location"
+    INVALID_RANGE = "invalid_range"
+    GIT_UNAVAILABLE = "git_unavailable"
+    CONFIGURATION_UNRESOLVED = "configuration_unresolved"
+    RECORD_FAILED = "record_failed"
+
+
+@dataclass(frozen=True)
+class OwedSetRecorded:
+    """The activation's owed actions are durably recorded, by this call or an earlier one."""
+
+    action_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class OwedSetEmpty:
+    """The activation owes no maintenance action."""
+
+
+@dataclass(frozen=True)
+class ActivationRefused:
+    """The activation's owed set could not be determined or recorded; nothing is claimed about it."""
+
+    reason: ActivationRefusal
+    detail: str
+
+
+ActivationRecording = OwedSetRecorded | OwedSetEmpty | ActivationRefused
+
+
+def refusal_notice(recording: ActivationRecording) -> str | None:
+    """The terminal notice a refused activation owes its committer; an ordinary ineligible location owes none."""
+    if not isinstance(recording, ActivationRefused) or recording.reason is ActivationRefusal.INELIGIBLE_LOCATION:
+        return None
+    return _REFUSAL_NOTICE.format(
+        reason=recording.reason, detail=recording.detail, command=ON_DEMAND_MAINTENANCE_COMMAND
+    )
+
+
 def resolve_activation_range(project_root: Path, before_ref: str | None, after_ref: str) -> ActivationRange:
     """Resolve hook refs to immutable object ids before selecting any action."""
     repository = Repo(str(project_root.resolve()))
@@ -141,10 +186,35 @@ def resolve_post_merge_activation_range(project_root: Path) -> ActivationRange:
     )
 
 
-def current_canonical_main_revision(project_root: Path) -> str:
-    """Resolve the committed main tip from the owning checkout, including worktree callers."""
+def selected_maintenance_revision(project_root: Path) -> str:
+    """Resolve the committed source maintenance answers to, from the owning checkout including worktree callers.
+
+    A release installation runs the commit it has checked out, whatever local main names; every
+    other checkout answers to its committed main tip.
+    """
     root = resolve_project_state_root(project_root)
-    return Repo(str(root)).commit(_CANONICAL_MAIN_REFERENCE).hexsha
+    return selected_revision(root) or Repo(str(root)).commit(_CANONICAL_MAIN_REFERENCE).hexsha
+
+
+def maintenance_model(project_root: Path) -> CheckpointModel:
+    """The declaration a root's maintenance answers to.
+
+    A release installation answers to the declaration committed at the commit it runs, so an
+    uncommitted edit or another local branch cannot supply it a different action set; every other
+    checkout answers to its working-tree declaration.
+    """
+    root = project_root.resolve()
+    revision = selected_revision(root)
+    if revision is None:
+        return load_checkpoint_model(str(root))
+    return load_committed_checkpoint_model(root, revision)
+
+
+def _holds_eligible_posture(root: Path, repository: Repo) -> bool:
+    """Whether the checkout may carry canonical-main maintenance: the installed release, or main itself."""
+    if is_release_installation(root):
+        return True
+    return not repository.head.is_detached and repository.active_branch.name == _MAIN_BRANCH_NAME
 
 
 def activation_range_action_paths(
@@ -158,49 +228,61 @@ def activation_range_action_paths(
         return None
     try:
         repository = Repo(str(root))
-        if repository.head.is_detached or repository.active_branch.name != _MAIN_BRANCH_NAME:
+        if not _holds_eligible_posture(root, repository):
             return None
         if not _is_literal_range(repository, activation_range):
             return None
         changed_files = _changed_files(repository, activation_range)
-        action_ids = main_only_maintenance_action_ids_for_files_and_activation(
-            list(changed_files), CheckpointActivation.CANONICAL_MAIN, root
+        action_ids = main_only_maintenance_action_ids_for_model(
+            list(changed_files), CheckpointActivation.CANONICAL_MAIN, maintenance_model(root)
         )
     except _GIT_FAILURES:
         return None
     return changed_files if action_id in action_ids else None
 
 
-def record_activation(project_root: Path, activation_range: ActivationRange) -> bool:
-    """Persist the actions owed by one canonical-main activation before returning."""
+def record_activation(project_root: Path, activation_range: ActivationRange) -> ActivationRecording:
+    """Persist the actions owed by one canonical-main activation before returning.
+
+    The outcome distinguishes a recorded owed set (including one an earlier call recorded), an
+    explicitly empty owed set, and a refusal with its reason. A storage failure leaves the records
+    already written in place so a replay fills the remaining set.
+    """
     root = project_root.resolve()
     if root != resolve_project_root(root):
-        _log_skipped(activation_range, _SKIP_INELIGIBLE_LOCATION, root)
-        return False
+        return _refuse(
+            activation_range,
+            root,
+            ActivationRefusal.INELIGIBLE_LOCATION,
+            _INELIGIBLE_LOCATION_DETAIL.format(root=root),
+        )
     try:
         repository = Repo(str(root))
-        if repository.head.is_detached or repository.active_branch.name != _MAIN_BRANCH_NAME:
-            _log_skipped(activation_range, _SKIP_INELIGIBLE_LOCATION, root)
-            return False
+        if not _holds_eligible_posture(root, repository):
+            return _refuse(
+                activation_range,
+                root,
+                ActivationRefusal.INELIGIBLE_LOCATION,
+                _INELIGIBLE_LOCATION_DETAIL.format(root=root),
+            )
         if not _is_literal_range(repository, activation_range):
-            _log_skipped(activation_range, _SKIP_GIT_UNAVAILABLE, root)
-            return False
+            return _refuse(activation_range, root, ActivationRefusal.INVALID_RANGE, _INVALID_RANGE_DETAIL)
         changed_files = _changed_files(repository, activation_range)
+    except ConfigLoadError as exc:
+        return _refuse(activation_range, root, ActivationRefusal.CONFIGURATION_UNRESOLVED, describe_load_error(exc))
     except _GIT_FAILURES as exc:
-        logger.warning(
-            _MAINTENANCE_SKIPPED_EVENT,
-            reason=_SKIP_GIT_UNAVAILABLE,
-            before_sha=activation_range.before_sha,
-            after_sha=activation_range.after_sha,
-            error=str(exc),
-        )
-        return False
+        return _refuse(activation_range, root, ActivationRefusal.GIT_UNAVAILABLE, str(exc))
 
-    action_ids = tuple(
-        main_only_maintenance_action_ids_for_files_and_activation(
-            list(changed_files), CheckpointActivation.CANONICAL_MAIN, root
+    try:
+        action_ids = tuple(
+            main_only_maintenance_action_ids_for_model(
+                list(changed_files), CheckpointActivation.CANONICAL_MAIN, maintenance_model(root)
+            )
         )
-    )
+    except ConfigLoadError as exc:
+        return _refuse(activation_range, root, ActivationRefusal.CONFIGURATION_UNRESOLVED, describe_load_error(exc))
+    except _GIT_FAILURES as exc:
+        return _refuse(activation_range, root, ActivationRefusal.CONFIGURATION_UNRESOLVED, str(exc))
     logger.info(
         _MAINTENANCE_RESOLVED_EVENT,
         before_sha=activation_range.before_sha,
@@ -209,8 +291,25 @@ def record_activation(project_root: Path, activation_range: ActivationRange) -> 
         changed_files=changed_files,
     )
     if not action_ids:
-        return False
+        return OwedSetEmpty()
 
+    try:
+        _write_owed_records(root, activation_range, action_ids, changed_files)
+    except OSError as exc:
+        return _refuse(activation_range, root, ActivationRefusal.RECORD_FAILED, str(exc))
+    logger.info(
+        _MAINTENANCE_RECORDED_EVENT,
+        before_sha=activation_range.before_sha,
+        after_sha=activation_range.after_sha,
+        action_ids=action_ids,
+    )
+    return OwedSetRecorded(action_ids)
+
+
+def _write_owed_records(
+    root: Path, activation_range: ActivationRange, action_ids: tuple[str, ...], changed_files: tuple[str, ...]
+) -> None:
+    """Write each owed action's record that does not exist yet, then the integrator judgment the paths owe."""
     queued_at = datetime.now(UTC).isoformat()
     for action_id in action_ids:
         path = record_path(root, commit_activation_key(activation_range.after_sha), action_id)
@@ -232,13 +331,6 @@ def record_activation(project_root: Path, activation_range: ActivationRange) -> 
             [LOG_CHECK_ACTION_ID],
             queued_at,
         )
-    logger.info(
-        _MAINTENANCE_RECORDED_EVENT,
-        before_sha=activation_range.before_sha,
-        after_sha=activation_range.after_sha,
-        action_ids=action_ids,
-    )
-    return True
 
 
 def record_event_activation(project_root: Path, event: ReceivedEvent, action_ids: tuple[str, ...]) -> bool:
@@ -248,7 +340,7 @@ def record_event_activation(project_root: Path, event: ReceivedEvent, action_ids
     an activation whose records already exist is not recorded again. A location that is not the
     canonical checkout on main records nothing and returns ``False``.
     """
-    root = eligible_main_root(project_root)
+    root = eligible_maintenance_root(project_root)
     if root is None:
         return False
     activation = EventActivation(event_id=event.id, event_type=event.type)
@@ -297,7 +389,7 @@ def start_drain_contender(project_root: Path) -> bool:
 
 def drain_maintenance(project_root: Path) -> bool:
     """Drain every pending activation while holding the single checkout lock."""
-    root = eligible_main_root(project_root)
+    root = eligible_maintenance_root(project_root)
     if root is None:
         return False
     with maintenance_drain_lock(root):
@@ -313,7 +405,7 @@ def main() -> int:
 
 def retry_failed_action(project_root: Path, key: str, action_id: str) -> bool:
     """Reset one terminal failure of the activation named by ``key`` and drain it under the shared lock."""
-    root = eligible_main_root(project_root)
+    root = eligible_maintenance_root(project_root)
     if root is None:
         return False
     with maintenance_drain_lock(root):
@@ -379,20 +471,22 @@ def observe_maintenance_action(project_root: Path, action_id: str) -> Maintenanc
     return MaintenanceActionObservation(MaintenanceObservationState.ABSENT, ON_DEMAND_MAINTENANCE_COMMAND)
 
 
-def eligible_main_root(project_root: Path) -> Path | None:
-    """Require the canonical checkout's main branch; return its root, or ``None`` for any other location."""
+def eligible_maintenance_root(project_root: Path) -> Path | None:
+    """Require the canonical checkout on main, or the installed release checkout; return its root, or ``None``."""
     root = project_root.resolve()
     canonical_root = resolve_project_state_root(root)
     if root != canonical_root:
-        logger.warning(_MAINTENANCE_SKIPPED_EVENT, reason=_SKIP_INELIGIBLE_LOCATION, project_root=str(root))
+        logger.warning(_MAINTENANCE_SKIPPED_EVENT, reason=ActivationRefusal.INELIGIBLE_LOCATION, project_root=str(root))
         return None
     try:
         repository = Repo(str(root))
-        if repository.head.is_detached or repository.active_branch.name != _MAIN_BRANCH_NAME:
-            logger.warning(_MAINTENANCE_SKIPPED_EVENT, reason=_SKIP_INELIGIBLE_LOCATION, project_root=str(root))
+        if not _holds_eligible_posture(root, repository):
+            logger.warning(
+                _MAINTENANCE_SKIPPED_EVENT, reason=ActivationRefusal.INELIGIBLE_LOCATION, project_root=str(root)
+            )
             return None
     except _GIT_FAILURES as exc:
-        logger.warning(_MAINTENANCE_SKIPPED_EVENT, reason=_SKIP_GIT_UNAVAILABLE, error=str(exc))
+        logger.warning(_MAINTENANCE_SKIPPED_EVENT, reason=ActivationRefusal.GIT_UNAVAILABLE, error=str(exc))
         return None
     return root
 
@@ -414,7 +508,7 @@ def _drain_locked(project_root: Path) -> None:
         activation = _next_activation(repository, actionable)
         activation_records = tuple(record for record in actionable if record.activation == activation)
         # The model is resolved as each activation is reached: an earlier action may have advanced the checkout.
-        model = load_checkpoint_model(str(root))
+        model = maintenance_model(root)
         known_records = {
             record.action_id: record for record in activation_records if record.action_id in model.maintenance
         }
@@ -469,7 +563,7 @@ def _run_activation(
         tuple(known_records),
         actions,
         fill,
-        None,
+        {**hook_free_environment(root), DRAIN_HELD_ENV: DRAIN_HELD_VALUE},
         start_record,
         settle_record,
         capture_output=True,
@@ -674,7 +768,7 @@ def _precedence_waves(
 
 
 def _is_literal_range(repository: Repo, activation_range: ActivationRange) -> bool:
-    """Require full object ids and keep the activated tip on canonical main."""
+    """Require full object ids and keep the activated tip on the checked-out source."""
     for revision in (activation_range.before_sha, activation_range.after_sha):
         if revision is None:
             continue
@@ -704,15 +798,18 @@ def _changed_files(repository: Repo, activation_range: ActivationRange) -> tuple
     return tuple(paths.splitlines())
 
 
-def _log_skipped(activation_range: ActivationRange, reason: str, root: Path) -> None:
-    """Record a range that was not eligible to enqueue maintenance."""
-    logger.info(
+def _refuse(activation_range: ActivationRange, root: Path, reason: ActivationRefusal, detail: str) -> ActivationRefused:
+    """Record a refused activation in the structured log and return it; only an ineligible location is routine."""
+    log = logger.info if reason is ActivationRefusal.INELIGIBLE_LOCATION else logger.warning
+    log(
         _MAINTENANCE_SKIPPED_EVENT,
         before_sha=activation_range.before_sha,
         after_sha=activation_range.after_sha,
         reason=reason,
+        detail=detail,
         project_root=str(root),
     )
+    return ActivationRefused(reason, detail)
 
 
 if __name__ == "__main__":

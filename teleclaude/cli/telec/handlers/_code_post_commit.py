@@ -5,7 +5,9 @@ from __future__ import annotations
 import sys
 
 from teleclaude.core.integration.post_commit_maintenance import (
+    OwedSetRecorded,
     record_activation,
+    refusal_notice,
     resolve_post_commit_activation_range,
     start_drain_contender,
 )
@@ -24,5 +26,10 @@ def handle_code_post_commit(args: list[str]) -> None:
     canonical_root = roots.require_commit_boundary_root()
     activation_range = resolve_post_commit_activation_range(checkout_root)
     maintenance_root = checkout_root if checkout_root != canonical_root else canonical_root
-    if record_activation(maintenance_root, activation_range):
+    recording = record_activation(maintenance_root, activation_range)
+    if isinstance(recording, OwedSetRecorded):
         start_drain_contender(canonical_root)
+        return
+    notice = refusal_notice(recording)
+    if notice is not None:
+        print(notice, file=sys.stderr)

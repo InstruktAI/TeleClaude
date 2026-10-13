@@ -14,9 +14,13 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.checkpoint_model import load_checkpoint_model
 from teleclaude.constants import CheckpointEventBinding
-from teleclaude.core.integration.post_commit_maintenance import record_event_activation, start_drain_contender
+from teleclaude.core.integration.post_commit_maintenance import (
+    maintenance_model,
+    record_event_activation,
+    start_drain_contender,
+)
+from teleclaude.deployment.release_checkout import selected_revision
 from teleclaude.events.consumers import Consumer, Interest
 from teleclaude.events.envelope import EventHomeKind, EventHomeRef, ReceivedEvent
 from teleclaude.events.type_pattern import ANY_TYPE
@@ -39,10 +43,15 @@ class DrainLaunchError(RuntimeError):
 
 @dataclass(frozen=True)
 class _DeclarationStamp:
-    """What identifies one state of a project's declaration file without reading it."""
+    """What identifies one state of a project's declaration without reading it.
+
+    A release installation answers to the declaration committed at the commit it runs, so that
+    commit is its identity; every other project answers to its declaration file as it stands.
+    """
 
     modified_ns: int
     size: int
+    revision: str | None
 
 
 @dataclass(frozen=True)
@@ -73,18 +82,21 @@ class _ProjectEventBindings:
         known = self._read.get(root)
         if known is not None and known.stamp == stamp:
             return known.bindings
-        read = _ReadBindings(stamp=stamp, bindings=load_checkpoint_model(str(root)).event_bindings)
+        read = _ReadBindings(stamp=stamp, bindings=maintenance_model(root).event_bindings)
         self._read[root] = read
         return read.bindings
 
 
 def _declaration_stamp(root: Path) -> _DeclarationStamp | None:
-    """The declaration file's modification stamp, or ``None`` when the root carries none."""
+    """The declaration's identity, or ``None`` when the root carries none."""
+    revision = selected_revision(root)
+    if revision is not None:
+        return _DeclarationStamp(modified_ns=0, size=0, revision=revision)
     try:
         status = (root / ConfigFileName.OVERLAY).stat()
     except FileNotFoundError:
         return None
-    return _DeclarationStamp(modified_ns=status.st_mtime_ns, size=status.st_size)
+    return _DeclarationStamp(modified_ns=status.st_mtime_ns, size=status.st_size, revision=None)
 
 
 def build_event_bound_maintenance_consumer() -> Consumer:

@@ -18,8 +18,8 @@ from teleclaude.core.blueprint.manifest import read_published_generation
 from teleclaude.core.integration.post_commit_maintenance import (
     ON_DEMAND_MAINTENANCE_COMMAND,
     MaintenanceObservationState,
-    current_canonical_main_revision,
     observe_maintenance_action,
+    selected_maintenance_revision,
 )
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError
@@ -29,13 +29,15 @@ _OBSERVATION_POLL_INTERVAL_SECONDS = 0.1
 _MAINTENANCE_OBSERVATION_FAILED_EVENT = "blueprint_maintenance_observation_failed"
 _MAINTENANCE_OBSERVATION_UNAVAILABLE_REASON = "Blueprint maintenance state could not be observed"
 _MAINTENANCE_FAILED_REASON = "Blueprint maintenance failed before publishing a current generation"
-_MAINTENANCE_NOT_RECORDED_REASON = "Blueprint maintenance was not recorded for committed main"
+_MAINTENANCE_NOT_RECORDED_REASON = "Blueprint maintenance was not recorded for the selected committed source"
 _MAINTENANCE_OBSERVATION_EXPIRED_REASON = "Blueprint maintenance did not converge within the observation bound"
-_MAIN_REVISION_UNRESOLVED_REASON = "Committed canonical main could not be resolved"
-_MAIN_REVISION_RECHECK_FAILED_REASON = "Committed canonical main could not be rechecked after reading the Blueprint"
+_MAIN_REVISION_UNRESOLVED_REASON = "The selected committed source could not be resolved"
+_MAIN_REVISION_RECHECK_FAILED_REASON = (
+    "The selected committed source could not be rechecked after reading the Blueprint"
+)
 _GENERATION_MALFORMED_REASON = "The current Blueprint generation is malformed or incomplete"
 _GENERATION_ABSENT_REASON = "No complete Blueprint generation is published"
-_GENERATION_STALE_REASON = "The published Blueprint does not match committed canonical main"
+_GENERATION_STALE_REASON = "The published Blueprint does not match the selected committed source"
 
 logger = get_logger(__name__)
 
@@ -136,7 +138,7 @@ def query_current_blueprint(project_root: str | Path) -> BlueprintQueryResult:
 def _fresh_generation(root: Path) -> BlueprintQueryResult:
     """Pin a generation and verify main did not advance across its freshness observation."""
     try:
-        observed_main_sha = current_canonical_main_revision(root)
+        observed_main_sha = selected_maintenance_revision(root)
     except (OSError, ValueError, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, BadName):
         return BlueprintQueryResult(
             state=BlueprintQueryState.MAIN_UNRESOLVED,
@@ -156,7 +158,7 @@ def _fresh_generation(root: Path) -> BlueprintQueryResult:
 
     generation, manifest = published
     try:
-        latest_main_sha = current_canonical_main_revision(root)
+        latest_main_sha = selected_maintenance_revision(root)
     except (OSError, ValueError, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, BadName):
         return BlueprintQueryResult(
             state=BlueprintQueryState.MAIN_UNRESOLVED,

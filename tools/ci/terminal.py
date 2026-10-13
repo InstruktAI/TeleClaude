@@ -167,11 +167,11 @@ class PersistentTerminal:
                 self._signal_process_group(process, signal.SIGTERM)
         if process is not None:
             try:
-                process.wait(timeout=self._timeout_seconds)
+                self._wait_draining(process, master_fd, self._timeout_seconds)
             except subprocess.TimeoutExpired:
                 self._signal_process_group(process, signal.SIGTERM)
                 try:
-                    process.wait(timeout=_PROCESS_EXIT_TIMEOUT_SECONDS)
+                    self._wait_draining(process, master_fd, _PROCESS_EXIT_TIMEOUT_SECONDS)
                 except subprocess.TimeoutExpired:
                     self._signal_process_group(process, signal.SIGKILL)
                     process.wait()
@@ -179,6 +179,23 @@ class PersistentTerminal:
             os.close(master_fd)
         self._process = None
         self._master_fd = None
+
+    @staticmethod
+    def _wait_draining(process: subprocess.Popen[bytes], master_fd: int | None, timeout_seconds: float) -> None:
+        """Wait for the shell to exit while reading the terminal, so output it still has to flush cannot block it."""
+        deadline = time.monotonic() + timeout_seconds
+        while process.poll() is None:
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(process.args, timeout_seconds)
+            if master_fd is None:
+                time.sleep(_PTY_WAIT_POLL_SECONDS)
+                continue
+            ready, _, _ = select.select([master_fd], [], [], _PTY_WAIT_POLL_SECONDS)
+            if ready:
+                try:
+                    os.read(master_fd, _PTY_READ_CHUNK_SIZE)
+                except OSError:
+                    time.sleep(_PTY_WAIT_POLL_SECONDS)
 
     @staticmethod
     def _signal_process_group(process: subprocess.Popen[bytes], sig: signal.Signals) -> None:

@@ -34,9 +34,14 @@ from teleclaude.core.integration._maintenance_records import (
     maintenance_drain_lock,
     read_records,
 )
-from teleclaude.core.integration.maintenance_trigger import ON_DEMAND_TRIGGER_ENV, MaintenanceTrigger
+from teleclaude.core.integration.maintenance_trigger import (
+    DRAIN_HELD_ENV,
+    DRAIN_HELD_VALUE,
+    ON_DEMAND_TRIGGER_ENV,
+    MaintenanceTrigger,
+)
 from teleclaude.core.integration.post_commit_maintenance import (
-    eligible_main_root,
+    eligible_maintenance_root,
     replay_command,
     run_maintenance_waves,
 )
@@ -186,7 +191,11 @@ def run_on_demand(invocation_directory: Path, emit: Callable[[str], None]) -> On
         dirty_path_count=dirty_count,
     )
     interpreter = sys.executable
-    child_env = {**hook_free_environment(root), ON_DEMAND_TRIGGER_ENV: MaintenanceTrigger.ON_DEMAND.value}
+    child_env = {
+        **hook_free_environment(root),
+        ON_DEMAND_TRIGGER_ENV: MaintenanceTrigger.ON_DEMAND.value,
+        DRAIN_HELD_ENV: DRAIN_HELD_VALUE,
+    }
     outcomes: list[StepOutcome] = []
 
     def start_step(action_id: str) -> None:
@@ -253,7 +262,7 @@ def _resolve_target(invocation_directory: Path) -> _Target:
     try:
         repository_root = resolve_git_root(directory)
         home = directory.relative_to(repository_root)
-        root = eligible_main_root(repository_root)
+        root = eligible_maintenance_root(repository_root)
     except (FileNotFoundError, OSError, ValueError) as exc:
         raise _Refused(_NO_PROJECT.format(directory=directory, error=exc)) from exc
     if root is None:

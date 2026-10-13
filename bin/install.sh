@@ -1479,6 +1479,24 @@ install_global_cli() {
     print_success "Installed telec at $TELEC_BIN_DIR/telec"
 }
 
+# Select the installed release in detached HEAD. A no-op unless this checkout is a beta or stable
+# installation (teleclaude/deployment/release_checkout.py names it by the executable published above).
+# A maintenance run that started this install already holds the checkout's maintenance
+# serialization and says so through TELECLAUDE_MAINTENANCE_DRAIN_HELD; a standalone install takes it once.
+select_installed_release() {
+    print_header "Selecting the installed release"
+    local flags=(--root "$INSTALL_DIR" --head)
+    if [ -n "${TELECLAUDE_MAINTENANCE_DRAIN_HELD:-}" ]; then
+        flags+=(--serialized)
+    fi
+    if PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.deployment.release_checkout "${flags[@]}"; then
+        print_success "Installed release selected"
+    else
+        print_error "The installed release could not be selected (reason above) — fix it and re-run install"
+        exit 1
+    fi
+}
+
 # Check that the macOS launcher compiler is present before installation work.
 preflight_macos() {
     if [ "$OS" != "macos" ]; then
@@ -1712,6 +1730,7 @@ main() {
     run_install_stage _ensure_local_bin_on_path _ensure_local_bin_on_path
 
     if [ "$CI_MODE" = false ]; then
+        run_install_stage select_installed_release select_installed_release
         run_install_stage run_macos_launcher_identity run_macos_launcher_identity
         run_install_stage install_macos_tmux_server install_macos_tmux_server
         run_install_stage install_service install_service

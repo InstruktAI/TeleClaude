@@ -5,7 +5,9 @@ from __future__ import annotations
 import sys
 
 from teleclaude.core.integration.post_commit_maintenance import (
+    OwedSetRecorded,
     record_activation,
+    refusal_notice,
     resolve_post_merge_activation_range,
     start_drain_contender,
 )
@@ -24,7 +26,12 @@ def handle_code_post_merge(args: list[str]) -> None:
         raise SystemExit(2)
     checkout_root = resolve_invocation_roots().repository_root
     activation_range = resolve_post_merge_activation_range(checkout_root)
-    if record_activation(checkout_root, activation_range):
+    recording = record_activation(checkout_root, activation_range)
+    if isinstance(recording, OwedSetRecorded):
         canonical_root = resolve_project_root(checkout_root)
         if start_drain_contender(canonical_root):
             print(_MAINTENANCE_STARTED_NOTICE, file=sys.stderr)
+        return
+    notice = refusal_notice(recording)
+    if notice is not None:
+        print(notice, file=sys.stderr)
