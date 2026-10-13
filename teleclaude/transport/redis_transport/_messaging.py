@@ -107,19 +107,9 @@ _RELAYED_READ_COMMANDS = frozenset(
 )
 
 _DB_EXCEPTIONS = (SQLAlchemyError, OSError, RuntimeError, ValueError, TypeError)
-_MESSAGE_EXCEPTIONS = (
-    RedisError,
-    SQLAlchemyError,
-    OSError,
-    RuntimeError,
-    LookupError,
-    ValueError,
-    TypeError,
-    UnicodeError,
-    json.JSONDecodeError,
-)
 _DECODE_EXCEPTIONS = (binascii.Error, UnicodeError, ValueError)
 _SYSTEM_COMMAND_PAYLOAD_REJECTED_EVENT = "system_command_payload_rejected"
+_RELAY_INTAKE_POLL_FAILED_EVENT = "relay_intake_poll_failed"
 _ATTENTION_OBSERVATION_METADATA_KEY = "attention_observation"
 _ATTENTION_PROVIDER_KEY = "provider"
 _ATTENTION_NATIVE_EVENT_KEY = "native_event"
@@ -464,7 +454,14 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
 
             except asyncio.CancelledError:
                 break
-            except _MESSAGE_EXCEPTIONS as e:
+            except Exception as e:
+                logger.error(
+                    _RELAY_INTAKE_POLL_FAILED_EVENT,
+                    stream=message_stream,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                    exc_info=True,
+                )
                 await self._handle_redis_error("Message polling error", e)
 
     async def _handle_incoming_message(self, message_id: str, data: dict[bytes, bytes]) -> Any:
@@ -563,7 +560,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
         except ShutdownRefusal as draining:
             # The cursor already advanced: answer explicitly so the sender sees a retryable refusal.
             await self.send_response(message_id, json.dumps(shutdown_refusal_envelope(draining)))
-        except _MESSAGE_EXCEPTIONS as e:
+        except Exception as e:
             logger.error("Failed to handle incoming message: %s", e, exc_info=True)
             # Send error response if possible
             try:
