@@ -46,6 +46,27 @@ old readers are never run against migrated fields.
 | a recorded command naming the retired `general/activate-procedure`                      | command := the procedure ID recorded in `job`, which an activation always carried                                                                                                                                                                                             |
 | a roleless session                                                                      | unchanged                                                                                                                                                                                                                                                                     |
 
+The table reads the recorded values as the runtime that wrote them read them:
+
+- A row is roleless only when it records no system role, no working slug, and
+  no `coordinator` job. A row with no recorded system role and a working slug
+  held the worker role, and is read as a worker row with the job it records.
+- A recorded system role and job agree with the row's recorded command when
+  they are the pair that command conferred at launch, or a pair an in-place
+  adoption door writes over any command: lane adoption into preparation or
+  work, and coordinator acquisition. The legacy `(orchestrator, coordinator)`
+  pair agrees with the retired coordinate command; a `job_runner` row agrees
+  with the retired `general/run-job` or with no command; a `tasker` row whose
+  job names a procedure agrees with the retired `general/activate-procedure`.
+  A row with no recorded command agrees only through an adoption door's pair.
+  Every other pairing is a conflicting triple.
+- A job naming a standing role makes a standing row only under that standing
+  role's own system role or the legacy `(orchestrator, coordinator)` pair. A
+  `job_runner` row is read by the `job_runner` rows of the table whatever its
+  job is called.
+- A command mapping the table cannot complete makes the row unmappable,
+  whatever its role mapping.
+
 A combination the table does not name — an obsolete job such as a reviewer
 kind the catalog no longer keeps, a conflicting role, job and command triple,
 a procedure that declares no role — is unmappable. The migration writes the
@@ -91,8 +112,8 @@ And its persisted launch state carries the same role
 ```gherkin
 Given a session recorded with a combination the mapping does not name
 When the migration runs
-Then the row keeps its recorded values
-And the migration's report names the session, the values and the reason
+Then the row keeps its recorded job and command and carries the reserved `unmapped` role
+And the migration's report names the session, every original recorded value and the reason
 And an agent reviving that session is refused every role-gated act with the not-permitted failure naming the recorded role
 ```
 
@@ -122,8 +143,27 @@ Then it is refused naming the missing input and the row's migrated role is uncha
 Given the runtime starts for the first time after the migration is deployed
 When it opens the session store
 Then the migration runs before any role-gated act is served
-And its inventory and report are written where an operator can read them
+And its inventory and report are written where an operator can read them before any row changes
+And an interrupted run leaves every row as it was recorded
 And a later start finds the migration recorded and does not run it again
+```
+
+#### UC-SRM6: A combination that disagrees with itself elevates nothing
+
+```gherkin
+Scenario Outline: Disagreeing recorded values are unmappable
+  Given a session recorded as <combination>
+  When the migration runs
+  Then the row carries the reserved `unmapped` role
+  And the report names the session, its recorded values and the reason
+  And no role-gated act is admitted for the session
+
+  Examples:
+    | combination                                                                      |
+    | a `job_runner` whose job is `integrator` and that no configured job carries      |
+    | a `worker` whose job is `builder` under a command that conferred `reviewer`      |
+    | no recorded system role, a working slug and no job                               |
+    | an adoption pair under a retired `general/run-job` whose job no declaration carries |
 ```
 
 ### Cross-context references
