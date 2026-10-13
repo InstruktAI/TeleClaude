@@ -300,7 +300,7 @@ And installation validates configuration only after they are
 
 ```gherkin
 Given a machine being installed whose configuration is freshly seeded or already present at an older version
-And no running daemon reports a migration reach below the current version
+And either no daemon listens, or the listening daemon answers with a migration reach at or above the current version
 When installation completes
 Then the machine configuration and the home's global configuration are stored at the current version
 And installation validates configuration only after they are
