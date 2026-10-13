@@ -169,6 +169,17 @@ Then only the path binding's actions are owed
 And the event binding's actions are not performed
 ```
 
+<!-- planned:release-development-checkouts -->
+
+### Checkout-associated event targets
+
+A logical project's installation event binding selects its installed checkout,
+including when its registered development checkout is also present. A relayed
+upstream change does not select both physical locations as two installations.
+Development source refresh remains a source operation, independent of admitted
+release activation (`local/projects/teleclaude/design/architecture/command-scope`).
+<!-- /planned:release-development-checkouts -->
+
 ## Known caveats
 
 - An event type names what happened at the source, not every detail: GitHub's

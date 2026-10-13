@@ -98,6 +98,25 @@ unavailable tree. Other publishers keep their activated revisions.
 
 There is no working-tree entrypoint and no bypass.
 
+<!-- planned:release-development-checkouts -->
+
+### Publication with an associated development checkout
+
+For an associated installation/development pair, committed development main is
+the input to a checkout-owned authoring generation, while the installed revision
+alone supplies that project's machine-wide runtime contribution. The committed-
+source, serialization and capability contracts above apply independently to
+those destinations. Installation does not acquire a second publisher from the
+companion's cloned declaration. Default reads, targeted pending reads and agent
+bootstrap consume their selected generation under
+`local/projects/teleclaude/spec/feature/context/checkout-context-selection`.
+
+Development maintenance and development-root on-demand publication update only
+the authoring generation. Installation maintenance and installation-root
+on-demand publication retain the installed generation. Other projects retain
+their existing activated generations.
+<!-- /planned:release-development-checkouts -->
+
 ## Canonical fields
 
 Each per-project publication phase runs only when the committed declaration

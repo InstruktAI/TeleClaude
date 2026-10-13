@@ -21,6 +21,27 @@ Work is the first stage that materializes a per-slug worktree under `trees/<slug
 
 Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. The work state machine owns the work-entry drift path end-to-end. When a tracked artifact's collapsed drift status is `pending`, work does NOT mutate work-state and does NOT create or touch a worktree; its bounce returns a script that dispatches the `sdlc/drift-analyze` worker and tells the orchestrator to re-enter `telec todo work {slug}` once the analyzer idles — this path never enters the prepare machine. The analyzer stamps its `--drift-reviewed` verdict and drives no transition. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. On re-entry the work machine reads the stamped verdict. A `cosmetic` verdict is non-blocking: work proceeds to worktree creation and build dispatch. A `substantive` verdict returns the Todo to preparation through the lifecycle runner: the work machine releases the Todo's lifecycle claim, and the platform ends the slug's work-lane sessions — every session the calling work orchestrator started, then the work orchestrator itself — only after the machine has answered the orchestrator's call. The worktree, local and remote branch, workspace directory, and build commits remain. No session changes lanes: the lifecycle runner dispatches a fresh prepare orchestrator, which re-derives the affected artifact; at `prepared` that orchestrator ends like any other and releases the claim, and the lifecycle runner dispatches a fresh work orchestrator, which continues the existing build against the changed plan (UC-WSM10). Neither lifecycle machine adopts a session that holds the slug in the other lane; each refuses it instead. The cosmetic path attempts no artifact write, so it never contends with the write-authority guard.
 
+<!-- planned:reviewed-pr-contributions -->
+
+### Contribution adoption entry
+
+An imported proposal enters through the reviewer-first contract in
+`local/projects/teleclaude/spec/feature/workflow/contribution-adoption` before
+ordinary preparation or build gates execute. The workflow records upstream
+corroboration, accepted intent, retained source and remaining obligations, then
+uses an owned adoption transition to resume the appropriate existing phase.
+It creates no local approval merely from a foreign report. A builder awaiting
+initial review acts only on the owning orchestrator's continuation.
+
+A contribution already satisfying the reviewed change needs no manufactured
+implementation history: the adoption transition retains that work and runs the
+remaining native obligations before finalize. Review consumption preserves the
+existing qualified unchanged-change relation for an exact conflict-free
+automatic upstream merge; actual changes to contribution code, contract or
+reports require the review their delta owes. Missing preparation returns through
+the normal preparation owner with the imported work preserved.
+<!-- /planned:reviewed-pr-contributions -->
+
 ## Canonical fields
 
 ### Use cases

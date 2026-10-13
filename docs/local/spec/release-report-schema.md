@@ -20,6 +20,8 @@ summary schema below.
 
 ### JSON Schema
 
+<!-- planned-change:semver-compatible-releases -->
+
 ```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
@@ -75,6 +77,66 @@ summary schema below.
   }
 }
 ```
+
+<!-- change:semver-compatible-releases -->
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["classification", "rationale", "contract_changes", "release_notes", "assessment_complete"],
+  "properties": {
+    "classification": {
+      "type": "string",
+      "enum": ["patch", "minor", "major", "none"],
+      "description": "The semver classification of the changes."
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Detailed reasoning for the classification."
+    },
+    "contract_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["surface", "item", "change_type", "details"],
+        "properties": {
+          "surface": {
+            "type": "string",
+            "enum": ["cli", "events", "config"],
+            "description": "Which public surface was affected."
+          },
+          "item": {
+            "type": "string",
+            "description": "The name of the affected command, tool, event, or key."
+          },
+          "change_type": {
+            "type": "string",
+            "enum": ["added", "modified", "removed"],
+            "description": "Nature of the change."
+          },
+          "details": {
+            "type": "string",
+            "description": "Brief description of the change."
+          }
+        }
+      }
+    },
+    "release_notes": {
+      "type": "string",
+      "description": "Draft release notes for human and AI consumption."
+    },
+    "assessment_complete": {
+      "type": "boolean",
+      "description": "Whether the inspector completed the version and breaking/upgrade assessment for the supplied change interval."
+    }
+  }
+}
+```
+
+<!-- /planned-change:semver-compatible-releases -->
 
 ### Consumption
 

@@ -476,6 +476,20 @@ And origin/main is unchanged
   the todo-delivered event fires, the runner may re-evaluate dependents whose
   work gates are now satisfied.
 
+<!-- planned:reviewed-pr-contributions -->
+
+### Contribution delivery boundary
+
+The mainline state machine described above serves upstream-authoring delivery.
+A contributor checkout's finalize-ready handoff is consumed by
+`local/projects/teleclaude/spec/feature/workflow/contribution-export`, which
+records a PR proposal rather than entering the candidate-push/root-fold path.
+PR creation neither records upstream delivery nor releases its sole recoverable
+source. An upstream-adopted contribution reaches this state machine only with
+its local lifecycle evidence and owned documentation reconciled under
+`local/projects/teleclaude/spec/feature/workflow/contribution-adoption`.
+<!-- /planned:reviewed-pr-contributions -->
+
 ## Known caveats
 
 - The integrator is the only writer authorized to push `origin/main`. Worker sessions on per-slug branches push their feature branches only; main is reachable solely through this state machine.

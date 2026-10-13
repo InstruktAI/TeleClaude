@@ -174,6 +174,45 @@ contract governs only what happens when maintenance runs.
   recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
 
+<!-- planned:release-development-checkouts -->
+
+### Associated checkout activation
+
+For a project with an installation/development association, maintenance selection
+also consumes the checkout purpose published by
+`local/projects/teleclaude/design/architecture/command-scope`. The canonical-main
+location predicate above is qualified by that purpose. Development activations
+owe development environment, indexing and authoring-context work. Installed
+activations alone owe live configuration migrations, machine-wide context
+publication and service effects. On alpha the existing combined checkout keeps
+its immediate activation behavior. An explicit development preparation performs
+its own environment work without provisioning a host runtime.
+
+Action records and drain serialization remain checkout-scoped; a shared todo
+store does not combine their owed effects. Dependency environments follow that
+same boundary. The installed release's maintenance executor can act on a
+development target only through its supported development operation; unsupported
+source requirements are reported rather than widening execution into live state.
+
+The complete association, root resolution and effect selection become available
+together before eager companion provisioning is reported ready. This preserves
+state ownership under `sdlc/policy/code-quality-practices`.
+<!-- /planned:release-development-checkouts -->
+
+<!-- planned:installation-activation-inspection -->
+
+### Installation assessment handoff
+
+The log-judgment and readiness obligations above are consumed through
+`local/projects/teleclaude/spec/feature/integration/installation-assessment`.
+Maintenance persists readiness or terminal failure and publishes local attention
+for the installed activation; it records no healthy-runtime conclusion itself.
+The installation-inspection assignment and a delivery integrator share one
+assessment responsibility. Checkpoint and recurring instructions follow the
+assignment's subject; a release installation receives no source-publication step.
+An interrupted emission is recoverable from the retained obligation.
+<!-- /planned:installation-activation-inspection -->
+
 ### Use cases
 
 #### UC-PCM1: A commit performs the maintenance its changed paths owe

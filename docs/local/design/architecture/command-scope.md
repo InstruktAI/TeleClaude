@@ -55,6 +55,39 @@ flowchart LR
     S[daemon and live home] --> Sc[sessions, reminders, agents, computers,<br/>operations, message, auth,<br/>events, signals, history, memories,<br/>projects list, config by kind and slug]
 ```
 
+<!-- planned:release-development-checkouts -->
+
+### Associated checkout roots
+
+The invocation resolver returns the active working checkout, logical project's
+workflow-state root, authoring checkout and installed checkout as distinct
+answers. Config supplies the registered association; workflow owns the resolution
+of its shared state and worktree owners. Consumers request the answer their
+operation acts on, following `sdlc/principle/domain-driven-design`.
+
+The existing root table is qualified by this association: todo records, claims,
+artifacts and project-wide job/bug state remain at the primary workflow-state
+root. Source preparation, pending-doc authoring, Blueprint source and integration
+operate against the development checkout. Code-file operations remain in the
+active worktree. Installation configuration, release activation and runtime
+assessment operate against the installed checkout. Physical maintenance records
+belong to the checkout activation they describe; sharing a logical project does
+not merge installation and development maintenance.
+
+Docs and bootstrap context select the invocation's coherent view under
+`local/projects/teleclaude/spec/feature/context/checkout-context-selection`.
+The global CLI remains the installed controller; a development directory changes
+the operation's target, not the running command's implementation. A missing
+controller capability is reported through the installed contract rather than
+executing development code against live state.
+
+The association also identifies the delivery purpose: upstream mainline authoring
+or contributor proposal handoff. A contributor's delivery operations consume
+`local/projects/teleclaude/spec/feature/workflow/contribution-export` rather than
+the mainline publication path. Project addresses name the logical identity;
+checkout selection is explicit and never inferred from a `-dev` suffix.
+<!-- /planned:release-development-checkouts -->
+
 ## Invariants
 
 1. **The change acts on the worktree.** A command whose subject is the change — its

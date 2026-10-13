@@ -22,6 +22,8 @@ daemon's project listing that TUIs and the API show, mapping a session's working
 directory onto its project, and the Discord project forums — enumerate every
 entry.
 
+<!-- planned-change:release-development-checkouts -->
+
 An entry's identity is its slug: a project's own project slug, which
 initialization derives from the folder name, or a home's tier slug. A project's
 display name is its declared project name, then its slug. A person home's
@@ -29,6 +31,26 @@ display name is its declared home name, then the global person name, then its
 slug. A company home's display name is its declared name, then its slug. Each
 entry's description comes from its own configuration when present. Identities
 are unique among a machine's entries.
+<!-- change:release-development-checkouts -->
+
+A logical project's identity is its declared slug. The registry can associate
+an installed checkout and its development checkout with that identity,
+distinguishing each location's purpose and retaining one primary workflow-state
+location. The cloned source declaration is unchanged; machine-local checkout
+purpose does not rename the project. An unrelated folder claiming an existing
+identity remains a conflict. The config-owned registry model owns the serialized
+association and its validation.
+
+Session placement exposes both locations with their checkout purpose.
+Project-wide consumers enumerate the logical project once: jobs, bug intake,
+retention, lifecycle dispatch and publisher ownership do not multiply with its
+checkouts. An existing logical-project address retains its primary identity;
+an explicit checkout selection resolves only a member of that association.
+Workflow owns purpose-specific root resolution
+(`local/projects/teleclaude/design/architecture/command-scope`).
+<!-- /planned-change:release-development-checkouts -->
+
+<!-- planned-change:release-development-checkouts -->
 
 Creation and adoption are what write the registry, and nothing else does: no
 deployment or synchronization path adds, removes, or rewrites an entry.
@@ -53,6 +75,26 @@ project.
 The recorded path is always the durable main checkout. A project may be adopted
 from inside a linked worktree, and the registry still names the checkout that
 owns it, so an ephemeral worktree path is never enumerated as a project.
+<!-- change:release-development-checkouts -->
+
+Creation and adoption own registry writes. Installation provisioning calls
+the adoption owner's checkout-association operation to register its companion
+atomically with the existing logical project. It neither appends an unrelated
+duplicate project nor writes the backing file itself. Retry preserves the same
+association. Ordinary publication and synchronization do not adopt folders.
+
+Person and company homes retain their existing tier identities and session
+placement behavior. Project creation/adoption retains its owner and declaration
+contracts. A linked worktree is represented by its owning registered checkout,
+never as another project entry. The association's durable locations survive
+changes of channel and repeated installation.
+
+The original registered location retains existing workflow state. Migration
+resolves an association before any consumer can create another store or take a
+second project-wide responsibility. Existing worktrees and claims retain their
+owner until a coordinated transition has preserved their work
+(`general/principle/trust-and-guardrails`).
+<!-- /planned-change:release-development-checkouts -->
 
 ### The retired trusted-directory list
 
@@ -78,6 +120,8 @@ project to the project-acting consumers.
 
 ## Canonical fields
 
+<!-- planned-change:release-development-checkouts -->
+
 - **Entry.** One adopted folder, addressed by its durable main checkout.
 - **Kind.** The tier the folder's own configuration declares: project, person,
   or company.
@@ -93,6 +137,24 @@ project to the project-acting consumers.
 - **Readers.** Project-acting consumers read project entries; session-placing
   consumers read every entry. None discovers projects from the filesystem or
   from any other list.
+
+<!-- change:release-development-checkouts -->
+
+- **Logical entry.** A registered project or person/company session home,
+  retaining its unique logical identity and existing declaration/display name.
+- **Checkout association.** A project's registered installed and development
+  locations, their distinct purposes and its one primary workflow-state root.
+  A checkout selection is scoped to that logical entry.
+- **Order.** Logical entries retain adoption order; associated physical
+  locations remain distinguishable in session placement.
+- **Writer.** Config's creation/adoption operations, including installation's
+  idempotent request to associate its companion. Publication performs no registry
+  write.
+- **Readers.** Project-wide consumers enumerate logical projects once. Session
+  placement also exposes their associated checkout locations. The registry is
+  the sole source of those relationships.
+
+<!-- /planned-change:release-development-checkouts -->
 
 ### Use cases
 
@@ -167,12 +229,25 @@ And the machine configuration and the registry are unchanged by the listing
 
 #### UC-CFG-REG8: Adoption refuses a folder whose identity another entry holds
 
+<!-- planned-change:release-development-checkouts -->
+
 ```gherkin
 Given the registry holds an entry with a given identity
 When an operator or agent adopts a different folder that derives the same identity
 Then the adoption is refused, naming the entry that holds the identity
 And the registry is unchanged
 ```
+
+<!-- change:release-development-checkouts -->
+
+```gherkin
+Given the registry holds an entry with a given identity
+When an operator or agent adopts an unrelated folder that derives the same identity
+Then the adoption is refused, naming the entry that holds the identity
+And the registry is unchanged
+```
+
+<!-- /planned-change:release-development-checkouts -->
 
 #### UC-CFG-REG9: A home that is not on the registry holds no identity
 
@@ -205,6 +280,29 @@ And no file is moved
 ```
 
 #### UC-CFG-REG12:
+
+<!-- planned:release-development-checkouts -->
+
+#### UC-CFG-REG13: A development companion is another location of the same project
+
+```gherkin
+Given an operator's installation already has a registered project
+When installation associates its development companion
+Then the operator can select either checkout by its purpose
+And project-wide work still has one logical project identity
+And repeating the association creates no additional entry
+```
+
+#### UC-CFG-REG14: Unrelated duplicate identities remain conflicts
+
+```gherkin
+Given a registered project already holds an identity
+When an agent attempts to register an unrelated checkout under that identity
+Then registration reports the existing owner
+And the existing association is unchanged
+```
+
+<!-- /planned:release-development-checkouts -->
 
 ## Known caveats
 

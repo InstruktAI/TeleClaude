@@ -85,6 +85,50 @@ standalone `reconciliation` control loop is the target owner of that reaction.
 Channel configuration is the machine configuration's `deployment` block
 (`docs/local/spec/teleclaude-config.md`).
 
+<!-- planned:release-development-checkouts -->
+
+### Installed and development checkout relationship
+
+Config associates one logical project with installed and development checkout
+purposes; workflow resolves their shared-state and source roots. Full installation
+provisions the persistent sibling defined by
+`local/projects/teleclaude/spec/feature/reconciliation/development-checkout`.
+The registered relationship, rather than the clone's directory spelling, governs
+every consumer. Development installation, indexing and source work operate in
+that environment. The installed revision alone owns live configuration,
+dependencies, services and machine-wide context activation. Development context
+is separately selected under
+`local/projects/teleclaude/spec/feature/context/checkout-context-selection`.
+
+On alpha, development main in the existing combined checkout remains the source
+of immediate runtime activation. Beta and stable retain their installed source
+until channel admission selects a published release. Their development clone
+tracks upstream main and holds pending docs and worktrees independently.
+Migration preserves the original workflow records, live claims, worktree
+ownership and unpublished source before enabling the association. A transition
+that cannot preserve that work remains incomplete with its concrete recovery
+condition; it does not overwrite the mixed-use checkout.
+
+The deployment action pins the admitted immutable target for its convergence
+attempt. It materializes that target in the installed checkout without consuming
+development history. The installation's actual selected source must equal the
+target; ancestry containment is not an exact-version claim. Later admissible
+targets are ordered against incomplete attempts and the installed version;
+replayed older release events never roll an installation backward. Deliberate
+channel re-enrollment into older source requires a supported data transition
+before activation. The reconciliation record retains the attempted target and
+its outcome rather than treating an ahead checkout as converged.
+
+Public contribution is the workflow handoff in
+`local/projects/teleclaude/spec/feature/workflow/contribution-export` and
+`local/projects/teleclaude/spec/feature/workflow/contribution-adoption`.
+Its upstream integration feeds the existing immutable release pipeline.
+Contribution creation, source acceptance, release publication and local adoption
+remain independently observable. This source/deployment separation follows
+`sdlc/principle/design-fundamentals` and preserves existing source work under
+`sdlc/policy/version-control-safety`.
+<!-- /planned:release-development-checkouts -->
+
 ## Inputs/Outputs
 
 **Inputs:**

@@ -1,105 +1,70 @@
 ---
-description: 'Project deployment channel `stable` requires a non-empty `pinned_minor` value; validation rejects empty pins on the stable channel.'
-visibility: 'public'
+description: Machine deployment configuration requires a non-empty minor pin for stable enrollment.
 ---
 
 # Stable Channel Pinning Rule — Spec
 
-## Required reads
-
-- @docs/local/spec/domain/config.md
-
 ## What it is
 
-The project `deployment` block declares which release channel a project tracks
-(`alpha`, `beta`, or `stable`) and, for the `stable` channel, which minor
-version line the project is pinned to. v1 enforces a single hard rule on this
-pairing: a project on the `stable` channel MUST declare a non-empty
-`pinned_minor`. Empty pins are rejected at validation time before the project
-config is accepted. The two non-stable channels (`alpha`, `beta`) accept any
-`pinned_minor` value including the default empty string. The rule prevents
-"floating stable" — a `stable` configuration that silently tracks whatever the
-latest stable build happens to be — and forces explicit version intent on the
-production channel.
+The machine configuration's deployment block declares the installation's release
+channel and, for stable, its minor-series pin. The configuration model rejects
+an empty stable pin before a configuration write is accepted. This records the
+operator's selected update boundary (`general/policy/human-contract`).
 
 ## Canonical fields
 
+`teleclaude/config/_runtime_models.py` owns `DeploymentConfig`, its channel
+vocabulary, default and pin validator. `teleclaude/config/_models.py` places
+deployment on the machine runtime configuration, and
+`teleclaude/config/machine_config_mutation.py` owns the semantic mutation.
+Release admission consumes that declaration under
+`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`.
+
 ### Use cases
 
-#### UC-CFG-PIN-1: Stable channel with explicit pinned_minor accepted
+#### UC-CFG-PIN-1: Stable enrollment accepts a non-empty minor pin
 
-```
-Given a project config under load with deployment.channel = "stable"
-And deployment.pinned_minor = "1.42"
-When the stable-channel pinning rule is validated
-Then validation passes and the deployment config is accepted unchanged
-And the surrounding project overlay validation continues
+```gherkin
+Given an operator selects stable enrollment with a non-empty minor pin
+When the machine configuration is validated
+Then the enrollment is accepted unchanged
 ```
 
-#### UC-CFG-PIN-2: Stable channel with empty pinned_minor rejected
+#### UC-CFG-PIN-2: Stable enrollment requires a non-empty pin
 
-```
-Given a project config under load with deployment.channel = "stable"
-And deployment.pinned_minor = "" (the default)
-When the stable-channel pinning rule is validated
-Then a validation error is raised with the message:
-  "pinned_minor is required and must be non-empty when channel=stable"
-And the schema layer surfaces the validation failure on the deployment field
-And the project config load raises before the project-config writer is reachable
+```gherkin
+Given an operator selects stable enrollment with an empty pin
+When the machine configuration is validated
+Then validation reports the missing pin
+And the stored configuration is unchanged
 ```
 
-#### UC-CFG-PIN-3: Alpha channel ignores pinned_minor
+#### UC-CFG-PIN-3: Alpha enrollment requires no pin
 
-```
-Given a project config under load with deployment.channel = "alpha"
-And deployment.pinned_minor is empty
-When the stable-channel pinning rule is validated
-Then validation passes and the deployment config is accepted unchanged
-And the project is accepted on the alpha channel with no pin
+```gherkin
+Given an operator selects alpha enrollment without a pin
+When the machine configuration is validated
+Then the enrollment is accepted
 ```
 
-#### UC-CFG-PIN-4: Beta channel ignores pinned_minor
+#### UC-CFG-PIN-4: Beta enrollment requires no pin
 
-```
-Given a project config under load with deployment.channel = "beta"
-And deployment.pinned_minor is empty
-When the stable-channel pinning rule is validated
-Then validation passes and the deployment config is accepted unchanged
-And the project is accepted on the beta channel with no pin
+```gherkin
+Given an operator selects beta enrollment without a pin
+When the machine configuration is validated
+Then the enrollment is accepted
 ```
 
-#### UC-CFG-PIN-5: Channel default is alpha
+#### UC-CFG-PIN-5: An absent deployment block uses the model's default
 
+```gherkin
+Given an operator has supplied no deployment block
+When the machine configuration is loaded
+Then enrollment follows the deployment model's default
 ```
-Given a project config under load that omits the entire deployment block
-When project overlay validation runs
-Then the deployment block falls back to its defaults (alpha + empty pin)
-And deployment.channel defaults to "alpha"
-And deployment.pinned_minor defaults to ""
-And validation passes (alpha + empty pin is valid)
-```
-
-### Cross-context references
-
-- The `deployment` block currently lives on the project config. The
-  `config` domain spec (`local/projects/teleclaude/spec/domain/config.md`) flags this as a
-  misplacement and relocates the deployment block to the runtime
-  configuration aggregate. The current contract is "deployment is
-  per-project" until that move lands.
-
-- Consumed by the runtime auto-update path: the platform's `self-update`
-  maintenance action reads `deployment.channel` and `deployment.pinned_minor`
-  to decide which target to converge to
-  (`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`).
-
-## Allowed values
-
-- `channel`: `alpha`, `beta`, `stable`. Default: `alpha`.
-- `pinned_minor`: any non-empty string when `channel == "stable"`; any string (including empty) otherwise. Default: `""`.
 
 ## Known caveats
 
-- **Misplacement noted by domain spec.** v1 places `deployment` on the project overlay. The v2 `config` domain spec calls this a defect and relocates the block to the runtime configuration aggregate in v2. Until the v2 cutover lands, the project config is the source of truth for release channel.
-- **No format validation on `pinned_minor`.** v1 only checks non-emptiness. Any non-empty string (including `"not-a-version"`) passes. Format conformance is the deployment executor's concern, not the config schema's.
-- **Validation runs on every load.** The validator fires on every project-config load. A previously valid `teleclaude.yml` edited out-of-band to set `channel: stable` without `pinned_minor` will fail to load the next time the runtime or CLI reads the project config.
-- **Default-factory means absent deployment block is accepted.** Projects with no `deployment` key at all fall back to the default deployment block (alpha + empty pin). The rule only fires when `channel` is explicitly set to `stable`.
+- The pin validator checks non-emptiness, not a version-series grammar. Release
+  selection separately interprets the pin. A non-empty malformed pin is therefore
+  not rejected by configuration validation.

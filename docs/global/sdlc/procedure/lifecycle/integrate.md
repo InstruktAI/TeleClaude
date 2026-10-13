@@ -53,6 +53,21 @@ each decision point until the queue is drained.
   unclaimed (see **REPO ROOT SYNC REQUIRED** below). The state machine emits this
   guidance when it observes the divergence.
 
+<!-- planned:installation-activation-inspection -->
+
+### Resolve the delivery assignment
+
+Resolve the source checkout and delivery purpose before starting the queue
+watcher or entering the integration state machine. This procedure owns upstream
+mainline delivery. A contributor handoff follows its project's contribution
+contract and retains PR acceptance as a separate fact. Installation-only
+assessment enters `sdlc/procedure/maintenance/installation-inspection` with its
+retained activation rather than this source-delivery loop. When source delivery
+owes runtime judgment, consume the installed activation's assessment through
+its owning surface; do not start competing recovery
+(`general/principle/trust-and-guardrails`).
+<!-- /planned:installation-activation-inspection -->
+
 ## Steps
 
 1. Set `integrator-queue-watch` first, then call `telec todo integrate [slug]` to

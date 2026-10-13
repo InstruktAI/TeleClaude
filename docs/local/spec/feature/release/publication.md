@@ -53,6 +53,20 @@ no-change and no-release outcomes finish successfully before candidate creation.
 Automatic assessment requires a completed baseline. The workflow declaration
 owns the dispatch inputs and activation settings.
 
+<!-- planned:semver-compatible-releases -->
+
+### Compatibility-aware version decisions
+
+Automatic version selection consumes the classification vocabulary and regimes
+owned by `local/projects/teleclaude/spec/release-inspector-prompt`. The report
+schema, provider adapters, version calculation and candidate metadata all carry
+major classifications as well as minor and patch. An unsupported classification
+fails the attempt; it is never reduced to a smaller release tier. Existing
+published evidence retains its original decision and immutable candidate under
+`sdlc/policy/backward-compatibility-hygiene`. Candidate proof and publication
+requirements apply unchanged to every selected tier.
+<!-- /planned:semver-compatible-releases -->
+
 ### Inspector
 
 For automatic assessment, one inspector role assesses actual source and contract changes against the
