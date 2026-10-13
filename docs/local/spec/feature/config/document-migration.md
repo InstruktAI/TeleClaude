@@ -368,13 +368,29 @@ And installation stops before validating configuration
 #### UC-CFG-MIG-17: Release maintenance preserves the installed declaration
 
 ```gherkin
-Given an installed release checkout whose tracked project declaration has an older readable schema
-And another registered home has a configuration document requiring migration
-When the installation runs configuration migration maintenance
-Then the installed declaration loads in its current shape without changing its stored bytes
-And the installed checkout still selects the same release commit with no migration commit
-And the other home receives its ordinary persisted migration outcome
-And the installed declaration outcome states that its source was retained and evaluated in memory
+Scenario: A readable installed declaration is retained
+  Given an installed release checkout whose tracked project declaration has an older readable schema
+  And another registered home has a configuration document requiring migration
+  When the installation runs configuration migration maintenance
+  Then the installed declaration loads in its current shape without changing its stored bytes
+  And the installed checkout still selects the same release commit with no migration commit
+  And the other home receives its ordinary persisted migration outcome
+  And the installed declaration outcome states that its source was retained and evaluated in memory
+
+Scenario Outline: A retained declaration receives ordinary validation
+  Given an installed release declaration containing <invalid_shape>
+  And an ordinary configuration load refuses that declaration
+  When the installation runs configuration migration maintenance
+  Then that document has a failed outcome with its validation reason
+  And its stored bytes and selected release commit remain unchanged
+  And the run still evaluates its other registered documents
+
+  Examples:
+    | invalid_shape                  |
+    | an undeclared key              |
+    | a value of an unsupported type |
+    | an invalid enumerated value    |
+    | an invalid field relationship  |
 ```
 
 <!-- /planned:release-tag-checkout-activation -->

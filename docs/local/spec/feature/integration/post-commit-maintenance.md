@@ -48,6 +48,20 @@ contract governs only what happens when maintenance runs.
   matcher owns this selection under
   `local/projects/teleclaude/design/architecture/checkpoint-system`. Actions run
   in declared precedence waves; a failure does not cancel later waves.
+
+<!-- planned:release-tag-checkout-activation -->
+
+- **Recording outcome.** The activation boundary distinguishes an owed set
+  durably recorded, an explicitly empty owed set, and a refused activation with
+  its reason. Repeating an already-recorded owed set remains a recorded outcome.
+  Ineligible location, an invalid immutable range, unavailable Git state and a
+  storage failure are not evidence of an empty owed set or completed recording.
+  Consumers use that outcome rather than inferring success from absent action
+  files. The immutable-range and source-preservation requirements follow
+  `sdlc/policy/version-control-safety`.
+
+<!-- /planned:release-tag-checkout-activation -->
+
 - **Blueprint.** In code-enabled projects, every canonical-main activation
   owes the Blueprint action. Its committed snapshot, current-query guarantee,
   and recovery are owned by `sdlc/spec/codebase-blueprint` and realized by

@@ -24,6 +24,28 @@ The behavioral contract for how an installation keeps its own running version cu
 
 - **stable** — converges to later published releases within the selected compatibility series: the same minor while the major is zero, and the same major from 1.0 onward. Crossing that boundary requires explicit enrollment in the next series. Configuration owns the series declaration (`local/projects/teleclaude/spec/feature/config/stable-channel-pinning-rule`); release classification owns the compatibility promise (`local/projects/teleclaude/spec/release-inspector-prompt`).
 
+<!-- planned:release-tag-checkout-activation -->
+
+### Supported release transitions
+
+A beta or stable source advance selects a strictly later release whose committed
+history contains the installed source. Repeating the exact selected release
+normalizes its checkout posture without changing source. An older announcement
+already contained in the installed history leaves the installation unchanged.
+Other backward, sideways or locally diverged source transitions remain
+incomplete, retain the current checkout and local history, and report the unmet
+condition. Channel enrollment supplies no missing data transition. Source and
+data preservation follow `sdlc/policy/version-control-safety` and
+`sdlc/policy/backward-compatibility-hygiene`.
+
+A resumed transition uses its retained original source and immutable target.
+Reaching the target commit does not by itself complete the handoff to maintenance.
+Convergence retains its pending evidence when that handoff is refused or fails;
+only an explicitly recorded owed set or an explicitly empty owed set completes
+the recording step. Workflow owns those recording outcomes under
+`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`.
+<!-- /planned:release-tag-checkout-activation -->
+
 ### Use cases
 
 #### UC-CSU-1: Alpha converges on every mainline change
@@ -119,6 +141,35 @@ Then the installed source is the selected release revision
 Given an operator's installation has adopted a newer eligible release
 When an older release announcement is replayed
 Then the installed revision remains unchanged
+```
+
+#### UC-CSU-11: An unsupported source transition preserves the installation
+
+```gherkin
+Scenario Outline: Refusing unsupported release source
+  Given a beta or stable installation with a retained installed source
+  And a channel-eligible release would require <transition>
+  When the installation attempts that release transition
+  Then the current source and local branch history remain unchanged
+  And convergence reports the unmet condition without claiming success
+  And its pending transition remains available for recovery
+
+  Examples:
+    | transition                                            |
+    | a non-ancestor release with an older version           |
+    | a newer release on a separate source history          |
+    | leaving attached main with unpublished divergent work |
+    | a different source with a non-increasing version      |
+```
+
+#### UC-CSU-12: A refused maintenance handoff leaves convergence incomplete
+
+```gherkin
+Given an admitted release transition has reached its retained target commit
+When recording its owed activation maintenance is refused or fails
+Then convergence reports that failure and retains its pending transition
+And it does not report the transition as complete
+And a later replay uses the same original source and target identity
 ```
 
 <!-- /planned:release-tag-checkout-activation -->
