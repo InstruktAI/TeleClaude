@@ -115,39 +115,12 @@ Then workflow refuses before mutating state
 And no runner wake-up is emitted
 ```
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Given a task has a `task_approved` stamp whose `approved_digest` was recorded against an earlier `task-plan`
-When the `task-plan` is edited so its current digest no longer equals the stamped `approved_digest`
-Then the lifecycle runner treats the task as unauthorized and does not dispatch `/sdlc/run-task`
-And the task stays unauthorized until a fresh `task_approved` stamp re-binds `approved_digest` to the current `task-plan`
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```gherkin
 Given a task has a `task_approved` stamp whose `approved_digest` was recorded against an earlier `task-plan`
 When the `task-plan` is edited so its current digest no longer equals the stamped `approved_digest`
 Then the lifecycle runner treats the task as unauthorized and does not dispatch `sdlc/procedure/lifecycle/task/run-task`
 And the task stays unauthorized until a fresh `task_approved` stamp re-binds `approved_digest` to the current `task-plan`
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Given an approved prepare artifact whose per-class drift derivation collapses to "pending" on any class enumerated in @spec/feature/workflow/drift-detection
-When the sdlc/drift-analyze worker runs "telec todo stamp my-slug --drift-reviewed prd cosmetic 'rename-only refactor, intent preserved'"
-Then the drift-reviewed handler parses the (artifact, verdict, reason) triple
-And the approvals manager validates verdict is one of {substantive, cosmetic}
-And persists the drift-reviewed stamp under approvals.drift_reviewed[artifact] including the evidence anchor at stamp time (head_sha_at_review, upstream_digests_at_review, snippet_digests_at_review)
-And the prepare gate stops treating the drift as blocking on next read for as long as current evidence has not moved past the anchor on any dimension
-And when later evidence moves past the anchor (HEAD advances with new referenced-path overlap, OR upstream digest changes, OR snippet digest changes), the cosmetic verdict is treated as expired-for-class and the class re-pends automatically — no manual stamp clearing required
-```
-
-<!-- change:procedure-role-capability-composition -->
 
 ```
 Given an approved prepare artifact whose per-class drift derivation collapses to "pending" on any class enumerated in @spec/feature/workflow/drift-detection
@@ -159,21 +132,6 @@ And the prepare gate stops treating the drift as blocking on next read for as lo
 And when later evidence moves past the anchor (HEAD advances with new referenced-path overlap, OR upstream digest changes, OR snippet digest changes), the cosmetic verdict is treated as expired-for-class and the class re-pends automatically — no manual stamp clearing required
 ```
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Given the same artifact at "pending" drift status
-When the sdlc/drift-analyze worker runs "telec todo stamp my-slug --drift-reviewed architecture substantive 'upstream PRD rewrote success criteria; design must re-derive'"
-Then the substantive drift-reviewed stamp is persisted with the same evidence-anchor fields recorded for audit
-And the approvals manager clears the architecture review verdict and every downstream review verdict (plan in this case) as part of the same commit
-And the prepare state machine routes back to architecture_drafting on next dispatch
-And the substantive stamp does not need lazy expiry — re-derivation produces a fresh artifact whose write clears the drift stamps and re-captures provenance
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```
 Given the same artifact at "pending" drift status
 When the sdlc/procedure/lifecycle/prepare/drift-analyze worker runs "telec todo stamp my-slug --drift-reviewed architecture substantive 'upstream PRD rewrote success criteria; design must re-derive'"
@@ -182,8 +140,6 @@ And the approvals manager clears the architecture review verdict and every downs
 And the prepare state machine routes back to architecture_drafting on next dispatch
 And the substantive stamp does not need lazy expiry — re-derivation produces a fresh artifact whose write clears the drift stamps and re-captures provenance
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-WSS4: Build-complete accepts the owning worker or work orchestrator
 
@@ -234,18 +190,6 @@ And no commit happens — the stamp call exits before any partial mutation lands
 
 #### UC-WSS12: One-shot task success outcome delivers the todo
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Given a Todo has kind="task", a one-shot schedule (no cron recurrence), and a live run session as its active_runner
-When the run session runs "telec todo stamp my-slug --task-outcome success"
-Then the stamp confirms the todo is kind="task" and resolves the schedule as one-shot
-And the todo is delivered through the existing delivery path, satisfying its dependents
-And the lifecycle runner skips the delivered todo and does not re-dispatch /sdlc/run-task after the run session closes
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```gherkin
 Given a Todo has kind="task", a one-shot schedule (no cron recurrence), and a live run session as its active_runner
 When the run session runs "telec todo stamp my-slug --task-outcome success"
@@ -253,8 +197,6 @@ Then the stamp confirms the todo is kind="task" and resolves the schedule as one
 And the todo is delivered through the existing delivery path, satisfying its dependents
 And the lifecycle runner skips the delivered todo and does not re-dispatch sdlc/procedure/lifecycle/task/run-task after the run session closes
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-WSS13: Recurring task success outcome clears an error-hold and stays live
 

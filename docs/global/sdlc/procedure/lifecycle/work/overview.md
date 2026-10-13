@@ -2,6 +2,13 @@
 description: 'Work stage overview. Build, review, fix, finalize cycle driven by the work state machine.'
 activation_trigger: 'Use when asked to become the work orchestrator for a todo or drive telec todo work through build, review, fix, and finalize handoff.'
 visibility: 'public'
+role: work-orchestrator
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [codex, claude, gemini, deepseek]
+  thinking_mode: med
 ---
 
 # Work Overview — Procedure

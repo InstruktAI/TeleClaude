@@ -45,13 +45,6 @@ resolved for its caller (§6):
 - `x-caller-principal`: the caller's principal — `human:<email>` or the carried
   system principal.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- `x-caller-system-role`: the system role the caller's session resolves to, when
-  it has one.
-
-<!-- change:procedure-role-capability-composition -->
-
 - `x-caller-role`: the agent role the caller's session resolves to, when it has
   one. `x-caller-system-role` is still sent beside it, carrying the role's
   legacy projection (`local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`)
@@ -65,8 +58,6 @@ resolved for its caller (§6):
   (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
   A legacy `x-caller-system-role` is read for provenance alone, and the daemon
   takes carried identity as given, with no confirming lookup, as §2 states.
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 - `x-caller-human-role`: the person role that authorizes the caller, when the
   caller is a person.

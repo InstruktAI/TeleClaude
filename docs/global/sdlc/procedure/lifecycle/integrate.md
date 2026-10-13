@@ -1,6 +1,12 @@
 ---
 description: 'Integration phase. Drive the integration state machine, handle squash commits, conflicts, push rejections, and lease contention.'
 visibility: 'public'
+role: integrator
+parameters:
+  - name: slug
+dispatch:
+  agent: [codex, claude, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Integration — Procedure

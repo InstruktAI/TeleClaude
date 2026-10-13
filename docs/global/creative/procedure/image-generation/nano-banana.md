@@ -1,9 +1,23 @@
 ---
 description: 'Generate images using the Nano Banana helper script. Text-to-image, image editing, and multi-turn iteration via Gemini.'
 visibility: 'public'
+role: artist
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [gemini, claude, codex, deepseek]
+  thinking_mode: med
 ---
 
 # Nano Banana — Procedure
+
+## Required reads
+
+- @~/.teleclaude/docs/creative/concept/image-generation.md
+- @~/.teleclaude/docs/creative/policy/visual-constraints.md
+- @~/.teleclaude/docs/creative/design/creative-machine.md
+- @~/.teleclaude/docs/creative/spec/design-spec.md
 
 ## Goal
 

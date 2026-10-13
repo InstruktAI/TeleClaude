@@ -2,11 +2,19 @@
 description: 'Drive the creative state machine: dispatch workers, park at human gates, advance through design spec, art generation, and visual artifact phases.'
 activation_trigger: 'Use when asked to become the creative orchestrator or drive telec todo design through its state-machine-owned creative phases.'
 visibility: 'public'
+role: create-orchestrator
+parameters:
+  - name: slug
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Creative Orchestration — Procedure
 
 ## Required reads
+
+- @~/.teleclaude/docs/general/concept/agent-characteristics.md
 
 @~/.teleclaude/docs/creative/procedure/design-discovery.md
 @~/.teleclaude/docs/creative/procedure/visual-drafting.md
@@ -81,7 +89,7 @@ Design spec is confirmed. No art exists yet.
 **Action**: dispatch an artist agent to generate mood board images.
 
 ```
-telec sessions run --command "/create-art" --args "{slug}"
+telec sessions run --command "creative/procedure/image-generation/nano-banana" --args "{slug}"
   --path "{project}" --agent "gemini" --mode "slow"
 ```
 
@@ -140,7 +148,7 @@ following the visual drafting procedure.
 **Single agent dispatch**:
 
 ```
-telec sessions run --command "/create-html" --args "{slug}"
+telec sessions run --command "creative/procedure/visual-drafting" --args "{slug}"
   --path "{project}" --agent "<selection>" --mode "<selection>"
 ```
 
@@ -157,11 +165,11 @@ Each agent writes to `workspace/{slug}/html/{agent-name}/`.
 
 ```
 # Parallel dispatch
-telec sessions run --command "/create-html" --args "{slug}"
+telec sessions run --command "creative/procedure/visual-drafting" --args "{slug}"
   --agent gemini --mode slow
-telec sessions run --command "/create-html" --args "{slug}"
+telec sessions run --command "creative/procedure/visual-drafting" --args "{slug}"
   --agent claude --mode slow
-telec sessions run --command "/create-html" --args "{slug}"
+telec sessions run --command "creative/procedure/visual-drafting" --args "{slug}"
   --agent codex --mode slow
 ```
 

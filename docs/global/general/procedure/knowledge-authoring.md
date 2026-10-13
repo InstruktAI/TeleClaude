@@ -1,13 +1,17 @@
 ---
-description: Capture and organize knowledge a human expresses into a doc snippet batch, conversationally, authoring only after every active participant agrees and the human releases it.
-delivered_by:
-  - procedure-role-capability-composition
+description: Capture and organize knowledge a human expresses into a doc snippet batch,
+  conversationally, authoring only after every active participant agrees and the human
+  releases it.
 role: helper
 parameters:
   - name: topic
     rest: true
 dispatch:
-  agent: [claude, codex, gemini, deepseek]
+  agent:
+    - claude
+    - codex
+    - gemini
+    - deepseek
   thinking_mode: med
 ---
 

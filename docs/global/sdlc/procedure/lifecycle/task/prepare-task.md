@@ -1,6 +1,13 @@
 ---
 description: "Convert a task todo's raw input into a durable, repeatable task-plan
   and request human authorization. Non-SDLC: no prepare state machine, no PRD/architecture/plan/review."
+role: task-preparer
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: med
 ---
 
 # Prepare Task — Procedure
@@ -71,7 +78,7 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
    implies approval.
 
 7. **Hand off to the runner.** Once the human authorizes, the task becomes a
-   runner candidate: the lifecycle runner dispatches `/run-task` when the
+   runner candidate: the lifecycle runner dispatches `sdlc/procedure/lifecycle/task/run-task` when the
    task is not held and its schedule or dependency gate is satisfied.
 
 ## Outputs

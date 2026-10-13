@@ -1,6 +1,13 @@
 ---
 description: 'Finalize phase. Worker prepares the branch; the work orchestrator records handoff and exits.'
 visibility: 'public'
+role: finalizer
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [gemini, claude, codex, deepseek]
+  thinking_mode: fast
 ---
 
 # Finalize — Procedure
@@ -50,9 +57,9 @@ workflow state reaches `finalize_ready`.
 ### Stage B — Work orchestrator: record handoff and end
 
 The work orchestrator's authority ends here. It records the handoff — it does not
-perform integration. Integration is a separate singleton role (`/integrate`)
+perform integration. Integration is a separate singleton role (`sdlc/procedure/lifecycle/integrate`)
 with its own lease, worktree (`trees/_integration/`), and dispatch path. The work
-orchestrator must never dispatch `/integrate` or call `telec todo integrate`.
+orchestrator must never dispatch `sdlc/procedure/lifecycle/integrate` or call `telec todo integrate`.
 
 1. Re-run the work state machine for the same slug:
 

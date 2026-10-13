@@ -1,6 +1,10 @@
 ---
 description: Watch the live fleet as its sole human-invoked overseer — challenge judgments whose basis is missing, restore attention fallen between roles, resolve evidence-complete true orphans, log what is worth knowing later, and carry to the human only what the human contract assigns to him.
 visibility: internal
+role: coordinator
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Coordinate — Procedure
@@ -347,6 +351,12 @@ when an owner was displaced. A correctly cited pointer nobody needed is still
 an interruption. Nothing owed is a common and legitimate outcome, while silence
 chosen because it is cheaper is the failure this role exists to prevent.
 Yesterday's reading is a claim about yesterday.
+
+Before acting on anything loaded, run step 0 exactly as it reads and honor its
+outcome — on yield, end this session silently via `telec sessions end self`;
+the incumbent is never touched. Then run the watch, which has no end state —
+the reminder stays armed between sweeps until the human ends the session. The
+step-0 yield is the only self-end this role has.
 
 ## See Also
 

@@ -94,20 +94,6 @@ person's folder carries no human identity and acts as no person.
 
 ### Use cases
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-#### UC-PSA1:
-
-```gherkin
-Given no standing agent continues a procedure for a home on the computer that emitted the event
-When an activation for that procedure and home arrives there
-Then a standing agent is started in that home under the system principal
-And it receives the canonical brief loading the procedure and its effective required reads
-And its initial event is delivered as hook context under the procedure event-delivery contract
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 #### UC-PSA1:
 
 ```gherkin
@@ -118,8 +104,6 @@ And it carries the role the procedure declares from its creation
 And it receives the loader naming the materialized brief: the procedure, its effective required reads and the event-handling instructions an activation implies
 And its initial event is delivered as hook context under the procedure event-delivery contract
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-PSA2:
 
@@ -387,8 +371,6 @@ And a new unattended agent bound to that subject is started in that home
 And the activation is delivered to it
 ```
 
-<!-- planned:procedure-role-capability-composition -->
-
 #### UC-PSA29: A procedure declaring no role starts no agent
 
 ```gherkin
@@ -397,8 +379,6 @@ When an activation for it arrives, or an operator starts it by hand
 Then no agent is started
 And the activation record, or the operator, observes a failure naming the missing role
 ```
-
-<!-- /planned:procedure-role-capability-composition -->
 
 #### UC-PSA26: An agent started by hand is attended
 
@@ -449,13 +429,9 @@ Then that session is shown wherever sessions are shown
   already running keeps the attendance it started with.
 - Sessions an unattended agent starts for its own work are attended.
 
-<!-- planned:procedure-role-capability-composition -->
-
 - A procedure's declared role is read when its agent is started. An agent
   already running, or revived, keeps the role it started with; a changed
   declaration reaches only the agents started afterwards, as attendance does.
-
-<!-- /planned:procedure-role-capability-composition -->
 
 ## See Also
 

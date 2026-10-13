@@ -6,6 +6,10 @@ subscription_home: project
 subscription_identity: subject
 event_delivery: sequential
 interruptible: false
+role: desk-memory-curator
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: med
 ---
 
 # Project Desk Conversation Memory — Procedure

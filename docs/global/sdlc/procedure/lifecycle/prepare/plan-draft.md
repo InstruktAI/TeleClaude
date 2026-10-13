@@ -1,6 +1,13 @@
 ---
 description: 'Plan drafting phase for prepare. Produces implementation plans from the approved intent artifact and the optional reviewer-approved architecture (thin index artifact plus the doc snippets it points at).'
 visibility: 'public'
+role: planner
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Prepare Plan Draft — Procedure
@@ -554,3 +561,10 @@ or kick back — then advance again.
    children.
 3. If a file referenced in an upstream artifact does not exist, verify whether it should be
    created or whether the upstream artifact is stale.
+
+## Discipline
+
+Reserve every scenario binding on `main` before drafting tasks — plan-draft step
+2d. Skipping it lets a concurrent prepare bind the same scenario in its own
+worktree; the plan-review reservation check exists to catch that late, not to
+excuse skipping the reservation early.

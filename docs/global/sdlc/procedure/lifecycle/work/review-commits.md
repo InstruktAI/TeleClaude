@@ -1,5 +1,12 @@
 ---
 description: Review discrete commits already on main by SHA, without a worktree or the todo lifecycle.
+role: reviewer
+parameters:
+  - name: shas
+    required: true
+dispatch:
+  agent: [codex, claude, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Review Commits — Procedure

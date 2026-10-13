@@ -44,24 +44,12 @@ human, who is the sole authority on intent.
   each phase's procedure, does the phase's work, advances the state machine, and
   loads the next procedure when the state machine routes there.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- Each phase has its own focus, sharpened by a hat. Intake = BA hat
-  (`~/.teleclaude/commands/sdlc/prepare-intake.md`). Architecture = Architect hat
-  (`~/.teleclaude/commands/sdlc/prepare-architecture.md`). Plan = Planner hat (`~/.teleclaude/commands/sdlc/prepare-plan.md`). The
-  hat is the loaded procedure; the lifecycle awareness underneath persists
-  across hats.
-
-<!-- change:procedure-role-capability-composition -->
-
 - Each phase has its own focus, sharpened by a hat. Intake = BA hat
   (`sdlc/procedure/lifecycle/prepare/intake`). Architecture = Architect hat
   (`sdlc/procedure/lifecycle/prepare/architecture`). Plan = Planner hat
   (`sdlc/procedure/lifecycle/prepare/plan-draft`). The hat is the loaded
   procedure; loading it changes nothing about the session's role; the lifecycle
   awareness underneath persists across hats.
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 - Reviewers are independently dispatched. Each derived artifact
   (architecture, plan) is reviewed by a separate reviewer session. The active
@@ -96,23 +84,11 @@ human, who is the sole authority on intent.
 The state machine drives a deterministic phase chain. Each phase is one focus
 turn of the same driving session.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-| Phase        | Procedure                                             | Hat       | Authority gate                          |
-| ------------ | ----------------------------------------------------- | --------- | --------------------------------------- |
-| Intake       | `~/.teleclaude/commands/sdlc/prepare-intake.md`       | BA        | `prd_approved` (human only)             |
-| Architecture | `~/.teleclaude/commands/sdlc/prepare-architecture.md` | Architect | `architecture_review` verdict `approve` |
-| Plan         | `~/.teleclaude/commands/sdlc/prepare-plan.md`         | Planner   | `plan_review` verdict `approve`         |
-
-<!-- change:procedure-role-capability-composition -->
-
 | Phase        | Procedure                                       | Hat       | Authority gate                          |
 | ------------ | ----------------------------------------------- | --------- | --------------------------------------- |
 | Intake       | `sdlc/procedure/lifecycle/prepare/intake`       | BA        | `prd_approved` (human only)             |
 | Architecture | `sdlc/procedure/lifecycle/prepare/architecture` | Architect | `architecture_review` verdict `approve` |
 | Plan         | `sdlc/procedure/lifecycle/prepare/plan-draft`   | Planner   | `plan_review` verdict `approve`         |
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 Each phase ends by calling `telec todo prepare {slug}`. The state machine
 routes the next action — load the next procedure, dispatch a reviewer, pause for
@@ -161,21 +137,11 @@ scopes:
 
 ### Drift
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-When reconciliation detects that artifact-referenced paths changed since the
-artifact was authored, a lean `/drift-analyze` worker is dispatched. It
-stamps each pending artifact as `cosmetic` or `substantive`. Substantive
-drift invalidates the affected phase and the active procedure re-derives. The
-PREPARED terminal requires fresh grounding.
-<!-- change:procedure-role-capability-composition -->
-
 When reconciliation detects that artifact-referenced paths changed since the
 artifact was authored, a lean `sdlc/procedure/lifecycle/prepare/drift-analyze` worker is dispatched. It
 stamps each pending artifact as `cosmetic` or `substantive`. Substantive
 drift invalidates the affected phase and the active procedure re-derives. The
 PREPARED terminal requires fresh grounding.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Failure modes
 

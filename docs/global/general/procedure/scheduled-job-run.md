@@ -1,7 +1,6 @@
 ---
-description: What a scheduled job's session owes beyond its procedure — report the run's outcome once through the job report, then end itself.
-delivered_by:
-  - procedure-role-capability-composition
+description: What a scheduled job's session owes beyond its procedure — report the
+  run's outcome once through the job report, then end itself.
 ---
 
 # Scheduled Job Run — Procedure

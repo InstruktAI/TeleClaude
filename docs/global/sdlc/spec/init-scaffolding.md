@@ -7,21 +7,11 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-The schema contract between the `/projects-analyze` analysis session (started with
-`telec sessions run --command /projects-analyze`) and the enrichment writer
-module. Defines how analysis findings become durable project doc snippets, how
-snippet IDs are structured, where files land, and how re-analysis merges without
-destroying human edits.
-<!-- change:procedure-role-capability-composition -->
-
 The schema contract between the `sdlc/procedure/project-analysis` analysis session (started with
 `telec sessions run --command sdlc/procedure/project-analysis`) and the enrichment writer
 module. Defines how analysis findings become durable project doc snippets, how
 snippet IDs are structured, where files land, and how re-analysis merges without
 destroying human edits.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Canonical fields
 

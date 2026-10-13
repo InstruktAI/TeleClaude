@@ -59,8 +59,6 @@ TeleClaudeNext.
   survives a restart because the record does. Readers consume the published
   answer and never re-validate it.
 
-<!-- planned:procedure-role-capability-composition -->
-
 - **Also owns:** the agent role catalog — the closed set of session roles,
   the explicit capability set each composes, whether it is marked full-reach,
   its class, and its header label; and the resolution of a recorded role to
@@ -70,8 +68,6 @@ TeleClaudeNext.
   launch ownership and attribution consume it and keep no role list of their
   own. The behavioral contract is
   `local/projects/teleclaude/spec/feature/identity/agent-roles`.
-
-<!-- /planned:procedure-role-capability-composition -->
 
 - **Also owns:** reach — which platform records a principal may see. Identity
   resolves it once per request from the principal and its own facts (platform

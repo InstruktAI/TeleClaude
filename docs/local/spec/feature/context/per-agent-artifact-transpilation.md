@@ -16,18 +16,6 @@ Sources into their deployed form. Two outputs remain per-agent: the
 entrypoint master each CLI reads unprompted, emitted per target in that
 target's expected shape, and the tier-local skill packages a repository authors
 for its own sessions, rendered per target into the native skill directories
-<!-- planned-change:procedure-role-capability-composition -->
-
-because preloading is their purpose. Command artifacts normalize into the shared corpus under
-`~/.teleclaude/commands/` and global skill packages compose into
-`~/.teleclaude/skills/`; neither produces per-agent runtime output, and
-subagent definitions are not an artifact class at all. Sessions
-reach a corpus document through the loader message TeleClaude composes at
-dispatch, not through a runtime artifact. The transpiler rewrites command
-parameter metadata from frontmatter into an HTML-comment preamble in the
-corpus document so the loading agent sees the shape it understands, and it
-serializes YAML frontmatter through the shared emitter.
-<!-- change:procedure-role-capability-composition -->
 
 because preloading is their purpose. Global skill packages compose into
 `~/.teleclaude/skills/`; they produce no per-agent runtime output, and
@@ -38,27 +26,10 @@ loader message TeleClaude composes at procedure entry
 the parameter preamble that brief carries is the procedure entry's, not this
 transpiler's. The transpiler serializes YAML frontmatter through the shared
 emitter.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Canonical fields
 
 ### Use cases
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Scenario: UC-PAT3 TeleClaude command source is written to the shared command corpus
-  Given a source command artifact with a "parameters" field in its frontmatter
-  When the transpiler processes command artifacts for any target set
-  Then the frontmatter emitter renders a normalized Markdown command document without the "parameters" field
-  And the parameter-preamble injector renders an HTML-comment block describing parameters at the top of the body
-  And the normalized command document is written to the shared TeleClaude command corpus
-  And no per-agent output of any kind is written for the command artifact
-```
-
-<!-- change:procedure-role-capability-composition -->
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ```
 Scenario: Codex output preserves quoted frontmatter values
@@ -80,19 +51,6 @@ Scenario: Gemini skill is transpiled to Markdown/YAML, not TOML
   And the required source name is checked against the skill folder before emission
 ```
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Scenario: UC-PAT4 No target receives a subagent definition; the Gemini target keeps its master and skills only
-  Given the source tree carries no subagent definitions, because they are not an artifact class
-  When the transpiler processes artifacts for the Gemini target
-  Then no agent definition is transpiled to TOML or written under any Gemini output directory
-  And source command artifacts are written to the shared TeleClaude command corpus, not a Gemini command output directory
-  And tier-local skills continue to use the Markdown/YAML path on the same sync invocation
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```
 Scenario: UC-PAT4 No target receives a subagent definition; the Gemini target keeps its master and skills only
   Given the source tree carries no subagent definitions, because they are not an artifact class
@@ -100,8 +58,6 @@ Scenario: UC-PAT4 No target receives a subagent definition; the Gemini target ke
   Then no agent definition is transpiled to TOML or written under any Gemini output directory
   And tier-local skills continue to use the Markdown/YAML path on the same sync invocation
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ```
 Scenario: Missing per-agent output directory is created automatically

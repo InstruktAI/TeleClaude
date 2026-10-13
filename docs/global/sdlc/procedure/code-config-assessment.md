@@ -1,6 +1,10 @@
 ---
 description: Bring a project's toolchain, quality configuration, and TeleClaude declarations into a working, self-contained contract.
 visibility: 'public'
+role: helper
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: med
 ---
 
 # Code Config Assessment — Procedure

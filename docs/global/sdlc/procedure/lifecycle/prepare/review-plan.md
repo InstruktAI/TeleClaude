@@ -1,6 +1,13 @@
 ---
 description: 'Plan review phase. Validate implementation-plan against PRD, optional architecture, feature-spec scenarios, policies, DoD gates, and review lane expectations.'
 visibility: 'public'
+role: reviewer
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [codex, claude, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Review Plan — Procedure
@@ -556,3 +563,12 @@ Review artifact: plan-review-findings
 - If upstream artifacts themselves are the problem (plan is correct but PRD,
   architecture, or in-scope feature specs are wrong), flag as blocker — the affected
   upstream artifact must be re-reviewed first.
+
+## Discipline
+
+The reservation lane is easy to skip because it has no artifact of its own: before
+stamping a verdict, run `uv run python tools/lint/binding_reservation.py --slug
+{slug} --binding <spec_id>:<scenario_id>` for every scenario the plan declares it
+will bind. A binding already reserved by a different in-flight slug is a
+Requirement-Violation under the Test coverage lane (`definition-of-done-lanes`) —
+do not approve past it.

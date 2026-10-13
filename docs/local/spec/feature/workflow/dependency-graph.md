@@ -139,18 +139,6 @@ And the same "child" is still WORK-blocked until "parent" is delivered
 
 #### UC-WDG3: Create-time dispatch honors the prepare gate
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Given a child created with "telec todo create child --kind change --after parent" while parent is not PREPARED
-When the lifecycle router consumes the todo-created event for "child"
-Then the router consults the dependency graph and finds the prepare gate unsatisfied
-And the router does not auto-dispatch /sdlc/prepare for "child"
-And "child" waits until "parent" reaches PREPARED, which triggers auto-continue (see @spec/feature/workflow/prepare-state-machine)
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```gherkin
 Given a child created with "telec todo create child --kind change --after parent" while parent is not PREPARED
 When the lifecycle router consumes the todo-created event for "child"
@@ -158,8 +146,6 @@ Then the router consults the dependency graph and finds the prepare gate unsatis
 And the router does not auto-dispatch sdlc/procedure/lifecycle/prepare/overview for "child"
 And "child" waits until "parent" reaches PREPARED, which triggers auto-continue (see @spec/feature/workflow/prepare-state-machine)
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-WDG4: Task schedule excludes dependency edges
 

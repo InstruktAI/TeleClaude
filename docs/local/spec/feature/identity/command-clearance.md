@@ -290,27 +290,7 @@ And the requested mutation is applied to the todo state
 
 ### Role reach
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-Each command's declaration groups the agent roles it admits so that each role's reach reads in one place (`local/projects/teleclaude/design/cli-authorization-matrix`); person roles keep a band per command. A worker reaches the commands its briefs run and nothing that reads or acts across the fleet: it lists no sessions and reads no history, and starts, revives, restarts or ends no session but its own through the self-acts above. Every other agent role — orchestrator, integrator, tasker, job runner and coordinator — reaches every agent command, starting sessions included. Only an orchestrator drives a todo state machine (`todo prepare`, `todo work`, `todo design`). The integrator additionally holds integration and maintenance (`todo integrate`, `code maintenance`, `code owners`). The daemon's own `system` credential grants no role-based command reach; caller-independent commands pass without resolving that credential. A command that does not depend on its caller — `version`, `auth login|whoami|logout`, `events list`, `signals status`, `mcp list`, the local code-tooling commands `code lint|test|format|add|blueprint affected`, and the git-hook commands — admits a caller with no identity and passes the gate with no caller resolution. `todo update` is governed by the claim-scoped rule instead of a role.
-<!-- change:procedure-role-capability-composition -->
-
 Each command's declaration names the command capability that admits agent callers, so a capability's reach reads in one place (`local/projects/teleclaude/design/cli-authorization-matrix`), and an agent caller is admitted when the agent role catalog composes its role with that capability or marks the role full-reach (`local/projects/teleclaude/spec/feature/identity/agent-roles`); person roles keep a band per command. A worker-class role reaches the commands its briefs run and nothing that reads or acts across the fleet: it lists no sessions and reads no history, and starts, revives, restarts or ends no session but its own through the self-acts above. A recorded role the catalog does not name is refused every command that depends on its caller and reported as a platform defect; it is never admitted as a caller without a role, and caller-independent commands pass without resolving it. The daemon's own `system` credential grants no role-based command reach; caller-independent commands pass without resolving that credential. A command that does not depend on its caller — `version`, `auth login|whoami|logout`, `events list`, `signals status`, `mcp list`, the local code-tooling commands `code lint|test|format|add|blueprint affected`, and the git-hook commands — admits a caller with no identity and passes the gate with no caller resolution. `todo update` is governed by the claim-scoped rule instead of a role.
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-#### UC-CCB1: Tasker starts a session
-
-```
-Given a tasker agent session with system_role=`tasker`
-And the gated operation is `telec sessions start`
-When the clearance gate runs
-Then the gate evaluates the system band and accepts the caller
-And the CallerIdentity is returned unchanged
-```
-
-<!-- change:procedure-role-capability-composition -->
 
 #### UC-CCB1: A full-reach role starts a session
 
@@ -322,22 +302,6 @@ Then the gate evaluates the system band and accepts the caller
 And the CallerIdentity is returned unchanged
 ```
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-#### UC-CCB2: Tasker revives a session
-
-```
-Given a tasker agent session with system_role=`tasker`
-And the gated operation is `telec sessions revive`
-When the clearance gate runs
-Then the gate evaluates the system band and accepts the caller
-And the revive is performed
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 #### UC-CCB2: A full-reach role revives a session
 
 ```
@@ -347,22 +311,6 @@ When the clearance gate runs
 Then the gate evaluates the system band and accepts the caller
 And the revive is performed
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-#### UC-CCB3: Tasker ends a session
-
-```
-Given a tasker agent session with system_role=`tasker`
-And the gated operation is `telec sessions end`
-When the clearance gate runs
-Then the gate evaluates the system band and accepts the caller
-And the CallerIdentity is returned unchanged
-```
-
-<!-- change:procedure-role-capability-composition -->
 
 #### UC-CCB3: A full-reach role ends a session
 
@@ -374,21 +322,6 @@ Then the gate evaluates the system band and accepts the caller
 And the CallerIdentity is returned unchanged
 ```
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-#### UC-CCB4: Tasker remains refused the state-machine-driving verbs
-
-```
-Given a tasker agent session with system_role=`tasker`
-And the gated operation is `telec todo prepare`
-When the clearance gate runs
-Then the gate rejects the caller with a not-permitted authorization failure naming the role and verb
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 #### UC-CCB4: A worker-class role is refused the state-machine-driving verbs
 
 ```
@@ -398,8 +331,6 @@ When the clearance gate runs
 Then the gate rejects the caller with a not-permitted authorization failure naming the role and verb
 And a full-reach role running the same verb is admitted by the gate, and whether a second driver may bind the todo is the driver-start dedup's decision
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-CCR1: A command that does not depend on its caller runs without an identity
 
@@ -419,18 +350,6 @@ Then the command is refused with the not-permitted failure naming `worker` and t
 And nothing is listed
 ```
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-#### UC-CCR3: A job runner reaches an ordinary agent command
-
-```
-Given an agent inside a session whose resolved system role is `job_runner`
-When it runs `telec docs get` for a snippet
-Then the snippet is printed
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 #### UC-CCR3: A job's session reaches an ordinary agent command
 
 ```
@@ -438,21 +357,6 @@ Given an agent inside a scheduled job's session whose resolved system role is `b
 When it runs `telec docs get` for a snippet
 Then the snippet is printed
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-#### UC-CCR4: Only an orchestrator drives a todo state machine
-
-```
-Given an agent inside a session whose resolved system role is `integrator`
-When it runs `telec todo prepare` for a todo
-Then the command is refused with the not-permitted failure naming `integrator` and `telec todo prepare`
-And the todo's lifecycle state is unchanged
-```
-
-<!-- change:procedure-role-capability-composition -->
 
 #### UC-CCR4: Clearance admits a full-reach role to every agent command
 
@@ -463,21 +367,6 @@ Then the clearance gate admits the caller
 And whether a driver may bind that todo is decided by the driver-start dedup and the todo's claim, never by the gate
 ```
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-#### UC-CCR5: A coordinator reads and talks to the fleet but drives no work
-
-```
-Given the agent session that holds the coordinator role
-When it runs `telec sessions list`, `telec sessions send` or `telec sessions start`
-Then each command is admitted
-But `telec todo work` is refused with the not-permitted failure naming `coordinator` and `telec todo work`
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 #### UC-CCR5: A coordinator is admitted everywhere and drives no work by its procedure's discipline
 
 ```
@@ -486,8 +375,6 @@ When it runs `telec sessions list`, `telec sessions send`, `telec sessions start
 Then each command is admitted by the clearance gate
 And that it drives no todo state machine is its procedure's discipline and the object guardrails' decision, not the gate's
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ### Local read clearance
 

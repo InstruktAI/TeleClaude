@@ -1,11 +1,20 @@
 ---
 description: 'Architecture review phase. Validate the architecture artifact against the approved PRD, project architecture, codebase reality, and platform defaults.'
 visibility: 'public'
+role: reviewer
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [codex, claude, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Review Architecture — Procedure
 
 ## Required reads
+
+- @~/.teleclaude/docs/sdlc/principle/design-fundamentals.md
 
 - @~/.teleclaude/docs/sdlc/principle/architectural-defaults.md
 - @~/.teleclaude/docs/general/principle/intelligence-boundaries.md

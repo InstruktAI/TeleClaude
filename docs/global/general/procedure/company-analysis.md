@@ -1,10 +1,13 @@
 ---
-description: Process a company's onboarding inbox into its knowledge snippets per the company-scaffolding spec, reprocessing only what changed.
-delivered_by:
-  - procedure-role-capability-composition
+description: Process a company's onboarding inbox into its knowledge snippets per
+  the company-scaffolding spec, reprocessing only what changed.
 role: helper
 dispatch:
-  agent: [claude, codex, gemini, deepseek]
+  agent:
+    - claude
+    - codex
+    - gemini
+    - deepseek
   thinking_mode: med
 ---
 

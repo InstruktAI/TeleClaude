@@ -1,6 +1,13 @@
 ---
 description: 'Build phase. Execute implementation plan tasks, commit per task, and manage deferrals.'
 visibility: 'public'
+role: builder
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [codex, claude, gemini, deepseek]
+  thinking_mode: med
 ---
 
 # Build — Procedure

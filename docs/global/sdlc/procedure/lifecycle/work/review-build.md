@@ -1,5 +1,12 @@
 ---
 description: Review a lifecycle build by slug against its prepared intent, plan, implementation, and shared review contract.
+role: reviewer
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [codex, claude, gemini, deepseek]
+  thinking_mode: med
 ---
 
 # Review Build — Procedure

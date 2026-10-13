@@ -11,19 +11,10 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-The schema contract between the `/companies-analyze` analysis session and
-the company enrichment writer. Defines how organizational material is processed
-into durable company doc snippets, how snippet IDs are structured, where files
-land, and how re-onboarding merges without destroying human edits.
-<!-- change:procedure-role-capability-composition -->
-
 The schema contract between the `general/procedure/company-analysis` analysis session and
 the company enrichment writer. Defines how organizational material is processed
 into durable company doc snippets, how snippet IDs are structured, where files
 land, and how re-onboarding merges without destroying human edits.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 This spec is the company-scoped counterpart to the init scaffolding spec. The
 taxonomy, merge rules, and validation contract are shared; the differences are

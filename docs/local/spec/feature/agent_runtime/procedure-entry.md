@@ -1,7 +1,8 @@
 ---
-description: Every agent assignment starts by naming a procedure — the daemon resolves the procedure's declared role, parameters and dispatch defaults, materializes its complete brief, and creates the session carrying that role before the agent reads a word.
-delivered_by:
-  - procedure-role-capability-composition
+description: Every agent assignment starts by naming a procedure — the daemon resolves
+  the procedure's declared role, parameters and dispatch defaults, materializes its
+  complete brief, and creates the session carrying that role before the agent reads
+  a word.
 ---
 
 # Procedure Entry — Spec

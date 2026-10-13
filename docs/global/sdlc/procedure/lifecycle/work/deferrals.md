@@ -1,6 +1,13 @@
 ---
 description: 'Judge what a build left outside its plan: decide each deferred item, file only the observations that meet the filing standard, and mark deferrals as processed.'
 visibility: 'public'
+role: deferrer
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Deferrals — Procedure
@@ -68,3 +75,7 @@ visibility: 'public'
 - If deferrals file is missing, stop and report; do not mark processed.
 - An entry that proposes an outcome or lacks a `Kind` is decided by its content
   under step 2; the proposal carries no weight.
+
+## Discipline
+
+Every todo you create or file stands on evidence you grounded yourself: for a defect, the occurrence or dangerous path you cite. An entry's words are where your search starts; an entry you cannot ground closes with its reason in `log`.

@@ -1,6 +1,13 @@
 ---
 description: 'Drift analysis phase. Classify each pending prepare-artifact drift across every applicable drift class as cosmetic or substantive and stamp the verdict so the lifecycle can continue or re-derive the affected layer.'
 visibility: 'public'
+role: drift-analyzer
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [codex, claude, gemini, deepseek]
+  thinking_mode: fast
 ---
 
 # Drift Analyze — Procedure

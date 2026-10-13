@@ -15,23 +15,11 @@ finalize-ready instruction ends the slug's workers and then ends the
 orchestrator session. Daemon-runner pickup is a separate concern outside this
 per-slug orchestration contract.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-Task execution is a separate non-SDLC lane. The lifecycle runner starts `/sdlc/run-task <slug>` for a prepared, authorized task; the Phase B build/review/finalize machine does not handle task execution and does not create a worktree. `/sdlc/run-task` reads and grooms `task-plan`, performs the authorized work, records results in the task-plan, and ends on a `success` firing — a recurring task is re-run as a fresh `/sdlc/run-task` at its next due instant — while an `error` firing stays alive for human follow-up; it never self-ends through finalize-ready cleanup.
-<!-- change:procedure-role-capability-composition -->
-
 Task execution is a separate non-SDLC lane. The lifecycle runner starts `sdlc/procedure/lifecycle/task/run-task <slug>` for a prepared, authorized task; the Phase B build/review/finalize machine does not handle task execution and does not create a worktree. `sdlc/procedure/lifecycle/task/run-task` reads and grooms `task-plan`, performs the authorized work, records results in the task-plan, and ends on a `success` firing — a recurring task is re-run as a fresh `sdlc/procedure/lifecycle/task/run-task` at its next due instant — while an `error` firing stays alive for human follow-up; it never self-ends through finalize-ready cleanup.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. `origin/main` is also the only baseline the worktree references afterwards: an agent inside `trees/<slug>` does not name the local `main` branch in any git invocation, for any subcommand. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff — the peer-conversation contract that lets builders and reviewers iterate directly without context-destroying churn. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. The work state machine owns the work-entry drift path end-to-end. When a tracked artifact's collapsed drift status is `pending`, work does NOT mutate work-state and does NOT create or touch a worktree; its bounce returns a script that dispatches the `sdlc/drift-analyze` worker and tells the orchestrator to re-enter `telec todo work {slug}` once the analyzer idles — this path never enters the prepare machine. The analyzer stamps its `--drift-reviewed` verdict and drives no transition. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. On re-entry the work machine reads the stamped verdict. A `cosmetic` verdict is non-blocking: work proceeds to worktree creation and build dispatch. A `substantive` verdict returns the Todo to preparation through the lifecycle runner: the work machine releases the Todo's lifecycle claim, and the platform ends the slug's work-lane sessions — every session the calling work orchestrator started, then the work orchestrator itself — only after the machine has answered the orchestrator's call. The worktree, local and remote branch, workspace directory, and build commits remain. No session changes lanes: the lifecycle runner dispatches a fresh prepare orchestrator, which re-derives the affected artifact; at `prepared` that orchestrator ends like any other and releases the claim, and the lifecycle runner dispatches a fresh work orchestrator, which continues the existing build against the changed plan (UC-WSM10). Neither lifecycle machine adopts a session that holds the slug in the other lane; each refuses it instead. The cosmetic path attempts no artifact write, so it never contends with the write-authority guard.
-<!-- change:procedure-role-capability-composition -->
-
 Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. The work state machine owns the work-entry drift path end-to-end. When a tracked artifact's collapsed drift status is `pending`, work does NOT mutate work-state and does NOT create or touch a worktree; its bounce returns a script that dispatches the `sdlc/procedure/lifecycle/prepare/drift-analyze` worker and tells the orchestrator to re-enter `telec todo work {slug}` once the analyzer idles — this path never enters the prepare machine. The analyzer stamps its `--drift-reviewed` verdict and drives no transition. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. On re-entry the work machine reads the stamped verdict. A `cosmetic` verdict is non-blocking: work proceeds to worktree creation and build dispatch. A `substantive` verdict returns the Todo to preparation through the lifecycle runner: the work machine releases the Todo's lifecycle claim, and the platform ends the slug's work-lane sessions — every session the calling work orchestrator started, then the work orchestrator itself — only after the machine has answered the orchestrator's call. The worktree, local and remote branch, workspace directory, and build commits remain. No session changes lanes: the lifecycle runner dispatches a fresh prepare orchestrator, which re-derives the affected artifact; at `prepared` that orchestrator ends like any other and releases the claim, and the lifecycle runner dispatches a fresh work orchestrator, which continues the existing build against the changed plan (UC-WSM10). Neither lifecycle machine adopts a session that holds the slug in the other lane; each refuses it instead. The cosmetic path attempts no artifact write, so it never contends with the write-authority guard.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 <!-- planned:reviewed-pr-contributions -->
 
@@ -60,22 +48,6 @@ the normal preparation owner with the imported work preserved.
 
 #### UC-WSM0: Prepared entry starts build work
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Given a Todo at lifecycle_phase=prepared with no worktree
-When the orchestrator calls "telec todo work my-feature"
-Then the machine acquires the (project_root, my-feature) single-flight lock
-And calls drift derivation against current evidence
-And every tracked artifact's collapsed drift status is fresh or cosmetic with a valid anchor
-And creates a worktree at trees/my-feature branched from origin/main
-And merges origin/main into the worktree once before dispatch
-And advances lifecycle_phase from prepared to build_started in a machine-owned transition
-And on the same call dispatches the sdlc/build worker session
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```
 Given a Todo at lifecycle_phase=prepared with no worktree
 When the orchestrator calls "telec todo work my-feature"
@@ -88,23 +60,6 @@ And advances lifecycle_phase from prepared to build_started in a machine-owned t
 And on the same call dispatches the sdlc/procedure/lifecycle/work/build worker session
 ```
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Given a Todo has a live sdlc/build session for its worktree
-And `telec todo work` merges origin/main into that worktree before dispatch/review
-When the merge fails with conflicts
-Then `telec todo work` returns a recovery handoff for the orchestrator
-And the orchestrator sends the live builder the merge-conflict recovery instructions
-And the recovery message says origin/main is the leading baseline
-And the builder reapplies the prepared todo intent on top, resolves conflicts, verifies, commits, and stamps build-complete
-And the orchestrator re-enters `telec todo work` after the builder idles so the workflow continues from the recovered HEAD
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```gherkin
 Given a Todo has a live sdlc/procedure/lifecycle/work/build session for its worktree
 And `telec todo work` merges origin/main into that worktree before dispatch/review
@@ -116,8 +71,6 @@ And the builder reapplies the prepared todo intent on top, resolves conflicts, v
 And the orchestrator re-enters `telec todo work` after the builder idles so the workflow continues from the recovered HEAD
 ```
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
 ```gherkin
 Given a Todo is already at lifecycle_phase=build_complete
 And `telec todo work` merges origin/main into that worktree before dispatching review
@@ -127,23 +80,6 @@ And the orchestrator sends the live builder the merge-conflict recovery instruct
 And the builder resolves conflicts, verifies, commits, and reports MERGE RECOVERY COMPLETE
 And the orchestrator re-enters `telec todo work` after the builder idles so review can proceed from the recovered HEAD
 ```
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Given a Todo at lifecycle_phase=prepared whose plan artifact's owned-snippet digests no longer match current truth
-When the orchestrator calls "telec todo work my-feature"
-Then drift derivation reports drift.implementation-plan = pending
-And the machine does NOT advance lifecycle_phase
-And the machine does NOT create or touch the worktree
-And the machine returns a script that dispatches the sdlc/drift-analyze worker and tells the orchestrator to re-enter "telec todo work my-feature" once the analyzer idles
-And the work orchestrator never calls "telec todo prepare my-feature"
-And on re-entry after a cosmetic verdict the machine observes non-blocking drift and proceeds with worktree creation and dispatch
-And on re-entry after a substantive verdict the work machine releases the Todo's lifecycle claim and the platform ends the work orchestrator and every session it started
-And the lifecycle runner dispatches a fresh prepare orchestrator, which re-derives the affected artifact with no 403 write refusal and no 409 claim conflict, and reaches prepared
-```
-
-<!-- change:procedure-role-capability-composition -->
 
 ```
 Given a Todo at lifecycle_phase=prepared whose plan artifact's owned-snippet digests no longer match current truth
@@ -158,8 +94,6 @@ And on re-entry after a substantive verdict the work machine releases the Todo's
 And the lifecycle runner dispatches a fresh prepare orchestrator, which re-derives the affected artifact with no 403 write refusal and no 409 claim conflict, and reaches prepared
 ```
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
 ```gherkin
 Given a bug-kind Todo at lifecycle_phase=prepared with an approved implementation-plan
 And the bug has input and diagnosis artifacts
@@ -171,22 +105,6 @@ And the machine never returns WORK_ENTRY_DRIFT for drift.input or drift.diagnosi
 ```
 
 #### UC-WSM5: A substantive work-entry drift verdict returns the Todo to preparation through the lifecycle runner
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Given a work-entry drift bounce dispatched the sdlc/drift-analyze worker for a slug whose lifecycle claim the calling work orchestrator holds
-And that work orchestrator has started worker sessions for the slug
-When the analyzer stamps a substantive --drift-reviewed verdict and the work orchestrator re-enters "telec todo work my-feature"
-Then the work machine releases the Todo's lifecycle claim
-And the platform ends every session the work orchestrator started, then the work orchestrator itself, without any agent ending them
-And the work orchestrator's own session ends only after the machine has answered its call
-And the worktree, local and remote branch, workspace directory, and build commits remain
-And the lifecycle runner then dispatches a fresh prepare orchestrator for the Todo under its normal dispatch policy
-And no human is notified
-```
-
-<!-- change:procedure-role-capability-composition -->
 
 ```gherkin
 Given a work-entry drift bounce dispatched the sdlc/procedure/lifecycle/prepare/drift-analyze worker for a slug whose lifecycle claim the calling work orchestrator holds
@@ -200,8 +118,6 @@ And the lifecycle runner then dispatches a fresh prepare orchestrator for the To
 And no human is notified
 ```
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
 ```
 Given a Todo at lifecycle_phase=build_started with a live builder session
 When the orchestrator calls "telec todo work my-feature" while the builder is still active
@@ -210,20 +126,6 @@ And returns an instruction to wait for the builder to run "telec todo stamp my-f
 ```
 
 #### UC-WSM4: Task execution uses run-task, not Phase B build
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Given a Todo has kind="task", lifecycle_phase="prepared", a `task-plan`, and a task authorization stamp
-And the task has no schedule, or its schedule's current due instant is at or before the runner evaluation instant
-When the lifecycle runner evaluates eligible work for the project
-Then it starts `/sdlc/run-task <slug>` without creating a worktree
-And records the spawned task session as the Todo's `active_runner`
-And no reservation, expiry, or other pre-ownership state participates
-And records or preserves lifecycle_phase="task_running" while the task session is live
-```
-
-<!-- change:procedure-role-capability-composition -->
 
 ```gherkin
 Given a Todo has kind="task", lifecycle_phase="prepared", a `task-plan`, and a task authorization stamp
@@ -235,39 +137,12 @@ And no reservation, expiry, or other pre-ownership state participates
 And records or preserves lifecycle_phase="task_running" while the task session is live
 ```
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Given a task lacks authorization, lacks a `task-plan`, has a future schedule, is held, or already names a live task session as `active_runner`
-When the lifecycle runner evaluates eligible work for the project
-Then it does not start `/sdlc/run-task`
-And it leaves the SDLC work state machine untouched
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```gherkin
 Given a task lacks authorization, lacks a `task-plan`, has a future schedule, is held, or already names a live task session as `active_runner`
 When the lifecycle runner evaluates eligible work for the project
 Then it does not start `sdlc/procedure/lifecycle/task/run-task`
 And it leaves the SDLC work state machine untouched
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Given `/sdlc/run-task` reaches the end of the task-plan
-When it stamps the firing outcome
-Then a `success` firing ends the session — a one-shot delivers the todo, a recurring records the firing and leaves the todo live for its next instant
-And an `error` firing holds the todo and stays alive as the human-inspection beacon
-And it does not stamp build-complete, dispatch review, or enter finalize-ready
-```
-
-<!-- change:procedure-role-capability-composition -->
 
 ```gherkin
 Given `sdlc/procedure/lifecycle/task/run-task` reaches the end of the task-plan
@@ -277,19 +152,6 @@ And an `error` firing holds the todo and stays alive as the human-inspection bea
 And it does not stamp build-complete, dispatch review, or enter finalize-ready
 ```
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Given a recurring task has a live `/sdlc/run-task` session and its schedule reaches a new due instant
-When the lifecycle runner evaluates eligible work for the project
-Then it does not start a second `/sdlc/run-task`
-And it does not signal the live run session
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```gherkin
 Given a recurring task has a live `sdlc/procedure/lifecycle/task/run-task` session and its schedule reaches a new due instant
 When the lifecycle runner evaluates eligible work for the project
@@ -297,38 +159,11 @@ Then it does not start a second `sdlc/procedure/lifecycle/task/run-task`
 And it does not signal the live run session
 ```
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Given a recurring task has no live `/sdlc/run-task` session and its schedule reaches a due instant
-When the lifecycle runner evaluates eligible work for the project
-Then it dispatches a fresh `/sdlc/run-task`, exactly like a one-shot
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```gherkin
 Given a recurring task has no live `sdlc/procedure/lifecycle/task/run-task` session and its schedule reaches a due instant
 When the lifecycle runner evaluates eligible work for the project
 Then it dispatches a fresh `sdlc/procedure/lifecycle/task/run-task`, exactly like a one-shot
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Given a Todo whose builder has Stamped build-complete and committed its work
-When the orchestrator calls "telec todo work my-feature"
-Then the machine runs the build gates against the worktree
-And on pass advances lifecycle_phase to build_complete and dispatches the sdlc/review-build worker
-And on fail relays the gate output back to the live builder session via "telec sessions send"
-And does NOT advance the lifecycle_phase until the builder restamps build-complete with a passing gate
-```
-
-<!-- change:procedure-role-capability-composition -->
 
 ```
 Given a Todo whose builder has Stamped build-complete and committed its work
@@ -339,8 +174,6 @@ And on fail relays the gate output back to the live builder session via "telec s
 And does NOT advance the lifecycle_phase until the builder restamps build-complete with a passing gate
 ```
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
 ```
 Given a Todo at lifecycle_phase=build_complete whose reviewer Stamped verdict=changes_requested
 When the orchestrator calls "telec todo work my-feature"
@@ -349,24 +182,6 @@ And relays the review-findings to the live builder session via the reviewer's di
 And refuses to dispatch a fresh reviewer until the builder restamps build-complete from the new HEAD
 And on every re-review round the reviewer is re-dispatched against the merge-base diff, not the full diff
 ```
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Given a Todo at lifecycle_phase=review_approved with no pending deferrals
-When the orchestrator calls "telec todo work my-feature"
-Then the machine dispatches the sdlc/finalize worker
-And when the finalizer Stamps finalize_ready with a sha matching worktree HEAD, branch ref, and remote ref
-Then the machine advances to lifecycle_phase=finalize_ready through the state-write boundary
-And the phase-transition chokepoint emits the todo's finalize-ready event
-And worker-session cleanup happens inside the finalize_ready step
-And the machine emits "telec reminders set session-departure" for the work orchestrator
-And the machine does NOT instruct the orchestrator to call "telec todo work my-feature" again
-And the machine does NOT instruct the orchestrator to continue to unrelated work
-And on any triple-ref mismatch (uncommitted, branch≠HEAD, remote≠local, stamped sha≠HEAD) refuses to advance and instructs the operator to re-stamp
-```
-
-<!-- change:procedure-role-capability-composition -->
 
 ```
 Given a Todo at lifecycle_phase=review_approved with no pending deferrals
@@ -381,8 +196,6 @@ And the machine does NOT instruct the orchestrator to call "telec todo work my-f
 And the machine does NOT instruct the orchestrator to continue to unrelated work
 And on any triple-ref mismatch (uncommitted, branch≠HEAD, remote≠local, stamped sha≠HEAD) refuses to advance and instructs the operator to re-stamp
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ```
 Given a Todo is already at lifecycle_phase=finalize_ready
@@ -401,18 +214,6 @@ And the same slug called concurrently from a different project root acquires a s
 
 #### UC-WSM1: Bug build dispatches the build worker with the plan + diagnosis contract
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Given a bug-kind Todo at lifecycle_phase=build_started
-When the orchestrator calls "telec todo work my-bug"
-Then the machine dispatches the sdlc/build worker (same as change/feature)
-And the artifact contract names the reviewed implementation-plan and the diagnosis as the worker's mandate
-And the lifecycle still requires an explicit "telec todo stamp my-bug --build-complete" before review can dispatch
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```
 Given a bug-kind Todo at lifecycle_phase=build_started
 When the orchestrator calls "telec todo work my-bug"
@@ -420,8 +221,6 @@ Then the machine dispatches the sdlc/procedure/lifecycle/work/build worker (same
 And the artifact contract names the reviewed implementation-plan and the diagnosis as the worker's mandate
 And the lifecycle still requires an explicit "telec todo stamp my-bug --build-complete" before review can dispatch
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-WSM2: Explicit work rejects unknown slugs without creating roadmap rows
 
@@ -581,15 +380,7 @@ And the refusal names the sanctioned path: P completes its prepare lifecycle, wh
   work orchestrator session. The Phase B orchestrator remains per-slug and
   terminal after finalize-ready cleanup.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector for ready work. It evaluates the project todo set, starts `/sdlc/work --args <slug>` for each selected item, and records the spawned session as that Todo's `active_runner`. The work state machine remains per-slug: a bare `telec todo work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG` and never scans the roadmap opportunistically. A Todo that a kickback or a substantive work-entry drift verdict returned to preparation is dispatched to a fresh `/sdlc/prepare` once no live driver holds it, and, once prepared again, to a fresh `/sdlc/work` under the kind's work-lane autostart policy like any other prepared Todo; that work orchestrator continues the existing build.
-
-<!-- change:procedure-role-capability-composition -->
-
 - `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector for ready work. It evaluates the project todo set, starts `sdlc/procedure/lifecycle/work/overview --args <slug>` for each selected item, and records the spawned session as that Todo's `active_runner`. The work state machine remains per-slug: a bare `telec todo work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG` and never scans the roadmap opportunistically. A Todo that a kickback or a substantive work-entry drift verdict returned to preparation is dispatched to a fresh `sdlc/procedure/lifecycle/prepare/overview` once no live driver holds it, and, once prepared again, to a fresh `sdlc/procedure/lifecycle/work/overview` under the kind's work-lane autostart policy like any other prepared Todo; that work orchestrator continues the existing build.
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Known caveats
 

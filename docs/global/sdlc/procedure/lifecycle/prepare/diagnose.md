@@ -32,21 +32,11 @@ The dispatched peer owns investigation and every artifact revision under
 only triage, dispatch, interrogation, and lifecycle stamps. This procedure is the driver's
 contract; the peer procedure is the artifact schema's single owner.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-Diagnosis grounds the cause and stops there. Neither session opens a worktree, writes
-production code, commits, or **prescribes a fix or verification approach** — the planner
-decides the fix that removes the cause, and the builder writes it during `/build`. A
-diagnosis that reaches for a fix has shifted its objective from _understand_ to _alleviate_,
-and an objective of alleviation never reliably reaches cause.
-<!-- change:procedure-role-capability-composition -->
-
 Diagnosis grounds the cause and stops there. Neither session opens a worktree, writes
 production code, commits, or **prescribes a fix or verification approach** — the planner
 decides the fix that removes the cause, and the builder writes it during `sdlc/procedure/lifecycle/work/build`. A
 diagnosis that reaches for a fix has shifted its objective from _understand_ to _alleviate_,
 and an objective of alleviation never reliably reaches cause.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Preconditions
 

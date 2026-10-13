@@ -2,6 +2,12 @@
 description: 'Prepare-stage orchestration. Audit intent, enter the kind-specific preparation lane, and drive its state-machine-owned derivation and review cycle to PREPARED or BLOCKED.'
 activation_trigger: 'Use when asked to prepare a todo, become its prepare orchestrator, or drive telec todo prepare for a slug.'
 visibility: 'public'
+role: prepare-orchestrator
+parameters:
+  - name: slug
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Prepare Overview — Procedure
@@ -36,14 +42,13 @@ focused procedure and advances through the machine-owned transitions.
    there.
 
 2. **Each phase has its own focus, sharpened by a hat:**
+   - **BA hat** for intake — loaded by reading `sdlc/procedure/lifecycle/prepare/intake`
+   - **Architect hat** for architecture — loaded by reading `sdlc/procedure/lifecycle/prepare/architecture`
+   - **Planner hat** for plan — loaded by reading `sdlc/procedure/lifecycle/prepare/plan-draft`
 
-- **BA hat** for intake — loaded by reading `~/.teleclaude/commands/sdlc/prepare-intake.md`
-- **Architect hat** for architecture — loaded by reading `~/.teleclaude/commands/sdlc/prepare-architecture.md`
-- **Planner hat** for plan — loaded by reading `~/.teleclaude/commands/sdlc/prepare-plan.md`
-
-Putting on a hat sharpens focus for the current phase; it does not erase
-the lifecycle awareness underneath. The hat comes off when the phase ends
-and the next procedure loads.
+   Putting on a hat sharpens focus for the current phase; it does not erase
+   the lifecycle awareness underneath. The hat comes off when the phase ends
+   and the next procedure loads.
 
 3. **Reviewers are independently dispatched.** When the state machine
    routes to a review step, dispatch the reviewer as a separate session via
@@ -87,7 +92,7 @@ cited sources, the driver settles that account and dispatches no peer. See
 
 - Slug exists in the todo list, or is created during the session at the moment
   intent is concrete enough.
-- Session was invoked via `/prepare [slug]`, or auto-spawned to work a
+- Session was invoked via `sdlc/procedure/lifecycle/prepare/overview [slug]`, or auto-spawned to work a
   todo already on the list.
 - Either a human is in the conversation or none is. The session reads that from
   the conversation it is having; nothing declares it and nothing carries it in.
@@ -361,15 +366,15 @@ When the state machine routes you to a phase, load the corresponding procedure
 and do its focused work. Each procedure ends by calling `telec todo prepare
 {slug}` to advance — that's how the lifecycle proceeds.
 
-| Phase               | Kind(s)              | Procedure                                             | Focus                       |
-| ------------------- | -------------------- | ----------------------------------------------------- | --------------------------- |
-| Intake              | Feature              | `~/.teleclaude/commands/sdlc/prepare-intake.md`       | BA                          |
-| PRD review          | Feature              | `~/.teleclaude/commands/sdlc/review-prd.md`           | Reviewer                    |
-| Diagnose            | Bug                  | `~/.teleclaude/commands/sdlc/prepare-diagnose.md`     | Diagnoser (dispatched peer) |
-| Architecture        | Feature              | `~/.teleclaude/commands/sdlc/prepare-architecture.md` | Architect                   |
-| Architecture review | Feature              | `~/.teleclaude/commands/sdlc/review-architecture.md`  | Reviewer                    |
-| Plan                | Feature, change, bug | `~/.teleclaude/commands/sdlc/prepare-plan.md`         | Planner                     |
-| Plan review         | Feature, change, bug | `~/.teleclaude/commands/sdlc/review-plan.md`          | Reviewer                    |
+| Phase               | Kind(s)              | Procedure                                              | Focus                       |
+| ------------------- | -------------------- | ------------------------------------------------------ | --------------------------- |
+| Intake              | Feature              | `sdlc/procedure/lifecycle/prepare/intake`              | BA                          |
+| PRD review          | Feature              | `sdlc/procedure/lifecycle/prepare/review-prd`          | Reviewer                    |
+| Diagnose            | Bug                  | `sdlc/procedure/lifecycle/prepare/diagnose-peer`       | Diagnoser (dispatched peer) |
+| Architecture        | Feature              | `sdlc/procedure/lifecycle/prepare/architecture`        | Architect                   |
+| Architecture review | Feature              | `sdlc/procedure/lifecycle/prepare/review-architecture` | Reviewer                    |
+| Plan                | Feature, change, bug | `sdlc/procedure/lifecycle/prepare/plan-draft`          | Planner                     |
+| Plan review         | Feature, change, bug | `sdlc/procedure/lifecycle/prepare/review-plan`         | Reviewer                    |
 
 Intake's focused work includes situating the premise against the existing todo
 landscape — reconciling overlap and undeclared dependencies with sibling todos
@@ -438,11 +443,11 @@ paths since the artifact was authored), dispatch a lean drift-analysis
 worker:
 
 ```
-telec sessions run --command /drift-analyze --agent codex --args {slug}
+telec sessions run --command sdlc/procedure/lifecycle/prepare/drift-analyze --agent codex --args {slug}
 ```
 
 The worker reads the diffs scoped to referenced paths, assesses impact per
-affected artifact, and reports findings. The `/drift-analyze` worker is
+affected artifact, and reports findings. The `sdlc/procedure/lifecycle/prepare/drift-analyze` worker is
 the sole author of `--drift-reviewed`. Substantive verdicts trigger
 re-derivation of the affected phase; cosmetic verdicts allow the chain to
 continue.

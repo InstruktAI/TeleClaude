@@ -5,6 +5,10 @@ subscriptions:
 subscription_home: person
 event_delivery: sequential
 interruptible: false
+role: memory-curator
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: med
 ---
 
 # Person Conversation Memory — Procedure

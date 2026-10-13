@@ -11,21 +11,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-Agent artifact validation is the context gate that runs during source validation.
-It enforces the normalized shape of commands, plus a skill identity
-contract. Every `SKILL.md` must declare `name` and `description`, with `name`
-equal to its folder. Skill bodies are never graded against TeleClaude's taxonomy.
-
-Validated commands share a common shell — frontmatter, H1 title, optional
-Required reads, section order, and a role activation line. Subagent definitions
-are not an artifact kind: none is validated, and a file under an agents/ kind
-directory other than commands/ or skills/ is refused as outside the artifact
-model. Third-party skill bodies and supporting package Markdown retain their
-human-authored structure.
-<!-- change:procedure-role-capability-composition -->
-
 Agent artifact validation is the context gate that runs during source validation.
 It enforces the skill identity contract: every `SKILL.md` must declare `name`
 and `description`, with `name` equal to its folder. Skill bodies are never
@@ -38,24 +23,10 @@ session start is a procedure, validated under the snippet contracts
 (`local/projects/teleclaude/spec/feature/context/snippet-frontmatter-validation`),
 never here. Third-party skill bodies and supporting package Markdown retain
 their human-authored structure.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Canonical fields
 
 ### Use cases
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Scenario: Command artifact missing H1
-  Given a command Markdown file with frontmatter but no leading H1 line
-  When the artifact validator runs
-  Then a "missing H1" error is reported
-```
-
-<!-- change:procedure-role-capability-composition -->
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ```
 Scenario: Every skill entrypoint has identity metadata
@@ -75,86 +46,6 @@ Scenario: An agent validates a skill package that retains its upstream body stru
   Then the skill body produces no taxonomy-validation finding
 ```
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Scenario: Command lacks the role activation line
-  Given a command Markdown file with no "You are now the ..." line before the first regular H2
-  When validation runs
-  Then the missing role activation line is reported
-```
-
-<!-- change:procedure-role-capability-composition -->
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Scenario: Section order does not match the artifact kind
-  Given a command whose H2 order is "Inputs, Purpose, Outputs, Steps, Discipline"
-  When section-order validation runs
-  Then the wrong-order error is reported
-  And the expected order "Purpose, Inputs, Outputs, Steps, Discipline" is named in the finding
-```
-
-<!-- change:procedure-role-capability-composition -->
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Scenario: Required reads is not the first H2 in an artifact
-  Given a command artifact whose first H2 is "## Purpose"
-  And a "## Required reads" H2 appears later
-  When body-structure validation runs
-  Then the Required-reads placement error is reported
-```
-
-<!-- change:procedure-role-capability-composition -->
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Scenario: H3 heading present in an artifact
-  Given any artifact containing an "### Example" H3
-  When validation runs
-  Then the H3 heading is rejected
-```
-
-<!-- change:procedure-role-capability-composition -->
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Scenario: parameters contains duplicate names
-  Given an artifact frontmatter parameters list with two entries named "target"
-  When parameter-shape validation runs
-  Then the duplicate "target" parameter is rejected
-```
-
-<!-- change:procedure-role-capability-composition -->
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Scenario: Required reads orders refs incorrectly
-  Given a Required reads block listing a skill ref before a command ref
-  When the Required-reads ordering check runs
-  Then the ordering error is reported (commands → skills)
-```
-
-<!-- change:procedure-role-capability-composition -->
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
 #### UC-AAV2: A repository's artifact sources are validated within its declared reach
 
 ```gherkin
@@ -162,16 +53,9 @@ Scenario: An agent validates a repository whose sources exceed its declared reac
   Given a repository that is not the mother declares the domains it publishes
   And it carries authored sources under agents/local/ and agents/global/
   When the agent runs artifact validation
-<!-- planned-change:procedure-role-capability-composition -->
-  Then every agents/local/ source is validated as authored input
-  And a global command under a domain the repository publishes is validated as authored input
-  And a global skill, or a command under a domain the repository does not publish, general included, is refused with a finding naming the file and the reach it exceeds
-  And nothing under .agents/ is read as an authored source
-<!-- change:procedure-role-capability-composition -->
   Then every agents/local/ source is validated as authored input
   And a global skill is refused with a finding naming the file and the reach it exceeds
   And nothing under .agents/ is read as an authored source
-<!-- /planned-change:procedure-role-capability-composition -->
 ```
 
 ```
@@ -188,52 +72,23 @@ Scenario: Published or project-local supporting Markdown keeps its upstream stru
 
 ```
 Scenario: Scoped validation grades the artifacts in its path set
-<!-- planned-change:procedure-role-capability-composition -->
-  Given a path set naming a command and a skill entrypoint under a configured artifact source
-  When artifact validation runs scoped to that path set
-  Then each named artifact is validated against the contract for its kind
-  And a supporting file inside a skill package resolves to that package's SKILL.md
-<!-- change:procedure-role-capability-composition -->
   Given a path set naming a skill entrypoint under a configured artifact source
   When artifact validation runs scoped to that path set
   Then the named artifact is validated against the skill identity contract
   And a supporting file inside a skill package resolves to that package's SKILL.md
-<!-- /planned-change:procedure-role-capability-composition -->
 ```
 
 #### UC-AAV4: The commit gate validates the artifacts in its pathspec
 
 ```
 Scenario: The commit gate validates the artifacts in its pathspec
-<!-- planned-change:procedure-role-capability-composition -->
-  Given a commit whose staged file set names a command or skill source
-<!-- change:procedure-role-capability-composition -->
   Given a commit whose staged file set names a skill source
-<!-- /planned-change:procedure-role-capability-composition -->
   When the commit's pre-commit gate runs, whichever route started the commit
   Then artifact validation runs scoped to the staged file set, reading the staged content
   And a validation finding refuses the commit
 ```
 
-<!-- planned-change:procedure-role-capability-composition -->
-
 #### UC-AAV5: An empty command companion is accepted as a retirement
-
-```
-Scenario: An agent commits a retirement companion beside a command
-  Given an agent commits a zero-byte sibling companion naming a slug beside a command source
-  When artifact validation runs on that commit
-  Then the agent receives no finding for the companion
-  And the command itself is still validated as a command
-  But when the sibling is not zero bytes, or has no command beside it
-  Then the agent receives a finding naming the file as a malformed command source
-```
-
-<!-- change:procedure-role-capability-composition -->
-
-#### UC-AAV5: An empty command companion is accepted as a retirement
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-AAV6: A file git ignores under agents/ is not an artifact source
 
@@ -251,18 +106,10 @@ Scenario: An agent runs full lint with an ignored file and a stray file under ag
 
 ```gherkin
 Scenario: An agent commits agent artifacts in a company or person home
-<!-- planned-change:procedure-role-capability-composition -->
-  Given a company or person home carrying sources directly under its own agents/commands/ and agents/skills/
-  When artifact validation runs over paths that home owns
-  Then each command is validated against the command contract
-  And each SKILL.md is validated against the skill identity contract
-  And a file under that home's agents/ outside commands/ or skills/ is refused with a finding naming it
-<!-- change:procedure-role-capability-composition -->
   Given a company or person home carrying sources directly under its own agents/skills/
   When artifact validation runs over paths that home owns
   Then each SKILL.md is validated against the skill identity contract
   And a file under that home's agents/ outside skills/ is refused with a finding naming it
-<!-- /planned-change:procedure-role-capability-composition -->
   And no global or local tier directory is required in that home
 ```
 

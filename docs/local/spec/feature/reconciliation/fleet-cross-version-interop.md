@@ -25,11 +25,7 @@ The behavioral contract that keeps a permanently multi-version fleet working tog
 - **Removing or breaking a shared shape waits for the slowest node.** A field or behavior the whole fleet relies on may be removed only after every live node — including the slowest channel — no longer needs it.
 - **Capabilities that require agreement refuse rather than guess.** A change that two nodes must agree on to stay safe (a coordination protocol) is not silently bypassed by an unaware node; it holds until both sides support it.
 
-<!-- planned:procedure-role-capability-composition -->
-
 - **Procedure entry is a capability that requires agreement.** A node advertises `procedure-entry` when it creates sessions by naming a published procedure. A session-create request naming a procedure that is forwarded to a node not advertising it is refused before any side effect, naming the missing capability; a request naming a retired command that reaches a node advertising it is refused naming the unknown command. No node translates between the two shapes. The agent role a session carries travels on an additive `role` field; the older `system_role` and `job_role` fields stay populated with a **legacy projection derived from the role's class and reach** — a worker-class role projects as `worker`, the integrator and coordinator as themselves, any other full-reach role as `orchestrator`, and any other contained role as its own name. A projected value reaches an older node only where no clearance reads it: in session snapshots, caller provenance and authored-turn labels, which that node reads for display and record alone (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`: only the principal crosses as identity, and a role carried in a message is read by no clearance). An older node's clearance reads the relayed principal and its own records, and its record derivation never meets a catalog name, because a session carrying one is created only on a node that advertises `procedure-entry`. A contained role's set is therefore evaluated only where the session was created, and no older node widens or narrows it.
-
-<!-- /planned:procedure-role-capability-composition -->
 
 ### Use cases
 

@@ -95,21 +95,6 @@ contracts and never creates shared ownership.
   asks, and neither decides membership nor substitutes an answer where none is
   published.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- A command's name belongs to the context that owns the command, and that
-  context emits it domain-qualified; the shared name table holds the values
-  without owning them. Semantic owner and corpus domain are independent:
-  `workflow` owns its todo-lifecycle names and emissions, while `config` owns
-  the configured-job command and the scheduler's `general/run-job`
-  emission. Each other command follows the context named by its governing
-  contract. `context` owns the corpus those names are laid out in and the reach
-  that admits a source into it, read from `config`'s publishing declaration;
-  `agent_runtime` owns resolving an emitted name to one corpus document at
-  dispatch, and owns the session record, title, and live-session attribution
-
-<!-- change:procedure-role-capability-composition -->
-
 - A dispatch names a procedure by its domain-qualified snippet ID, and the
   context whose contract governs the dispatch emits that ID: `workflow` emits
   its todo-lifecycle procedures, while `config` hands the scheduler the
@@ -118,8 +103,6 @@ contracts and never creates shared ownership.
   `config`'s publishing declaration; `agent_runtime` owns resolving an emitted
   ID to one published procedure at entry, and owns the session record, title,
   and live-session attribution
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 query that carry and match the dispatched value, which callers such as
 `workflow` consume. None restates another's rule: a caller never inspects the

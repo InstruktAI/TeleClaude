@@ -26,23 +26,7 @@ realignment command; the pointer is never authored by hand. Legacy phase strings
 on older Todos auto-upcycle on read; the canonical pointer is the single source of
 truth for "where is this Todo, right now."
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-The canonical enum includes `task_plan_drafting` and `task_running` — task-lane phases owned by the task lane, not by the SDLC prepare or work state machines. `task_plan_drafting` holds a kind=`task` Todo from kind assignment or task creation until `/sdlc/prepare-task` writes a `task-plan`; the phase then advances to `prepared` (awaiting human authorization). `task_running` is the non-SDLC live execution marker while `/sdlc/run-task` is dispatched by the lifecycle runner; it is not a build/review/finalize phase and does not satisfy SDLC work gates.
-<!-- change:procedure-role-capability-composition -->
-
 The canonical enum includes `task_plan_drafting` and `task_running` — task-lane phases owned by the task lane, not by the SDLC prepare or work state machines. `task_plan_drafting` holds a kind=`task` Todo from kind assignment or task creation until `sdlc/procedure/lifecycle/task/prepare-task` writes a `task-plan`; the phase then advances to `prepared` (awaiting human authorization). `task_running` is the non-SDLC live execution marker while `sdlc/procedure/lifecycle/task/run-task` is dispatched by the lifecycle runner; it is not a build/review/finalize phase and does not satisfy SDLC work gates.
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-Drift between an upstream artifact and the downstream artifacts grounded against
-it is detected objectively (`derive_lifecycle_drift`) and assessed for
-**materiality** only by intelligence — the `/sdlc/drift-analyze` worker stamps
-`drift_reviewed` as `substantive` or `cosmetic`, and only a `substantive` verdict
-cascades to clear the affected downstream review verdicts. No code path clears a
-human's approval as a mechanical side effect of editing an artifact.
-<!-- change:procedure-role-capability-composition -->
 
 Drift between an upstream artifact and the downstream artifacts grounded against
 it is detected objectively (`derive_lifecycle_drift`) and assessed for
@@ -50,7 +34,6 @@ it is detected objectively (`derive_lifecycle_drift`) and assessed for
 `drift_reviewed` as `substantive` or `cosmetic`, and only a `substantive` verdict
 cascades to clear the affected downstream review verdicts. No code path clears a
 human's approval as a mechanical side effect of editing an artifact.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Canonical fields
 
@@ -70,18 +53,6 @@ Then the workflow engine re-derives lifecycle_phase from the current evidence
 And never advances past the evidence on disk
 ```
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Given a Todo with plan_approved stamped and an implementation-plan artifact present
-When an operator edits and saves the implementation-plan artifact
-Then the plan_approved stamp is NOT cleared by the write
-And whether the change is material is left to the /sdlc/drift-analyze judgment
-And only a substantive drift-review verdict clears the affected downstream review
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```
 Given a Todo with plan_approved stamped and an implementation-plan artifact present
 When an operator edits and saves the implementation-plan artifact
@@ -89,8 +60,6 @@ Then the plan_approved stamp is NOT cleared by the write
 And whether the change is material is left to the sdlc/procedure/lifecycle/prepare/drift-analyze judgment
 And only a substantive drift-review verdict clears the affected downstream review
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ```
 Given a persisted Todo carries a legacy lifecycle_phase value
@@ -155,49 +124,12 @@ And no blocker reports the remediation write as absent
 
 ### Cross-context references
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- `agent_runtime` — worker dispatch decisions read the canonical phase to decide
-  which Worker command (`sdlc/prepare`, `sdlc/build`, `sdlc/finalize`, etc.) to
-  run for a given Todo. Workers never re-derive the phase; they trust the pointer.
-
-<!-- change:procedure-role-capability-composition -->
-
 - `agent_runtime` — worker dispatch decisions read the canonical phase to decide
   which entry procedure (the prepare overview, the build procedure, the finalize
   procedure, etc.) to run for a given Todo. Workers never re-derive the phase;
   they trust the pointer.
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
 ## Known caveats
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-- The pointer never advances past the evidence on disk. If artifacts, stamps, and
-  verdicts only support `prd_drafting`, the Todo is not promoted to `prd_review`
-  regardless of how often state is read.
-- Re-derivation happens on state-machine dispatch (`telec todo prepare`/`work`).
-  Editing an artifact between dispatches changes the evidence; the pointer reflects
-  it at the next dispatch. There is no manual realignment command — the removed
-  `telec todo reconcile` and `telec todo mark-phase` surfaces no longer exist.
-- The canonical lifecycle is **strictly forward** under normal progression: draft
-  → prepare-lane phases → prepared → work-lane phases → finalize_ready →
-  delivered. A substantive artifact edit that drifts already-approved downstream
-  work is rewound through the `/sdlc/drift-analyze` judgment that invalidates the
-  affected approvals — not by a code path that clears them unconditionally.
-- Legacy persisted entries with `lifecycle_phase="handed_off"` or
-  `finalize.status="handed_off"` normalize on read to
-  `lifecycle_phase="finalize_ready"` and `finalize.status="ready"`; no operator
-  action is required.
-- Legacy phase strings from older versions are tolerated on read; the upcycle
-  layer reconstructs the canonical pointer from whatever evidence the older entry
-  carried.
-- An invalid persisted `lifecycle_phase` is treated as a hard error, not a
-  default. The platform refuses to guess a phase for a Todo whose pointer is
-  missing or unrecognized.
-
-<!-- change:procedure-role-capability-composition -->
 
 - The pointer never advances past the evidence on disk. If artifacts, stamps, and
   verdicts only support `prd_drafting`, the Todo is not promoted to `prd_review`
@@ -221,8 +153,6 @@ And no blocker reports the remediation write as absent
 - An invalid persisted `lifecycle_phase` is treated as a hard error, not a
   default. The platform refuses to guess a phase for a Todo whose pointer is
   missing or unrecognized.
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ## See Also
 

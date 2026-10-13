@@ -42,20 +42,6 @@ feature specs remain the current contract.
   anything else loads. Consumers ask this contract and never restate the
   layout.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- **Also owns:** the names of the todo-lifecycle commands — one
-  domain-qualified value each — and its own emissions of them: dispatch
-  requests, machine scripts, and procedure loads. A command whose meaning
-  belongs to another context is named by that context; the shared name table in
-  the codebase holds every value mechanically and confers no authority. The
-  corpus those names are laid out in belongs to `context`; resolving a name to a
-  document, the session record and title that carry it, and the live-session
-  attribution query that matches it belong to `agent_runtime`, which this
-  context consumes.
-
-<!-- change:procedure-role-capability-composition -->
-
 - **Also owns:** which entry procedure each todo-lifecycle dispatch names —
   the prepare and work overviews, the build, review, finalize, drift-analysis,
   task and deferral procedures — and every emission of those procedure IDs by
@@ -67,8 +53,6 @@ feature specs remain the current contract.
   stamping and the checkpoint's worktree dirty-set selection consume those
   groupings by role name; the catalog composes the roles and decides nothing
   about lanes (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ### Preparation completion provenance
 

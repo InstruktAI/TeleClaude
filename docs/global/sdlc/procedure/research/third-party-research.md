@@ -5,6 +5,14 @@ activation_trigger: Use when entering unfamiliar third-party territory, or about
 description: 'Research third-party docs: search authoritative sources, fetch, summarize,
   and index findings.'
 visibility: public
+role: helper
+parameters:
+  - name: brief
+    required: true
+    rest: true
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Third-Party Research — Procedure

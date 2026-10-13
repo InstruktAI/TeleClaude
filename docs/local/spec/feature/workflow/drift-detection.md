@@ -27,19 +27,10 @@ places (code, sibling artifacts, doc snippets) and an artifact authored at one
 moment can fall out of step with any of them by the time prepare is asked to
 converge. The feature names each
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-class explicitly, records the provenance needed to detect it, derives a
-status per class on every `telec todo prepare` call, and routes a
-`/sdlc/drift-analyze` worker when classification cannot be made
-deterministically from evidence alone.
-<!-- change:procedure-role-capability-composition -->
-
 class explicitly, records the provenance needed to detect it, derives a
 status per class on every `telec todo prepare` call, and routes a
 `sdlc/procedure/lifecycle/prepare/drift-analyze` worker when classification cannot be made
 deterministically from evidence alone.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 Drift detection is **fail-safe by design**: when provenance is missing,
 when the diff cannot be classified, or when an upstream reference cannot be
@@ -48,26 +39,6 @@ verdict from the drift analyzer is **scoped to the evidence anchor at
 which it was made** — when a later change exceeds that anchor, the verdict
 expires and the artifact re-enters `pending` automatically. There is no
 silent acceptance of new drift behind a stale verdict.
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-The feature integrates with the existing prepare lifecycle without adding
-a new phase: drift is derived inside the existing `BLOCKED` branch and
-cleared by the existing `--drift-reviewed` stamp surface. It also
-participates at the work-entry boundary: `telec todo work` calls the same
-shared derivation function before its `prepared → build_started` handoff. The
-work state machine owns the work-entry continuation — on a `pending` collapsed
-status it dispatches the `sdlc/drift-analyze` worker and the orchestrator
-re-enters `telec todo work {slug}`; on the re-entered `substantive` status it
-returns the Todo to preparation — the work machine releases the claim, the
-platform ends the slug's work-lane sessions, and the lifecycle runner
-dispatches a fresh prepare orchestrator; on `cosmetic` (valid anchor) it
-proceeds. The work orchestrator never calls `telec todo prepare`. Autonomous
-continuation needs no human gate on either verdict: the fresh prepare
-orchestrator re-derives and self-ends through the prepare terminal, and work
-resumes only under the lifecycle runner's autostart toggle. See
-`@spec/feature/workflow/work-state-machine` for the continuation contract.
-<!-- change:procedure-role-capability-composition -->
 
 The feature integrates with the existing prepare lifecycle without adding
 a new phase: drift is derived inside the existing `BLOCKED` branch and
@@ -85,7 +56,6 @@ continuation needs no human gate on either verdict: the fresh prepare
 orchestrator re-derives and self-ends through the prepare terminal, and work
 resumes only under the lifecycle runner's autostart toggle. See
 `@spec/feature/workflow/work-state-machine` for the continuation contract.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Canonical fields
 
@@ -247,29 +217,6 @@ SHA Y > X.
 Drift is derived inside the existing `BLOCKED` lifecycle phase, not as a
 new phase:
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- On every `telec todo prepare {slug}` call, after the basic phase
-  derivation, the machine computes drift status for every present tracked
-  artifact in the coverage matrix across every applicable class.
-- If any artifact's overall drift status is `pending`, the machine routes
-  to the BLOCKED branch and emits a `/sdlc/drift-analyze` dispatch
-  instruction, listing the artifacts and classes pending review.
-- If any re-derivable artifact's drift status is `substantive`, the machine
-  clears the artifact's review verdict (and every downstream artifact's review
-  verdict) and routes back to the artifact's drafting phase.
-- Every valid `substantive` stamp starts a new review cycle for each review
-  target it invalidates. Each cycle counts its passes from zero against the
-  configured threshold, while the phase's cumulative round, report, and verdict
-  history remains intact.
-- If drift evidence names an artifact outside the coverage matrix or a class
-  whose owning re-derivation path is undefined, the machine halts as an anomaly
-  instead of accepting a `substantive` verdict with nowhere coherent to route.
-- If every artifact's drift status is `fresh` or `cosmetic`, the machine
-  derives `PREPARED` (subject to the other gates) and the chain proceeds.
-
-<!-- change:procedure-role-capability-composition -->
-
 - On every `telec todo prepare {slug}` call, after the basic phase
   derivation, the machine computes drift status for every present tracked
   artifact in the coverage matrix across every applicable class.
@@ -289,24 +236,6 @@ new phase:
 - If every artifact's drift status is `fresh` or `cosmetic`, the machine
   derives `PREPARED` (subject to the other gates) and the chain proceeds.
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-The `/sdlc/drift-analyze` worker reads the pending classes per artifact,
-inspects the appropriate evidence for every pending class, and stamps
-**one verdict per artifact** (the per-artifact stamp shape with multi-
-dimensional evidence anchor; the CLI signature
-`--drift-reviewed <artifact> <verdict> <reason>` is unchanged). The
-verdict collapses across all pending classes by the rule "substantive on
-any class → substantive overall; otherwise cosmetic." The reason text
-names each evaluated class and its per-class finding so the audit trail
-preserves the per-class detail. Anchor expiry on the next derivation is
-checked per class against the recorded multi-dimensional anchor; any
-single dimension moving past its anchor re-pends that class. The
-orchestrator re-enters the state machine when the worker idles.
-<!-- change:procedure-role-capability-composition -->
-
 The `sdlc/procedure/lifecycle/prepare/drift-analyze` worker reads the pending classes per artifact,
 inspects the appropriate evidence for every pending class, and stamps
 **one verdict per artifact** (the per-artifact stamp shape with multi-
@@ -319,7 +248,6 @@ preserves the per-class detail. Anchor expiry on the next derivation is
 checked per class against the recorded multi-dimensional anchor; any
 single dimension moving past its anchor re-pends that class. The
 orchestrator re-enters the state machine when the worker idles.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 The lifecycle runner dispatches a Todo it would otherwise route to the work
 lane to the prepare lane when that Todo's implementation-plan derives
@@ -336,28 +264,6 @@ The work state machine calls the same derivation function at its entry
 boundary, BEFORE the `prepared → build_started` handoff, BEFORE worktree
 preparation, and BEFORE any origin/main merge into the worktree. The call
 order in work entry becomes:
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-1. Resolve the slug from the todo list or argument.
-2. Validate work preconditions that do not require a worktree
-   (stash debt check, etc.).
-3. **Read state from the workflow context** (moved earlier — currently
-   this happens inside the dispatch loop).
-4. **Call the shared drift derivation against repo-root state, NOT against
-   any worktree** (drift derivation compares against `origin/main` HEAD and
-   persisted provenance; no worktree is required).
-5. If a collapsed drift status is `pending`, dispatch the
-   `sdlc/drift-analyze` worker and have the orchestrator re-enter on
-   `telec todo work`; if it is `substantive`, release the claim, end the
-   slug's work-lane sessions, and leave the Todo to the lifecycle runner,
-   which dispatches a fresh `/sdlc/prepare {slug}`. **No worktree created.**
-6. Only when every artifact's collapsed drift status is `fresh` or
-   `cosmetic` (with a valid anchor): proceed with worktree preparation,
-   the origin/main merge, the `prepared → build_started` handoff, and
-   the dispatch loop.
-
-<!-- change:procedure-role-capability-composition -->
 
 1. Resolve the slug from the todo list or argument.
 2. Validate work preconditions that do not require a worktree
@@ -377,36 +283,11 @@ order in work entry becomes:
    the origin/main merge, the `prepared → build_started` handoff, and
    the dispatch loop.
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
 The PRD's "does not create or touch the worktree" constraint requires
 this ordering — the state read and drift pre-check happen ahead of any
 worktree work.
 
 Detail of the call itself:
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-- The shared function takes the slug, the loaded todo state, the repo
-  root, the workflow context handle for dependency lookup, and a
-  snippet-digest callable — explicit injection rather than hidden
-  imports. Both the prepare BLOCKED branch and the work entry path call
-  it with the same evidence-loading rules so there is one source of
-  truth for drift status.
-- When the shared derivation reports a tracked artifact's collapsed
-  status as `pending` or `substantive`, work does NOT advance
-  `lifecycle_phase` and does NOT create or touch the worktree. On `pending`
-  it dispatches the `sdlc/drift-analyze` worker and the orchestrator
-  re-enters `telec todo work {slug}`; on `substantive` the work machine
-  releases the claim, the platform ends the slug's work-lane sessions, and
-  the lifecycle runner dispatches a fresh prepare orchestrator. The work
-  orchestrator never calls `telec todo prepare`.
-- When every tracked artifact's collapsed status is `fresh` or `cosmetic`
-  (with a valid evidence anchor), work proceeds with the existing
-  `prepared → build_started` handoff, worktree creation, and builder
-  dispatch.
-
-<!-- change:procedure-role-capability-composition -->
 
 - The shared function takes the slug, the loaded todo state, the repo
   root, the workflow context handle for dependency lookup, and a
@@ -426,8 +307,6 @@ Detail of the call itself:
   (with a valid evidence anchor), work proceeds with the existing
   `prepared → build_started` handoff, worktree creation, and builder
   dispatch.
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 The work entry path inherits the same fail-safe defaults as prepare:
 missing provenance for an applicable class resolves to `pending` and
@@ -707,28 +586,6 @@ Scenario: cross-class drift collapses to the most blocking status
   And the machine routes back to architecture_drafting
 ```
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Scenario: work entry resolves pending drift inside the work lane, then proceeds autonomously
-  Given a Todo at lifecycle_phase=prepared with an approved implementation-plan
-  And the plan's owned_snippet_digests no longer match current truth
-    (a sibling delivery edited a referenced domain spec)
-  When the orchestrator calls "telec todo work my-feature"
-  Then drift derivation reports drift.implementation-plan = pending (class: owned-snippet)
-  And the work machine returns a script that dispatches the sdlc/drift-analyze worker and tells the orchestrator to re-enter "telec todo work my-feature" once the analyzer idles
-  And the work machine does NOT advance lifecycle_phase
-  And the work machine does NOT create or touch the worktree
-  And the analyzer stamps "--drift-reviewed implementation-plan cosmetic '<reason>'"
-  And the cosmetic stamp records the current evidence anchor
-  And the orchestrator re-enters "telec todo work my-feature"
-  And work re-runs drift derivation, observes fresh/valid-anchor status
-  And proceeds with worktree creation and sdlc/build dispatch
-  And no human gate fires anywhere in the round-trip
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```gherkin
 Scenario: work entry resolves pending drift inside the work lane, then proceeds autonomously
   Given a Todo at lifecycle_phase=prepared with an approved implementation-plan
@@ -746,32 +603,6 @@ Scenario: work entry resolves pending drift inside the work lane, then proceeds 
   And proceeds with worktree creation and sdlc/procedure/lifecycle/work/build dispatch
   And no human gate fires anywhere in the round-trip
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Scenario: work entry bounces on substantive drift, re-derivation re-converges
-  Given a Todo at lifecycle_phase=prepared with an approved plan and an approved architecture
-  And the PRD has been refined since architecture was approved
-    (upstream-artifact drift on architecture)
-  When the orchestrator calls "telec todo work my-feature"
-  Then drift derivation reports drift.architecture = pending
-  And the work machine dispatches the sdlc/drift-analyze worker
-  And the analyzer stamps "--drift-reviewed architecture substantive '<reason>'"
-  Then the architecture review verdict is cleared
-  And the plan review verdict is cleared
-  And on re-entry the work machine releases the claim and the platform ends the work orchestrator and every session it started
-  And the lifecycle runner dispatches a fresh prepare orchestrator
-  And the prepare machine routes back to architecture_drafting
-  And the existing prepare chain re-derives architecture and plan, re-reviews each, reaches PREPARED
-  And the prepare orchestrator ends and releases the claim, and the lifecycle runner dispatches a fresh work orchestrator under the kind's work-lane autostart policy
-  And work re-runs drift derivation, observes fresh status, and proceeds
-  And no human gate fires in the substantive round-trip (intent-level PRD refinement is the only human-gated path and is orthogonal)
-```
-
-<!-- change:procedure-role-capability-composition -->
 
 ```gherkin
 Scenario: work entry bounces on substantive drift, re-derivation re-converges
@@ -792,8 +623,6 @@ Scenario: work entry bounces on substantive drift, re-derivation re-converges
   And work re-runs drift derivation, observes fresh status, and proceeds
   And no human gate fires in the substantive round-trip (intent-level PRD refinement is the only human-gated path and is orthogonal)
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ```gherkin
 Scenario: re-writing an artifact clears its drift stamps
@@ -896,28 +725,6 @@ Scenario: origin/main advances past a cosmetic code-drift verdict without touchi
 
 ### Cross-context references
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- `agent_runtime` — the `/sdlc/drift-analyze` worker session is dispatched
-  via the same `agent_runtime.session.started` event shape as
-  architecture/plan reviewers. Reuse-or-spawn matching applies per
-  `prepare-state-machine#reviewer-reuse`.
-- `integration` — `origin/main` advances triggered by integration land in
-  the SHA comparison used by the code class. The drift contract is
-  unaffected by whether the source of the advance is the current
-  orchestrator's own work or a sibling delivery.
-- `knowledge` — snippet digests are captured against the canonical doc
-  layer (`docs/`), the same source `telec docs get` reads. Snippet
-  reference extraction recognizes the validator-accepted inline forms
-  (`@<HOME>/.teleclaude/docs/<id-path>.md` for global and
-  `@docs/<id-path>.md` for project) and maps each to its canonical
-  snippet ID. The ID is the key into the digest map.
-- `session_ledger` — the resolved session principal for each
-  `--drift-reviewed` stamp is recorded so the analyzer's verdict can be
-  audited and so a non-analyzer session cannot author a drift verdict.
-
-<!-- change:procedure-role-capability-composition -->
-
 - `agent_runtime` — the `sdlc/procedure/lifecycle/prepare/drift-analyze` worker session is dispatched
   via the same `agent_runtime.session.started` event shape as
   architecture/plan reviewers. Reuse-or-spawn matching applies per
@@ -935,8 +742,6 @@ Scenario: origin/main advances past a cosmetic code-drift verdict without touchi
 - `session_ledger` — the resolved session principal for each
   `--drift-reviewed` stamp is recorded so the analyzer's verdict can be
   audited and so a non-analyzer session cannot author a drift verdict.
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Allowed values
 

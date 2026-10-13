@@ -93,21 +93,6 @@ flowchart TD
 
 ### Re-onboard
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-```mermaid
-flowchart TD
-    A[User adds/modifies inbox files] --> B[telec sessions run --command /companies-analyze]
-    B --> C[git diff HEAD in inbox/]
-    C --> D[Identify new/changed files by SHA]
-    D --> E[Commit inbox changes]
-    E --> F[Dispatch analysis for changed files only]
-    F --> G[Merge new findings with existing snippets]
-    G --> H[Update meta.yaml with new SHAs]
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```mermaid
 flowchart TD
     A[User adds/modifies inbox files] --> B[telec sessions run --command general/procedure/company-analysis]
@@ -118,8 +103,6 @@ flowchart TD
     F --> G[Merge new findings with existing snippets]
     G --> H[Update meta.yaml with new SHAs]
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ### Context selection with company tier
 

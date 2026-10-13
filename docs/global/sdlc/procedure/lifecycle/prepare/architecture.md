@@ -1,6 +1,13 @@
 ---
 description: 'Architecture derivation phase. Ground the approved PRD in code reality, author the design directly into the affected domain-spec or architecture design snippets, and write a thin reviewer-approved architecture index artifact for downstream plan derivation.'
 visibility: 'public'
+role: architect
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Architecture — Procedure

@@ -93,17 +93,6 @@ TeleClaudeNext.
   Carrying a configuration file is not an ownership basis. The decomposition is
   `local/projects/teleclaude/design/architecture/config-tier-resolution`.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- **Also owns:** the canonical `general/run-job` command name and every
-  scheduler emission of it, because the command executes the configured job
-  declaration and changes when that job model changes. `agent_runtime` consumes
-  the emitted value through its ordinary command-dispatch contract and owns the
-  session launch; the shared command-name table and cron process are mechanical
-  hosts and own neither the name nor the job rule.
-
-<!-- change:procedure-role-capability-composition -->
-
 - **Also owns:** what the scheduler hands a job's launch — the job's declared
   name, the entry procedure its `job` pointer names, and the declaration's
   candidate order and thinking mode — because those execute the configured job
@@ -111,8 +100,6 @@ TeleClaudeNext.
   them through the procedure-entry contract and owns the session launch; the
   cron process is a mechanical host and owns neither the facts nor the job
   rule.
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 - **Also owns:** schema strictness as a property of the configuration models
   themselves. Every configuration model rejects undeclared keys by its own

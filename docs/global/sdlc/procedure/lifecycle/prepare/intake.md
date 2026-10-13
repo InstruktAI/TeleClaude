@@ -1,6 +1,13 @@
 ---
 description: 'Feature-lane intake. Confirm observable behavior, shape the product target with its owner, and author the PRD and behavioral feature-spec contract before downstream derivation.'
 visibility: 'public'
+role: intaker
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Intake — Procedure
@@ -381,7 +388,7 @@ correction satisfying
 ### 6. PRD review and approval
 
 After writing the PRD, call `telec todo prepare {slug}`. The state machine
-routes to a dispatched `/review-prd` worker before human approval.
+routes to a dispatched `sdlc/procedure/lifecycle/prepare/review-prd` worker before human approval.
 
 The reviewer reads the input and PRD. It checks that the PRD's product and
 business scope stays within what the input carries rather than inflating beyond
@@ -411,7 +418,7 @@ carried approval records no intent the human has not already decided.
 When the human owner supplies an exact literal correction and explicitly
 directs approval under the policy exception, the active prepare claimant writes
 only that replacement and stamps `prd_review=approve` against the corrected
-digest. It does not dispatch `/review-prd`. If the human also approves the
+digest. It does not dispatch `sdlc/procedure/lifecycle/prepare/review-prd`. If the human also approves the
 corrected PRD, the claimant records `prd_approved` and advances normally.
 
 ### 7. Final step — advance

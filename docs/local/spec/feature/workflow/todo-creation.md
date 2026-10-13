@@ -388,18 +388,6 @@ And `lineage` records the chain of the acting planner session under its human ro
 
 #### UC-WTC26: A system-rooted session's filing is the legitimate no-human lineage
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-```gherkin
-Given a caller acting as the platform's principal — the daemon itself, a standing role (the integrator, the project coordinator, or a scheduled job runner), or a session one started — files a todo or a bug with no human at its chain root
-When the workflow service writes the roadmap row
-Then `lineage` records `system:daemon` as its root, and the filing session as its acting session when the caller is a session
-And `human_involved` is `false`
-And any other session filing without a resolvable root is rejected per UC-WTC23
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```gherkin
 Given a caller acting as the platform's principal — the daemon itself, a standing session (the integrator, the project coordinator, or a scheduled job's session), or a session one started — files a todo or a bug with no human at its chain root
 When the workflow service writes the roadmap row
@@ -407,8 +395,6 @@ Then `lineage` records `system:daemon` as its root, and the filing session as it
 And `human_involved` is `false`
 And any other session filing without a resolvable root is rejected per UC-WTC23
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-WTC24: Group create succeeds against a prepare-lane parent carrying prepared artifacts
 

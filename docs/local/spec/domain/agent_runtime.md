@@ -81,59 +81,12 @@ TeleClaudeNext repository.
 - **Published contracts:** session commands, queries, and lifecycle signals
   exposed to integration, workflow, identity, and session mirrors.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- **Also owns:** resolving a canonical command name to one corpus document
-  at dispatch — a domain-qualified name directly, a bare token to its single
-  global match, ambiguity refused by name — and the session record, title, and
-  live-session attribution query that carry and match the value as dispatched.
-  It reads the corpus `context` publishes and the canonical value the command's
-  semantic owner emits, and decides neither reach, layout, nor vocabulary.
-
-<!-- change:procedure-role-capability-composition -->
-
 - **Also owns:** resolving the procedure a dispatch names to one published
   procedure at entry — by its domain-qualified snippet ID, ambiguity and
   absence refused by name — and the session record, title, and live-session
   attribution query that carry and match the procedure as dispatched. It reads
   the publication `context` produces and decides neither reach, layout, nor
   vocabulary.
-
-<!-- /planned-change:procedure-role-capability-composition -->
-
-<!-- planned-change:procedure-role-capability-composition -->
-
-- **Owns (procedure activation runner):** on the computer that emitted an
-  event, one standing agent per procedure per activation home — a company, a
-  person, a project, or the platform — as the runner's own behavior, unless the
-  procedure declares subject identity (below). The runner
-  resolves the agent through the inbound resolve-or-create seam, serialized per
-  procedure and home so concurrent activations there cannot both start one.
-  When one or more sessions under the system principal already run the
-  procedure for the home, it wakes one and starts none; a session carrying
-  human lineage is never adopted; when none does, it starts one by dispatching
-  the generic procedure-activation command — carrying the procedure's identity
-  and the home — in that home: the company's home folder, the person's folder,
-  or the project's checkout as `config` answers, or the platform's own checkout
-  for the platform. A named home absent on the computer fails the activation,
-  which is never moved to another home or computer. The session is started
-  under the system principal, with its company set only for a company home. The
-  procedure event-delivery contract owns the initial canonical brief, hook
-  delivery, delivery eligibility and cardinality, and retention of pending
-  activations across session transitions
-  (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-event-delivery`).
-  Activation identity ensures that a repeated activation for the same event,
-  procedure, and home reaches the agent once. A
-  company-home standing agent may also be started by hand, and nothing
-  restricts that; a person-, project-, or platform-home one is started only by
-  an activation. Nothing coordinates computers. Each activation is a durable
-  operation of its own kind, keyed by the activation's identity, whose
-  completed and failed outcome events this context owns and registers;
-  completion or failure is recorded once, a failure is never presented as
-  success, and it never moves the responsibility to another agent. The agent's
-  lifecycle and its handling of later events belong to the procedure it loads.
-
-<!-- change:procedure-role-capability-composition -->
 
 - **Owns (procedure activation runner):** on the computer that emitted an
   event, one standing agent per procedure per activation home — a company, a
@@ -166,8 +119,6 @@ TeleClaudeNext repository.
   success, and it never moves the responsibility to another agent. The agent's
   lifecycle and its handling of later events belong to the procedure it loads.
 
-<!-- /planned-change:procedure-role-capability-composition -->
-
 - **Owns (subject-bound agents):** for a procedure declaring subject identity,
   one agent per procedure, activation home, and the subject the activating
   event names, on the computer that emitted it. The runner records that binding
@@ -195,8 +146,6 @@ TeleClaudeNext repository.
   works, what it may do, or how its work is recorded. A session started by
   hand, or by an agent, is attended.
 
-<!-- planned:procedure-role-capability-composition -->
-
 - **Owns (procedure entry):** every assignment's session is created by naming
   a published procedure. This context resolves the procedure's declared role,
   parameters and dispatch defaults from `context`'s publication before the
@@ -218,8 +167,6 @@ TeleClaudeNext repository.
   `local/projects/teleclaude/spec/feature/agent_runtime/session-role-migration`.
   The behavioral contract is
   `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`.
-
-<!-- /planned:procedure-role-capability-composition -->
 
 - **Owns (session company):** a session has a company only when it is created
   with `--company` or started from a session that has one; the company is

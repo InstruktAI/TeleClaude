@@ -1,6 +1,13 @@
 ---
 description: 'Produce self-contained HTML+CSS visual artifacts from approved art and a confirmed design spec.'
 visibility: 'public'
+role: frontender
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [gemini, claude, codex, deepseek]
+  thinking_mode: med
 ---
 
 # Visual Drafting — Procedure

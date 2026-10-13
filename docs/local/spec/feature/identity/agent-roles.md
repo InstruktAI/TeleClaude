@@ -1,7 +1,7 @@
 ---
-description: The closed catalog of agent session roles — each an explicit set of capabilities with an opt-in full reach, a class, and a header label — consulted by every decision that reads what a session may do or what kind of session it is.
-delivered_by:
-  - procedure-role-capability-composition
+description: The closed catalog of agent session roles — each an explicit set of capabilities
+  with an opt-in full reach, a class, and a header label — consulted by every decision
+  that reads what a session may do or what kind of session it is.
 ---
 
 # Agent Roles — Spec

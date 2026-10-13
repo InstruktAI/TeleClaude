@@ -33,19 +33,9 @@ Inputs:
   default model list for that mode; omitted modes keep defaults.
 - The active model-scoped availability records for the agent.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- The launch's ownership: the job role the launch carries, taken from the launch
-  request at fresh dispatch and from the session record at restart and revival. A
-  launch with no job role is human-owned.
-
-<!-- change:procedure-role-capability-composition -->
-
 - The launch's ownership: whether the launch carries an agent role, taken from
   the launch request at fresh dispatch and from the session record at restart
   and revival. A launch with no agent role is human-owned.
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 Outputs:
 
@@ -104,23 +94,11 @@ status vocabulary:
   model as unavailability-only. Expired statuses normalize to available under the
   one availability contract.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- **Ownership, not status, decides model eligibility.** A degraded subject is
-  excluded from a launch that carries a job role and retained for a launch that
-  carries none; an unavailable subject is excluded from both. The rule is one
-  predicate over (status, ownership), applied to an agent candidate and to a model
-  entry alike, so the two granularities can never drift apart.
-
-<!-- change:procedure-role-capability-composition -->
-
 - **Ownership, not status, decides model eligibility.** A degraded subject is
   excluded from a launch that carries an agent role and retained for a launch
   that carries none; an unavailable subject is excluded from both. The rule is one
   predicate over (status, ownership), applied to an agent candidate and to a model
   entry alike, so the two granularities can never drift apart.
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 - **Writes stay with intelligence.** Model rows are written through the
   agents-status surface by a parent that classified provider evidence; the

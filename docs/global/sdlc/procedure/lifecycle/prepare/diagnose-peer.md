@@ -1,6 +1,13 @@
 ---
 description: Dispatched bug-diagnosis peer procedure. Investigate independently, establish the causal mechanism, and author the diagnosis artifact without taking over prepare orchestration.
 visibility: internal
+role: diagnoser
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [codex, claude, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Peer Bug Diagnosis — Procedure
@@ -81,6 +88,11 @@ another session, prescribe a fix, stamp the diagnosis, or advance the prepare st
   stamp, todo transition, or child session.
 
 ## Discipline
+
+You are the dispatched diagnosis peer, not the prepare-driving session. Do not triage,
+dispatch another worker, interrogate your own artifact, stamp the diagnosis, or advance the
+prepare state machine. Investigate independently, write `diagnosis`, prescribe no fix, and
+wait for the driver to challenge or accept the evidence.
 
 This session is the dispatched diagnosis peer, never the prepare driver. Do not perform
 triage, dispatch another diagnoser, interrogate your own artifact, stamp a verdict, or call

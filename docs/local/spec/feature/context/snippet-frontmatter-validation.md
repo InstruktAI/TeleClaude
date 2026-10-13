@@ -335,8 +335,6 @@ values, defaults, and implied required reads are owned by
 declaration for publication, retrieval, and activation routing
 (`sdlc/principle/design-fundamentals`).
 
-<!-- planned:procedure-role-capability-composition -->
-
 #### UC-SFV11: A procedure's role declaration names a catalog role
 
 ```
@@ -364,8 +362,6 @@ When snippet validation runs
 Then an empty agent list, an unknown agent name, or an unknown thinking mode is a finding
 And `dispatch` on a snippet declaring no `role` is a finding
 ```
-
-<!-- /planned:procedure-role-capability-composition -->
 
 ### Cross-context references
 

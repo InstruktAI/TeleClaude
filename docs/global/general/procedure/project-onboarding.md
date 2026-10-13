@@ -1,6 +1,10 @@
 ---
 description: 'AI-driven project onboarding — adopt the project with telec config project adopt, then explicitly start the quality-config assessment and doc-snippet analysis sessions.'
 visibility: 'public'
+role: helper
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: med
 ---
 
 # Project Onboarding — Procedure
@@ -41,11 +45,11 @@ surface that starts agents.
    be started. Starting a second one duplicates work; the sessions surface does not
    deduplicate on the caller's behalf.
 3. **Assess the quality configuration.** Start
-   `telec sessions run --command /projects-assess-config --path <project-root>`. The
+   `telec sessions run --command sdlc/procedure/code-config-assessment --path <project-root>`. The
    session compares the project's quality tooling against
    `templates/quality/{language}/`.
 4. **Analyze the codebase.** Start
-   `telec sessions run --command /projects-analyze --path <project-root>`. The session
+   `telec sessions run --command sdlc/procedure/project-analysis --path <project-root>`. The session
    follows the project-analysis procedure and emits schema-valid snippets under
    `docs/local/`.
 
@@ -68,3 +72,9 @@ the team adopts a new quality rule or upgrades blessed templates.
   skip already-configured steps.
 - If `telec sessions run` fails to start a session, it reports the failure; start it
   again once the cause is resolved.
+
+## Discipline
+
+Run the commands exactly as the procedure states them; a remembered command from an earlier
+onboarding may no longer exist. Before an analysis or assessment session starts for this root,
+check `telec sessions list` so a second one is not started beside a live one.

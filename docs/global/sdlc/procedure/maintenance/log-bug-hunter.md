@@ -1,6 +1,10 @@
 ---
 description: 'Proactive log-scanning job that discovers daemon errors and files a minimal bug report for each unsuppressed signal.'
 visibility: 'public'
+role: bug-hunter
+dispatch:
+  agent: [codex, claude, gemini]
+  thinking_mode: med
 ---
 
 # Log Bug Hunter — Procedure

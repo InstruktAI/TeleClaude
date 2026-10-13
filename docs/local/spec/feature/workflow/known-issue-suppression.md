@@ -36,21 +36,11 @@ registration.
 A suppression's creation provenance is the principal the platform resolves for
 the registering caller. A caller the platform cannot identify registers nothing.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-Listing the ledger is a governed read: `telec bugs suppressions` is cleared
-against its verb band in the process that runs it
-(`local/projects/teleclaude/spec/feature/identity/command-clearance`, Local read clearance). A
-job-runner session is admitted, so the log bug hunter reads the ledger it
-subtracts before filing. A caller the platform cannot identify lists nothing.
-<!-- change:procedure-role-capability-composition -->
-
 Listing the ledger is a governed read: `telec bugs suppressions` is cleared
 against its verb band in the process that runs it
 (`local/projects/teleclaude/spec/feature/identity/command-clearance`, Local read clearance). The
 bug hunter's role is admitted, so the log bug hunter reads the ledger it
 subtracts before filing. A caller the platform cannot identify lists nothing.
-<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Canonical fields
 
@@ -120,23 +110,11 @@ And the refusal names how to establish an identity
 
 #### UC-KIS8: The log bug hunter lists the ledger it subtracts
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-```
-Given a project whose ledger holds active suppressions
-When the log bug hunter, running as a job-runner session, runs telec bugs suppressions for that project
-Then every active entry is listed
-```
-
-<!-- change:procedure-role-capability-composition -->
-
 ```
 Given a project whose ledger holds active suppressions
 When the log bug hunter, running as a scheduled job's session with the bug-hunter role, runs telec bugs suppressions for that project
 Then every active entry is listed
 ```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-KIS9: A caller the platform cannot identify lists no suppression
 

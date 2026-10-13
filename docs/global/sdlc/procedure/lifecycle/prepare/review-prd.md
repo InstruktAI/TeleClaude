@@ -3,6 +3,13 @@ description: Independently review a drafted PRD's horizon, enrichment, scope rea
   assumptions, and observable outcomes before human approval.
 activation_trigger: The prepare state machine routes a feature from PRD drafting to
   PRD review.
+role: reviewer
+parameters:
+  - name: slug
+    required: true
+dispatch:
+  agent: [codex, claude, gemini, deepseek]
+  thinking_mode: slow
 ---
 
 # Review PRD — Procedure
@@ -94,6 +101,11 @@ not review architecture, implementation mechanism, or concrete proof.
 - No edit to the PRD or any downstream artifact.
 
 ## Discipline
+
+Judge the PRD as an intent contract, not as architecture or an implementation
+plan. Re-run the shaping questions to probe omissions, while auditing retained
+scope against its stated premises. Write findings and the verdict only; never
+repair the PRD from inside its independent review.
 
 The failure this review prevents is polished scope whose authority cannot be
 audited. A human concern about misuse does not authorize an invented numeric

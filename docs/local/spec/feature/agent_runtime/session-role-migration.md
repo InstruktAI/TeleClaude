@@ -1,7 +1,9 @@
 ---
-description: The one-time forward migration that gives every stored session one catalog role — mapping recorded role and job pairs explicitly, reducing the job field to instance identity, keeping unmappable rows refused and reported, migrating persisted launch state with the sessions, and leaving every occurrence label as the provenance it recorded.
-delivered_by:
-  - procedure-role-capability-composition
+description: The one-time forward migration that gives every stored session one catalog
+  role — mapping recorded role and job pairs explicitly, reducing the job field to
+  instance identity, keeping unmappable rows refused and reported, migrating persisted
+  launch state with the sessions, and leaving every occurrence label as the provenance
+  it recorded.
 ---
 
 # Session Role Migration — Spec

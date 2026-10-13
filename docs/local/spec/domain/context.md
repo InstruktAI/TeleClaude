@@ -60,25 +60,6 @@ a property of the caller, never of the invocation's location; the location sets
 only which home the default read set offers, and a named home is reached from
 any location.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
-- **Also owns:** the artifact-source registry — which exact files, uniform
-  directory trees, and immediate package directories of a registered root are
-  artifact-source boundaries, of which kind, at which tier, with which reach
-  and authorship — and every decision taken from it: reach admission,
-  composition of the domain-partitioned global command corpus and the
-  mother-only skill catalog, project delivery, and retraction of what a run no
-  longer produces. Implementation roots for this ownership are
-  `teleclaude/agent_artifacts.py`, `teleclaude/artifact_ownership.py`,
-  `teleclaude/global_skills.py`, and distribution code under `teleclaude/install/`.
-- **Also does not own:** the publishing declaration that bounds reach (a
-  `config` fact), any command's canonical name or emission (facts owned by the
-  context that owns that command), or resolution of a name to a document at
-  dispatch (an `agent_runtime` decision). This context consumes the first two
-  through their published contracts and lays out the corpus the latter resolves.
-
-<!-- change:procedure-role-capability-composition -->
-
 - **Also owns:** the artifact-source registry — which exact files, uniform
   directory trees, and immediate package directories of a registered root are
   artifact-source boundaries, of which kind, at which tier, with which reach
@@ -94,24 +75,11 @@ any location.
   first through its published contract and publishes the index the latter
   resolves in.
 
-<!-- /planned-change:procedure-role-capability-composition -->
-<!-- planned-change:procedure-role-capability-composition -->
-
-- **Also publishes:** the registry as a typed contract every source
-  consumer reads; its non-overlapping path classification distinguishes the
-  authored global-skill catalog master from incorporated package directories.
-  It also publishes the composed corpus laid out as `<domain>/<name>` and reach,
-  collision, or unclassifiable-source findings that name the offending files.
-
-<!-- change:procedure-role-capability-composition -->
-
 - **Also publishes:** the registry as a typed contract every source
   consumer reads; its non-overlapping path classification distinguishes the
   authored global-skill catalog master from incorporated package directories.
   It also publishes reach, collision, or unclassifiable-source findings that
   name the offending files.
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 - **Also owns:** a procedure's activation declaration — whether agents start it
   by selecting it through an activation trigger, the platform starts it when
@@ -146,8 +114,6 @@ any location.
   subscriptions, and published with the procedure's other subscription facts
   for `integration` to carry into each activation.
 
-<!-- planned:procedure-role-capability-composition -->
-
 - **Also owns (procedure entry declarations):** the launch declarations a
   procedure carries for the sessions it is the entry of — the session role it
   declares, validated to name a role in `identity`'s agent role catalog and
@@ -165,8 +131,6 @@ any location.
   none — and the report of a documentation source it cannot read as
   unreadable, never as none. What a pending declaration means for an act is
   decided by the context performing that act.
-
-<!-- /planned:procedure-role-capability-composition -->
 
 - **Also owns (procedure delivery declarations):** validation and publication
   of the delivery settings declared beside subscriptions, their effective
