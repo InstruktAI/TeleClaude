@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from tempfile import TemporaryFile
 from typing import cast
 
 import yaml
@@ -50,6 +51,9 @@ logger = get_logger(__name__)
 _GIT_MAIN_TIP_ARGS = ("--verify", "refs/heads/main^{commit}")
 _GIT_INSTALLED_COMMIT_ARGS = ("--verify", "HEAD^{commit}")
 _GIT_IGNORED_UNTRACKED_ARGS = ("-z", "--others", "--ignored", "--exclude-standard", "--")
+_GIT_OBJECT_TYPE_ARGS = ("--batch-check=%(objectname) %(objecttype)",)
+_GIT_MISSING_OBJECT_SUFFIX = " missing"
+_GIT_OBJECT_QUERY_TERMINATOR = "\n"
 _GIT_PATH_SEPARATOR = "\0"
 _COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
 _STATE_DIRECTORY = ".teleclaude"
@@ -77,6 +81,8 @@ _HOME_PUBLICATION_RUN_EVENT = "home_publication_run"
 _HOME_REFRESH_FAILED_EVENT = "home_entrypoint_refresh_failed"
 _HOME_REFRESH_SKIPPED_EVENT = "home_entrypoint_refresh_skipped"
 _NO_PUBLISHED_HOME_GENERATIONS = "no_published_home_generations"
+_LEGACY_HOME_HISTORY_EVENT = "legacy_home_publication_history_unavailable"
+_INVALID_LEGACY_HOME_STATE = "Completed legacy publication has an invalid commit id: {commit}"
 _ROOT_RELATIVE_PATH = Path(".")
 _ERROR_SEPARATOR = ", "
 _UTF8 = "utf-8"
@@ -140,6 +146,22 @@ class _HomeCategory(StrEnum):
     PROJECT = "project"
     GLOBAL = "global"
     TIER = "tier"
+
+
+@dataclass(frozen=True)
+class _UnavailableHomeHistory:
+    """Completed legacy provenance whose inventory can no longer be read."""
+
+    commit: str
+    error: str
+
+
+@dataclass(frozen=True)
+class _HomeGenerations:
+    """Proven home revisions and any unresolved legacy inventory."""
+
+    generations: dict[str, str]
+    unavailable: _UnavailableHomeHistory | None = None
 
 
 @dataclass(frozen=True)
@@ -213,7 +235,7 @@ def publish_homes(
                     _INSTALLED_COMMIT_UNAVAILABLE,
                     PublicationRunFailure.INSTALLED_COMMIT_UNAVAILABLE,
                 )
-            return _publish_under_lease(canonical_root, tip, mode, directory, changed_paths, required_home)
+            return _publish_under_lease(canonical_root, tip, mode, directory, changed_paths, required_home, source)
     except DocsLeaseTimeoutError as exc:
         return _failed_run(mode, str(exc), PublicationRunFailure.RUN_FAILED)
     except (GitCommandError, OSError, subprocess.CalledProcessError, ValueError, yaml.YAMLError) as exc:
@@ -227,6 +249,7 @@ def _publish_under_lease(
     directory: str | Path | None,
     changed_paths: list[str] | None,
     required_home: Path | None,
+    publication_source: PublicationSource,
 ) -> PublicationRun:
     """Discover, build, install and record the homes for one held tip."""
     source = TreeSource.recorded_commit(canonical_root, tip)
@@ -236,7 +259,17 @@ def _publish_under_lease(
         error = _HOME_NOT_COMMITTED.format(home=required_home.as_posix())
         return _failed_run(mode, error, PublicationRunFailure.HOME_NOT_COMMITTED)
     scoped_homes = _scoped_homes(source, tree_paths, directory, changed_paths)
-    generations = _load_home_generations(canonical_root)
+    state = _load_home_generations(canonical_root)
+    recovering = (
+        is_platform_home(canonical_root)
+        and mode is PublicationMode.REBUILD
+        and publication_source is PublicationSource.MAIN_TIP
+        and directory is not None
+        and Path(directory) == _ROOT_RELATIVE_PATH
+    )
+    if state.unavailable is not None and not recovering:
+        return _failed_run(mode, state.unavailable.error)
+    generations = state.generations
     global_home_exists = any(
         home.root == _ROOT_RELATIVE_PATH and home.kind is ConfigKind.GLOBAL and home.error is None for home in all_homes
     )
@@ -259,7 +292,7 @@ def _publish_under_lease(
             continue
         pending.append((home, category))
     if not pending and not skipped:
-        return _finish_run(canonical_root, tip, mode, results, generations, all_homes, tree_paths)
+        return _finish_run(canonical_root, tip, mode, results, state, all_homes, tree_paths)
 
     with materialize_tree(source) as snapshot_root:
         for home, error in skipped:
@@ -286,7 +319,7 @@ def _publish_under_lease(
                 mode,
                 results,
             )
-    return _finish_run(canonical_root, tip, mode, results, generations, all_homes, tree_paths)
+    return _finish_run(canonical_root, tip, mode, results, state, all_homes, tree_paths)
 
 
 def _scoped_homes(
@@ -579,11 +612,13 @@ def refresh_home_entrypoints(home: Path) -> list[Path]:
     """Refresh platform entrypoints from the per-home commits recorded by the platform home."""
     failures: list[Path] = []
     state = _load_home_generations(home)
-    if not state:
+    if state.unavailable is not None:
+        failures.append(_ROOT_RELATIVE_PATH)
+    if not state.generations and state.unavailable is None:
         logger.info(_HOME_REFRESH_SKIPPED_EVENT, home=str(home), reason=_NO_PUBLISHED_HOME_GENERATIONS)
         return failures
     roots_by_commit: dict[str, list[str]] = {}
-    for root_key, commit in state.items():
+    for root_key, commit in state.generations.items():
         roots_by_commit.setdefault(commit, []).append(root_key)
     for commit, roots in sorted(roots_by_commit.items()):
         source = TreeSource.recorded_commit(home, commit)
@@ -645,12 +680,12 @@ def _finish_run(
     tip: str,
     mode: PublicationMode,
     results: dict[str, HomePublicationResult],
-    generations: dict[str, str],
+    state: _HomeGenerations,
     all_homes: list[TreeHome],
     tree_paths: list[str],
 ) -> PublicationRun:
     """Persist completed homes, retire removed tier records, and emit run summaries."""
-    current_state = dict(generations)
+    current_state = dict(state.generations)
     for root_key, result in results.items():
         if result.outcome is HomePublicationOutcome.PUBLISHED:
             current_state[root_key] = tip
@@ -664,8 +699,18 @@ def _finish_run(
                     del current_state[root_key]
     has_published_home = any(result.outcome is HomePublicationOutcome.PUBLISHED for result in results.values())
     state_file_missing = not _home_generations_path(canonical_root).is_file()
-    if current_state != generations or (state_file_missing and has_published_home):
-        _write_home_generations(canonical_root, current_state)
+    reconciled = (
+        bool(results)
+        and set(results) == {home.root.as_posix() for home in all_homes}
+        and all(result.outcome is HomePublicationOutcome.PUBLISHED for result in results.values())
+    )
+    retire_legacy = state.unavailable is None or reconciled
+    if (
+        current_state != state.generations
+        or (state_file_missing and has_published_home)
+        or (state.unavailable is not None and reconciled)
+    ):
+        _write_home_generations(canonical_root, current_state, retire_legacy=retire_legacy)
     ordered = tuple(results[root] for root in sorted(results))
     for result in ordered:
         log = (
@@ -706,21 +751,18 @@ def _tree_tier_root_keys(homes: list[TreeHome]) -> set[str]:
     return roots
 
 
-def _load_home_generations(canonical_root: Path) -> dict[str, str]:
-    """Read current per-home state or seed it only from proven legacy completion."""
+def _load_home_generations(canonical_root: Path) -> _HomeGenerations:
+    """Read proven revisions while retaining unavailable completed legacy history."""
     state_path = _home_generations_path(canonical_root)
+    generations: dict[str, str] = {}
     if state_path.is_file():
         payload = yaml.safe_load(state_path.read_text(encoding=_UTF8))
         if not isinstance(payload, dict):
             raise ValueError(_INVALID_HOME_STATE.format(path=state_path))
-        generations: dict[str, str] = {}
         for root, commit in payload.items():
             if not isinstance(root, str) or not isinstance(commit, str) or not _COMMIT_ID_PATTERN.fullmatch(commit):
                 raise ValueError(_INVALID_HOME_STATE_ENTRY.format(root=root))
             generations[root] = commit
-        return generations
-
-    generations = {}
     if is_platform_home(canonical_root):
         legacy_published = _read_publication_id(
             canonical_root / _STATE_DIRECTORY / _PUBLICATION_DIRECTORY / _PUBLISHED_GENERATION_FILENAME
@@ -729,19 +771,43 @@ def _load_home_generations(canonical_root: Path) -> dict[str, str]:
             canonical_root / _STATE_DIRECTORY / _PUBLICATION_DIRECTORY / _ENTRYPOINTS_GENERATION_FILENAME
         )
         if legacy_published is not None and legacy_published == legacy_entrypoints:
+            if not _COMMIT_ID_PATTERN.fullmatch(legacy_published):
+                raise ValueError(_INVALID_LEGACY_HOME_STATE.format(commit=legacy_published))
             legacy_source = TreeSource.recorded_commit(canonical_root, legacy_published)
-            for home in homes_at_or_beneath(_ROOT_RELATIVE_PATH, legacy_source):
-                generations[home.root.as_posix()] = legacy_published
-    return generations
+            try:
+                legacy_homes = homes_at_or_beneath(_ROOT_RELATIVE_PATH, legacy_source)
+            except GitCommandError as exc:
+                with TemporaryFile() as query:
+                    query.write((legacy_published + _GIT_OBJECT_QUERY_TERMINATOR).encode(_UTF8))
+                    query.seek(0)
+                    object_status = cast(
+                        str, Repo(str(canonical_root)).git.cat_file(*_GIT_OBJECT_TYPE_ARGS, istream=query)
+                    ).strip()
+                if object_status != legacy_published + _GIT_MISSING_OBJECT_SUFFIX:
+                    raise
+                unavailable = _UnavailableHomeHistory(legacy_published, str(exc))
+                logger.error(
+                    _LEGACY_HOME_HISTORY_EVENT,
+                    repository_root=str(canonical_root),
+                    published_generation=legacy_published,
+                    entrypoints_generation=legacy_entrypoints,
+                    cause=unavailable.error,
+                )
+                return _HomeGenerations(generations, unavailable)
+            if not state_path.is_file():
+                generations = {home.root.as_posix(): legacy_published for home in legacy_homes}
+    return _HomeGenerations(generations)
 
 
-def _write_home_generations(canonical_root: Path, generations: dict[str, str]) -> None:
+def _write_home_generations(canonical_root: Path, generations: dict[str, str], *, retire_legacy: bool = True) -> None:
     """Atomically persist per-home generations and retire the legacy state files."""
     state_path = _home_generations_path(canonical_root)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = state_path.with_name(state_path.name + _PUBLICATION_NEXT_SUFFIX)
     temporary.write_text(yaml.safe_dump(dict(sorted(generations.items())), sort_keys=True), encoding=_UTF8)
     os.replace(temporary, state_path)
+    if not retire_legacy:
+        return
     legacy_directory = canonical_root / _STATE_DIRECTORY / _PUBLICATION_DIRECTORY
     for name in (_PUBLISHED_GENERATION_FILENAME, _UNFINISHED_PUBLICATION_FILENAME, _ENTRYPOINTS_GENERATION_FILENAME):
         (legacy_directory / name).unlink(missing_ok=True)

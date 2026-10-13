@@ -85,6 +85,17 @@ when the home already records that commit.
 A Mother publication also refreshes the home entrypoints that inline the
 Mother's documentation.
 
+A completed legacy platform-home publication whose historical commit object is
+missing remains an explicit provenance failure. A serialized full-root
+rebuild through `telec sync` can recover from the home's actual committed main
+tip. It records that tip only for homes that publish, preserves previous
+deployments for failed homes, and retains the legacy identifiers and read failure
+as evidence. Partial recovery remains nonzero; a Mother refresh can refresh
+proven homes but still reports the unresolved legacy history. Complete root
+reconciliation retires the legacy state. Removed homes are reconciled against
+current committed inventory and deployed ownership, without reconstructing the
+unavailable tree. Other publishers keep their activated revisions.
+
 There is no working-tree entrypoint and no bypass.
 
 ## Canonical fields
@@ -344,6 +355,32 @@ Then they reuse the same ordered project roots selected by that read's tier and 
 And the inventory is discarded when publication completes or fails
 And the next publication reads current registry facts
 And a missing registry or a failed read is not retained for reuse
+```
+
+#### UC-SPO36: A full-root rebuild recovers unavailable legacy history
+
+```gherkin
+Given the platform home's matching completed legacy generation identifiers name a missing historical commit object
+When telec sync rebuilds the platform home and its nested homes from committed main
+Then every successfully published home records that actual committed tip
+And the legacy identifiers and historical read failure remain in the recovery evidence
+And complete root reconciliation retires the legacy state
+And removed homes are reconciled using current committed inventory and deployed ownership
+And other publishers keep their activated revisions
+```
+
+#### UC-SPO37: Partial recovery preserves unresolved provenance
+
+```gherkin
+Given the platform home's completed legacy publication commit object is missing
+And one current home's rebuild fails
+When a full-root rebuild publishes the remaining homes
+Then successful homes record their actual committed source
+And the failed home retains its previous deployment without a fabricated generation
+And the rebuild exits nonzero and retains unresolved legacy provenance
+And a later Mother refresh refreshes proven homes and still reports unresolved history
+When a later full-root rebuild publishes every current home successfully
+Then the legacy state is retired and refresh uses the proven per-home generations
 ```
 
 ### Cross-context references
