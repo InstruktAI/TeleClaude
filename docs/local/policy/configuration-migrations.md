@@ -73,6 +73,24 @@ description: How a configuration migration is written — one numbered step in o
   documents, and the migration list together. A new document is written at the
   current version; a migration alone leaves new documents wrong, and a model
   change alone leaves stored documents unreadable.
+
+<!-- planned:config-schema-version-authority -->
+
+- **Schema authoring and instance reconciliation have distinct jobs.**
+  Development delivers a coherent current schema, its document-creation
+  behavior, and the transformations that older stored documents need. The
+  ordered schema history supplies one current-version authority to every
+  consumer. Reading that metadata performs no document transformation;
+  reconciliation consumes it to advance older instance state. This keeps
+  source correctness independent of a later reconciliation run.
+- **Serialization preserves the version established with the document's
+  shape.** Creation establishes a current document; transformation advances
+  an older document and its version together. A serializer preserves that
+  result, and a persisted migration reports the representation actually
+  stored, so writing cannot silently relabel a current shape as an older one.
+
+<!-- /planned:config-schema-version-authority -->
+
 - **A migration change never stamps a stored document.** It ships the step and
   the current-version advance. It never edits the version or shape of a tracked
   configuration document, this repository's own included: the migration run

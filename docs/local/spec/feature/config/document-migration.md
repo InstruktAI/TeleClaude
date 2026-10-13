@@ -20,6 +20,20 @@ no other record of migration progress exists anywhere.
 A document created by the platform is written at the current version. It is
 stamped, never replayed.
 
+<!-- planned:config-schema-version-authority -->
+
+Current-schema metadata, document creation, published validation schemas and
+reconciliation expose the same version authority. Serialization preserves the
+version established with a document's validated shape. Source authoring and
+instance reconciliation follow
+`local/projects/teleclaude/policy/configuration-migrations`.
+
+Successful read-time adaptation emits no per-read migration outcome at
+production log levels. Explicit reconciliation retains its per-document
+outcomes and failure diagnostics; routine read observations follow
+`sdlc/policy/observability`.
+<!-- /planned:config-schema-version-authority -->
+
 Reading never writes. Every configuration loader visits the same ordered list
 in memory before validation. The tier registries supply a subject when they
 name the document, so every pending step for that subject brings it to the
@@ -302,6 +316,29 @@ And the installed declaration outcome states that its source was retained and ev
 ```
 
 <!-- /planned:release-tag-checkout-activation -->
+
+<!-- planned:config-schema-version-authority -->
+
+#### UC-CFG-MIG-18: Repeated compatible reads stay quiet
+
+```gherkin
+Given an agent operates against an older configuration document the installed schema can adapt
+When its operations repeatedly read that document successfully
+Then each operation receives the current shape
+And the stored document remains byte-identical
+And production logs contain no per-read migration outcome for those successful reads
+```
+
+#### UC-CFG-MIG-19: A current document keeps its version when written
+
+```gherkin
+Given an agent has created or reconciled a configuration document into the installed current shape
+When the configuration owner writes that document
+Then the stored version identifies the shape that was written
+And reading it with the same installed schema requires no version conversion
+```
+
+<!-- /planned:config-schema-version-authority -->
 
 ### Cross-context references
 
