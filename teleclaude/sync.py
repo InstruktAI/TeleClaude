@@ -57,10 +57,6 @@ _GIT_MISSING_OBJECT_SUFFIX = " missing"
 _GIT_OBJECT_QUERY_TERMINATOR = "\n"
 _GIT_PATH_SEPARATOR = "\0"
 _COMMIT_ID_PATTERN = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
-_REPOSITORY_COMMIT_ID_PATTERNS = {
-    "sha1": re.compile(r"[0-9a-f]{40}"),
-    "sha256": re.compile(r"[0-9a-f]{64}"),
-}
 _UNSUPPORTED_GIT_OBJECT_FORMAT = "Unsupported repository object format: {object_format}"
 _STATE_DIRECTORY = ".teleclaude"
 _PUBLICATION_DIRECTORY = "publication"
@@ -152,6 +148,19 @@ class _HomeCategory(StrEnum):
     PROJECT = "project"
     GLOBAL = "global"
     TIER = "tier"
+
+
+class _GitObjectFormat(StrEnum):
+    """Native Git storage formats supported by publication state."""
+
+    SHA1 = "sha1"
+    SHA256 = "sha256"
+
+
+_REPOSITORY_COMMIT_ID_PATTERNS = {
+    _GitObjectFormat.SHA1: re.compile(r"[0-9a-f]{40}"),
+    _GitObjectFormat.SHA256: re.compile(r"[0-9a-f]{64}"),
+}
 
 
 @dataclass(frozen=True)
@@ -809,10 +818,11 @@ def _load_home_generations(canonical_root: Path) -> _HomeGenerations:
 def _repository_commit_pattern(canonical_root: Path) -> re.Pattern[str]:
     """Require full identifiers in this repository's native storage object format."""
     object_format = cast(str, Repo(str(canonical_root)).git.rev_parse(*_GIT_OBJECT_FORMAT_ARGS)).strip()
-    pattern = _REPOSITORY_COMMIT_ID_PATTERNS.get(object_format)
-    if pattern is None:
-        raise ValueError(_UNSUPPORTED_GIT_OBJECT_FORMAT.format(object_format=object_format))
-    return pattern
+    try:
+        native_format = _GitObjectFormat(object_format)
+    except ValueError as exc:
+        raise ValueError(_UNSUPPORTED_GIT_OBJECT_FORMAT.format(object_format=object_format)) from exc
+    return _REPOSITORY_COMMIT_ID_PATTERNS[native_format]
 
 
 def _write_home_generations(canonical_root: Path, generations: dict[str, str], *, retire_legacy: bool = True) -> None:
