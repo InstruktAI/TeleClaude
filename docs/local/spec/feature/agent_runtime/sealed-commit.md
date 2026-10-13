@@ -101,7 +101,7 @@ Given an agent on the `main` branch with a non-integrator role
 When the agent invokes `telec code commit` with no message and no flags
 Then the command prints the commit-first review-routing gate to stderr
 And exits 0 — serving the gate is the successful outcome, not a failure
-And the gate names review candidates by what the diff touches: functional code/tests → med code review; doc snippets (docs/**) or authored agent artifacts → med doc-hygiene review; incorporated third-party skill packages under agents/global/skills/<name>/** → no review; neither → no review
+And the gate names review candidates by what the diff touches: functional code/tests → slow code review; doc snippets (docs/**) or authored agent artifacts → med doc-hygiene review; incorporated third-party skill packages under agents/global/skills/<name>/** → no review; neither → no review
 And the gate states that the author decides whether each candidate owes review by what the commit set out to do
 And the gate directs a commit through which the author wrote new or changed code or documentation content to an independent reviewer
 And the gate directs a commit through which the author wrote neither — a removal, a merge of already-reviewed work, a validation or other mechanical repair — to the author's discard, `telec code stamp <sha> --verdict approve --reason <text>`
@@ -124,7 +124,7 @@ And exits non-zero without producing a commit
 Given an agent on `main` commits a change that touches a doc snippet (docs/**)
 When the commit lands via `telec code commit --approved`
 Then the commit is a doc-hygiene review candidate
-And when the author wrote new or changed snippet content through it, an independent medium-or-slow reviewer runs the doc-hygiene lane over the changed snippets on the commit SHA via `sdlc/review-commits`
+And when the author wrote new or changed snippet content through it, an independent medium reviewer runs the doc-hygiene lane over the changed snippets on the commit SHA via `sdlc/review-commits`
 And the agent reuses the reviewer already open for the patch series, or starts one if none is open — never a second
 And when the author wrote no snippet content through it — a removal, or a repair that only satisfies validation — the author discards it with `telec code stamp <sha> --verdict approve --reason <text>` instead
 And the authoring agent never reviews a snippet it wrote
