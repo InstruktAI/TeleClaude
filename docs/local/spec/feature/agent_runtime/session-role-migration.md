@@ -34,23 +34,31 @@ old readers are never run against migrated fields.
 
 ### Mapping
 
-| Recorded combination                                                                    | Result                                                                                                                             |
-| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| a command session whose job is a role the catalog keeps (builder, reviewer, planner, …) | role := that job; job := empty                                                                                                     |
-| `job_runner` with a job naming a configured scheduled job                               | role := the role that job's procedure declares; job := the job name                                                                |
-| `job_runner` with a job naming a procedure                                              | role := the role that procedure declares; job := the configured job's name when one job names that procedure, otherwise unmappable |
-| `tasker` with `task-preparer` or `task-runner`                                          | role := that value; job := empty                                                                                                   |
-| `tasker` with a job naming a procedure                                                  | role := the role that procedure declares; job := the procedure ID                                                                  |
-| `integrator` or `coordinator`, including the legacy `(orchestrator, coordinator)` pair  | role := that name; job := empty                                                                                                    |
-| a recorded command naming a retired command                                             | command := the entry procedure that command's retirement maps it to                                                                |
-| a roleless session                                                                      | unchanged                                                                                                                          |
+| Recorded combination                                                                    | Result                                                                                                                                                                                                                                                                        |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a command session whose job is a role the catalog keeps (builder, reviewer, planner, …) | role := that job; job := empty                                                                                                                                                                                                                                                |
+| `job_runner` with a job naming a configured scheduled job                               | role := the role that job's procedure declares; job := the job name                                                                                                                                                                                                           |
+| `job_runner` with a job naming a procedure                                              | role := the role that procedure declares; job := the configured job's name when one job names that procedure, otherwise unmappable                                                                                                                                            |
+| `tasker` with `task-preparer` or `task-runner`                                          | role := that value; job := empty                                                                                                                                                                                                                                              |
+| `tasker` with a job naming a procedure                                                  | role := the role that procedure declares; job := the procedure ID                                                                                                                                                                                                             |
+| `integrator` or `coordinator`, including the legacy `(orchestrator, coordinator)` pair  | role := that name; job := empty                                                                                                                                                                                                                                               |
+| a recorded command naming a retired lifecycle, creative, general or personal command    | command := the entry procedure that command's retirement companion maps it to, one target per command                                                                                                                                                                         |
+| a recorded command naming the retired `general/run-job`                                 | command := the procedure the row's job resolves to — a procedure ID recorded in `job` is itself the evidence; a job name resolves through the current declaration carrying it, and the ledger records which declaration was used; a name no declaration carries is unmappable |
+| a recorded command naming the retired `general/activate-procedure`                      | command := the procedure ID recorded in `job`, which an activation always carried                                                                                                                                                                                             |
+| a roleless session                                                                      | unchanged                                                                                                                                                                                                                                                                     |
 
 A combination the table does not name — an obsolete job such as a reviewer
 kind the catalog no longer keeps, a conflicting role, job and command triple,
-a procedure that declares no role — is unmappable: the row keeps its original
-values, the migration reports it with the values and the reason, and the
-runtime refuses the session every role-gated act as the catalog contract
-states. Nothing is elevated by title or prose.
+a procedure that declares no role — is unmappable. The migration writes the
+reserved value `unmapped` into the row's role field, a value the catalog never
+names, so every consumer resolves it to the unknown-role refusal and never to a
+roleless session or a valid role; it records the row's original values and the
+reason in the migration ledger, which is the report an operator reads. The
+evidence the migration reads is the row's own recorded values and, for a job
+name, the declaration currently carrying that name; no other history exists,
+so a binding the row does not record is not inferred. Nothing is elevated by
+title or prose. Persisted launch intents and queued caller snapshots that
+belong to a row are migrated to that row's result, `unmapped` included.
 
 ### Use cases
 
@@ -101,9 +109,7 @@ And a later start finds the migration recorded and does not run it again
 
 ## Known caveats
 
-- Which procedure an old scheduled job ran is read from the job's current
-  declaration; a job whose pointer changed since the run keeps the run's
-  recorded procedure where the row names one and is otherwise unmappable.
+- Which procedure an old scheduled job ran is established by the row's recorded procedure ID where it names one, otherwise by the declaration currently carrying the row's job name; the ledger records which, and a changed pointer in the meantime is not detectable from the row.
 - A row marked unmappable is a defect to resolve by an operator reading the
   report; the migration never guesses.
 

@@ -44,12 +44,18 @@ their human-authored structure.
 
 ### Use cases
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Scenario: Command artifact missing H1
   Given a command Markdown file with frontmatter but no leading H1 line
   When the artifact validator runs
   Then a "missing H1" error is reported
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ```
 Scenario: Every skill entrypoint has identity metadata
@@ -69,12 +75,20 @@ Scenario: An agent validates a skill package that retains its upstream body stru
   Then the skill body produces no taxonomy-validation finding
 ```
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Scenario: Command lacks the role activation line
   Given a command Markdown file with no "You are now the ..." line before the first regular H2
   When validation runs
   Then the missing role activation line is reported
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
 
 ```
 Scenario: Section order does not match the artifact kind
@@ -84,6 +98,12 @@ Scenario: Section order does not match the artifact kind
   And the expected order "Purpose, Inputs, Outputs, Steps, Discipline" is named in the finding
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Scenario: Required reads is not the first H2 in an artifact
   Given a command artifact whose first H2 is "## Purpose"
@@ -92,12 +112,24 @@ Scenario: Required reads is not the first H2 in an artifact
   Then the Required-reads placement error is reported
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Scenario: H3 heading present in an artifact
   Given any artifact containing an "### Example" H3
   When validation runs
   Then the H3 heading is rejected
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
 
 ```
 Scenario: parameters contains duplicate names
@@ -106,12 +138,22 @@ Scenario: parameters contains duplicate names
   Then the duplicate "target" parameter is rejected
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Scenario: Required reads orders refs incorrectly
   Given a Required reads block listing a skill ref before a command ref
   When the Required-reads ordering check runs
   Then the ordering error is reported (commands → skills)
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-AAV2: A repository's artifact sources are validated within its declared reach
 
