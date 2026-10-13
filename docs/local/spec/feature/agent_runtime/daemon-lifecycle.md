@@ -462,6 +462,24 @@ And the agent never finds the capability silently absent while the daemon report
 
 <!-- /planned:supervise-long-lived-daemon-tasks -->
 
+<!-- planned:record-what-holds-a-stopped-daemon -->
+
+#### UC-DL18: A stopped daemon that does not exit leaves a record of what holds it
+
+```gherkin
+Given the daemon has run its shutdown sequence, whether or not every teardown step succeeded
+And its process is still alive past a bounded exit window
+When an agent operating the host reads the daemon's retained log
+Then it finds one record for each other live thread in the process
+And each record gives the thread's name, its native thread identity, whether it is a daemon thread, the code that started it, and its current call stack
+And the main thread's record shows where interpreter shutdown is waiting
+And when the process later exits on its own, the log records that exit and how long the process was held
+And a process that exits within the window adds no record
+And shutdown ordering, admission and accepted-work settlement are unchanged
+```
+
+<!-- /planned:record-what-holds-a-stopped-daemon -->
+
 ### Graceful admission and settlement
 
 The service owns admission and draining across API, adapter, remote-command and
@@ -523,3 +541,9 @@ evidence requirement (`general/principle/grounding`).
   this isolation does not bypass admission closure or accepted-work settlement.
   A failed component is not reported as successfully closed, and lock release
   alone establishes neither successful resource closure nor process exit.
+
+<!-- planned:record-what-holds-a-stopped-daemon -->
+
+- **A killed process leaves no exit record.** An uncatchable kill ends the process before it can write anything, so a held process whose thread records are followed by no exit record was ended from outside; the service manager's and the operator's own records name who ended it.
+
+<!-- /planned:record-what-holds-a-stopped-daemon -->
