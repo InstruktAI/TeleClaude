@@ -50,7 +50,8 @@ The table reads the recorded values as the runtime that wrote them read them:
 
 - A row is roleless only when it records no system role, no working slug, and
   no `coordinator` job. A row with no recorded system role and a working slug
-  held the worker role, and is read as a worker row with the job it records.
+  is not roleless: it is read as a `worker` row with the job it records, and
+  with no job the catalog names it is unmappable.
 - A recorded system role and job agree with the row's recorded command when
   they are the pair that command conferred at launch, or a pair an in-place
   adoption door writes over any command: lane adoption into preparation or
