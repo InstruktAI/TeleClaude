@@ -295,10 +295,14 @@ def _dispatch_sync(
         initial_checkpoint.lease_token = None
         _write_checkpoint(checkpoint_path, initial_checkpoint)
 
-    if abandon and initial_checkpoint.phase != IntegrationPhase.CONTENT_GATE_BLOCKED.value:
+    if abandon and initial_checkpoint.phase not in (
+        IntegrationPhase.CONTENT_GATE_BLOCKED.value,
+        IntegrationPhase.MERGE_CLEAN.value,
+        IntegrationPhase.AWAITING_COMMIT.value,
+    ):
         return _format_error(
             "ABANDON_WRONG_PHASE",
-            f"--abandon requires the checkpoint to be at CONTENT_GATE_BLOCKED, "
+            f"--abandon requires CONTENT_GATE_BLOCKED or a held clean uncommitted attempt, "
             f"but it is at {initial_checkpoint.phase!r}",
         )
 
@@ -388,6 +392,7 @@ def _step(
             checkpoint=checkpoint,
             checkpoint_path=checkpoint_path,
             cwd=cwd,
+            abandon=abandon,
         )
 
     if phase == IntegrationPhase.COMMITTED:

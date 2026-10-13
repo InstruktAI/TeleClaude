@@ -461,6 +461,25 @@ Then the push is refused, and the refusal is never reported as a content-gate fa
 And origin/main is unchanged
 ```
 
+#### UC-WISM41: Park a held clean uncommitted attempt
+
+Actor: Integrator agent
+
+```gherkin
+Given the current attempt has a clean squash and a held todo
+And integration HEAD equals its recorded pre-merge SHA
+When the integrator explicitly invokes integrate with --abandon
+Then the machine restores only its integration worktree to that frozen SHA
+And records the candidate as parked for held uncommitted recovery
+And preserves the candidate branch, todo and hold without delivery
+And continues the drain while the held todo remains excluded
+```
+
+The same request refuses an unheld, conflicted or committed attempt without
+discarding its stage. Parking does not reset finalize or review state: an
+authentic work orchestrator owns the subsequent grounded kickback before hold
+release. The bounded recovery is agent-owned under `general/policy/human-contract`.
+
 ### Cross-context references
 
 - `agent_runtime` — receives fire-and-forget lifecycle events: `integration.started`, `integration.candidate.dequeued`, `integration.candidate.already_merged`, `integration.merge.succeeded`, `integration.merge.conflicted`, `integration.candidate.committed`, `integration.push.succeeded`, `integration.push.rejected`, `integration.candidate.delivered`, `integration.candidate.blocked`, `integration.candidate.parked`, `integration.drain.completed`.

@@ -68,6 +68,7 @@ from teleclaude.core.integration.lifecycle_events import (
     _workflow_home_for_path,
 )
 from teleclaude.core.integration.park import (
+    _HELD_UNCOMMITTED_PARK_REASON,
     _TEXTUAL_CONFLICT_PARK_REASON,
     _format_content_gate_conflict_or_invariant_error,
     _park_candidate,
@@ -397,6 +398,7 @@ def _step_awaiting_commit(
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
     cwd: str,
+    abandon: bool = False,
 ) -> tuple[bool, str]:
     """MERGE_CLEAN / MERGE_CONFLICTED / AWAITING_COMMIT: check if agent committed in integration worktree."""
     key = _get_candidate_key(checkpoint)
@@ -404,6 +406,36 @@ def _step_awaiting_commit(
         return False, _format_error("INVALID_STATE", "Awaiting-commit phase has no candidate key")
 
     wt = str(_integration_worktree_path(cwd))
+
+    if abandon:
+        merge_type = (checkpoint.error_context or {}).get("merge_type")
+        head_sha = _get_head_sha(wt)
+        pre_merge = checkpoint.pre_merge_head
+        state = get_todos_db_sync(cwd).read_state_sync(key.slug)
+        if (
+            merge_type != "clean"
+            or not state
+            or state.get("hold") is not True
+            or not head_sha
+            or not pre_merge
+            or head_sha != pre_merge
+            or _merge_head_exists(wt)
+            or _get_conflicted_files(wt)
+        ):
+            return False, _format_error(
+                "ABANDON_NOT_HELD_UNCOMMITTED",
+                "Clean-attempt abandonment requires a held todo, no conflicts, and HEAD at its frozen pre-merge SHA.",
+            )
+        rc, _, stderr = _run_git(["reset", "--hard", pre_merge], cwd=wt)
+        if rc != 0:
+            return False, _format_error("ABANDON_RESET_FAILED", stderr)
+        return _park_candidate(
+            checkpoint=checkpoint,
+            checkpoint_path=checkpoint_path,
+            key=key,
+            reason=_HELD_UNCOMMITTED_PARK_REASON,
+            home=_workflow_home_for_path(cwd),
+        )
 
     # Check for unresolved merge conflicts first (in integration worktree)
     if _merge_head_exists(wt):

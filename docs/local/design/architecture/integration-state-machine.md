@@ -120,6 +120,7 @@ stateDiagram-v2
 
     MERGE_CLEAN --> COMMITTED: HEAD advanced (commit detected)
     MERGE_CLEAN --> MERGE_CLEAN: no commit yet (re-prompt agent)
+    MERGE_CLEAN --> IDLE: explicit abandon of held uncommitted clean attempt
 
     MERGE_CONFLICTED --> COMMITTED: HEAD advanced (conflicts resolved + committed)
     MERGE_CONFLICTED --> MERGE_CONFLICTED: no commit yet (re-prompt agent)
@@ -538,6 +539,14 @@ flowchart LR
 `_dispatch_sync` runs a capped loop (50 iterations) that reads the checkpoint, dispatches to the appropriate phase handler, and either loops internally (for autonomous transitions like COMMITTED → BOOKKEEPING → PUSH → CLEANUP) or returns an instruction string (for agent decision points like MERGE_CLEAN, MERGE_CONFLICTED, PUSH_REJECTED). This enables multi-phase advancement in a single `telec todo integrate` call.
 
 ## Failure modes
+
+- A held clean squash that must return to its work lane is parked by explicit
+  `--abandon` while integration HEAD still equals the frozen pre-merge SHA.
+  The machine resets its own stage and uses the shared park transition; the
+  source branch, todo and hold survive. A failed reset leaves the checkpoint
+  resumable. A retry after reset can finish parking. Committed and conflicted
+  attempts are excluded. This recovery implements the bounded process ownership
+  in `general/policy/human-contract`; it does not perform a work-lane kickback.
 
 - **Lease already held**: returns `LEASE_BUSY` — exit immediately. Do not attempt to break the lease.
 - **Queue empty**: returns `COMPLETED` — self-end the session.

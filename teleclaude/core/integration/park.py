@@ -28,6 +28,7 @@ logger = get_logger(__name__)
 
 _TEXTUAL_CONFLICT_PARK_REASON = "unresolvable textual merge conflict"
 _UNGROUNDABLE_CONTENT_GATE_PARK_REASON = "ungroundable_content_gate"
+_HELD_UNCOMMITTED_PARK_REASON = "held_uncommitted_recovery"
 
 
 def _park_candidate(
@@ -40,8 +41,7 @@ def _park_candidate(
 ) -> tuple[bool, str]:
     """Park a candidate for the current drain and reset to IDLE for the next dequeue.
 
-    Shared transition for every park path — textual conflict and
-    ungroundable content-gate rejection: appends the
+    Shared transition for every park path: appends the
     structured parked record, increments ``items_blocked``, emits
     ``integration.candidate.parked``, applies the candidate reset, persists,
     and returns the loop-and-continue result every caller re-enters IDLE with.
@@ -79,6 +79,7 @@ def _format_content_gate_conflict_or_invariant_error(
 
 
 __all__ = [
+    "_HELD_UNCOMMITTED_PARK_REASON",
     "_TEXTUAL_CONFLICT_PARK_REASON",
     "_UNGROUNDABLE_CONTENT_GATE_PARK_REASON",
     "_format_content_gate_conflict_or_invariant_error",

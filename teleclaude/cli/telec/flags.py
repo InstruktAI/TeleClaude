@@ -298,9 +298,9 @@ FLAG_TODO_LIST_JSON = Flag(
 FLAG_TODO_INTEGRATE_ABANDON = Flag(
     "--abandon",
     desc=(
-        "Park the current CONTENT_GATE_BLOCKED candidate as an ungroundable content-gate "
-        "concern. The state machine resets the integration worktree to the frozen "
-        "pre-merge SHA and parks — refused when the checkpoint is not at that phase."
+        "Park a CONTENT_GATE_BLOCKED candidate or a held clean uncommitted attempt. "
+        "The state machine resets only the integration worktree to its frozen pre-merge SHA; "
+        "clean attempts refuse unless held, conflict-free and still at that SHA."
     ),
     arity=SWITCH,
 )

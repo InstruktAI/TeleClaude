@@ -154,6 +154,24 @@ The branch has been squash-merged; staged changes are ready.
 3. Run `telec code commit --approved '<message>'`, then call `telec todo integrate`.
 4. When the state machine reaches push, `telec code lint --all` and `telec code test --all` must already be green.
 
+### Held clean candidate recovery
+
+A held candidate with a clean squash and no integration commit can be returned
+through `telec todo integrate --abandon`. Inspect the stage and retained candidate
+branch first: the reset must discard only reproducible squash work, with no unique
+integration edits. The machine requires a live hold and HEAD equal to the frozen
+pre-merge SHA, resets only its integration worktree, and parks the attempt while
+preserving the candidate branch, todo and hold. It refuses conflicted or committed
+attempts. This bounded recovery follows `general/policy/human-contract` and
+`general/principle/trust-and-guardrails`.
+
+Parking does not invalidate the plan or finalize handoff. For a corrected input,
+route the findings to an orchestrator that can start an authentic work session.
+That session independently grounds an explicit `--kickback` before invoking
+`todo work`; work entry releases the hold and must not come first. Confirm the
+kickback before releasing the hold for preparation. Keep the integration queue
+watch live and continue unrelated candidates.
+
 ### CONFLICT RESOLUTION REQUIRED
 
 The squash merge encountered conflicts.
@@ -419,6 +437,9 @@ point, re-calling `telec todo integrate` reads the durable checkpoint and resume
 from the last persisted phase. No manual checkpoint editing is required.
 
 ### Agent-actionable recovery
+
+- **Held clean uncommitted attempt:** Inspect retained source and stage, then use
+  `telec todo integrate --abandon` under **Held clean candidate recovery** above.
 
 - **Squash commit fails:** Read the error and retry the commit.
 - **Conflicts unresolvable:** Call `telec todo integrate` without committing — the state

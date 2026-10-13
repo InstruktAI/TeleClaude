@@ -148,10 +148,10 @@ def handle_todo_integrate(args: list[str]) -> None:
 
     Options:
       <slug>       Candidate slug (optional; must match next in FIFO queue)
-      --abandon    Park the current CONTENT_GATE_BLOCKED candidate as an
-                   ungroundable content-gate concern. The state machine resets
-                   the integration worktree to the frozen pre-merge SHA and
-                   parks; refused when the checkpoint is not at that phase.
+      --abandon    Park a CONTENT_GATE_BLOCKED candidate or a held clean
+                   uncommitted attempt, resetting only the integration worktree
+                   to its frozen pre-merge SHA. Clean attempts must remain held,
+                   conflict-free and uncommitted.
 
     Examples:
       telec todo integrate
