@@ -121,7 +121,10 @@ flowchart LR
     TGUser --> TGAdapter
     Automation --> RESTServer
 
-    RESTServer --> Ingress
+    RESTServer -->|session commands| Ingress
+    RESTServer -->|direct routes: services, operations| Direct["Application Services / Operations"]
+    RESTServer -->|reads| Cache
+    Direct --> Events
     TGAdapter --> Ingress
     RedisIngress --> Ingress
 

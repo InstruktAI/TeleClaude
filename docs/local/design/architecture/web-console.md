@@ -10,7 +10,6 @@ delivered_by:
 ## Required reads
 
 - @docs/local/design/architecture/api-server.md
-- @docs/local/adr/0122-the-web-console-sits-behind-the-single-itsup-fleet.md
 
 ## Purpose
 
@@ -151,3 +150,7 @@ the handoff.
 | Browser request carrying a caller header                             | The header is dropped; the request runs as the authenticated person or is refused when unauthenticated. |
 | Daemon unreachable                                                   | The page loads; every daemon-backed view reports the daemon as unavailable and retries with backoff.    |
 | Owning computer unreachable for a terminal or preview                | That terminal or preview fails naming the computer; the rest of the console continues.                  |
+
+## See Also
+
+- docs/local/adr/0122-the-web-console-sits-behind-the-single-itsup-fleet.md — why the console is reached through the single itsUP fleet and terminates its own pinned hop on the master.

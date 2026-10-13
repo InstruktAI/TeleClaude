@@ -110,11 +110,12 @@ Then the check reports the session as not found
   `visibility` is set by the session owner, and the identity context reads it
   without writing. `human_email` is stamped at session creation.
 - The transport on which carried identity is honoured is
-  `feature/identity/identity-header-trust-boundary`; this spec decides what the
-  identity unlocks once admitted.
-- Caller verification decides who is calling; this check decides which sessions
-  that caller may touch. The scoped role comes from the shared role resolver at
-  the scope of the session's project.
+  `local/projects/teleclaude/spec/feature/identity/identity-header-trust-boundary`;
+  this spec decides what the identity unlocks once admitted.
+- `local/projects/teleclaude/spec/feature/identity/caller-verification` decides
+  who is calling; this check decides which sessions that caller may touch. The
+  scoped role comes from the shared role resolver at the scope of the session's
+  project.
 - The listing rule and the single-session rule are one rule. The API server's
   viewer-authorized projection — HTTP session reads, the connection snapshot and
   incremental session changes — applies it for collections; a divergence between

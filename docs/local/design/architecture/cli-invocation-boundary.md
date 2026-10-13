@@ -106,15 +106,18 @@ design owns only the path that connects them.
 
 <!-- planned:client-daemon-seam -->
 
-8. **Execution locality follows the operation, not the command.** A handler runs a
-   domain operation in its own process only on state this computer owns and the
-   daemon either does not serve or observes on commit: reads of a project's todo
-   store, configuration operations the daemon's watcher observes, git, documentation,
-   the terminal login. A handler that mutates state the daemon serves from its cache
-   without such observation — a todo's lifecycle state — calls the daemon's route for
-   this computer exactly as it does for another; the computer named only selects the
-   route's target. The route and the handler invoke the same domain operation; the
-   handler is never a second implementation of it
+8. **Execution locality follows the operation, not the command.** Two allowances
+   govern a handler that acts in its own process, and they are distinct. A read of
+   state this computer owns — a project's todo store, the mirrors, the configuration
+   files, git, documentation, the terminal login — may run locally, because the
+   store is the truth and a read leaves nothing for the daemon to observe. A write
+   outside the daemon process is permitted only on state the daemon does not serve
+   from its cache, or whose commit the daemon observes, as it observes configuration
+   files through its watcher. A handler that mutates state the daemon serves from
+   its cache without such observation — a todo's lifecycle state — calls the daemon's
+   route for this computer exactly as it does for another; the computer named only
+   selects the route's target. The route and the handler invoke the same domain
+   operation; the handler is never a second implementation of it
    (`local/projects/teleclaude/design/architecture/api-server`).
 
 <!-- /planned:client-daemon-seam -->

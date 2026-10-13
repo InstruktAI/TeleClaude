@@ -24,14 +24,17 @@ response, or after it. There are two answers — an immediate result, or a durab
 operation receipt — and no endpoint sits between them. That completion contract is
 client-visible and universal.
 
-Behind the route the daemon runs one of two execution paths. Session-family routes
-map the request to a typed `InternalCommand`, whose declared response mode the
-route, the transport layer and the dispatcher read rather than re-derive from
-`isinstance` checks or hardcoded status codes. Every other route — todo lifecycle,
-artifacts, configuration, settings, reminders, jobs, memory, MCP — calls its
-application service or submits its operation to the `OperationsService` directly
-and derives its response from the same two-mode contract. The path is an
-implementation choice per route; the completion contract is not.
+Behind the route the daemon runs one of two execution paths, chosen per route by
+the operation it performs. A route that maps its request to a typed
+`InternalCommand` dispatches it, and the command's declared response mode is what
+the route, the transport layer and the dispatcher read rather than re-derive from
+`isinstance` checks or hardcoded status codes; the session commands listed below
+take this path. A route that calls its application service directly, or submits
+its operation to the `OperationsService` directly, derives its response from the
+same two-mode contract; todo lifecycle, artifacts, configuration, settings,
+reminders, jobs, memory and MCP routes take this path, and so does any session
+route whose operation is a direct service call. The path is an implementation
+choice per route; the completion contract is not.
 <!-- /planned-change:client-daemon-seam -->
 
 Every API request also answers a second question before any route runs: which
@@ -84,9 +87,9 @@ flowchart TD
     Boundary -->|another computer| Relay
     Relay -->|transport| Boundary
     Boundary -->|this computer| Router
-    Router -->|session family| Command
-    Router -->|every other route| AppService
-    Router -->|receipt-backed work| Operations
+    Router -->|maps to a command| Command
+    Router -->|calls a service directly| AppService
+    Router -->|submits an operation directly| Operations
     Command -->|IMMEDIATE| Service
     Command -->|RECEIPT| Operations
 
