@@ -1,7 +1,9 @@
 ---
-description: Every reference to a company, person, project, or documentation domain resolves against what this computer has registered, and an unresolved reference is refused once, the same way everywhere — naming what is missing, on which computer, and the existing registration surface that supplies it.
+description: Every reference to a company, person, project, or documentation domain
+  resolves against what this computer has registered, and an unresolved reference
+  is refused once, the same way everywhere — naming what is missing, on which computer,
+  and the existing registration surface that supplies it.
 visibility: internal
-delivered_by: [missing-publisher-owner-surfacing]
 ---
 
 # Referent Resolution — Spec

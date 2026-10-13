@@ -30,21 +30,10 @@ than resolved by precedence. A project may also name no owner at all; that is a
 valid, ordinary state and not a defect to be repaired, and such a project
 composes no company configuration.
 
-<!-- planned-change:missing-publisher-owner-surfacing -->
-
-An owner reference names a registered referent. A reference to a company or a
-person that no registry knows is refused, so ownership never resolves to a
-referent that does not exist. Refusal is the whole outcome: no partial owner is
-recorded and no fallback owner is inferred from the project's surroundings.
-
-<!-- change:missing-publisher-owner-surfacing -->
-
 An owner reference names a registered referent and resolves as
 `local/projects/teleclaude/spec/feature/config/referent-resolution` states;
 ownership never resolves to a referent that does not exist, no partial owner is
 recorded, and no fallback owner is inferred from the project's surroundings.
-
-<!-- /planned-change:missing-publisher-owner-surfacing -->
 
 ## Canonical fields
 
@@ -99,22 +88,7 @@ Then loading fails with a clear result naming the conflicting declaration
 And neither owner is selected
 ```
 
-<!-- planned-change:missing-publisher-owner-surfacing -->
-
-#### UC-POWN-5: An unregistered owner is refused
-
-```gherkin
-Given a project whose configuration declares an owner that no registry knows
-When that configuration is loaded
-Then loading fails with a clear result naming the unresolved owner
-And the project is left with no owner rather than a partial one
-```
-
-<!-- change:missing-publisher-owner-surfacing -->
-
 #### UC-POWN-5:
-
-<!-- /planned-change:missing-publisher-owner-surfacing -->
 
 #### UC-POWN-6: A project inside a home is owned by that home
 
