@@ -319,7 +319,7 @@ And a command the dispatch door admits with empty arguments reaches loader compo
 ```
 Given a session launch for a procedure whose arguments are empty
 When the launch is validated
-Then whether empty arguments are acceptable is decided by the procedure's declared parameters — none required, or defaults for every required one
+Then whether empty arguments are acceptable is decided by the procedure's declared parameters — none of them required
 And loader composition applies no argument rule of its own
 And a launch the parameters admit with empty arguments reaches loader composition
 ```

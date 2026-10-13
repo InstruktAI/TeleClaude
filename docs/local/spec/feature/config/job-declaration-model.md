@@ -179,13 +179,12 @@ And no agent session can be dispatched for it
 
 <!-- planned:procedure-role-capability-composition -->
 
-#### UC-JDM-23: A job's procedure declares the role its session carries
+#### UC-JDM-23: A job's pointer must name a usable entry procedure
 
 ```
-Given a job declaration whose `job` pointer names a delivered procedure that declares no role
+Given a job declaration whose `job` pointer names a delivered procedure that the context does not publish as a usable entry procedure
 When the config is loaded
-Then the load fails with an error naming the job, the pointer and the missing role
-And a declaration whose procedure declares a role loads, and its runs carry that role
+Then the load fails with an error naming the job, the pointer and the context's reason
 ```
 
 <!-- /planned:procedure-role-capability-composition -->

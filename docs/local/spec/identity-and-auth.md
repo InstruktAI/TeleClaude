@@ -53,9 +53,10 @@ resolved for its caller (§6):
 <!-- change:procedure-role-capability-composition -->
 
 - `x-caller-role`: the agent role the caller's session resolves to, when it has
-  one. `x-caller-system-role` is still sent beside it, carrying the same value
-  verbatim for computers that read only the older name; neither is authority
-  for anything beyond the carried identity.
+  one. `x-caller-system-role` is still sent beside it, carrying the role's
+  legacy projection (`local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`)
+  for computers that read only the older name; neither is authority for
+  anything beyond the carried identity.
 
 <!-- /planned-change:procedure-role-capability-composition -->
 

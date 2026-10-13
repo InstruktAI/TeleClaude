@@ -41,6 +41,9 @@ feature specs remain the current contract.
   other part of the platform, so runtime home resolution can ask it before
   anything else loads. Consumers ask this contract and never restate the
   layout.
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 - **Also owns:** the names of the todo-lifecycle commands — one
   domain-qualified value each — and its own emissions of them: dispatch
   requests, machine scripts, and procedure loads. A command whose meaning
@@ -50,6 +53,22 @@ feature specs remain the current contract.
   document, the session record and title that carry it, and the live-session
   attribution query that matches it belong to `agent_runtime`, which this
   context consumes.
+
+<!-- change:procedure-role-capability-composition -->
+
+- **Also owns:** which entry procedure each todo-lifecycle dispatch names —
+  the prepare and work overviews, the build, review, finalize, drift-analysis,
+  task and deferral procedures — and every emission of those procedure IDs by
+  the lifecycle state machines and the lifecycle runner; and the lane
+  groupings of catalog role names its own gates read: the preparation-authoring
+  roles (prepare-orchestrator, intaker, architect, diagnoser, planner), the
+  worktree-writer roles (builder, finalizer) and the work-lane roles
+  (work-orchestrator and the writers). The artifact-authority gate, kickback
+  stamping and the checkpoint's worktree dirty-set selection consume those
+  groupings by role name; the catalog composes the roles and decides nothing
+  about lanes (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ### Preparation completion provenance
 

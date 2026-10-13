@@ -1,5 +1,6 @@
 ---
-description: Minimal schema used for agent artifacts (skills).
+description: 'Minimal schema used for agent artifacts (skills).'
+visibility: 'public'
 ---
 
 # Agent Artifacts — Spec
@@ -58,3 +59,4 @@ it runs in; the mother's deployment contract owns the per-runtime locations.
 
 - **Claude Code**: entrypoint master, tier-local skills
 - **Codex CLI**: entrypoint master, tier-local skills
+- **Gemini CLI**: entrypoint master, tier-local skills

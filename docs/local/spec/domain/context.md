@@ -156,7 +156,8 @@ any location.
   publication with the procedure's other published facts. `integration`
   carries them into each activation, and `agent_runtime` and `config` read
   them at a procedure entry; none of them re-derives them. A procedure read
-  inside a session declares none of these.
+  inside a session, whether or not it declares them, has none of them
+  interpreted.
 
 <!-- /planned:procedure-role-capability-composition -->
 

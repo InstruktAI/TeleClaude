@@ -1,0 +1,113 @@
+---
+description: The one-time forward migration that gives every stored session one catalog role — mapping recorded role and job pairs explicitly, reducing the job field to instance identity, keeping unmappable rows refused and reported, and migrating persisted launch state and caller snapshots with the sessions.
+delivered_by:
+  - procedure-role-capability-composition
+---
+
+# Session Role Migration — Spec
+
+## Required reads
+
+- @docs/local/spec/domain/agent_runtime.md
+
+## What it is
+
+Sessions recorded before roles were composed in the catalog carry a system role
+and a job whose combination named their assignment. The migration runs once,
+forward, when the runtime that reads one role per session first starts. It
+inventories every distinct recorded combination, maps the combinations the
+catalog can name through an explicit table, reduces the job field to the
+instance identity a scheduled run or an activation carries, and leaves every
+other row with its original representation recorded, refused at runtime and
+reported. It migrates the persisted launch state and the queued caller
+snapshots that serialize a session's role beside the sessions, because a
+reader of either sees the new shape after the migration. Historical
+attribution recorded on authored turns is carried as provenance and never
+re-derived from a session's migrated role; the session mirrors keep their own
+record under their own contract
+(`local/projects/teleclaude/spec/feature/session_mirrors/historical-conversation-search`).
+
+Rollback is the pre-migration deployment restored together with its data; the
+old readers are never run against migrated fields.
+
+## Canonical fields
+
+### Mapping
+
+| Recorded combination                                                                    | Result                                                                                                                             |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| a command session whose job is a role the catalog keeps (builder, reviewer, planner, …) | role := that job; job := empty                                                                                                     |
+| `job_runner` with a job naming a configured scheduled job                               | role := the role that job's procedure declares; job := the job name                                                                |
+| `job_runner` with a job naming a procedure                                              | role := the role that procedure declares; job := the configured job's name when one job names that procedure, otherwise unmappable |
+| `tasker` with `task-preparer` or `task-runner`                                          | role := that value; job := empty                                                                                                   |
+| `tasker` with a job naming a procedure                                                  | role := the role that procedure declares; job := the procedure ID                                                                  |
+| `integrator` or `coordinator`, including the legacy `(orchestrator, coordinator)` pair  | role := that name; job := empty                                                                                                    |
+| a recorded command naming a retired command                                             | command := the entry procedure that command's retirement maps it to                                                                |
+| a roleless session                                                                      | unchanged                                                                                                                          |
+
+A combination the table does not name — an obsolete job such as a reviewer
+kind the catalog no longer keeps, a conflicting role, job and command triple,
+a procedure that declares no role — is unmappable: the row keeps its original
+values, the migration reports it with the values and the reason, and the
+runtime refuses the session every role-gated act as the catalog contract
+states. Nothing is elevated by title or prose.
+
+### Use cases
+
+#### UC-SRM1: Mappable rows take one role
+
+```gherkin
+Given a session recorded with a system role and a job the mapping names
+When the migration runs
+Then the session carries the mapped role and the job field holds only its instance identity, or nothing
+And its persisted launch state and any queued caller snapshot carry the same role
+```
+
+#### UC-SRM2: Unmappable rows are kept, refused and reported
+
+```gherkin
+Given a session recorded with a combination the mapping does not name
+When the migration runs
+Then the row keeps its recorded values
+And the migration's report names the session, the values and the reason
+And an agent reviving that session is refused every role-gated act with the not-permitted failure naming the recorded role
+```
+
+#### UC-SRM3: Historical attribution is provenance, not derivation
+
+```gherkin
+Given authored turns and queued inputs recorded with a job-role label before the migration
+When the migration runs
+Then each keeps its recorded label as the provenance of that occurrence
+And no label is rewritten from the session's migrated role
+```
+
+#### UC-SRM4: The migration runs once and is observable
+
+```gherkin
+Given the runtime starts for the first time after the migration is deployed
+When it opens the session store
+Then the migration runs before any role-gated act is served
+And its inventory and report are written where an operator can read them
+And a later start finds the migration recorded and does not run it again
+```
+
+### Cross-context references
+
+- **identity** — owns the catalog the mapping resolves roles against and the refusal of an unknown recorded role.
+- **context** — publishes each procedure's declared role, which the job-runner and tasker rows resolve through.
+- **config** — owns which scheduled job names which procedure.
+- **session_mirrors** — owns the mirror store's own classification and attribution records.
+
+## Known caveats
+
+- Which procedure an old scheduled job ran is read from the job's current
+  declaration; a job whose pointer changed since the run keeps the run's
+  recorded procedure where the row names one and is otherwise unmappable.
+- A row marked unmappable is a defect to resolve by an operator reading the
+  report; the migration never guesses.
+
+## See Also
+
+- docs/local/spec/feature/identity/agent-roles.md
+- docs/local/spec/feature/agent_runtime/procedure-entry.md

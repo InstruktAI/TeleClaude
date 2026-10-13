@@ -78,7 +78,7 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
    implies approval.
 
 7. **Hand off to the runner.** Once the human authorizes, the task becomes a
-   runner candidate: the lifecycle runner dispatches `/run-task` when the
+   runner candidate: the lifecycle runner dispatches `sdlc/procedure/lifecycle/task/run-task` when the
    task is not held and its schedule or dependency gate is satisfied.
 
 ## Outputs

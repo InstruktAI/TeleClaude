@@ -260,10 +260,21 @@ change at the owner leaves every copy stale.
 
 Applies to all snippet authoring contexts:
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 - Manual snippet authoring via `general/procedure/doc-snippet-authoring`.
 - Automated authoring during `/projects-analyze` via
   `sdlc/procedure/project-analysis`.
 - Future authoring flows (company onboarding, scaffolding, manual updates).
+
+<!-- change:procedure-role-capability-composition -->
+
+- Manual snippet authoring via `general/procedure/doc-snippet-authoring`.
+- Automated authoring during `sdlc/procedure/project-analysis` via
+  `sdlc/procedure/project-analysis`.
+- Future authoring flows (company onboarding, scaffolding, manual updates).
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 The contract is procedural, not structural. It is enforced by the author
 applying it before drafting and by reviewers applying it during review.

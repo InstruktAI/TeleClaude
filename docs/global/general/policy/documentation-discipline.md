@@ -67,6 +67,8 @@ restart, then check the logs` is directive. One string reaching a human and an
 
 ### Review and cross-project authoring
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 - **Governed documentation is never self-reviewed.** A doc-only commit that
   changes a snippet gets an independent fast doc-hygiene review via
   `/review-commits` on its SHA, covering the security lane's
@@ -81,6 +83,25 @@ restart, then check the logs` is directive. One string reaching a human and an
   and review routing. If it cannot apply them exactly, it reports the blocker and
   leaves the content unchanged. The caller removes the files once success or
   cancellation is confirmed.
+
+<!-- change:procedure-role-capability-composition -->
+
+- **Governed documentation is never self-reviewed.** A doc-only commit that
+  changes a snippet gets an independent fast doc-hygiene review via
+  `sdlc/procedure/lifecycle/work/review-commits` on its SHA, covering the security lane's
+  repository-privacy check and the doc-hygiene lane. Both are reviewer judgment,
+  never prose scanning. Standalone descriptive prose outside the snippet system,
+  such as a README, is not governed content; directive text is, wherever it lives.
+- **Cross-project doc work preserves the authoring session.** The session holding
+  the design context writes the complete content to caller-owned temporary files
+  and relays only their absolute paths and target repository paths to a session
+  rooted in the owning project. That agent applies them exactly — no rewriting,
+  summarizing, or improving — then runs its project's validation, sync, commit,
+  and review routing. If it cannot apply them exactly, it reports the blocker and
+  leaves the content unchanged. The caller removes the files once success or
+  cancellation is confirmed.
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Rationale
 

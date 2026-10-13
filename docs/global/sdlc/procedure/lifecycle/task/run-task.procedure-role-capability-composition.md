@@ -35,7 +35,7 @@ finalize, or commit.
   runner (or a manual start), with `lifecycle_phase=task_running`.
 - Dispatch is kind-gated. The autonomous lifecycle runner dispatches a task run
   only when `workflow.autostart.task` is enabled, mirroring the
-  SDLC work lane; task **prepare** (`/prepare-task`) stays ungated and always
+  SDLC work lane; task **prepare** (`sdlc/procedure/lifecycle/task/prepare-task`) stays ungated and always
   runs. A **manual** start is never gated by autostart — it runs an authorized
   task through the authenticated work-operation route (`/todos/work`), which
   resolves the operation kind from `kind=task` server-side, with no in-process
@@ -101,7 +101,7 @@ finalize, or commit.
    one-shot firing that stamped `success` is delivered — the session has no further
    role and ends. A recurring firing that stamped `success` records the firing, leaves
    the todo live for its next scheduled instant, and ends — the lifecycle runner starts
-   a fresh `/run-task` at the next due instant rather than waking a live session. A
+   a fresh `sdlc/procedure/lifecycle/task/run-task` at the next due instant rather than waking a live session. A
    firing that stamped `error` stays alive so the human can engage the still-loaded
    context; once resolved, stamp `success` (which delivers a one-shot or records a
    recurring firing), or the human ends the session and a deliberate manual `start`

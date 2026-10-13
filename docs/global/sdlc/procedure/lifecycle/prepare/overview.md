@@ -37,19 +37,9 @@ focused procedure and advances through the machine-owned transitions.
 
 2. **Each phase has its own focus, sharpened by a hat:**
 
-<!-- planned-change:procedure-role-capability-composition -->
-
 - **BA hat** for intake — loaded by reading `~/.teleclaude/commands/sdlc/prepare-intake.md`
 - **Architect hat** for architecture — loaded by reading `~/.teleclaude/commands/sdlc/prepare-architecture.md`
 - **Planner hat** for plan — loaded by reading `~/.teleclaude/commands/sdlc/prepare-plan.md`
-
-<!-- change:procedure-role-capability-composition -->
-
-- **BA hat** for intake — loaded by reading `sdlc/procedure/lifecycle/prepare/intake`
-- **Architect hat** for architecture — loaded by reading `sdlc/procedure/lifecycle/prepare/architecture`
-- **Planner hat** for plan — loaded by reading `sdlc/procedure/lifecycle/prepare/plan-draft`
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 Putting on a hat sharpens focus for the current phase; it does not erase
 the lifecycle awareness underneath. The hat comes off when the phase ends
@@ -371,8 +361,6 @@ When the state machine routes you to a phase, load the corresponding procedure
 and do its focused work. Each procedure ends by calling `telec todo prepare
 {slug}` to advance — that's how the lifecycle proceeds.
 
-<!-- planned-change:procedure-role-capability-composition -->
-
 | Phase               | Kind(s)              | Procedure                                             | Focus                       |
 | ------------------- | -------------------- | ----------------------------------------------------- | --------------------------- |
 | Intake              | Feature              | `~/.teleclaude/commands/sdlc/prepare-intake.md`       | BA                          |
@@ -382,20 +370,6 @@ and do its focused work. Each procedure ends by calling `telec todo prepare
 | Architecture review | Feature              | `~/.teleclaude/commands/sdlc/review-architecture.md`  | Reviewer                    |
 | Plan                | Feature, change, bug | `~/.teleclaude/commands/sdlc/prepare-plan.md`         | Planner                     |
 | Plan review         | Feature, change, bug | `~/.teleclaude/commands/sdlc/review-plan.md`          | Reviewer                    |
-
-<!-- change:procedure-role-capability-composition -->
-
-| Phase               | Kind(s)              | Procedure                                              | Focus                       |
-| ------------------- | -------------------- | ------------------------------------------------------ | --------------------------- |
-| Intake              | Feature              | `sdlc/procedure/lifecycle/prepare/intake`              | BA                          |
-| PRD review          | Feature              | `sdlc/procedure/lifecycle/prepare/review-prd`          | Reviewer                    |
-| Diagnose            | Bug                  | `sdlc/procedure/lifecycle/prepare/diagnose-peer`       | Diagnoser (dispatched peer) |
-| Architecture        | Feature              | `sdlc/procedure/lifecycle/prepare/architecture`        | Architect                   |
-| Architecture review | Feature              | `sdlc/procedure/lifecycle/prepare/review-architecture` | Reviewer                    |
-| Plan                | Feature, change, bug | `sdlc/procedure/lifecycle/prepare/plan-draft`          | Planner                     |
-| Plan review         | Feature, change, bug | `sdlc/procedure/lifecycle/prepare/review-plan`         | Reviewer                    |
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 Intake's focused work includes situating the premise against the existing todo
 landscape — reconciling overlap and undeclared dependencies with sibling todos
@@ -463,19 +437,9 @@ When the state machine reports drift (codebase changed in artifact-referenced
 paths since the artifact was authored), dispatch a lean drift-analysis
 worker:
 
-<!-- planned-change:procedure-role-capability-composition -->
-
 ```
 telec sessions run --command /drift-analyze --agent codex --args {slug}
 ```
-
-<!-- change:procedure-role-capability-composition -->
-
-```
-telec sessions run --command sdlc/procedure/lifecycle/prepare/drift-analyze --agent codex --args {slug}
-```
-
-<!-- /planned-change:procedure-role-capability-composition -->
 
 The worker reads the diffs scoped to referenced paths, assesses impact per
 affected artifact, and reports findings. The `/drift-analyze` worker is

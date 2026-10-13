@@ -73,7 +73,7 @@ root first; the sessions surface does not deduplicate on the caller's behalf. Th
 with:
 <!-- change:procedure-role-capability-composition -->
 
-Check `telec sessions list` for an open `/companies-analyze` session on this company
+Check `telec sessions list` for an open `general/procedure/company-analysis` session on this company
 root first; the sessions surface does not deduplicate on the caller's behalf. Then start
 `telec sessions run --command general/procedure/company-analysis --path ~/.teleclaude/companies/{slug}`
 with:

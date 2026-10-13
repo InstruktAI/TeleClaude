@@ -48,10 +48,10 @@ persisted invocation.
 ### Ubiquitous language
 
 **Entry procedure**
-: A procedure a dispatcher, a job declaration or a subscription names as a launch root. It declares `role`, `parameters` and `dispatch`.
+: A procedure a dispatcher, a job declaration or a subscription names as a launch root. It declares `role`, `parameters` and `dispatch`, and may also be read inline by other sessions.
 
-**Supporting procedure**
-: A procedure read inside a session as a hat or a dependency. It declares no entry fields and assigns nothing.
+**Inline read**
+: A procedure read inside a session as a hat or a dependency. Whether or not it declares entry fields, none is interpreted and nothing about the session changes; the same procedure may be the launch root of another session.
 
 **Resolved invocation**
 : The procedure ID, the bound parameters, the raw argument text, the entry context, and the brief reference, persisted on the session's launch state.
@@ -65,7 +65,7 @@ persisted invocation.
 ### Resolution order
 
 1. The procedure is resolved from the published index. An unknown ID, a pending procedure, a snippet that is not a procedure, or an entry procedure declaring no role refuses the request before a session exists, naming the cause.
-2. Arguments are bound to the declared `parameters` once; the raw text is kept. A missing required parameter refuses the request.
+2. Arguments are bound to the declared `parameters` once, under the binding rule the schema states (`general/spec/snippet-authoring-schema`): whitespace tokens to positional entries in order, the untokenized remainder to a `rest` entry, defaults for omitted optional entries; the raw text is kept as `$ARGUMENTS`. A missing required parameter or a surplus token refuses the request. An inline read rebinds nothing.
 3. The role is resolved through the catalog. A caller carrying a role may start a worker-class target when it holds `dispatch-worker` and any target when it is full-reach; a human session may start anything; no target escapes the check.
 4. Agent order and thinking mode resolve through one resolver: an explicit caller mode, then a scheduled job's effective declaration for a job entry, then the procedure's `dispatch` declaration; an entry procedure without one is a publication defect and refuses. Manual preference, automatic preference and fixed continuation keep their meanings.
 5. The brief is materialized from that one resolved publication through the context's closure validation; a pending dependency refuses the launch. The brief presents the role by its framing line and nothing about its reach: a full-reach role's focus at entry is its procedure's own discipline, and the integrity of shared objects stays with the object guardrails the brief never restates.
@@ -219,7 +219,7 @@ And no session is created
 ## Known caveats
 
 - The brief is read by the agent verbatim, whatever its size. It presents no per-role command surface; presenting a role's explicit set in the brief and narrowing the CLI index a session sees is the role-scoped context delivery's concern, not this contract's.
-- The legacy `system_role` and `job_role` wire projections stay populated for transport while older computers read them; they carry the role name verbatim and are authority for nothing.
+- The legacy `system_role` and `job_role` wire projections stay populated for transport while older computers read them, carrying the class-derived legacy projection the fleet interop contract defines; they are authority for nothing.
 
 ## See Also
 

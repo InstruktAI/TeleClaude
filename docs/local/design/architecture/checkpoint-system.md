@@ -33,7 +33,16 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 - `git diff --name-only HEAD` — Uncommitted files relative to HEAD, used as the category oracle for action instructions.
 - Integrator-maintenance marker — checkout-scoped marker carrying canonical-root advancement ranges that still await log judgment; any integrator session on that checkout can surface and discharge it without repeating deterministic maintenance.
 - `TurnTimeline` — Ordered tool calls from the current checkpoint cycle, extracted from the agent transcript via `extract_effective_tool_calls(..., scope="checkpoint")`.
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 - `CheckpointContext` — Session context: project path, agent name, and `system_role` (e.g. `"integrator"`) threaded from the session row by the receiver. The working slug accompanies structured diagnostic records.
+
+<!-- change:procedure-role-capability-composition -->
+
+- `CheckpointContext` — Session context: project path, agent name, and `role` (e.g. `"integrator"`, the session's one catalog role) threaded from the session row by the receiver. The working slug accompanies structured diagnostic records.
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 **Outputs:**
 

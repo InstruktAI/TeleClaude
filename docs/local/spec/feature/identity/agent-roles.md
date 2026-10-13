@@ -52,28 +52,29 @@ own identity and is never a session role.
 
 ### Capabilities
 
-| Capability             | Reach                                                                                        |
-| ---------------------- | -------------------------------------------------------------------------------------------- |
-| `docs-read`            | Reading documentation.                                                                       |
-| `todo-read`            | Listing and showing todos and bugs.                                                          |
-| `todo-write`           | Creating, updating, freezing, removing and delivering todos; filing bugs and suppressions.   |
-| `artifact-read`        | Reading and diffing todo artifacts.                                                          |
-| `artifact-write`       | Writing and removing todo artifacts.                                                         |
-| `stamp`                | Stamping todo state and commit-review verdicts.                                              |
-| `todo-orchestration`   | Driving a todo state machine.                                                                |
-| `integration`          | Integrating deliveries to canonical main and reading dirty-path ownership.                   |
-| `maintenance-recovery` | Inspecting and recovering canonical-main maintenance.                                        |
-| `memory-curation`      | Curating memories and prospects from conversation extractions.                               |
-| `session-observe`      | Listing, showing and tailing sessions; searching and showing history.                        |
-| `session-act`          | Starting, running, reviving, restarting, ending and messaging sessions other than one's own. |
-| `self-acts`            | Results, files, ending and restarting for one's own session.                                 |
-| `messaging`            | Messaging a person.                                                                          |
-| `jobs`                 | Listing, enabling, running and reporting jobs.                                               |
-| `config`               | Reading and changing configuration.                                                          |
-| `reminders`            | Arming, listing and cancelling reminders.                                                    |
-| `code`                 | Code quality, declarations and commits.                                                      |
-| `mcp`                  | Listing and calling MCP tools.                                                               |
-| `dispatch-worker`      | Starting a session whose role is of class `worker`.                                          |
+| Capability             | Reach                                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| `docs-read`            | Reading documentation.                                                                                  |
+| `todo-read`            | Listing and showing todos and bugs.                                                                     |
+| `todo-write`           | Creating, updating, freezing, removing and delivering todos; filing bugs and suppressions.              |
+| `artifact-read`        | Reading and diffing todo artifacts.                                                                     |
+| `artifact-write`       | Writing and removing todo artifacts.                                                                    |
+| `stamp`                | Stamping todo state and commit-review verdicts.                                                         |
+| `todo-orchestration`   | Driving a todo state machine.                                                                           |
+| `integration`          | Integrating deliveries to canonical main and reading dirty-path ownership.                              |
+| `maintenance-recovery` | Inspecting and recovering canonical-main maintenance.                                                   |
+| `memory-curation`      | Curating memories and prospects from conversation extractions.                                          |
+| `session-observe`      | Listing, showing and tailing sessions; searching and showing history.                                   |
+| `session-act`          | Starting, running, reviving, restarting, ending and messaging sessions other than one's own.            |
+| `self-acts`            | Results, files, ending and restarting for one's own session.                                            |
+| `messaging`            | Messaging a person.                                                                                     |
+| `jobs`                 | Listing, enabling, running and reporting jobs.                                                          |
+| `config`               | Reading and changing configuration.                                                                     |
+| `reminders`            | Arming, listing and cancelling reminders.                                                               |
+| `code`                 | Code quality, declarations and commits.                                                                 |
+| `mcp`                  | Listing and calling MCP tools.                                                                          |
+| `peer-talk`            | Sending to and tailing a peer session: the builder a reviewer reviews, the claimant that dispatched it. |
+| `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                     |
 
 The command families are the catalog's vocabulary; which command declares
 which family is the CLI surface schema's.
@@ -82,7 +83,7 @@ which family is the CLI surface schema's.
 
 | Role                                                                                                  | Class    | `full_reach` | Explicit set                                                                                                                                                                       | Label        |
 | ----------------------------------------------------------------------------------------------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `builder`, `reviewer`, `finalizer`, `diagnoser`, `drift-analyzer`, `artist`, `frontender`, `deferrer` | worker   | no           | `docs-read`, `todo-read`, `todo-write`, `artifact-read`, `artifact-write`, `stamp`, `self-acts`, `reminders`, `code`, `jobs`, `mcp`, and the peer talk in `command-clearance`      | Worker       |
+| `builder`, `reviewer`, `finalizer`, `diagnoser`, `drift-analyzer`, `artist`, `frontender`, `deferrer` | worker   | no           | `docs-read`, `todo-read`, `todo-write`, `artifact-read`, `artifact-write`, `stamp`, `self-acts`, `reminders`, `code`, `jobs`, `mcp`, `peer-talk`                                   | Worker       |
 | `prepare-orchestrator`, `work-orchestrator`, `create-orchestrator`, `intaker`, `architect`, `planner` | agent    | yes          | `todo-orchestration`, `todo-read`, `todo-write`, `artifact-read`, `artifact-write`, `stamp`, `dispatch-worker`, `session-observe`, `session-act`, `docs-read`, `reminders`, `code` | Orchestrator |
 | `integrator`                                                                                          | standing | yes          | `integration`, `maintenance-recovery`, `dispatch-worker`, `code`, `session-observe`, `session-act`, `docs-read`, `todo-read`, `todo-write`, `stamp`, `reminders`                   | Integrator   |
 | `coordinator`                                                                                         | standing | yes          | `session-observe`, `session-act`, `docs-read`, `todo-read`, `messaging`, `reminders`                                                                                               | Orchestrator |
@@ -99,14 +100,15 @@ in a caller-origin identity header, drawn from the closed label vocabulary of
 
 ### Class
 
-A role's class answers what kind of session carries it; it is independent of
-its reach:
+A role's class says what kind of session carries it, independently of its
+reach. Its consumers are the contracts that own the consequence, each reading
+the class and deciding nothing about reach:
 
-- `worker` — a focused session another session dispatched. A `dispatch-worker`
-  grant may start it; its history is excluded from default conversation search;
-  it reaches nothing across the fleet.
-- `standing` — a session whose work arrives from a queue or the fleet and that
-  has no session above it (`session-authority`). A scheduled job's session is
+- `worker` — a focused session another session dispatched; the target class a
+  `dispatch-worker` grant may start, and the class the session-mirrors search
+  contract excludes by default.
+- `standing` — a session whose work arrives from a queue or the fleet; the
+  session-authority contract's standing class. A scheduled job's session is
   standing whatever its role.
 - `agent` — every other agent session.
 
@@ -177,20 +179,12 @@ And an error naming the session and the role is logged
 And the session is not admitted as a human session
 ```
 
-#### UC-AR7: Class decides standing, history and dispatch, never reach
-
-```gherkin
-Given a role of class `standing` and a role of class `agent` with identical capabilities
-When their sessions are created
-Then the standing session has no session above it and the agent session keeps its dispatcher
-And neither class changes which commands the sessions reach
-```
-
 ## Known caveats
 
 - A closed session recorded before procedures declared their roles, whose
   record the migration could not map, stays refused if it is revived; the
-  migration reports every such record.
+  migration (`local/projects/teleclaude/spec/feature/agent_runtime/session-role-migration`)
+  reports every such record.
 - The explicit set of a full-reach role binds nothing, and no brief presents
   it: the procedure-entry brief carries the role's framing line and no command
   listing. Presenting the set as a brief's command surface, and narrowing the

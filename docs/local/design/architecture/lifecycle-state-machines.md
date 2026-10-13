@@ -174,6 +174,8 @@ flowchart TB
 
 All workers are dispatched via `telec sessions run`. The machine specifies the command; the orchestrator specifies agent and thinking mode.
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 | Phase    | Worker Role                               | Command                                                                                  | Thinking Mode      |
 | -------- | ----------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------ |
 | Prepare  | Intaker / Architect / Diagnoser / Planner | `/prepare-intake`, `/prepare-architecture`, `/prepare-diagnose` (bug), `/prepare-plan`   | `slow`             |
@@ -183,6 +185,20 @@ All workers are dispatched via `telec sessions run`. The machine specifies the c
 | Review   | Reviewer                                  | `/review-build`                                                                          | `slow` (mandatory) |
 | Fix      | Fixer                                     | _(no dispatch — reviewer opens a direct conversation with the existing builder session)_ | _(reused)_         |
 | Finalize | Finalizer                                 | `/finalize`                                                                              | `med`              |
+
+<!-- change:procedure-role-capability-composition -->
+
+| Phase    | Worker Role                               | Command                                                                                                                                                                                           | Thinking Mode      |
+| -------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| Prepare  | Intaker / Architect / Diagnoser / Planner | `sdlc/procedure/lifecycle/prepare/intake`, `sdlc/procedure/lifecycle/prepare/architecture`, `sdlc/procedure/lifecycle/prepare/diagnose-peer` (bug), `sdlc/procedure/lifecycle/prepare/plan-draft` | `slow`             |
+| Prepare  | Drift Analyzer                            | `sdlc/procedure/lifecycle/prepare/drift-analyze`                                                                                                                                                  | `fast`             |
+| Prepare  | Reviewer                                  | `sdlc/procedure/lifecycle/prepare/review-architecture`, `sdlc/procedure/lifecycle/prepare/review-plan`                                                                                            | `slow`             |
+| Build    | Builder                                   | `sdlc/procedure/lifecycle/work/build` (all kinds, incl. bug)                                                                                                                                      | `med`              |
+| Review   | Reviewer                                  | `sdlc/procedure/lifecycle/work/review-build`                                                                                                                                                      | `slow` (mandatory) |
+| Fix      | Fixer                                     | _(no dispatch — reviewer opens a direct conversation with the existing builder session)_                                                                                                          | _(reused)_         |
+| Finalize | Finalizer                                 | `sdlc/procedure/lifecycle/work/finalize`                                                                                                                                                          | `med`              |
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ### Detailed documentation
 

@@ -161,11 +161,21 @@ scopes:
 
 ### Drift
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 When reconciliation detects that artifact-referenced paths changed since the
 artifact was authored, a lean `/drift-analyze` worker is dispatched. It
 stamps each pending artifact as `cosmetic` or `substantive`. Substantive
 drift invalidates the affected phase and the active procedure re-derives. The
 PREPARED terminal requires fresh grounding.
+<!-- change:procedure-role-capability-composition -->
+
+When reconciliation detects that artifact-referenced paths changed since the
+artifact was authored, a lean `sdlc/procedure/lifecycle/prepare/drift-analyze` worker is dispatched. It
+stamps each pending artifact as `cosmetic` or `substantive`. Substantive
+drift invalidates the affected phase and the active procedure re-derives. The
+PREPARED terminal requires fresh grounding.
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Failure modes
 

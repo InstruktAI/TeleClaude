@@ -389,15 +389,6 @@ And the activation is delivered to it
 
 <!-- planned:procedure-role-capability-composition -->
 
-#### UC-PSA28: A woken or revived agent carries the role its procedure now declares
-
-```gherkin
-Given a standing agent continues a procedure for a home
-And the procedure's declared role has changed since the agent was started
-When a further activation reaches that agent, open or revived
-Then the agent carries the role the procedure currently declares before the activation is delivered
-```
-
 #### UC-PSA29: A procedure declaring no role starts no agent
 
 ```gherkin
@@ -457,6 +448,14 @@ Then that session is shown wherever sessions are shown
   procedure's declaration affects the agents it starts afterwards; an agent
   already running keeps the attendance it started with.
 - Sessions an unattended agent starts for its own work are attended.
+
+<!-- planned:procedure-role-capability-composition -->
+
+- A procedure's declared role is read when its agent is started. An agent
+  already running, or revived, keeps the role it started with; a changed
+  declaration reaches only the agents started afterwards, as attendance does.
+
+<!-- /planned:procedure-role-capability-composition -->
 
 ## See Also
 

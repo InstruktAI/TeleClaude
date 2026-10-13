@@ -89,7 +89,7 @@ Design spec is confirmed. No art exists yet.
 **Action**: dispatch an artist agent to generate mood board images.
 
 ```
-telec sessions run --command "/create-art" --args "{slug}"
+telec sessions run --command "creative/procedure/image-generation/nano-banana" --args "{slug}"
   --path "{project}" --agent "gemini" --mode "slow"
 ```
 
@@ -148,7 +148,7 @@ following the visual drafting procedure.
 **Single agent dispatch**:
 
 ```
-telec sessions run --command "/create-html" --args "{slug}"
+telec sessions run --command "creative/procedure/visual-drafting" --args "{slug}"
   --path "{project}" --agent "<selection>" --mode "<selection>"
 ```
 
@@ -165,11 +165,11 @@ Each agent writes to `workspace/{slug}/html/{agent-name}/`.
 
 ```
 # Parallel dispatch
-telec sessions run --command "/create-html" --args "{slug}"
+telec sessions run --command "creative/procedure/visual-drafting" --args "{slug}"
   --agent gemini --mode slow
-telec sessions run --command "/create-html" --args "{slug}"
+telec sessions run --command "creative/procedure/visual-drafting" --args "{slug}"
   --agent claude --mode slow
-telec sessions run --command "/create-html" --args "{slug}"
+telec sessions run --command "creative/procedure/visual-drafting" --args "{slug}"
   --agent codex --mode slow
 ```
 

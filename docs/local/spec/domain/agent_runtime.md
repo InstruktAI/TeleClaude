@@ -170,7 +170,16 @@ TeleClaudeNext repository.
   run, an activation, a lifecycle dispatch, interactive command input and a
   hand-started run all enter this way; an entry type adds typed context and
   the required reads it implies, never a role. A procedure read inside a
-  session changes nothing about that session. The behavioral contract is
+  session changes nothing about that session, whether or not it declares entry
+  fields. Everything else that read a session's former role or job pair keeps
+  its meaning with the one role: launch ownership reads role presence, a
+  session's end category and a conversation's continuability read role
+  presence as they read it before, the session listing's `--job` filter reads
+  the instance identity the field now holds alone, and the lane a session
+  belongs to is `workflow`'s grouping of role names. Stored records receive the
+  one-time migration in
+  `local/projects/teleclaude/spec/feature/agent_runtime/session-role-migration`.
+  The behavioral contract is
   `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`.
 
 <!-- /planned:procedure-role-capability-composition -->

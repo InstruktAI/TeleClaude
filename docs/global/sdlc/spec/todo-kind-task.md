@@ -6,11 +6,21 @@ description: 'Canonical definition of the `task` todo kind — the non-SDLC, sid
 
 ## What it is
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 `task` is one of the four canonical todo kinds. It is the non-SDLC,
 side-effect-only kind: a durable, human-authorized `task-plan` that performs
 operations against the outside world. It never enters the SDLC — no PRD,
 architecture, implementation-plan, or reviewer verdict — and is drafted by
 `/prepare-task`, authorized by a human, and executed by `/run-task`.
+<!-- change:procedure-role-capability-composition -->
+
+`task` is one of the four canonical todo kinds. It is the non-SDLC,
+side-effect-only kind: a durable, human-authorized `task-plan` that performs
+operations against the outside world. It never enters the SDLC — no PRD,
+architecture, implementation-plan, or reviewer verdict — and is drafted by
+`sdlc/procedure/lifecycle/task/prepare-task`, authorized by a human, and executed by `sdlc/procedure/lifecycle/task/run-task`.
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Canonical fields
 
@@ -29,6 +39,8 @@ architecture, implementation-plan, or reviewer verdict — and is drafted by
 
 ## Known caveats
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 - `/prepare-task` is the only remaining check before human authorization,
   and independently verifies this boundary before drafting a `task-plan`.
 - `task` carries no exemption from the general minimal duplicate-check every
@@ -38,3 +50,17 @@ architecture, implementation-plan, or reviewer verdict — and is drafted by
   `bug`, and `change` each have at their own entry phase. That remains an
   open, separately-scoped gap; `/prepare-task` performs only the shallow
   scan, never the deeper reconciliation.
+
+<!-- change:procedure-role-capability-composition -->
+
+- `sdlc/procedure/lifecycle/task/prepare-task` is the only remaining check before human authorization,
+  and independently verifies this boundary before drafting a `task-plan`.
+- `task` carries no exemption from the general minimal duplicate-check every
+  todo creation owes (`sdlc/policy/todo-creation-discipline`).
+  It does not, however, have a kind-specific home for **deep** landscape
+  judgment — the yields/supersedes/dependency reconciliation `feature`,
+  `bug`, and `change` each have at their own entry phase. That remains an
+  open, separately-scoped gap; `sdlc/procedure/lifecycle/task/prepare-task` performs only the shallow
+  scan, never the deeper reconciliation.
+
+<!-- /planned-change:procedure-role-capability-composition -->

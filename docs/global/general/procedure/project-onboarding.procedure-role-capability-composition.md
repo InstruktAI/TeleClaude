@@ -45,11 +45,11 @@ surface that starts agents.
    be started. Starting a second one duplicates work; the sessions surface does not
    deduplicate on the caller's behalf.
 3. **Assess the quality configuration.** Start
-   `telec sessions run --command /projects-assess-config --path <project-root>`. The
+   `telec sessions run --command sdlc/procedure/code-config-assessment --path <project-root>`. The
    session compares the project's quality tooling against
    `templates/quality/{language}/`.
 4. **Analyze the codebase.** Start
-   `telec sessions run --command /projects-analyze --path <project-root>`. The session
+   `telec sessions run --command sdlc/procedure/project-analysis --path <project-root>`. The session
    follows the project-analysis procedure and emits schema-valid snippets under
    `docs/local/`.
 
