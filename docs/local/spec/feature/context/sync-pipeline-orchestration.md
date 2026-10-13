@@ -344,9 +344,7 @@ Then the deployed documentation and agent artifacts are those committed at the i
 And a home that already records that commit is left unchanged
 And a deployed generation from a different commit is replaced by the installed commit's
 And the installer is told whether that home was published, already current, or skipped with its build error
-```
 
-```gherkin
 Scenario Outline: Release publication uses installed source through each entry point
 Given an operator's release installation selects a committed release
 And its local main branch points to a different revision
