@@ -52,10 +52,16 @@ _GIT_MAIN_TIP_ARGS = ("--verify", "refs/heads/main^{commit}")
 _GIT_INSTALLED_COMMIT_ARGS = ("--verify", "HEAD^{commit}")
 _GIT_IGNORED_UNTRACKED_ARGS = ("-z", "--others", "--ignored", "--exclude-standard", "--")
 _GIT_OBJECT_TYPE_ARGS = ("--batch-check=%(objectname) %(objecttype)",)
+_GIT_OBJECT_FORMAT_ARGS = ("--show-object-format=storage",)
 _GIT_MISSING_OBJECT_SUFFIX = " missing"
 _GIT_OBJECT_QUERY_TERMINATOR = "\n"
 _GIT_PATH_SEPARATOR = "\0"
-_COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
+_COMMIT_ID_PATTERN = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
+_REPOSITORY_COMMIT_ID_PATTERNS = {
+    "sha1": re.compile(r"[0-9a-f]{40}"),
+    "sha256": re.compile(r"[0-9a-f]{64}"),
+}
+_UNSUPPORTED_GIT_OBJECT_FORMAT = "Unsupported repository object format: {object_format}"
 _STATE_DIRECTORY = ".teleclaude"
 _PUBLICATION_DIRECTORY = "publication"
 _HOME_GENERATIONS_FILENAME = "homes.yaml"
@@ -756,11 +762,12 @@ def _load_home_generations(canonical_root: Path) -> _HomeGenerations:
     state_path = _home_generations_path(canonical_root)
     generations: dict[str, str] = {}
     if state_path.is_file():
+        commit_pattern = _repository_commit_pattern(canonical_root)
         payload = yaml.safe_load(state_path.read_text(encoding=_UTF8))
         if not isinstance(payload, dict):
             raise ValueError(_INVALID_HOME_STATE.format(path=state_path))
         for root, commit in payload.items():
-            if not isinstance(root, str) or not isinstance(commit, str) or not _COMMIT_ID_PATTERN.fullmatch(commit):
+            if not isinstance(root, str) or not isinstance(commit, str) or not commit_pattern.fullmatch(commit):
                 raise ValueError(_INVALID_HOME_STATE_ENTRY.format(root=root))
             generations[root] = commit
     if is_platform_home(canonical_root):
@@ -771,7 +778,7 @@ def _load_home_generations(canonical_root: Path) -> _HomeGenerations:
             canonical_root / _STATE_DIRECTORY / _PUBLICATION_DIRECTORY / _ENTRYPOINTS_GENERATION_FILENAME
         )
         if legacy_published is not None and legacy_published == legacy_entrypoints:
-            if not _COMMIT_ID_PATTERN.fullmatch(legacy_published):
+            if not _repository_commit_pattern(canonical_root).fullmatch(legacy_published):
                 raise ValueError(_INVALID_LEGACY_HOME_STATE.format(commit=legacy_published))
             legacy_source = TreeSource.recorded_commit(canonical_root, legacy_published)
             try:
@@ -797,6 +804,15 @@ def _load_home_generations(canonical_root: Path) -> _HomeGenerations:
             if not state_path.is_file():
                 generations = {home.root.as_posix(): legacy_published for home in legacy_homes}
     return _HomeGenerations(generations)
+
+
+def _repository_commit_pattern(canonical_root: Path) -> re.Pattern[str]:
+    """Require full identifiers in this repository's native storage object format."""
+    object_format = cast(str, Repo(str(canonical_root)).git.rev_parse(*_GIT_OBJECT_FORMAT_ARGS)).strip()
+    pattern = _REPOSITORY_COMMIT_ID_PATTERNS.get(object_format)
+    if pattern is None:
+        raise ValueError(_UNSUPPORTED_GIT_OBJECT_FORMAT.format(object_format=object_format))
+    return pattern
 
 
 def _write_home_generations(canonical_root: Path, generations: dict[str, str], *, retire_legacy: bool = True) -> None:
