@@ -171,20 +171,11 @@ And no validator on JobScheduleConfig rejects a missing `when` block
 And the job is accepted with its legacy schedule string
 ```
 
-#### UC-CFG-JOB-14: Execution config fields default appropriately
+### Execution configuration ownership
 
-```
-Given a project config under load with jobs.my-job set to an empty dict
-When JobScheduleConfig is constructed
-Then category defaults to "subscription"
-And preferred_hour defaults to 6 (validated within 0..23)
-And preferred_weekday defaults to 0 (validated within 0..6)
-And preferred_day defaults to 1 (validated within 1..31)
-And agent defaults to "claude"
-And thinking_mode defaults to None
-And enabled defaults to true
-And when, schedule, type, script, job, message, timeout all default to None
-```
+`JobScheduleConfig` in `teleclaude/config/schema.py` owns execution-field
+defaults. Scheduled agent launch resolves an omitted thinking mode in
+`teleclaude/api/run_session_job.py`.
 
 ### Cross-context references
 
