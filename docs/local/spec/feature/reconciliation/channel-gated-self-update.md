@@ -165,7 +165,17 @@ And completion awaits the assessment of the actual running revision
 
 - Owned by `reconciliation` (`@docs/local/spec/domain/reconciliation.md`); the version-convergence concern of that context.
 - The release/version signal is supplied by `integration` via the single-ingress relay (`@docs/local/spec/feature/integration/single-ingress-webhook-termination.md`).
+
+<!-- planned-change:semver-compatible-releases -->
+
 - Channel and pinned-minor inputs come from `config`.
+
+<!-- change:semver-compatible-releases -->
+
+- Channel and compatibility-series inputs come from `config`.
+
+<!-- /planned-change:semver-compatible-releases -->
+
 - Behaviour across a mixed-version fleet is governed by `@docs/local/spec/feature/reconciliation/fleet-cross-version-interop.md`.
 
 ## Known caveats

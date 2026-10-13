@@ -148,7 +148,18 @@ remain independently observable.
 
 - External provider webhooks (GitHub push to `main`, GitHub release published,
   other provider events) arriving at the single ingress.
+
+<!-- planned-change:semver-compatible-releases -->
+
 - The machine configuration's `deployment.channel` and optional `pinned_minor`.
+
+<!-- change:semver-compatible-releases -->
+
+- The machine configuration's `deployment.channel` and, for stable enrollment,
+  its compatibility series.
+
+<!-- /planned-change:semver-compatible-releases -->
+
 - The relayed pushes and releases of TeleClaude's own repository, consumed by
   every computer holding its canonical checkout.
 
@@ -168,9 +179,21 @@ remain independently observable.
   of its own channel, role, or whether it would itself act.
 - **Only the platform's own events converge it.** Convergence starts only from
   a push or release of TeleClaude's own repository.
+
+<!-- planned-change:semver-compatible-releases -->
+
 - **Channel-gated convergence.** A computer converges only when the event
   matches its channel policy; `stable` ignores releases outside its
   `pinned_minor`.
+
+<!-- change:semver-compatible-releases -->
+
+- **Channel-gated convergence.** A computer converges only when the event
+  matches its channel policy; `stable` ignores releases outside its
+  compatibility series.
+
+<!-- /planned-change:semver-compatible-releases -->
+
 - **Exactly-once per target version.** A target the checkout already contains is
   not applied again, and a replayed event performs nothing a second time.
 - **Healthy-or-failed.** A convergence is complete only when the daemon is

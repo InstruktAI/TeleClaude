@@ -141,10 +141,23 @@ document reaches the current version, and what reads and writes it, is
 exposure levels described below, which govern which `config.yml` fields reach
 the operator surface.
 
+<!-- planned-change:semver-compatible-releases -->
+
 Release-channel settings (`deployment.channel`, `deployment.pinned_minor`) are not
 project-level keys. They govern TeleClaude's own self-update — a machine-wide
 concern — and live on the machine runtime `config.yml` (the `TeleclaudeConfig`
 aggregate), marked `tier=public` (wizard exposure stays a later refinement).
+
+<!-- change:semver-compatible-releases -->
+
+Release-channel settings (`deployment.channel` and the stable compatibility
+series declared under
+`local/projects/teleclaude/spec/feature/config/stable-channel-pinning-rule`) are
+not project-level keys. They govern TeleClaude's own self-update — a machine-wide
+concern — and live on the machine runtime `config.yml` (the `TeleclaudeConfig`
+aggregate), marked `tier=public` (wizard exposure stays a later refinement).
+
+<!-- /planned-change:semver-compatible-releases -->
 
 ### Configuration tiers — public vs internal
 
