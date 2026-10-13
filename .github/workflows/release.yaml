@@ -537,7 +537,7 @@ jobs:
         needs.release-analysis.outputs.capture_status == 'ready' &&
         (
           needs.release-analysis.outputs.decision_mode == 'manual' ||
-          contains(fromJSON('["patch","minor"]'), needs.release-analysis.outputs.selected_classification)
+          contains(fromJSON('["patch","minor","major"]'), needs.release-analysis.outputs.selected_classification)
         )
       }}
     needs: [release-analysis]

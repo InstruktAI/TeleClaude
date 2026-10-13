@@ -20,23 +20,34 @@ TAG_PREFIX = "v"
 VERSION_SEPARATOR = "."
 SUMMARY_END = ")"
 INVALID_BASELINE = "BASELINE_TAG must be a semantic release tag in MAJOR.MINOR.PATCH form."
-INVALID_BUMP = "BUMP must be patch or minor."
+INVALID_BUMP = "BUMP must be patch, minor or major."
+MAJOR_BEFORE_ONE = (
+    "A major bump needs a baseline whose major is positive; the first 1.0 is published with an explicit version."
+)
+PRE_RELEASE_MAJOR = 0
 
 
 class ReleaseBump(StrEnum):
-    """Supported release increments under the current pre-major policy."""
+    """Supported release increments: a major increment applies only from a positive major baseline."""
 
     PATCH = "patch"
     MINOR = "minor"
+    MAJOR = "major"
 
 
 def next_tag(last_tag: str, bump: ReleaseBump) -> str:
-    """Apply the existing minor-or-patch version arithmetic."""
+    """Apply the patch, minor or major increment to the baseline; a major needs a positive baseline major."""
     try:
         major, minor, patch = stable_version_components(last_tag)
     except ValueError:
         raise ValueError(INVALID_BASELINE) from None
-    if bump is ReleaseBump.MINOR:
+    if bump is ReleaseBump.MAJOR:
+        if major == PRE_RELEASE_MAJOR:
+            raise ValueError(MAJOR_BEFORE_ONE)
+        major += 1
+        minor = 0
+        patch = 0
+    elif bump is ReleaseBump.MINOR:
         minor += 1
         patch = 0
     elif bump is ReleaseBump.PATCH:

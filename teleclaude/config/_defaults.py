@@ -180,7 +180,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
     },
     "deployment": {
         "channel": "alpha",
-        "pinned_minor": "",
+        "compatibility_series": "",
     },
     "experiments": [],
 }

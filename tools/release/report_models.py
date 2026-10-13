@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
@@ -10,6 +11,15 @@ from pydantic import BaseModel, ConfigDict, Field
 from tools.release.attempt import ReleaseDecisionMode
 
 _UTF8_ENCODING = "utf-8"
+
+
+class ReleaseClassification(StrEnum):
+    """The closed vocabulary an inspector assigns to a release interval."""
+
+    PATCH = "patch"
+    MINOR = "minor"
+    MAJOR = "major"
+    NONE = "none"
 
 
 class ContractChange(BaseModel):
@@ -28,7 +38,7 @@ class LaneReport(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
-    classification: Literal["patch", "minor", "none"]
+    classification: ReleaseClassification = Field(strict=False)
     rationale: str
     contract_changes: list[ContractChange]
     release_notes: str
