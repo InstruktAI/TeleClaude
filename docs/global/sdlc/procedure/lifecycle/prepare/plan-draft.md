@@ -362,9 +362,11 @@ the briefing instead.
 A bug plan removes the diagnosed mechanism (`diagnosis#mechanism`) from every
 matching site in the family census (`diagnosis#family-census`), with the
 smallest change that does so, plus a scenario-bound regression test where the
-project opts into tests. Each census site is fixed in this delivery, or filed
-by this session as its own bug citing the original occurrence when it belongs
-to another owner or would make this delivery incoherent; the plan records which.
+project opts into tests. Each matching census site is fixed in this delivery,
+or filed by this session as its own bug carrying the diagnosis's evidence
+(`sdlc/concept/defect-evidence`, family site) when it belongs to another owner
+or would make this delivery incoherent; the plan records which. Sites the
+census marks not matching or undecided are outside the plan.
 Except for a structural-ratchet deepening permitted below, every task traces to
 one of those. Guards against causes no diagnosis has established — extra
 validation layers, defensive defaults, fallbacks — and adjacent refactors, new

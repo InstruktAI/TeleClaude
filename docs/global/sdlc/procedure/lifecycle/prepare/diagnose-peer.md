@@ -65,7 +65,7 @@ another session, prescribe a fix, stamp the diagnosis, or advance the prepare st
    - **Mechanism** — the code shape behind the root cause, stated as the debugging
      procedure requires: decidable at one site by reading it.
    - **Family census** — the two searches the debugging procedure bounds this lane to,
-     and every site they found, each marked matching or undecided.
+     and every site they found, each marked matching, not matching, or undecided.
    - **Attack record** — initially empty or marked pending; the peer updates it when the
      prepare-driving session later challenges the written mechanism.
 5. Write the `diagnosis` artifact, then go idle for the prepare-driving session's response. If the prepare-driving session returns an evidence gap or
