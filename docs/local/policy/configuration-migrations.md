@@ -74,8 +74,6 @@ description: How a configuration migration is written — one numbered step in o
   current version; a migration alone leaves new documents wrong, and a model
   change alone leaves stored documents unreadable.
 
-<!-- planned:config-schema-version-authority -->
-
 - **Schema authoring and instance reconciliation have distinct jobs.**
   Development delivers a coherent current schema, its document-creation
   behavior, and the transformations that older stored documents need. The
@@ -88,8 +86,6 @@ description: How a configuration migration is written — one numbered step in o
   result, and a persisted migration reports the representation actually
   stored, so writing cannot silently relabel a current shape as an older one.
 
-<!-- /planned:config-schema-version-authority -->
-
 - **A migration change never stamps a stored document.** It ships the step and
   the current-version advance. It never edits the version or shape of a tracked
   configuration document, this repository's own included: the migration run
@@ -100,11 +96,8 @@ description: How a configuration migration is written — one numbered step in o
 
 ## Rationale
 
-<!-- planned:config-schema-version-authority -->
-
 One shared version authority keeps source correctness independent of a later
 reconciliation run.
-<!-- /planned:config-schema-version-authority -->
 
 A registry-named document reaches the current shape along two paths — in memory
 on every read, and on disk when a migration run or a writer persists it — and
