@@ -262,9 +262,9 @@ async def todo_integrate(  # pyright: ignore
 
     Submits a durable receipt-backed integration operation that preserves
     the caller's session_id for lease ownership checks inside the background
-    runner. Requires integrator clearance. ``abandon`` carries the
-    integrator's judgment that a CONTENT_GATE_BLOCKED rejection is
-    ungroundable and parks it.
+    runner. Requires integrator clearance. ``abandon`` parks an ungroundable
+    CONTENT_GATE_BLOCKED candidate or a held clean uncommitted attempt,
+    resetting only the integration worktree to its frozen pre-merge SHA.
     """
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")

@@ -481,10 +481,10 @@ async def next_integrate(
         db: Database instance (reserved for future use).
         slug: Optional slug filter — must match next candidate in FIFO queue.
         cwd: Project root directory for git operations.
-        abandon: The integrator's judgment that a ``CONTENT_GATE_BLOCKED``
-            rejection is ungroundable — resets the integration worktree to the
-            checkpoint-frozen ``pre_merge_head`` and parks the candidate.
-            Refused when the checkpoint is not at that phase.
+        abandon: Explicitly park an ungroundable ``CONTENT_GATE_BLOCKED``
+            candidate or a held clean uncommitted attempt. Resets only the
+            integration worktree to the checkpoint-frozen ``pre_merge_head``.
+            Clean attempts require a hold, no conflicts and HEAD at that SHA.
 
     Returns:
         Plain text instruction block for the agent to execute.

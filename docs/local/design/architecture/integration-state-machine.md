@@ -545,8 +545,7 @@ flowchart LR
   The machine resets its own stage and uses the shared park transition; the
   source branch, todo and hold survive. A failed reset leaves the checkpoint
   resumable. A retry after reset can finish parking. Committed and conflicted
-  attempts are excluded. This recovery implements the bounded process ownership
-  in `general/policy/human-contract`; it does not perform a work-lane kickback.
+  attempts are excluded. Parking does not perform a work-lane kickback.
 
 - **Lease already held**: returns `LEASE_BUSY` — exit immediately. Do not attempt to break the lease.
 - **Queue empty**: returns `COMPLETED` — self-end the session.

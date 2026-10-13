@@ -478,7 +478,7 @@ And continues the drain while the held todo remains excluded
 The same request refuses an unheld, conflicted or committed attempt without
 discarding its stage. Parking does not reset finalize or review state: an
 authentic work orchestrator owns the subsequent grounded kickback before hold
-release. The bounded recovery is agent-owned under `general/policy/human-contract`.
+release.
 
 ### Cross-context references
 

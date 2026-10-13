@@ -156,8 +156,7 @@ branch first: the reset must discard only reproducible squash work, with no uniq
 integration edits. The machine requires a live hold and HEAD equal to the frozen
 pre-merge SHA, resets only its integration worktree, and parks the attempt while
 preserving the candidate branch, todo and hold. It refuses conflicted or committed
-attempts. This bounded recovery follows `general/policy/human-contract` and
-`general/principle/trust-and-guardrails`.
+attempts.
 
 Parking does not invalidate the plan or finalize handoff. For a corrected input,
 route the findings to an orchestrator that can start an authentic work session.
