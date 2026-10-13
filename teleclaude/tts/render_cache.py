@@ -19,6 +19,7 @@ _CACHE_ROOT: Final = Path(tempfile.gettempdir()) / "teleclaude_tts" / "discord_r
 _OWNER_ONLY_DIR_MODE: Final = 0o700
 _ENTRY_LIFETIME_S: Final = 3600
 _ARTIFACT_GLOB: Final = "reply.*"
+_IDENTITY_SEPARATOR: Final = ":"
 
 
 @dataclass(frozen=True)
@@ -29,9 +30,12 @@ class RenderCacheKey:
     output_version: str
     service: str
     voice: str
+    parameters_digest: str = ""
 
     def slug(self) -> str:
         digest_input = f"{self.session_id}:{self.output_version}:{self.service}:{self.voice}"
+        if self.parameters_digest:
+            digest_input = _IDENTITY_SEPARATOR.join((digest_input, self.parameters_digest))
         return hashlib.sha256(digest_input.encode()).hexdigest()[:32]
 
 

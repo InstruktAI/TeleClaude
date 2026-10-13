@@ -15,7 +15,15 @@ from teleclaude.config import _coerce
 from teleclaude.config._agents import _agent_editable_keys
 from teleclaude.config._defaults import DEFAULT_CONFIG
 from teleclaude.config._machine_build import _DERIVED_ROOT_FIELDS
-from teleclaude.config._models import TeleclaudeConfig
+from teleclaude.config._models import (
+    TeleclaudeConfig,
+    TTSConfig,
+    TTSProvider,
+    TTSServiceConfig,
+    VoxCPMServiceConfig,
+    VoxCPMVoiceConfig,
+    tts_service_model,
+)
 from teleclaude.config.schema import CURRENT_SCHEMA_VERSION
 from teleclaude.config.tiers import TIER_METADATA_KEY, Tier, effective_tier, in_public_sample
 from teleclaude.constants import AGENT_PROTOCOL
@@ -51,6 +59,7 @@ class _Field(StrEnum):
     DEFAULT = "default"
     ENABLED = "enabled"
     MESSAGE = "message"
+    SERVICES = "services"
 
 
 class _ValueType(StrEnum):
@@ -130,7 +139,22 @@ def machine_document_schema() -> JsonDict:
     agent.pop(_Key.REQUIRED, None)
     for model in _DEFAULTED_ENABLED_MODELS:
         _optional_fields(definitions[model], frozenset({_Field.ENABLED}))
+    _optional_fields(definitions[VoxCPMServiceConfig.__name__], frozenset({_Field.ENABLED}))
     _optional_fields(definitions[_VOICE_MODEL], frozenset({_Field.NAME}))
+    _optional_fields(definitions[VoxCPMVoiceConfig.__name__], frozenset({_Field.NAME}))
+    tts_properties = cast(dict[str, JsonDict], definitions[TTSConfig.__name__][_Key.PROPERTIES])
+    tts_services = tts_properties[_Field.SERVICES]
+    tts_services[_Key.ANY_OF] = [
+        {
+            _Key.TYPE: _ValueType.OBJECT,
+            _Key.PROPERTIES: {
+                provider.value: {_Key.REF: _REF_PREFIX + tts_service_model(provider.value).__name__}
+                for provider in TTSProvider
+            },
+            _Key.ADDITIONAL: {_Key.REF: _REF_PREFIX + TTSServiceConfig.__name__},
+        },
+        {_Key.TYPE: _ValueType.NULL},
+    ]
     _optional_fields(definitions[_HOOK_MODEL], _WATERMARKS)
     summarizer = cast(dict[str, JsonDict], definitions[_SUMMARIZER_MODEL][_Key.PROPERTIES])
     summarizer[_PROVIDER_PRIORITY] = _nullable(summarizer[_PROVIDER_PRIORITY])

@@ -3,6 +3,7 @@
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Mapping
 from importlib import import_module
 from pathlib import Path
 
@@ -58,6 +59,10 @@ class MLXTTSBackend:
         self._cli_bin = self._resolve_cli_bin(cli_bin)
         self._instruct = instruct
         self._validate_config()
+
+    def _params_for_voice(self, voice: str) -> Mapping[object, object]:
+        """Return this service's synthesis parameters for one request."""
+        return self._params
 
     def _validate_config(self) -> None:
         """Validate model ref at startup."""
@@ -200,7 +205,7 @@ class MLXTTSBackend:
         _protected = frozenset(
             {"play", "verbose", "model", "text", "voice", "file_prefix", "join_audio", "audio_format"}
         )
-        for key, val in self._params.items():
+        for key, val in self._params_for_voice(voice).items():
             if key not in _protected:
                 cmd.extend([f"--{key}", str(val)])
 
@@ -286,7 +291,7 @@ class MLXTTSBackend:
         _protected = frozenset(
             {"play", "verbose", "model", "text", "voice", "file_prefix", "join_audio", "audio_format"}
         )
-        for key, value in self._params.items():
+        for key, value in self._params_for_voice(voice).items():
             if key in _protected:
                 continue
             if not isinstance(key, str):

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 if TYPE_CHECKING:
-    from teleclaude.config._models import TTSConfig, TTSServiceConfig
+    from teleclaude.config._models import TTSConfig, TTSService
 
 logger = get_logger(__name__)
 
@@ -64,18 +64,18 @@ class TTSDepsRemoveError(TTSProvisionError):
     """Raised when the explicit `tts` extra removal fails."""
 
 
-def _enabled_services(tts_cfg: TTSConfig | None) -> dict[str, TTSServiceConfig]:
+def _enabled_services(tts_cfg: TTSConfig | None) -> dict[str, TTSService]:
     if tts_cfg is None or not tts_cfg.services:
         return {}
     return {name: cfg for name, cfg in tts_cfg.services.items() if cfg.enabled}
 
 
-def _is_mlx_service(cfg: TTSServiceConfig) -> bool:
+def _is_mlx_service(cfg: TTSService) -> bool:
     """An mlx local-model service is identified by a set ``model`` field."""
     return bool(cfg.model)
 
 
-def _service_supported(name: str, cfg: TTSServiceConfig) -> bool:
+def _service_supported(name: str, cfg: TTSService) -> bool:
     is_darwin = sys.platform == "darwin"
     is_arm64 = platform.machine() == "arm64"
     if _is_mlx_service(cfg):
@@ -91,7 +91,7 @@ def supported_services(tts_cfg: TTSConfig | None) -> list[str]:
     return [name for name, cfg in _enabled_services(tts_cfg).items() if _service_supported(name, cfg)]
 
 
-def _service_requires_extra(name: str, cfg: TTSServiceConfig) -> bool:
+def _service_requires_extra(name: str, cfg: TTSService) -> bool:
     """True when the service's backend deps live in the ``tts`` extra."""
     return _is_mlx_service(cfg) or name == _ELEVENLABS_MODULE
 
@@ -102,7 +102,7 @@ def extra_required_services(tts_cfg: TTSConfig | None) -> list[str]:
     return [name for name in supported_services(tts_cfg) if _service_requires_extra(name, enabled[name])]
 
 
-def _service_modules(name: str, cfg: TTSServiceConfig) -> tuple[str, ...]:
+def _service_modules(name: str, cfg: TTSService) -> tuple[str, ...]:
     if _is_mlx_service(cfg):
         return _MLX_PIPELINE_MODULES
     if name == _ELEVENLABS_MODULE:

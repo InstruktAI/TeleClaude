@@ -1,6 +1,8 @@
 """TTS Manager - unified interface for TTS across TeleClaude."""
 
 import asyncio
+import hashlib
+import json
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config._models import TTSConfig
+from teleclaude.config._models import TTSConfig, VoxCPMServiceConfig
 from teleclaude.config.machine import config
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
@@ -27,6 +29,7 @@ logger = get_logger(__name__)
 
 _VOICE_REPLY_SERVICE_SKIPPED_EVENT = "voice_reply_service_skipped"
 _DEFAULT_SERVICE_PRIORITY = ["elevenlabs", "openai", "macos", "pyttsx3"]
+_NO_PARAMETER_DIGEST = ""
 
 
 @dataclass(slots=True)
@@ -173,7 +176,15 @@ class TTSManager:
             voice_param = (voice_entry.voice_id or voice_entry.name) if voice_entry else service_cfg.discord_voice
 
             key = RenderCacheKey(
-                session_id=session_id, output_version=output_version, service=service_name, voice=voice_param
+                session_id=session_id,
+                output_version=output_version,
+                service=service_name,
+                voice=voice_param,
+                parameters_digest=hashlib.sha256(
+                    json.dumps(service_cfg.effective_params(voice_param), sort_keys=True, default=str).encode()
+                ).hexdigest()
+                if isinstance(service_cfg, VoxCPMServiceConfig)
+                else _NO_PARAMETER_DIGEST,
             )
             cached = lookup(key)
             if cached is not None:

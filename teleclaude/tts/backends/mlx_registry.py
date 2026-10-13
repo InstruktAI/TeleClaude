@@ -11,9 +11,10 @@ from threading import Lock
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config._models import TTSServiceConfig
+from teleclaude.config._models import TTSService, VoxCPMServiceConfig
 from teleclaude.config.machine import config
 from teleclaude.tts.backends.mlx_tts import MLXTTSBackend
+from teleclaude.tts.backends.voxcpm import VoxCPMTTSBackend
 
 logger = get_logger(__name__)
 
@@ -22,7 +23,7 @@ _REGISTERED_LOG = "Registered MLX TTS backend: %s (model=%s)"
 _INIT_FAILED_LOG = "MLX TTS backend '%s' failed to initialize"
 _lock = Lock()
 # service name -> (configuration the backend was built from, the backend or None when it failed to initialize)
-_built: dict[str, tuple[TTSServiceConfig, MLXTTSBackend | None]] = {}
+_built: dict[str, tuple[TTSService, MLXTTSBackend | None]] = {}
 
 
 def mlx_backend_for(service_name: str) -> MLXTTSBackend | None:
@@ -39,12 +40,16 @@ def mlx_backend_for(service_name: str) -> MLXTTSBackend | None:
         if cached is not None and cached[0] == service_cfg:
             return cached[1]
         try:
-            backend: MLXTTSBackend | None = MLXTTSBackend(
-                service_name,
-                service_cfg.model,
-                service_cfg.params,
-                service_cfg.cli_bin,
-                service_cfg.instruct,
+            backend: MLXTTSBackend | None = (
+                VoxCPMTTSBackend(service_name, service_cfg.model, service_cfg)
+                if isinstance(service_cfg, VoxCPMServiceConfig)
+                else MLXTTSBackend(
+                    service_name,
+                    service_cfg.model,
+                    service_cfg.params,
+                    service_cfg.cli_bin,
+                    service_cfg.instruct,
+                )
             )
             logger.info(_REGISTERED_LOG, service_name, service_cfg.model)
         except Exception:

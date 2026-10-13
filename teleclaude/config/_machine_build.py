@@ -30,8 +30,10 @@ from teleclaude.config._models import (
     ExperimentConfig,
     PollingConfig,
     TeleclaudeConfig,
+    TTSConfig,
     TTSEventConfig,
-    TTSServiceVoiceConfig,
+    VoxCPMVoiceConfig,
+    tts_service_model,
 )
 from teleclaude.config._remote_computers import RemoteComputerConfig
 from teleclaude.config._unresolved import (
@@ -114,6 +116,7 @@ class _MachineField(StrEnum):
     TMUX_BINARY = "tmux_binary"
     TTS = "tts"
     STT = "stt"
+    SERVICES = "services"
     USER = "user"
     VOLUME = "volume"
     WHATSAPP = "whatsapp"
@@ -250,6 +253,19 @@ def _keep(value: object) -> object:
     return value
 
 
+def _clean_tts_services(value: object) -> object:
+    """Resolve each service's model while removing unresolved parameter leaves."""
+    if is_unresolved(value):
+        return DROP
+    if not isinstance(value, Mapping):
+        return value
+    return {
+        name: drop_unresolved_machine_fields(settings, tts_service_model(str(name)))
+        for name, settings in value.items()
+        if not is_unresolved(settings)
+    }
+
+
 # Fields whose shape the model annotations cannot describe, cleaned by their own rules.
 _MACHINE_OVERRIDES: FieldOverrides = {
     **{(TeleclaudeConfig, field): _keep for field in _DERIVED_ROOT_FIELDS},
@@ -257,7 +273,8 @@ _MACHINE_OVERRIDES: FieldOverrides = {
     (TeleclaudeConfig, _MachineField.REMOTE_COMPUTERS): _clean_remote_input,
     (TeleclaudeConfig, _MachineField.COMPUTER): _clean_computer_input,
     (TTSEventConfig, _MachineField.MESSAGE): _keep_unless_unresolved,
-    (TTSServiceVoiceConfig, _MachineField.PARAMS): drop_unresolved_untyped,
+    (VoxCPMVoiceConfig, _MachineField.PARAMS): drop_unresolved_untyped,
+    (TTSConfig, _MachineField.SERVICES): _clean_tts_services,
 }
 
 

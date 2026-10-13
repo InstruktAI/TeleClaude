@@ -27,6 +27,7 @@ and is keyed by its enum instead.
 """
 
 from collections.abc import Iterable, Mapping
+from copy import deepcopy
 from enum import StrEnum
 from typing import Annotated, NamedTuple, Protocol, Self, cast
 
@@ -120,6 +121,19 @@ _EMPTY_TEXT = ""
 _EN_US_TEXT = "en_US"
 
 
+class TTSProvider(StrEnum):
+    """Providers with a specialized configuration contract."""
+
+    VOXCPM = "voxcpm"
+
+
+class _ValidationDetail(StrEnum):
+    TYPE = "type"
+    LOC = "loc"
+    INPUT = "input"
+    CTX = "ctx"
+
+
 class _ConfigKey(StrEnum):
     EVENTS = "events"
     MESSAGE = "message"
@@ -159,6 +173,17 @@ def _scalar_text_or_raw(value: object) -> object:
     if isinstance(value, (Mapping, list)):
         return value
     return str(value)
+
+
+def _normalize_tts_voice(value: Mapping[object, object], service_name: object) -> dict[object, object]:
+    """Preserve parameter overrides only for the provider that owns them."""
+    voice = dict(value)
+    if service_name != TTSProvider.VOXCPM:
+        voice.pop(_ConfigKey.PARAMS, None)
+    voice[_ConfigKey.NAME] = _scalar_text_or_raw(voice.get(_ConfigKey.NAME, _EMPTY_TEXT))
+    raw_voice_id = voice.get(_ConfigKey.VOICE_ID)
+    voice[_ConfigKey.VOICE_ID] = _scalar_text_or_raw(raw_voice_id) if raw_voice_id else None
+    return voice
 
 
 def _normalize_tts_input(value: object) -> object:
@@ -214,11 +239,7 @@ def _normalize_tts_input(value: object) -> object:
                     if not isinstance(voice_value, Mapping):
                         voices.append(voice_value)
                         continue
-                    voice = dict(voice_value)
-                    voice.pop(_ConfigKey.PARAMS, None)
-                    voice[_ConfigKey.NAME] = _scalar_text_or_raw(voice.get(_ConfigKey.NAME, ""))
-                    raw_voice_id = voice.get(_ConfigKey.VOICE_ID)
-                    voice[_ConfigKey.VOICE_ID] = _scalar_text_or_raw(raw_voice_id) if raw_voice_id else None
+                    voice = _normalize_tts_voice(voice_value, service_name)
                     voices.append(voice)
                 service[_ConfigKey.VOICES] = voices or None
             raw_params = service.get(_ConfigKey.PARAMS)
@@ -535,11 +556,17 @@ class TTSServiceVoiceConfig(ClosedModel):
     voice_id: TRUTHY_TEXT = None  # For services like ElevenLabs that need IDs
 
 
-class TTSServiceConfig(ClosedModel):
+class VoxCPMVoiceConfig(TTSServiceVoiceConfig):
+    """VoxCPM voice overrides, using the same parameter mapping as its service."""
+
+    params: dict[object, object] | None = None  # guard: loose-dict - Provider generation kwargs are dynamic.
+
+
+class _TTSServiceConfig[Voice: TTSServiceVoiceConfig](ClosedModel):
     """Configuration for a single TTS service."""
 
     enabled: FLAG
-    voices: list[TTSServiceVoiceConfig] | None = None
+    voices: list[Voice] | None = None
     model: TRUTHY_TEXT = None  # Optional local path or HF repo id
     api_key: TRUTHY_TEXT = None
     # Dynamic provider parameters preserve their original keys and values.
@@ -547,6 +574,27 @@ class TTSServiceConfig(ClosedModel):
     cli_bin: OPT_TEXT = None
     instruct: TEXT = _TTS_DEFAULT_INSTRUCT
     discord_voice: OPT_TEXT = None  # Room voice; None excludes this service from the room chain
+
+
+class TTSServiceConfig(_TTSServiceConfig[TTSServiceVoiceConfig]):
+    """Common provider configuration with name/identifier-only voices."""
+
+
+class VoxCPMServiceConfig(_TTSServiceConfig[VoxCPMVoiceConfig]):
+    """VoxCPM service defaults and per-voice parameter overlays."""
+
+    def effective_params(self, voice: str) -> dict[object, object]:
+        """Return an isolated parameter map with the selected voice taking precedence."""
+        selected = next((entry for entry in self.voices or [] if (entry.voice_id or entry.name) == voice), None)
+        return deepcopy({**(self.params or {}), **(selected.params or {} if selected is not None else {})})
+
+
+type TTSService = TTSServiceConfig | VoxCPMServiceConfig
+
+
+def tts_service_model(service_name: str) -> type[TTSServiceConfig] | type[VoxCPMServiceConfig]:
+    """Resolve the configuration model owned by a service key."""
+    return VoxCPMServiceConfig if service_name == TTSProvider.VOXCPM else TTSServiceConfig
 
 
 class TTSEventConfig(ClosedModel):
@@ -574,7 +622,7 @@ class TTSConfig(ClosedModel):
             "ungoverned_body": "operator-authored keys from the config mapping; membership is not schema-declared",
         },
     )
-    services: dict[str, TTSServiceConfig] | None = Field(
+    services: dict[str, TTSService] | None = Field(
         default=None,
         json_schema_extra={
             "tier": Tier.TUI,
@@ -586,6 +634,31 @@ class TTSConfig(ClosedModel):
     @classmethod
     def _normalize_inputs(cls, value: object) -> object:
         return _normalize_tts_input(value)
+
+    @field_validator(_ConfigKey.SERVICES, mode="before")
+    @classmethod
+    def _select_service_models(cls, value: object) -> object:
+        """Validate each service through its own model before union validation."""
+        if not isinstance(value, Mapping):
+            return value
+        services: dict[str, TTSService] = {}
+        errors: list[InitErrorDetails] = []
+        for name, settings in value.items():
+            try:
+                services[str(name)] = tts_service_model(str(name)).model_validate(settings)
+            except ValidationError as error:
+                for detail in error.errors(include_url=False):
+                    errors.append(
+                        InitErrorDetails(
+                            type=detail[_ValidationDetail.TYPE.value],
+                            loc=(str(name), *detail[_ValidationDetail.LOC.value]),
+                            input=detail[_ValidationDetail.INPUT.value],
+                            ctx=detail.get(_ValidationDetail.CTX.value, {}),
+                        )
+                    )
+        if errors:
+            raise ValidationError.from_exception_data(cls.__name__, errors)
+        return services
 
 
 class STTServiceConfig(ClosedModel):

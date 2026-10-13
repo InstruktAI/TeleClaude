@@ -78,6 +78,19 @@ visibility: 'public'
 
 ## Invariants
 
+VoxCPM has a provider-specific voice configuration that carries parameter
+overrides. Its service parameters are the baseline; the selected voice overlays
+matching keys and inherits all other keys. Resolution produces a fresh mapping
+for each synthesis request, shared by the CLI and in-process paths and by local
+and Discord destinations. The base voice configuration carries no parameter
+overrides. The configuration reader, editor schema and config UI preserve the
+VoxCPM specialization under its service key. Backend-owned output and playback
+arguments retain their existing protection after parameter merging.
+
+VoxCPM rendered-audio cache identity includes the effective parameters of the
+selected voice. Changing those parameters produces a new artifact; another
+voice's overrides do not change that selection's effective configuration.
+
 1. One voice per session — once assigned, the voice is reused for the session's lifetime.
 2. Sequential playback — the in-process worker and file lock together prevent concurrent speech playback.
 3. Fallback promotion — if the primary service fails and a fallback succeeds, the DB is updated so subsequent calls use the working service.
