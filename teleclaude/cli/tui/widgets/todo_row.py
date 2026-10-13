@@ -202,11 +202,7 @@ def integration_phase_label(
     if phase == "started":
         return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_STARTED, _ok_color()
     if not phase:
-        finalize_to_label = {
-            _FINALIZE_LABEL_READY: _INTEGRATION_LABEL_READY,
-        }
-        label = finalize_to_label.get(finalize_status or "")
-        return (_PHASE_PREFIX_INTEGRATION, label, _ok_color()) if label else None
+        return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_READY, _ok_color()
     return None
 
 
