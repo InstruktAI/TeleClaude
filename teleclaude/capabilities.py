@@ -16,8 +16,8 @@ from teleclaude.config._environment import find_environment_references
 from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.context_root import load_declared_config_kind, load_raw_declaration
 from teleclaude.config.loader import expanded_overlay_input, load_declared_project_config
-from teleclaude.config.migrations._chain import CURRENT_VERSION, document_version
-from teleclaude.config.schema import CapabilityConfig, ConfigKind, ProjectConfig
+from teleclaude.config.migrations._chain import document_version
+from teleclaude.config.schema import CURRENT_SCHEMA_VERSION, CapabilityConfig, ConfigKind, ProjectConfig
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.paths import PROJECTS_MANIFEST_PATH, ConfigFileName
 
@@ -214,7 +214,7 @@ def read_declaration_view(root: Path) -> DeclarationView:
         if not isinstance(stored, dict):
             raise DeclarationUnreadable(marker, "declaration must be a mapping")
         version = document_version(stored)
-        if version < CURRENT_VERSION:
+        if version < CURRENT_SCHEMA_VERSION:
             git_marker = resolved_root / ".git"
             if git_marker.is_file():
                 dependencies.append(_dependency_stat(git_marker))

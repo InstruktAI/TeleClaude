@@ -8,9 +8,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from teleclaude.config.migrations._chain import CURRENT_VERSION, MigrationTrigger, document_version, upcast
+from teleclaude.config.migrations._chain import MigrationTrigger, document_version, upcast
 from teleclaude.config.migrations._records import MigrationOutcome, document_key, record_migration
 from teleclaude.config.migrations._registry import resolve_read_subject
+from teleclaude.config.schema import CURRENT_SCHEMA_VERSION
 from teleclaude.config_subjects import SubjectRef
 
 
@@ -24,12 +25,12 @@ def upcast_for_read(
     from_version = document_version(stored_document)
     read_subject = subject if subject is not None else resolve_read_subject(path, stored_document)
     migrated = upcast(stored_document, read_subject)
-    if from_version < CURRENT_VERSION and read_subject is not None:
+    if from_version < CURRENT_SCHEMA_VERSION and read_subject is not None:
         record_migration(
             document_key(path),
             read_subject,
             from_version,
-            CURRENT_VERSION,
+            CURRENT_SCHEMA_VERSION,
             MigrationTrigger.READ,
             MigrationOutcome.UPCAST_IN_MEMORY,
             None,

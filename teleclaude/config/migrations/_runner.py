@@ -20,7 +20,6 @@ from teleclaude.config.field_constraints import FieldConstraintRefusal
 from teleclaude.config.migrations import _steps
 from teleclaude.config.migrations._carry import carry_pending
 from teleclaude.config.migrations._chain import (
-    CURRENT_VERSION,
     Destination,
     DocumentNewerThanInstallation,
     MigrationTrigger,
@@ -39,7 +38,7 @@ from teleclaude.config.migrations._registry import registered_documents
 from teleclaude.config.migrations.v003_relocate_person_invite_token import DestinationConflict as InvitationConflict
 from teleclaude.config.migrations.v004_relocate_legacy_discord_provider_ids import HandoffConflict
 from teleclaude.config.migrations.v009_fold_trusted_directories import RegistryConflict
-from teleclaude.config.schema import ConfigKind
+from teleclaude.config.schema import CURRENT_SCHEMA_VERSION, ConfigKind
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import file_transaction
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
@@ -99,14 +98,14 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
             document = _parse_document(original)
         except YAMLError:
             return record_migration(
-                key, subject, 0, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _PARSE_ERROR, None
+                key, subject, 0, CURRENT_SCHEMA_VERSION, trigger, MigrationOutcome.FAILED, _PARSE_ERROR, None
             )
         if not isinstance(document, Mapping) or (subject.kind.value == "computer" and not original.strip()):
             return record_migration(
                 key,
                 subject,
                 _version_or_zero(document),
-                CURRENT_VERSION,
+                CURRENT_SCHEMA_VERSION,
                 trigger,
                 MigrationOutcome.FAILED,
                 _NOT_A_MAPPING,
@@ -116,15 +115,29 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
             from_version = document_version(document)
         except ValueError:
             return record_migration(
-                key, subject, 0, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _INVALID_VERSION, None
+                key, subject, 0, CURRENT_SCHEMA_VERSION, trigger, MigrationOutcome.FAILED, _INVALID_VERSION, None
             )
-        if from_version > CURRENT_VERSION:
+        if from_version > CURRENT_SCHEMA_VERSION:
             return record_migration(
-                key, subject, from_version, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _NEWER_VERSION, None
+                key,
+                subject,
+                from_version,
+                CURRENT_SCHEMA_VERSION,
+                trigger,
+                MigrationOutcome.FAILED,
+                _NEWER_VERSION,
+                None,
             )
         if subject.kind.value == "computer" and not document:
             return record_migration(
-                key, subject, from_version, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _NOT_A_MAPPING, None
+                key,
+                subject,
+                from_version,
+                CURRENT_SCHEMA_VERSION,
+                trigger,
+                MigrationOutcome.FAILED,
+                _NOT_A_MAPPING,
+                None,
             )
         delivered: list[Destination] = []
         try:
@@ -132,7 +145,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
             migrated = upcast(document, subject)
             if migrated == document:
                 return record_migration(
-                    key, subject, from_version, CURRENT_VERSION, trigger, MigrationOutcome.CURRENT, None, None
+                    key, subject, from_version, CURRENT_SCHEMA_VERSION, trigger, MigrationOutcome.CURRENT, None, None
                 )
             text = _render(migrated, subject)
             transaction.replace_text(text)
@@ -141,7 +154,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 key,
                 subject,
                 from_version,
-                CURRENT_VERSION,
+                CURRENT_SCHEMA_VERSION,
                 trigger,
                 MigrationOutcome.FAILED,
                 _DESTINATION_CONFLICT,
@@ -149,14 +162,21 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
             )
         except DocumentNewerThanInstallation:
             return record_migration(
-                key, subject, from_version, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _NEWER_VERSION, None
+                key,
+                subject,
+                from_version,
+                CURRENT_SCHEMA_VERSION,
+                trigger,
+                MigrationOutcome.FAILED,
+                _NEWER_VERSION,
+                None,
             )
         except FieldConstraintRefusal as refusal:
             return record_migration(
                 key,
                 subject,
                 from_version,
-                CURRENT_VERSION,
+                CURRENT_SCHEMA_VERSION,
                 trigger,
                 MigrationOutcome.FAILED,
                 _FIELD_CONSTRAINT_REFUSED,
@@ -165,14 +185,21 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
             )
         except (OSError, ValueError, TypeError):
             return record_migration(
-                key, subject, from_version, CURRENT_VERSION, trigger, MigrationOutcome.FAILED, _MIGRATION_ERROR, None
+                key,
+                subject,
+                from_version,
+                CURRENT_SCHEMA_VERSION,
+                trigger,
+                MigrationOutcome.FAILED,
+                _MIGRATION_ERROR,
+                None,
             )
         if trigger is MigrationTrigger.WRITER:
             return record_migration(
                 key,
                 subject,
                 from_version,
-                CURRENT_VERSION,
+                CURRENT_SCHEMA_VERSION,
                 trigger,
                 MigrationOutcome.MIGRATED_UNCOMMITTED,
                 None,
@@ -183,7 +210,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 key,
                 subject,
                 from_version,
-                CURRENT_VERSION,
+                CURRENT_SCHEMA_VERSION,
                 trigger,
                 MigrationOutcome.WRITTEN_UNTRACKED,
                 None,
@@ -194,7 +221,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 key,
                 subject,
                 from_version,
-                CURRENT_VERSION,
+                CURRENT_SCHEMA_VERSION,
                 trigger,
                 MigrationOutcome.MIGRATED_UNCOMMITTED,
                 None,
@@ -202,7 +229,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
             )
         assert relative_path is not None
         try:
-            message = _MIGRATION_SUBJECT.format(path=relative_path, version=CURRENT_VERSION)
+            message = _MIGRATION_SUBJECT.format(path=relative_path, version=CURRENT_SCHEMA_VERSION)
             commit = _commit_migration_document(repository, relative_path, message, migrated)
         except (MigrationCommitRefused, GitCommandError, OSError) as refusal:
             if transaction.read_text(encoding=_UTF8) != text:
@@ -210,7 +237,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                     key,
                     subject,
                     from_version,
-                    CURRENT_VERSION,
+                    CURRENT_SCHEMA_VERSION,
                     trigger,
                     MigrationOutcome.MIGRATED_UNCOMMITTED,
                     _COMMIT_REFUSED,
@@ -222,7 +249,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
                 key,
                 subject,
                 from_version,
-                CURRENT_VERSION,
+                CURRENT_SCHEMA_VERSION,
                 trigger,
                 MigrationOutcome.RESTORED_AFTER_REFUSED_COMMIT,
                 _COMMIT_REFUSED,
@@ -233,7 +260,7 @@ def migrate_document(path: Path, subject: SubjectRef, trigger: MigrationTrigger)
             key,
             subject,
             from_version,
-            CURRENT_VERSION,
+            CURRENT_SCHEMA_VERSION,
             trigger,
             MigrationOutcome.MIGRATED_COMMITTED,
             None,

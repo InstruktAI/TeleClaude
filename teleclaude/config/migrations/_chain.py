@@ -7,11 +7,13 @@ from copy import deepcopy
 from enum import StrEnum
 from typing import Final, Protocol, cast
 
+from teleclaude.config.schema import CURRENT_SCHEMA_VERSION
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef, SubjectSource
 
 _SCHEMA_VERSION = "schema_version"
 _VERSION_ERROR = "Configuration schema_version must be a non-negative integer"
 _STEP_ORDER_ERROR = "Configuration migration steps must be numbered 1..N in order"
+_STEP_HEAD_ERROR = "Configuration migration steps end at version {last_step} but the schema declares version {declared}"
 _NEWER_ERROR = "Configuration document version {document_version} is newer than installation version {current_version}"
 _MISSING_SUBJECT = "An older configuration document is not named by a tier registry"
 _REGISTRY_SUBJECT_REQUIRED = "Persisted migrations require a configuration subject from a tier registry"
@@ -66,7 +68,8 @@ class Step(Protocol):
 STEPS: Final = _steps.STEPS
 if tuple(step.VERSION for step in STEPS) != tuple(range(1, len(STEPS) + 1)):
     raise RuntimeError(_STEP_ORDER_ERROR)
-CURRENT_VERSION: Final = len(STEPS)
+if len(STEPS) != CURRENT_SCHEMA_VERSION:
+    raise RuntimeError(_STEP_HEAD_ERROR.format(last_step=len(STEPS), declared=CURRENT_SCHEMA_VERSION))
 
 
 def document_version(document: Mapping[str, object]) -> int:
@@ -80,12 +83,12 @@ def document_version(document: Mapping[str, object]) -> int:
 def upcast(document: Mapping[str, object], subject: SubjectRef | None) -> MutableMapping[str, object]:
     """Apply every remaining migration in memory and return the current document."""
     version = document_version(document)
-    if version > CURRENT_VERSION:
+    if version > CURRENT_SCHEMA_VERSION:
         raise DocumentNewerThanInstallation(
-            _NEWER_ERROR.format(document_version=version, current_version=CURRENT_VERSION)
+            _NEWER_ERROR.format(document_version=version, current_version=CURRENT_SCHEMA_VERSION)
         )
     current = cast(MutableMapping[str, object], deepcopy(document))
-    if version == CURRENT_VERSION:
+    if version == CURRENT_SCHEMA_VERSION:
         return current
     if subject is None:
         raise ValueError(_MISSING_SUBJECT)
@@ -100,9 +103,9 @@ def upcast(document: Mapping[str, object], subject: SubjectRef | None) -> Mutabl
 def in_transit(document: Mapping[str, object], subject: SubjectRef, destination: Destination) -> tuple[object, ...]:
     """Return values still in a stored document for a destination."""
     version = document_version(document)
-    if version > CURRENT_VERSION:
+    if version > CURRENT_SCHEMA_VERSION:
         raise DocumentNewerThanInstallation(
-            _NEWER_ERROR.format(document_version=version, current_version=CURRENT_VERSION)
+            _NEWER_ERROR.format(document_version=version, current_version=CURRENT_SCHEMA_VERSION)
         )
     pending_values: list[object] = []
     for step in STEPS[version:]:

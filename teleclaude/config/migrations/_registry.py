@@ -6,7 +6,8 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 from teleclaude.config.migrations import v001_declare_tier_kind
-from teleclaude.config.migrations._chain import CURRENT_VERSION, MigrationTrigger, document_version
+from teleclaude.config.migrations._chain import MigrationTrigger, document_version
+from teleclaude.config.schema import CURRENT_SCHEMA_VERSION
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef, SubjectSource
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, MACHINE_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
@@ -54,7 +55,7 @@ def resolve_read_subject(path: Path, document: Mapping[str, object]) -> SubjectR
     the declaring migration that no registry names is read as a project.
     """
     version = document_version(document)
-    if version < CURRENT_VERSION:
+    if version < CURRENT_SCHEMA_VERSION:
         subject = registered_subject(path)
         if subject is not None:
             return subject

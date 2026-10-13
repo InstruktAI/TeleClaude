@@ -8,7 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TypedDict
 
-from instrukt_ai_logging import get_logger
+from instrukt_ai_logging import TRACE, get_logger
 
 from teleclaude.config.migrations._chain import MigrationTrigger
 from teleclaude.config_subjects import SubjectRef
@@ -46,6 +46,7 @@ class MigrationFailureReason(StrEnum):
 
 
 # A migration run whose document did not land committed is an anomaly, not routine progress.
+# A read-time adaptation fires per configuration read, so it sits below the production level.
 _OUTCOME_LOG_LEVELS: dict[MigrationOutcome, int] = {
     MigrationOutcome.FAILED: logging.ERROR,
     MigrationOutcome.RESTORED_AFTER_REFUSED_COMMIT: logging.WARNING,
@@ -53,7 +54,7 @@ _OUTCOME_LOG_LEVELS: dict[MigrationOutcome, int] = {
     MigrationOutcome.WRITTEN_UNTRACKED: logging.INFO,
     MigrationOutcome.MIGRATED_COMMITTED: logging.INFO,
     MigrationOutcome.CURRENT: logging.INFO,
-    MigrationOutcome.UPCAST_IN_MEMORY: logging.INFO,
+    MigrationOutcome.UPCAST_IN_MEMORY: TRACE,
 }
 # A writer migrates in place and commits the document with its own change, so leaving it
 # uncommitted is that trigger's expected outcome.

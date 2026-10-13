@@ -84,7 +84,8 @@ def _render_document(kind: ConfigKind, document: Mapping[str, object], modeline:
     declared_document: Any = document.copy() if isinstance(document, dict) else dict(document)
     _strip_schema_modelines(declared_document)
     declared_document[_KIND_FIELD] = kind.value
-    declared_document[_SCHEMA_VERSION_FIELD] = CURRENT_SCHEMA_VERSION
+    # A document keeps the version it carries; a candidate without one takes the current declaration.
+    declared_document.setdefault(_SCHEMA_VERSION_FIELD, CURRENT_SCHEMA_VERSION)
     return _render_yaml(declared_document, modeline)
 
 

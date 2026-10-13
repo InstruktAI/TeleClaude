@@ -16,9 +16,10 @@ from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.declaration import render_machine_config
 from teleclaude.config.machine import config_path
 from teleclaude.config.migrations._carry import carry_pending
-from teleclaude.config.migrations._chain import CURRENT_VERSION, Destination, upcast
+from teleclaude.config.migrations._chain import Destination, upcast
 from teleclaude.config.migrations.read import upcast_for_read
 from teleclaude.config.revision import StaleRevision, view_revision
+from teleclaude.config.schema import CURRENT_SCHEMA_VERSION
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import FileTransaction, file_transaction
 from teleclaude.paths import MACHINE_CONFIG_PATH
@@ -163,7 +164,7 @@ def _mutate(
             raise ReadOnlyDeclaration(_READ_ONLY_DECLARATION_ERROR)
         if candidate.get(_SCHEMA_VERSION) != committed.get(_SCHEMA_VERSION):
             raise ReadOnlyDeclaration(_READ_ONLY_SCHEMA_VERSION_ERROR)
-        candidate[_SCHEMA_VERSION] = CURRENT_VERSION
+        candidate[_SCHEMA_VERSION] = CURRENT_SCHEMA_VERSION
         resolved = build_config_from_raw(candidate, config_path.parent, config_source=config_path)
         carry_pending(cast(Mapping[str, object], stored), _COMPUTER_SUBJECT, delivered=delivered or _ignore_delivery)
         _write_mapping(transaction, candidate)

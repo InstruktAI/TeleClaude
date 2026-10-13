@@ -7,12 +7,12 @@ from typing import cast
 
 from teleclaude.config.migrations import _steps
 from teleclaude.config.migrations._chain import (
-    CURRENT_VERSION,
     Destination,
     DocumentNewerThanInstallation,
     document_version,
     require_registry_subject,
 )
+from teleclaude.config.schema import CURRENT_SCHEMA_VERSION
 from teleclaude.config_subjects import SubjectRef
 
 
@@ -22,9 +22,9 @@ def carry_pending(
     """Deliver each moved value that remains in a stored document, in step order."""
     require_registry_subject(subject)
     version = document_version(stored_document)
-    if version > CURRENT_VERSION:
+    if version > CURRENT_SCHEMA_VERSION:
         raise DocumentNewerThanInstallation(
-            f"Configuration document version {version} is newer than installation version {CURRENT_VERSION}"
+            f"Configuration document version {version} is newer than installation version {CURRENT_SCHEMA_VERSION}"
         )
     for step in _steps.STEPS[version:]:
         destination = getattr(step, "MOVES", None)
