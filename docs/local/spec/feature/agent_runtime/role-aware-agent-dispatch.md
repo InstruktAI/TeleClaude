@@ -65,7 +65,7 @@ supplies either. System role and job role remain identity and authority facts.
 | `finalize`             | Gemini, Claude, Codex, DeepSeek | `fast`                |
 | `prepare-intake`       | Claude, Codex, Gemini, DeepSeek | `slow`                |
 | `prepare-architecture` | Claude, Codex, Gemini, DeepSeek | `slow`                |
-| `prepare-diagnose`     | Codex, Claude, Gemini, DeepSeek | `med`                 |
+| `prepare-diagnose`     | Codex, Claude, Gemini, DeepSeek | `slow`                |
 | `prepare-plan`         | Claude, Codex, Gemini, DeepSeek | `slow`                |
 | `prepare-task`         | Claude, Codex, Gemini, DeepSeek | `med`                 |
 | `drift-analyze`        | Codex, Claude, Gemini, DeepSeek | `fast`                |
@@ -74,7 +74,7 @@ supplies either. System role and job role remain identity and authority facts.
 | `run-task`             | Codex, Claude, Gemini, DeepSeek | `med`                 |
 | `integrate`            | Codex, Claude, Gemini, DeepSeek | `slow`                |
 | `coordinate`           | Claude, Codex, Gemini, DeepSeek | `slow`                |
-| `create`               | Claude, Codex, Gemini, DeepSeek | `med`                 |
+| `create`               | Claude, Codex, Gemini, DeepSeek | `slow`                |
 | `create-art`           | Gemini, Claude, Codex, DeepSeek | `med`                 |
 | `create-html`          | Gemini, Claude, Codex, DeepSeek | `med`                 |
 | `defer`                | Claude, Codex, Gemini, DeepSeek | `slow`                |
@@ -86,8 +86,8 @@ policy defect.
 ### Thinking-mode resolution
 
 Run-session dispatch reads the same command matrix. An explicit caller mode
-overrides the command default. `/review-commits` resolves to `slow` when its
-caller omits the mode; a doc-only commit review passes explicit `fast`.
+overrides the command default. `sdlc/review-commits` resolves to `slow` when its
+caller omits the mode; a doc-only commit review passes explicit `med`.
 
 When a run-session request has no command-matrix row and no explicit thinking mode,
 it is rejected before session creation with feedback to assess the work and retry
