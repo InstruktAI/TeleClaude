@@ -22,8 +22,10 @@ computer performs development or owns an upstream contribution.
 
 The deployment model owns the field's spelling and serialized schema. A stable
 series names a minor line while the major is zero, and a major line once it is
-positive. Ambiguous, malformed, and missing stable series fail configuration
-validation before the configuration is stored. Alpha and beta need no series.
+positive. A positive-major series written with a minor, as a minor pin is
+written, names that major's line. Ambiguous, malformed, and missing stable
+series fail configuration validation before the configuration is stored. Alpha
+and beta need no series.
 
 Configuration migrations translate existing deployment declarations into the
 current model (`sdlc/policy/backward-compatibility-hygiene`). A pre-1.0 minor pin
@@ -102,8 +104,3 @@ Scenario Outline: An operator's existing pin is brought forward
 - Selecting another series changes release eligibility. Availability and health
   of a release remain separate decisions under the release and installation
   contracts.
-- A series supplied through an environment-variable reference lies outside the
-  configuration document. Migration translates a reference's declared default
-  but never the variable's value. A legacy positive-major `major.minor` value
-  held in the variable is refused at load, with a diagnostic naming the value,
-  until the operator replaces it with its major.
