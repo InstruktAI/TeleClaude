@@ -72,11 +72,11 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
     Narrow flows must not provision unrelated UI lanes.
     """
 
-    def __init__(self, task_registry: "TaskRegistry | None" = None) -> None:
+    def __init__(self, task_registry: "TaskRegistry") -> None:
         """Initialize adapter runtime.
 
         Args:
-            task_registry: Optional TaskRegistry for tracking background tasks
+            task_registry: Daemon-owned TaskRegistry for tracking and supervising background tasks
         """
         self.task_registry = task_registry
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance (UI adapters only)
