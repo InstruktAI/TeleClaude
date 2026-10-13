@@ -71,6 +71,34 @@ session stream.
 - **Safe command boundary:** UI projection changes no mutation authority,
   command response mode, or durable-operation lifecycle.
 
+<!-- planned:client-daemon-seam -->
+
+- **One path per operation:** every operation on state the daemon owns or
+  serves from its cache has one daemon-side entry, a route, which admits the
+  caller and invokes the domain operation. UI clients — the TUI and the web
+  console — reach shared domain state through routes and projections only and
+  hold no file authority over it; client-owned presentation state, temporary
+  editor buffers, launch authentication and host attachment stay local to the
+  client. `telec` runs a domain operation in its own process only where the
+  ownership rule in
+  `local/projects/teleclaude/design/architecture/cli-invocation-boundary` admits it.
+- **Cache correctness is notification coverage:** a committed mutation reaches
+  the cache owner through the store's commit hook, which the daemon composes
+  into cache materialization and publication; clients reconcile from the
+  projection. A write committed outside the daemon process on daemon-served
+  state is admitted only where the daemon observes the commit, as it observes
+  configuration files through its watcher; otherwise the write goes through a
+  route. No response is a freshness barrier: a mutation's success does not
+  promise that the next cached read reflects it.
+- **Two execution paths, one completion contract:** behind a route the daemon
+  either maps the request to an `InternalCommand` and dispatches it, or calls
+  the application service or submits the operation directly. Which path is an
+  implementation choice per route; the client-visible contract is the response,
+  an immediate result or a durable operation receipt
+  (`local/projects/teleclaude/design/architecture/command-classification`).
+
+<!-- /planned:client-daemon-seam -->
+
 - **Computer-addressed execution:** an HTTP request that names another computer
   is carried whole to that computer before any route runs here, executes there
   through the same route with the person band that computer resolves for the

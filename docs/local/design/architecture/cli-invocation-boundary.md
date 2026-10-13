@@ -104,6 +104,21 @@ design owns only the path that connects them.
    roughly 200 ms from the shell; the figure is the target that shows invariants 4–6
    hold, not a limit a change is graded against.
 
+<!-- planned:client-daemon-seam -->
+
+8. **Execution locality follows the operation, not the command.** A handler runs a
+   domain operation in its own process only on state this computer owns and the
+   daemon either does not serve or observes on commit: reads of a project's todo
+   store, configuration operations the daemon's watcher observes, git, documentation,
+   the terminal login. A handler that mutates state the daemon serves from its cache
+   without such observation — a todo's lifecycle state — calls the daemon's route for
+   this computer exactly as it does for another; the computer named only selects the
+   route's target. The route and the handler invoke the same domain operation; the
+   handler is never a second implementation of it
+   (`local/projects/teleclaude/design/architecture/api-server`).
+
+<!-- /planned:client-daemon-seam -->
+
 ## Primary flows
 
 ### Todo command selection
