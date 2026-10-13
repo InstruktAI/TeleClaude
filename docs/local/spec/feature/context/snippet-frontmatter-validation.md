@@ -329,29 +329,6 @@ values, defaults, and implied required reads are owned by
 declaration for publication, retrieval, and activation routing
 (`sdlc/principle/design-fundamentals`).
 
-<!-- planned:missing-publisher-owner-surfacing -->
-
-#### UC-SFV11: A reference into a domain with no registered publisher names the missing publisher
-
-```gherkin
-Scenario: The publisher of a referenced domain is not registered on this computer
-  Given a snippet's Required reads or inline reference names a well-formed snippet address in a domain
-  And no project registered on this computer declares that it publishes that domain
-  When snippet validation runs
-  Then a finding names that domain as having no registered publisher on this computer
-  And the finding names how to register that domain's publisher here
-  And the finding does not present the reference as malformed
-
-Scenario: The same reference validates once its publisher is registered
-  Given that reference is unchanged
-  And the project that publishes its domain has been registered on this computer
-  When snippet validation runs
-  Then no publisher finding is reported for that reference
-  And the reference is checked against that publisher's snippet like any other domain reference
-```
-
-<!-- /planned:missing-publisher-owner-surfacing -->
-
 ### Cross-context references
 
 - workflow and integration own lifecycle state transitions and delivery-time

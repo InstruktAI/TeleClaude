@@ -88,8 +88,6 @@ Then loading fails with a clear result naming the conflicting declaration
 And neither owner is selected
 ```
 
-<!-- planned-change:missing-publisher-owner-surfacing -->
-
 #### UC-POWN-5: An unregistered owner is refused
 
 ```gherkin
@@ -98,20 +96,6 @@ When that configuration is loaded
 Then loading fails with a clear result naming the unresolved owner
 And the project is left with no owner rather than a partial one
 ```
-
-<!-- change:missing-publisher-owner-surfacing -->
-
-#### UC-POWN-5: An unregistered owner is refused
-
-```gherkin
-Given a project whose configuration declares an owner that no registry knows
-When that configuration is loaded
-Then loading fails with a clear result naming the unresolved owner
-And the result names how to register that owner on this computer
-And the project is left with no owner rather than a partial one
-```
-
-<!-- /planned-change:missing-publisher-owner-surfacing -->
 
 #### UC-POWN-6: A project inside a home is owned by that home
 

@@ -169,8 +169,6 @@ Scenario Outline: The profile follows the session's company, never its location
     | stands in a company's project and was created without a company | carries no company profile        |
 ```
 
-<!-- planned-change:missing-publisher-owner-surfacing -->
-
 #### UC-CSC14: A company that does not exist is an error
 
 ```gherkin
@@ -179,20 +177,6 @@ When a session is created or work is dispatched selecting that name
 Then the request fails with an error naming the unknown company
 And no session is started
 ```
-
-<!-- change:missing-publisher-owner-surfacing -->
-
-#### UC-CSC14: A company that does not exist is an error
-
-```gherkin
-Given no company is registered under a name on the computer where the session would run
-When a session is created or work is dispatched there selecting that name, from that computer or from another
-Then the requester receives an error naming the unknown company and that computer
-And the error names how to register that company on that computer
-And no session is started
-```
-
-<!-- /planned-change:missing-publisher-owner-surfacing -->
 
 ### Cross-context references
 

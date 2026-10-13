@@ -279,20 +279,6 @@ mandatory event-handling dependency makes the activation closure incomplete.
 The procedure and its required shared instructions become current together
 (`general/policy/documentation-discipline`, `general/principle/priming`).
 
-<!-- planned:missing-publisher-owner-surfacing -->
-
-#### UC-3PR19: An unknown identity in an unpublished domain names the missing publisher
-
-```gherkin
-Given a snippet ID whose first segment is none of local, a third-party root, a home prefix, or a domain published by a project registered on this computer
-When the caller runs telec docs get on that ID
-Then the output includes "ERROR: Unknown snippet IDs: <id>"
-And the output names that no project registered on this computer publishes that first segment's domain
-And the output names how to register that domain's publisher here
-```
-
-<!-- /planned:missing-publisher-owner-surfacing -->
-
 ### Cross-context references
 
 - **identity** — the resolved caller: a person with their platform role and the
