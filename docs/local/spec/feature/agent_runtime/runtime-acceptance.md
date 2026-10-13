@@ -79,6 +79,26 @@ cold profile remains limited to startup and safe entry paths.
 
 <!-- /planned:release-tag-checkout-activation -->
 
+<!-- planned:release-development-checkouts -->
+
+### Development checkout journeys
+
+The full profile exercises the development checkout scenarios in
+`local/projects/teleclaude/spec/feature/reconciliation/development-checkout`,
+the checkout association scenario in
+`local/projects/teleclaude/spec/feature/config/project-registry`, and the
+contract-view scenarios in
+`local/projects/teleclaude/spec/feature/context/checkout-context-selection`.
+
+These journeys run the real installer, Git and public CLI entry points against a
+disposable release-channel installation, its upstream repository and its sibling
+development location. Conflicting and interrupted destinations are fixture
+states supplied before the public entry point runs; they replace no application
+decision. The controller owns cleanup of both locations and reports which
+development checkout journeys ran.
+
+<!-- /planned:release-development-checkouts -->
+
 ### Use cases
 
 #### UC-RA1: Cold public entry points execute from the checked source
