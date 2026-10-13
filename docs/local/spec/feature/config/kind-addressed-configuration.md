@@ -128,6 +128,16 @@ Removing a field from the machine configuration also removes every mapping the
 removal leaves empty, so that document never keeps an empty section that only a
 removal produced.
 
+A person patch addresses each top-level field to the document that declares it:
+a field the identity entry declares changes the identity entry, also where the
+overlay declares the same field, and every other field changes the overlay. The
+`overlay` key carries a patch addressed to the overlay alone, which reaches every
+overlay field, including those the identity entry also declares. Its value is a
+mapping, and the overlay's validation refuses a field the overlay does not
+declare. A patch that names the same overlay field both at the top level and
+under `overlay` is refused. Neither form writes `slug` or a read-only
+projection.
+
 <!-- /planned:client-daemon-seam -->
 
 Company membership, company role, and project assignments are patched only
