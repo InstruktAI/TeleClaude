@@ -44,7 +44,10 @@ visibility: 'public'
 
 ### Error Handling and Recovery
 
-- Fail fast on contract violations with clear diagnostics. Catch specific exceptions; let programming errors crash.
+- Fail fast on contract violations with clear diagnostics.
+- Inside an operation, catch the specific failures the code can act on; every other failure propagates to the boundary that owns the operation.
+- **A supervision boundary contains every failure of the unit it runs.** The top of a loop or long-lived task that serves independent units of work — a message or request intake, a queue or stream consumer, a scheduler tick, an event dispatcher — catches any failure of one unit, logs it with its stack trace, answers that unit's caller with an error where the unit has one, and continues with the next unit. A programming error crashes its unit, never the loop. Cancellation and shutdown signals still propagate through it.
+- **A long-lived task the process depends on is supervised.** When it ends unexpectedly, its supervisor logs the end and restarts it, or terminates the process so its service manager restarts it.
 - Keep recovery logic explicit and minimal.
 - Make error posture clear: when to stop, when to continue, and why.
 - Validate at system boundaries; trust within (**Fail Fast** at boundaries, not everywhere).
@@ -84,6 +87,8 @@ visibility: 'public'
 ## Rationale
 
 Apply the code-quality policy and design principles consistently in daily work. Named principles provide shared vocabulary for structural reasoning; these rules translate them into concrete habits.
+
+Specific catches keep an operation's recovery honest: code handles only the failures it understands, and the rest surface where they can be diagnosed. A supervision boundary is where that surfacing happens, so its catch is complete. A boundary that catches a closed list holds only for the failure types that existed when the list was written; the first new type ends the loop, and every later unit — each with its own caller — goes unserved while the process still looks alive. A dead task inside a live process is invisible to the service manager that would otherwise restart it, which is why a long-lived task needs its own supervisor.
 
 ## Scope
 

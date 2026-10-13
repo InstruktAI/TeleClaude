@@ -17,7 +17,7 @@ visibility: 'public'
 - Validate at system boundaries; keep core logic pure and testable.
 - Prefer dataclasses and protocols for structure; avoid mutable defaults.
 - Errors are part of the contract: raise with context or return a defined Result/Option.
-- Never swallow exceptions silently; use specific exception types.
+- Inside an operation, catch the specific exception types it can act on. A supervision boundary contains every failure of its unit (`sdlc/policy/code-quality-practices`): it catches `Exception`, logs with `exc_info`, and continues, and it leaves `BaseException` uncaught so `asyncio.CancelledError`, `KeyboardInterrupt`, and `SystemExit` propagate. Every handler logs, re-raises, or converts the exception into a defined result.
 - Use async only when required by I/O; keep sync/async boundaries explicit.
 - Use `asyncio.gather()` for concurrency; use async context managers for resources.
 - Prefer dict-based dispatch over long if/elif chains.
