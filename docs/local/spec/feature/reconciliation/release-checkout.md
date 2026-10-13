@@ -21,6 +21,14 @@ preservation follows `sdlc/policy/version-control-safety`.
 
 ## Canonical fields
 
+### Installation identity
+
+Reconciliation identifies the installed checkout from the executable target
+published by installation. A caller's current directory, imported module
+location, release channel or detached HEAD alone supplies no installation
+identity. Maintenance and publication consume that installation identity rather
+than deriving their own copies of it.
+
 ### Selected release
 
 Detached HEAD refers directly to the immutable source selected under the
@@ -51,6 +59,10 @@ owned by the existing maintenance and channel-update contracts.
 This eligibility identifies the installed checkout. It does not make an ordinary
 detached development checkout or a slug worktree an installation. Development
 and unrelated projects retain their existing maintenance eligibility.
+
+Configuration migration preserves the installed project declaration under
+`local/projects/teleclaude/spec/feature/config/document-migration`. Installation
+and maintenance do not create commits in the selected release source.
 
 ### Use cases
 
