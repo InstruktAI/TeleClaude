@@ -148,7 +148,7 @@ def _handle_whoami(args: list[str]) -> None:
             raise SystemExit(1)
         if identity.principal:
             print(f"Principal: {identity.principal}")
-        role = authorizing_role(identity.caller, identity.system_role, ProjectPath(invocation_cwd()))
+        role = authorizing_role(identity.caller, identity.role, ProjectPath(invocation_cwd()))
         if role:
             print(f"Role: {role}")
         if identity.session_id:
@@ -167,7 +167,7 @@ def _handle_whoami(args: list[str]) -> None:
     caller = identity.caller
     email = caller.email if isinstance(caller, PersonCliCaller) else None
     print(f"Email: {email}")
-    print(f"Role: {authorizing_role(caller, identity.system_role, ProjectPath(invocation_cwd())) or _UNRESOLVED_ROLE}")
+    print(f"Role: {authorizing_role(caller, identity.role, ProjectPath(invocation_cwd())) or _UNRESOLVED_ROLE}")
     print(f"TTY: {context.tty}")
     print(f"Session auth file: {context.auth_path}")
 

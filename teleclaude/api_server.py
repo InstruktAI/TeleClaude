@@ -597,7 +597,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 session = await db.get_session(identity.session_id)
                 if session is not None and session.project_path:
                     target = SessionOf(Path(session.project_path))
-            role = authorizing_role(caller, identity.system_role, target)
+            role = authorizing_role(caller, identity.role, target)
             email = caller.email if isinstance(caller, PersonCliCaller) else None
             return WhoAmIDTO(
                 principal=principal_for_carried_caller(identity),

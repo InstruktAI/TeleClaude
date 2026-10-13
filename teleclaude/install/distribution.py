@@ -13,7 +13,7 @@ from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import Literal, NamedTuple, cast
+from typing import NamedTuple, cast
 from uuid import uuid4
 
 import frontmatter
@@ -66,7 +66,6 @@ from teleclaude.snippet_validation import (
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
-Transform = Callable[[Post], str]
 
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 # The agent runtime's import grammar (third-party/claude-code/instruction-files):
@@ -97,11 +96,8 @@ _COMMANDS_STAGING_DIRECTORY = "commands"
 UTF8 = "utf-8"
 _NEWLINE = "\n"
 _SNIPPET_ID_BLOCK = "id: {snippet_id}\n\n{body}"
-_SKILL_KIND = "skill"
 _SKILL_NAME_FIELD = "name"
 _POST_HANDLER_FIELD = "handler"
-_FRONTMATTER_PARAMETERS_NOT_LIST_ERROR = "validated frontmatter parameters must be a list"
-_FRONTMATTER_PARAMETER_NOT_MAPPING_ERROR = "validated frontmatter parameter must be a mapping"
 _MISSING_SKILL_NAME_MESSAGE = "Skill {dirname} is missing frontmatter 'name'"
 _SKILL_NAME_MISMATCH_MESSAGE = "Skill name '{name}' must match folder '{dirname}'"
 _ARTIFACT_PROCESSING_ERROR = "Error processing {kind} item {item} for agent {agent}: {error}"
@@ -159,7 +155,6 @@ HELP_DESK_DIRNAME = "help-desk"
 _PUBLICATION_BUILD_RESULT_REQUIRED = "Committed distribution did not return a publication build."
 _PUBLICATION_BUILD_STATE_REQUIRED = "Committed distribution requires owned build state."
 _PUBLICATION_DOCUMENTATION_TARGET_REQUIRED = "Publication build lost its documentation target."
-_OUT_OF_REACH_COMMAND_WARNING = "out_of_reach_global_command_excluded"
 _GLOBAL_DISTRIBUTION_TEMP_PREFIX = "teleclaude-dist-global-"
 _LOCAL_DISTRIBUTION_TEMP_PREFIX = "teleclaude-dist-local-"
 _AGENT_CONFIG_HOME_ROOT_KEY = "home_root"
@@ -417,14 +412,7 @@ _FRONTMATTER_HANDLER = StableYAMLHandler()
 
 
 def dump_frontmatter(post: Post) -> str:
-    """Serialize frontmatter using the stable YAML handler.
-
-    When the post has a ``parameters`` field, the preamble is injected
-    into the body and the field is stripped from emitted frontmatter.
-    """
-    parameters = post.metadata.pop("parameters", None)
-    if parameters:
-        post.content = _inject_parameter_preamble(post.content, _parameter_definitions(parameters))
+    """Serialize frontmatter using the stable YAML handler."""
     return str(frontmatter.dumps(post, handler=_FRONTMATTER_HANDLER))
 
 
@@ -481,8 +469,6 @@ class AgentConfig(TypedDict):
     master_dest: str
     skills_dest_dir: str
     skills_ext: str
-    ext: str
-    transform: Transform
 
 
 class FileArtifactType(NamedTuple):
@@ -492,7 +478,6 @@ class FileArtifactType(NamedTuple):
     source_dir_key: str
     dest_dir_key: str
     ext_key: str
-    kind: Literal["file", "skill"]
     artifact_kind: ArtifactKind
 
 
@@ -504,36 +489,6 @@ def _deploy_agent(
     """Mirror one agent's staged artifacts into its deployment root."""
     os.makedirs(target_root, exist_ok=True)
     shutil.copytree(dist_agent_root, target_root, dirs_exist_ok=True)
-
-
-def transform_to_codex(post: Post) -> str:
-    """Transform a post to the Codex format (same as Claude - standard YAML frontmatter).
-
-    Parameter preamble injection is handled by ``dump_frontmatter``.
-    """
-    # Codex uses Markdown with standard YAML frontmatter, identical to Claude.
-    content = dump_frontmatter(post)
-    return content
-
-
-def transform_to_gemini(post: Post) -> str:
-    """Transform a post to the Gemini TOML format.
-
-    Injects the parameter preamble (identical to Claude/Codex) before the
-    body content when ``parameters`` is present.
-    """
-    description = post.metadata.get("description", "")
-    parameters = post.metadata.get("parameters")
-
-    description_str = f'"""{description}"""'
-
-    # replace $ARGUMENTS for {{args}} in gemini format
-    content = post.content.replace("$ARGUMENTS", "{{args}}").strip()
-
-    if parameters:
-        content = _inject_parameter_preamble(content, _parameter_definitions(parameters))
-
-    return f"description = {description_str}\nprompt = '''\n{content}\n'''\n"
 
 
 def transform_skill_to_claude(post: Post, name: str) -> str:
@@ -576,51 +531,6 @@ def transform_skill_to_deepseek(post: Post, name: str) -> str:
 
 def _should_expand_inline(agent_name: str) -> bool:
     return agent_name in {"claude", "codex", "gemini", "deepseek"}
-
-
-# guard: loose-dict-func - Validated frontmatter parameters have artifact-specific fields
-def _parameter_definitions(value: object) -> list[dict[str, object]]:
-    """Narrow validated open frontmatter parameters to the keys the renderer reads."""
-    if not isinstance(value, list):
-        raise TypeError(_FRONTMATTER_PARAMETERS_NOT_LIST_ERROR)
-    definitions: list[dict[str, object]] = []  # guard: loose-dict - Parameter fields vary by artifact
-    for parameter in value:
-        if not isinstance(parameter, dict):
-            raise TypeError(_FRONTMATTER_PARAMETER_NOT_MAPPING_ERROR)
-        definitions.append({key: item for key, item in parameter.items() if isinstance(key, str)})
-    return definitions
-
-
-# guard: loose-dict-func - Parameter dicts have variable schema per artifact type
-def _build_parameter_preamble(parameters: list[dict[str, object]]) -> str:
-    """Build an HTML-comment preamble mapping named parameters to positions.
-
-    Position is derived from list order (index). The preamble does NOT
-    reference $ARGUMENTS or {{args}} to avoid empty-string rendering
-    when no arguments are provided.
-    """
-    if not parameters:
-        return ""
-    lines: list[str] = []
-    for idx, param in enumerate(parameters):
-        name = param["name"]
-        qualifiers: list[str] = []
-        if param.get("required"):
-            qualifiers.append("required")
-        if "default" in param:
-            qualifiers.append(f'default: "{param["default"]}"')
-        suffix = f" ({', '.join(qualifiers)})" if qualifiers else ""
-        lines.append(f"<!-- ${name} = argument at position {idx}{suffix} -->")
-    return "\n".join(lines)
-
-
-# guard: loose-dict-func - Parameter dicts have variable schema per artifact type
-def _inject_parameter_preamble(content: str, parameters: list[dict[str, object]]) -> str:
-    """Prepend parameter preamble to content if parameters are declared."""
-    preamble = _build_parameter_preamble(parameters)
-    if not preamble:
-        return content
-    return f"{preamble}\n\n{content}"
 
 
 # guard: loose-dict-func - Open frontmatter keys vary by artifact kind
@@ -2091,44 +2001,6 @@ def _resolve_pipeline_capabilities(
     return effective_agents, effective_docs
 
 
-def _collect_global_command_files(project_root_path: Path) -> dict[str, Path]:
-    """Map corpus-relative output path to source file for every in-reach global command.
-
-    Global commands live only in the domain-partitioned tree
-    (``<domain>/<name>.md``). Reach is re-checked here
-    as defense in depth; the sealed commit already refused an out-of-reach
-    source before it could ever reach this pass.
-    """
-    command_files: dict[str, Path] = {}
-    for source in agent_artifacts.all_sources(project_root_path):
-        if source.kind is not ArtifactKind.COMMAND or source.tier is not agent_artifacts.ArtifactTier.GLOBAL:
-            continue
-        if agent_artifacts.reach_violation(project_root_path, source) is not None:
-            continue
-        relative = f"{source.domain}/{source.entrypoint.name}"
-        command_files[relative] = source.entrypoint
-    return command_files
-
-
-def _global_command_reach_findings(project_root_path: Path) -> list[str]:
-    """Report every out-of-reach global command source, naming file and reach.
-
-    A finding here is defense in depth: the sealed commit already refused an
-    out-of-reach source before it could be committed. Distribution still
-    names it explicitly rather than silently excluding it from the staged
-    corpus, so a run against an already-dirty tree never skips a source
-    without a word.
-    """
-    findings: list[str] = []
-    for source in agent_artifacts.all_sources(project_root_path):
-        if source.kind is not ArtifactKind.COMMAND or source.tier is not agent_artifacts.ArtifactTier.GLOBAL:
-            continue
-        violation = agent_artifacts.reach_violation(project_root_path, source)
-        if violation is not None:
-            findings.append(violation)
-    return findings
-
-
 def main(  # noqa: C901 - coordinates the distribution phases at one entry point.
     request: DistributionRequest | None = None, *, build_state: DistributionBuildState | None = None
 ) -> DistributionResult | DistributionBuild:
@@ -2249,18 +2121,14 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             "master_dest": os.path.join(dist_dir, "claude", "CLAUDE.md"),
             "skills_dest_dir": os.path.join(dist_dir, "claude", "skills"),
             "skills_ext": ".md",
-            "ext": ".md",
-            "transform": dump_frontmatter,
         },
         "codex": {
             "home_root": os.path.expanduser("~/.codex"),
             "project_dir": ".codex",
-            "prefix": "~/.teleclaude/commands/",
+            "prefix": "/",
             "master_dest": os.path.join(dist_dir, "codex", "AGENTS.md"),
             "skills_dest_dir": os.path.join(dist_dir, "codex", "skills"),
             "skills_ext": ".md",
-            "ext": ".md",
-            "transform": transform_to_codex,
         },
         "gemini": {
             "home_root": os.path.expanduser("~/.gemini/antigravity-cli"),
@@ -2269,8 +2137,6 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             "master_dest": os.path.join(dist_dir, "gemini", "AGENTS.md"),
             "skills_dest_dir": os.path.join(dist_dir, "gemini", "skills"),
             "skills_ext": ".md",
-            "ext": ".toml",
-            "transform": transform_to_gemini,
         },
         "deepseek": {
             "home_root": os.path.expanduser("~/.dsh"),
@@ -2279,8 +2145,6 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             "master_dest": os.path.join(dist_dir, "deepseek", "AGENTS.md"),
             "skills_dest_dir": os.path.join(dist_dir, "deepseek", "skills"),
             "skills_ext": ".md",
-            "ext": ".md",
-            "transform": dump_frontmatter,
         },
     }
 
@@ -2290,7 +2154,6 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             source_dir_key="skills",
             dest_dir_key="skills_dest_dir",
             ext_key="skills_ext",
-            kind="skill",
             artifact_kind=ArtifactKind.SKILL,
         ),
     ]
@@ -2323,39 +2186,6 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
 
     global_sources = _existing_sources(global_sources)
     local_sources = _existing_sources(local_sources)
-    global_command_files = _collect_global_command_files(project_root_path) if agents_enabled else {}
-
-    def _validate_global_command_files(command_files: dict[str, Path]) -> list[str]:
-        errors: list[str] = []
-        for item_path in sorted(command_files.values()):
-            try:
-                with item_path.open(encoding=UTF8) as file_obj:
-                    post = frontmatter.load(file_obj)
-                validate_artifact(post, str(item_path), kind=ArtifactKind.COMMAND, project_root=Path(project_root))
-            except (OSError, ValueError, yaml.YAMLError) as exc:
-                errors.append(str(exc))
-        return errors
-
-    def _validate_project_command_sources(project_root_path: Path) -> list[str]:
-        """Validate every registry-classified project-tier command source.
-
-        Selection comes from the registry (``all_sources``), never a local
-        directory listing — the registry is the one place that decides what
-        counts as a project command source.
-        """
-        errors: list[str] = []
-        for source in agent_artifacts.all_sources(project_root_path):
-            if source.kind is not ArtifactKind.COMMAND or source.tier is not agent_artifacts.ArtifactTier.PROJECT:
-                continue
-            try:
-                with source.entrypoint.open(encoding=UTF8) as file_obj:
-                    post = frontmatter.load(file_obj)
-                validate_artifact(
-                    post, str(source.entrypoint), kind=ArtifactKind.COMMAND, project_root=project_root_path
-                )
-            except (OSError, ValueError, yaml.YAMLError) as exc:
-                errors.append(str(exc))
-        return errors
 
     def _validate_sources(sources: list[dict[str, str]]) -> list[str]:
         errors: list[str] = []
@@ -2365,12 +2195,9 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                 source_dir = source.get(spec.source_dir_key)
                 if not isinstance(source_dir, str) or not os.path.isdir(source_dir):
                     continue
-                if spec.kind == "file":
-                    artifact_items[spec.name].extend([f for f in os.listdir(source_dir) if f.endswith(".md")])
-                else:
-                    artifact_items[spec.name].extend(
-                        [f for f in os.listdir(source_dir) if os.path.isdir(os.path.join(source_dir, f))]
-                    )
+                artifact_items[spec.name].extend(
+                    [f for f in os.listdir(source_dir) if os.path.isdir(os.path.join(source_dir, f))]
+                )
         for spec in artifact_specs:
             artifact_items[spec.name] = sorted(set(artifact_items[spec.name]))
 
@@ -2382,10 +2209,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                     source_dir = source.get(spec.source_dir_key)
                     if not isinstance(source_dir, str):
                         continue
-                    if spec.kind == "file":
-                        candidate = os.path.join(source_dir, item)
-                    else:
-                        candidate = os.path.join(source_dir, item, "SKILL.md")
+                    candidate = os.path.join(source_dir, item, "SKILL.md")
                     if os.path.exists(candidate):
                         item_path = candidate
                         break
@@ -2395,23 +2219,16 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                     with open(item_path, encoding="utf-8") as f:
                         post = frontmatter.load(f)
                     validate_artifact(post, item_path, kind=spec.artifact_kind, project_root=Path(project_root))
-                    if spec.kind == _SKILL_KIND:
-                        resolve_skill_name(post, item)
+                    resolve_skill_name(post, item)
                 except Exception as e:
                     errors.append(str(e))
         return errors
 
     errors: list[str] = []
     if agents_enabled:
-        if committed_publication:
-            for finding in _global_command_reach_findings(project_root_path):
-                logger.warning(_OUT_OF_REACH_COMMAND_WARNING, finding=finding)
-        else:
+        if not committed_publication:
             errors.extend(_validate_sources(global_sources))
             errors.extend(_validate_sources(local_sources))
-            errors.extend(_global_command_reach_findings(project_root_path))
-            errors.extend(_validate_global_command_files(global_command_files))
-            errors.extend(_validate_project_command_sources(project_root_path))
     if errors:
         for error in errors:
             print(error)
@@ -2436,7 +2253,6 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
         deploy_enabled: bool,
         is_global_phase: bool,
         scope_key: str,
-        command_files: dict[str, Path],
     ) -> None:
         if os.path.exists(dist_dir):
             shutil.rmtree(dist_dir)
@@ -2452,37 +2268,16 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                 source_dir = source.get(spec.source_dir_key)
                 if not isinstance(source_dir, str) or not os.path.isdir(source_dir):
                     continue
-                if spec.kind == "file":
-                    artifact_items[spec.name].extend([f for f in os.listdir(source_dir) if f.endswith(".md")])
-                else:
-                    artifact_items[spec.name].extend(
-                        [name for name in os.listdir(source_dir) if os.path.isdir(os.path.join(source_dir, name))]
-                    )
+                artifact_items[spec.name].extend(
+                    [name for name in os.listdir(source_dir) if os.path.isdir(os.path.join(source_dir, name))]
+                )
         for spec in artifact_specs:
             artifact_items[spec.name] = sorted(set(artifact_items[spec.name]))
 
+        # Commands are not an artifact kind: the staged corpus is empty, so deployment retracts every
+        # command file this repository owned in the manifest.
         commands_dist_dir = Path(dist_dir) / _COMMANDS_STAGING_DIRECTORY
         commands_dist_dir.mkdir(parents=True, exist_ok=True)
-        commands_config = agents_config[_CODEX_AGENT_NAME]
-        for relative_path, command_source_path in sorted(command_files.items()):
-            with command_source_path.open(encoding=UTF8) as file_obj:
-                post = frontmatter.load(file_obj)
-            if not committed_publication:
-                validate_artifact(
-                    post, str(command_source_path), kind=ArtifactKind.COMMAND, project_root=Path(project_root)
-                )
-            content = process_file(post.content, commands_config["prefix"], _CODEX_AGENT_NAME)
-            content = expand_inline_refs(
-                content,
-                project_root=Path(project_root),
-                current_path=command_source_path,
-                warn_only=args.warn_only,
-                observation=observation,
-            )
-            prepared = _post_with_metadata(content, _filter_frontmatter(post.metadata, _CODEX_AGENT_NAME))
-            command_output_path = commands_dist_dir / Path(relative_path).with_suffix(commands_config["ext"])
-            command_output_path.parent.mkdir(parents=True, exist_ok=True)
-            command_output_path.write_text(dump_frontmatter(prepared).rstrip(_NEWLINE) + _NEWLINE, encoding=UTF8)
 
         built_agents: list[str] = []
         for agent_name, config in agents_config.items():
@@ -2563,10 +2358,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                         source_dir = source.get(spec.source_dir_key)
                         if not isinstance(source_dir, str):
                             continue
-                        if spec.kind == "file":
-                            candidate = os.path.join(source_dir, item)
-                        else:
-                            candidate = os.path.join(source_dir, item, "SKILL.md")
+                        candidate = os.path.join(source_dir, item, "SKILL.md")
                         if os.path.exists(candidate):
                             item_path = candidate
                             break
@@ -2591,30 +2383,23 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                                 warn_only=args.warn_only,
                                 observation=observation,
                             )
-                            output_dir = ""
-                            if spec.kind == "skill":
-                                skill_name = resolve_skill_name(prepared, item)
-                                if agent_name == "claude":
-                                    transformed_content = transform_skill_to_claude(prepared, skill_name)
-                                elif agent_name == "codex":
-                                    transformed_content = transform_skill_to_codex(prepared, skill_name)
-                                elif agent_name == "deepseek":
-                                    transformed_content = transform_skill_to_deepseek(prepared, skill_name)
-                                else:
-                                    transformed_content = transform_skill_to_gemini(prepared, skill_name)
-                                output_dir = os.path.join(dest_dir, item)
-                                os.makedirs(output_dir, exist_ok=True)
-                                output_filename = f"SKILL{config[spec.ext_key]}"  # type: ignore[literal-required]
-                                output_path = os.path.join(output_dir, output_filename)
+                            skill_name = resolve_skill_name(prepared, item)
+                            if agent_name == "claude":
+                                transformed_content = transform_skill_to_claude(prepared, skill_name)
+                            elif agent_name == "codex":
+                                transformed_content = transform_skill_to_codex(prepared, skill_name)
+                            elif agent_name == "deepseek":
+                                transformed_content = transform_skill_to_deepseek(prepared, skill_name)
                             else:
-                                transformed_content = config["transform"](prepared)
-                                base_name = os.path.splitext(item)[0]
-                                output_filename = f"{base_name}{config[spec.ext_key]}"  # type: ignore[literal-required]
-                                output_path = os.path.join(dest_dir, output_filename)
+                                transformed_content = transform_skill_to_gemini(prepared, skill_name)
+                            output_dir = os.path.join(dest_dir, item)
+                            os.makedirs(output_dir, exist_ok=True)
+                            output_filename = f"SKILL{config[spec.ext_key]}"  # type: ignore[literal-required]
+                            output_path = os.path.join(output_dir, output_filename)
                             with open(output_path, "w", encoding="utf-8") as out_f:
                                 out_f.write(transformed_content.rstrip("\n") + "\n")
                             # Copy supporting files/dirs from skill source (everything except SKILL.md)
-                            if spec.kind == "skill" and output_dir:
+                            if output_dir:
                                 skill_source_dir = os.path.dirname(item_path)
                                 for entry in os.listdir(skill_source_dir):
                                     if entry == "SKILL.md" or entry.startswith((".", "__")):
@@ -2708,7 +2493,6 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                 deploy_enabled=deploy_enabled,
                 is_global_phase=is_global_phase,
                 scope_key=scope_key,
-                command_files=global_command_files if is_global_phase else {},
             )
 
     if deploy and is_mother_project:
@@ -2733,7 +2517,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
             else:
                 global_dist_context = tempfile.TemporaryDirectory(prefix=_GLOBAL_DISTRIBUTION_TEMP_PREFIX)
             with global_dist_context as global_dist:
-                if global_sources or global_command_files:
+                if global_sources:
                     _run_phase(
                         sources=global_sources,
                         prefix_root=agents_root,
@@ -2769,7 +2553,7 @@ def main(  # noqa: C901 - coordinates the distribution phases at one entry point
                 process_correlation_id=observation.process_correlation_id,
             )
     else:
-        if global_sources or global_command_files:
+        if global_sources:
             _run_phase(
                 sources=global_sources,
                 prefix_root=agents_root,

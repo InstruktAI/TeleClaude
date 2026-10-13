@@ -14,7 +14,8 @@ from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.cli.api_session_args import RunSessionArgs
 from teleclaude.config._models import WorkflowRunnerMode
 from teleclaude.config.machine import config
-from teleclaude.constants import COMMAND_ROLE_MAP, JobRole, SlashCommand, TodoStatus
+from teleclaude.constants import TodoStatus
+from teleclaude.context_selector import resolve_snippet_meta
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.next_machine.git_ops import (
@@ -24,6 +25,7 @@ from teleclaude.core.next_machine.git_ops import (
     derive_dependency_artifact_drift,
 )
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
+from teleclaude.core.next_machine.lanes import LANE_ENTRY_PROCEDURES
 from teleclaude.core.next_machine.lifecycle import (
     coerce_lifecycle_phase,
     effective_hold,
@@ -62,6 +64,7 @@ from teleclaude.types.todos import HoldAuditState, TodoState
 
 logger = get_logger(__name__)
 
+_LANE_ROLE_UNDECLARED_TEMPLATE = "lane {lane!r}: entry procedure {procedure} declares no role"
 _RUNNER_REPREPARE_EVENT = "todo_runner_routed_to_prepare"
 _RUNNER_REPREPARE_MESSAGE = "todo runner routed to prepare"
 _RUNNER_REPREPARE_OUTCOME = "prepare"
@@ -99,34 +102,23 @@ def default_session_runner() -> SessionRunner:
 
 
 def _command_for_lane(lane: RunnerLane) -> tuple[str, str]:
-    if lane is RunnerLane.TASK_PREPARE:
-        return f"/{SlashCommand.PREPARE_TASK.value}", ""
-    if lane is RunnerLane.TASK_RUN:
-        return f"/{SlashCommand.RUN_TASK.value}", ""
-    if lane is RunnerLane.WORK:
-        return f"/{SlashCommand.WORK.value}", ""
-    return f"/{SlashCommand.PREPARE.value}", ""
+    """The entry procedure ID a driver of ``lane`` is started through, with its additional context."""
+    return LANE_ENTRY_PROCEDURES[lane].value, ""
 
 
-def _role_for_lane(lane: RunnerLane) -> tuple[str, JobRole]:
-    """Resolve the ``(system_role, job)`` a directly-started driver of ``lane`` is born with.
+def _role_for_lane(lane: RunnerLane, project_root: Path) -> str:
+    """Resolve the catalog role a directly-started driver of ``lane`` is born with.
 
-    Reuses ``COMMAND_ROLE_MAP`` (the source of truth for born drivers) via the
-    same lane-to-command resolution ``_command_for_lane`` uses, so an in-place
-    adopted driver reaches exact born-driver parity. Every lane reachable
-    through in-place adoption (PREPARE, WORK, TASK_PREPARE, TASK_RUN) carries a
-    mapped command; a lane with no mapping is a contract violation and raises
+    The role is the one the lane's entry procedure declares, so an in-place adopted driver reaches exact
+    born-driver parity. A lane whose entry procedure declares no role is a contract violation and raises
     rather than leaving the caller with a silently empty role.
     """
-    command_str, _ = _command_for_lane(lane)
-    try:
-        command = SlashCommand(command_str.lstrip("/"))
-    except ValueError as exc:
-        raise ValueError(f"no SlashCommand for lane {lane!r} (command={command_str!r})") from exc
-    role_info = COMMAND_ROLE_MAP.get(command)
-    if role_info is None:
-        raise ValueError(f"no COMMAND_ROLE_MAP entry for lane {lane!r} (command={command!r})")
-    return role_info
+    procedure_id, _ = _command_for_lane(lane)
+    snippet = resolve_snippet_meta(procedure_id, project_root=project_root)
+    declarations = snippet.entry.declarations if snippet is not None else None
+    if declarations is None:
+        raise ValueError(_LANE_ROLE_UNDECLARED_TEMPLATE.format(lane=lane, procedure=procedure_id))
+    return declarations.role.name.value
 
 
 def _intent(slug: str, lane: RunnerLane) -> DispatchIntent:

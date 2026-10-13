@@ -24,9 +24,9 @@ class LaunchOwnership(StrEnum):
     JOB_ROLE = "job_role"
 
 
-def launch_ownership(job_role: str | None) -> LaunchOwnership:
-    """Classify persisted job-role presence into model-launch ownership."""
-    return LaunchOwnership.JOB_ROLE if job_role else LaunchOwnership.HUMAN
+def launch_ownership(role: str | None) -> LaunchOwnership:
+    """Classify persisted role presence into model-launch ownership: a session with an agent role is an automated launch."""
+    return LaunchOwnership.JOB_ROLE if role else LaunchOwnership.HUMAN
 
 
 @dataclass(frozen=True)

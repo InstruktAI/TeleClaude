@@ -74,7 +74,7 @@ async def execute_handoff(
         successor = assert_agent_enabled(cmd.agent_name or "")
         mode = session.thinking_mode or ThinkingMode.SLOW.value
         launch = await resolve_launch_model(
-            successor, mode, ownership=launch_ownership(session.job), session_id=session.session_id
+            successor, mode, ownership=launch_ownership(session.role), session_id=session.session_id
         )
         handoff_envelope = render_bracket_envelope(semantic_envelope(EnvelopeName.HANDOFF, body=startup_message))
         starts_with_prompt = bool(

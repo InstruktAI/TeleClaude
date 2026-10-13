@@ -34,6 +34,7 @@ from teleclaude.docs_publishers import (
 )
 from teleclaude.docs_subscriptions import IndexKey, required_event_handling_dependencies, resolve_delivery_settings
 from teleclaude.domains import publishes_for_root, valid_domains
+from teleclaude.entry_declarations import NO_ENTRY_DECLARATIONS, EntryParse, parse_entry_declarations
 from teleclaude.identity_reach import Reach, resolve_reach
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, REPO_ROOT, TELECLAUDE_HOME
 from teleclaude.required_reads import strip_required_reads_section
@@ -53,6 +54,7 @@ from teleclaude.snippet_validation import (
     SnippetScope,
     companion_slug,
     derive_snippet_classification,
+    is_generated_global_doc_artifact,
     load_domains,
     names_unregistered_domain,
     tier_root_kind,
@@ -63,12 +65,20 @@ logger = get_logger(__name__)
 
 SCOPE_ORDER = {"global": 0, "company": 1, "project": 2, "person": 3}
 GLOBAL_SOURCE_PROJECT = "global"
+GLOBAL_SCOPE = "global"
+PROCEDURE_TYPE = "procedure"
 _GLOBAL_HALF = "global"
 ACTIVATION_CLOSURE_REQUEST_ERROR = (
     "ERROR: --closure requires exactly one requested snippet ID and no --scope, --project, or --target filter."
 )
 ACTIVATION_CLOSURE_ROOT_ERROR = "ERROR: --closure requires one delivered taxonomy procedure."
 ACTIVATION_CLOSURE_UNREADABLE_ERROR = "ERROR: Unable to read eligible required-read snippet: {}"
+ENTRY_CLOSURE_UNRESOLVED_ERROR = (
+    "ERROR: Entry procedure required read does not resolve to a readable published document: {}"
+)
+ENTRY_CLOSURE_PENDING_ERROR = "ERROR: Entry procedure required read is pending delivery and cannot be read yet: {}"
+ENTRY_PUBLISHERS_UNREADABLE = "the documentation publishers cannot be resolved ({reason})"
+ENTRY_SOURCE_UNREADABLE = "{source} cannot be read ({reason})"
 LOCAL_SELECTION_WITHOUT_HOME_ERROR = "--local requires --project, --person, --company, or a landed home."
 OWNER_LOCAL_DOCS_PRIVATE_ERROR = "The owner's local documentation is private; work in the owner's workspace to read it."
 STALE_LOCAL_CATALOG_EVENT = "stale_local_catalog_entries_excluded"
@@ -84,6 +94,10 @@ _ID_SEGMENT_SEPARATOR = "/"
 
 class DocsSelectionEvent(StrEnum):
     SELECTED = "docs_retrieval_selected"
+
+
+class EntryDeclarationEvent(StrEnum):
+    UNREADABLE = "entry_declaration_unreadable"
 
 
 class DocsSelectionOutcome(StrEnum):
@@ -179,6 +193,150 @@ class SnippetMeta:
     delivered_by: tuple[str, ...] = ()
     superseded_by: tuple[str, ...] = ()
     delivery_required_reads: tuple[str, ...] = ()
+    entry: EntryParse = NO_ENTRY_DECLARATIONS
+
+
+class EntryGap(StrEnum):
+    """Why a snippet is not a usable entry procedure — the cause an entry refusal names."""
+
+    UNKNOWN = "the unknown procedure"
+    NOT_PROCEDURE = "the snippet's type"
+    PENDING = "its pending state"
+    NO_ROLE = "the missing role"
+    NO_DISPATCH = "the missing dispatch"
+    UNUSABLE_DECLARATION = "an unusable entry declaration"
+
+
+def entry_procedure_gap(snippet: SnippetMeta | None, *, accept_pending_companion: bool = False) -> EntryGap | None:
+    """Whether the published snippet is a usable entry procedure, or the first reason it is not.
+
+    A usable entry procedure is a delivered procedure carrying a role the catalog names and dispatch
+    defaults, with well-formed parameters. With ``accept_pending_companion``, a live procedure whose
+    pending replacement declares a usable entry counts as usable: a declaration check ahead of the
+    delivery that publishes it, never the entry's own admission.
+    """
+    if snippet is None:
+        return EntryGap.UNKNOWN
+    if snippet.snippet_type != PROCEDURE_TYPE:
+        return EntryGap.NOT_PROCEDURE
+    if snippet.delivered_by:
+        return EntryGap.PENDING
+    gap = _declared_entry_gap(snippet.entry)
+    if gap is not None and accept_pending_companion:
+        state = _entry_declaration_state_at(snippet.path)
+        if state.unreadable is not None:
+            logger.warning(
+                EntryDeclarationEvent.UNREADABLE.value, snippet_id=snippet.snippet_id, reason=state.unreadable
+            )
+        elif any(_declared_entry_gap(pending.entry) is None for pending in state.pending):
+            return None
+    return gap
+
+
+def _declared_entry_gap(entry: EntryParse) -> EntryGap | None:
+    if entry.findings:
+        return EntryGap.UNUSABLE_DECLARATION
+    if not entry.declares_entry_fields or entry.declarations is None:
+        return EntryGap.NO_ROLE
+    if entry.declarations.dispatch is None:
+        return EntryGap.NO_DISPATCH
+    return None
+
+
+@dataclass(frozen=True)
+class PendingEntryDeclaration:
+    """The entry declaration one delivery carries ahead of its fold."""
+
+    delivered_by: str
+    entry: EntryParse
+
+
+@dataclass(frozen=True)
+class EntryDeclarationState:
+    """Which entry declaration one checkout holds for a procedure.
+
+    ``live`` is what the procedure's live document carries. ``pending`` is what each delivery that has not
+    folded carries — a companion replacement, or a wholly new procedure's own document — named by the
+    delivering slug. ``unreadable`` names a documentation source that could not be read and is never the same
+    as a procedure that declares nothing. The state decides nothing about what a pending declaration means;
+    each consumer decides that for its own act.
+    """
+
+    live: EntryParse = NO_ENTRY_DECLARATIONS
+    pending: tuple[PendingEntryDeclaration, ...] = ()
+    unreadable: str | None = None
+
+
+class _UnreadableEntrySource(Exception):
+    """A documentation source an entry declaration is read from could not be read or parsed."""
+
+
+def entry_declaration_state(procedure_id: str, *, project_root: Path) -> EntryDeclarationState:
+    """Which entry declaration the checkout ``project_root`` resolves through its publishers holds for a procedure.
+
+    An unknown procedure yields the empty state. A publisher registry that cannot be resolved, or a
+    declaration file that cannot be read or parsed, yields an unreadable state naming the source.
+    """
+    requested = procedure_id.strip()
+    try:
+        path = _entry_source_path(requested, project_root)
+    except DocsPublisherResolutionError as exc:
+        return EntryDeclarationState(unreadable=ENTRY_PUBLISHERS_UNREADABLE.format(reason=exc))
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        return EntryDeclarationState(unreadable=ENTRY_SOURCE_UNREADABLE.format(source=requested, reason=exc))
+    if path is None:
+        return EntryDeclarationState()
+    return _entry_declaration_state_at(path)
+
+
+def _entry_source_path(requested: str, project_root: Path) -> Path | None:
+    """The document the checkout's publishers resolve a procedure identity to; publisher failures raise."""
+    if not requested:
+        return None
+    if parse_home_snippet_id(requested) is not None:
+        meta = resolve_snippet_meta(requested, project_root=project_root)
+        return meta.path if meta is not None else None
+    parts = _global_identity_parts(requested)
+    if parts is None:
+        return None
+    return _global_source_path(*parts, project_root=project_root)
+
+
+def _entry_declaration_state_at(path: Path) -> EntryDeclarationState:
+    """The entry declarations a live document and the companions beside it carry."""
+    try:
+        metadata = _entry_metadata(path)
+        entry = parse_entry_declarations(metadata)
+        delivered_by = _delivered_by(metadata)
+        pending = tuple(PendingEntryDeclaration(slug, entry) for slug in delivered_by)
+        pending += _companion_entry_declarations(path)
+    except _UnreadableEntrySource as exc:
+        return EntryDeclarationState(unreadable=str(exc))
+    return EntryDeclarationState(live=NO_ENTRY_DECLARATIONS if delivered_by else entry, pending=pending)
+
+
+def _companion_entry_declarations(path: Path) -> tuple[PendingEntryDeclaration, ...]:
+    declarations: list[PendingEntryDeclaration] = []
+    for sibling in sorted(path.parent.glob(f"{path.stem}.*.md")):
+        slug = companion_slug(sibling)
+        if slug is None:
+            continue
+        declarations.append(PendingEntryDeclaration(slug, parse_entry_declarations(_entry_metadata(sibling))))
+    return tuple(declarations)
+
+
+def _entry_metadata(path: Path) -> Mapping[str, object]:
+    try:
+        return frontmatter.load(str(path)).metadata or {}
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        raise _UnreadableEntrySource(ENTRY_SOURCE_UNREADABLE.format(source=path, reason=exc)) from exc
+
+
+def _delivered_by(metadata: Mapping[str, object]) -> tuple[str, ...]:
+    raw_delivered_by = metadata.get("delivered_by")
+    if isinstance(raw_delivered_by, list) and all(isinstance(slug, str) for slug in raw_delivered_by):
+        return tuple(raw_delivered_by)
+    return ()
 
 
 _UNKNOWN_SCOPE_RANK = len(SCOPE_ORDER)
@@ -310,16 +468,66 @@ def _load_baseline_ids(
     return baseline_ids
 
 
+@dataclass(frozen=True)
+class ResolvedRequires:
+    """The snippets a selection requires, with the generated domain bundles its required reads name."""
+
+    snippets: list[SnippetMeta]
+    bundles: list[Path]
+
+
+def _entry_generated_bundle(ref: Path) -> Path | None:
+    """The deployed generated domain bundle a required-read ref names, if it exists."""
+    try:
+        relative = ref.relative_to(GLOBAL_DOCS_DIR)
+    except ValueError:
+        return None
+    return ref if is_generated_global_doc_artifact(relative) and ref.is_file() else None
+
+
+def _admit_entry_required_read(
+    ref: str,
+    ref_resolved: Path,
+    required: SnippetMeta | None,
+    current: SnippetMeta,
+    bundles: list[Path],
+) -> None:
+    """Admit one required read of an entry closure or refuse the entry.
+
+    A required read is admitted as a delivered snippet within the reader's reach, or as a deployed
+    generated domain bundle (collected into ``bundles``); anything else refuses.
+    """
+    if required is None:
+        bundle = _entry_generated_bundle(ref_resolved)
+        if bundle is None:
+            raise ActivationClosureError(ENTRY_CLOSURE_UNRESOLVED_ERROR.format(ref))
+        if bundle not in bundles:
+            bundles.append(bundle)
+        return
+    if required.delivered_by:
+        raise ActivationClosureError(ENTRY_CLOSURE_PENDING_ERROR.format(required.snippet_id))
+    if required.source_project != current.source_project and required.scope != GLOBAL_SCOPE:
+        raise ActivationClosureError(ENTRY_CLOSURE_UNRESOLVED_ERROR.format(required.snippet_id))
+
+
 def _resolve_requires(
     selected_ids: Iterable[str],
     snippets: list[SnippetMeta],
     *,
     activation_closure: bool = False,
-) -> list[SnippetMeta]:
+    entry_closure: bool = False,
+) -> ResolvedRequires:
+    """Resolve the transitive required reads of the selected snippets.
+
+    An entry closure additionally refuses any required read that is pending delivery or that resolves
+    neither to a published snippet nor to a deployed generated domain bundle; the bundles it names are
+    returned so the brief carries them.
+    """
     snippets_by_id = {s.snippet_id: s for s in snippets}
     snippets_by_path = {str(s.path): s for s in snippets}
 
     resolved: list[SnippetMeta] = []
+    bundles: list[Path] = []
     seen: set[str] = set()
     stack: list[SnippetMeta] = []
 
@@ -339,6 +547,8 @@ def _resolve_requires(
             content = current.path.read_text(encoding="utf-8")
         except Exception as exc:
             logger.warning("resolve_requires_read_failed", path=str(current.path), error=str(exc))
+            if entry_closure:
+                raise ActivationClosureError(ENTRY_CLOSURE_UNRESOLVED_ERROR.format(current.snippet_id)) from exc
             continue
         ref_paths = extract_required_reads(content)
         for ref in ref_paths:
@@ -346,6 +556,10 @@ def _resolve_requires(
             req_snippet = snippets_by_path.get(str(ref_resolved))
             if not req_snippet and not Path(ref).is_absolute():
                 req_snippet = snippets_by_path.get(str((current.path.parent / ref).resolve()))
+            if entry_closure:
+                _admit_entry_required_read(ref, ref_resolved, req_snippet, current, bundles)
+                if req_snippet is None:
+                    continue
             if not req_snippet or str(req_snippet.path) in seen:
                 continue
             same_project = req_snippet.source_project == current.source_project
@@ -356,14 +570,14 @@ def _resolve_requires(
         for required_id in current.delivery_required_reads:
             required_snippet = snippets_by_id.get(required_id)
             if required_snippet is None or required_snippet.delivered_by:
-                if activation_closure:
+                if activation_closure or entry_closure:
                     raise ActivationClosureError(ACTIVATION_CLOSURE_UNREADABLE_ERROR.format(required_id))
                 continue
             if str(required_snippet.path) not in seen:
                 stack.append(required_snippet)
 
     resolved.sort(key=lambda s: (TAXONOMY_TYPES.index(s.snippet_type), _scope_rank(s.scope), s.snippet_id))
-    return resolved
+    return ResolvedRequires(snippets=resolved, bundles=bundles)
 
 
 def _build_project_catalog_output() -> str:
@@ -568,6 +782,7 @@ def _load_index(
                     delivered_by=delivered_by,
                     superseded_by=superseded_by,
                     delivery_required_reads=delivery_required_reads,
+                    entry=parse_entry_declarations(item),
                 )
             )
         _index_cache[cache_key] = (mtime, loaded_entries)
@@ -590,6 +805,7 @@ def _load_index(
                 delivered_by=snippet.delivered_by,
                 superseded_by=snippet.superseded_by,
                 delivery_required_reads=snippet.delivery_required_reads,
+                entry=snippet.entry,
             )
         )
 
@@ -969,13 +1185,8 @@ def _snippet_meta_from_file(
     description = metadata.get("description")
     activation_trigger = metadata.get("activation_trigger")
     raw_visibility = metadata.get("visibility")
-    raw_delivered_by = metadata.get("delivered_by")
     delivery = resolve_delivery_settings(metadata)
-    delivered_by = (
-        tuple(raw_delivered_by)
-        if isinstance(raw_delivered_by, list) and all(isinstance(slug, str) for slug in raw_delivered_by)
-        else ()
-    )
+    delivered_by = _delivered_by(metadata)
     return SnippetMeta(
         snippet_id=snippet_id,
         description=description if isinstance(description, str) else "",
@@ -989,6 +1200,7 @@ def _snippet_meta_from_file(
         activation_trigger=activation_trigger if isinstance(activation_trigger, str) else None,
         delivered_by=delivered_by,
         delivery_required_reads=(required_event_handling_dependencies(delivery) if delivery is not None else ()),
+        entry=parse_entry_declarations(metadata),
     )
 
 
@@ -1016,6 +1228,28 @@ def _resolve_home_scope_meta(
     return None
 
 
+def _global_identity_parts(requested: str) -> tuple[str, str, str] | None:
+    """Split a domain identity into scope segment, taxonomy and rest; home and malformed identities give none."""
+    segments = requested.split(_ID_SEGMENT_SEPARATOR)
+    if len(segments) < _DOMAIN_IDENTITY_MIN_SEGMENTS:
+        return None
+    scope_segment, taxonomy, *rest_parts = segments
+    if not taxonomy or not rest_parts or not all(rest_parts):
+        return None
+    if scope_segment in RESERVED_HOME_IDENTITY_PREFIXES:
+        return None
+    return scope_segment, taxonomy, _ID_SEGMENT_SEPARATOR.join(rest_parts)
+
+
+def _global_source_path(scope_segment: str, taxonomy: str, rest: str, *, project_root: Path) -> Path | None:
+    """The publisher source file a domain identity resolves to; an unresolvable registry raises."""
+    candidate = GLOBAL_DOCS_DIR / scope_segment / taxonomy / f"{rest}.md"
+    resolved = resolve_global_doc_source(project_root, candidate)
+    if resolved == candidate or not resolved.is_file():
+        return None
+    return resolved
+
+
 def _resolve_global_scope_meta(
     requested: str,
     scope_segment: str,
@@ -1024,13 +1258,12 @@ def _resolve_global_scope_meta(
     *,
     project_root: Path,
 ) -> SnippetMeta | None:
-    candidate = GLOBAL_DOCS_DIR / scope_segment / taxonomy / f"{rest}.md"
-    relative_tail = candidate.relative_to(GLOBAL_DOCS_DIR)
+    relative_tail = Path(scope_segment) / taxonomy / f"{rest}.md"
     try:
-        resolved = resolve_global_doc_source(project_root, candidate)
+        resolved = _global_source_path(scope_segment, taxonomy, rest, project_root=project_root)
     except DocsPublisherResolutionError:
         return None
-    if resolved == candidate or not resolved.is_file():
+    if resolved is None:
         return None
     owner_root = _owning_project_root(resolved, relative_tail=relative_tail)
     classification, _ = derive_snippet_classification(
@@ -1069,17 +1302,24 @@ def resolve_snippet_meta(
         if home is None:
             return None
         return _resolve_home_scope_meta(requested, identity.taxonomy, identity.rest, half=identity.half, home=home)
-    segments = requested.split("/")
-    if len(segments) < _DOMAIN_IDENTITY_MIN_SEGMENTS:
+    parts = _global_identity_parts(requested)
+    if parts is None:
         return None
-    scope_segment, taxonomy, *rest_parts = segments
-    if not taxonomy or not rest_parts or not all(rest_parts):
-        return None
-    if scope_segment in RESERVED_HOME_IDENTITY_PREFIXES:
-        return None
-    return _resolve_global_scope_meta(
-        requested, scope_segment, taxonomy, "/".join(rest_parts), project_root=project_root
-    )
+    return _resolve_global_scope_meta(requested, *parts, project_root=project_root)
+
+
+def _entry_read_ids(entry_reads: list[str], snippets: list[SnippetMeta]) -> list[str]:
+    """The entry type's required reads, each of which must be a published snippet."""
+    published = {snippet.snippet_id for snippet in snippets}
+    for read_id in entry_reads:
+        if read_id not in published:
+            raise ActivationClosureError(ENTRY_CLOSURE_UNRESOLVED_ERROR.format(read_id))
+    return entry_reads
+
+
+def _generated_bundle_id(bundle: Path) -> str:
+    """The identity a generated domain bundle is rendered under: its domain and file stem."""
+    return f"{bundle.parent.name}/{bundle.stem}"
 
 
 def _render_phase2_taxonomy_bodies(
@@ -1087,6 +1327,7 @@ def _render_phase2_taxonomy_bodies(
     resolved: list[SnippetMeta],
     requested_set: set[str],
     closure_root: SnippetMeta | None,
+    bundles: list[Path],
     project_root: Path,
     global_root: Path,
     global_snippets_root: Path,
@@ -1096,6 +1337,11 @@ def _render_phase2_taxonomy_bodies(
     rendered_dependency_ids: list[str] = []
     body_parts: list[str] = []
     rendered_count = 0
+    for bundle in bundles:
+        bundle_id = _generated_bundle_id(bundle)
+        body_parts.extend(["---", f"id: {bundle_id}", "type: bundle", "---", bundle.read_text(encoding="utf-8")])
+        rendered_count += 1
+        rendered_dependency_ids.append(bundle_id)
     for snippet in resolved:
         if closure_root is None and snippet.snippet_id not in requested_set:
             continue
@@ -1484,12 +1730,16 @@ def build_context_output(  # TODO: refactor to reduce complexity
     target_slug: str | None = None,
     scope: SnippetScope | None = None,
     closure: bool = False,
+    entry_closure: bool = False,
+    entry_reads: list[str] | None = None,
+    on_closure_root: Callable[[SnippetMeta | None], None] | None = None,
     landing_kind: ConfigKind | None = None,
     retrieval_id: str | None = None,
     verb: str | None = None,
 ) -> str:
     if list_projects:
         return _build_project_catalog_output()
+    closure = closure or entry_closure
     if closure:
         _validate_activation_closure_request(
             snippet_ids=snippet_ids,
@@ -1598,6 +1848,8 @@ def build_context_output(  # TODO: refactor to reduce complexity
             if taxonomy_ids
             else None
         )
+        if on_closure_root is not None:
+            on_closure_root(closure_root)
         _validate_activation_closure_request(
             snippet_ids=snippet_ids,
             scope=scope,
@@ -1606,6 +1858,8 @@ def build_context_output(  # TODO: refactor to reduce complexity
             root=closure_root,
             validate_root=True,
         )
+    if unknown_ids and entry_closure:
+        raise ActivationClosureError(ENTRY_CLOSURE_UNRESOLVED_ERROR.format(", ".join(unknown_ids)))
     if unknown_ids:
         _emit_selection_summary(
             retrieval_id=retrieval_id,
@@ -1625,7 +1879,11 @@ def build_context_output(  # TODO: refactor to reduce complexity
             [f"ERROR: Unknown snippet IDs: {', '.join(unknown_ids)}", *_unregistered_domain_refusals(unknown_ids)]
         )
 
-    resolved = _resolve_requires(taxonomy_ids, snippets, activation_closure=closure)
+    entry_read_ids = _entry_read_ids(entry_reads or [], snippets) if entry_closure else []
+    required = _resolve_requires(
+        [*taxonomy_ids, *entry_read_ids], snippets, activation_closure=closure, entry_closure=entry_closure
+    )
+    resolved = required.snippets
     _write_test_output(
         phase="phase2",
         areas=areas,
@@ -1649,6 +1907,7 @@ def build_context_output(  # TODO: refactor to reduce complexity
         resolved=resolved,
         requested_set=requested_set,
         closure_root=closure_root,
+        bundles=required.bundles,
         project_root=project_root,
         global_root=global_root,
         global_snippets_root=global_snippets_root,

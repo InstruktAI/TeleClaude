@@ -23,21 +23,19 @@ from teleclaude.constants import (
     HUMAN_ROLES,
     SYSTEM_DAEMON_PRINCIPAL,
     WORKTREE_DIR,
-    SlashCommand,
-    is_standing_role,
 )
-from teleclaude.core.command_input import (
-    WORKTREE_BOUND_WORKER_COMMANDS,
-    RefusedCommandInput,
-    ResolvedCommandInput,
-    admit_command_input,
-)
+from teleclaude.core.command_input import ResolvedCommandInput, admit_command_input
 from teleclaude.core.endpoints import desk_endpoint_for_stamp, desk_for_folder
 from teleclaude.core.identity import IdentityContext, get_identity_resolver
-from teleclaude.core.models import Session
+from teleclaude.core.interactive_procedure_input import resolve_interactive_input
+from teleclaude.core.models import Session, SessionEntryPoint
+from teleclaude.core.next_machine.lanes import WORKTREE_BOUND_PROCEDURES
+from teleclaude.core.procedure_entry import EntryContext, EntryRefusal, resolve_entry
+from teleclaude.core.roles import is_standing_session
 from teleclaude.core.session_company import resolve_session_creation_company
-from teleclaude.core.session_startup_message import resolve_command_input
 from teleclaude.core.session_utils import resolve_working_dir
+from teleclaude.helpers.agent_types import ThinkingMode
+from teleclaude.paths import REPO_ROOT
 from teleclaude.types.commands import CreateSessionCommand
 
 logger = get_logger(__name__)
@@ -48,9 +46,7 @@ _RESTRICTED_SESSION_REFUSED_EVENT = "restricted_session_refused"
 _RESTRICTED_SESSION_REFUSED_TEMPLATE = (
     "Session creation refused: a {role} session runs only inside an enabled help desk"
 )
-_NO_SESSION_IDENTITY_REFUSED_TEMPLATE = (
-    "Session creation failed: no identity resolved and no system_role (origin={origin})"
-)
+_NO_SESSION_IDENTITY_REFUSED_TEMPLATE = "Session creation failed: no identity resolved and no role (origin={origin})"
 _NO_PROJECT_REFUSED_EVENT = "session_creation_no_project_refused"
 _NO_PROJECT_REFUSED_TEMPLATE = "Session creation refused: no project was given"
 _DESK_NOT_HOSTED_TEMPLATE = "Session creation refused: the requested help desk is not enabled on this computer"
@@ -131,33 +127,50 @@ def resolve_working_slug_from_subdir(subdir: str | None) -> str | None:
     return subdir[len(prefix) :].strip("/") or None
 
 
-def prepare_interactive_create_command(cmd: CreateSessionCommand, human_role: str | None) -> None:
-    """Resolve one target-local command input before session creation observes it."""
-    source_text = cmd.command_input_source_text or cmd.initial_input
-    result = resolve_command_input(cmd.initial_input, cmd.command_input_mode)
-    if isinstance(result, RefusedCommandInput):
-        raise ValueError(result.detail)
+def prepare_interactive_create_command(cmd: CreateSessionCommand, human_role: str | None, session_id: str) -> None:
+    """Resolve one target-local command input through the procedure entry before session creation observes it.
+
+    A leading token naming a published entry procedure creates the session with that procedure's role and the
+    loader naming its materialized brief; any other text stays ordinary conversation. A recognized invocation
+    that violates an argument or authorization rule is refused visibly.
+    """
+    project_root = Path(cmd.project_path) if cmd.project_path else REPO_ROOT
+    result = resolve_interactive_input(cmd.initial_input, cmd.command_input_mode, project_root)
     if not isinstance(result, ResolvedCommandInput):
         return
-    metadata = admit_command_input(result.command, result.args, human_role)
+    source_text = cmd.command_input_source_text or cmd.initial_input
+    admit_command_input(human_role)
+    launch = cmd.launch_intent
+    caller_mode = ThinkingMode(launch.thinking_mode) if launch is not None and launch.thinking_mode else None
     try:
-        slash_command = SlashCommand(result.command)
-    except ValueError:
-        slash_command = None
-    if slash_command in WORKTREE_BOUND_WORKER_COMMANDS:
-        subdir = _WORKTREE_SUBDIR_TEMPLATE.format(worktree_dir=WORKTREE_DIR, slug=metadata.working_slug)
+        resolved = resolve_entry(
+            procedure_token=result.command,
+            arguments=result.args,
+            project_root=project_root,
+            caller=None,
+            entry=EntryContext(),
+            session_id=session_id,
+            caller_mode=caller_mode,
+        )
+    except EntryRefusal as exc:
+        raise ValueError(exc.detail) from exc
+    if resolved.procedure_id in WORKTREE_BOUND_PROCEDURES and resolved.working_slug:
+        subdir = _WORKTREE_SUBDIR_TEMPLATE.format(worktree_dir=WORKTREE_DIR, slug=resolved.working_slug)
         worktree_dir = Path(resolve_working_dir(cmd.project_path, subdir))
         if not worktree_dir.is_dir():
             raise ValueError(_WORKTREE_DIRECTORY_MISSING_TEMPLATE.format(worktree_dir=worktree_dir))
         cmd.subdir = subdir
-    cmd.initial_input = result.normalized_message
-    cmd.command = result.command
-    cmd.system_role = metadata.system_role
-    cmd.job = metadata.job
-    cmd.working_slug = metadata.working_slug
-    if cmd.launch_intent is not None and cmd.launch_intent.message is not None:
-        cmd.launch_intent.message = result.normalized_message
-        cmd.launch_intent.command_input_source_text = source_text
+    cmd.initial_input = f"{resolved.procedure_id} {resolved.arguments}".strip()
+    cmd.command = resolved.procedure_id
+    cmd.role = resolved.role.name.value
+    cmd.job = None
+    cmd.working_slug = resolved.working_slug
+    if launch is not None and launch.message is not None:
+        launch.message = resolved.loader
+        launch.command_input_source_text = source_text
+        launch.invocation = resolved.record
+        launch.candidate_order = launch.candidate_order or resolved.agents
+        launch.thinking_mode = launch.thinking_mode or resolved.thinking_mode.value
 
 
 async def resolve_session_creation_identity(
@@ -184,12 +197,12 @@ async def resolve_session_creation_identity(
     parent_company = parent_session.company if parent_session else None
     company, company_source = resolve_session_creation_company(cmd.request_id, cmd.company, human_email, parent_company)
     human_role = _creation_human_role(cmd, identity, human_email, principal)
-    prepare_interactive_create_command(cmd, human_role)
+    prepare_interactive_create_command(cmd, human_role, session_id)
     subfolder = cmd.subdir
     working_slug = resolve_working_slug_from_subdir(subfolder) or cmd.working_slug
-    cmd_system_role, cmd_job = cmd.system_role, cmd.job
+    cmd_role = cmd.role
     initiator_session_id, initiator_computer = cmd.initiator_session_id, cmd.initiator_computer
-    if is_standing_role(cmd_system_role, cmd_job):
+    if is_standing_session(cmd_role, scheduled=cmd.entry_point is SessionEntryPoint.CRON):
         if initiator_session_id:
             logger.info(
                 _LISTENER_REGISTRATION_SKIPPED_EVENT,
@@ -200,10 +213,9 @@ async def resolve_session_creation_identity(
         initiator_session_id = initiator_computer = None
         human_email = human_role = principal = None
 
-    if not human_role and not cmd_system_role and principal != SYSTEM_DAEMON_PRINCIPAL:
+    if not human_role and not cmd_role and principal != SYSTEM_DAEMON_PRINCIPAL:
         raise SessionCreationRefused(_NO_SESSION_IDENTITY_REFUSED_TEMPLATE.format(origin=origin))
 
-    system_role = cmd_system_role
     if cmd.endpoint is not None and cmd.endpoint.is_help_desk:
         # A request naming a desk endpoint is placed in the folder of a desk this
         # computer hosts (desks run only on the master); any role runs there confined.
@@ -214,7 +226,7 @@ async def resolve_session_creation_identity(
         project_path = str(desk.folder)
         Path(project_path).mkdir(parents=True, exist_ok=True)
         subfolder = working_slug = None
-    elif is_desk_role(system_role or None, human_role):
+    elif is_desk_role(cmd_role or None, human_role):
         # A role below member runs only inside an enabled help desk, and only the
         # one its request names: nothing is redirected to a desk of the jail's choosing.
         desk = (

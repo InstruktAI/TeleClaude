@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from teleclaude.cli import CommandScope
 from teleclaude.cli.telec.surface import CLI_SURFACE, CommandAuth, CommandDef
+from teleclaude.core.roles import Role, UnknownRole, resolve_role
 
 _TELEC_PREFIX = "telec "
 _PATH_SEPARATOR = "."
@@ -54,10 +55,23 @@ def is_command_allowed(
     system_role: str | None,
     human_role: str | None,
 ) -> bool:
-    """Check whether a caller is authorized to run a CLI command.
+    """Check whether a caller recorded under ``system_role`` is authorized to run a CLI command.
 
-    Agent callers (system_role set) check auth.system.
-    Human callers (no system_role) check auth.human.
+    A recorded role is resolved through the role catalog without reporting; callers that know the
+    session resolve it themselves and use ``is_command_allowed_for``.
+    """
+    return is_command_allowed_for(command_path, resolve_role(system_role), human_role)
+
+
+def is_command_allowed_for(
+    command_path: str,
+    role: Role | UnknownRole | None,
+    human_role: str | None,
+) -> bool:
+    """Check whether a caller with a resolved catalog role is authorized to run a CLI command.
+
+    Agent callers (a resolved role) are checked against the command's capability; a role the
+    catalog does not name is refused. Human callers (no role) check auth.human.
     Unknown command paths return False (fail closed).
     """
     auth = _resolve_command_auth(command_path)
@@ -65,4 +79,4 @@ def is_command_allowed(
         return False
     if auth.caller_independent:
         return True
-    return auth.allows(system_role, human_role)
+    return auth.allows(role, human_role)

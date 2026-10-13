@@ -636,7 +636,7 @@ async def _project_session_from_transcript_locked(
             output_alias, output_avatar_url = resolve_discord_author_alias(
                 output_author,
                 owning_session_id=session.session_id,
-                job_role=session.job,
+                job_role=session.role,
             )
             output_metadata = MessageMetadata(
                 reflection_actor_name=output_alias,

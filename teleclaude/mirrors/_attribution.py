@@ -12,8 +12,8 @@ from typing import TypedDict, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude import paths as tc_paths
-from teleclaude.constants import ROLE_WORKER
 from teleclaude.core.db._sync import SessionMirrorFacts, list_session_mirror_facts_sync
+from teleclaude.core.roles import is_worker_role
 
 from ._types import JsonValue
 from .session_context import SessionMirrorContext, session_context_from_facts
@@ -178,7 +178,7 @@ def backfill_session_attributions(conn: sqlite3.Connection, _store_path: str, sn
             "command": context.command,
             "todo": context.todo,
             "title": context.title,
-            "is_worker": int(context.system_role == ROLE_WORKER),
+            "is_worker": int(is_worker_role(context.role) or bool(is_worker)),
             "metadata": json.dumps(metadata, sort_keys=True),
             "mirror_id": mirror_id,
         }

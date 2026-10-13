@@ -16,11 +16,12 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import PREPARE_AUTHOR_JOB_ROLES, WORK_LANE_JOB_ROLES, DriverLaunchClass, SlashCommand
+from teleclaude.constants import DriverLaunchClass
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
 from teleclaude.core.next_machine.git_ops import get_ref_commit
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
+from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES, WORK_LANE_ROLES
 from teleclaude.core.next_machine.lifecycle import pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
     SessionRunner,
@@ -89,9 +90,9 @@ __all__ = [
 ]
 
 
-_LANE_JOB_ROLES: dict[RunnerLane, frozenset[str]] = {
-    RunnerLane.PREPARE: PREPARE_AUTHOR_JOB_ROLES,
-    RunnerLane.WORK: WORK_LANE_JOB_ROLES,
+_LANE_ROLES: dict[RunnerLane, frozenset[str]] = {
+    RunnerLane.PREPARE: PREPARE_AUTHOR_ROLES,
+    RunnerLane.WORK: WORK_LANE_ROLES,
 }
 _SANCTIONED_PATH_FROM_PREPARE = (
     "complete the prepare lifecycle, whose terminal releases the claim; "
@@ -149,10 +150,10 @@ async def _reflect_claim_on_caller_session(
     backfills the session's ``working_slug`` (so the session is the slug's
     authoritative owner for dedup and the mutation gate), repairs its title to
     the lane's command shape (so the adoption is visible in the Sessions view),
-    and confers the lane's born-driver ``system_role`` and ``job`` (via
+    and confers the lane's born-driver ``role`` (via
     :func:`role_for_lane`) so the session reaches exact parity with a
     directly-started driver of the same lane instead of falling through the
-    caller-verification ``working_slug`` ⇒ worker fallback.
+    a role-less session.
 
     This fires both for a session that holds no claim yet (empty
     ``working_slug``) and for a session already bound to this same ``slug``
@@ -170,16 +171,14 @@ async def _reflect_claim_on_caller_session(
         return
     command, _ = command_for_lane(lane)
     desired_title = f"{command} {slug}"
-    system_role, job = role_for_lane(lane)
+    role = role_for_lane(lane, Path(session.project_path) if session.project_path else Path.cwd())
     updates: dict[str, str] = {}
     if session.working_slug != slug:
         updates["working_slug"] = slug
     if session.title != desired_title:
         updates["title"] = desired_title
-    if session.system_role != system_role:
-        updates["system_role"] = system_role
-    if session.job != job.value:
-        updates["job"] = job.value
+    if session.role != role:
+        updates["role"] = role
     if updates:
         await runtime_db.update_session(session.session_id, **updates)
 
@@ -265,7 +264,7 @@ async def _guard_reviewer_start(
     project_path: str | Path,
     slug: str | None,
     *,
-    command: SlashCommand | None,
+    command: str | None,
     caller_session_id: str | None,
     caller_human_email: str | None,
     thinking_mode: str,
@@ -292,7 +291,7 @@ async def _guard_reviewer_start(
     if command is None:
         return
     runtime_db = db or await get_db()
-    command_value = command.value
+    command_value = command
     if slug:
         # /review-plan and /review-architecture run at repo root
         # (subdir=None); every other slug-bound reviewer runs in the slug
@@ -326,7 +325,7 @@ async def guard_driver_start(
     launch_class: DriverLaunchClass,
     caller_session_id: str | None,
     caller_human_email: str | None,
-    command: SlashCommand | None = None,
+    command: str | None = None,
     thinking_mode: str,
     db: Db | None = None,
 ) -> DriverStartGuardResult:
@@ -440,10 +439,10 @@ async def manual_start_lifecycle_session(
     )
 
 
-def _lane_of_job(job: str | None) -> RunnerLane | None:
-    """Return the SDLC lane a session job belongs to, or ``None`` when no lane owns it."""
-    for lane, jobs in _LANE_JOB_ROLES.items():
-        if job in jobs:
+def _lane_of_role(role: str | None) -> RunnerLane | None:
+    """Return the SDLC lane a session role belongs to, or ``None`` when no lane owns it."""
+    for lane, roles in _LANE_ROLES.items():
+        if role in roles:
             return lane
     return None
 
@@ -458,7 +457,7 @@ async def _refuse_lane_crossing(
     """Refuse a caller that holds ``slug`` in the other SDLC lane, before any claim write.
 
     The caller holds the slug when it is the todo's ``active_runner`` or its session
-    row is bound to the slug. Its lane is read from its ``job``; a job no lane owns
+    row is bound to the slug. Its lane is read from its ``role``; a role no lane owns
     (reviewers, drift analyzers, standing roles, unbound sessions) is never refused.
     The refusal names how the todo changes hands through the lifecycle runner instead.
     """
@@ -466,8 +465,8 @@ async def _refuse_lane_crossing(
     holds_slug = (todo is not None and todo.active_runner == caller_session_id) or (
         session is not None and session.working_slug == slug
     )
-    held_lane = _lane_of_job(session.job if session is not None else None)
-    if not holds_slug or held_lane is None or held_lane is requested_lane or requested_lane not in _LANE_JOB_ROLES:
+    held_lane = _lane_of_role(session.role if session is not None else None)
+    if not holds_slug or held_lane is None or held_lane is requested_lane or requested_lane not in _LANE_ROLES:
         return
     raise LaneCrossingRefused(
         slug=slug,

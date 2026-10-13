@@ -191,7 +191,7 @@ class CreateSessionCommand(InternalCommand):
     skip_listener_registration: bool = False
     origin_metadata: Mapping[str, object] | None = None
     launch_intent: Optional["SessionLaunchIntent"] = None
-    system_role: str | None = None
+    role: str | None = None
     job: str | None = None
     company: str | None = None
     command: str | None = None
@@ -716,14 +716,14 @@ class HandoffAgentCommand(InternalCommand):
 
     session_id: str
     agent_name: str | None = None
-    caller_system_role: str | None = None
+    caller_role: str | None = None
 
     def __init__(
         self,
         *,
         session_id: str,
         agent_name: str | None = None,
-        caller_system_role: str | None = None,
+        caller_role: str | None = None,
         request_id: str | None = None,
     ):
         super().__init__(
@@ -735,7 +735,7 @@ class HandoffAgentCommand(InternalCommand):
         )
         self.session_id = session_id
         self.agent_name = agent_name
-        self.caller_system_role = caller_system_role
+        self.caller_role = caller_role
 
     def to_payload(self) -> dict[str, object]:
         args = [self.agent_name] if self.agent_name else []

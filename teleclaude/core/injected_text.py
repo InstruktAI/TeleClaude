@@ -639,7 +639,7 @@ def render_command_loader(command: str, document: str, args: str) -> str:
     return _SECTION_SEPARATOR.join((marker, instruction))
 
 
-def _is_command_loader(text: str) -> bool:
+def is_command_loader(text: str) -> bool:
     """Recognize a complete dispatch loader occupying the whole text."""
     return _COMMAND_LOADER_RE.fullmatch(text) is not None
 
@@ -652,7 +652,7 @@ def cut_transcript_entry(text: str, *, is_user_entry: bool) -> tuple[TranscriptC
     """
     if not is_user_entry:
         return (TranscriptCutSegment(None, (0, len(text)), None, text),)
-    if _is_command_loader(text):
+    if is_command_loader(text):
         return (TranscriptCutSegment(TranscriptEntryKind.COMMAND_LOADER, (0, len(text)), None, text),)
     segments: list[TranscriptCutSegment] = []
     cursor = 0
@@ -851,7 +851,7 @@ def classify_transcript_text(
             if accepted_kind is TranscriptEntryKind.PLATFORM_CONTROL
             else None,
         )
-    if _is_command_loader(text):
+    if is_command_loader(text):
         return TranscriptTextClassification(TranscriptEntryKind.COMMAND_LOADER)
     label = _platform_control_label(text)
     if label is not None:

@@ -93,7 +93,7 @@ def _log_project_context_rejection(exc: McpRuntimeError, identity: CallerIdentit
         _INVALID_PROJECT_CONTEXT_EVENT,
         reason=exc.code,
         caller_session_id=identity.session_id,
-        caller_entry_point=(identity.entry_point.value if identity.entry_point is not None else identity.system_role),
+        caller_entry_point=(identity.entry_point.value if identity.entry_point is not None else identity.role),
     )
 
 

@@ -92,7 +92,9 @@ FLAG_TAIL_TOOLS = Flag("--tools", desc="Include tool use entries", arity=SWITCH)
 FLAG_TAIL_FULL = Flag("--full", desc="Show all projected messages instead of the latest user turn", arity=SWITCH)
 FLAG_TAIL_PANE = Flag("--pane", desc="Show the current terminal pane instead of transcript messages", arity=SWITCH)
 
-FLAG_RUN_COMMAND = Flag("--command", desc="Bare canonical command (e.g. build)", arity=VALUE)
+FLAG_RUN_COMMAND = Flag(
+    "--command", desc="Entry procedure snippet ID (e.g. sdlc/procedure/lifecycle/work/build)", arity=VALUE
+)
 FLAG_RUN_ARGS = Flag("--args", desc="Command arguments", arity=VALUE)
 FLAG_RUN_SUBFOLDER = Flag("--subfolder", desc="Subdirectory within the project", arity=VALUE)
 FLAG_RUN_ADDITIONAL_CONTEXT = Flag(

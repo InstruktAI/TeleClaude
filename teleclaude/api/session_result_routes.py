@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
-from teleclaude.api_models import SendResultRequest
+from teleclaude.api_session_actions_models import SendResultRequest
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.types.commands import SystemCommand
 

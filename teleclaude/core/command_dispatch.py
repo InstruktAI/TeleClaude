@@ -29,7 +29,7 @@ from teleclaude.core.reconciliation import (
     INTERACTIVE_COMMAND_INPUT_FEATURE_ID,
     decode_capability_set,
 )
-from teleclaude.core.reconciliation.feature_ids import RELAY_REQUEST_FEATURE_ID
+from teleclaude.core.reconciliation.feature_ids import PROCEDURE_ENTRY_FEATURE_ID, RELAY_REQUEST_FEATURE_ID
 from teleclaude.core.shutdown_drain import ShutdownRefusal
 from teleclaude.types.commands import (
     CommandType,
@@ -419,6 +419,8 @@ def required_command_capabilities(command: InternalCommand) -> frozenset[str]:
             AgentDispatchMode.MANUAL_PREFERENCE,
         }:
             required.add(DETERMINISTIC_AGENT_ROUTING_FEATURE_ID)
+        if intent is not None and intent.invocation is not None:
+            required.add(PROCEDURE_ENTRY_FEATURE_ID)
     if isinstance(command, HandoffAgentCommand):
         required.add(HANDOFF_AGENT_FEATURE_ID)
     return frozenset(required)
@@ -465,7 +467,7 @@ async def forward_command_to_peer(
                 request_id=command.request_id,
                 dispatch_mode=intent.dispatch_mode,
                 entry_point=command.entry_point,
-                job_role=command.job,
+                job_role=command.role,
             )
         elif intent is not None and intent.dispatch_mode is AgentDispatchMode.FIXED:
             emit_agent_dispatch_decision(
@@ -476,7 +478,7 @@ async def forward_command_to_peer(
                 request_id=command.request_id,
                 dispatch_mode=intent.dispatch_mode,
                 entry_point=command.entry_point,
-                job_role=command.job,
+                job_role=command.role,
             )
 
     message_id = await client.send_request(

@@ -8,6 +8,17 @@ from typing import TypedDict, cast
 from teleclaude.core.models._types import JsonDict
 from teleclaude.docs_subscriptions import EventDeliveryMode
 
+#: The root origin-metadata section a subject-bound agent's session records its binding in.
+BINDING_SECTION = "procedure_binding"
+
+
+class BindingField(StrEnum):
+    """Persisted key names in a subject-bound agent's ``procedure_binding`` origin section."""
+
+    PROCEDURE = "procedure"
+    HOME = "home"
+    SUBJECT = "subject"
+
 
 class ActivationOutcome(StrEnum):
     """How an activation reached its agent: started it, woke an open one, or revived a closed one."""

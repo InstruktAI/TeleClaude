@@ -25,7 +25,6 @@ from tempfile import TemporaryFile
 from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.constants import AGENT_ARTIFACT_SOURCE_GLOBS, ArtifactKind
 from teleclaude.docs_publishers import git_common_root
-from teleclaude.domains import publishes_for_root
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT, ConfigFileName
 from teleclaude.project_manifest import ConfigKind
@@ -65,7 +64,6 @@ _COMMANDS_DIRNAME = "commands"
 _SKILLS_DIRNAME = "skills"
 _SKILL_ENTRYPOINT_FILENAME = "SKILL.md"
 _MARKDOWN_SUFFIX = ".md"
-_MALFORMED_COMMAND_SOURCE_TEMPLATE = "{path} is a malformed command source companion"
 _GIT_CHECK_IGNORE_ARGUMENTS = ("-z", "--stdin")
 _GIT_CHECK_IGNORE_NOT_IGNORED_STATUS = 1
 _GIT_IGNORE_QUERY_FAILURE_TEMPLATE = "Could not determine ignored agent-artifact boundary entries: {error}"
@@ -73,12 +71,9 @@ _GIT_IGNORE_QUERY_FAILURE_TEMPLATE = "Could not determine ignored agent-artifact
 # `agents/AGENTS.master.md` — never an authored source, but an expected,
 # sanctioned presence, not a boundary violation. It is gitignored.
 _GENERATED_ROOT_ENTRYPOINT_FILENAME = "AGENTS.md"
-_HOME_COMMANDS_DIRNAME = "commands"
 _HOME_SKILLS_DIRNAME = "skills"
 _FLAT_HOME_KINDS = frozenset({ConfigKind.COMPANY, ConfigKind.PERSON})
-_FLAT_HOME_BOUNDARY_VIOLATION_TEMPLATE = (
-    "{path} is outside the commands/ and skills/ artifact roots of its company or person home"
-)
+_FLAT_HOME_BOUNDARY_VIOLATION_TEMPLATE = "{path} is outside the skills/ artifact root of its company or person home"
 
 
 class ArtifactTier(StrEnum):
@@ -102,7 +97,6 @@ class ArtifactReach(StrEnum):
 
     SELF = "self"
     MOTHER_ONLY = "mother_only"
-    DOMAIN = "domain"
 
 
 @dataclass(frozen=True)
@@ -110,9 +104,7 @@ class ArtifactSource:
     """One classified agent-artifact source path.
 
     ``kind`` is ``None`` for a root-tier master/addendum/global-baseline file:
-    these are locked wrappers, not commands or skills, and carry no
-    structural body validation. ``domain`` is populated only for a
-    ``ArtifactReach.DOMAIN`` global command.
+    these are locked wrappers, not skills, and carry no structural body validation.
     """
 
     entrypoint: Path
@@ -120,7 +112,6 @@ class ArtifactSource:
     authorship: ArtifactAuthorship
     reach: ArtifactReach
     kind: ArtifactKind | None = None
-    domain: str | None = None
 
 
 @dataclass(frozen=True)
@@ -161,11 +152,6 @@ class ReachFacts:
         """Whether the root is (or shares a checkout with) Mother."""
         return is_mother_project(self.project_root)
 
-    @cached_property
-    def publishes(self) -> frozenset[str]:
-        """The domain slugs the root declares in ``business.publishes``."""
-        return frozenset(publishes_for_root(self.project_root))
-
 
 def reach_ok(project_root: Path, source: ArtifactSource, facts: ReachFacts | None = None) -> bool:
     """Return whether ``project_root`` may publish ``source``.
@@ -175,22 +161,14 @@ def reach_ok(project_root: Path, source: ArtifactSource, facts: ReachFacts | Non
     """
     if source.reach is ArtifactReach.SELF:
         return True
-    reach_facts = facts or ReachFacts(project_root)
-    if source.reach is ArtifactReach.MOTHER_ONLY:
-        return reach_facts.is_mother
-    return source.domain in reach_facts.publishes
+    return (facts or ReachFacts(project_root)).is_mother
 
 
 def reach_violation(project_root: Path, source: ArtifactSource, facts: ReachFacts | None = None) -> str | None:
     """Return a human-readable reach-violation message, or ``None`` when in reach."""
     if reach_ok(project_root, source, facts):
         return None
-    if source.reach is ArtifactReach.MOTHER_ONLY:
-        return f"{source.entrypoint} is a Mother-only agent-artifact source; this project may not publish it"
-    return (
-        f"{source.entrypoint} publishes global domain '{source.domain}', "
-        f"which this project does not declare in business.publishes"
-    )
+    return f"{source.entrypoint} is a Mother-only agent-artifact source; this project may not publish it"
 
 
 def _agents_root(project_root: Path) -> Path:
@@ -288,24 +266,6 @@ def _iter_root_files(project_root: Path) -> Iterator[ArtifactSource]:
                 )
 
 
-def _iter_uniform_command_tree(
-    root: Path, *, tier: ArtifactTier, reach: ArtifactReach, domain: str | None
-) -> Iterator[ArtifactSource]:
-    """Enumerate command sources, excluding dotted companion-shaped siblings."""
-    if not root.is_dir():
-        return
-    for entry in sorted(root.iterdir(), key=lambda path: path.name):
-        if entry.is_file() and entry.suffix == _MARKDOWN_SUFFIX and companion_shape(entry) is None:
-            yield ArtifactSource(
-                entrypoint=entry,
-                tier=tier,
-                authorship=ArtifactAuthorship.AUTHORED,
-                reach=reach,
-                kind=ArtifactKind.COMMAND,
-                domain=domain,
-            )
-
-
 def _iter_skill_packages(
     root: Path, *, tier: ArtifactTier, reach: ArtifactReach, authorship: ArtifactAuthorship
 ) -> Iterator[ArtifactSource]:
@@ -346,13 +306,6 @@ def _iter_skill_package_tree(
     yield from _iter_skill_packages(root, tier=tier, reach=reach, authorship=authorship)
 
 
-def _iter_global_commands(project_root: Path) -> Iterator[ArtifactSource]:
-    for domain_dir in _global_command_directories(project_root):
-        yield from _iter_uniform_command_tree(
-            domain_dir, tier=ArtifactTier.GLOBAL, reach=ArtifactReach.DOMAIN, domain=domain_dir.name
-        )
-
-
 def _iter_global_skills(project_root: Path) -> Iterator[ArtifactSource]:
     agents_root = _agents_root(project_root)
     yield from _iter_skill_package_tree(
@@ -365,12 +318,6 @@ def _iter_global_skills(project_root: Path) -> Iterator[ArtifactSource]:
 
 
 def _iter_project_sources(project_root: Path) -> Iterator[ArtifactSource]:
-    yield from _iter_uniform_command_tree(
-        project_commands_root(project_root),
-        tier=ArtifactTier.PROJECT,
-        reach=ArtifactReach.SELF,
-        domain=None,
-    )
     yield from _iter_skill_packages(
         project_skills_root(project_root),
         tier=ArtifactTier.PROJECT,
@@ -386,14 +333,8 @@ def _is_flat_home(project_root: Path) -> bool:
 
 
 def _iter_flat_home_sources(project_root: Path) -> Iterator[ArtifactSource]:
-    """Enumerate the flat command and skill sources owned by a company or person home."""
+    """Enumerate the flat skill sources owned by a company or person home."""
     agents_root = _agents_root(project_root)
-    yield from _iter_uniform_command_tree(
-        agents_root / _HOME_COMMANDS_DIRNAME,
-        tier=ArtifactTier.HOME,
-        reach=ArtifactReach.SELF,
-        domain=None,
-    )
     yield from _iter_skill_packages(
         agents_root / _HOME_SKILLS_DIRNAME,
         tier=ArtifactTier.HOME,
@@ -411,7 +352,7 @@ def _flat_home_boundary_violation(project_root: Path, resolved: Path) -> str | N
         return None
     if not relative_parts:
         return None
-    if relative_parts[0] in (_HOME_COMMANDS_DIRNAME, _HOME_SKILLS_DIRNAME):
+    if relative_parts[0] == _HOME_SKILLS_DIRNAME:
         return None
     return _FLAT_HOME_BOUNDARY_VIOLATION_TEMPLATE.format(path=resolved)
 
@@ -426,10 +367,32 @@ def all_sources(project_root: Path) -> list[ArtifactSource]:
     root = project_root.resolve()
     sources: list[ArtifactSource] = []
     sources.extend(_iter_root_files(root))
-    sources.extend(_iter_global_commands(root))
     sources.extend(_iter_global_skills(root))
     sources.extend(_iter_project_sources(root))
     return sources
+
+
+def _commands_pending_retirement(commands_root: Path) -> bool:
+    """Whether every file under a retired command tree is a retirement companion or carries one.
+
+    The command kind is retired; a tree whose files are all marked for deletion by a zero-byte
+    companion is awaiting the fold that removes it, and is not an artifact boundary violation.
+    """
+    if not commands_root.is_dir():
+        return False
+    for path in commands_root.rglob("*"):
+        if not path.is_file():
+            continue
+        if is_retirement_companion(path):
+            continue
+        has_companion = any(
+            is_retirement_companion(sibling)
+            for sibling in path.parent.glob(f"{path.stem}.*{_MARKDOWN_SUFFIX}")
+            if companion_shape(sibling) is not None
+        )
+        if not has_companion:
+            return False
+    return True
 
 
 def _boundary_violation(project_root: Path, resolved: Path) -> str | None:
@@ -454,12 +417,13 @@ def _boundary_violation(project_root: Path, resolved: Path) -> str | None:
     ):
         return None
     if first in (_GLOBAL_DIRNAME, _LOCAL_DIRNAME):
-        if len(relative_parts) < 2 or relative_parts[1] in (_COMMANDS_DIRNAME, _SKILLS_DIRNAME):
+        if len(relative_parts) < 2 or relative_parts[1] == _SKILLS_DIRNAME:
             return None
-        return (
-            f"{resolved} is under agents/{first}/, which admits only "
-            f"'{_COMMANDS_DIRNAME}' and '{_SKILLS_DIRNAME}' as agent-artifact kinds"
-        )
+        if relative_parts[1] == _COMMANDS_DIRNAME and _commands_pending_retirement(
+            agents_root / first / _COMMANDS_DIRNAME
+        ):
+            return None
+        return f"{resolved} is under agents/{first}/, which admits only '{_SKILLS_DIRNAME}' as an agent-artifact kind"
     return f"{resolved} is directly under agents/ but is not a recognized master, addendum, or tier root"
 
 
@@ -486,29 +450,11 @@ class ArtifactClassifier:
         )
         return tuple((source, source.entrypoint.resolve(strict=False)) for source in sources)
 
-    @cached_property
-    def _command_roots(self) -> tuple[Path, ...]:
-        return (project_commands_root(self._root), *_global_command_directories(self._root))
-
     def classify(self, candidate: Path) -> ArtifactSource | None:
         """Classify a candidate without rebuilding the pass's source catalogue."""
         resolved = candidate if candidate.is_absolute() else self._root / candidate
         resolved = resolved.resolve(strict=False)
         flat_home = self._flat_home
-        shape = companion_shape(resolved)
-        if shape is not None and resolved.parent in self._command_roots:
-            source_path = resolved.parent / (shape[0] + _MARKDOWN_SUFFIX)
-            source = next(
-                (
-                    item
-                    for item, entrypoint in self._sources
-                    if item.kind is ArtifactKind.COMMAND and entrypoint == source_path
-                ),
-                None,
-            )
-            if source is not None and is_retirement_companion(resolved):
-                return source
-            raise UnclassifiedSourceError(_MALFORMED_COMMAND_SOURCE_TEMPLATE.format(path=resolved))
         for source, entrypoint in self._sources:
             if source.kind is ArtifactKind.SKILL:
                 if resolved == entrypoint or entrypoint.parent in resolved.parents or resolved == entrypoint.parent:
@@ -521,7 +467,7 @@ class ArtifactClassifier:
             if flat_home
             else _boundary_violation(self._root, resolved)
         )
-        if violation is not None:
+        if violation is not None and os.path.lexists(resolved):
             raise UnclassifiedSourceError(violation)
         return None
 
@@ -587,12 +533,4 @@ def boundary_violations(project_root: Path) -> list[str]:
         violation = _boundary_violation(root, entry.resolve(strict=False))
         if violation is not None:
             violations.append(violation)
-    command_directories = [*_global_command_directories(root), project_commands_root(root)]
-    for command_root in command_directories:
-        if not command_root.is_dir():
-            continue
-        for entry in sorted(command_root.iterdir(), key=lambda path: path.name):
-            if entry.is_file() and entry.suffix == _MARKDOWN_SUFFIX and companion_shape(entry) is not None:
-                if not is_retirement_companion(entry):
-                    violations.append(_MALFORMED_COMMAND_SOURCE_TEMPLATE.format(path=entry))
     return violations

@@ -10,8 +10,8 @@ from teleclaude.constants import (
     CHECKPOINT_COMMIT_EVIDENCE,
     CHECKPOINT_REVIEW_DISPATCH_EVIDENCE,
     CheckpointScope,
-    SlashCommand,
 )
+from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.hooks.checkpoint._git import (
     _canonical_tool_name,
     _extract_apply_patch_paths,
@@ -292,18 +292,15 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
         return head == "instrukt-ai-logs"
     if evidence == "telec sessions restart":
         return head == "telec" and "sessions" in rest and "restart" in rest
-    if evidence == SlashCommand.REVIEW_COMMITS.value:
-        # Only a real dispatch: `telec sessions run --command sdlc/review-commits`,
-        # with the command name as the value of --command (not merely mentioned).
-        # A bare, unqualified token still resolves to this same command until the
-        # documentation sweep lands, so both forms count as evidence here.
+    if evidence == LifecycleProcedure.REVIEW_COMMITS.value:
+        # Only a real dispatch: `telec sessions run --command <review-commits procedure id>`,
+        # with the procedure ID as the value of --command (not merely mentioned).
         if head != "telec" or "sessions" not in rest or "run" not in rest or "--command" not in tokens:
             return False
         command_idx = tokens.index("--command")
         if command_idx + 1 >= len(tokens):
             return False
-        bare_evidence = evidence.rsplit("/", 1)[-1]
-        return tokens[command_idx + 1] in {evidence, f"/{evidence}", bare_evidence, f"/{bare_evidence}"}
+        return tokens[command_idx + 1] in {evidence, f"/{evidence}"}
     if evidence == "/agent-restart":
         return any("/agent-restart" in token for token in tokens)
     if evidence == "agent_restart":

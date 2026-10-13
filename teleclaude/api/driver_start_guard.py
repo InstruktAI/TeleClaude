@@ -7,9 +7,8 @@ from teleclaude.api.run_session_refusals import RunSessionRefusal
 from teleclaude.caller_identity import PersonCliCaller, caller_from_principal, human_principal_for_email
 from teleclaude.constants import DriverLaunchClass
 from teleclaude.core.agent_dispatch import AgentDispatchReason
-from teleclaude.core.command_service import classify_driver_launch
+from teleclaude.core.next_machine.lanes import classify_driver_launch
 from teleclaude.core.next_machine.manual_start import DriverStartGuardResult, guard_driver_start
-from teleclaude.core.session_startup_message import resolve_slash_command
 from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
 
 
@@ -37,7 +36,8 @@ async def enforce_driver_start_guard(
     *,
     project_path: str,
     working_slug: str | None,
-    command: str | None,
+    procedure_id: str | None,
+    role: str | None,
     caller_session_id: str | None,
     caller_human_email: str | None,
     thinking_mode: str,
@@ -50,8 +50,7 @@ async def enforce_driver_start_guard(
     through silently — except a reviewer launch, which is checked even with no
     slug (commit review carries no todo slug at all).
     """
-    normalized_command = resolve_slash_command(command)
-    launch_class = classify_driver_launch(normalized_command)
+    launch_class = classify_driver_launch(role)
     if launch_class is not DriverLaunchClass.REVIEWER and not working_slug:
         return DriverStartGuardResult()
     try:
@@ -61,7 +60,7 @@ async def enforce_driver_start_guard(
             launch_class=launch_class,
             caller_session_id=caller_session_id,
             caller_human_email=caller_human_email,
-            command=normalized_command,
+            command=procedure_id,
             thinking_mode=thinking_mode,
         )
     except ReviewerConflict as conflict:

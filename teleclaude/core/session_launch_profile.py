@@ -105,7 +105,7 @@ def resolve_session_launch_profile(session: Session, agent: str) -> SessionLaunc
     """
     person_role = session_person_role(session)
     endpoint = EndpointStamp.from_session(session)
-    at_desk = is_desk_role(session.system_role, session.human_role) or (
+    at_desk = is_desk_role(session.role, session.human_role) or (
         endpoint is not None and endpoint.is_help_desk and person_role != HUMAN_ROLE_ADMIN
     )
     if at_desk:

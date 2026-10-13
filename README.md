@@ -122,7 +122,7 @@ instrukt-ai-logs teleclaude  # Monitor the newly installed daemon
 
 `telec config project create` and `adopt` are different. They bring a project under TeleClaude, each as its own act. `telec config project create <name>` makes a new, empty project of its own in your projects area (`--company <slug>` for a company's, `--path <dir>` for a platform administrator's ownerless one outside every home); after scaffolding into it, `telec config project adopt` declares what it now holds. `telec config project adopt` registers the folder you stand in, where it is, keeping its history and location, and re-running it brings an already-registered project back in line. `telec sync` runs a registered project's maintenance on demand. Documentation publication happens through the project's own commit and review boundary, not as a side effect of any of them. This is project setup, not repo installation.
 
-For AI-driven project analysis and quality-config assessment, start the sessions explicitly after `telec config project create` or `telec config project adopt`: `telec sessions run --command /projects-analyze` and `telec sessions run --command /projects-assess-config`.
+For AI-driven project analysis and quality-config assessment, start the sessions explicitly after `telec config project create` or `telec config project adopt`: `telec sessions run --command sdlc/procedure/project-analysis` and `telec sessions run --command sdlc/procedure/code-config-assessment`.
 
 ### Antigravity permissions
 

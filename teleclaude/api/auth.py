@@ -22,13 +22,14 @@ from teleclaude.caller_identity import (
     caller_from_principal,
     human_principal_for_email,
 )
-from teleclaude.cli.telec.auth import is_command_allowed
+from teleclaude.cli.telec.auth import is_command_allowed_for
 from teleclaude.config.machine import config
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER, LOGIN_REQUIRED_DETAIL, ROLE_SYSTEM, SYSTEM_DAEMON_PRINCIPAL
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER, LOGIN_REQUIRED_DETAIL, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.conversation_messages import resolve_session_event_author
 from teleclaude.core.daemon_lifecycle_identity import is_daemon_credential
 from teleclaude.core.db import db
 from teleclaude.core.operation_caller_identity import get_relayed_caller
+from teleclaude.core.roles import resolve_session_role
 from teleclaude.types.commands import CallerProvenance
 from teleclaude.types.creation_record import EntryPoint
 
@@ -44,7 +45,7 @@ class CallerIdentity:
     """Identity the request's client resolved and carried to the daemon."""
 
     session_id: str
-    system_role: str | None
+    role: str | None
     human_role: str | None
     email: str | None = None
     principal: str | None = None
@@ -61,7 +62,7 @@ def caller_role_for_session(identity: CallerIdentity, session: Session) -> str |
             return "customer"
         return RoleResolver().role_for(caller, SessionOf(session.project_path))
     if isinstance(caller, SystemCliCaller):
-        return identity.system_role
+        return identity.role
     if identity.email is not None:
         return "customer"
     return None
@@ -73,7 +74,7 @@ def caller_role_at_platform(identity: CallerIdentity) -> str | None:
     if isinstance(caller, PersonCliCaller):
         return RoleResolver().role_for(caller, Platform())
     if isinstance(caller, SystemCliCaller):
-        return identity.system_role
+        return identity.role
     if identity.email is not None:
         return "customer"
     return None
@@ -87,7 +88,7 @@ def caller_role_at_own_person_scope(identity: CallerIdentity) -> str | None:
             return HUMAN_ROLE_CUSTOMER
         return RoleResolver().role_for(caller, Person(caller.person_slug))
     if isinstance(caller, SystemCliCaller):
-        return identity.system_role
+        return identity.role
     if identity.email is not None:
         return HUMAN_ROLE_CUSTOMER
     return None
@@ -115,7 +116,7 @@ def caller_from_carried_identity(identity: CallerIdentity) -> CliCaller:
         return SystemCliCaller()
     if identity.email is not None or identity.human_role is not None:
         return PersonCliCaller(email=identity.email, human_role=identity.human_role)
-    if identity.system_role is not None:
+    if identity.role is not None:
         return SystemCliCaller()
     return NoIdentityCliCaller()
 
@@ -136,7 +137,7 @@ def carried_caller(
     if x_teleclaude_daemon_token and is_daemon_credential(x_teleclaude_daemon_token):
         return CallerIdentity(
             session_id="",
-            system_role=ROLE_SYSTEM,
+            role=None,
             human_role=None,
             principal=SYSTEM_DAEMON_PRINCIPAL,
             entry_point=EntryPoint.AGENT,
@@ -151,7 +152,7 @@ def carried_caller(
             entry_point = None
     return CallerIdentity(
         session_id=carried.session_id or "",
-        system_role=carried.system_role,
+        role=carried.role,
         human_role=carried.human_role,
         email=carried.email,
         principal=carried.principal,
@@ -175,7 +176,8 @@ def require_clearance(command_path: str) -> Callable[..., CallerIdentity]:
     """Return a route dependency enforcing the CLI verb's declared caller clearance."""
 
     def _require(identity: CallerIdentity = Depends(carried_caller)) -> CallerIdentity:
-        if not is_command_allowed(command_path, identity.system_role, identity.human_role):
+        role = resolve_session_role(identity.role, identity.session_id)
+        if not is_command_allowed_for(command_path, role, identity.human_role):
             raise HTTPException(status_code=403, detail=_CLEARANCE_REFUSAL.format(command_path=command_path))
         return identity
 
@@ -191,7 +193,8 @@ def require_clearance_at_caller_person(command_path: str) -> Callable[..., Calle
     """
 
     def _require(identity: CallerIdentity = Depends(carried_caller)) -> CallerIdentity:
-        if not is_command_allowed(command_path, identity.system_role, caller_role_at_own_person_scope(identity)):
+        role = resolve_session_role(identity.role, identity.session_id)
+        if not is_command_allowed_for(command_path, role, caller_role_at_own_person_scope(identity)):
             raise HTTPException(status_code=403, detail=_CLEARANCE_REFUSAL.format(command_path=command_path))
         return identity
 
@@ -209,7 +212,7 @@ def _relayed_caller_provenance(session_id: str) -> CallerProvenance | None:
         return None
     author = resolve_session_event_author(
         session_id=session_id,
-        system_role=None,
+        role=None,
         active_agent=None,
         thinking_mode=None,
     )
@@ -233,7 +236,7 @@ async def resolve_caller_provenance(identity: CallerIdentity) -> CallerProvenanc
         return _relayed_caller_provenance(identity.session_id)
     author = resolve_session_event_author(
         session_id=identity.session_id,
-        system_role=session.system_role,
+        role=session.role,
         active_agent=session.active_agent,
         thinking_mode=session.thinking_mode,
     )
@@ -245,7 +248,7 @@ async def resolve_caller_provenance(identity: CallerIdentity) -> CallerProvenanc
         agent_runtime=author.agent_runtime,
         thinking_mode=author.thinking_mode,
         machine_role=author.machine_role,
-        job_role=session.job,
+        job_role=session.role,
     )
 
 

@@ -6,7 +6,7 @@ import asyncio
 import time
 from collections.abc import Collection, Coroutine
 from contextlib import AbstractContextManager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -41,12 +41,14 @@ from teleclaude.core.events import (
 from teleclaude.core.injected_text import (
     InjectedInputAuthority,
     construct_delivered_text,
+    is_command_loader,
     visible_input_update,
 )
 from teleclaude.core.models import HumanActionIntent, MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._session import authority_for_entry_point
 from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
+from teleclaude.core.session_continuation import ContinuationRefused, rebuild_continuation_loader
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_runtime_gate import session_runtime_owner
@@ -91,7 +93,9 @@ _AGENT_STARTUP_DELIVERY_OPPORTUNITY_EVENT = "agent_startup_delivery_opportunity"
 _STARTUP_HANDOVER_OUTCOME_EVENT = "session_startup_handover_outcome"
 _STARTUP_RECOVERY_DECISION_EVENT = "session_startup_recovery_decision"
 _STARTUP_RECOVERY_FAILED_EVENT = "session_startup_recovery_failed"
+_STARTUP_CONTINUATION_REFUSED_EVENT = "session_startup_continuation_refused"
 _STARTUP_REPORT_UNDELIVERED_EVENT = "session_startup_report_undelivered"
+_STARTUP_NO_PROCEDURE_DETAIL = "the unfinished startup carries a dispatch loader but its session records no procedure"
 _SESSION_OUTBOX_WORKER_CLEANUP_COMPONENT = "session_outbox_worker"
 _LAUNCH_STATUS_KEY = "status"
 _LAUNCH_STATUS_SUCCESS = "success"
@@ -493,6 +497,37 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             except Exception:
                 logger.error(_STARTUP_RECOVERY_FAILED_EVENT, session_id=handover.session_id, exc_info=True)
 
+    async def _current_startup_intent(self, handover: StartupHandover) -> SessionLaunchIntent | None:
+        """The intent an unfinished startup resumes with: a procedure-bearing startup resumes with a rebuilt loader.
+
+        A startup that carries a resolved invocation, or a command-era loader recorded before the cutover,
+        is a procedure startup. Its brief is rebuilt in full through the shared continuation path — from the
+        persisted invocation, additional context included, or from the session's retained evidence when none
+        was persisted — and the loader naming it replaces the stored message, which carries nothing beside it.
+        The stored role is kept; an input the row does not retain, or a procedure that is no longer usable,
+        ends the startup FAILED with the cause logged. A conversational start resumes unchanged.
+        """
+        intent = handover.intent
+        if intent.invocation is None and (intent.message is None or not is_command_loader(intent.message)):
+            return intent
+        session = await db.get_session(handover.session_id)
+        if session is None:
+            return intent
+        try:
+            rebuilt = await rebuild_continuation_loader(session)
+        except ContinuationRefused as refusal:
+            rebuilt = None
+            detail = refusal.detail
+        else:
+            detail = _STARTUP_NO_PROCEDURE_DETAIL
+        if rebuilt is None:
+            await db.advance_startup_handover(
+                handover.session_id, expected=(handover.state,), target=StartupHandoverState.FAILED
+            )
+            logger.error(_STARTUP_CONTINUATION_REFUSED_EVENT, session_id=handover.session_id, detail=detail)
+            return None
+        return replace(intent, message=rebuilt.loader)
+
     async def _recover_session_startup(self, handover: StartupHandover) -> None:
         """Apply the recovery decision for one unfinished startup."""
         session_id = handover.session_id
@@ -504,8 +539,11 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             decision=decision.value,
         )
         if decision is StartupRecovery.RESUME:
+            intent = await self._current_startup_intent(handover)
+            if intent is None:
+                return
             self._queue_background_task(
-                self._bootstrap_session_resources(session_id, handover.intent),
+                self._bootstrap_session_resources(session_id, intent),
                 bootstrap_task_label(session_id),
             )
             return

@@ -24,6 +24,7 @@ class CreateSessionArgs(TypedDict, total=False):
     command_input_mode: NotRequired[CommandInputMode]
     command_input_source_text: NotRequired[str | None]
     company: NotRequired[str | None]
+    job: NotRequired[str | None]
 
 
 class RunSessionArgs(TypedDict, total=False):
@@ -39,3 +40,4 @@ class RunSessionArgs(TypedDict, total=False):
     additional_context: NotRequired[str]
     entry_point: NotRequired[str]
     company: NotRequired[str | None]
+    job: NotRequired[str | None]

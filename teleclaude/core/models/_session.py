@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import TYPE_CHECKING, Optional, assert_never, cast
+from typing import TYPE_CHECKING, Final, Optional, assert_never, cast
 
 from teleclaude.core.dates import ensure_utc, parse_iso_datetime
 from teleclaude.core.injected_text import InjectedInputAuthority, TranscriptEntryKind
@@ -76,7 +76,7 @@ class MessageMetadata:
     human_email: str | None = None
     human_role: str | None = None
     origin_metadata: SessionOriginMetadata | None = None
-    system_role: str | None = None
+    role: str | None = None
     job: str | None = None
     company: str | None = None
     launch_intent: Optional["SessionLaunchIntent"] = None
@@ -95,6 +95,86 @@ class OriginRevivalContext:
     project_path: str | None
     subdir: str | None
     title: str | None
+
+
+class ProcedureEntryKind(StrEnum):
+    """The entry type a procedure invocation was started through; it adds typed context and required reads, never a role."""
+
+    DIRECT = "direct"
+    JOB = "job"
+    ACTIVATION = "activation"
+
+
+class InvocationKey(StrEnum):
+    """The keys of a persisted procedure invocation."""
+
+    PROCEDURE_ID = "procedure_id"
+    ARGUMENTS = "arguments"
+    PARAMETERS = "parameters"
+    ENTRY_KIND = "entry_kind"
+    ENTRY_JOB = "entry_job"
+    ENTRY_READS = "entry_reads"
+    BRIEF_PATH = "brief_path"
+    ENTRY_FACTS = "entry_facts"
+    ADDITIONAL_CONTEXT = "additional_context"
+
+
+NO_ADDITIONAL_CONTEXT: Final = ""
+
+
+@dataclass(frozen=True)
+class ProcedureInvocation:
+    """The resolved invocation of a procedure entry, persisted on the session's launch state.
+
+    A continuation (restart, revival, handoff) rebuilds the loader from it: the procedure, the raw
+    argument text, the bound parameters, the entry type with its context facts and reads, the additional
+    context supplied at launch, and the brief it composed. A record stored without the additional-context
+    key reads as carrying none.
+    """
+
+    procedure_id: str
+    arguments: str
+    parameters: tuple[tuple[str, str], ...]
+    entry_kind: ProcedureEntryKind
+    entry_job: str | None
+    entry_reads: tuple[str, ...]
+    brief_path: str
+    entry_facts: tuple[tuple[str, str], ...] = ()
+    additional_context: str = NO_ADDITIONAL_CONTEXT
+
+    def to_dict(self) -> JsonDict:
+        """Serialize the invocation into a JSON-compatible dictionary."""
+        return {
+            InvocationKey.PROCEDURE_ID: self.procedure_id,
+            InvocationKey.ARGUMENTS: self.arguments,
+            InvocationKey.PARAMETERS: [[name, value] for name, value in self.parameters],
+            InvocationKey.ENTRY_KIND: self.entry_kind.value,
+            InvocationKey.ENTRY_JOB: self.entry_job,
+            InvocationKey.ENTRY_READS: list(self.entry_reads),
+            InvocationKey.BRIEF_PATH: self.brief_path,
+            InvocationKey.ENTRY_FACTS: [[name, value] for name, value in self.entry_facts],
+            InvocationKey.ADDITIONAL_CONTEXT: self.additional_context,
+        }
+
+    @classmethod
+    def from_dict(cls, data: JsonDict) -> "ProcedureInvocation":
+        """Restore an invocation from its stored form."""
+        return cls(
+            procedure_id=str(data[InvocationKey.PROCEDURE_ID]),
+            arguments=str(data[InvocationKey.ARGUMENTS]),
+            parameters=tuple(
+                (str(pair[0]), str(pair[1])) for pair in cast(list[list[str]], data[InvocationKey.PARAMETERS])
+            ),
+            entry_kind=ProcedureEntryKind(str(data[InvocationKey.ENTRY_KIND])),
+            entry_job=cast(str | None, data.get(InvocationKey.ENTRY_JOB)),
+            entry_reads=tuple(cast(list[str], data.get(InvocationKey.ENTRY_READS) or [])),
+            brief_path=str(data[InvocationKey.BRIEF_PATH]),
+            entry_facts=tuple(
+                (str(pair[0]), str(pair[1]))
+                for pair in cast(list[list[str]], data.get(InvocationKey.ENTRY_FACTS) or [])
+            ),
+            additional_context=str(data.get(InvocationKey.ADDITIONAL_CONTEXT) or NO_ADDITIONAL_CONTEXT),
+        )
 
 
 @dataclass
@@ -123,6 +203,8 @@ class SessionLaunchIntent:
     # representation: a remote target resolves its own model availability.
     resolved_model_flags: str | None = None
     command_input_source_text: str | None = None
+    # The procedure entry this launch composed; present for every session started by naming a procedure.
+    invocation: ProcedureInvocation | None = None
 
     def to_dict(self) -> JsonDict:
         """Serialize launch intent into a JSON-compatible dictionary."""
@@ -143,6 +225,7 @@ class SessionLaunchIntent:
             "accepted_at_origin": self.accepted_at_origin,
             FIELD_CALLER_HEADER: self.caller_header,
             "command_input_source_text": self.command_input_source_text,
+            "invocation": self.invocation.to_dict() if self.invocation is not None else None,
         }
 
     @classmethod
@@ -173,6 +256,11 @@ class SessionLaunchIntent:
             accepted_at_origin=bool(data.get("accepted_at_origin", False)),
             caller_header=cast(str | None, data.get(FIELD_CALLER_HEADER)),
             command_input_source_text=cast(str | None, data.get("command_input_source_text")),
+            invocation=(
+                ProcedureInvocation.from_dict(cast(JsonDict, data["invocation"]))
+                if data.get("invocation") is not None
+                else None
+            ),
         )
 
 
@@ -397,7 +485,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     title: str
     last_input_origin: str | None = None
     origin_metadata: JsonDict = field(default_factory=dict)
-    system_role: str | None = None
+    role: str | None = None
     job: str | None = None
     company: str | None = None
     created_at: datetime | None = None
@@ -635,7 +723,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             tmux_session_name=_get_optional_str("tmux_session_name") or "",
             title=_get_optional_str("title") or "",
             origin_metadata=origin_metadata,
-            system_role=_get_optional_str("system_role"),
+            role=_get_optional_str("role"),
             job=_get_optional_str("job"),
             company=_get_optional_str("company"),
             created_at=ensure_utc(created_at) if isinstance(created_at, datetime) else None,

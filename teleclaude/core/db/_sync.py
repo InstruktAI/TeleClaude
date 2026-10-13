@@ -36,7 +36,7 @@ _NO_SUCH_TABLE_ERROR = "no such table"
 _EMPTY_SESSION_TEXT = ""
 _SESSION_MIRROR_FACTS_SQL = """\
 SELECT session_id, computer_name, active_agent, project_path, subdir, config_subject, subject_owner, native_log_file,
-       transcript_files, visibility, last_input_origin, adapter_metadata, system_role,
+       transcript_files, visibility, last_input_origin, adapter_metadata, role,
        command, working_slug, title, initiator_session_id, initiator_computer,
        initiated_by_ai, job, created_at, closed_at, principal, human_email, human_role
 FROM sessions
@@ -50,7 +50,7 @@ LIMIT 1
 """
 _SESSION_MIRROR_FACTS_LIST_SQL = """\
 SELECT session_id, computer_name, active_agent, project_path, subdir, config_subject, subject_owner, native_log_file,
-       transcript_files, visibility, last_input_origin, adapter_metadata, system_role,
+       transcript_files, visibility, last_input_origin, adapter_metadata, role,
        command, working_slug, title, initiator_session_id, initiator_computer,
        initiated_by_ai, job, created_at, closed_at, principal, human_email, human_role
 FROM sessions
@@ -83,7 +83,7 @@ class SessionMirrorFacts:
     visibility: str | None
     last_input_origin: str | None
     adapter_metadata: str | None
-    system_role: str | None
+    role: str | None
     command: str | None
     working_slug: str | None
     title: str | None
@@ -137,7 +137,7 @@ def _session_mirror_facts(row: Mapping[str, object]) -> SessionMirrorFacts:
         principal=_optional_session_fact(mapping["principal"]),
         human_email=_optional_session_fact(mapping["human_email"]),
         human_role=_optional_session_fact(mapping["human_role"]),
-        system_role=_optional_session_fact(mapping["system_role"]),
+        role=_optional_session_fact(mapping["role"]),
         working_slug=_optional_session_fact(mapping["working_slug"]),
         closed_at=_session_datetime(mapping["closed_at"]),
     )
@@ -157,7 +157,7 @@ def _session_mirror_facts(row: Mapping[str, object]) -> SessionMirrorFacts:
         visibility=_optional_session_fact(mapping["visibility"]),
         last_input_origin=_optional_session_fact(mapping["last_input_origin"]),
         adapter_metadata=_optional_session_fact(mapping["adapter_metadata"]),
-        system_role=_optional_session_fact(mapping["system_role"]),
+        role=_optional_session_fact(mapping["role"]),
         command=_optional_session_fact(mapping["command"]),
         working_slug=_optional_session_fact(mapping["working_slug"]),
         title=_optional_session_fact(mapping["title"]),
@@ -349,7 +349,7 @@ def get_session_identity_sync(db_path: str, session_id: str) -> SessionRecord | 
         principal=facts.principal,
         human_email=facts.human_email,
         human_role=facts.human_role,
-        system_role=facts.system_role,
+        role=facts.role,
         working_slug=facts.working_slug,
         job=facts.job,
         initiator_session_id=facts.initiator_session_id,

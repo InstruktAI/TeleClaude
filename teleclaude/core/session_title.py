@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _title_projection_signatures: dict[str, tuple[tuple[str, str], ...]] = {}
-_COMMAND_TITLE_TEMPLATE = "/{command} {args}"
+_COMMAND_TITLE_TEMPLATE = "{command} {args}"
 _USER_ROLE = "user"
 _ASSISTANT_ROLE = "assistant"
 _REPLY_SEPARATOR = "\n\n"

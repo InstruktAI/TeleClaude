@@ -57,16 +57,16 @@ def session_ended_kind(session: Session) -> SessionEndedKind:
     """What kind of session the record says it was.
 
     A desk session is a help-desk conversation. A session the platform or another
-    session started — a system principal, a starting session, or a recorded system
+    session started — a system principal, a starting session, or a recorded
     role — is a session the system started, whatever human lineage it carries. Any
     other session under a human principal is that person's own conversation. A
     record that states none of these does not establish a kind.
     """
-    if desk_session_kind(session.system_role, session.human_role, EndpointStamp.from_session(session)) is not None:
+    if desk_session_kind(session.role, session.human_role, EndpointStamp.from_session(session)) is not None:
         return SessionEndedKind.HELP_DESK
     principal = _principal_of(session)
     started_by_system = principal is not None and principal.startswith(SYSTEM_PRINCIPAL_PREFIX)
-    if started_by_system or session.initiator_session_id or session.system_role:
+    if started_by_system or session.initiator_session_id or session.role:
         return SessionEndedKind.SYSTEM
     if principal is not None and principal.startswith(HUMAN_PRINCIPAL_PREFIX):
         return SessionEndedKind.PERSON

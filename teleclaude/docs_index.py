@@ -25,6 +25,13 @@ from teleclaude.constants import (
 )
 from teleclaude.doc_body import PLANNED_BLOCK_RE, PLANNED_CHANGE_BLOCK_RE
 from teleclaude.docs_subscriptions import IndexKey, required_event_handling_dependencies, resolve_delivery_settings
+from teleclaude.entry_declarations import (
+    DispatchPayload,
+    EntryKey,
+    ParameterPayload,
+    entry_payload,
+    parse_entry_declarations,
+)
 from teleclaude.paths import ConfigFileName
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.slug import normalize_slug
@@ -128,6 +135,9 @@ class SnippetEntry(TypedDict):
     event_delivery: NotRequired[str]
     interruptible: NotRequired[bool]
     delivery_required_reads: NotRequired[list[str]]
+    role: NotRequired[str]
+    parameters: NotRequired[list[ParameterPayload]]
+    dispatch: NotRequired[DispatchPayload]
 
 
 class IndexPayload(TypedDict):
@@ -186,6 +196,19 @@ def _copy_subscriptions_metadata(entry: SnippetEntry, metadata: Mapping[str, obj
         entry[IndexKey.EVENT_DELIVERY.value] = delivery.event_delivery.value
         entry[IndexKey.INTERRUPTIBLE.value] = delivery.interruptible
         entry[IndexKey.DELIVERY_REQUIRED_READS.value] = list(required_event_handling_dependencies(delivery))
+
+
+def _copy_entry_declarations(entry: SnippetEntry, metadata: Mapping[str, object]) -> None:
+    """Publish a procedure's usable entry declarations; an unusable declaration publishes none."""
+    declarations = parse_entry_declarations(metadata).declarations
+    if declarations is None:
+        return
+    payload = entry_payload(declarations)
+    entry[EntryKey.ROLE.value] = payload[EntryKey.ROLE.value]
+    if EntryKey.PARAMETERS.value in payload:
+        entry[EntryKey.PARAMETERS.value] = payload[EntryKey.PARAMETERS.value]
+    if EntryKey.DISPATCH.value in payload:
+        entry[EntryKey.DISPATCH.value] = payload[EntryKey.DISPATCH.value]
 
 
 def _extract_description_from_md(file_path: Path) -> str:
@@ -428,6 +451,7 @@ def _build_snippet_entry(
         entry["visibility"] = SNIPPET_VISIBILITY_INTERNAL
     _copy_delivered_by_metadata(entry, metadata)
     _copy_subscriptions_metadata(entry, metadata)
+    _copy_entry_declarations(entry, metadata)
     _attach_superseding_slugs(entry, file_path)
     return entry
 
@@ -599,6 +623,7 @@ def _build_tier_index_payload(tier_root: Path, half: str, tier_kind: SnippetScop
             "visibility": visibility,
         }
         _copy_subscriptions_metadata(entry, metadata)
+        _copy_entry_declarations(entry, metadata)
         snippets.append(entry)
 
     snippets.sort(key=lambda e: e["id"])

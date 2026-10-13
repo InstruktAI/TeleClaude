@@ -35,6 +35,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.injected_text import EnvelopeName, InjectedTextSourceFeature, semantic_envelope
 from teleclaude.core.models import HumanActionIntent, Session, SessionField
+from teleclaude.core.session_continuation import ContinuationRefused, rebuild_continuation_loader
 from teleclaude.core.session_launch_profile import resolve_session_launch_profile
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_runtime_gate import mark_relaunch_awaiting_readiness, session_runtime_owner
@@ -61,6 +62,8 @@ _TMUX_SESSION_NAME_FIELD = "tmux_session_name"
 _RESTART_REVIVE_CLOSED_EVENT = "agent_restart.session_revived"
 _RESTART_RESTORE_DELETED_EVENT = "agent_restart.soft_deleted_session_restored"
 _RESTART_PANE_MISSING_EVENT = "agent_restart_pane_missing"
+_CONTINUATION_REFUSED_TEMPLATE = "Cannot restart agent: {detail}."
+_CONTINUATION_SECTION_SEPARATOR = "\n\n"
 
 
 class _AgentRestartReadinessOpportunityOutcome(StrEnum):
@@ -296,6 +299,19 @@ async def _restart_agent(
         await client.send_message(session, f"❌ {error}")
         return False, error
 
+    try:
+        continuation = await rebuild_continuation_loader(session)
+    except ContinuationRefused as exc:
+        error = _CONTINUATION_REFUSED_TEMPLATE.format(detail=exc.detail)
+        logger.error("agent_restart blocked (session=%s): %s", session.session_id, error)
+        event_bus.emit(
+            TeleClaudeEvents.ERROR,
+            ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
+            visibility=EventVisibility.CLUSTER,
+        )
+        await client.send_message(session, f"❌ {error}")
+        return False, error
+
     session_updates = await _revival_record_updates(session)
 
     if session_updates:
@@ -375,7 +391,7 @@ async def _restart_agent(
     launch = await resolve_launch_model(
         target_agent,
         restart_mode,
-        ownership=launch_ownership(session.job),
+        ownership=launch_ownership(session.role),
         session_id=session.session_id,
     )
     launch_profile = resolve_session_launch_profile(session, target_agent)
@@ -477,7 +493,11 @@ async def _restart_agent(
             occurrence_key = f"restart-continuation:{session.session_id}:{cmd.request_id or time.time_ns()}"
             await handoff_control_payload(
                 session_id=session.session_id,
-                body=RESTART_CONTINUATION_STIMULUS,
+                body=(
+                    RESTART_CONTINUATION_STIMULUS
+                    if continuation is None
+                    else _CONTINUATION_SECTION_SEPARATOR.join((RESTART_CONTINUATION_STIMULUS, continuation.loader))
+                ),
                 source_key=occurrence_key,
                 envelope=semantic_envelope(EnvelopeName.RESTART_CONTINUATION),
                 wake_decision=ControlDeliveryWakeDecision.OBSERVED_IDLE,

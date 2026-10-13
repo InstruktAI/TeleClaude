@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -27,13 +28,9 @@ from teleclaude.api.auth import (
 )
 from teleclaude.api.driver_start_guard import enforce_driver_start_guard, terminal_driver_email
 from teleclaude.api.run_session_job import normalize_job_run_request
-from teleclaude.api.run_session_procedure import normalize_procedure_activation_request
-from teleclaude.api.run_session_refusals import (
-    RunSessionRefusal,
-    resolve_run_session_agent,
-    resolve_run_session_command,
-)
-from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug, leading_command_args
+from teleclaude.api.run_session_procedure import manual_activation
+from teleclaude.api.run_session_refusals import RunSessionRefusal, resolve_run_session_agent
+from teleclaude.api.run_session_shapes import RunSessionPlan
 from teleclaude.api.session_authority import ACT_RESTART, ACT_UNSUBSCRIBE, refuse_act_on_ancestor
 from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
 from teleclaude.api.session_pane_routes import router as session_pane_router
@@ -49,38 +46,28 @@ from teleclaude.api.sessions_personal_assistant_routes import (
 from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
-    EscalateRequest,
     FileUploadRequest,
     KeysRequest,
     RunSessionRequest,
     SessionMessagesDTO,
 )
-from teleclaude.api_session_actions_models import AgentRestartRequest, AgentRestartResponseDTO
+from teleclaude.api_session_actions_models import AgentRestartRequest, AgentRestartResponseDTO, EscalateRequest
 from teleclaude.config.machine import config
 from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.registered_homes import project_folder
-from teleclaude.constants import (
-    COMMAND_ROLE_MAP,
-    NON_SLUG_BOUND_COMMANDS,
-    WORKTREE_DIR,
-    SlashCommand,
-)
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core import agents as agents_module
 from teleclaude.core.agent_dispatch import (
     AgentDispatchFailure,
     AgentDispatchReason,
-    RunSessionThinkingMode,
     classify_fresh_agent_preference,
     decision_basis_digest,
-    resolve_run_session_thinking_mode,
 )
 from teleclaude.core.agents import get_known_agents
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_handlers import resolve_working_slug_from_subdir, select_handoff_successor
-from teleclaude.core.command_input import REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS
 from teleclaude.core.command_mapper import KEY_COMMANDS, CommandMapper
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.command_service import dispatch_privilege_refusal
 from teleclaude.core.db import db
 from teleclaude.core.models import (
     AgentDispatchMode,
@@ -90,19 +77,24 @@ from teleclaude.core.models import (
     SessionLaunchKind,
 )
 from teleclaude.core.models._adapter import TerminalOriginMetadata
+from teleclaude.core.next_machine.lanes import WORKTREE_BOUND_PROCEDURES
 from teleclaude.core.next_machine.manual_start import DriverStartGuardResult
 from teleclaude.core.operations.service import get_operations_service
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.procedure_entry import (
+    EntryContext,
+    EntryRefusal,
+    job_entry,
+    resolve_entry,
+    with_additional_context,
+)
+from teleclaude.core.roles import resolve_session_role
 from teleclaude.core.session_message_projection import (
     SessionMessageProjectionOptions,
     build_session_messages_dto,
 )
-from teleclaude.core.session_startup_message import (
-    AmbiguousCommandError,
-    resolve_command_document,
-    resolve_slash_command,
-)
 from teleclaude.core.session_utils import split_project_path_and_subdir
+from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.project_manifest_runtime import load_registered_entries
 from teleclaude.types.commands import (
     CreateSessionCommand,
@@ -118,31 +110,9 @@ if TYPE_CHECKING:
 from teleclaude.types.commands import SystemCommand
 
 logger = get_logger(__name__)
+COMMAND_PREFIX = "/"
 _ESCALATE_NOTIFIED_KEY = "notified"
 _ESCALATE_WARNING_KEY = "warning"
-
-WORKER_LIFECYCLE_COMMANDS = {
-    SlashCommand.BUILD,
-    SlashCommand.REVIEW_BUILD,
-    SlashCommand.FINALIZE,
-}
-
-WORKTREE_BOUND_WORKER_COMMANDS = {
-    SlashCommand.BUILD,
-    SlashCommand.REVIEW_BUILD,
-    SlashCommand.FINALIZE,
-}
-
-NON_TODO_ARGUMENT_COMMANDS = {SlashCommand.REVIEW_COMMITS, SlashCommand.RUN_JOB, SlashCommand.ACTIVATE_PROCEDURE}
-
-_JOB_COMMAND_GENERIC_CREATE_DETAIL = "run-job and activate-procedure must be dispatched through /sessions/run"
-_RUN_JOB_INSTRUCTION_FORMAT: Final[str] = "/{command} {job_name} {procedure_id}"
-SLUG_INFERABLE_LIFECYCLE_COMMANDS = {
-    command.value for command in COMMAND_ROLE_MAP if command not in NON_TODO_ARGUMENT_COMMANDS
-}
-SLUG_REQUIRED_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS - {
-    command.value for command in NON_SLUG_BOUND_COMMANDS
-}
 
 _STATE = SimpleNamespace(client=None)
 router = APIRouter()
@@ -253,66 +223,24 @@ async def _resolve_revive_session_id(
     return new_session_id
 
 
-def _leading_command(message: str | None) -> str | None:
-    """Return the leading slash command of a launch message, if any."""
-    return message.split()[0] if message and message.startswith("/") else None
-
-
-def _refuse_missing_argument(command: str) -> RunSessionRefusal:
-    """Build the shared 400 refusal for a command dispatched without its required argument."""
-    return RunSessionRefusal(
-        status_code=400,
-        detail=f"/{command} requires a slug argument",
-        reason=AgentDispatchReason.SLUG_REQUIRED,
-    )
-
-
-def _normalize_command(command: str | None) -> SlashCommand | None:
-    """Parse a door-supplied launch command into its canonical `SlashCommand` value.
-
-    Both create doors supply the command slash-prefixed (`_leading_command`'s
-    return value, or the run door's `request.command`). Normalizing once here —
-    the same way :func:`classify_driver_launch` parses a string command — gives
-    the guard a single value to key both the title-prefix lookup and the
-    reuse-command text from, so the two consumers can never disagree on shape.
-    Delegates to the shared canonicalizing seam so a bare token still matches
-    its qualified `SlashCommand` member.
-    """
-    return resolve_slash_command(command)
-
-
 async def guard_generic_create_session(
     request: CreateSessionRequest,
     cmd: object,
     identity: CallerIdentity,
 ) -> DriverStartGuardResult:
-    """Guard generic session creation against forbidden job commands, missing required slugs, and duplicate drivers."""
+    """Guard generic session creation against duplicate drivers.
+
+    An interactive procedure invocation arrives with the procedure and the role it declares; ordinary
+    conversation carries neither and passes the guard unclassified.
+    """
     if not isinstance(cmd, CreateSessionCommand):
         return DriverStartGuardResult()
-    leading_command = _leading_command(request.message)
-    if _normalize_command(leading_command) in (SlashCommand.RUN_JOB, SlashCommand.ACTIVATE_PROCEDURE):
-        raise RunSessionRefusal(
-            status_code=400,
-            detail=_JOB_COMMAND_GENERIC_CREATE_DETAIL,
-            reason=AgentDispatchReason.JOB_COMMAND_GENERIC_CREATE,
-        )
     working_slug = resolve_working_slug_from_subdir(request.subdir) or cmd.working_slug
-    command_name = leading_command.removeprefix("/") if leading_command else None
-    if command_name is not None:
-        try:
-            resolved_command_name = resolve_command_document(command_name)
-        except AmbiguousCommandError:
-            resolved_command_name = None
-        if resolved_command_name is not None:
-            command_name = resolved_command_name.canonical_name
-    if command_name in SLUG_REQUIRED_LIFECYCLE_COMMANDS and not working_slug:
-        raise _refuse_missing_argument(command_name)
-    if command_name in REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS and not leading_command_args(request.message):
-        raise _refuse_missing_argument(command_name)
     return await enforce_driver_start_guard(
         project_path=request.project_path,
         working_slug=working_slug,
-        command=leading_command,
+        procedure_id=cmd.command,
+        role=cmd.role,
         caller_session_id=identity.session_id,
         caller_human_email=terminal_driver_email(identity),
         thinking_mode=cmd.launch_intent.thinking_mode if cmd.launch_intent else "",
@@ -324,108 +252,76 @@ def _prepare_run_session(
     identity: CallerIdentity,
     entry_point: SessionEntryPoint,
 ) -> RunSessionPlan:
-    """Normalize run-session inputs into a create-session plan."""
-    normalized_cmd, slash_cmd = resolve_run_session_command(request.command)
-    normalized_args = request.args.strip()
-    is_job_command = slash_cmd is SlashCommand.RUN_JOB
-    is_activation_command = slash_cmd is SlashCommand.ACTIVATE_PROCEDURE
-    company: str | None = request.company
-    job_procedure_id: str | None = None
-    if is_job_command:
-        candidate_order, thinking_mode, job, job_procedure_id = normalize_job_run_request(request, normalized_args)
-        effective_agent = None
-        dispatch_mode = AgentDispatchMode.AUTOMATIC
-        preferred_agent = None
+    """Resolve a run-session request through the procedure entry into a create-session plan."""
+    effective_agent = resolve_run_session_agent(request)
+    dispatch_mode, preferred_agent = classify_fresh_agent_preference(effective_agent, caller_role=identity.role)
+    caller_mode = ThinkingMode(request.thinking_mode) if request.thinking_mode is not None else None
+    entry = EntryContext()
+    company = request.company
+    if request.job is not None:
+        agents, job_mode, job_name, procedure_token = normalize_job_run_request(request, identity)
+        entry = job_entry(job_name, agents, ThinkingMode(job_mode.value))
         entry_point = SessionEntryPoint.CRON
-    elif is_activation_command:
-        launch = normalize_procedure_activation_request(request, normalized_args, identity)
-        job = launch.job
-        company = launch.company
-        candidate_order = None
-        thinking_mode = resolve_run_session_thinking_mode(caller_mode=None, command=slash_cmd)
-        effective_agent = preferred_agent = None
-        dispatch_mode = AgentDispatchMode.AUTOMATIC
-        entry_point = SessionEntryPoint.PROCEDURE_ACTIVATION
     else:
-        effective_agent = resolve_run_session_agent(request)
-        dispatch_mode, preferred_agent = classify_fresh_agent_preference(
-            effective_agent,
-            caller_system_role=identity.system_role,
+        procedure_token = request.command
+        activation = manual_activation(request, procedure_token, identity)
+        if activation is not None:
+            entry, company = activation.entry, activation.company
+            entry_point = SessionEntryPoint.PROCEDURE_ACTIVATION
+    session_id = str(uuid.uuid4())
+    try:
+        resolved = resolve_entry(
+            procedure_token=procedure_token,
+            arguments=request.args,
+            project_root=Path(request.project),
+            caller=resolve_session_role(identity.role, identity.session_id),
+            entry=entry,
+            session_id=session_id,
+            caller_mode=caller_mode,
+            additional_context=request.additional_context,
         )
-        thinking_mode = resolve_run_session_thinking_mode(
-            caller_mode=(RunSessionThinkingMode(request.thinking_mode) if request.thinking_mode is not None else None),
-            command=slash_cmd,
-        )
-        job = None
-        candidate_order = None
-    full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
-    if job is not None and job_procedure_id is not None:
-        full_command = _RUN_JOB_INSTRUCTION_FORMAT.format(
-            command=normalized_cmd,
-            job_name=job,
-            procedure_id=job_procedure_id,
-        )
-    startup_message = full_command
-    if request.additional_context:
-        full_command = f"{full_command}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
-        startup_message = f"{startup_message}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
-
-    initiator_session_id: str | None = None
-    if identity.session_id:
-        initiator_session_id = identity.session_id
-    if normalized_cmd in WORKER_LIFECYCLE_COMMANDS and not normalized_args:
-        raise _refuse_missing_argument(normalized_cmd)
-    if normalized_cmd in REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS and not normalized_args:
-        raise _refuse_missing_argument(normalized_cmd)
-    working_slug = infer_working_slug(normalized_cmd, normalized_args)
-    if normalized_cmd in SLUG_REQUIRED_LIFECYCLE_COMMANDS and not working_slug:
-        raise _refuse_missing_argument(normalized_cmd)
-    if normalized_cmd in WORKTREE_BOUND_WORKER_COMMANDS:
-        expected_subfolder = f"{WORKTREE_DIR}/{working_slug}"
+    except EntryRefusal as exc:
+        raise RunSessionRefusal(status_code=exc.status_code, detail=exc.detail, reason=exc.reason) from exc
+    full_command = f"{resolved.procedure_id} {resolved.arguments}" if resolved.arguments else resolved.procedure_id
+    full_command = with_additional_context(full_command, request.additional_context)
+    startup_message = with_additional_context(resolved.loader, request.additional_context)
+    if resolved.working_slug and resolved.procedure_id in WORKTREE_BOUND_PROCEDURES:
+        expected_subfolder = f"{WORKTREE_DIR}/{resolved.working_slug}"
         if request.subfolder != expected_subfolder:
             actual_subfolder = request.subfolder or "<empty>"
             raise RunSessionRefusal(
                 status_code=400,
                 detail=(
-                    f"/{normalized_cmd} for slug '{working_slug}' requires subfolder "
+                    f"{resolved.procedure_id} for slug '{resolved.working_slug}' requires subfolder "
                     f"'{expected_subfolder}', received '{actual_subfolder}'"
                 ),
                 reason=AgentDispatchReason.WORKTREE_MISMATCH,
             )
-
     origin_metadata: TerminalOriginMetadata | None = None
     if identity.email:
         origin_metadata = TerminalOriginMetadata(email=identity.email)
-
-    role_info = COMMAND_ROLE_MAP.get(slash_cmd) if slash_cmd else None
-    dispatch_refusal = dispatch_privilege_refusal(identity.system_role, slash_cmd)
-    if dispatch_refusal is not None:
-        raise RunSessionRefusal(
-            status_code=403,
-            detail=dispatch_refusal,
-            reason=AgentDispatchReason.DISPATCH_PRIVILEGE_FORBIDDEN,
-        )
-
     return RunSessionPlan(
         effective_agent=effective_agent,
         full_command=full_command,
         launch_intent=SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
             agent=effective_agent,
-            thinking_mode=thinking_mode.value,
+            thinking_mode=resolved.thinking_mode.value,
             message=startup_message,
             dispatch_mode=dispatch_mode,
             preferred_agent=preferred_agent,
-            candidate_order=candidate_order,
+            candidate_order=resolved.agents,
+            invocation=resolved.record,
         ),
-        initiator_session_id=initiator_session_id,
+        initiator_session_id=identity.session_id or None,
         origin_metadata=origin_metadata,
-        system_role=role_info[0] if role_info else None,
-        job=job if (is_job_command or is_activation_command) else role_info[1].value if role_info else None,
+        role=resolved.role.name.value,
+        job=entry.job,
         company=company,
-        command=normalized_cmd,
-        working_slug=working_slug,
+        command=resolved.procedure_id,
+        working_slug=resolved.working_slug,
         entry_point=entry_point,
+        session_id=session_id,
     )
 
 
@@ -518,7 +414,7 @@ async def agent_restart(
                 cmd = await select_handoff_successor(
                     session,
                     agent_name=agent,
-                    caller_system_role=identity.system_role,
+                    caller_role=identity.role,
                     request_id=request_id,
                 )
             except AgentDispatchFailure as exc:
@@ -641,23 +537,20 @@ async def _run_session(
     *,
     entry_point: SessionEntryPoint,
 ) -> CreateSessionResponseDTO:
-    """Run a slash command on a new agent session."""
+    """Run a published entry procedure on a new agent session."""
     request_id = str(uuid.uuid4())
-    requested_command = _normalize_command(request.command)
-    normalized_command = requested_command.value if requested_command else (request.command.lstrip("/") or None)
-    command_kind = "prepare" if requested_command is SlashCommand.PREPARE else normalized_command
-    request_entry_point = SessionEntryPoint.CRON if requested_command is SlashCommand.RUN_JOB else entry_point
-    role_info = COMMAND_ROLE_MAP.get(requested_command) if requested_command else None
+    command_kind = request.command.lstrip(COMMAND_PREFIX) or None
+    request_entry_point = SessionEntryPoint.CRON if request.job is not None else entry_point
     agent_supplied = "agent" in request.model_fields_set
     requested_agent = request.agent if agent_supplied else None
     dispatch_mode, preferred_agent = classify_fresh_agent_preference(
         requested_agent,
-        caller_system_role=identity.system_role,
+        caller_role=identity.role,
     )
     fixed_agent = None
     basis_digest = decision_basis_digest(
         mode=dispatch_mode,
-        role=role_info[1].value if role_info else None,
+        role=None,
         todo_kind=None,
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
@@ -668,7 +561,7 @@ async def _run_session(
         agent_supplied=agent_supplied,
         entry_point=request_entry_point,
         command_kind=command_kind,
-        working_slug_present=bool(normalized_command and infer_working_slug(normalized_command, request.args.strip())),
+        working_slug_present=False,
         caller_kind_present=False,
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
@@ -710,7 +603,7 @@ async def _run_session(
         project_path=request.project,
         subdir=request.subfolder or None,
         origin_metadata=plan.origin_metadata,
-        system_role=plan.system_role,
+        role=plan.role,
         job=plan.job,
         company=plan.company,
     )
@@ -727,6 +620,7 @@ async def _run_session(
         metadata,
     )
     if isinstance(cmd, CreateSessionCommand):
+        cmd.session_id = plan.session_id
         cmd.command = plan.command
         cmd.working_slug = plan.working_slug
         cmd.entry_point = plan.entry_point
@@ -737,7 +631,8 @@ async def _run_session(
         guard_result = await enforce_driver_start_guard(
             project_path=request.project,
             working_slug=plan.working_slug,
-            command=request.command,
+            procedure_id=plan.command,
+            role=plan.role,
             caller_session_id=plan.initiator_session_id,
             caller_human_email=terminal_driver_email(identity),
             thinking_mode=plan.launch_intent.thinking_mode if plan.launch_intent else "",
@@ -756,7 +651,7 @@ async def _run_session(
         AgentDispatchReason.HELD_WITHOUT_DRIVER
         if guard_result.held_without_driver
         else AgentDispatchReason.DISPATCH_PRIVILEGE_ALLOWED
-        if plan.job and identity.system_role
+        if plan.job and identity.role
         else AgentDispatchReason.WORKING_SLUG_INFERRED
         if plan.working_slug
         else None
@@ -771,7 +666,7 @@ async def _run_session(
             raise HTTPException(status_code=500, detail="Failed to create session")
         routing_explanation = present_routing_explanation(
             data,
-            human_facing=not identity.system_role and bool(identity.email),
+            human_facing=not identity.role and bool(identity.email),
             request_id=cmd.request_id,
             session_id=str(session_id),
             entry_point=plan.entry_point,

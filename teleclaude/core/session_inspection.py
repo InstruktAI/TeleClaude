@@ -36,7 +36,7 @@ class SessionColumn(StrEnum):
     COMMAND = "command"
     WORKING_SLUG = "working_slug"
     JOB = "job"
-    SYSTEM_ROLE = "system_role"
+    ROLE = "role"
     COMPANY = "company"
     VISIBILITY = "visibility"
     LIFECYCLE_STATUS = "lifecycle_status"
@@ -119,7 +119,7 @@ CURATED_GROUP_COLUMNS: Final[dict[InspectionGroup, tuple[SessionColumn, ...]]] =
         SessionColumn.INITIATOR_COMPUTER,
     ),
     InspectionGroup.ROLE: (
-        SessionColumn.SYSTEM_ROLE,
+        SessionColumn.ROLE,
         SessionColumn.JOB,
         SessionColumn.COMPANY,
         SessionColumn.VISIBILITY,

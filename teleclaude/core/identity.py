@@ -45,9 +45,6 @@ from teleclaude.caller_identity import (
     caller_from_principal as caller_from_principal,
 )
 from teleclaude.caller_identity import (
-    derive_session_system_role as derive_session_system_role,
-)
-from teleclaude.caller_identity import (
     human_principal_for_email as human_principal_for_email,
 )
 from teleclaude.config.identity_schema import PersonEntry
@@ -784,10 +781,10 @@ def resolve_discord_author_alias(
 ) -> tuple[str, str | None]:
     """Resolve the canonical Discord alias and avatar for a durable author snapshot.
 
-    Grammar: ``<Identity>[ - <raw JobRole>][ (peer)]``. Identity and avatar
+    Grammar: ``<Identity>[ - <role name>][ (peer)]``. Identity and avatar
     resolve from the immutable author snapshot (never from body text);
-    ``job_role`` is the raw ``JobRole`` string read from the author's own
-    session at event time (``sessions.job``, never ``system_role``) and
+    ``job_role`` is the role name read from the author's own
+    session at event time (``sessions.role``, never ``sessions.job``) and
     carried alongside the author as its own durable field — never re-derived
     here. Thinking mode never appears in the alias. The owning session
     renders its own author without ``(peer)``; any author from another

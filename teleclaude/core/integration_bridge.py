@@ -7,13 +7,14 @@ session spawn helper used by the integration trigger consumer.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TypedDict
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.machine import config
-from teleclaude.constants import ROLE_INTEGRATOR, JobRole, SlashCommand
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.integration.checkpoint import ParkedCandidate
@@ -23,7 +24,10 @@ from teleclaude.core.models import (
     SessionLaunchIntent,
     SessionLaunchKind,
 )
+from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.procedure_entry import EntryContext, EntryRefusal, resolve_entry
+from teleclaude.core.roles import RoleName
 from teleclaude.events.envelope import EventHome, EventLevel, EventVisibility
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import SessionRef, TodoRef
@@ -279,7 +283,7 @@ async def spawn_integrator_session(
         raise
 
     integrator_session = next(
-        (s for s in sessions if s.job == JobRole.INTEGRATOR and s.project_path == project_path),
+        (s for s in sessions if s.role == RoleName.INTEGRATOR and s.project_path == project_path),
         None,
     )
     if integrator_session:
@@ -298,19 +302,34 @@ async def spawn_integrator_session(
     if not project_path:
         raise ValueError(f"Cannot spawn integrator for {slug}: missing project_path")
 
+    session_id = str(uuid.uuid4())
+    try:
+        resolved = resolve_entry(
+            procedure_token=LifecycleProcedure.INTEGRATE.value,
+            arguments="",
+            project_root=Path(project_path),
+            caller=None,
+            entry=EntryContext(),
+            session_id=session_id,
+            caller_mode=None,
+        )
+    except EntryRefusal as exc:
+        raise ValueError(f"Cannot spawn integrator for {slug}: {exc.detail}") from exc
     cmd = CreateSessionCommand(
+        session_id=session_id,
         project_path=project_path,
         origin=InputOrigin.TERMINAL.value,
-        command=SlashCommand.INTEGRATE.value,
-        initial_input=f"/{SlashCommand.INTEGRATE.value}",
+        command=resolved.procedure_id,
+        initial_input=resolved.procedure_id,
         launch_intent=SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-            thinking_mode="slow",
-            message=f"/{SlashCommand.INTEGRATE.value}",
+            thinking_mode=resolved.thinking_mode.value,
+            message=resolved.loader,
             dispatch_mode=AgentDispatchMode.AUTOMATIC,
+            candidate_order=resolved.agents,
+            invocation=resolved.record,
         ),
-        system_role=ROLE_INTEGRATOR,
-        job=JobRole.INTEGRATOR.value,
+        role=resolved.role.name.value,
         entry_point=SessionEntryPoint.INTEGRATION,
         skip_listener_registration=True,
         initiator_session_id=caller_session_id,

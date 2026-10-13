@@ -14,9 +14,9 @@ from sqlalchemy.orm.attributes import QueryableAttribute
 from sqlmodel import Session as SqlSession
 
 from teleclaude import paths as tc_paths
-from teleclaude.constants import SlashCommand
 from teleclaude.core import db_models
 from teleclaude.core.db.connection_factory import create_sync_db_engine
+from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.next_machine.runtime.sessions import is_commit_reviewer_in_project
 from teleclaude.core.session_status import is_session_terminal
 
@@ -67,6 +67,6 @@ def live_commit_reviewer_ids(initiator_session_id: str, project_path: str) -> fr
             command=row.command,
             session_project_path=row.project_path,
             project_root=project_root,
-            command_value=SlashCommand.REVIEW_COMMITS.value,
+            command_value=LifecycleProcedure.REVIEW_COMMITS.value,
         )
     )

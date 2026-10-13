@@ -7,17 +7,8 @@ from dataclasses import dataclass, field, replace
 from enum import Enum, StrEnum
 
 from teleclaude.cli import CommandScope
-from teleclaude.constants import (
-    HUMAN_ROLE_ADMIN,
-    HUMAN_ROLE_CUSTOMER,
-    HUMAN_ROLE_MEMBER,
-    ROLE_INTEGRATOR,
-    ROLE_JOB_RUNNER,
-    ROLE_ORCHESTRATOR,
-    ROLE_TASKER,
-    ROLE_WORKER,
-    SystemRole,
-)
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_CUSTOMER, HUMAN_ROLE_MEMBER
+from teleclaude.core.roles import Capability, Role, UnknownRole, allows
 
 
 class TelecCommand(str, Enum):
@@ -84,10 +75,10 @@ def admits_any_caller(caller_independent: bool, desk_command: bool) -> bool:
 
 @dataclass(frozen=True)
 class CommandAuth:
-    """Caller-independent declaration or role allow-list for a CLI command."""
+    """Caller-independent declaration, or the capability and person roles a CLI command admits."""
 
-    system: frozenset[str]  # allowed system roles
-    human: frozenset[str]  # allowed human roles (admin must be explicit)
+    capability: Capability | None = None  # the one command capability admitting agent callers; None for person-only
+    human: frozenset[str] = frozenset()  # allowed human roles (admin must be explicit)
     caller_independent: bool = False
     scope: CommandScope = CommandScope.INVOCATION
     scope_flag: str | None = None
@@ -106,19 +97,21 @@ class CommandAuth:
             when_flag=(),
         )
 
-    def allows(self, system_role: str | None, human_role: str | None) -> bool:
-        """Check whether a caller with the given roles is authorized.
+    def allows(self, role: Role | UnknownRole | None, human_role: str | None) -> bool:
+        """Check whether a caller with the given resolved role and person role is authorized.
 
-        Agent callers (system_role set) check the system set.
-        Human callers (no system_role) check the human set.
+        An agent caller (a resolved role) is admitted when its catalog entry reaches the command's
+        capability, and then also passes the person band when it acts for a person. A recorded role
+        the catalog does not name, and a person-only command, admit no agent caller. Human callers
+        (no role) check the human set.
         """
         if self.caller_independent:
             return True
-        if system_role is not None:
-            if system_role not in self.system:
-                return False
-            return human_role is None or human_role in self.human
-        return human_role in self.human if human_role is not None else False
+        if role is None:
+            return human_role in self.human if human_role is not None else False
+        if isinstance(role, UnknownRole) or self.capability is None or not allows(role, self.capability):
+            return False
+        return human_role is None or human_role in self.human
 
 
 class FlagArity(StrEnum):
@@ -218,14 +211,8 @@ def strip_hidden_flag_tokens(args: str, flags: list[Flag]) -> str:
 
 
 # =============================================================================
-# Role reach groups — used in CLI_SURFACE auth fields
+# Person role bands — used in CLI_SURFACE auth fields
 # =============================================================================
-_WORKER_REACH = frozenset({ROLE_WORKER})
-_TASKER_REACH = frozenset({ROLE_TASKER})
-_AGENT_REACH = frozenset({ROLE_ORCHESTRATOR, ROLE_INTEGRATOR, SystemRole.COORDINATOR, ROLE_TASKER, ROLE_JOB_RUNNER})
-_ORCHESTRATOR_RESERVATION = frozenset({ROLE_ORCHESTRATOR})
-_INTEGRATOR_RESERVATION = frozenset({ROLE_INTEGRATOR})
-
 _HR_ADMIN = frozenset({HUMAN_ROLE_ADMIN})
 _HR_MEMBER = frozenset({HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER})
 _HR_ALL_NON_ADMIN = frozenset({HUMAN_ROLE_MEMBER, HUMAN_ROLE_CUSTOMER})

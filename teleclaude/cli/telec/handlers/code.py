@@ -46,6 +46,7 @@ from teleclaude.commit_identity import (
 from teleclaude.core.db import get_db
 from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
 from teleclaude.core.models import Session
+from teleclaude.core.roles import RoleName
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
@@ -454,7 +455,7 @@ def handle_code_commit(args: list[str]) -> None:
     if not approved:
         forgot_gate = message is not None
         current_branch = resolve_current_branch(project_root)
-        if current_branch == "main" and caller_identity.system_role != "integrator":
+        if current_branch == "main" and caller_identity.role != RoleName.INTEGRATOR.value:
             _print_commit_review_guidance(project_root, state.context_root)
             raise SystemExit(1 if forgot_gate else 0)
         print(

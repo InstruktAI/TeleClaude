@@ -13,12 +13,14 @@ from teleclaude.docs_subscriptions import (
     SubscriptionIdentity,
     resolve_delivery_settings,
 )
+from teleclaude.entry_declarations import EntryKey, declares_entry_fields, parse_entry_declarations
 from teleclaude.events.type_pattern import TypePattern, TypePatternError
 from teleclaude.resource_validation._models import _error
 from teleclaude.snippet_scope import SnippetScope
-from teleclaude.snippet_validation import SnippetClassification
+from teleclaude.snippet_validation import SnippetClassification, companion_slug
 
 _SUBSCRIPTION_HOME_FIELD = "subscription_home"
+_MARKDOWN_SUFFIX = ".md"
 _UNCLASSIFIED_TIER = "unclassified"
 _SUBSCRIPTION_TIER_FINDING = "snippet_subscriptions_invalid_tier"
 _SUBSCRIPTION_PATTERN_FINDING = "snippet_subscriptions_invalid_pattern"
@@ -32,6 +34,8 @@ _SUBSCRIPTION_ATTENDANCE_UNEXPECTED_FINDING = "snippet_subscriptions_attendance_
 _SUBSCRIPTION_ATTENDANCE_VALUE_FINDING = "snippet_subscriptions_attendance_invalid_value"
 _DELIVERY_SETTINGS_UNEXPECTED_FINDING = "snippet_subscriptions_delivery_unexpected"
 _DELIVERY_SETTINGS_VALUE_FINDING = "snippet_subscriptions_delivery_invalid_value"
+_SUBSCRIPTION_ROLE_REQUIRED_FINDING = "snippet_subscriptions_role_required"
+_ENTRY_DECLARATION_TYPE_FINDING = "snippet_entry_declaration_invalid_type"
 #: The tiers where a procedure's subscriptions are routed.
 _SUBSCRIPTION_ROUTED_SCOPES = frozenset({SnippetScope.GLOBAL, SnippetScope.COMPANY, SnippetScope.PERSON})
 #: The one home kind a procedure published in a home's own tier can answer.
@@ -146,6 +150,31 @@ def validate_subscriptions(
     _validate_subscription_home(path, declared_home, classification)
     _validate_subscription_identity(path, declared_identity)
     _validate_subscription_attendance(path, declared_attendance)
+    if EntryKey.ROLE not in meta and not _has_pending_companion(path):
+        _error(_SUBSCRIPTION_ROLE_REQUIRED_FINDING, path=str(path))
+
+
+def _has_pending_companion(path: Path) -> bool:
+    """Whether a live snippet is awaiting a pending replacement; the companion carries and is graded for the declaration."""
+    return companion_slug(path) is None and any(
+        companion_slug(sibling) is not None for sibling in path.parent.glob(f"{path.stem}.*{_MARKDOWN_SUFFIX}")
+    )
+
+
+def validate_entry_declarations(path: Path, meta: Mapping[str, object], *, snippet_type: str | None) -> None:
+    """A procedure's launch-root declarations — ``role``, ``parameters``, ``dispatch`` — are well-formed.
+
+    The role must resolve through the agent role catalog; the declarations are procedure-only.
+    """
+    if not declares_entry_fields(meta):
+        return
+    if snippet_type != "procedure":
+        for key in EntryKey:
+            if key in meta:
+                _error(_ENTRY_DECLARATION_TYPE_FINDING, path=str(path), field=key.value)
+        return
+    for finding in parse_entry_declarations(meta).findings:
+        _error(finding.code.value, path=str(path), value=finding.value)
 
 
 def validate_activation_mode_exclusivity(path: Path, meta: Mapping[str, object]) -> None:

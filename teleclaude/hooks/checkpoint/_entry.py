@@ -7,8 +7,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.capabilities import resolve_project_capability_state
 from teleclaude.checkpoint_model import checkpoint_model_from_project_config
-from teleclaude.constants import TODO_WORKTREE_WRITER_JOB_ROLES
 from teleclaude.core.agents import AgentName
+from teleclaude.core.next_machine.lanes import TODO_WORKTREE_WRITER_ROLES
 from teleclaude.hooks.checkpoint._composition import _compose_checkpoint_message
 from teleclaude.hooks.checkpoint._evidence import (
     _compute_log_since_window,
@@ -85,7 +85,7 @@ def get_checkpoint_content(
     native_session_id: str | None = None,
     working_slug: str | None = None,
     elapsed_since_turn_start_s: float | None = None,
-    system_role: str | None = None,
+    role: str | None = None,
     job: str | None = None,
     receiver_ingress_id: str = "",
 ) -> str | None:
@@ -105,6 +105,7 @@ def get_checkpoint_content(
             "receiver_ingress_id": receiver_ingress_id,
             "session_id": session_id,
             "project_path": project_path or "",
+            "role": role or "",
             "job": job or "",
             "working_slug": working_slug or "",
             "transcript_present": bool(transcript_path),
@@ -135,7 +136,7 @@ def get_checkpoint_content(
         )
 
         integrator_checkpoint = _integrator_judgment_checkpoint(
-            system_role=system_role,
+            role=role,
             project_path=project_path,
             timeline=timeline,
             model=model,
@@ -153,7 +154,7 @@ def get_checkpoint_content(
         worktree_root = Path(workspace.root) if workspace.root is not None else None
         if workspace.kind is WorkspaceKind.GIT_WORKTREE:
             if worktree_root is not None and is_slug_worktree(worktree_root):
-                is_writer = job in TODO_WORKTREE_WRITER_JOB_ROLES and working_slug == worktree_root.name
+                is_writer = role in TODO_WORKTREE_WRITER_ROLES and working_slug == worktree_root.name
                 effective_files = sorted(dirty_paths) if is_writer else []
             else:
                 effective_files = sorted(dirty_paths)
@@ -243,7 +244,7 @@ def get_checkpoint_content(
             project_path=project_path,
             working_slug=working_slug,
             agent_name=agent_name,
-            system_role=system_role,
+            role=role,
             session_id=session_id,
             receiver_ingress_id=receiver_ingress_id,
             live_commit_reviewer_ids=live_commit_reviewer_ids(session_id, project_path),

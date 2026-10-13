@@ -41,7 +41,7 @@ class SessionMirrorContext:
     visibility: str | None
     last_input_origin: str | None
     adapter_metadata_json: str | None
-    system_role: str | None
+    role: str | None
     command: str | None
     todo: str | None
     title: str | None
@@ -124,7 +124,7 @@ def session_context_from_facts(facts: SessionMirrorFacts, transcript_path: str |
         visibility=facts.visibility,
         last_input_origin=facts.last_input_origin,
         adapter_metadata_json=facts.adapter_metadata,
-        system_role=facts.system_role,
+        role=facts.role,
         command=facts.command,
         todo=facts.working_slug,
         title=facts.title,

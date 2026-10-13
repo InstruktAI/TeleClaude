@@ -9,13 +9,14 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import JobRole, SlashCommand, SystemRole
 from teleclaude.core.db import Db, get_db
+from teleclaude.core.next_machine.lanes import LifecycleProcedure
+from teleclaude.core.roles import RoleName
 from teleclaude.core.session_listeners import unregister_listener
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_title import compose_command_session_title
 
-_COORDINATOR_COMMAND = SlashCommand.COORDINATE.value
+_COORDINATOR_COMMAND = LifecycleProcedure.COORDINATE.value
 ADOPTION_REASON_NO_LIVE_HOLDER = "no_live_holder"
 ADOPTION_REASON_CALLER_ALREADY_HOLDER = "caller_already_holder"
 ADOPTION_REASON_LIVE_HOLDER = "live_holder"
@@ -94,7 +95,7 @@ async def adopt_coordinator(
                 session
                 for session in sessions
                 if _same_project_root(session.project_path, project_root)
-                and session.job == JobRole.COORDINATOR.value
+                and session.role == RoleName.COORDINATOR.value
                 and not is_session_terminal(
                     lifecycle_status=session.lifecycle_status,
                     closed_at=session.closed_at,
@@ -124,8 +125,8 @@ async def adopt_coordinator(
             caller.session_id,
             title=compose_command_session_title(_COORDINATOR_COMMAND, ""),
             command=_COORDINATOR_COMMAND,
-            system_role=SystemRole.COORDINATOR,
-            job=JobRole.COORDINATOR.value,
+            role=RoleName.COORDINATOR.value,
+            job=None,
             initiator_session_id=None,
             initiator_computer=None,
             human_email=None,

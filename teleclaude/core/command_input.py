@@ -2,35 +2,15 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from enum import StrEnum
 
 from teleclaude.cli.telec.auth import is_command_allowed
-from teleclaude.constants import COMMAND_ROLE_MAP, NON_SLUG_BOUND_COMMANDS, SlashCommand
 
-_COMMAND_SEGMENT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
-_COMMAND_SEPARATOR = "/"
-_COMMAND_INPUT_SEPARATOR = " "
 _ORDINARY_INPUT_MODE = "ordinary"
 _INTERACTIVE_SHORTHAND_INPUT_MODE = "interactive_shorthand"
-_INVALID_COMMAND_TEMPLATE = "invalid command: {command}"
-_NORMALIZED_COMMAND_TEMPLATE = "/{command}"
-_NORMALIZED_COMMAND_WITH_ARGS_TEMPLATE = "/{command} {args}"
-_PREPARE_COMMAND = SlashCommand.PREPARE.value
-_DEFER_COMMAND = SlashCommand.DEFER.value
-# Not a SlashCommand member (never composed by platform state machines), but a
-# real installed document at agents/global/commands/sdlc/ —
-# every caller that reaches this set canonicalizes a bare token first (see
-# `resolve_command_input` and `_prepare_run_session`), so this must carry the
-# same qualified value or the required-argument guard silently stops matching.
-_RESEARCH_COMMAND = "sdlc/research"
-_RUN_JOB_COMMAND = SlashCommand.RUN_JOB.value
-_ACTIVATE_PROCEDURE_COMMAND = SlashCommand.ACTIVATE_PROCEDURE.value
 _SESSIONS_RUN_COMMAND = "telec sessions run"
 _COMMAND_INPUT_CLEARANCE_DETAIL = "caller is not permitted to invoke command input"
-_MISSING_ARGUMENT_TEMPLATE = "/{command} requires a slug argument"
-_JOB_COMMAND_GENERIC_CREATE_DETAIL = "run-job and activate-procedure must be dispatched through /sessions/run"
 
 
 class CommandInputMode(StrEnum):
@@ -41,7 +21,7 @@ class CommandInputMode(StrEnum):
 
 
 class CommandInputError(ValueError):
-    """A command-shaped interactive input violates the command-token contract."""
+    """A command-shaped interactive input violates the command-input contract."""
 
 
 @dataclass(frozen=True)
@@ -51,80 +31,16 @@ class NoCommandInput:
 
 @dataclass(frozen=True)
 class ResolvedCommandInput:
-    """One installed command invocation, normalized for command consumers."""
+    """One published entry procedure invocation: the procedure's snippet ID and its argument text."""
 
     command: str
     args: str
 
-    @property
-    def normalized_message(self) -> str:
-        """Return the canonical slash-prefixed command line."""
-        if self.args:
-            return _NORMALIZED_COMMAND_WITH_ARGS_TEMPLATE.format(command=self.command, args=self.args)
-        return _NORMALIZED_COMMAND_TEMPLATE.format(command=self.command)
+
+CommandInputResult = NoCommandInput | ResolvedCommandInput
 
 
-@dataclass(frozen=True)
-class RefusedCommandInput:
-    """A command-shaped input that must surface a typed admission refusal."""
-
-    detail: str
-
-
-CommandInputResult = NoCommandInput | ResolvedCommandInput | RefusedCommandInput
-
-_SLUG_COMMANDS = frozenset(command.value for command in COMMAND_ROLE_MAP if command not in NON_SLUG_BOUND_COMMANDS)
-WORKING_SLUG_COMMANDS = _SLUG_COMMANDS | {_PREPARE_COMMAND}
-SLUG_REQUIRED_LIFECYCLE_COMMANDS = _SLUG_COMMANDS - frozenset(command.value for command in NON_SLUG_BOUND_COMMANDS)
-REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS = frozenset({_DEFER_COMMAND, _RESEARCH_COMMAND})
-WORKTREE_BOUND_WORKER_COMMANDS = frozenset({SlashCommand.BUILD, SlashCommand.REVIEW_BUILD, SlashCommand.FINALIZE})
-
-
-@dataclass(frozen=True)
-class CommandInputMetadata:
-    """Canonical role, job, and work-item metadata for one resolved command."""
-
-    system_role: str | None
-    job: str | None
-    working_slug: str | None
-
-
-def normalize_command_input_token(command: str) -> str:
-    """Validate one command token while accepting its optional leading slash.
-
-    The slash is command punctuation, never a filesystem root: ``/etc/x`` is the
-    qualified name ``etc/x``, and resolution reads only inside the command corpus.
-    """
-    candidate = command.removeprefix(_COMMAND_SEPARATOR)
-    segments = candidate.split(_COMMAND_SEPARATOR)
-    valid_segments = all(_COMMAND_SEGMENT_PATTERN.fullmatch(segment) for segment in segments)
-    accepts_shape = len(segments) in (1, 2)
-    if not accepts_shape or not valid_segments:
-        raise CommandInputError(_INVALID_COMMAND_TEMPLATE.format(command=command))
-    return candidate
-
-
-def infer_command_input_metadata(command: str, args: str) -> CommandInputMetadata:
-    """Derive command-owned session metadata without interpreting natural language."""
-    working_slug = args.partition(_COMMAND_INPUT_SEPARATOR)[0].strip() if command in WORKING_SLUG_COMMANDS else None
-    try:
-        role_info = COMMAND_ROLE_MAP.get(SlashCommand(command))
-    except ValueError:
-        role_info = None
-    if role_info is None:
-        return CommandInputMetadata(system_role=None, job=None, working_slug=working_slug)
-    return CommandInputMetadata(system_role=role_info[0], job=role_info[1].value, working_slug=working_slug)
-
-
-def admit_command_input(command: str, args: str, human_role: str | None) -> CommandInputMetadata:
-    """Apply shared interactive command admission before composing its loader."""
+def admit_command_input(human_role: str | None) -> None:
+    """Apply shared interactive command admission before an invocation is composed."""
     if not is_command_allowed(_SESSIONS_RUN_COMMAND, None, human_role):
         raise CommandInputError(_COMMAND_INPUT_CLEARANCE_DETAIL)
-    metadata = infer_command_input_metadata(command, args)
-    if command in (_RUN_JOB_COMMAND, _ACTIVATE_PROCEDURE_COMMAND):
-        raise CommandInputError(_JOB_COMMAND_GENERIC_CREATE_DETAIL)
-    if command in REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS and not args:
-        raise CommandInputError(_MISSING_ARGUMENT_TEMPLATE.format(command=command))
-    if command in SLUG_REQUIRED_LIFECYCLE_COMMANDS and not metadata.working_slug:
-        raise CommandInputError(_MISSING_ARGUMENT_TEMPLATE.format(command=command))
-    return metadata

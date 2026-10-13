@@ -6,6 +6,7 @@ import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 from instrukt_ai_logging import get_logger
@@ -13,12 +14,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.agent_readiness import NoComposerReadinessTimeout, await_agent_readiness
 from teleclaude.core.agents import AgentName
-from teleclaude.core.command_input import (
-    CommandInputError,
-    RefusedCommandInput,
-    ResolvedCommandInput,
-    admit_command_input,
-)
+from teleclaude.core.command_input import CommandInputError, ResolvedCommandInput, admit_command_input
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.event_bus import event_bus
@@ -51,6 +47,7 @@ from teleclaude.core.injected_text import (
     visible_input_update,
     wake_occurrence_key,
 )
+from teleclaude.core.interactive_procedure_input import resolve_interactive_input
 from teleclaude.core.models import (
     CleanupTrigger,
     MessageAuthor,
@@ -59,6 +56,7 @@ from teleclaude.core.models import (
     Session,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.procedure_entry import EntryRefusal, resolve_inline_entry
 from teleclaude.core.session_cleanup import is_legacy_restricted_session
 from teleclaude.core.session_compaction import session_compaction_owner
 from teleclaude.core.session_idle_compaction import live_idle_close
@@ -69,8 +67,8 @@ from teleclaude.core.session_runtime_gate import (
     relaunch_awaiting_readiness,
     session_runtime_owner,
 )
-from teleclaude.core.session_startup_message import compose_command_loader, resolve_command_input
 from teleclaude.core.session_status import SessionLifecycleStatus, is_agent_turn_running, is_session_terminal
+from teleclaude.paths import REPO_ROOT
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
 from ._delivery_notices import notify_delivery_exhausted as notify_delivery_exhausted
@@ -919,24 +917,25 @@ async def accept_inbound_message(
     origin = cmd.origin or ""
     content, caller_prefix_len, caller_suffix_len = _canonical_caller_content(cmd)
     command_input: _InboundCommandInput | None = None
-    resolved_input = resolve_command_input(cmd.text, cmd.command_input_mode)
-    if isinstance(resolved_input, RefusedCommandInput):
-        raise SessionMessageRejectedError(
-            session_id=session_id,
-            reason=SessionMessageRejectionReason.ADMISSION_REFUSED,
-            detail=resolved_input.detail,
-        )
+    project_root = Path(session.project_path) if session.project_path else REPO_ROOT
+    resolved_input = resolve_interactive_input(cmd.text, cmd.command_input_mode, project_root)
     if isinstance(resolved_input, ResolvedCommandInput):
         try:
-            admit_command_input(resolved_input.command, resolved_input.args, cmd.sender_human_role)
-        except CommandInputError as exc:
+            admit_command_input(cmd.sender_human_role)
+            inline = resolve_inline_entry(
+                procedure_token=resolved_input.command,
+                arguments=resolved_input.args,
+                project_root=project_root,
+                session_id=session_id,
+            )
+        except (CommandInputError, EntryRefusal) as exc:
             raise SessionMessageRejectedError(
                 session_id=session_id,
                 reason=SessionMessageRejectionReason.ADMISSION_REFUSED,
                 detail=str(exc),
             ) from exc
-        content = compose_command_loader(resolved_input.command, resolved_input.args)
-        command_input = {"source_text": cmd.text, "command": resolved_input.command, "args": resolved_input.args}
+        content = inline.loader
+        command_input = {"source_text": cmd.text, "command": inline.procedure_id, "args": inline.arguments}
 
     async def _record_after_insert(_row_id: int) -> None:
         await _record_accepted_input_metadata(

@@ -16,16 +16,9 @@ from teleclaude.constants import (
     HUMAN_ROLE_CUSTOMER,
     HUMAN_ROLE_MEMBER,
     HUMAN_ROLES,
-    ROLE_INTEGRATOR,
-    ROLE_JOB_RUNNER,
-    ROLE_ORCHESTRATOR,
-    ROLE_SYSTEM,
-    ROLE_TASKER,
-    ROLE_WORKER,
     SYSTEM_DAEMON_PRINCIPAL,
-    JobRole,
-    SystemRole,
 )
+from teleclaude.core.roles import Role, RoleClass, resolve_role
 from teleclaude.services.project_catalog.ownership import ProjectOwnershipIndex, load_project_ownership_index
 from teleclaude.snippet_scope import SnippetScope
 from teleclaude.types.creation_record import EntryPoint
@@ -231,7 +224,7 @@ class CliResolvedIdentityFields(Protocol):
     def principal(self) -> str | None: ...
 
     @property
-    def system_role(self) -> str | None: ...
+    def role(self) -> str | None: ...
 
     @property
     def session_id(self) -> str | None: ...
@@ -249,7 +242,7 @@ class SessionIdentity:
 
     principal: str | None
     principal_role: str | None
-    system_role: str | None
+    role: str | None
     caller: CliCaller
 
 
@@ -428,7 +421,7 @@ def _target_uses_project_ownership(target: RoleTarget) -> bool:
 _CARRIED_IDENTITY_HEADERS = (
     ("session_id", "x-caller-session-id"),
     ("principal", "x-caller-principal"),
-    ("system_role", "x-caller-system-role"),
+    ("role", "x-caller-role"),
     ("human_role", "x-caller-human-role"),
     ("email", "x-caller-email"),
     ("entry_point", "x-caller-entry-point"),
@@ -443,7 +436,7 @@ class CarriedIdentity:
 
     session_id: str | None = None
     principal: str | None = None
-    system_role: str | None = None
+    role: str | None = None
     human_role: str | None = None
     email: str | None = None
     entry_point: str | None = None
@@ -460,7 +453,7 @@ class CarriedIdentity:
         return cls(
             session_id=identity.session_id,
             principal=identity.principal,
-            system_role=identity.system_role,
+            role=identity.role,
             human_role=identity.caller.human_role,
             email=identity.caller.email,
             entry_point=identity.entry_point,
@@ -479,7 +472,7 @@ class CarriedIdentity:
         return cls(
             session_id=session_id,
             principal=identity.principal,
-            system_role=identity.system_role,
+            role=identity.role,
             human_role=identity.caller.human_role,
             email=identity.caller.email,
             entry_point=EntryPoint.AGENT.value,
@@ -527,7 +520,7 @@ class SessionIdentityFields(Protocol):
     def human_role(self) -> str | None: ...
 
     @property
-    def system_role(self) -> str | None: ...
+    def role(self) -> str | None: ...
 
     @property
     def working_slug(self) -> str | None: ...
@@ -546,14 +539,14 @@ class ConfinedSessionIdentityFields(SessionIdentityFields, Protocol):
     def confinement_profile(self) -> str | None: ...
 
 
-def is_desk_role(system_role: str | None, human_role: str | None) -> bool:
+def is_desk_role(role: str | None, human_role: str | None) -> bool:
     """Whether a session's persisted roles place it at a help desk under desk confinement.
 
-    A session with no system role whose recorded person role is below member
+    A session with no agent role whose recorded person role is below member
     (customer) is placed at the help desk and runs
     confined there.
     """
-    return system_role is None and human_role is not None and human_role not in (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER)
+    return role is None and human_role is not None and human_role not in (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER)
 
 
 def is_desk_visitor(caller: CliCaller) -> bool:
@@ -564,7 +557,7 @@ def is_desk_visitor(caller: CliCaller) -> bool:
 def _desk_visitor_caller(session: ConfinedSessionIdentityFields) -> CliCaller:
     """Resolve a principal-less session to the anonymous desk visitor, or to no identity."""
     if (
-        session.system_role is None
+        session.role is None
         and session.human_role == HUMAN_ROLE_CUSTOMER
         and session.confinement_profile == LaunchProfile.HELP_DESK
     ):
@@ -579,11 +572,10 @@ def resolve_session_principal(session: SessionIdentityFields) -> tuple[str, str]
     if session.human_email:
         principal = f"{HUMAN_PRINCIPAL_PREFIX}{session.human_email}"
         return principal, session.human_role or HUMAN_ROLE_CUSTOMER
-    if session.system_role:
-        return SYSTEM_DAEMON_PRINCIPAL, session.system_role
+    if session.role:
+        return SYSTEM_DAEMON_PRINCIPAL, session.role
     raise SessionIdentityError(
-        f"Session {session.session_id} has no identity: no principal, no human_email, no system_role. "
-        "Authentication required."
+        f"Session {session.session_id} has no identity: no principal, no human_email, no role. Authentication required."
     )
 
 
@@ -611,27 +603,6 @@ def _normalize_human_role(role: str | None) -> str:
     return role if role in HUMAN_ROLES else HUMAN_ROLE_CUSTOMER
 
 
-def derive_session_system_role(session: SessionIdentityFields) -> str | None:
-    """Derive system role from authoritative session fields."""
-    if session.job == JobRole.COORDINATOR.value:
-        return SystemRole.COORDINATOR
-    if session.system_role:
-        normalized = session.system_role.strip().lower()
-        if normalized in {
-            ROLE_WORKER,
-            ROLE_SYSTEM,
-            ROLE_INTEGRATOR,
-            SystemRole.COORDINATOR,
-            ROLE_ORCHESTRATOR,
-            ROLE_TASKER,
-            ROLE_JOB_RUNNER,
-        }:
-            return normalized
-    if session.working_slug:
-        return ROLE_WORKER
-    return None
-
-
 def identity_for_session(session: ConfinedSessionIdentityFields) -> SessionIdentity:
     """Resolve one session record into its CLI caller and role facts.
 
@@ -651,17 +622,17 @@ def identity_for_session(session: ConfinedSessionIdentityFields) -> SessionIdent
     return SessionIdentity(
         principal=principal,
         principal_role=principal_role,
-        system_role=derive_session_system_role(session),
+        role=session.role or None,
         caller=caller,
     )
 
 
-def authorizing_role(caller: CliCaller, system_role: str | None, target: RoleTarget) -> str | None:
+def authorizing_role(caller: CliCaller, role: str | None, target: RoleTarget) -> str | None:
     """Return the role that authorizes a caller at the target object."""
     if isinstance(caller, PersonCliCaller):
         return RoleResolver().role_for(caller, target)
     if isinstance(caller, SystemCliCaller):
-        return system_role
+        return role
     return None
 
 
@@ -669,12 +640,14 @@ def session_act_exception(
     act: SessionAct,
     caller_session_id: str | None,
     caller_initiator_session_id: str | None,
-    caller_system_role: str | None,
+    caller_role: str | None,
     target_session_id: str | None,
 ) -> bool | None:
     """Apply self-end, self-restart, and self-show exceptions before the declared band."""
     if caller_session_id is None or target_session_id != caller_session_id:
-        if act is SessionAct.RESTART and caller_system_role == ROLE_WORKER:
+        resolved_caller_role = resolve_role(caller_role)
+        is_worker = isinstance(resolved_caller_role, Role) and resolved_caller_role.role_class is RoleClass.WORKER
+        if act is SessionAct.RESTART and is_worker:
             return False
         return None
     if act is SessionAct.END and caller_initiator_session_id is not None:

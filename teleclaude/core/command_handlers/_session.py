@@ -14,7 +14,7 @@ from teleclaude.api_models import TodoDTO
 from teleclaude.config.machine import config
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
-from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL, SlashCommand
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import (
@@ -49,16 +49,17 @@ from teleclaude.core.models import (
     JsonDict,
     ProjectInfo,
     Session,
+    SessionEntryPoint,
     SessionLaunchKind,
     SessionSnapshot,
 )
 from teleclaude.core.models._adapter import UNATTENDED_SECTION, unattended_stamp
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
+from teleclaude.core.roles import RoleName
 from teleclaude.core.session_cleanup import host_pane_name, terminate_session
 from teleclaude.core.session_company import record_session_company_resolved
 from teleclaude.core.session_listeners import establish_supervision
 from teleclaude.core.session_listing import SessionListingSelection
-from teleclaude.core.session_startup_message import prepare_startup_message
 from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.session_utils import WorkingDirectoryUnavailableError, resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
@@ -92,11 +93,6 @@ _LISTENER_REGISTRATION_SKIPPED_EVENT = "session_listener_registration_skipped"
 _LISTENER_REGISTRATION_FAILED_EVENT = "session_listener_registration_failed"
 _LISTENER_SKIP_REASON_STANDING_ROLE = "standing_role"
 _SESSION_SUBJECT_RESOLUTION_FAILED_EVENT = "session_config_subject_resolution_failed"
-_PROCEDURE_SUPPORT_INSTRUCTION_TEMPLATE = (
-    "\n\nBefore processing activation events, load any of these required-read procedures "
-    "that are not already included in the loaded closure: {required_reads}."
-)
-_PROCEDURE_SUPPORT_READ_SEPARATOR = ", "
 
 
 async def _read_todo_owner_principal(project_path: str, slug: str) -> str | None:
@@ -140,14 +136,14 @@ async def _resolve_launch_intent(
         preferred_agent = intent.agent
     fixed_agent = intent.agent if mode is AgentDispatchMode.FIXED else None
     todo_kind = None
-    if cmd.job == "prepare-orchestrator" and working_slug:
+    if cmd.role == RoleName.PREPARE_ORCHESTRATOR.value and working_slug:
         todo_kind = await _resolve_prepare_todo_kind(project_path, working_slug)
     kind_source = (
         AgentDispatchKindSource.TARGET_TODO_RECORD if todo_kind is not None else AgentDispatchKindSource.NOT_APPLICABLE
     )
     basis_digest = decision_basis_digest(
         mode=mode,
-        role=cmd.job,
+        role=cmd.role,
         # ACCEPTED may be emitted at an API origin before target kind lookup.
         # Keep the digest safe and stage-consistent; RESOLVED retains the
         # authoritative target kind in its explicit field.
@@ -164,7 +160,7 @@ async def _resolve_launch_intent(
             request_id=cmd.request_id,
             dispatch_mode=mode,
             entry_point=cmd.entry_point,
-            job_role=cmd.job,
+            job_role=cmd.role,
             todo_kind=todo_kind,
             agent_supplied=agent_supplied,
             working_slug_present=working_slug is not None,
@@ -178,8 +174,7 @@ async def _resolve_launch_intent(
     try:
         decision = await resolve_agent_dispatch(
             mode=mode,
-            role=cmd.job,
-            command=cmd.initial_input,
+            role=cmd.role,
             preferred_agent=preferred_agent,
             fixed_agent=fixed_agent,
             candidate_order=intent.candidate_order,
@@ -194,7 +189,7 @@ async def _resolve_launch_intent(
             request_id=cmd.request_id,
             dispatch_mode=mode,
             entry_point=cmd.entry_point,
-            job_role=cmd.job,
+            job_role=cmd.role,
             todo_kind=todo_kind,
             agent_supplied=agent_supplied,
             working_slug_present=working_slug is not None,
@@ -215,17 +210,12 @@ async def _resolve_launch_intent(
     intent.fixed_agent = fixed_agent
     intent.decision_basis_digest = basis_digest
     if intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE and intent.message is not None:
-        raw_startup_message = intent.message
-        intent.message = prepare_startup_message(intent.message, cmd.command)
-        if cmd.procedure_delivery is not None and cmd.procedure_delivery.required_reads:
-            required_reads = _PROCEDURE_SUPPORT_READ_SEPARATOR.join(cmd.procedure_delivery.required_reads)
-            intent.message += _PROCEDURE_SUPPORT_INSTRUCTION_TEMPLATE.format(required_reads=required_reads)
         startup_reason = (
             AgentDispatchReason.CODEX_LOADER
-            if intent.message != raw_startup_message
+            if intent.invocation is not None
             else AgentDispatchReason.STARTUP_UNCHANGED_FOR_AGENT
         )
-        if intent.caller_header and intent.message == raw_startup_message:
+        if intent.invocation is None and intent.caller_header:
             intent.message, _, _ = format_identity_conversation(header=intent.caller_header, body=intent.message)
     else:
         startup_reason = AgentDispatchReason.STARTUP_UNCHANGED_FOR_AGENT
@@ -237,7 +227,7 @@ async def _resolve_launch_intent(
         request_id=cmd.request_id,
         dispatch_mode=mode,
         entry_point=cmd.entry_point,
-        job_role=cmd.job,
+        job_role=cmd.role,
         todo_kind=todo_kind,
         fallback_reason=decision.fallback_reason,
         agent_supplied=agent_supplied,
@@ -259,7 +249,7 @@ async def _resolve_launch_intent(
         request_id=cmd.request_id,
         dispatch_mode=mode,
         entry_point=cmd.entry_point,
-        job_role=cmd.job,
+        job_role=cmd.role,
         todo_kind=todo_kind,
         agent_supplied=agent_supplied,
         working_slug_present=working_slug is not None,
@@ -322,8 +312,8 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     company_source = resolved.company_source
     initiator_session_id = resolved.initiator_session_id
     initiator_computer = resolved.initiator_computer
-    cmd_system_role, cmd_job = cmd.system_role, cmd.job
-    session_kind = desk_session_kind(cmd_system_role, human_role, cmd.endpoint)
+    cmd_role, cmd_job = cmd.role, cmd.job
+    session_kind = desk_session_kind(cmd_role, human_role, cmd.endpoint)
 
     decision = await _resolve_launch_intent(cmd, project_path, working_slug, session_kind)
     launch = cmd.launch_intent
@@ -331,7 +321,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         if not launch.agent or not launch.thinking_mode:
             raise ValueError("Agent launch intent requires agent and thinking_mode")
         launch.resolved_model_flags = (
-            await resolve_launch_model(launch.agent, launch.thinking_mode, ownership=launch_ownership(cmd.job))
+            await resolve_launch_model(launch.agent, launch.thinking_mode, ownership=launch_ownership(cmd.role))
         ).flags
 
     # tmux silently falls back to its own cwd if -c points at a non-existent directory.
@@ -385,7 +375,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     # Runner-dispatched lifecycle sessions have no human caller and may inherit
     # the daemon's system principal. Establish the chain-root human from the
     # todo's persisted owner so the resolved principal is the owning human, not
-    # the daemon principal. Audit-only: system_role (the authorization band) is left
+    # the daemon principal. Audit-only: role (the authorization band) is left
     # untouched, and a manual start (human_email already set) is never overridden.
     if not human_email and working_slug:
         owner_principal = await _read_todo_owner_principal(project_path, working_slug)
@@ -396,7 +386,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     command_line = next(iter((cmd.initial_input or "").splitlines()), "")
     _, _, command_args = command_line.partition(" ")
     title_args = command_args
-    if cmd.command == SlashCommand.RUN_JOB.value and cmd.job is not None:
+    if cmd.entry_point is SessionEntryPoint.CRON and cmd.job is not None:
         title_args = cmd.job
     title = cmd.title or (compose_command_session_title(cmd.command, title_args) if cmd.command is not None else "")
 
@@ -435,7 +425,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         human_role=human_role,
         principal=principal,
         lifecycle_status="headless" if cmd.headless else "initializing",
-        system_role=cmd_system_role,
+        role=cmd_role,
         job=cmd_job,
         company=company,
         active_agent=launch.agent if launch else None,
@@ -525,7 +515,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
             session_id=session_id,
             dispatch_mode=launch.dispatch_mode if launch else None,
             entry_point=cmd.entry_point,
-            job_role=cmd.job,
+            job_role=cmd.role,
             preferred_agent=launch.preferred_agent if launch else None,
             fixed_agent=launch.fixed_agent if launch else None,
             decision_basis_digest=launch.decision_basis_digest if launch else None,

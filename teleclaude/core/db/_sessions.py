@@ -82,7 +82,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
         tmux_session_name: str,
         last_input_origin: str,
         title: str,
-        system_role: str | None = None,
+        role: str | None = None,
         job: str | None = None,
         company: str | None = None,
         project_path: str | None = None,
@@ -119,8 +119,8 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
             tmux_session_name: Name of tmux session
             last_input_origin: Last input origin (InputOrigin.*.value)
             title: Optional session title
-            system_role: Optional system role (worker, orchestrator, integrator, system)
-            job: Optional job role value
+            role: Optional catalog role the session carries (None for a human session)
+            job: Optional instance identity (a scheduled job's name, an activation's procedure)
             company: Optional company slug this session operates the business of
             project_path: Base project path (no subdir)
             subdir: Optional subdirectory/worktree relative to project_path
@@ -153,7 +153,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
             tmux_session_name=tmux_session_name,
             last_input_origin=last_input_origin,
             title=title or f"[{computer_name}] Untitled",
-            system_role=system_role,
+            role=role,
             job=job,
             company=company,
             created_at=now,
@@ -189,7 +189,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
             tmux_session_name=session.tmux_session_name,
             last_input_origin=session.last_input_origin,
             origin_metadata=json.dumps(origin_meta),
-            system_role=session.system_role,
+            role=session.role,
             job=session.job,
             company=session.company,
             created_at=session.created_at,

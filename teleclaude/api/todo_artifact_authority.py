@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING
 from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
-from teleclaude.constants import PREPARE_AUTHOR_JOB_ROLES
 from teleclaude.core.db import db as runtime_db
+from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.session_utils import session_in_claiming_group
 from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX, Lineage
@@ -104,7 +104,7 @@ async def refuse_todo_update_outside_claiming_group(
     slug: str,
 ) -> None:
     """Refuse an agent update from outside a slug's live claiming group."""
-    if not identity.session_id and identity.system_role is None:
+    if not identity.session_id and identity.role is None:
         return
     holder = await _foreign_live_claim_holder(todos_db, identity.session_id, slug)
     if holder is None:
@@ -137,14 +137,14 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
 
     A prepare artifact is writable by a prepare-phase writer — a direct
     human-identity session (empty session id), a registered session carrying one
-    of the prepare-authoring job roles (`PREPARE_AUTHOR_JOB_ROLES`: the prepare
+    of the prepare-authoring roles (`PREPARE_AUTHOR_ROLES`: the prepare
     orchestrator and the intake, architecture, diagnosis, and planning authors),
-    or a registered roleless session that carries no job (the human-originated,
-    operator-driven shape). The gate reads the job alone; a dispatched diagnosis
+    or a registered roleless session that carries no role (the human-originated,
+    operator-driven shape). The gate reads the role alone; a dispatched diagnosis
     session is a worker for fleet classification and still admitted here on its
-    job. A session id with no registry row is an unknown caller; every
-    registered session that carries a non-prepare-authoring job — work
-    orchestrator, create orchestrator, integrator, and every other worker job —
+    role. A session id with no registry row is an unknown caller; every
+    registered session that carries a non-prepare-authoring role — work
+    orchestrator, create orchestrator, integrator, and every other worker role —
     is refused by role with a 403.
     """
     if not identity.session_id:
@@ -158,13 +158,13 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
                 f"unknown caller; session '{identity.session_id}' is not registered"
             ),
         )
-    if session.job is None:
+    if session.role is None:
         return
-    if session.job not in PREPARE_AUTHOR_JOB_ROLES:
+    if session.role not in PREPARE_AUTHOR_ROLES:
         raise HTTPException(
             status_code=403,
             detail=(
                 f"prepare artifact '{name}' for '{slug}' is not writable by a "
-                f"role-bearing session; caller job '{session.job}' is refused"
+                f"role-bearing session; caller role '{session.role}' is refused"
             ),
         )

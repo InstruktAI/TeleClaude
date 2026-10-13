@@ -29,7 +29,7 @@ _PROCEDURE_WAKE_ACTOR = "system"
 
 class ProcedureActivationFailureReason(StrEnum):
     HOME_UNAVAILABLE = "home_unavailable"
-    COMMAND_UNAVAILABLE = "command_unavailable"
+    PROCEDURE_UNAVAILABLE = "procedure_unavailable"
     SESSION_UNAVAILABLE = "session_unavailable"
     SUBJECT_MISSING = "subject_missing"
     REVIVAL_FAILED = "revival_failed"
@@ -47,6 +47,12 @@ class ProcedureActivationTerminalError(RuntimeError):
 def procedure_responsibility_key(*, procedure_id: str, home: str, subject: str | None) -> str:
     """Return a stable key for a procedure agent independently of its session."""
     return json.dumps((procedure_id, home, subject), ensure_ascii=_ENSURE_ASCII, separators=_COMPACT_JSON_SEPARATORS)
+
+
+def procedure_responsibility_parts(responsibility_key: str) -> tuple[str, str, str | None]:
+    """Read a responsibility key back into its procedure ID, home token and optional subject token."""
+    procedure_id, home, subject = json.loads(responsibility_key)
+    return str(procedure_id), str(home), (str(subject) if subject is not None else None)
 
 
 async def accept_procedure_activation(command: ActivateProcedureCommand) -> ProcedureEventRecord:

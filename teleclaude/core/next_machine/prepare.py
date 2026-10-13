@@ -19,7 +19,6 @@ from teleclaude.constants import (
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
-    SlashCommand,
 )
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT
@@ -56,6 +55,7 @@ if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 
 from teleclaude.core.next_machine._types import PreparePhase as _PP
+from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionMode,
     HolderResolutionReason,
@@ -324,7 +324,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         if lifecycle is LifecyclePhase.TASK_PLAN_DRAFTING:
             return format_procedure_load(
                 slug=resolved_slug,
-                command_name=SlashCommand.PREPARE_TASK.value,
+                procedure_id=LifecycleProcedure.PREPARE_TASK.value,
                 hat=_TASK_PREPARER_HAT,
                 expected=_TASK_PREPARER_EXPECTED,
             )

@@ -64,7 +64,7 @@ async def build_launch_intent(
 
     dispatch_mode, preferred_agent = classify_fresh_agent_preference(
         validated_request_agent,
-        caller_system_role=identity.system_role,
+        caller_role=identity.role,
     )
 
     if launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:

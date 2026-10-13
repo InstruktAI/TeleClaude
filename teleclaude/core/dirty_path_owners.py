@@ -127,7 +127,7 @@ def _owners_for_dirty_paths(
         path_owners = tuple(
             sorted(
                 (
-                    DirtyPathOwner(session_uuid=session.session_id, job=session.job, title=session.title)
+                    DirtyPathOwner(session_uuid=session.session_id, job=session.role, title=session.title)
                     for session in sessions
                     if dirty_path.path in declarations_by_session[session.session_id]
                 ),

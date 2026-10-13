@@ -13,11 +13,10 @@ from teleclaude.constants import (
     COMMIT_REVIEW_DISCARD_PLACEHOLDER,
     COMMIT_REVIEW_INTENT_TEST,
     WORKTREE_DIR,
-    SlashCommand,
 )
 from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
+from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason, format_dispatch_reason
-from teleclaude.core.session_startup_message import compose_command_loader
 from teleclaude.types.lifecycle import DriftClass
 
 if TYPE_CHECKING:
@@ -36,7 +35,6 @@ __all__ = [
     "ToolCallRequest",
     "dispatch_or_reuse",
     "format_blocker_resolution",
-    "format_command_loader_message",
     "format_error",
     "format_finalize_handoff_complete",
     "format_orchestration_watch_instruction",
@@ -107,8 +105,7 @@ _DOCUMENTED_PROCEDURE_LOADER_TEMPLATE = (
     "Run `{command}` and follow the returned procedure exactly for this phase.\n\n"
     "Treat the following as the procedure input:\n{slug}"
 )
-_PROCEDURE_LOAD_TARGET_ERROR = "Exactly one procedure-load target is required"
-_TELEC_DOCS_GET_TEMPLATE = "telec docs get {procedure_id}"
+_TELEC_DOCS_GET_TEMPLATE = "telec docs get {procedure_id} --closure"
 _WORK_RETURNED_TO_PREPARATION_TEMPLATE = (
     "WORK_RETURNED_TO_PREPARATION: {slug} ({reason}). The claim is released and the platform is ending this work "
     "lane's sessions, this one included. The lifecycle runner dispatches a fresh prepare orchestrator; the "
@@ -120,7 +117,7 @@ class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
     """Structured request mapping for orchestrator tool-call formatting.
 
     Fields consumed by format_tool_call:
-        command: SlashCommand enum or string (required)
+        command: LifecycleProcedure enum or string (required)
         args: worker arguments (required)
         project: project root path (required)
         subfolder: worktree subfolder relative to project (required)
@@ -354,11 +351,6 @@ FEEDBACK MESSAGES:
     return result
 
 
-def format_command_loader_message(command_name: str, slug: str) -> str:
-    """Compose a command loader for a dispatched prepare worker."""
-    return compose_command_loader(command_name, slug)
-
-
 def _format_documented_procedure_loader_message(procedure_id: str, slug: str) -> str:
     """Format a direct docs load for an inline lifecycle procedure."""
     command = _TELEC_DOCS_GET_TEMPLATE.format(procedure_id=procedure_id)
@@ -368,8 +360,7 @@ def _format_documented_procedure_loader_message(procedure_id: str, slug: str) ->
 def format_procedure_load(
     *,
     slug: str,
-    command_name: str | None = None,
-    procedure_id: str | None = None,
+    procedure_id: str,
     hat: str,
     expected: str,
     reason: DispatchReason | None = None,
@@ -395,13 +386,7 @@ def format_procedure_load(
     used by the bug lane's interrogation load to name the live diagnosis peer
     session to question.
     """
-    if (command_name is None) == (procedure_id is None):
-        raise ValueError(_PROCEDURE_LOAD_TARGET_ERROR)
-    if command_name is not None:
-        loader = format_command_loader_message(command_name, slug)
-    else:
-        assert procedure_id is not None
-        loader = _format_documented_procedure_loader_message(procedure_id, slug)
+    loader = _format_documented_procedure_loader_message(procedure_id, slug)
     body = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 SLUG: {slug}
@@ -468,7 +453,7 @@ def format_prepared_withheld(slug: str, outstanding: Sequence[OutstandingCommit]
     ]
     instruction = _PREPARED_WITHHELD_INSTRUCTION.format(
         intent_test=COMMIT_REVIEW_INTENT_TEST,
-        review_command=SlashCommand.REVIEW_COMMITS.value,
+        review_command=LifecycleProcedure.REVIEW_COMMITS.value,
         discard_command=COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE.format(sha=COMMIT_REVIEW_DISCARD_PLACEHOLDER),
         slug=slug,
     )
@@ -530,7 +515,7 @@ def format_work_entry_drift_bounce(
     verb is ``telec todo work``.
     """
     request = ToolCallRequest(
-        command=f"/{SlashCommand.DRIFT_ANALYZE.value}",
+        command=LifecycleProcedure.DRIFT_ANALYZE.value,
         args=slug,
         project=project_root,
         subfolder="",

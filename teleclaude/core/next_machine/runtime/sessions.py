@@ -5,21 +5,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from teleclaude.constants import ROLE_ORCHESTRATOR, WORKTREE_DIR, SlashCommand
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.agent_status_projection import read_session_agent_status
 from teleclaude.core.db import Db
+from teleclaude.core.next_machine.lanes import DRIVER_ROLES, LifecycleProcedure
 from teleclaude.core.session_status import AgentStatusValue
 
 CommandValues = str | tuple[str, ...]
 PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (
-    SlashCommand.PREPARE.value,
-    SlashCommand.PREPARE_INTAKE.value,
-    SlashCommand.PREPARE_ARCHITECTURE.value,
-    SlashCommand.PREPARE_DIAGNOSE.value,
-    SlashCommand.PREPARE_PLAN.value,
-    SlashCommand.REVIEW_ARCHITECTURE.value,
-    SlashCommand.REVIEW_PLAN.value,
-    SlashCommand.DRIFT_ANALYZE.value,
+    LifecycleProcedure.PREPARE.value,
+    LifecycleProcedure.INTAKE.value,
+    LifecycleProcedure.ARCHITECTURE.value,
+    LifecycleProcedure.DIAGNOSE.value,
+    LifecycleProcedure.PLAN_DRAFT.value,
+    LifecycleProcedure.REVIEW_ARCHITECTURE.value,
+    LifecycleProcedure.REVIEW_PLAN.value,
+    LifecycleProcedure.DRIFT_ANALYZE.value,
 )
 
 
@@ -309,7 +310,7 @@ async def live_orchestrator_owner(db: Db, project_path: str | Path, slug: str) -
     """Return the id of a live orchestrator bound to ``slug`` in this project.
 
     Authoritative orchestrator dedup signal: a session is the owner when it is a
-    live orchestrator (``system_role == ROLE_ORCHESTRATOR``), its ``working_slug``
+    live driver (a role of the workflow's driver set), its ``working_slug``
     matches ``slug`` exactly, and it runs in the same canonical project root. Exact
     slug equality (not a title/worktree heuristic) and project scoping mean one
     project's slug never blocks another's same-named slug. Returns ``None`` when no
@@ -318,7 +319,7 @@ async def live_orchestrator_owner(db: Db, project_path: str | Path, slug: str) -
     project_root = Path(project_path).resolve()
     sessions = await db.list_sessions(include_closed=False)
     for session in sessions:
-        if session.system_role != ROLE_ORCHESTRATOR:
+        if session.role not in DRIVER_ROLES:
             continue
         if session.working_slug != slug:
             continue
@@ -373,7 +374,7 @@ async def live_orchestrator_owned_slugs(db: Db, project_path: str | Path) -> set
     return {
         session.working_slug
         for session in sessions
-        if session.system_role == ROLE_ORCHESTRATOR
+        if session.role in DRIVER_ROLES
         and session.working_slug
         and _same_project_root(session.project_path, project_root)
     }

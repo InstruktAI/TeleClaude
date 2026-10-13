@@ -605,7 +605,7 @@ async def todo_content_create(
                 "creation lineage refused",
                 slug=slug,
                 entry_point=identity.entry_point.value if identity is not None and identity.entry_point else None,
-                system_role=identity.system_role if identity is not None else None,
+                role=identity.role if identity is not None else None,
             )
             raise
         # resolve_creation_lineage above raises unless identity resolved, so

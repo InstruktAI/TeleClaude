@@ -6,7 +6,6 @@ from teleclaude.resource_validation._artifacts import (
     _error,
     validate_all_artifacts,
     validate_artifact,
-    validate_artifact_body,
     validate_artifact_frontmatter,
     validate_artifact_refs_exist,
 )
@@ -66,7 +65,6 @@ __all__ = [
     "validate_all_artifacts",
     "validate_all_snippets",
     "validate_artifact",
-    "validate_artifact_body",
     "validate_artifact_frontmatter",
     "validate_artifact_refs_exist",
     "validate_jobs_config",

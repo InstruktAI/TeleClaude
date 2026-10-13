@@ -11,7 +11,7 @@ from typing import Final, TypedDict, cast
 from teleclaude.config.job_scope import JobScope
 from teleclaude.config.loader import load_declared_project_config, load_global_config
 from teleclaude.config.schema import JobScheduleConfig, is_agent_job
-from teleclaude.context_selector import resolve_snippet_meta
+from teleclaude.context_selector import entry_procedure_gap, resolve_snippet_meta
 from teleclaude.paths import GLOBAL_CONFIG_PATH
 
 _WHEN_FIELD: Final = "when"
@@ -26,6 +26,9 @@ _AGENT_CANDIDATES_ERROR: Final = "agent job '{name}' requires candidates"
 _UNKNOWN_PROCEDURE_ERROR: Final = "agent job '{name}' names unknown procedure: {pointer}"
 _NON_PROCEDURE_ERROR: Final = "agent job '{name}' must name a procedure: {pointer}"
 _PENDING_PROCEDURE_ERROR: Final = "agent job '{name}' names a pending procedure: {pointer}"
+_UNUSABLE_ENTRY_ERROR: Final = (
+    "agent job '{name}' names a procedure that is not a usable entry procedure: {pointer} ({reason})"
+)
 
 
 @dataclass(frozen=True)
@@ -217,3 +220,6 @@ def _validate_complete(declaration: JobScheduleConfig, project_root: Path) -> No
             raise ValueError(_NON_PROCEDURE_ERROR.format(name=declaration.name, pointer=pointer))
         if metadata.delivered_by:
             raise ValueError(_PENDING_PROCEDURE_ERROR.format(name=declaration.name, pointer=pointer))
+        gap = entry_procedure_gap(metadata, accept_pending_companion=True)
+        if gap is not None:
+            raise ValueError(_UNUSABLE_ENTRY_ERROR.format(name=declaration.name, pointer=pointer, reason=gap.value))

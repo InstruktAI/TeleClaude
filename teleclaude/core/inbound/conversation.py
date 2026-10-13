@@ -323,7 +323,7 @@ def _is_continuable_record(session: Session) -> bool:
     A soft-deleted record is out of ordinary selection, and a run the system or another
     session started (a worker, a procedure or job run) is never a person's conversation.
     """
-    return session.deleted_at is None and not (session.system_role or session.initiator_session_id or session.job)
+    return session.deleted_at is None and not (session.role or session.initiator_session_id or session.job)
 
 
 def _carries_no_endpoint(conversation: ConversationRef, session: Session) -> bool:

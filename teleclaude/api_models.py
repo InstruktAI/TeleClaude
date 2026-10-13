@@ -209,7 +209,7 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
     active_agent: str | None = None
     status: str
     visibility: str = "private"
-    system_role: str | None = None
+    role: str | None = None
     job: str | None = None
     agent_status: AgentStatusValue | None = None
     agent_status_reason: AgentStatusReason | None = None
@@ -257,7 +257,7 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
                 "human_role": session.human_role,
                 SESSION_PRINCIPAL_FIELD: session.principal,
                 "visibility": session.visibility,
-                "system_role": session.system_role,
+                "role": session.role,
                 "job": session.job,
                 "agent_status": session.agent_status,
                 "agent_status_reason": session.agent_status_reason,
@@ -913,33 +913,7 @@ class RunSessionRequest(BaseModel):
     detach: bool = False
     additional_context: str = ""
     company: str | None = None
-
-
-class RunPersonalAssistantRequest(BaseModel):
-    """Optional-brief request to launch the caller's personal assistant."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    brief: str | None = Field(default=None, min_length=1)
-
-
-class SendResultRequest(BaseModel):
-    """Request to send a formatted result to the session's user (POST /sessions/self/result)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    content: str = Field(..., min_length=1)
-    output_format: Literal["markdown", "html"] = "markdown"
-
-
-class EscalateRequest(BaseModel):
-    """Request to escalate a customer session to Discord (POST /sessions/self/escalate)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    customer_name: str = Field(..., min_length=1)
-    reason: str = Field(..., min_length=1)
-    context_summary: str | None = None
+    job: str | None = Field(default=None, description="Configured job name when the run is a scheduled job entry")
 
 
 class AgentStatusRequest(BaseModel):

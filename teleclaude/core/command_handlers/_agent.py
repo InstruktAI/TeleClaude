@@ -5,13 +5,14 @@ import json
 import shlex
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config._models import AgentConfig
 from teleclaude.config.machine import config
-from teleclaude.constants import COMMAND_ROLE_MAP
+from teleclaude.context_selector import resolve_snippet_meta
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import (
     AgentDispatchFailure,
@@ -36,10 +37,10 @@ from teleclaude.core.models import (
     SessionEntryPoint,
     ThinkingMode,
 )
+from teleclaude.core.session_continuation import ContinuationLoader, rebuild_continuation_loader
 from teleclaude.core.session_launch_profile import resolve_session_launch_profile
 from teleclaude.core.session_runtime_gate import acquire_session_runtime_lease
-from teleclaude.core.session_startup_message import compose_command_loader, resolve_slash_command
-from teleclaude.paths import session_tmp_dir
+from teleclaude.paths import REPO_ROOT, session_tmp_dir
 from teleclaude.types.commands import HandoffAgentCommand, ResumeAgentCommand, RunAgentCommand, StartAgentCommand
 
 from ._handoff import execute_handoff
@@ -72,7 +73,6 @@ _HANDOFF_CONTEXT_WITHOUT_TRANSCRIPT_TEMPLATE = (
 _HANDOFF_NO_TRANSCRIPT = "no predecessor agent was recorded"
 _HANDOFF_LIVE_STATE, _HANDOFF_CLOSED_STATE = "live", "closed"
 _HANDOFF_CONTEXT_SEPARATOR = "\n\n"
-_HANDOFF_COMMAND_PREFIX = "/"
 
 
 def _launch_patch_entries(agent_cfg: AgentConfig, mode: str, profile: str) -> dict[str, dict[str, str]]:
@@ -195,7 +195,7 @@ async def start_agent(
             await resolve_launch_model(
                 start_args.agent_name,
                 start_args.thinking_mode.value,
-                ownership=launch_ownership(session.job),
+                ownership=launch_ownership(session.role),
                 session_id=session.session_id,
             )
         ).flags
@@ -334,7 +334,7 @@ async def resume_agent(
         await resolve_launch_model(
             resume_args.agent_name,
             resume_args.thinking_mode.value,
-            ownership=launch_ownership(session.job),
+            ownership=launch_ownership(session.role),
             session_id=session.session_id,
         )
         if resume_args.thinking_mode
@@ -367,8 +367,15 @@ async def resume_agent(
     await execute_terminal_command(session.session_id, command_str, None, True)
 
 
-def _handoff_startup_message(session: Session, *, predecessor: str, was_closed: bool, elapsed_seconds: int) -> str:
-    """Compose the successor's ordinary loader plus the one handoff context section."""
+def _handoff_startup_message(
+    session: Session,
+    *,
+    continuation: ContinuationLoader | None,
+    predecessor: str,
+    was_closed: bool,
+    elapsed_seconds: int,
+) -> str:
+    """Compose the loader rebuilt from the session's resolved invocation plus the one handoff context section."""
     state = _HANDOFF_CLOSED_STATE if was_closed else _HANDOFF_LIVE_STATE
     context_template = (
         _HANDOFF_CONTEXT_WITH_TRANSCRIPT_TEMPLATE
@@ -383,17 +390,28 @@ def _handoff_startup_message(session: Session, *, predecessor: str, was_closed: 
         transcript=session.native_log_file,
     )
     context_block = _HANDOFF_CONTEXT_SEPARATOR.join((_HANDOFF_CONTEXT_HEADER, context))
-    if session.command is None:
+    if continuation is None:
         return context_block
-    loader = compose_command_loader(session.command, session.working_slug or "")
-    return _HANDOFF_CONTEXT_SEPARATOR.join((loader, context_block))
+    return _HANDOFF_CONTEXT_SEPARATOR.join((continuation.loader, context_block))
+
+
+def _recorded_procedure_candidate_order(session: Session) -> tuple[str, ...] | None:
+    """The agent preference the session's recorded procedure declares; ``None`` when it records no usable one."""
+    if not session.command:
+        return None
+    project_root = Path(session.project_path) if session.project_path else REPO_ROOT
+    snippet = resolve_snippet_meta(session.command, project_root=project_root)
+    declarations = snippet.entry.declarations if snippet is not None else None
+    if declarations is None or declarations.dispatch is None:
+        return None
+    return tuple(agent.value for agent in declarations.dispatch.agents)
 
 
 async def select_handoff_successor(
     session: Session,
     *,
     agent_name: str | None,
-    caller_system_role: str | None,
+    caller_role: str | None,
     request_id: str | None,
 ) -> HandoffAgentCommand:
     """Resolve a handoff successor synchronously, before any operation is submitted.
@@ -404,28 +422,20 @@ async def select_handoff_successor(
     this function already decided. Raises ``AgentDispatchFailure`` when no
     successor can be resolved.
     """
-    command = f"{_HANDOFF_COMMAND_PREFIX}{session.command}" if session.command else None
-    role_info = None
-    if session.command:
-        resolved_command = resolve_slash_command(session.command)
-        role_info = COMMAND_ROLE_MAP.get(resolved_command) if resolved_command else None
-    role = role_info[0] if role_info else None
+    candidate_order = _recorded_procedure_candidate_order(session)
     dispatch_mode, preferred_agent = classify_fresh_agent_preference(
         agent_name,
-        caller_system_role=caller_system_role,
+        caller_role=caller_role,
     )
     try:
         decision = await resolve_agent_dispatch(
             mode=dispatch_mode,
-            role=role,
-            command=command,
+            role=session.role,
             preferred_agent=preferred_agent,
             fixed_agent=None,
-            candidate_order=None,
+            candidate_order=candidate_order,
             entry_point=SessionEntryPoint.AGENT_HANDOFF,
-            session_kind=desk_session_kind(
-                session.system_role, session.human_role, EndpointStamp.from_session(session)
-            ),
+            session_kind=desk_session_kind(session.role, session.human_role, EndpointStamp.from_session(session)),
         )
     except AgentDispatchFailure as exc:
         emit_agent_dispatch_decision(
@@ -457,7 +467,7 @@ async def select_handoff_successor(
     return HandoffAgentCommand(
         session_id=session.session_id,
         agent_name=decision.agent,
-        caller_system_role=caller_system_role,
+        caller_role=caller_role,
         request_id=request_id,
     )
 
@@ -470,12 +480,14 @@ async def handoff_agent(
     execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
 ) -> None:
     """Execute a handoff to the successor ``select_handoff_successor`` already resolved."""
+    continuation = await rebuild_continuation_loader(session)
     lease = await acquire_session_runtime_lease(session.session_id)
     predecessor = session.active_agent or _HANDOFF_NO_TRANSCRIPT
     reference_time = session.closed_at if session.closed_at is not None else session.last_activity
     elapsed_seconds = int((datetime.now(UTC) - reference_time).total_seconds()) if reference_time else 0
     startup_message = _handoff_startup_message(
         session,
+        continuation=continuation,
         predecessor=predecessor,
         was_closed=session.closed_at is not None,
         elapsed_seconds=max(elapsed_seconds, 0),

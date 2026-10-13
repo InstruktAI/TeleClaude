@@ -31,7 +31,6 @@ from teleclaude.constants import (
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
-    ROLE_ORCHESTRATOR,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_DIAGNOSIS,
     STATE_KEY_IMPLEMENTATION_PLAN,
@@ -40,7 +39,6 @@ from teleclaude.constants import (
     STATE_KEY_REQUIREMENTS,
     STATE_KEY_TASK_PLAN,
     WORKTREE_DIR,
-    JobRole,
 )
 from teleclaude.core.dates import is_recurring_schedule
 from teleclaude.core.db import db as runtime_db
@@ -80,6 +78,7 @@ from teleclaude.core.next_machine.state_mutation import (
 )
 from teleclaude.core.next_machine.work_lane_release import WorkLaneReturnReason, work_lane_return_follow_through
 from teleclaude.core.operation_follow_through import FollowThrough
+from teleclaude.core.roles import RoleName
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_project_root
@@ -894,20 +893,12 @@ async def _validate_stamp_authority(
         raise PermissionError(f"{stamp_type} stamp for {slug} requires a TeleClaude session")
 
     if stamp_type == "kickback":
-        system_role = (
-            get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "system_role") if caller_session_id else None
-        )
-        if system_role != ROLE_ORCHESTRATOR:
+        role = get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "role") if caller_session_id else None
+        if role != RoleName.WORK_ORCHESTRATOR.value:
             raise PermissionError(
                 f"kickback stamp for {slug} is work-orchestrator-only; caller session "
-                f"{caller_session_id or '<none>'} has system_role={system_role or '<none>'}. "
+                f"{caller_session_id or '<none>'} has role={role or '<none>'}. "
                 "A worker session or a plain operator shell cannot kick a todo back to plan drafting."
-            )
-        job = get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "job") if caller_session_id else None
-        if job != JobRole.WORK_ORCHESTRATOR.value:
-            raise PermissionError(
-                f"kickback stamp for {slug} is work-orchestrator-only; caller session "
-                f"{caller_session_id or '<none>'} has job={job or '<none>'}."
             )
 
     live_claimant = active_runner if active_runner and await is_live_session_id(runtime_db, active_runner) else None

@@ -152,7 +152,7 @@ async def _ensure_tmux_for_headless(
             await resolve_launch_model(
                 session.active_agent,
                 session.thinking_mode,
-                ownership=launch_ownership(session.job),
+                ownership=launch_ownership(session.role),
                 session_id=session.session_id,
             )
             if session.thinking_mode

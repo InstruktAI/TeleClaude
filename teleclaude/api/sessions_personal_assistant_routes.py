@@ -19,7 +19,8 @@ from teleclaude.api.agent_dispatch_errors import (
 from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, carried_caller
 from teleclaude.api.run_session_refusals import RunSessionRefusal
 from teleclaude.api.session_route_helpers import build_metadata, dispatch_caller_command
-from teleclaude.api_models import CreateSessionResponseDTO, RunPersonalAssistantRequest
+from teleclaude.api_models import CreateSessionResponseDTO
+from teleclaude.api_session_actions_models import RunPersonalAssistantRequest
 from teleclaude.caller_identity import PersonCliCaller
 from teleclaude.core.agent_dispatch import AgentDispatchReason, RunSessionThinkingMode, decision_basis_digest
 from teleclaude.core.command_mapper import CommandMapper

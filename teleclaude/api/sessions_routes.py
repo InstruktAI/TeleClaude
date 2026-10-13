@@ -28,7 +28,6 @@ from teleclaude.api.auth import (
     resolve_caller_provenance,
 )
 from teleclaude.api.run_session_refusals import RunSessionRefusal
-from teleclaude.api.run_session_shapes import infer_command_from_message, infer_role_and_slug_from_message
 from teleclaude.api.session_authority import ACT_END, ACT_SEND_MESSAGE, refuse_act_on_ancestor
 from teleclaude.api.session_create_launch import (
     build_launch_intent,
@@ -63,22 +62,13 @@ from teleclaude.api_models import (
     SessionDTO,
 )
 from teleclaude.config.machine import config
-from teleclaude.constants import SlashCommand
 from teleclaude.core.agent_dispatch import AgentDispatchReason
-from teleclaude.core.command_input import (
-    WORKTREE_BOUND_WORKER_COMMANDS,
-    CommandInputMode,
-    RefusedCommandInput,
-    ResolvedCommandInput,
-    infer_command_input_metadata,
-)
+from teleclaude.core.command_input import CommandInputError, CommandInputMode, ResolvedCommandInput
 from teleclaude.core.command_mapper import CommandMapper
-from teleclaude.core.conversation_messages import (
-    MACHINE_ROLE_LABELS as _MACHINE_ROLE_LABELS,
-)
 from teleclaude.core.conversation_messages import (
     format_identity_conversation,
     format_identity_header,
+    machine_role_label,
     resolve_session_event_author,
 )
 from teleclaude.core.db import db
@@ -88,6 +78,11 @@ from teleclaude.core.inbound_errors import (
     UnidentifiableCallerError,
 )
 from teleclaude.core.injected_text import MachineRoleLabel
+from teleclaude.core.interactive_procedure_input import (
+    InteractiveBinding,
+    bind_interactive_input,
+    resolve_interactive_input,
+)
 from teleclaude.core.models import (
     AgentDispatchMode,
     MessageAuthor,
@@ -110,7 +105,6 @@ from teleclaude.core.session_links import (
 from teleclaude.core.session_listeners import (
     register_listener,
 )
-from teleclaude.core.session_startup_message import resolve_command_input
 from teleclaude.core.session_status import is_session_terminal as _terminal
 from teleclaude.core.session_utils import resolve_working_dir
 
@@ -119,6 +113,7 @@ if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.models import Session
     from teleclaude.core.reminders import ReminderService
+from teleclaude.paths import REPO_ROOT
 from teleclaude.types.commands import OCCURRENCE_KEY, CloseSessionCommand, CreateSessionCommand
 
 logger = get_logger(__name__)
@@ -253,15 +248,12 @@ async def _link_direct_sessions(
 async def _prepare_create_session(
     request: CreateSessionRequest,
     identity: CallerIdentity,
+    binding: InteractiveBinding | None,
 ) -> tuple[MessageMetadata, str | None, str | None, SessionLaunchIntent | None, Session | None]:
     """Prepare session creation metadata, initiator ID, and launch intent."""
     initiator_session_id = _extract_initiator_session_id(request, identity)
 
     origin, caller_email, origin_meta = _resolve_origin(request, identity)
-
-    inferred_role, inferred_job, _ = infer_role_and_slug_from_message(request.message)
-    req_system_role = inferred_role
-    req_job = inferred_job
 
     metadata = _build_metadata(
         origin=origin,
@@ -270,8 +262,7 @@ async def _prepare_create_session(
         human_email=caller_email,
         human_role=None,
         origin_metadata=origin_meta,
-        system_role=req_system_role,
-        job=req_job,
+        role=binding.role if binding is not None else None,
         company=request.company,
     )
 
@@ -291,27 +282,30 @@ async def _prepare_create_session(
     return metadata, initiator_session_id, initial_input, launch_intent, direct_caller_session
 
 
-def _prepare_interactive_create_request(request: CreateSessionRequest) -> CreateSessionRequest:
-    """Resolve local TUI command input before generic-create metadata and guards."""
-    result = resolve_command_input(request.message, request.command_input_mode)
-    if isinstance(result, RefusedCommandInput):
+def _prepare_interactive_create_request(
+    request: CreateSessionRequest,
+) -> tuple[CreateSessionRequest, InteractiveBinding | None]:
+    """Bind local TUI command input before generic-create metadata and guards.
+
+    A leading token naming a published entry procedure is bound under its declared parameters, so the
+    guards see the procedure, its declared role and its work item; the session is created through the
+    procedure entry on the owning computer. Any other text stays ordinary conversation.
+    """
+    project_root = Path(request.project_path) if request.project_path else REPO_ROOT
+    result = resolve_interactive_input(request.message, request.command_input_mode, project_root)
+    if not isinstance(result, ResolvedCommandInput):
+        return request, None
+    try:
+        binding = bind_interactive_input(result, project_root)
+    except CommandInputError as exc:
         raise RunSessionRefusal(
             status_code=400,
-            detail=result.detail,
+            detail=str(exc),
             reason=AgentDispatchReason.COMMAND_INVALID,
-        )
-    if not isinstance(result, ResolvedCommandInput):
-        return request
-    metadata = infer_command_input_metadata(result.command, result.args)
-    normalized_request = request.model_copy(
-        update={"message": result.normalized_message, "command_input_source_text": request.message}
-    )
-    try:
-        slash_command = SlashCommand(result.command)
-    except ValueError:
-        slash_command = None
-    if slash_command in WORKTREE_BOUND_WORKER_COMMANDS and metadata.working_slug:
-        subdir = _WORKTREE_SUBDIR_TEMPLATE.format(slug=metadata.working_slug)
+        ) from exc
+    normalized_request = request.model_copy(update={"command_input_source_text": request.message})
+    if binding.worktree_bound and binding.working_slug:
+        subdir = _WORKTREE_SUBDIR_TEMPLATE.format(slug=binding.working_slug)
         worktree_dir = Path(resolve_working_dir(normalized_request.project_path, subdir))
         if not worktree_dir.is_dir():
             raise RunSessionRefusal(
@@ -320,7 +314,7 @@ def _prepare_interactive_create_request(request: CreateSessionRequest) -> Create
                 reason=AgentDispatchReason.WORKTREE_MISMATCH,
             )
         normalized_request = normalized_request.model_copy(update={"subdir": subdir})
-    return normalized_request
+    return normalized_request, binding
 
 
 @router.get("/sessions")
@@ -373,10 +367,11 @@ async def _create_session_response(
     identity: CallerIdentity,
 ) -> CreateSessionResponseDTO:
     """Create a session after the caller path has established routing authority."""
+    binding: InteractiveBinding | None = None
     if request.command_input_mode is CommandInputMode.INTERACTIVE_SHORTHAND and not is_remote_create_target(
         request.computer, config.computer.name
     ):
-        request = _prepare_interactive_create_request(request)
+        request, binding = _prepare_interactive_create_request(request)
 
     logger.info(
         "create_session request: computer=%s project=%s agent=%s thinking_mode=%s launch_kind=%s native_session_id=%s",
@@ -395,7 +390,7 @@ async def _create_session_response(
             initial_input,
             _launch_intent,
             direct_caller_session,
-        ) = await _prepare_create_session(request, identity)
+        ) = await _prepare_create_session(request, identity, binding)
     except UnidentifiableCallerError as exc:
         logger.warning(
             _UNIDENTIFIABLE_CALLER_EVENT,
@@ -417,8 +412,8 @@ async def _create_session_response(
             "startup_work_expected": bool(request.direct and identity.session_id and request.message),
             "initial_input": initial_input,
             "title": request.title,
-            "command": infer_command_from_message(request.message),
-            "working_slug": infer_role_and_slug_from_message(request.message)[2],
+            "command": binding.procedure_id if binding is not None else None,
+            "working_slug": binding.working_slug if binding is not None else None,
             "command_input_mode": request.command_input_mode,
             "command_input_source_text": request.command_input_source_text,
         },
@@ -497,7 +492,7 @@ async def _create_session_response(
 
         routing_explanation = present_routing_explanation(
             data,
-            human_facing=not identity.system_role and bool(identity.email),
+            human_facing=not identity.role and bool(identity.email),
             request_id=cmd.request_id,
             session_id=session_id,
             entry_point=cmd.entry_point
@@ -630,21 +625,20 @@ async def _resolve_caller_event_identity(caller_session_id: str) -> ResolvedSess
         assert relayed is not None and relayed.session_id == caller_session_id
         role, agent, thinking_mode, job_role, computer = None, None, None, None, relayed.computer
     else:
-        role = caller.system_role
+        role = caller.role
         agent = caller.active_agent
         thinking_mode = caller.thinking_mode
-        job_role = caller.job
+        job_role = caller.role
         computer = caller.computer_name
-    role_label = _MACHINE_ROLE_LABELS.get((role or "").strip())
     author = resolve_session_event_author(
         session_id=caller_session_id,
-        system_role=role,
+        role=role,
         active_agent=agent,
         thinking_mode=thinking_mode,
     )
     category_parts = [part for part in (agent.title() if agent else None, job_role) if part]
     header = format_identity_header(
-        role=MachineRoleLabel.AGENT if agent else role_label or MachineRoleLabel.AGENT,
+        role=MachineRoleLabel.AGENT if agent else machine_role_label(role),
         category=" · ".join(category_parts) or None,
         session_id=caller_session_id,
         computer=computer or config.computer.name,

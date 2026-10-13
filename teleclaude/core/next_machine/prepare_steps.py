@@ -9,7 +9,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import (
     ARTIFACT_PRD,
-    SlashCommand,
 )
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import prepare_step_support
@@ -20,6 +19,7 @@ from teleclaude.core.next_machine.git_ops import (
     DRIFT_SUBSTANTIVE,
     ArtifactDriftStatus,
 )
+from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.next_machine.lifecycle import (
     _DRIFT_MATRIX_ARTIFACTS,
     _DRIFT_REROUTABLE_CLASSES_BY_ARTIFACT,
@@ -193,7 +193,7 @@ async def _dispatch_worker(
     cwd: str,
     phase: PreparePhase,
     state: dict[str, StateValue],
-    command: SlashCommand,
+    command: LifecycleProcedure,
     expected: str,
     blockers: list[str] | None = None,
     additional_context: str = "",
@@ -257,7 +257,7 @@ async def _dispatch_worker(
 def _load_procedure(
     *,
     slug: str,
-    command: SlashCommand,
+    command: LifecycleProcedure,
     hat: str,
     expected: str,
     reason: DispatchReason | None = None,
@@ -279,7 +279,7 @@ def _load_procedure(
     """
     return False, format_procedure_load(
         slug=slug,
-        command_name=command.value,
+        procedure_id=command.value,
         hat=hat,
         expected=expected,
         reason=reason,
@@ -389,7 +389,7 @@ async def _prepare_dispatch(
     if phase in (PreparePhase.DRAFT, PreparePhase.PRD_DRAFTING):
         return _load_procedure(
             slug=slug,
-            command=SlashCommand.PREPARE_INTAKE,
+            command=LifecycleProcedure.INTAKE,
             hat="BA",
             expected="a `prd` artifact or an explicit blocker",
         )
@@ -401,7 +401,7 @@ async def _prepare_dispatch(
             cwd=cwd,
             phase=phase,
             state=state,
-            command=SlashCommand.REVIEW_PRD,
+            command=LifecycleProcedure.REVIEW_PRD,
             expected="a PRD review verdict and findings when needed",
         )
     if phase == PreparePhase.PRD_HUMAN_APPROVAL:
@@ -411,7 +411,7 @@ async def _prepare_dispatch(
     if phase == PreparePhase.ARCHITECTURE_DRAFTING:
         return _load_procedure(
             slug=slug,
-            command=SlashCommand.PREPARE_ARCHITECTURE,
+            command=LifecycleProcedure.ARCHITECTURE,
             hat="Architect",
             expected=(
                 "doc-snippet updates (domain spec / architecture-v2 design docs) "
@@ -427,12 +427,12 @@ async def _prepare_dispatch(
             cwd=cwd,
             phase=phase,
             state=state,
-            command=SlashCommand.REVIEW_ARCHITECTURE,
+            command=LifecycleProcedure.REVIEW_ARCHITECTURE,
             expected="an architecture review verdict and findings when needed",
         )
     if phase == PreparePhase.DIAGNOSE:
         diagnosis = StateWriter(state).state.artifacts.diagnosis
-        peer_session_id = await find_live_prepare_worker_for_slug(db, slug, SlashCommand.PREPARE_DIAGNOSE.value)
+        peer_session_id = await find_live_prepare_worker_for_slug(db, slug, LifecycleProcedure.DIAGNOSE.value)
         if not (diagnosis.digest or diagnosis.produced_at) or peer_session_id is None:
             return await _dispatch_worker(
                 db=db,
@@ -441,7 +441,7 @@ async def _prepare_dispatch(
                 cwd=cwd,
                 phase=phase,
                 state=state,
-                command=SlashCommand.PREPARE_DIAGNOSE,
+                command=LifecycleProcedure.DIAGNOSE,
                 expected="a `diagnosis` artifact or revision",
                 pre_dispatch=_diagnose_pre_dispatch_instruction(slug),
             )
@@ -455,7 +455,7 @@ async def _prepare_dispatch(
     if phase == PreparePhase.PLAN_DRAFTING:
         return _load_procedure(
             slug=slug,
-            command=SlashCommand.PREPARE_PLAN,
+            command=LifecycleProcedure.PLAN_DRAFT,
             hat="Planner",
             expected="an `implementation-plan` artifact or breakdown decision",
             reason=_plan_drafting_reason(state),
@@ -468,7 +468,7 @@ async def _prepare_dispatch(
             cwd=cwd,
             phase=phase,
             state=state,
-            command=SlashCommand.REVIEW_PLAN,
+            command=LifecycleProcedure.REVIEW_PLAN,
             expected="a plan review verdict and findings when needed",
         )
     if phase == PreparePhase.PREPARED:
@@ -489,7 +489,7 @@ async def _prepare_dispatch(
                 cwd=cwd,
                 phase=PreparePhase.BLOCKED,
                 state=state,
-                command=SlashCommand.DRIFT_ANALYZE,
+                command=LifecycleProcedure.DRIFT_ANALYZE,
                 expected="drift_reviewed stamps for every pending artifact",
                 blockers=_blockers_from_state(
                     state, cwd=project_root, artifact_write_timestamps=artifact_write_timestamps
@@ -514,7 +514,7 @@ async def _prepare_dispatch(
                 cwd=cwd,
                 phase=phase,
                 state=state,
-                command=SlashCommand.DRIFT_ANALYZE,
+                command=LifecycleProcedure.DRIFT_ANALYZE,
                 expected="drift_reviewed stamps for every pending artifact",
                 blockers=blockers,
                 additional_context=format_pending_classes_for_dispatch(drift_result),

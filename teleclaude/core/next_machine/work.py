@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR, SlashCommand
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import (
     _SINGLE_FLIGHT_GUARD,
@@ -81,6 +81,7 @@ from teleclaude.snippet_validation import snippet_body_digest_for
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 
+from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.operation_follow_through import defer_follow_through
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.todos_db import get_todos_db
@@ -391,7 +392,7 @@ async def _advance_prepared_to_build_started(
 
 async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str, *, lifecycle_phase: str) -> str:
     """Format orchestrator recovery instructions for work-entry main-sync conflicts."""
-    builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.BUILD.value}")
+    builder_id = await find_live_session_for_slug(db, slug, LifecycleProcedure.BUILD.value)
     if builder_id is None:
         return format_error(
             "MERGE_MAIN_FAILED",

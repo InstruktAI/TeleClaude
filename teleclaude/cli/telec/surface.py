@@ -6,19 +6,15 @@ from enum import StrEnum
 
 from teleclaude.cli import CommandScope
 from teleclaude.constants import TAXONOMY_TYPES
+from teleclaude.core.roles import Capability
 from teleclaude.types.todo_kind import TODO_KIND_USAGE
 
 from . import flags as F
 from .surface_types import (
-    _AGENT_REACH,
     _HR_ADMIN,
     _HR_ALL,
     _HR_ALL_NON_ADMIN,
     _HR_MEMBER,
-    _INTEGRATOR_RESERVATION,
-    _ORCHESTRATOR_RESERVATION,
-    _TASKER_REACH,
-    _WORKER_REACH,
     CommandAuth,
     CommandDef,
     Flag,
@@ -88,7 +84,7 @@ def _render_command(lines: list[str], path: str, cmd: CommandDef, depth: int) ->
 _HELP_DESK_LINKS_NOTE = "Renders only on the mesh master and where the desk is enabled."
 # Creation is judged at the home it lands in: the caller's own person scope, the named company, or the platform.
 _PROJECT_CREATE_AUTH = CommandAuth(
-    system=_AGENT_REACH,
+    capability=Capability.CONFIG,
     human=_HR_MEMBER,
     scope=CommandScope.CALLER_PERSON,
     when_flag=(
@@ -101,10 +97,10 @@ _PROJECT_CREATE_AUTH = CommandAuth(
         FlagConditionedAuth(F.FLAG_PROJECT_PATH.long, CommandScope.PLATFORM, _HR_ADMIN),
     ),
 )
-_PROJECT_ADOPT_AUTH = CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.CALLER_PERSON)
-_JOBS_READ_AUTH = CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER)
-_JOBS_CONFIG_AUTH = CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.INVOCATION)
-_JOBS_RUN_AUTH = CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.INVOCATION)
+_PROJECT_ADOPT_AUTH = CommandAuth(capability=Capability.CONFIG, human=_HR_MEMBER, scope=CommandScope.CALLER_PERSON)
+_JOBS_READ_AUTH = CommandAuth(capability=Capability.JOBS, human=_HR_MEMBER)
+_JOBS_CONFIG_AUTH = CommandAuth(capability=Capability.JOBS, human=_HR_MEMBER, scope=CommandScope.INVOCATION)
+_JOBS_RUN_AUTH = CommandAuth(capability=Capability.JOBS, human=_HR_MEMBER, scope=CommandScope.INVOCATION)
 
 _RECEIPT_OUTCOME_DELIVERY = (
     "without waiting; the outcome is delivered to the calling session and read with "
@@ -132,7 +128,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "An agent caller's default listing keeps its own children even with --job; "
                     "`--all --job <procedure>` finds a procedure's agents.",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.SESSION_OBSERVE, human=_HR_MEMBER),
             ),
             "show": CommandDef(
                 desc="Show one session's stored record (default: your own session)",
@@ -156,7 +152,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec sessions show <session_id> --full --computer <host>",
                 ],
                 auth=CommandAuth(
-                    system=_AGENT_REACH,
+                    capability=Capability.SESSION_OBSERVE,
                     human=_HR_MEMBER,
                     scope=CommandScope.TARGET_SESSION,
                 ),
@@ -164,7 +160,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "coordinate": CommandDef(
                 desc="Adopt this session as the project's single coordinator (human-directed only; refuses if one is live)",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.SESSION_OBSERVE, human=_HR_MEMBER),
             ),
             "start": CommandDef(
                 desc="Start a new agent session",
@@ -202,7 +198,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec sessions start --direct",
                 ],
                 auth=CommandAuth(
-                    system=_AGENT_REACH,
+                    capability=Capability.SESSION_ACT,
                     human=_HR_MEMBER,
                     scope=CommandScope.TARGET_PATH,
                     scope_flag=F.FLAG_PATH.long,
@@ -233,7 +229,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec sessions send sess-123 --close-link",
                 ],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.PEER_TALK,
                     human=_HR_MEMBER,
                     scope=CommandScope.TARGET_SESSION,
                 ),
@@ -252,15 +248,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_COMPUTER,
                 ],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.PEER_TALK,
                     human=_HR_MEMBER,
                     scope=CommandScope.TARGET_SESSION,
                 ),
             ),
             "run": CommandDef(
-                desc="Run a canonical command on a new agent session",
+                desc="Run an entry procedure on a new agent session",
                 args=(
-                    "[--command <cmd>] [--path <path>] [--args <val>] [--agent <name>]"
+                    "[--command <procedure-id>] [--path <path>] [--args <val>] [--agent <name>]"
                     " [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--detach]"
                     " [--additional-context <ctx>] [--company <slug>]"
                 ),
@@ -278,8 +274,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_COMPANY,
                 ],
                 notes=[
-                    "Creates a fresh session and runs the bare canonical command as the first agent message.",
-                    "Worker lifecycle commands: build, review-build, finalize.",
+                    "Creates a fresh session that carries the role the procedure declares and starts from the brief the procedure composes.",
+                    "Name the procedure by its domain-qualified snippet ID; a retired command name is refused.",
+                    "Worker lifecycle procedures: build, review-build, finalize (sdlc/procedure/lifecycle/work/...).",
                     (
                         "--detach: do not use unless explicitly instructed. Sanctioned only for a "
                         "personal-assistant dispatching an orchestrator to a project. --detach disables "
@@ -288,11 +285,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                 ],
                 examples=[
-                    "telec sessions run --command build --args my-slug",
-                    "telec sessions run --command review-plan --args my-slug",
+                    "telec sessions run --command sdlc/procedure/lifecycle/work/build --args my-slug",
+                    "telec sessions run --command sdlc/procedure/lifecycle/prepare/review-plan --args my-slug",
                 ],
                 auth=CommandAuth(
-                    system=_AGENT_REACH,
+                    capability=Capability.SESSION_ACT,
                     human=_HR_MEMBER,
                     scope=CommandScope.TARGET_PATH,
                     scope_flag=F.FLAG_PATH.long,
@@ -305,7 +302,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 default_help_note=False,
                 examples=["telec sessions run-pa", 'telec sessions run-pa "Check the latest message"'],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.SESSION_ACT,
                     human=_HR_MEMBER,
                     scope=CommandScope.PLATFORM,
                 ),
@@ -328,7 +325,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "With --agent, session_id is a native agent session ID resolved via the specified agent.",
                 ],
                 auth=CommandAuth(
-                    system=_AGENT_REACH,
+                    capability=Capability.SESSION_ACT,
                     human=_HR_ADMIN,
                     scope=CommandScope.TARGET_SESSION,
                 ),
@@ -346,7 +343,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Targetless cleanup is idempotent and rejects --computer so caller scope cannot be narrowed.",
                 ],
                 auth=CommandAuth(
-                    system=_AGENT_REACH,
+                    capability=Capability.SESSION_ACT,
                     human=_HR_MEMBER,
                     scope=CommandScope.TARGET_SESSION,
                 ),
@@ -356,7 +353,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<session_id>",
                 flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.SESSION_ACT,
                     human=_HR_MEMBER,
                     scope=CommandScope.TARGET_SESSION,
                 ),
@@ -366,7 +363,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<session_id> [--handoff [<agent>]]",
                 flags=[F.FLAG_HELP, F.FLAG_COMPUTER, F.FLAG_HANDOFF],
                 auth=CommandAuth(
-                    system=_AGENT_REACH,
+                    capability=Capability.SESSION_ACT,
                     human=_HR_ADMIN,
                     scope=CommandScope.TARGET_SESSION,
                 ),
@@ -375,7 +372,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Send a formatted result to the session's user",
                 args="<content> [--format <fmt>]",
                 flags=[F.FLAG_HELP, F.FLAG_RESULT_FORMAT, F.FLAG_RESULT_CONTENT_ALIAS],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.SELF_ACTS, human=_HR_MEMBER),
             ),
             "file": CommandDef(
                 desc="Send a file to the session's user",
@@ -386,7 +383,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_FILE_FILENAME,
                     F.FLAG_FILE_CAPTION,
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.SELF_ACTS, human=_HR_MEMBER),
             ),
             "escalate": CommandDef(
                 desc="Escalate a help-desk visitor to everyone in the desk's scope in its escalation thread",
@@ -398,7 +395,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_ESCALATE_SUMMARY,
                 ],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.SELF_ACTS,
                     human=_HR_ALL_NON_ADMIN,
                 ),
                 desk=True,
@@ -419,18 +416,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_REMINDER_REPEAT,
                     F.FLAG_REMINDER_SLUG,
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                auth=CommandAuth(capability=Capability.REMINDERS, human=_HR_ALL),
             ),
             "list": CommandDef(
                 desc="List every live reminder owned by the calling session",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                auth=CommandAuth(capability=Capability.REMINDERS, human=_HR_ALL),
             ),
             "cancel": CommandDef(
                 desc="Idempotently cancel one or all caller-owned reminders",
                 args="[<slug>] [--all]",
                 flags=[F.FLAG_HELP, F.FLAG_REMINDER_CANCEL_ALL],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                auth=CommandAuth(capability=Capability.REMINDERS, human=_HR_ALL),
             ),
         },
     ),
@@ -441,7 +438,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="List available computers (local + cached remote)",
                 flags=[F.FLAG_HELP],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.SESSION_OBSERVE,
                     human=_HR_MEMBER,
                     scope=CommandScope.PLATFORM,
                 ),
@@ -456,7 +453,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="[--computer <host>]",
                 flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.SESSION_OBSERVE,
                     human=_HR_MEMBER,
                     scope=CommandScope.PLATFORM,
                 ),
@@ -470,7 +467,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Get current availability for all agents",
                 flags=[F.FLAG_HELP],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.SESSION_OBSERVE,
                     human=_HR_MEMBER,
                     scope=CommandScope.PLATFORM,
                 ),
@@ -486,7 +483,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_AGENT_STATUS_UNTIL,
                     F.FLAG_AGENT_STATUS_CLEAR,
                 ],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                auth=CommandAuth(capability=Capability.SESSION_ACT, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
             ),
         },
     ),
@@ -497,14 +494,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Fetch durable operation status by operation_id",
                 args="<operation_id> [-c/--computer <computer>]",
                 flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.SESSION_OBSERVE, human=_HR_MEMBER),
             ),
         },
     ),
     "version": CommandDef(
         desc="Print version, channel, and commit",
         flags=[F.FLAG_HELP],
-        auth=CommandAuth(system=frozenset(), human=_HR_ALL, caller_independent=True),
+        auth=CommandAuth(human=_HR_ALL, caller_independent=True),
         desk=True,
     ),
     "message": CommandDef(
@@ -530,7 +527,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             'telec message "Weekly digest" --recipient alex --channel email --subject "Weekly digest"',
             'telec message "The scheduled report is ready"',
         ],
-        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+        auth=CommandAuth(capability=Capability.MESSAGING, human=_HR_MEMBER),
     ),
     "docs": CommandDef(
         desc="Query documentation snippets",
@@ -554,7 +551,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=[
                     "Pending snippets (those with delivered_by) append ` (delivered by: slug1,slug2)` at the end of the phase-1 line.",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                auth=CommandAuth(capability=Capability.DOCS_READ, human=_HR_ALL),
                 desk=True,
             ),
             "get": CommandDef(
@@ -572,7 +569,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 runtime_notes=[
                     "The generated Activatable Procedures catalog uses `--closure` to load one delivered procedure and its eligible required-read closure in one pass.",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                auth=CommandAuth(capability=Capability.DOCS_READ, human=_HR_ALL),
                 desk=True,
             ),
         },
@@ -596,14 +593,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "The target database is checked for integrity after each copy; each project and target pair reports its own outcome.",
                     "The installer provisions sqlite3_rsync on every computer; run make install on both sides before syncing.",
                 ],
-                auth=CommandAuth(system=frozenset(), human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                auth=CommandAuth(human=_HR_ADMIN, scope=CommandScope.PLATFORM),
             ),
             "sync-replica": CommandDef(
                 desc="Read the local todo database for a remote transfer",
                 args="<locate|check> <slug>",
                 flags=[F.FLAG_HELP],
                 hidden=True,
-                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
+                auth=CommandAuth(human=frozenset(), caller_independent=True),
             ),
             "create": CommandDef(
                 desc="Create a todo with substantive content",
@@ -654,7 +651,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "for the human.",
                 ],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.TODO_WRITE,
                     human=_HR_MEMBER,
                     scope=CommandScope.TARGET_PATH,
                     scope_flag=F.FLAG_TODO_PROJECT_ROOT.long,
@@ -689,13 +686,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec todo list --delivered-only --since 2026-05-01",
                     "telec todo list --include-removed",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_READ, human=_HR_MEMBER),
             ),
             "design": CommandDef(
                 desc="Run the creative state machine",
                 args="[<slug>]",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_ORCHESTRATOR_RESERVATION, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_ORCHESTRATION, human=_HR_MEMBER),
             ),
             "remove": CommandDef(
                 desc=(
@@ -709,25 +706,25 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<slug> [--force]",
                 flags=[F.FLAG_HELP, F.FLAG_TODO_REMOVE_FORCE],
                 notes=[_RECEIPT_RETURN_NOTE],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
             ),
             "freeze": CommandDef(
                 desc="Move todo to icebox",
                 args="<slug>",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
             ),
             "unfreeze": CommandDef(
                 desc="Promote todo from icebox",
                 args="<slug>",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
             ),
             "deliver": CommandDef(
                 desc="Move todo to delivered",
                 args="<slug> [--commit <hash>]",
                 flags=[F.FLAG_HELP, F.FLAG_TODO_DELIVER_COMMIT],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
             ),
             "update": CommandDef(
                 desc="Update a todo slug, group, dependencies, or kind",
@@ -757,28 +754,28 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Combining --slug with other legs is staged, not a single atomic patch.",
                     _RECEIPT_RETURN_SLUG_FORM_NOTE,
                 ],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
             ),
             "prepare": CommandDef(
                 desc="Run the Phase A (prepare) state machine",
                 args="<slug>",
                 flags=[F.FLAG_HELP],
                 notes=[_RECEIPT_RETURN_NOTE],
-                auth=CommandAuth(system=_ORCHESTRATOR_RESERVATION, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_ORCHESTRATION, human=_HR_MEMBER),
             ),
             "work": CommandDef(
                 desc="Run the Phase B (work) state machine",
                 args="[<slug>]",
                 flags=[F.FLAG_HELP],
                 notes=[_RECEIPT_RETURN_NOTE],
-                auth=CommandAuth(system=_ORCHESTRATOR_RESERVATION, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_ORCHESTRATION, human=_HR_MEMBER),
             ),
             "integrate": CommandDef(
                 desc="Run the Phase C (integrate) state machine",
                 args="[<slug>] [--abandon]",
                 flags=[F.FLAG_HELP, F.FLAG_TODO_INTEGRATE_ABANDON],
                 notes=[_RECEIPT_RETURN_NOTE],
-                auth=CommandAuth(system=_INTEGRATOR_RESERVATION, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.INTEGRATION, human=_HR_MEMBER),
             ),
             "artifacts": CommandDef(
                 desc="Manage todo artifacts in the database",
@@ -788,14 +785,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="<slug>",
                         flags=[F.FLAG_HELP],
                         examples=["telec todo artifacts list my-slug"],
-                        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                        auth=CommandAuth(capability=Capability.ARTIFACT_READ, human=_HR_MEMBER),
                     ),
                     "read": CommandDef(
                         desc="Read a todo artifact",
                         args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
                         flags=[F.FLAG_HELP],
                         examples=["telec todo artifacts read my-slug requirements"],
-                        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                        auth=CommandAuth(capability=Capability.ARTIFACT_READ, human=_HR_MEMBER),
                     ),
                     "write": CommandDef(
                         desc="Write a todo artifact",
@@ -803,7 +800,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         flags=[F.FLAG_HELP],
                         notes=["Legacy bug artifacts are read-only; write bug todo content to input."],
                         examples=['telec todo artifacts write my-slug prd "# PRD content"'],
-                        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                        auth=CommandAuth(capability=Capability.ARTIFACT_WRITE, human=_HR_MEMBER),
                     ),
                     "diff": CommandDef(
                         desc="Show a unified diff between two artifact versions",
@@ -817,7 +814,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         examples=[
                             "telec todo artifacts diff my-slug requirements abc123 def456",
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                        auth=CommandAuth(capability=Capability.ARTIFACT_READ, human=_HR_MEMBER),
                     ),
                     "remove": CommandDef(
                         desc="Remove a todo artifact and its version history",
@@ -828,7 +825,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "Missing artifacts are treated as a successful no-op.",
                         ],
                         examples=["telec todo artifacts remove my-slug requirements"],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                        auth=CommandAuth(capability=Capability.ARTIFACT_WRITE, human=_HR_MEMBER),
                     ),
                 },
             ),
@@ -845,7 +842,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec todo show my-slug --include-removed",
                     "telec todo show my-slug --include-artifact-content",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_READ, human=_HR_MEMBER),
             ),
             "reactivate": CommandDef(
                 desc="Restore a soft-removed todo",
@@ -857,7 +854,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "On success: status reverts to prev_status and outgoing dependencies are replayed.",
                 ],
                 examples=["telec todo reactivate my-slug", "telec todo reactivate --id <row-id>"],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
             ),
             "stamp": CommandDef(
                 desc="Stamp a verdict or readiness marker into todo state",
@@ -905,7 +902,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec todo stamp my-bug --diagnosis-settled",
                     'telec todo stamp my-bug --diagnosis-unresolved --reason "<why>"',
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.STAMP, human=_HR_MEMBER),
             ),
         },
     ),
@@ -951,7 +948,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "unauditable later — this is the reporting invitation the schema alone cannot supply.",
                 ],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.TODO_WRITE,
                     human=_HR_MEMBER,
                     scope=CommandScope.NAMED_TRUSTED_DIRECTORY,
                     scope_flag=F.FLAG_BUG_PROJECT.long,
@@ -960,7 +957,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List in-flight bug fixes with status",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_READ, human=_HR_MEMBER),
             ),
             "suppress": CommandDef(
                 desc="Register a known-issue suppression so the log bug hunter stops re-filing a triaged signal",
@@ -980,7 +977,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Author the pattern to target the invariant signal (a stable reason token), never a volatile value like a millisecond figure.",
                 ],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.TODO_WRITE,
                     human=_HR_MEMBER,
                     scope=CommandScope.NAMED_TRUSTED_DIRECTORY,
                     scope_flag=F.FLAG_PROJECT_TRUSTED.long,
@@ -991,7 +988,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="[--project <name>]",
                 flags=[F.FLAG_HELP, F.FLAG_PROJECT_TRUSTED],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.TODO_READ,
                     human=_HR_MEMBER,
                     scope=CommandScope.NAMED_TRUSTED_DIRECTORY,
                     scope_flag=F.FLAG_PROJECT_TRUSTED.long,
@@ -1002,7 +999,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<id> [--project <name>]",
                 flags=[F.FLAG_HELP, F.FLAG_PROJECT_TRUSTED],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.TODO_WRITE,
                     human=_HR_MEMBER,
                     scope=CommandScope.NAMED_TRUSTED_DIRECTORY,
                     scope_flag=F.FLAG_PROJECT_TRUSTED.long,
@@ -1033,7 +1030,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec content dump "Deep dive into mesh" --slug mesh-deep-dive --tags "mesh,architecture"',
                     'telec content dump "Content for review" --author alice',
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
             ),
         },
     ),
@@ -1085,7 +1082,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "--state-json replaces the opaque checkpoint object; omission preserves the previous checkpoint.",
                     "This command writes locally and does not call the daemon.",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.JOBS, human=_HR_MEMBER),
             ),
         },
     ),
@@ -1096,13 +1093,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="List declared event types: name, version, what they are about, description",
                 args="[--domain <name>]",
                 flags=[F.FLAG_HELP, F.FLAG_EVENTS_DOMAIN],
-                auth=CommandAuth(system=frozenset(), human=_HR_MEMBER, caller_independent=True),
+                auth=CommandAuth(human=_HR_MEMBER, caller_independent=True),
             ),
             EventCommand.SCHEMA.value: CommandDef(
                 desc="Show one event type's declaration: subject, home, related kinds, state, and data fields",
                 args="<event>",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=frozenset(), human=_HR_MEMBER, caller_independent=True),
+                auth=CommandAuth(human=_HR_MEMBER, caller_independent=True),
             ),
         },
     ),
@@ -1112,7 +1109,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "status": CommandDef(
                 desc="Show signal pipeline counts and last ingest time",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=frozenset(), human=_HR_MEMBER, caller_independent=True),
+                auth=CommandAuth(human=_HR_MEMBER, caller_independent=True),
             ),
         },
     ),
@@ -1127,7 +1124,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_MCP_EXCLUDE,
                     F.FLAG_MCP_JSON,
                 ],
-                auth=CommandAuth(system=frozenset(), human=_HR_MEMBER, caller_independent=True),
+                auth=CommandAuth(human=_HR_MEMBER, caller_independent=True),
             ),
             "list-tools": CommandDef(
                 desc="Initialize one MCP server and list its tools",
@@ -1136,7 +1133,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_HELP,
                     F.FLAG_MCP_JSON,
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.MCP, human=_HR_MEMBER),
             ),
             "call": CommandDef(
                 desc="Call one MCP tool through the lazy runtime",
@@ -1145,10 +1142,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_HELP,
                     F.FLAG_MCP_CALL_JSON,
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.MCP, human=_HR_MEMBER),
             ),
         },
-        auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+        auth=CommandAuth(capability=Capability.MCP, human=_HR_MEMBER),
     ),
     "auth": CommandDef(
         desc="Terminal login identity commands",
@@ -1161,18 +1158,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Stores auth state in a TTY-scoped file.",
                     "Running login again on the same TTY overwrites the existing file.",
                 ],
-                auth=CommandAuth(system=frozenset(), human=_HR_ALL, caller_independent=True),
+                auth=CommandAuth(human=_HR_ALL, caller_independent=True),
             ),
             "whoami": CommandDef(
                 desc="Show the identity carried by this session or terminal",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=frozenset(), human=_HR_ALL, caller_independent=True),
+                auth=CommandAuth(human=_HR_ALL, caller_independent=True),
                 desk=True,
             ),
             "logout": CommandDef(
                 desc="Clear terminal login identity for this TTY",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=frozenset(), human=_HR_ALL, caller_independent=True),
+                auth=CommandAuth(human=_HR_ALL, caller_independent=True),
             ),
         },
     ),
@@ -1182,7 +1179,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "wizard": CommandDef(
                 desc="Open the interactive configuration wizard",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=frozenset(), human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                auth=CommandAuth(human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                 hidden=True,
             ),
             "computer": CommandDef(
@@ -1192,7 +1189,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc="List computer subjects (singleton)",
                         flags=[F.FLAG_HELP],
                         auth=CommandAuth(
-                            system=_AGENT_REACH | _WORKER_REACH,
+                            capability=Capability.CONFIG,
                             human=_HR_MEMBER,
                             scope=CommandScope.PLATFORM,
                         ),
@@ -1202,7 +1199,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="[paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
                         auth=CommandAuth(
-                            system=_AGENT_REACH | _WORKER_REACH,
+                            capability=Capability.CONFIG,
                             human=_HR_MEMBER,
                             scope=CommandScope.PLATFORM,
                         ),
@@ -1210,7 +1207,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "init": CommandDef(
                         desc="Converge the machine configuration without overwriting existing values",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
                         desc="Patch the machine configuration",
@@ -1222,7 +1219,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_CONFIG_FROM_FILE,
                             F.FLAG_CONFIG_FORMAT,
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                 },
             ),
@@ -1233,7 +1230,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc="List global subjects (singleton)",
                         flags=[F.FLAG_HELP],
                         auth=CommandAuth(
-                            system=_AGENT_REACH | _WORKER_REACH,
+                            capability=Capability.CONFIG,
                             human=_HR_MEMBER,
                             scope=CommandScope.PLATFORM,
                         ),
@@ -1243,7 +1240,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="[paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
                         auth=CommandAuth(
-                            system=_AGENT_REACH | _WORKER_REACH,
+                            capability=Capability.CONFIG,
                             human=_HR_MEMBER,
                             scope=CommandScope.PLATFORM,
                         ),
@@ -1251,7 +1248,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "init": CommandDef(
                         desc="Converge the global configuration without overwriting existing values",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
                         desc="Patch the global configuration",
@@ -1263,7 +1260,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_CONFIG_FROM_FILE,
                             F.FLAG_CONFIG_FORMAT,
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                 },
             ),
@@ -1273,14 +1270,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "list": CommandDef(
                         desc="List registered person slugs",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "get": CommandDef(
                         desc="Get one person's configuration",
                         args="<slug> [paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
                         auth=CommandAuth(
-                            system=_AGENT_REACH,
+                            capability=Capability.CONFIG,
                             human=_HR_MEMBER,
                             scope=CommandScope.CONFIG_SUBJECT,
                         ),
@@ -1295,7 +1292,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_PEOPLE_ROLE,
                             F.FLAG_PEOPLE_USERNAME,
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
                         desc="Patch one person's configuration, or remove the person",
@@ -1310,7 +1307,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_CONFIG_FORMAT,
                         ],
                         auth=CommandAuth(
-                            system=_AGENT_REACH,
+                            capability=Capability.CONFIG,
                             human=_HR_MEMBER,
                             scope=CommandScope.CONFIG_SUBJECT,
                         ),
@@ -1327,13 +1324,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "A configured provider whose endpoint cannot be resolved is reported as unavailable; the "
                             "other links are still returned, and so are all links when the email is not delivered.",
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "discord-voice-bot": CommandDef(
                         desc="Bind the active Discord bot credential to a person's voice configuration",
                         args="<slug> [--json]",
                         flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                 },
                 notes=[
@@ -1346,14 +1343,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "list": CommandDef(
                         desc="List registered company slugs",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "get": CommandDef(
                         desc="Get one company's configuration",
                         args="<slug> [paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
                         auth=CommandAuth(
-                            system=_AGENT_REACH,
+                            capability=Capability.CONFIG,
                             human=_HR_ADMIN,
                             scope=CommandScope.CONFIG_SUBJECT,
                         ),
@@ -1362,7 +1359,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc="Scaffold a company without overwriting existing values",
                         args="<name> [--slug <slug>]",
                         flags=[F.FLAG_HELP, F.FLAG_COMPANY_SLUG],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_MEMBER, scope=CommandScope.PLATFORM),
                     ),
                     "patch": CommandDef(
                         desc="Patch one company's roster or fields",
@@ -1375,7 +1372,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_CONFIG_FORMAT,
                         ],
                         auth=CommandAuth(
-                            system=_AGENT_REACH,
+                            capability=Capability.CONFIG,
                             human=_HR_ADMIN,
                             scope=CommandScope.CONFIG_SUBJECT,
                         ),
@@ -1385,7 +1382,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="<slug> [--json]",
                         flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
                         notes=[_HELP_DESK_LINKS_NOTE],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.CONFIG_SUBJECT),
+                        auth=CommandAuth(
+                            capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.CONFIG_SUBJECT
+                        ),
                     ),
                 },
             ),
@@ -1396,7 +1395,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc="List registered project slugs",
                         flags=[F.FLAG_HELP],
                         auth=CommandAuth(
-                            system=_AGENT_REACH | _WORKER_REACH,
+                            capability=Capability.CONFIG,
                             human=_HR_MEMBER,
                             scope=CommandScope.PLATFORM,
                         ),
@@ -1406,7 +1405,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="<slug> [paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
                         auth=CommandAuth(
-                            system=_AGENT_REACH | _WORKER_REACH,
+                            capability=Capability.CONFIG,
                             human=_HR_MEMBER,
                             scope=CommandScope.CONFIG_SUBJECT,
                         ),
@@ -1454,7 +1453,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         ],
                         notes=["Writes the project's teleclaude.yml only — never commits."],
                         auth=CommandAuth(
-                            system=_AGENT_REACH,
+                            capability=Capability.CONFIG,
                             human=_HR_MEMBER,
                             scope=CommandScope.CONFIG_SUBJECT,
                         ),
@@ -1464,7 +1463,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="<slug> [--json]",
                         flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
                         notes=[_HELP_DESK_LINKS_NOTE],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.CONFIG_SUBJECT),
+                        auth=CommandAuth(
+                            capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.CONFIG_SUBJECT
+                        ),
                     ),
                 },
             ),
@@ -1472,7 +1473,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Full validation",
                 flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
                 auth=CommandAuth(
-                    system=_AGENT_REACH | _WORKER_REACH,
+                    capability=Capability.CONFIG,
                     human=_HR_MEMBER,
                     scope=CommandScope.PLATFORM,
                 ),
@@ -1483,13 +1484,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "list": CommandDef(
                         desc="List environment variables",
                         flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                     "set": CommandDef(
                         desc="Set environment variables",
                         args="<KEY=VALUE> ... [--json]",
                         flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                 },
             ),
@@ -1506,7 +1507,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "Bare invocation prints this guard and makes no daemon call.",
                             "Re-enabling TTS afterward lazily re-provisions the removed deps.",
                         ],
-                        auth=CommandAuth(system=_AGENT_REACH, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
+                        auth=CommandAuth(capability=Capability.CONFIG, human=_HR_ADMIN, scope=CommandScope.PLATFORM),
                     ),
                 },
             ),
@@ -1534,7 +1535,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec history search --include-workers tui",
                 ],
                 literal_dash_tokens=True,
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.SESSION_OBSERVE, human=_HR_MEMBER),
             ),
             "show": CommandDef(
                 desc="Show full transcript for a session",
@@ -1552,7 +1553,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec history show 00000000-0000-4000-8000-000000000000 --agent claude",
                     "telec history show 00000000-0000-4000-8000-000000000000 --thinking",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.SESSION_OBSERVE, human=_HR_MEMBER),
             ),
         },
     ),
@@ -1579,7 +1580,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec memories list",
                     "telec memories list --type preference",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.MEMORIES_READ, human=_HR_MEMBER),
             ),
             "search": CommandDef(
                 desc="Search personal-preference observations about the human.",
@@ -1594,7 +1595,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec memories search "communication style"',
                     'telec memories search "narrative" --type preference',
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.MEMORIES_READ, human=_HR_MEMBER),
             ),
             "save": CommandDef(
                 desc=(
@@ -1610,14 +1611,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 examples=[],
                 hidden=True,
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.MEMORIES_READ, human=_HR_MEMBER),
             ),
             "delete": CommandDef(
                 desc="Delete a personal-preference observation by ID (typically run by the human while pruning).",
                 args="<id>",
                 flags=[F.FLAG_HELP],
                 examples=["telec memories delete 42"],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.MEMORIES_READ, human=_HR_MEMBER),
             ),
             "scope": CommandDef(
                 desc=(
@@ -1631,7 +1632,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec memories scope --identity person:maurice",
                     "telec memories scope --identity telegram:123 --desk hd-company-acme",
                 ],
-                auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+                auth=CommandAuth(capability=Capability.MEMORY_CURATION, human=frozenset()),
             ),
             "add": CommandDef(
                 desc="Add a current memory about the extraction's person, in the scope the extraction prepared.",
@@ -1648,7 +1649,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 examples=[
                     'telec memories add --identity person:maurice --extraction 00000000-0000-4000-8000-000000000000 --type preference "Prefers short answers"'
                 ],
-                auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+                auth=CommandAuth(capability=Capability.MEMORY_CURATION, human=frozenset()),
             ),
             "update": CommandDef(
                 desc="Replace the statement of a current memory in the extraction's scope.",
@@ -1664,7 +1665,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 examples=[
                     'telec memories update 42 --identity person:maurice --extraction 00000000-0000-4000-8000-000000000000 "Now prefers detail"'
                 ],
-                auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+                auth=CommandAuth(capability=Capability.MEMORY_CURATION, human=frozenset()),
             ),
             "retire": CommandDef(
                 desc="Retire a current memory in the extraction's scope: it leaves use and stays recorded.",
@@ -1680,7 +1681,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 examples=[
                     "telec memories retire 42 --identity person:maurice --extraction 00000000-0000-4000-8000-000000000000"
                 ],
-                auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+                auth=CommandAuth(capability=Capability.MEMORY_CURATION, human=frozenset()),
             ),
             "prospect": CommandDef(
                 desc="Collect a business item from the extraction's desk conversation as a prospect for the desk's home.",
@@ -1696,7 +1697,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 examples=[
                     'telec memories prospect --desk hd-company-acme --extraction 00000000-0000-4000-8000-000000000000 --type request "Wants an export"'
                 ],
-                auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+                auth=CommandAuth(capability=Capability.MEMORY_CURATION, human=frozenset()),
             ),
             "extraction": CommandDef(
                 desc="Read an extraction's conversation material, or declare it finished or failed.",
@@ -1709,14 +1710,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="<id>",
                         flags=[F.FLAG_HELP],
                         examples=["telec memories extraction read 00000000-0000-4000-8000-000000000000"],
-                        auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+                        auth=CommandAuth(capability=Capability.MEMORY_CURATION, human=frozenset()),
                     ),
                     "complete": CommandDef(
                         desc="Declare the extraction's memory and prospect changes finished, including a read with none.",
                         args="<id>",
                         flags=[F.FLAG_HELP],
                         examples=["telec memories extraction complete 00000000-0000-4000-8000-000000000000"],
-                        auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+                        auth=CommandAuth(capability=Capability.MEMORY_CURATION, human=frozenset()),
                     ),
                     "fail": CommandDef(
                         desc="Report that the extraction could not be finished; its stretch stays eligible.",
@@ -1725,7 +1726,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         examples=[
                             'telec memories extraction fail 00000000-0000-4000-8000-000000000000 --reason "source unreadable"'
                         ],
-                        auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+                        auth=CommandAuth(capability=Capability.MEMORY_CURATION, human=frozenset()),
                     ),
                 },
             ),
@@ -1739,7 +1740,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 examples=[
                     "telec memories advance --session 00000000-0000-4000-8000-000000000000 --to 2026-10-10T12:00:00Z"
                 ],
-                auth=CommandAuth(system=_TASKER_REACH, human=frozenset()),
+                auth=CommandAuth(capability=Capability.MEMORY_CURATION, human=frozenset()),
             ),
             "timeline": CommandDef(
                 desc="Show personal-preference observations around an anchor ID.",
@@ -1751,7 +1752,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_PROJECT_FILTER,
                 ],
                 examples=["telec memories timeline 42 --before 3 --after 3"],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.MEMORIES_READ, human=_HR_MEMBER),
             ),
         },
     ),
@@ -1782,7 +1783,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         examples=[
                             "telec code blueprint affected teleclaude/core/foo.py teleclaude/api/bar.py",
                         ],
-                        auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
+                        auth=CommandAuth(capability=Capability.CODE, human=frozenset(), caller_independent=True),
                     ),
                 },
             ),
@@ -1792,7 +1793,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_HELP,
                     F.FLAG_CODE_ALL_LINT,
                 ],
-                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
+                auth=CommandAuth(capability=Capability.CODE, human=frozenset(), caller_independent=True),
             ),
             "test": CommandDef(
                 desc="Run native make test",
@@ -1801,12 +1802,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_CODE_ALL_TEST,
                     F.FLAG_CODE_UPDATE_SNAPSHOTS,
                 ],
-                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
+                auth=CommandAuth(capability=Capability.CODE, human=frozenset(), caller_independent=True),
             ),
             "format": CommandDef(
                 desc="Run native make format",
                 flags=[F.FLAG_HELP, F.FLAG_CODE_ALL_FORMAT],
-                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
+                auth=CommandAuth(capability=Capability.CODE, human=frozenset(), caller_independent=True),
             ),
             "add": CommandDef(
                 desc="Declare files for the next commit (stages NEW, unmerged, or partial-staged tracked)",
@@ -1833,7 +1834,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "the agent may have created incidentally).",
                     "Alternative one-shot form: telec code commit --approved '<msg>' --include <path>.",
                 ],
-                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
+                auth=CommandAuth(capability=Capability.CODE, human=frozenset(), caller_independent=True),
             ),
             "owners": CommandDef(
                 desc="Print live declaration owners for every dirty path in the canonical checkout",
@@ -1843,7 +1844,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "A value lists the live sessions that declared the path, or null when no live session declared it.",
                 ],
                 examples=["telec code owners"],
-                auth=CommandAuth(system=_INTEGRATOR_RESERVATION, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.INTEGRATION, human=_HR_MEMBER),
             ),
             "commit": CommandDef(
                 desc="Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)",
@@ -1866,7 +1867,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "The commit author is stamped as the resolved agent's bot identity (git --author); the message gains the branding line, Session:, and Human-Involved: — no Co-Authored-By trailer is ever added.",
                     "In a todo worktree, a successful commit also publishes the branch to origin; a failed publish leaves the commit in place.",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                auth=CommandAuth(capability=Capability.CODE, human=_HR_ALL),
             ),
             "stamp": CommandDef(
                 desc="Record a commit-review outcome on commits that landed on main",
@@ -1887,25 +1888,25 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec code stamp 1a2b3c4,5d6e7f8 --verdict approve",
                     "telec code stamp 1a2b3c4 --verdict approve --reason 'removes a retired section'",
                 ],
-                auth=CommandAuth(system=_AGENT_REACH | _WORKER_REACH, human=_HR_ALL),
+                auth=CommandAuth(capability=Capability.STAMP, human=_HR_ALL),
             ),
             "pre-commit": CommandDef(
                 desc="Run the thin pre-commit backstop",
                 flags=[F.FLAG_HELP],
                 hidden=True,
-                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
+                auth=CommandAuth(human=frozenset(), caller_independent=True),
             ),
             "post-commit": CommandDef(
                 desc="Run deterministic post-commit maintenance",
                 flags=[F.FLAG_HELP],
                 hidden=True,
-                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
+                auth=CommandAuth(human=frozenset(), caller_independent=True),
             ),
             "post-merge": CommandDef(
                 desc="Run deterministic post-merge automation",
                 flags=[F.FLAG_HELP],
                 hidden=True,
-                auth=CommandAuth(system=frozenset(), human=frozenset(), caller_independent=True),
+                auth=CommandAuth(human=frozenset(), caller_independent=True),
             ),
             "maintenance": CommandDef(
                 desc="Inspect and recover canonical-main maintenance",
@@ -1915,12 +1916,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "status": CommandDef(
                         desc="Show outstanding maintenance records and integrator judgment",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_INTEGRATOR_RESERVATION, human=frozenset()),
+                        auth=CommandAuth(capability=Capability.MAINTENANCE_RECOVERY, human=frozenset()),
                     ),
                     "drain": CommandDef(
                         desc="Resume interrupted maintenance and record readiness",
                         flags=[F.FLAG_HELP],
-                        auth=CommandAuth(system=_INTEGRATOR_RESERVATION, human=frozenset()),
+                        auth=CommandAuth(capability=Capability.MAINTENANCE_RECOVERY, human=frozenset()),
                     ),
                     "retry": CommandDef(
                         desc="Retry one terminally failed maintenance action",
@@ -1931,7 +1932,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_MAINTENANCE_EVENT_ID,
                             F.FLAG_MAINTENANCE_ACTION,
                         ],
-                        auth=CommandAuth(system=_INTEGRATOR_RESERVATION, human=frozenset()),
+                        auth=CommandAuth(capability=Capability.MAINTENANCE_RECOVERY, human=frozenset()),
                     ),
                 },
             ),
@@ -1951,7 +1952,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "With --list, it prints the steps a run would perform and runs nothing.",
         ],
         examples=["telec sync", "telec sync --list"],
-        auth=CommandAuth(system=_AGENT_REACH, human=_HR_MEMBER),
+        auth=CommandAuth(capability=Capability.CODE, human=_HR_MEMBER),
     ),
 }
 # =============================================================================

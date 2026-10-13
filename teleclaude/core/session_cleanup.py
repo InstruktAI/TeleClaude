@@ -654,7 +654,7 @@ def is_legacy_restricted_session(session: Session) -> bool:
     the write that created it, so a desk-role session without it predates the
     confinement and is never delivered to.
     """
-    return is_desk_role(session.system_role or None, session.human_role) and session.confinement_profile is None
+    return is_desk_role(session.role or None, session.human_role) and session.confinement_profile is None
 
 
 async def end_legacy_restricted_sessions(adapter_client: AdapterClient) -> int:

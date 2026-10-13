@@ -45,7 +45,6 @@ from teleclaude.config.jobs import EffectiveJob, load_effective_jobs
 from teleclaude.config.loader import load_person_config
 from teleclaude.config.machine import config as global_config
 from teleclaude.config.schema import JobCategory, JobScheduleConfig, JobSubscription, JobWhenConfig, is_agent_job
-from teleclaude.constants import SlashCommand
 from teleclaude.cron.dispatch_record import DispatchRefusal, DispatchReporter
 from teleclaude.cron.outcome_emission import (
     drain_pending_emissions,
@@ -73,7 +72,6 @@ from teleclaude.services.project_catalog import ProjectCatalogService, ProjectNo
 
 logger = get_logger(__name__)
 
-_RUN_JOB_COMMAND = f"/{SlashCommand.RUN_JOB.value}"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DYNAMIC_JOB_PACKAGE_PREFIX = "_teleclaude_job"
 _LEGACY_AGGREGATE_JOB_KEYS = frozenset({"log-bug-hunter", "sdlc/procedure/maintenance/log-bug-hunter"})
@@ -256,20 +254,22 @@ def _release_pidlock() -> None:
         pass
 
 
-def _job_command_args(schedule: JobScheduleConfig) -> str:
-    """Return the declared identity validated by the run boundary."""
-    return schedule.name
+def _job_procedure_id(schedule: JobScheduleConfig) -> str:
+    """Return the entry procedure the job's declaration points at."""
+    return (schedule.job or "").strip()
 
 
 def _run_agent_job(job_name: str, config: JobScheduleConfig, project_root: Path) -> tuple[str | None, str | None]:
     """Trigger an agent job via the API (fire-and-forget session creation).
 
     Instead of spawning a subprocess directly, this sends a request to the daemon
-    to create a session with job metadata. The daemon handles execution.
+    to run the job's entry procedure with the job's name as its entry context. The
+    daemon resolves the procedure's role and brief and handles execution.
     """
     # Job sessions are always created on the local computer where the runner is active
     computer = global_config.computer.name
     project_path = str(project_root)
+    procedure_id = _job_procedure_id(config)
 
     async def _trigger() -> tuple[str | None, str | None]:
         client = TelecAPIClient(daemon_credential=True)
@@ -278,8 +278,8 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig, project_root: Path)
             response = await client.run_session(
                 computer=computer,
                 project_path=project_path,
-                command=_RUN_JOB_COMMAND,
-                args=_job_command_args(config),
+                command=procedure_id,
+                job=config.name,
             )
             return response.session_id, None
         except APIError as error:

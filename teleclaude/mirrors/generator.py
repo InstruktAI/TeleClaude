@@ -12,8 +12,8 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.machine import config
-from teleclaude.constants import ROLE_WORKER
 from teleclaude.core.agents import AgentName, resolve_parser_agent
+from teleclaude.core.roles import is_worker_role
 
 from teleclaude.utils.transcript import StructuredMessage  # isort: skip  # transcript initialization imports the projector
 
@@ -297,7 +297,7 @@ def _facts(
         visibility=context.visibility,
         command=context.command,
         todo=context.todo,
-        is_worker=context.system_role == ROLE_WORKER,
+        is_worker=is_worker_role(context.role),
         metadata=metadata,
     )
 

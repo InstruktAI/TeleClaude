@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import ARTIFACT_REVIEW_FINDINGS, WORKTREE_DIR, SlashCommand
+from teleclaude.constants import ARTIFACT_REVIEW_FINDINGS, WORKTREE_DIR
 from teleclaude.core.db import Db
 from teleclaude.core.integration_bridge import emit_review_approved
 from teleclaude.core.next_machine._types import (
@@ -66,6 +66,7 @@ from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.next_machine.review_evidence import (
     BUILD_REVIEW_PHASE,
     BuildReviewVerdict,
@@ -190,7 +191,7 @@ async def _handle_build_complete_claim(
 
     if not gates_passed:
         await _commit_writer(writer, todos_db, slug, state)
-        builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.BUILD.value}")
+        builder_id = await find_live_session_for_slug(db, slug, LifecycleProcedure.BUILD.value)
         if builder_id is None:
             return False, format_error(
                 "BUILD_GATE_FAILED",
@@ -248,7 +249,7 @@ async def _work_step_build_started(
             next_call=f"telec todo prepare {slug}",
         )
 
-    command = SlashCommand.BUILD
+    command = LifecycleProcedure.BUILD
     old_plan_digest = model.build_plan_digest
     current_plan_digest = model.artifacts.implementation_plan.digest
     reconciliation_required = bool(old_plan_digest) and old_plan_digest != current_plan_digest
@@ -464,7 +465,7 @@ async def _work_step_build_complete(
 
     admission = build_review_admission(state)
     report = format_review_threshold_report(slug, admission)
-    reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.REVIEW_BUILD.value}")
+    reviewer_id = await find_live_session_for_slug(db, slug, LifecycleProcedure.REVIEW_BUILD.value)
 
     # Reconcile live-review state: detects ground shifts, reuses active reviewers.
     resolution = await resolve_pending_review_state(
@@ -507,7 +508,7 @@ async def _work_step_build_complete(
         return False, f"{report}\n\n{redispatch_script}" if report else redispatch_script
 
     request = ToolCallRequest(
-        command=SlashCommand.REVIEW_BUILD,
+        command=LifecycleProcedure.REVIEW_BUILD,
         args=slug,
         project=_derive_project_root(cwd, slug),
         subfolder=f"{WORKTREE_DIR}/{slug}",
@@ -556,8 +557,8 @@ async def _work_step_review_changes_requested(
         )
 
     # Fix not yet committed: relay findings to live builder.
-    builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.BUILD.value}")
-    reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.REVIEW_BUILD.value}")
+    builder_id = await find_live_session_for_slug(db, slug, LifecycleProcedure.BUILD.value)
+    reviewer_id = await find_live_session_for_slug(db, slug, LifecycleProcedure.REVIEW_BUILD.value)
 
     if builder_id is None:
         return False, format_error(
@@ -737,7 +738,7 @@ async def _work_step_review_approved(
     if await todos_db.has_pending_deferrals(slug):
         return False, format_tool_call(
             ToolCallRequest(
-                command=SlashCommand.DEFER,
+                command=LifecycleProcedure.DEFERRALS,
                 args=slug,
                 project=_derive_project_root(cwd, slug),
                 subfolder=f"{WORKTREE_DIR}/{slug}",
@@ -768,7 +769,7 @@ async def _work_step_review_approved(
     note = "BUG FIX: Skip delivery bookkeeping. Delete todo directory after merge." if is_bug else ""
     return False, format_tool_call(
         ToolCallRequest(
-            command=SlashCommand.FINALIZE,
+            command=LifecycleProcedure.FINALIZE,
             args=slug,
             project=_derive_project_root(cwd, slug),
             subfolder=f"{WORKTREE_DIR}/{slug}",

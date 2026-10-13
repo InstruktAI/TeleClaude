@@ -127,7 +127,7 @@ async def deliver_bundle(
     if target_computer == config.computer.name:
         caller_author = resolve_session_event_author(
             session_id=source_session.session_id,
-            system_role=source_session.system_role,
+            role=source_session.role,
             active_agent=source_session.active_agent,
             thinking_mode=source_session.thinking_mode,
         )
@@ -149,7 +149,7 @@ async def deliver_bundle(
                 caller_agent_runtime=caller_author.agent_runtime,
                 caller_thinking_mode=caller_author.thinking_mode,
                 caller_machine_role=caller_author.machine_role,
-                caller_job_role=source_session.job,
+                caller_job_role=source_session.role,
             )
         )
         logger.info(

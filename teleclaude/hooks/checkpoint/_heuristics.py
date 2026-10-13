@@ -143,7 +143,7 @@ def run_heuristics(
                 )
             )
             continue
-        if _defers_to_integrator(action, context.system_role):
+        if _defers_to_integrator(action, context.role):
             integrator_owned_ids.add(action_id)
             decisions.append(
                 CheckpointActionDecision(

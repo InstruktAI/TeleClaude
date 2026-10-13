@@ -43,6 +43,7 @@ from teleclaude.constants import (
     TUI_SESSION_ENV_KEY,
     MarkerState,
 )
+from teleclaude.core.roles import Capability, Role, UnknownRole, allows, resolve_session_role
 from teleclaude.core.session_identity_facts import SessionIdentityFacts, read_session_identity_facts
 from teleclaude.paths import MAIN_DB_PATH, invocation_cwd
 from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
@@ -97,7 +98,7 @@ class ResolvedCliIdentity:
 
     caller: CliCaller
     principal: str | None
-    system_role: str | None
+    role: str | None
     session_id: str | None
     in_session: bool
     initiator_session_id: str | None = None
@@ -123,12 +124,12 @@ class CommandAuthDeclaration(Protocol):
     def caller_independent(self) -> bool: ...
 
     @property
-    def system(self) -> frozenset[str]: ...
+    def capability(self) -> Capability | None: ...
 
     @property
     def scope(self) -> CommandScope: ...
 
-    def allows(self, system_role: str | None, human_role: str | None) -> bool: ...
+    def allows(self, role: Role | UnknownRole | None, human_role: str | None) -> bool: ...
 
 
 _INVOCATION_IDENTITY_NAME = "telec_cli_invocation_identity"
@@ -296,7 +297,7 @@ def _no_identity(in_session: bool) -> ResolvedCliIdentity:
     return ResolvedCliIdentity(
         caller=NoIdentityCliCaller(),
         principal=None,
-        system_role=None,
+        role=None,
         session_id=None,
         in_session=in_session,
         entry_point=_entry_point_for_caller(in_session=in_session),
@@ -332,7 +333,7 @@ def resolve_cli_identity() -> ResolvedCliIdentity:
         return ResolvedCliIdentity(
             caller=caller,
             principal=human_principal_for_email(person.email),
-            system_role=None,
+            role=None,
             session_id=None,
             in_session=False,
             entry_point=_entry_point_for_caller(in_session=False),
@@ -347,7 +348,7 @@ def resolve_cli_identity() -> ResolvedCliIdentity:
     return ResolvedCliIdentity(
         caller=resolved.caller,
         principal=resolved.principal,
-        system_role=resolved.system_role,
+        role=resolved.role,
         session_id=facts.session_id,
         in_session=True,
         initiator_session_id=facts.initiator_session_id,
@@ -430,7 +431,7 @@ def cli_clearance(
     if relayed_request:
         return CliClearance(identity=identity, refusal=None)
 
-    if identity.principal == SYSTEM_DAEMON_PRINCIPAL and identity.system_role is None:
+    if identity.principal == SYSTEM_DAEMON_PRINCIPAL and identity.role is None:
         return CliClearance(identity=identity, refusal=None)
 
     action = {
@@ -446,25 +447,27 @@ def cli_clearance(
             action,
             identity.session_id,
             identity.initiator_session_id,
-            identity.system_role,
+            identity.role,
             action_session_target,
         )
         if exception is True:
             return CliClearance(identity=identity, refusal=None)
         if exception is False:
-            role = identity.system_role or identity.caller.human_role or "unauthorized"
+            role = identity.role or identity.caller.human_role or "unauthorized"
             return CliClearance(
                 identity=identity,
                 refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
             )
 
+    agent_role = resolve_session_role(identity.role, identity.session_id)
     if auth.scope is CommandScope.NAMED_TRUSTED_DIRECTORY and role_target is None:
         person_caller = isinstance(identity.caller, PersonCliCaller)
-        if (person_caller and identity.system_role is None) or (
-            identity.system_role is not None and identity.system_role in auth.system
-        ):
+        reaches_capability = (
+            isinstance(agent_role, Role) and auth.capability is not None and allows(agent_role, auth.capability)
+        )
+        if (person_caller and agent_role is None) or reaches_capability:
             return CliClearance(identity=identity, refusal=None)
-        role = identity.system_role or _UNAUTHORIZED_ROLE
+        role = identity.role or _UNAUTHORIZED_ROLE
         return CliClearance(
             identity=identity,
             refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
@@ -479,16 +482,17 @@ def cli_clearance(
         if isinstance(identity.caller, PersonCliCaller)
         else None
     )
-    if auth.allows(identity.system_role, person_role):
+    if auth.allows(agent_role, person_role):
         return CliClearance(identity=identity, refusal=None)
     if (
-        identity.system_role is not None
-        and identity.system_role in auth.system
+        isinstance(agent_role, Role)
+        and auth.capability is not None
+        and allows(agent_role, auth.capability)
         and isinstance(identity.caller, PersonCliCaller)
     ):
         role = person_role or HUMAN_ROLE_CUSTOMER
     else:
-        role = identity.system_role or person_role or _UNAUTHORIZED_ROLE
+        role = identity.role or person_role or _UNAUTHORIZED_ROLE
     return CliClearance(
         identity=identity,
         refusal=_PERMISSION_REFUSAL_TEMPLATE.format(role=role, command_path=command_path),
@@ -527,11 +531,6 @@ def require_cli_clearance(
 def resolve_cleared_command() -> str | None:
     """The command path this invocation's gate cleared the caller for, if the gate ran."""
     return _INVOCATION_COMMAND.get()
-
-
-def resolve_cli_system_role() -> str | None:
-    """Resolve the current CLI caller's system role from the shared identity."""
-    return resolve_cli_identity().system_role
 
 
 def _load_session_record(session_id: str | None) -> SessionIdentityFacts | None:

@@ -16,9 +16,9 @@ from teleclaude.constants import (
     COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE,
     COMMIT_REVIEW_DISCARD_PLACEHOLDER,
     COMMIT_REVIEW_INTENT_TEST,
-    SlashCommand,
 )
 from teleclaude.core.db import get_db
+from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.next_machine.runtime.sessions import list_live_commit_reviewers_for_initiator
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.project_root import DOC_LAYER_PATTERN
@@ -80,7 +80,7 @@ async def _commit_reviewers_async(project_root: Path, initiator_session_id: str)
     """Resolve every live commit-review session open for this project and driver."""
     runtime_db = await get_db()
     return await list_live_commit_reviewers_for_initiator(
-        runtime_db, project_root, initiator_session_id, SlashCommand.REVIEW_COMMITS.value
+        runtime_db, project_root, initiator_session_id, LifecycleProcedure.REVIEW_COMMITS.value
     )
 
 
@@ -200,12 +200,12 @@ def _print_commit_review_guidance(project_root: Path, context_root: Path | None)
         )
         review_dispatch = (
             _COMMIT_REVIEW_REUSE_GUIDANCE
-            + _COMMIT_REVIEW_DISPATCH_TEMPLATE.format(command=SlashCommand.REVIEW_COMMITS.value)
+            + _COMMIT_REVIEW_DISPATCH_TEMPLATE.format(command=LifecycleProcedure.REVIEW_COMMITS.value)
             + already_open
         )
     else:
         review_dispatch = _COMMIT_REVIEW_START_GUIDANCE + _COMMIT_REVIEW_DISPATCH_TEMPLATE.format(
-            command=SlashCommand.REVIEW_COMMITS.value
+            command=LifecycleProcedure.REVIEW_COMMITS.value
         )
     scope_diffstat = _resolved_scope_diffstat(project_root, context_root)
     discard_command = COMMIT_REVIEW_DISCARD_COMMAND_TEMPLATE.format(sha=COMMIT_REVIEW_DISCARD_PLACEHOLDER)

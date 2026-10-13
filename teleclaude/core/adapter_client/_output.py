@@ -52,7 +52,9 @@ def _output_presentation_metadata(session: "Session") -> MessageMetadata | None:
         active_agent=session.active_agent,
         thinking_mode=session.thinking_mode,
     )
-    alias, avatar_url = resolve_discord_author_alias(author, owning_session_id=session.session_id, job_role=session.job)
+    alias, avatar_url = resolve_discord_author_alias(
+        author, owning_session_id=session.session_id, job_role=session.role
+    )
     return MessageMetadata(reflection_actor_name=alias, reflection_actor_avatar_url=avatar_url)
 
 
@@ -116,7 +118,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 title=snapshot.title,
                 last_input_origin=snapshot.last_input_origin,
                 origin_metadata=dict(snapshot.origin_metadata),
-                system_role=snapshot.system_role,
+                role=snapshot.role,
                 job=snapshot.job,
                 project_path=snapshot.project_path,
                 subdir=snapshot.subdir,
@@ -474,10 +476,10 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         if origin_adapter is None and admin_target is None:
             logger.debug(
-                "Skipping live UI output: session=%s origin=%s system_role=%s",
+                "Skipping live UI output: session=%s origin=%s role=%s",
                 session.session_id,
                 (session.last_input_origin or "").strip() or "<none>",
-                session.system_role or "<none>",
+                session.role or "<none>",
             )
             return None
 

@@ -43,20 +43,9 @@ shapes remain ordinary human input.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from types import MappingProxyType
 
-from teleclaude.constants import (
-    ROLE_INTEGRATOR,
-    ROLE_JOB_RUNNER,
-    ROLE_ORCHESTRATOR,
-    ROLE_SYSTEM,
-    ROLE_TASKER,
-    ROLE_WORKER,
-    SystemRole,
-)
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.injected_text import (
     ENVELOPE_REGISTRY,
@@ -71,8 +60,7 @@ from teleclaude.core.injected_text import (
     semantic_envelope,
 )
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageAuthorKind
-
-_EMPTY_SYSTEM_ROLE = ""
+from teleclaude.core.roles import Role, resolve_role
 
 _CATEGORY_PREFIX_TEMPLATE = " - {category}"
 _EMPTY_CATEGORY = ""
@@ -106,29 +94,22 @@ class ParsedPeerSegment:
     author_job_role: str | None = None
 
 
-MACHINE_ROLE_LABELS: Mapping[str, MachineRoleLabel] = MappingProxyType(
-    {
-        ROLE_ORCHESTRATOR: MachineRoleLabel.ORCHESTRATOR,
-        ROLE_INTEGRATOR: MachineRoleLabel.INTEGRATOR,
-        SystemRole.COORDINATOR: MachineRoleLabel.ORCHESTRATOR,
-        ROLE_SYSTEM: MachineRoleLabel.SYSTEM,
-        ROLE_WORKER: MachineRoleLabel.WORKER,
-        ROLE_TASKER: MachineRoleLabel.TASKER,
-        ROLE_JOB_RUNNER: MachineRoleLabel.JOB_RUNNER,
-    }
-)
+def machine_role_label(role: str | None) -> MachineRoleLabel:
+    """The identity-header label a recorded role carries, the generic agent label when the catalog names none."""
+    resolved = resolve_role(role)
+    return MachineRoleLabel(resolved.label.value) if isinstance(resolved, Role) else MachineRoleLabel.AGENT
 
 
 def resolve_session_event_author(
     *,
     session_id: str,
-    system_role: str | None,
+    role: str | None,
     active_agent: str | None,
     thinking_mode: str | None,
 ) -> MessageAuthor:
     """Build a session's immutable structural author snapshot.
 
-    Agent identity is primary whenever an active agent exists; a system role
+    Agent identity is primary whenever an active agent exists; a role
     is orthogonal metadata carried alongside it (see ``author_job_role`` on
     the authored span), never a substitute for the agent snapshot. Only a
     session with no active agent falls back to its machine-role label.
@@ -139,10 +120,7 @@ def resolve_session_event_author(
             active_agent=active_agent,
             thinking_mode=thinking_mode,
         )
-    role_label = MACHINE_ROLE_LABELS.get((system_role or _EMPTY_SYSTEM_ROLE).strip())
-    if role_label is not None:
-        return MessageAuthor.for_machine(session_id=session_id, role_label=role_label.value)
-    return MessageAuthor.for_machine(session_id=session_id, role_label=MachineRoleLabel.AGENT.value)
+    return MessageAuthor.for_machine(session_id=session_id, role_label=machine_role_label(role).value)
 
 
 def format_identity_header(

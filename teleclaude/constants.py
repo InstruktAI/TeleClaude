@@ -76,30 +76,7 @@ class SessionTarget(StrEnum):
     SELF = "self"
 
 
-# System roles
-class SystemRole(StrEnum):
-    """Closed vocabulary for roles a session can carry."""
-
-    SYSTEM = "system"
-    ORCHESTRATOR = "orchestrator"
-    WORKER = "worker"
-    INTEGRATOR = "integrator"
-    TASKER = "tasker"
-    COORDINATOR = "coordinator"
-    JOB_RUNNER = "job_runner"
-
-
-ROLE_SYSTEM = SystemRole.SYSTEM
-ROLE_ORCHESTRATOR = SystemRole.ORCHESTRATOR
-ROLE_WORKER = SystemRole.WORKER
-ROLE_INTEGRATOR = SystemRole.INTEGRATOR
-ROLE_TASKER = SystemRole.TASKER
 SYSTEM_DAEMON_PRINCIPAL = "system:daemon"
-# A job-runner session is a recurring scheduled job, e.g. log_bug_hunter or a
-# generic cron agent job. It is one of the standing roles (see
-# STANDING_SYSTEM_ROLES / is_standing_role below) permitted a no-human lineage
-# root at todo/bug creation — see local/projects/teleclaude/spec/domain/workflow.
-ROLE_JOB_RUNNER = SystemRole.JOB_RUNNER
 
 
 class DriverLaunchClass(StrEnum):
@@ -153,7 +130,6 @@ SNIPPET_VISIBILITY_VALUES = (SNIPPET_VISIBILITY_PUBLIC, SNIPPET_VISIBILITY_INTER
 class ArtifactKind(StrEnum):
     """Agent-artifact kinds the transpiler emits and the validator grades."""
 
-    COMMAND = "command"
     SKILL = "skill"
 
 
@@ -328,175 +304,6 @@ class ComputerStatus(str, Enum):
 class SystemCommand(str, Enum):
     HEALTH_CHECK = "health_check"
     EXIT = "exit"
-
-
-class SlashCommand(StrEnum):
-    """Canonical slash commands dispatched to agent sessions.
-
-    Values are domain-qualified (``<domain>/<name>``), matching the
-    partitioned global corpus each names — see
-    ``teleclaude.agent_artifacts`` and ``local/projects/teleclaude/design/architecture/agent-artifact-distribution#corpus-layout-and-names``.
-    """
-
-    BUILD = "sdlc/build"
-    REVIEW_BUILD = "sdlc/review-build"
-    REVIEW_PRD = "sdlc/review-prd"
-    REVIEW_PLAN = "sdlc/review-plan"
-    REVIEW_ARCHITECTURE = "sdlc/review-architecture"
-    REVIEW_COMMITS = "sdlc/review-commits"
-    FINALIZE = "sdlc/finalize"
-    PREPARE_INTAKE = "sdlc/prepare-intake"
-    PREPARE_ARCHITECTURE = "sdlc/prepare-architecture"
-    PREPARE_DIAGNOSE = "sdlc/prepare-diagnose"
-    PREPARE_PLAN = "sdlc/prepare-plan"
-    PREPARE_TASK = "sdlc/prepare-task"
-    DRIFT_ANALYZE = "sdlc/drift-analyze"
-    PREPARE = "sdlc/prepare"
-    WORK = "sdlc/work"
-    RUN_TASK = "sdlc/run-task"
-    INTEGRATE = "sdlc/integrate"
-    COORDINATE = "sdlc/coordinate"
-    CREATE = "creative/create"
-    CREATE_ART = "creative/create-art"
-    CREATE_HTML = "creative/create-html"
-    DEFER = "sdlc/defer"
-    RUN_JOB = "general/run-job"
-    ACTIVATE_PROCEDURE = "general/activate-procedure"
-
-
-# Canonical lifecycle commands that may run without a todo slug: the prepare
-# orchestrator, create orchestrator, and integrator can select work
-# themselves, review-commits is bound to commit SHAs rather than a slug, and
-# the coordinator watches the fleet without any todo at all. The dispatch
-# required-slug gate at both create doors reads this single set so they
-# cannot disagree on which commands may run argless.
-NON_SLUG_BOUND_COMMANDS = frozenset(
-    {
-        SlashCommand.PREPARE,
-        SlashCommand.INTEGRATE,
-        SlashCommand.REVIEW_COMMITS,
-        SlashCommand.COORDINATE,
-        SlashCommand.RUN_JOB,
-        SlashCommand.CREATE,
-        SlashCommand.ACTIVATE_PROCEDURE,
-    }
-)
-
-
-class JobRole(str, Enum):
-    """Canonical job roles for sessions spawned by slash commands."""
-
-    BUILDER = "builder"
-    COORDINATOR = "coordinator"
-    REVIEWER = "reviewer"
-    FINALIZER = "finalizer"
-    INTAKER = "intaker"
-    PLANNER = "planner"
-    DIAGNOSER = "diagnoser"
-    ARCHITECT = "architect"
-    TASK_PREPARER = "task-preparer"
-    TASK_RUNNER = "task-runner"
-    DRIFT_ANALYZER = "drift-analyzer"
-    PREPARE_ORCHESTRATOR = "prepare-orchestrator"
-    WORK_ORCHESTRATOR = "work-orchestrator"
-    CREATE_ORCHESTRATOR = "create-orchestrator"
-    ARTIST = "artist"
-    FRONTENDER = "frontender"
-    INTEGRATOR = "integrator"
-    JOB_RUNNER = "job-runner"
-    PROCEDURE_AGENT = "procedure-agent"
-
-
-# Maps slash commands to the (system_role, job_role) a session running that command holds.
-# Used both by run_slash_command() internally and exported for api_server.py.
-#
-# Most prepare drafting phases (intake, architecture, plan) are loaded inline by the
-# prepare orchestrator itself — `_load_procedure`, never `_dispatch_worker` — so the
-# session running them IS the orchestrator, and they carry ROLE_ORCHESTRATOR because the
-# role a command confers must match the session that actually runs it. Diagnose is the
-# named exception: it is dispatched to a cross-model peer, so the session running it is a
-# worker for fleet classification, while its job still names what it authors.
-# The prepare-author write predicate (`PREPARE_AUTHOR_JOB_ROLES`) recognizes
-# the job regardless of which system role carries it.
-COMMAND_ROLE_MAP: dict[SlashCommand, tuple[SystemRole, JobRole]] = {
-    SlashCommand.BUILD: (ROLE_WORKER, JobRole.BUILDER),
-    SlashCommand.REVIEW_BUILD: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.REVIEW_PRD: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.REVIEW_PLAN: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.REVIEW_ARCHITECTURE: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.REVIEW_COMMITS: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.CREATE_ART: (ROLE_WORKER, JobRole.ARTIST),
-    SlashCommand.CREATE_HTML: (ROLE_WORKER, JobRole.FRONTENDER),
-    SlashCommand.FINALIZE: (ROLE_WORKER, JobRole.FINALIZER),
-    SlashCommand.PREPARE_INTAKE: (ROLE_ORCHESTRATOR, JobRole.INTAKER),
-    SlashCommand.PREPARE_ARCHITECTURE: (ROLE_ORCHESTRATOR, JobRole.ARCHITECT),
-    SlashCommand.PREPARE_DIAGNOSE: (ROLE_WORKER, JobRole.DIAGNOSER),
-    SlashCommand.PREPARE_PLAN: (ROLE_ORCHESTRATOR, JobRole.PLANNER),
-    SlashCommand.PREPARE_TASK: (ROLE_TASKER, JobRole.TASK_PREPARER),
-    SlashCommand.DRIFT_ANALYZE: (ROLE_WORKER, JobRole.DRIFT_ANALYZER),
-    SlashCommand.PREPARE: (ROLE_ORCHESTRATOR, JobRole.PREPARE_ORCHESTRATOR),
-    SlashCommand.WORK: (ROLE_ORCHESTRATOR, JobRole.WORK_ORCHESTRATOR),
-    SlashCommand.RUN_TASK: (ROLE_TASKER, JobRole.TASK_RUNNER),
-    SlashCommand.INTEGRATE: (ROLE_INTEGRATOR, JobRole.INTEGRATOR),
-    SlashCommand.COORDINATE: (SystemRole.COORDINATOR, JobRole.COORDINATOR),
-    SlashCommand.CREATE: (ROLE_ORCHESTRATOR, JobRole.CREATE_ORCHESTRATOR),
-    SlashCommand.RUN_JOB: (ROLE_JOB_RUNNER, JobRole.JOB_RUNNER),
-    SlashCommand.ACTIVATE_PROCEDURE: (ROLE_TASKER, JobRole.PROCEDURE_AGENT),
-}
-
-# The job roles the prepare lifecycle confers on a session that derives a prepare
-# artifact (input, prd, architecture, diagnosis, implementation-plan). Read by
-# `refuse_non_prepare_writer` in place of a single-job equality check, because
-# diagnose dispatches its author as a worker while every other prepare phase still
-# runs inline as the orchestrator — the gate recognizes the authoring job, not the
-# system role that happens to carry it.
-PREPARE_AUTHOR_JOB_ROLES: frozenset[str] = frozenset(
-    {
-        JobRole.PREPARE_ORCHESTRATOR.value,
-        JobRole.INTAKER.value,
-        JobRole.ARCHITECT.value,
-        JobRole.DIAGNOSER.value,
-        JobRole.PLANNER.value,
-    }
-)
-
-# Lifecycle build/finalize jobs are the todo-worktree source writers. The
-# checkpoint matches the job and worktree slug before selecting their dirty set.
-TODO_WORKTREE_WRITER_JOB_ROLES: frozenset[str] = frozenset(
-    {
-        JobRole.BUILDER.value,
-        JobRole.FINALIZER.value,
-    }
-)
-
-# The jobs that belong to the work lane: the work orchestrator and its worktree
-# writers. `reviewer` and `drift-analyzer` are dispatched by both lanes, so no
-# job places them in either one.
-WORK_LANE_JOB_ROLES: frozenset[str] = frozenset({JobRole.WORK_ORCHESTRATOR.value, *TODO_WORKTREE_WRITER_JOB_ROLES})
-
-# Standing roles carry no commanding session, whatever door created them. The
-# integrator and the coordinator are identified by the session's `job` field;
-# the job runner is identified by `system_role`, because its own command
-# argument displaces the mapped `job` value before it reaches
-# COMMAND_ROLE_MAP. Neither field alone resolves all three — see
-# local/projects/teleclaude/spec/feature/agent_runtime/session-authority.
-STANDING_JOB_ROLES: frozenset[str] = frozenset(
-    {
-        JobRole.INTEGRATOR.value,
-        JobRole.COORDINATOR.value,
-    }
-)
-STANDING_SYSTEM_ROLES: frozenset[str] = frozenset({ROLE_JOB_RUNNER})
-
-
-def is_standing_role(system_role: str | None, job: str | None) -> bool:
-    """Answer whether a session's persisted ``(system_role, job)`` pair is a standing role.
-
-    Reads both fields because neither alone resolves all three standing
-    roles: ``job`` is authoritative for the integrator and the coordinator,
-    ``system_role`` for the job runner.
-    """
-    return job in STANDING_JOB_ROLES or system_role in STANDING_SYSTEM_ROLES
 
 
 class Platform(str, Enum):
@@ -700,7 +507,7 @@ CHECKPOINT_COMMIT_EVIDENCE = ["telec code commit"]
 # A fresh run of review-commits (with an optional leading slash, qualified or
 # bare) dispatches a post-commit review. A send to an already-open reviewer is
 # recognized by its target session, not by text (see the checkpoint evidence).
-CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = [SlashCommand.REVIEW_COMMITS.value]
+CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = ["sdlc/procedure/lifecycle/work/review-commits"]
 
 # Review-routing text shared by every surface that routes a commit on main to
 # review (the commit card, the checkpoint's post-commit prompt, the prepare

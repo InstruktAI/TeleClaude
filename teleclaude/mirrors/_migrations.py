@@ -15,8 +15,8 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import ROLE_WORKER
 from teleclaude.core.agents import AgentName
+from teleclaude.core.roles import is_worker_role
 from teleclaude.mirrors._session_convergence import converge_session_owned_conversations
 from teleclaude.paths import MAIN_DB_PATH, MIRRORS_BACKUP_DIR
 from teleclaude.utils.transcript_discovery import (
@@ -55,7 +55,7 @@ _MISSING_COLUMN_ERROR = "no such column"
 # process that opens the store, including read-only CLI calls, so an ungated scan would
 # both re-read the table on every invocation and take a write lock a reader never needed.
 _DATA_REVISION = 6
-LATEST_DATA_REVISION = 9
+LATEST_DATA_REVISION = 10
 
 _READ_DATA_REVISION_SQL = "PRAGMA user_version"
 _WRITE_DATA_REVISION_SQL = "PRAGMA user_version = {}"
@@ -166,11 +166,14 @@ _DELETE_TOMBSTONE_BY_SOURCE_SQL = "DELETE FROM mirror_tombstones WHERE source_id
 _DELETE_UNREPROJECTABLE_BY_SOURCE_SQL = "DELETE FROM mirror_unreprojectable_sources WHERE source_identity = ?"
 _DELETE_SHRINK_REFUSAL_BY_SOURCE_SQL = "DELETE FROM mirror_shrink_refusals WHERE source_identity = ?"
 _SELECT_SESSION_ROLES_SQL = """\
-SELECT native_log_file, system_role
+SELECT native_log_file, role
 FROM sessions
 WHERE native_log_file IS NOT NULL AND native_log_file <> ''
 ORDER BY created_at DESC
 """
+_SELECT_SESSION_JOBS_SQL = "SELECT session_id, job FROM sessions"
+_SELECT_MIRROR_SESSION_JOBS_SQL = "SELECT session_id, job FROM mirror_sessions"
+_UPDATE_MIRROR_SESSION_JOB_SQL = "UPDATE mirror_sessions SET job = ? WHERE session_id = ?"
 _SELECT_SURVIVING_WORKER_ROWS_SQL = "SELECT id, is_worker, metadata FROM mirrors"
 _UPDATE_IS_WORKER_SQL = "UPDATE mirrors SET is_worker = ? WHERE id = ?"
 _MIRRORS_TABLE_INFO_SQL = "PRAGMA table_info(mirrors)"
@@ -258,6 +261,7 @@ def _converge_derived_data(
         (7, _migrate_revision_7),
         (8, _migrate_revision_8),
         (9, _migrate_revision_9),
+        (10, _migrate_revision_10),
     )
     current_revision = int(conn.execute(_READ_DATA_REVISION_SQL).fetchone()[0])
     for revision, migration in migrations:
@@ -370,6 +374,28 @@ def _migrate_revision_9(
     converge_session_owned_conversations(conn)
 
 
+def _migrate_revision_10(
+    conn: sqlite3.Connection,
+    _store_path: str,
+    _backfill_session_attributions: Callable[[sqlite3.Connection, str, Path], None],
+) -> None:
+    """Carry each session's migrated job into its mirror attribution.
+
+    The attribution upsert coalesces, so a job the session migration cleared would otherwise leave the
+    retired job-role label standing; the job is therefore set explicitly from the session record.
+    """
+    main_db_uri = f"file:{MAIN_DB_PATH.resolve()}?mode=ro"
+    with sqlite3.connect(main_db_uri, uri=True) as main_conn:
+        session_jobs = {str(row[0]): row[1] for row in main_conn.execute(_SELECT_SESSION_JOBS_SQL).fetchall()}
+    updates = [
+        (session_jobs[str(session_id)], session_id)
+        for session_id, job in conn.execute(_SELECT_MIRROR_SESSION_JOBS_SQL).fetchall()
+        if str(session_id) in session_jobs and session_jobs[str(session_id)] != job
+    ]
+    if updates:
+        conn.executemany(_UPDATE_MIRROR_SESSION_JOB_SQL, updates)
+
+
 def create_current_attribution_schema(conn: sqlite3.Connection) -> None:
     """Create attribution objects for a fresh store at the current schema."""
     conn.execute(_CREATE_MIRROR_SESSIONS_SQL)
@@ -422,14 +448,14 @@ def migrate_nullable_session_id(conn: sqlite3.Connection) -> None:
 
 
 def _session_role_map() -> dict[str, str]:
-    """Load system_role attribution keyed by transcript path."""
+    """Load the recorded role keyed by transcript path."""
     main_db_uri = f"file:{MAIN_DB_PATH.resolve()}?mode=ro"
     with sqlite3.connect(main_db_uri, uri=True) as main_conn:
         rows = main_conn.execute(_SELECT_SESSION_ROLES_SQL).fetchall()
     by_transcript_path: dict[str, str] = {}
-    for native_log_file, system_role in rows:
-        if native_log_file and system_role:
-            by_transcript_path.setdefault(str(native_log_file), str(system_role))
+    for native_log_file, role in rows:
+        if native_log_file and role:
+            by_transcript_path.setdefault(str(native_log_file), str(role))
     return by_transcript_path
 
 
@@ -439,7 +465,8 @@ def reconcile_mirror_records(conn: sqlite3.Connection) -> None:
     A subagent transcript, a headless one-shot invocation, or a null-session row is
     exactly what discovery now refuses to recognize, so the archive must not keep
     holding it (UC-MSB-3, UC-MRL-13). `is_worker` is realigned from the joined record's
-    `system_role` for every surviving row whose transcript path resolves to one; every
+    recorded role for every surviving row whose transcript path resolves to a worker-class one (an earlier
+    value is never rewritten from a migrated session); every
     other stored column — title, command, slug — is left as written, by decision. The
     file-existence and admission scan runs to completion before any write, so it never
     holds the write lock.
@@ -489,12 +516,8 @@ def reconcile_mirror_records(conn: sqlite3.Connection) -> None:
         transcript_path = metadata.get(_TRANSCRIPT_PATH_FIELD) if isinstance(metadata, dict) else None
         if not isinstance(transcript_path, str) or not transcript_path:
             continue
-        system_role = role_by_path.get(transcript_path)
-        if system_role is None:
-            continue
-        target_is_worker = 1 if system_role == ROLE_WORKER else 0
-        if int(current_is_worker) != target_is_worker:
-            worker_updates.append((target_is_worker, row_id))
+        if is_worker_role(role_by_path.get(transcript_path)) and not int(current_is_worker):
+            worker_updates.append((1, row_id))
     if worker_updates:
         conn.executemany(_UPDATE_IS_WORKER_SQL, worker_updates)
 

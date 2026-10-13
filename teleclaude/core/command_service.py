@@ -13,19 +13,6 @@ from typing import TYPE_CHECKING, Concatenate, TypedDict
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import (
-    COMMAND_ROLE_MAP,
-    ROLE_INTEGRATOR,
-    ROLE_JOB_RUNNER,
-    ROLE_ORCHESTRATOR,
-    ROLE_SYSTEM,
-    ROLE_TASKER,
-    ROLE_WORKER,
-    DriverLaunchClass,
-    JobRole,
-    SlashCommand,
-    SystemRole,
-)
 from teleclaude.core import voice_focus
 from teleclaude.core.command_handlers import (
     EndSessionHandlerResult,
@@ -49,7 +36,6 @@ from teleclaude.core.models import SessionLaunchIntent, ThinkingMode
 from teleclaude.core.procedure_activation_runner import activate as _activate_procedure
 from teleclaude.core.relayed_request import handle_relay_request
 from teleclaude.core.session_launcher import create_session
-from teleclaude.core.session_startup_message import resolve_slash_command
 from teleclaude.core.shutdown_drain import get_shutdown_drain
 from teleclaude.types.command_admission import COMMAND_ADMISSION, AdmissionClass
 from teleclaude.types.commands import (
@@ -110,51 +96,6 @@ class UnsubscribeSessionPayload(TypedDict):
     link_id: str | None
 
 
-_REVIEWER_JOB_ROLES = frozenset({JobRole.REVIEWER})
-
-
-def classify_driver_launch(command: SlashCommand | str | None) -> DriverLaunchClass:
-    """Classify a session-create launch by its requested command for driver-start dedup.
-
-    The create-door guard keys on what the requested launch IS (`DriverLaunchClass`):
-    a lifecycle orchestrator command is an ``ORCHESTRATOR`` driver, ``/run-task``
-    is the ``TASK_LANE`` driver, a reviewer command (identified by its `JobRole` in
-    `COMMAND_ROLE_MAP` rather than a hand-maintained list, so a review command added
-    later inherits the class automatically) is ``REVIEWER``, and every other command
-    (including non-lifecycle launches) is a ``WORKER_CHILD`` that an orchestrator may
-    legitimately spawn against a shared ``working_slug``.
-    """
-    if isinstance(command, str):
-        resolved = resolve_slash_command(command)
-        if resolved is None:
-            return DriverLaunchClass.WORKER_CHILD
-        command = resolved
-    if command is None:
-        return DriverLaunchClass.WORKER_CHILD
-    if command is SlashCommand.RUN_TASK:
-        return DriverLaunchClass.TASK_LANE
-    role_info = COMMAND_ROLE_MAP.get(command)
-    if role_info is not None and role_info[0] == ROLE_ORCHESTRATOR:
-        return DriverLaunchClass.ORCHESTRATOR
-    if role_info is not None and role_info[1] in _REVIEWER_JOB_ROLES:
-        return DriverLaunchClass.REVIEWER
-    return DriverLaunchClass.WORKER_CHILD
-
-
-# Which target roles each caller system_role may dispatch via sessions/run.
-# Callers without a system_role (terminal, TUI) are on the human_role axis —
-# endpoint-level clearance governs their access. The daemon's own credential
-# carries ROLE_SYSTEM and dispatches the cron and lifecycle lanes below.
-DISPATCH_ALLOWED: dict[str, frozenset[str]] = {
-    ROLE_ORCHESTRATOR: frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR}),
-    ROLE_INTEGRATOR: frozenset({ROLE_WORKER}),
-    SystemRole.COORDINATOR: frozenset(),
-    ROLE_SYSTEM: frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_JOB_RUNNER, ROLE_TASKER}),
-    ROLE_TASKER: frozenset({ROLE_WORKER}),
-    ROLE_WORKER: frozenset(),
-}
-
-
 StartPollingFunc = Callable[[str, str], Awaitable[None]]
 ExecuteTerminalCommandFunc = Callable[[str, str, str | None, bool], Awaitable[bool]]
 QueueBackgroundTaskFunc = Callable[[Awaitable[object], str], None]
@@ -163,27 +104,6 @@ BootstrapSessionFunc = Callable[[str, SessionLaunchIntent | None], Awaitable[Non
 _DATA_KEY_CONTENT = "content"
 _DATA_KEY_OUTPUT_FORMAT = "output_format"
 _PLAIN_RETRY_WARNING = "Sent as plain content after a delivery failure"
-
-
-_DISPATCH_PRIVILEGE_REFUSAL_TEMPLATE = (
-    "role '{role}' cannot dispatch /{command} (requires dispatch privilege for '{target_role}')"
-)
-
-
-def dispatch_privilege_refusal(system_role: str | None, command: SlashCommand | None) -> str | None:
-    """Why a session of ``system_role`` may not dispatch ``command``, or None when it may.
-
-    A caller with no system role, or a command no role is mapped to, is not bounded by dispatch privilege.
-    """
-    role_info = COMMAND_ROLE_MAP.get(command) if command is not None else None
-    if role_info is None or not system_role:
-        return None
-    target_role = role_info[0]
-    if target_role in DISPATCH_ALLOWED.get(system_role, frozenset()):
-        return None
-    return _DISPATCH_PRIVILEGE_REFUSAL_TEMPLATE.format(
-        role=system_role, command=command.value if command is not None else "", target_role=target_role
-    )
 
 
 def _content_format_from_request(raw_format: object) -> ContentFormat:

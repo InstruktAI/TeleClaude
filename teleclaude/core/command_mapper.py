@@ -119,7 +119,7 @@ class CommandMapper:
                     origin=metadata.origin or _require_origin(),
                     origin_metadata=metadata.origin_metadata,
                     launch_intent=metadata.launch_intent,
-                    system_role=metadata.system_role,
+                    role=metadata.role,
                     job=metadata.job,
                     company=metadata.company,
                     skip_listener_registration=skip_listener_registration,
@@ -276,7 +276,7 @@ class CommandMapper:
                     HandoffAgentCommand(
                         session_id=session_id,
                         agent_name=cast(str | None, payload.get("agent")) or agent_name,
-                        caller_system_role=cast(str | None, payload.get("caller_system_role")),
+                        caller_role=cast(str | None, payload.get("caller_role")),
                     ),
                     computer,
                 )

@@ -7,6 +7,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import LOG_CHECK_ACTION_ID, CheckpointAction, CheckpointModel, JudgmentOwner
 from teleclaude.core.injected_text import checkpoint_text
+from teleclaude.core.roles import RoleName
 from teleclaude.hooks.checkpoint._directives import _ESCAPE_HATCH, _RESPONSE_POLICY, _surface_run
 from teleclaude.hooks.checkpoint._evidence import (
     _command_has_evidence,
@@ -40,7 +41,7 @@ _INTEGRATOR_MAIN_PUBLICATION_ACTION = (
     "verdicts. Unrelated uncommitted paths are not part of the push and do not block it. "
     "If main is already synchronized, no push is owed."
 )
-_INTEGRATOR_ROLE = "integrator"
+_INTEGRATOR_ROLE = RoleName.INTEGRATOR.value
 _INTEGRATOR_JUDGMENT_NOT_READY_EVENT = "integrator_judgment_not_ready"
 _INTEGRATOR_JUDGMENT_FORCE_FIRE_EVENT = "Checkpoint payload computed (integrator maintenance force-fire)"
 _INTEGRATOR_LOG_JUDGMENT_MODE = "integrator_log_judgment"
@@ -102,9 +103,9 @@ def _integrator_judgment_log_window(earliest_activated_at: str, now: datetime) -
     return f"{elapsed + _INTEGRATOR_WINDOW_MARGIN_MINUTES}{_WINDOW_MINUTES_SUFFIX}"
 
 
-def _defers_to_integrator(action: CheckpointAction, system_role: str | None) -> bool:
+def _defers_to_integrator(action: CheckpointAction, role: str | None) -> bool:
     """Return whether an integrator-owned action belongs to another session."""
-    return action.judged_by is JudgmentOwner.INTEGRATOR and system_role != _INTEGRATOR_ROLE
+    return action.judged_by is JudgmentOwner.INTEGRATOR and role != _INTEGRATOR_ROLE
 
 
 def _build_integrator_log_judgment_checkpoint(
@@ -156,7 +157,7 @@ def _build_integrator_log_judgment_checkpoint(
 
 def _integrator_judgment_checkpoint(
     *,
-    system_role: str | None,
+    role: str | None,
     project_path: str,
     timeline: TurnTimeline,
     model: CheckpointModel,
@@ -164,7 +165,7 @@ def _integrator_judgment_checkpoint(
     receiver_ingress_id: str,
 ) -> str | None:
     """Discharge a ready marker or compose the integrator's force-fire checkpoint."""
-    if system_role != _INTEGRATOR_ROLE:
+    if role != _INTEGRATOR_ROLE:
         return None
 
     marker = read_integrator_judgment_marker(project_path)

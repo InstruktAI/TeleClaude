@@ -14,6 +14,7 @@ from teleclaude.core.agent_status_projection import (
     read_session_agent_status,
 )
 from teleclaude.core.feedback import get_last_output_summary
+from teleclaude.core.roles import legacy_system_role
 from teleclaude.core.session_status import AgentStatusReason, AgentStatusValue
 from teleclaude.core.shell_identity import optional_shell_safe_identifier
 from teleclaude.helpers.agent_types import ThinkingMode
@@ -123,6 +124,8 @@ class SessionSnapshot(
     command: str | None = None
     working_slug: str | None = None
     visibility: str | None = "private"
+    role: str | None = None
+    # Older-reader projection of ``role``, kept populated for nodes that predate the role catalog; read for display only.
     system_role: str | None = None
     job: str | None = None
     agent_status: str | None = None
@@ -175,6 +178,7 @@ class SessionSnapshot(
             "human_role": self.human_role,
             SESSION_PRINCIPAL_FIELD: self.principal,
             "visibility": self.visibility,
+            "role": self.role,
             "system_role": self.system_role,
             "job": self.job,
             _AGENT_STATUS_FIELD: self.agent_status,
@@ -252,7 +256,8 @@ class SessionSnapshot(
             human_role=session.human_role,
             principal=principal,
             visibility=getattr(session, "visibility", None) or "private",
-            system_role=session.system_role,
+            role=session.role,
+            system_role=legacy_system_role(session.role),
             job=session.job,
             agent_status=read_session_agent_status(session).value,
             agent_status_reason=session.agent_status_reason.value if session.agent_status_reason else None,
@@ -320,6 +325,7 @@ class SessionSnapshot(
             human_role=str(data.get("human_role")) if data.get("human_role") else None,
             principal=(str(data.get(SESSION_PRINCIPAL_FIELD)) if data.get(SESSION_PRINCIPAL_FIELD) else None),
             visibility=str(data.get("visibility")) if data.get("visibility") else "private",
+            role=str(data.get("role")) if data.get("role") else None,
             system_role=str(data.get("system_role")) if data.get("system_role") else None,
             job=str(data.get("job")) if data.get("job") else None,
             agent_status=agent_status.value,

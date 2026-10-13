@@ -438,7 +438,7 @@ def _load_checkpoint_row(session_id: str) -> db_models.Session | None:
             cast(QueryableAttribute[Any], db_models.Session.working_slug),
             cast(QueryableAttribute[Any], db_models.Session.project_path),
             cast(QueryableAttribute[Any], db_models.Session.subdir),
-            cast(QueryableAttribute[Any], db_models.Session.system_role),
+            cast(QueryableAttribute[Any], db_models.Session.role),
             cast(QueryableAttribute[Any], db_models.Session.job),
         )
     except SQLAlchemyError as exc:
@@ -454,7 +454,7 @@ def _resolve_memory_caller(session_id: str) -> CliCaller:
         cast(QueryableAttribute[Any], db_models.Session.principal),
         cast(QueryableAttribute[Any], db_models.Session.human_email),
         cast(QueryableAttribute[Any], db_models.Session.human_role),
-        cast(QueryableAttribute[Any], db_models.Session.system_role),
+        cast(QueryableAttribute[Any], db_models.Session.role),
     )
     if row is None:
         return NoIdentityCliCaller()
@@ -474,7 +474,7 @@ def _resolve_memory_scope(session_id: str) -> tuple[MemoryScope, bool] | None:
         cast(QueryableAttribute[Any], db_models.Session.principal),
         cast(QueryableAttribute[Any], db_models.Session.human_email),
         cast(QueryableAttribute[Any], db_models.Session.human_role),
-        cast(QueryableAttribute[Any], db_models.Session.system_role),
+        cast(QueryableAttribute[Any], db_models.Session.role),
         cast(QueryableAttribute[Any], db_models.Session.project_path),
         cast(QueryableAttribute[Any], db_models.Session.subdir),
         cast(QueryableAttribute[Any], db_models.Session.config_subject),
@@ -496,7 +496,7 @@ def _resolve_memory_scope(session_id: str) -> tuple[MemoryScope, bool] | None:
         principal=row.principal,
         human_email=row.human_email,
         human_role=row.human_role,
-        system_role=row.system_role,
+        role=row.role,
         project_path=row.project_path,
         subdir=row.subdir,
         config_subject=row.config_subject,
@@ -639,7 +639,7 @@ def _maybe_checkpoint_output(
         native_session_id=native_session_id,
         working_slug=working_slug,
         elapsed_since_turn_start_s=elapsed,
-        system_role=getattr(row, "system_role", None),
+        role=getattr(row, "role", None),
         job=getattr(row, "job", None),
         receiver_ingress_id=receiver_ingress_id,
     )

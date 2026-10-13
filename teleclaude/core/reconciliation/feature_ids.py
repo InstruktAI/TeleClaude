@@ -17,6 +17,7 @@ SUPERVISORY_SILENCE_OBSERVATIONS_FEATURE_ID = "project/spec/feature/agent_runtim
 CONVERSATION_ENTRY_FEATURE_ID = "projects/teleclaude/spec/feature/agent_runtime/conversation-entry"
 INCIDENT_ALERTS_FEATURE_ID = "projects/teleclaude/spec/feature/integration/incident-alerts"
 RELAY_REQUEST_FEATURE_ID = "projects/teleclaude/spec/feature/integration/computer-addressed-execution"
+PROCEDURE_ENTRY_FEATURE_ID = "projects/teleclaude/spec/feature/agent_runtime/procedure-entry"
 
 
 class FeatureMark(StrEnum):
@@ -140,6 +141,10 @@ DEFAULT_FEATURE_ID_REGISTRY = FeatureIDRegistry.from_entries(
         FeatureID(
             identifier=RELAY_REQUEST_FEATURE_ID,
             mark=FeatureMark.IGNORABLE,
+        ),
+        FeatureID(
+            identifier=PROCEDURE_ENTRY_FEATURE_ID,
+            mark=FeatureMark.MUST_NEGOTIATE,
         ),
     )
 )

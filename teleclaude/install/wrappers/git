@@ -218,21 +218,21 @@ _resolve_caller_role() {
         return 1
     fi
 
-    _system_role=""
+    _agent_role=""
     _person_role=""
     while IFS= read -r _line || [ -n "$_line" ]; do
         case "$_line" in
-            system_role=*) _system_role="${_line#system_role=}" ;;
+            role=*) _agent_role="${_line#role=}" ;;
             person_role=*) _person_role="${_line#person_role=}" ;;
         esac
     done <<< "$_output"
     if [ -n "$_person_role" ] && [ -n "${TELECLAUDE_SYSTEM_ROLE:-}" ]; then
-        _system_role="$TELECLAUDE_SYSTEM_ROLE"
+        _agent_role="$TELECLAUDE_SYSTEM_ROLE"
     fi
-    if [ -n "$_person_role" ] && [ -z "$_system_role" ]; then
+    if [ -n "$_person_role" ] && [ -z "$_agent_role" ]; then
         _role="worker"
     else
-        _role="$_system_role"
+        _role="$_agent_role"
     fi
 }
 

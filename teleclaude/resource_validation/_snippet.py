@@ -18,6 +18,7 @@ from teleclaude.required_reads import extract_required_reads
 from teleclaude.resource_validation._activation import (
     validate_activation_mode_exclusivity,
     validate_activation_trigger,
+    validate_entry_declarations,
     validate_subscriptions,
 )
 from teleclaude.resource_validation._markdown import markdown_read_scope, parse_markdown, read_markdown
@@ -327,6 +328,7 @@ def validate_snippet(
     snippet_type = _snippet_type_for_validation(classification)
     validate_activation_trigger(path, meta, snippet_type=snippet_type)
     validate_subscriptions(path, meta, classification, snippet_type=snippet_type)
+    validate_entry_declarations(path, meta, snippet_type=snippet_type)
     validate_activation_mode_exclusivity(path, meta)
     _validate_delivered_by(path, meta)
     if todo_status_facts is not None:

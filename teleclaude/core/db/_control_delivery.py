@@ -81,6 +81,16 @@ class ProcedureEventRecord:
     terminal_at: str | None
 
 
+@dataclass(frozen=True)
+class ProcedureDeliverySessionRecord:
+    """The delivery policy a procedure session was initialized with, and the responsibility it carries."""
+
+    procedure_id: str
+    responsibility_key: str
+    event_delivery: EventDeliveryMode
+    interruptible: bool
+
+
 def _procedure_event_record(row: db_models.ProcedureEventInbox) -> ProcedureEventRecord:
     if row.enqueue_order is None:
         raise RuntimeError("procedure event has no durable enqueue order")
@@ -611,6 +621,22 @@ class DbControlDeliveryMixin:
         async with self._session() as db_session:
             rows = (await db_session.exec(statement)).all()
         return [_procedure_event_record(row) for row in rows]
+
+    async def get_procedure_delivery_session(self, *, session_id: str) -> ProcedureDeliverySessionRecord | None:
+        """Read the delivery policy a procedure session was initialized with, or ``None`` for any other session."""
+        statement = select(db_models.ProcedureEventDeliverySession).where(
+            db_models.ProcedureEventDeliverySession.session_id == session_id
+        )
+        async with self._session() as db_session:
+            row = (await db_session.exec(statement)).first()
+        if row is None:
+            return None
+        return ProcedureDeliverySessionRecord(
+            procedure_id=row.procedure_id,
+            responsibility_key=row.responsibility_key,
+            event_delivery=EventDeliveryMode(row.event_delivery),
+            interruptible=row.interruptible,
+        )
 
     async def list_procedure_activations(
         self,

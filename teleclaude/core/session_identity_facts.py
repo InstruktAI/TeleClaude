@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _IDENTITY_QUERY = """SELECT session_id, computer_name, principal, human_email, human_role,
-system_role, working_slug, job, initiator_session_id, company, closed_at, project_path,
+role, working_slug, job, initiator_session_id, company, closed_at, project_path,
 json_extract(origin_metadata, '$.confinement.profile')
 FROM sessions WHERE session_id = ?"""  # guard: raw-sql
 _LEGACY_IDENTITY_QUERY = """SELECT session_id, computer_name, principal, human_email, human_role,
-system_role, working_slug, job, initiator_session_id, closed_at, project_path
+role, working_slug, job, initiator_session_id, closed_at, project_path
 FROM sessions WHERE session_id = ?"""  # guard: raw-sql
 _COMPANY_COLUMN_MISSING = "no such column: company"
 _ACTIVE_AGENT_QUERY = "SELECT active_agent FROM sessions WHERE session_id = ?"  # guard: raw-sql
@@ -26,7 +26,7 @@ class SessionIdentityFacts:
     principal: str | None
     human_email: str | None
     human_role: str | None
-    system_role: str | None
+    role: str | None
     working_slug: str | None
     job: str | None
     initiator_session_id: str | None
@@ -63,7 +63,7 @@ def read_session_identity_facts(db_path: str, session_id: str) -> SessionIdentit
         principal=row[2],
         human_email=row[3],
         human_role=row[4],
-        system_role=row[5],
+        role=row[5],
         working_slug=row[6],
         job=row[7],
         initiator_session_id=row[8],

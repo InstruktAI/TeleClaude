@@ -16,8 +16,8 @@ same path later events take.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -27,8 +27,6 @@ from teleclaude.config.machine import config
 from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.registered_homes import registered_home_folder
 from teleclaude.config_subjects import ConfigSubjectKind
-from teleclaude.constants import ROLE_TASKER, SlashCommand
-from teleclaude.core.agent_dispatch import resolve_run_session_thinking_mode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.db._control_delivery import ProcedureEventRecord
@@ -45,6 +43,7 @@ from teleclaude.core.models import (
 from teleclaude.core.models._adapter import session_is_unattended
 from teleclaude.core.operations._kinds import OperationKind
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.procedure_entry import EntryRefusal, activation_entry, resolve_entry
 from teleclaude.core.procedure_event_delivery import (
     ProcedureActivationFailureReason,
     ProcedureActivationTerminalError,
@@ -52,38 +51,26 @@ from teleclaude.core.procedure_event_delivery import (
     wake_procedure_events_if_pending,
 )
 from teleclaude.core.session_revival import revive_session, session_is_resumable
-from teleclaude.core.session_startup_message import resolve_command_document
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.docs_subscriptions import (
     ProcedureDeliverySettings,
     SubscriptionAttendance,
     SubscriptionHomeKind,
     SubscriptionIdentity,
-    required_event_handling_dependencies,
 )
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.paths import REPO_ROOT
 from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.commands import ActivateProcedureCommand, CreateSessionCommand
 from teleclaude.types.procedure_delivery import (
+    BINDING_SECTION,
     ActivationOutcome,
+    BindingField,
     ProcedureActivationResult,
     ProcedureSessionDeliveryInitialization,
 )
 
 logger = get_logger(__name__)
-
-#: The root origin-metadata section a subject-bound agent's session records its binding in.
-BINDING_SECTION = "procedure_binding"
-
-
-class BindingField(StrEnum):
-    """Persisted key names in a subject-bound agent's ``procedure_binding`` origin section."""
-
-    PROCEDURE = "procedure"
-    HOME = "home"
-    SUBJECT = "subject"
-
 
 _PROCEDURE_ACTIVATION_RESOLVED_EVENT = "procedure_activation_resolved"
 _PROCEDURE_ACTIVATION_FAILED_EVENT = "procedure_activation_failed"
@@ -91,42 +78,14 @@ _PROCEDURE_ACTIVATION_FAILURE_REASON_TEMPLATE = "{reason}: {detail}"
 _CANDIDATE_UNRESOLVABLE_EVENT = "procedure_activation_candidate_unresolvable"
 _SESSION_ID_FIELD = "session_id"
 _NO_SUBJECT_ERROR = "procedure activation names no subject to bind an agent to: {procedure_id} / event {event_id}"
-_COMMAND_DOCUMENT_MISSING_ERROR = "generic activation command document is missing: {command}"
 _CREATE_RETURNED_NO_SESSION_ERROR = "procedure activation session creation returned no session_id"
 _CREATED_SESSION_MISSING_ERROR = "procedure activation session row missing: {session_id}"
 _REVIVAL_FAILED_ERROR = "procedure activation could not revive session {session_id} bound to {subject}"
-_COMMAND_LINE_TEMPLATE = "/{command} {procedure_id} {home}"
+_INITIAL_INPUT_TEMPLATE = "{procedure_id} {home}"
 _NO_SESSION_ERROR = "procedure activation could not resolve a session: {procedure_id} / {home}"
 
 _activation_locks: dict[tuple[str, str], asyncio.Lock] = {}
 _activation_locks_guard = asyncio.Lock()
-
-
-@dataclass(frozen=True)
-class ProcedureActivationLaunch:
-    """The facts that start an activated agent, shared by the runner and a manual run."""
-
-    command_line: str
-    job: str
-    company: str | None
-    system_role: str
-
-
-def procedure_activation_launch(procedure_id: str, home: ActivationHome) -> ProcedureActivationLaunch:
-    """Derive the launch facts for a procedure's standing agent, in one place.
-
-    A hand-started session must be indistinguishable to the runner's ``find``
-    from a runner-started one, so both consume this one function. Only a
-    company home supplies the session's company.
-    """
-    return ProcedureActivationLaunch(
-        command_line=_COMMAND_LINE_TEMPLATE.format(
-            command=SlashCommand.ACTIVATE_PROCEDURE.value, procedure_id=procedure_id, home=home.to_token()
-        ),
-        job=procedure_id,
-        company=home.company,
-        system_role=ROLE_TASKER,
-    )
 
 
 def _home_folder(home: ActivationHome) -> Path:
@@ -254,13 +213,27 @@ async def _create_agent(
     An unattended procedure's agent is stamped unattended in the creating write.
     """
     procedure_id = cmd.procedure_id
-    launch = procedure_activation_launch(procedure_id, home)
-    if resolve_command_document(SlashCommand.ACTIVATE_PROCEDURE.value) is None:
-        raise ProcedureActivationTerminalError(
-            ProcedureActivationFailureReason.COMMAND_UNAVAILABLE,
-            _COMMAND_DOCUMENT_MISSING_ERROR.format(command=SlashCommand.ACTIVATE_PROCEDURE.value),
+    session_id = str(uuid.uuid4())
+    try:
+        resolved = resolve_entry(
+            procedure_token=procedure_id,
+            arguments="",
+            project_root=folder,
+            caller=None,
+            entry=activation_entry(
+                procedure_id=procedure_id,
+                home=home.to_token(),
+                subject=subject,
+                attendance=attendance,
+                delivery=ProcedureDeliverySettings(event_delivery=cmd.event_delivery, interruptible=cmd.interruptible),
+            ),
+            session_id=session_id,
+            caller_mode=None,
         )
-    thinking_mode = resolve_run_session_thinking_mode(caller_mode=None, command=SlashCommand.ACTIVATE_PROCEDURE)
+    except EntryRefusal as exc:
+        raise ProcedureActivationTerminalError(
+            ProcedureActivationFailureReason.PROCEDURE_UNAVAILABLE, exc.detail
+        ) from exc
     pending_events = await db.list_procedure_events(
         responsibility_key=activation.responsibility_key,
         include_suspended=True,
@@ -269,18 +242,21 @@ async def _create_agent(
     if activation.activation_id not in activation_ids:
         activation_ids = (*activation_ids, activation.activation_id)
     create_cmd = CreateSessionCommand(
+        session_id=session_id,
         project_path=str(folder),
         origin=InputOrigin.TERMINAL.value,
-        initial_input=launch.command_line,
-        command=SlashCommand.ACTIVATE_PROCEDURE.value,
-        system_role=launch.system_role,
-        job=launch.job,
-        company=launch.company,
+        initial_input=_INITIAL_INPUT_TEMPLATE.format(procedure_id=procedure_id, home=home.to_token()),
+        command=resolved.procedure_id,
+        role=resolved.role.name.value,
+        job=resolved.entry.job,
+        company=home.company,
         launch_intent=SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-            message=launch.command_line,
-            thinking_mode=thinking_mode.value,
+            message=resolved.loader,
+            thinking_mode=resolved.thinking_mode.value,
             dispatch_mode=AgentDispatchMode.AUTOMATIC,
+            candidate_order=resolved.agents,
+            invocation=resolved.record,
         ),
         entry_point=SessionEntryPoint.PROCEDURE_ACTIVATION,
         unattended=attendance is SubscriptionAttendance.UNATTENDED,
@@ -302,12 +278,7 @@ async def _create_agent(
             event_delivery=cmd.event_delivery,
             interruptible=cmd.interruptible,
             initial_entry_id=activation.activation_id,
-            required_reads=required_event_handling_dependencies(
-                ProcedureDeliverySettings(
-                    event_delivery=cmd.event_delivery,
-                    interruptible=cmd.interruptible,
-                )
-            ),
+            required_reads=resolved.entry.required_reads,
         ),
     )
     result = await get_command_service().create_session(create_cmd)
@@ -399,7 +370,7 @@ async def activate(cmd: ActivateProcedureCommand) -> ProcedureActivationResult:
 
     The agent is the home's one agent, or — for a procedure declaring subject
     identity — the agent bound to the event's subject. Raises on any failure —
-    the home is absent on this computer, no command document, create returned no
+    the home is absent on this computer, the procedure is not a usable entry procedure, create returned no
     session, a subject-identity event names no subject, a revival fails, or
     delivery raised — so the operation fails with its reason.
     """

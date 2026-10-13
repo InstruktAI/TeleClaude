@@ -14,7 +14,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from teleclaude.agent_registry import AGENT_REGISTRY, DeskConfinement, agent_permutation, registry_digest
 from teleclaude.caller_identity import is_desk_role
 from teleclaude.config.machine import config
-from teleclaude.constants import SlashCommand
 from teleclaude.core.agent_availability import (
     AgentAvailabilityStatus,
     AvailabilityState,
@@ -25,7 +24,6 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.models._adapter import EndpointStamp
 from teleclaude.core.models._session import AgentDispatchMode
-from teleclaude.core.session_startup_message import resolve_slash_command
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionEntryPoint
@@ -201,12 +199,12 @@ class CommandDispatchPolicy:
 def classify_fresh_agent_preference(
     preferred_agent: str | None,
     *,
-    caller_system_role: str | None,
+    caller_role: str | None,
 ) -> tuple[AgentDispatchMode, str | None]:
     """Classify an explicit fresh-session agent by caller authority."""
     mode = (
         AgentDispatchMode.AUTOMATIC
-        if preferred_agent is None or caller_system_role is not None
+        if preferred_agent is None or caller_role is not None
         else AgentDispatchMode.MANUAL_PREFERENCE
     )
     return mode, preferred_agent
@@ -215,31 +213,6 @@ def classify_fresh_agent_preference(
 _GLOBAL_ORDER = agent_permutation(AgentName.CLAUDE, AgentName.CODEX, AgentName.GEMINI, AgentName.DEEPSEEK)
 _CODEX_FIRST = agent_permutation(AgentName.CODEX, AgentName.CLAUDE, AgentName.GEMINI, AgentName.DEEPSEEK)
 
-_COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
-    SlashCommand.BUILD: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
-    SlashCommand.REVIEW_BUILD: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
-    SlashCommand.REVIEW_PRD: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
-    SlashCommand.REVIEW_PLAN: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
-    SlashCommand.REVIEW_ARCHITECTURE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
-    SlashCommand.REVIEW_COMMITS: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
-    SlashCommand.FINALIZE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.FAST),
-    SlashCommand.PREPARE_INTAKE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
-    SlashCommand.PREPARE_ARCHITECTURE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
-    SlashCommand.PREPARE_DIAGNOSE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),
-    SlashCommand.PREPARE_PLAN: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
-    SlashCommand.PREPARE_TASK: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
-    SlashCommand.DRIFT_ANALYZE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.FAST),
-    SlashCommand.PREPARE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
-    SlashCommand.WORK: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
-    SlashCommand.RUN_TASK: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
-    SlashCommand.INTEGRATE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
-    SlashCommand.COORDINATE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
-    SlashCommand.CREATE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
-    SlashCommand.CREATE_ART: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
-    SlashCommand.CREATE_HTML: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
-    SlashCommand.DEFER: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
-    SlashCommand.ACTIVATE_PROCEDURE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
-}
 # Desk sessions take their order from the session kind, never from the
 # visitor's first message; only agents with a verified desk confinement and a
 # declared compaction command are eligible (see ``_desk_ineligibility``).
@@ -250,35 +223,11 @@ _DESK_INELIGIBILITY_MESSAGES: dict[AgentDispatchReason, str] = {
     AgentDispatchReason.DESK_CONFINEMENT_UNVERIFIED: "Agent '{agent}' has no verified desk confinement",
     AgentDispatchReason.DESK_COMPACTION_UNDECLARED: "Agent '{agent}' declares no compaction command",
 }
-_THINKING_MODE_REQUIRED_MESSAGE = "Assess the work and retry with an explicit thinking mode: fast, med, or slow"
 _MODEL_SKIP_REASON_PREFIX = "model_"
-_COMMAND_PREFIX = "/"
-
-
-def _order_for(
-    command: str | None,
-) -> tuple[tuple[str, ...], AgentDispatchReason, AgentDispatchOrderBranch]:
-    slash_command = None
-    if command is not None and command.startswith(_COMMAND_PREFIX):
-        # A leading slash marks a genuine command attempt; anything else is
-        # generic fresh work and is never parsed here. A bare token is
-        # resolved against the global corpus first, so an unqualified
-        # lifecycle command still matches its `SlashCommand` member.
-        token = command.lstrip(_COMMAND_PREFIX).split(maxsplit=1)[0]
-        slash_command = resolve_slash_command(token)
-        if slash_command is None:
-            logger.error("agent_dispatch_command_unmapped")
-    if slash_command is None:
-        return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE, AgentDispatchOrderBranch.GLOBAL
-    policy = _COMMAND_POLICIES.get(slash_command)
-    if policy is None:
-        logger.error("agent_dispatch_policy_defect command=%s", slash_command.value)
-        return _GLOBAL_ORDER, AgentDispatchReason.KNOWN_ROLE_POLICY_DEFECT, AgentDispatchOrderBranch.GLOBAL
-    return policy.agent_order, AgentDispatchReason.ROLE_PREFERENCE, AgentDispatchOrderBranch.COMMAND_POLICY
 
 
 def desk_session_kind(
-    system_role: str | None,
+    role: str | None,
     human_role: str | None,
     endpoint: EndpointStamp | None = None,
 ) -> DispatchSessionKind | None:
@@ -288,7 +237,7 @@ def desk_session_kind(
     member, no system role) or when its endpoint is a help desk, whatever the
     entering person's role.
     """
-    at_desk = is_desk_role(system_role, human_role) or (endpoint is not None and endpoint.is_help_desk)
+    at_desk = is_desk_role(role, human_role) or (endpoint is not None and endpoint.is_help_desk)
     return DispatchSessionKind.HELP_DESK if at_desk else None
 
 
@@ -318,23 +267,6 @@ def _order_with_preference(order: tuple[str, ...], preferred_agent: str | None) 
     if preferred_agent is None:
         return order
     return (preferred_agent,) + tuple(agent for agent in order if agent != preferred_agent)
-
-
-def resolve_run_session_thinking_mode(
-    *,
-    caller_mode: RunSessionThinkingMode | None,
-    command: SlashCommand | None,
-) -> RunSessionThinkingMode:
-    """Resolve one effective thinking mode from caller and command facts."""
-    if caller_mode is not None:
-        return caller_mode
-    policy = _COMMAND_POLICIES.get(command) if command is not None else None
-    if policy is not None:
-        return policy.thinking_mode
-    raise AgentDispatchFailure(
-        AgentDispatchReason.THINKING_MODE_REQUIRED,
-        _THINKING_MODE_REQUIRED_MESSAGE,
-    )
 
 
 def _configured_enabled(agent: str) -> bool:
@@ -466,7 +398,6 @@ async def resolve_agent_dispatch(
     *,
     mode: AgentDispatchMode,
     role: str | None,
-    command: str | None,
     preferred_agent: str | None,
     fixed_agent: str | None,
     candidate_order: tuple[str, ...] | None,
@@ -525,7 +456,9 @@ async def resolve_agent_dispatch(
         reason = AgentDispatchReason.JOB_DECLARATION
         order_branch = AgentDispatchOrderBranch.JOB_DECLARATION
     else:
-        policy_order, reason, order_branch = _order_for(command)
+        policy_order = _GLOBAL_ORDER
+        reason = AgentDispatchReason.GLOBAL_UNMAPPED_ROLE
+        order_branch = AgentDispatchOrderBranch.GLOBAL
     order = _order_with_preference(policy_order, preferred_agent)
     desk_skipped: dict[str, AgentDispatchReason] = {}
     eligible: list[str] = []

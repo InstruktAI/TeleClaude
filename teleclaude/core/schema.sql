@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_input_origin TEXT NOT NULL DEFAULT 'telegram',
     adapter_metadata TEXT,
     origin_metadata TEXT,
-    system_role TEXT,
+    role TEXT,
     job TEXT,
     company TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
