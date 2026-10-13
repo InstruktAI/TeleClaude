@@ -13,6 +13,7 @@ from typing import Literal
 from git.objects.blob import Blob
 from pydantic import BaseModel, ConfigDict
 
+from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections, split_frontmatter
 from teleclaude.git import GitCommandError, Repo
 from tools.ci.export_manifests import export_manifests
 from tools.ci.gha import append_output, repo_root
@@ -501,7 +502,9 @@ def _make_prompt(
 ) -> str:
     """Combine the canonical inspector contract with only bounded navigation facts."""
     root = Path(repo.working_tree_dir or repo.working_dir)
-    contract = (root / RELEASE_PROMPT).read_text(encoding=JSON_ENCODING)
+    _, contract = split_frontmatter((root / RELEASE_PROMPT).read_text(encoding=JSON_ENCODING))
+    contract = apply_planned_change_sections(contract, None)
+    contract = apply_planned_sections(contract, None)
     if attempt.decision_mode is ReleaseDecisionMode.MANUAL:
         contract = contract.split(MANUAL_TASK_HEADING, 1)[1].split(SEE_ALSO_HEADING, 1)[0]
         contract = MANUAL_TASK_PREFIX + contract

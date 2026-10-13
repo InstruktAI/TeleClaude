@@ -34,6 +34,11 @@ Read-only repository access supplies focused source diffs and their consumers.
 Evidence is retrieved in bounded portions; the complete commit log, file list,
 or unified diff is not an initial prompt requirement.
 
+Active instructions use the current contract body from the captured source before
+selecting the automatic assessment or explicit-version summary task. Pending
+additions and replacement text are not active authority. The captured source
+evidence remains unchanged, including pending documentation as source material.
+
 Commit subjects and change summaries guide navigation. Classification follows
 the actual change, independently of the author's label
 (`general/principle/grounding`). Grouping repeated resource changes retains their
