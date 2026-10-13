@@ -544,6 +544,10 @@ evidence requirement (`general/principle/grounding`).
 
 <!-- planned:record-what-holds-a-stopped-daemon -->
 
-- **An exit that bypasses normal interpreter shutdown leaves no exit record.** The exit record is written only when the process completes its normal interpreter exit. A held process ended by a signal it does not handle, an immediate process exit or a fatal interpreter error writes nothing after its thread records, and the log does not say which of these ended it.
+- **An exit that bypasses normal interpreter shutdown leaves no exit record.** The exit record is written only when the process completes its normal interpreter exit. Thread records followed by no exit record show that normal exit did not complete, never what ended the process.
+
+## See Also
+
+- https://docs.python.org/3.12/library/atexit.html — when the interpreter runs its normal-exit callbacks, and which exits skip them.
 
 <!-- /planned:record-what-holds-a-stopped-daemon -->
