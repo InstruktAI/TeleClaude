@@ -288,7 +288,7 @@ And the root is reported as migrated and committed
 ```gherkin
 Given a layout convergence run is converging a registered repository on a computer
 When a second layout convergence run on that computer reaches the same repository, from post-merge maintenance or from an install
-Then the second run reports that it is waiting for the other convergence of that repository before it waits
+Then the agent or person who started the second run reads that it is waiting for the other convergence of that repository, before it waits
 And it neither assesses, fetches nor changes that repository until the first run has finished with it
 And it then reports the repository as it stands, as current when the first run converged it
 And no change the first run made is reversed or named by the second run

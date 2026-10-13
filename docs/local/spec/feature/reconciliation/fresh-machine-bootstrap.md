@@ -215,39 +215,24 @@ And stage ordering and existing failure handling are preserved
 
 <!-- planned:convergence-overlap-and-failure-reporting -->
 
-#### UC-FMB16: An operator sees repositories convergence left alone as a warning on a completed installation
+#### UC-FMB16: Repositories convergence left alone do not fail installation
 
 ```gherkin
-Given an operator runs installation at a terminal, in full or dependency-only mode
+Given an agent or a person runs installation, in full or dependency-only mode
 And documentation layout convergence's result has some repository blocked or deferred and none failed
 When installation completes
-Then the operator sees a warning that repositories were left blocked or deferred, pointing at convergence's report
-And the operator sees installation report success
+Then the agent or person reads a warning that repositories were left blocked or deferred, pointing at convergence's report
+And installation reports success and its result is successful
 ```
 
-#### UC-FMB17: An operator sees a failed documentation layout convergence as an unsuccessful installation
+#### UC-FMB17: A failed documentation layout convergence fails installation
 
 ```gherkin
-Given an operator runs installation at a terminal, in full or dependency-only mode
+Given an agent or a person runs installation, in full or dependency-only mode
 And documentation layout convergence's result has a failed repository
 When installation reaches its end
-Then the operator sees that documentation layout convergence failed, pointing at convergence's report
-And the operator does not see installation report success
-```
-
-#### UC-FMB18: An automated caller receives an installation result that fails only on a failed convergence
-
-```gherkin
-Scenario Outline: installation result by documentation layout convergence result
-  Given an automated caller, such as a maintenance action, runs installation without a terminal
-  And documentation layout convergence's result is <convergence result>
-  When installation ends
-  Then the caller receives <installation result>
-
-  Examples:
-    | convergence result                                  | installation result |
-    | some repository blocked or deferred and none failed | a successful result |
-    | a failed repository                                 | a non-zero result   |
+Then the agent or person reads that documentation layout convergence failed, pointing at convergence's report
+And installation does not report success and its result is non-zero
 ```
 
 <!-- /planned:convergence-overlap-and-failure-reporting -->
