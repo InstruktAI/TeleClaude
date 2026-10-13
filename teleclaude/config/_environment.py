@@ -18,9 +18,12 @@ from teleclaude.file_transaction import file_transaction
 _ENV_REFERENCE_PATTERN: Final = re.compile(r"\$\{([^}]*)\}")
 _NAME_GROUP: Final = "name"
 _DEFAULT_GROUP: Final = "default"
+_REFERENCE_NAME: Final = r"[A-Za-z_][A-Za-z0-9_]*"
 _ENV_REFERENCE_BODY: Final = re.compile(
-    rf"(?P<{_NAME_GROUP}>[A-Za-z_][A-Za-z0-9_]*)(?::-(?P<{_DEFAULT_GROUP}>.*))?", re.DOTALL
+    rf"(?P<{_NAME_GROUP}>{_REFERENCE_NAME})(?::-(?P<{_DEFAULT_GROUP}>.*))?", re.DOTALL
 )
+WHOLE_REFERENCE_SCHEMA_PATTERN: Final = rf"^\$\{{{_REFERENCE_NAME}(?::-[^}}]*)?\}}$"
+"""ECMA-262 pattern a JSON Schema validator matches against a value that is one whole reference."""
 _TRUE_TEXT: Final = "true"
 _FALSE_TEXT: Final = "false"
 _INVALID_REFERENCE_MESSAGE: Final = (

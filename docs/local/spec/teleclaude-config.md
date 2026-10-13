@@ -50,6 +50,14 @@ TeleClaude home. Each tier schema declares the JSON Schema dialect its
 generator emits. No repository carries a schema file; publication is specified
 in `local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`.
 
+A tier schema describes the document as authored, before its environment
+references are expanded: wherever loading accepts a value that is one whole
+`${NAME}` or `${NAME:-default}` reference, the schema accepts it too, so an
+editor flags only values that no environment could make valid. `kind` and
+`schema_version` are read from the unexpanded document, so their schemas
+accept no reference. The reference grammar is owned by
+`teleclaude/config/_environment.py`.
+
 A relationship between two fields of one tier document — a boolean field that,
 when true, requires another field of the same document to hold a given value —
 is declared once, on the requiring field. The tier's published schema carries
