@@ -124,8 +124,9 @@ transaction. A rejected patch changes none of its target's committed state.
 
 <!-- planned:client-daemon-seam -->
 
-Removing a field also removes every mapping the removal leaves empty, so a
-document never keeps an empty section that only a removal produced.
+Removing a field from the machine configuration also removes every mapping the
+removal leaves empty, so that document never keeps an empty section that only a
+removal produced.
 
 <!-- /planned:client-daemon-seam -->
 

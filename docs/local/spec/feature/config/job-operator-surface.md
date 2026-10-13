@@ -113,8 +113,6 @@ Then the command fails naming the job
 And the project's configuration is left unchanged
 ```
 
-<!-- planned-change:client-daemon-seam -->
-
 #### UC-JOS-7: Run a job on demand
 
 ```
@@ -123,20 +121,6 @@ When an operator or agent runs the job on demand at the CLI
 Then the job is dispatched through the existing run path for the invoking project only
 And the operator is told the run was accepted
 ```
-
-<!-- change:client-daemon-seam -->
-
-#### UC-JOS-7: Run a job on demand
-
-```
-Given a job in the invoking project's effective job set
-When an operator or agent runs the job on demand at the CLI
-Then the job is dispatched through the existing run path for the invoking project only
-And the command answers with the run's operation receipt
-And the run's outcome reaches the calling session when that run closes
-```
-
-<!-- /planned-change:client-daemon-seam -->
 
 #### UC-JOS-8: Disabling a job the project never subscribed to writes nothing
 

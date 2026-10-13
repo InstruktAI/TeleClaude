@@ -278,7 +278,7 @@ And the TUI introduces no role gate beyond its trusted local machine and termina
 ```
 Given the MCP registry contains a person-scoped server whose launch definition references `OMI_API_KEY`
 And a configured person exists
-When an operator whose configuration target clearance admits that person expands them in the People view
+When an operator expands that person in the People view
 Then a Secrets section shows `OMI_API_KEY` with set or unset status
 And it shows which personal MCP servers require the key
 And the inventory is derived from the MCP registry plus existing keys in that person's secret store
@@ -289,7 +289,6 @@ When the operator keeps, replaces, or clears the secret explicitly
 Then only that person's owner-only secret file is preserved or mutated atomically
 And every unrelated key and line in that person's secret file remains unchanged
 And unrelated person YAML, global environment, and other person secret files remain unchanged
-And an operator whose clearance does not admit that person is refused, and the secret is unchanged
 ```
 
 <!-- /planned-change:client-daemon-seam -->
