@@ -114,8 +114,8 @@ _SUBSCHEMAS: Final = frozenset(_Subschema)
 def export_tier_schemas() -> dict[ConfigKind, JsonDict]:
     """Return one JSON Schema document for each declared configuration tier, stating its dialect.
 
-    Each schema describes the authored document rather than the resolved one: wherever the loader
-    expands environment references, a value that is one whole reference is accepted.
+    Each schema describes the authored document rather than the resolved one: a constrained scalar
+    field also accepts a value that is one whole environment reference.
     """
     return {
         kind: {_DIALECT_KEY: GenerateJsonSchema.schema_dialect, **_accept_references(model.model_json_schema())}

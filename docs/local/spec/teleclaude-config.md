@@ -51,11 +51,13 @@ generator emits. No repository carries a schema file; publication is specified
 in `local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`.
 
 A tier schema describes the document as authored, before its environment
-references are expanded: wherever loading accepts a value that is one whole
-`${NAME}` or `${NAME:-default}` reference, the schema accepts it too, so an
-editor flags only values that no environment could make valid. `kind` and
-`schema_version` are read from the unexpanded document, so their schemas
-accept no reference. The reference grammar is owned by
+references are expanded: a scalar field — a boolean, number, enumerated or
+constrained string value — also accepts a value that is one whole `${NAME}` or
+`${NAME:-default}` reference. A list or mapping field accepts no reference:
+expansion only ever yields a string, which such a field refuses, so a
+reference in its place loads only when it has no value and the field takes its
+default. `kind` and `schema_version` are read from the unexpanded document, so
+their schemas accept no reference. The reference grammar is owned by
 `teleclaude/config/_environment.py`.
 
 A relationship between two fields of one tier document — a boolean field that,
