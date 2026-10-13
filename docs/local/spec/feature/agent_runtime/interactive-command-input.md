@@ -187,12 +187,12 @@ Scenario Outline: A human invokes a command in the Discord conversation
 <!-- change:procedure-role-capability-composition -->
 
 ```gherkin
-Scenario Outline: A human invokes a command in the Discord conversation
+Scenario Outline: A human invokes a procedure in the Discord conversation
   Given a human operator is authorized to invoke the published entry procedure in the Discord conversation
   And the conversation is a "<surface>" with a "<binding>"
-  When the operator sends the command name with its arguments, with or without a leading slash
-  Then the agent receives the explicit command-loading instruction and the supplied arguments once
-  And the command runs in the session selected by that conversation's existing routing contract
+  When the operator sends the procedure ID with its arguments, with or without a leading slash
+  Then the agent receives the loader naming the materialized brief and the supplied arguments once
+  And the procedure runs in the session selected by that conversation's existing routing contract
 
   Examples:
     | surface       | binding                      |

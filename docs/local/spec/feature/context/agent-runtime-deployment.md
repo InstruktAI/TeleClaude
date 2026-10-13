@@ -437,6 +437,8 @@ Scenario: UC-ARD34 Retraction removes what the pipeline deployed and keeps what 
   And a second deploy-mode sync removes nothing further
 ```
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-ARD15: A repository's project-scoped skills are delivered to that project's runtimes and its project commands are validated
 
 ```
@@ -448,6 +450,12 @@ Scenario: UC-ARD15 A repository's project-scoped skills are delivered to that pr
   And every agent CLI that project is configured to use is served
   And each command source is validated and reach-checked and written to no corpus by this phase
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-ARD15: A repository's project-scoped skills are delivered to that project's runtimes and its project commands are validated
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-ARD20: A project carrying no artifact sources is unaffected
 
