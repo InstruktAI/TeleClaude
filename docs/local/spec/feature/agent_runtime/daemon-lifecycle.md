@@ -544,6 +544,6 @@ evidence requirement (`general/principle/grounding`).
 
 <!-- planned:record-what-holds-a-stopped-daemon -->
 
-- **A killed process leaves no exit record.** An uncatchable kill ends the process before it can write anything, so a held process whose thread records are followed by no exit record was ended from outside; the service manager's and the operator's own records name who ended it.
+- **An exit that bypasses normal interpreter shutdown leaves no exit record.** The exit record is written only when the process completes its normal interpreter exit. A held process ended by a signal it does not handle, an immediate process exit or a fatal interpreter error writes nothing after its thread records, and the log does not say which of these ended it.
 
 <!-- /planned:record-what-holds-a-stopped-daemon -->
