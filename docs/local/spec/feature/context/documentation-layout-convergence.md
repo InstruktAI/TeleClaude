@@ -185,9 +185,10 @@ Given a registered repository that UC-DLC1 would converge
 And the sealed commit refuses the convergence commit, or a move, write or staging step fails after convergence began changing the repository
 When layout convergence runs
 Then convergence reverses only the changes it made: each rewritten file whose bytes still equal what convergence wrote gets its original bytes back, each file convergence moved whose bytes are still the ones convergence left returns to its original path, and each path convergence staged whose index entry still equals what convergence staged returns to the committed entry
-And a path convergence neither moved, wrote nor staged is neither restored, recreated nor named, so a directory move that did not happen leaves that directory and its counterpart as found
-And a file whose bytes changed since convergence left them, a file another writer placed in a directory convergence moved, a moved file whose original path is occupied again, or a path convergence changed whose index entry changed since, is left exactly where and as found and named there
-And the root is reported as a restore conflict when any such path exists, and otherwise as restored after a refused commit or as failed after a failed write, with every path convergence changed back in its state before the run
+And outside the directories convergence moved, a path convergence neither wrote nor staged is neither restored, recreated nor named, so a directory move that did not happen leaves that directory and its counterpart as found
+And a file whose bytes changed since convergence left them, a file another writer placed in a directory convergence moved, a moved file whose original path is occupied again, or a path convergence changed whose index entry changed since, is left exactly where and as found
+And when any such path exists, the root is reported as a restore conflict naming those paths
+And when no such path exists, every path convergence changed is back in its state before the run, and the root is reported as restored after a refused commit or as failed after a failed write
 ```
 
 <!-- /planned-change:convergence-overlap-and-failure-reporting -->
