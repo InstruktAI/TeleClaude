@@ -7,10 +7,19 @@ description: Command-and-argument input on the TUI new-session modal and Discord
 
 ## What it is
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 A human operator invokes an installed TeleClaude command by entering its name
 and arguments in the TUI New Session modal or by sending that text through the
 Discord adapter. A leading slash is optional on these surfaces. Each supported
 agent receives the same explicit command-document loader.
+<!-- change:procedure-role-capability-composition -->
+
+A human operator invokes a published entry procedure by entering its snippet ID
+and arguments in the TUI New Session modal or by sending that text through the
+Discord adapter. A leading slash is optional on these surfaces. Each supported
+agent receives the same loader naming the materialized brief.
+<!-- /planned-change:procedure-role-capability-composition -->
 
 The TUI operation creates the requested session. Discord retains its existing
 conversation binding: a message that creates a session is its first input, and
@@ -57,10 +66,22 @@ to claim work and adopt the corresponding role through its own operations.
 
 <!-- /planned-change:procedure-role-capability-composition -->
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 - Human input that does not resolve to an installed command remains ordinary
   conversation. Quoted examples and fenced code do not become commands merely
   because they contain a command name. A recognized invocation that violates
   an existing argument or authorization rule is refused visibly.
+
+<!-- change:procedure-role-capability-composition -->
+
+- Human input that does not resolve to a published entry procedure remains
+  ordinary conversation. Quoted examples and fenced code do not become
+  invocations merely because they contain a procedure ID. A recognized
+  invocation that violates an existing argument or authorization rule is
+  refused visibly.
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 <!-- planned-change:procedure-role-capability-composition -->
 
@@ -97,6 +118,8 @@ to claim work and adopt the corresponding role through its own operations.
 
 ### Use cases
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-ICI1: Command startup from the TUI
 
 ```gherkin
@@ -116,7 +139,32 @@ Scenario Outline: An operator starts a command from the new-session modal
     | /prepare example-item |
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-ICI1: Command startup from the TUI
+
+```gherkin
+Scenario Outline: An operator starts a procedure from the new-session modal
+  Given a human operator has selected a project and an available agent in the TUI New Session modal
+  And the requested entry procedure is published and its arguments are valid
+  When the operator submits "<input>" as the initial message
+  Then the new agent session receives the loader naming the materialized brief with the supplied arguments
+  And the session is identified by the requested procedure and its declared role and work item
+  And the loading behavior is the same for every supported agent
+
+  Examples:
+    | input                                                   |
+    | sdlc/procedure/lifecycle/integrate                      |
+    | /sdlc/procedure/lifecycle/integrate                     |
+    | sdlc/procedure/lifecycle/prepare/overview example-item  |
+    | /sdlc/procedure/lifecycle/prepare/overview example-item |
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
 #### UC-ICI2: Command input through Discord
+
+<!-- planned-change:procedure-role-capability-composition -->
 
 ```gherkin
 Scenario Outline: A human invokes a command in the Discord conversation
@@ -136,7 +184,31 @@ Scenario Outline: A human invokes a command in the Discord conversation
     | direct message | existing personal session    |
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+```gherkin
+Scenario Outline: A human invokes a command in the Discord conversation
+  Given a human operator is authorized to invoke the published entry procedure in the Discord conversation
+  And the conversation is a "<surface>" with a "<binding>"
+  When the operator sends the command name with its arguments, with or without a leading slash
+  Then the agent receives the explicit command-loading instruction and the supplied arguments once
+  And the command runs in the session selected by that conversation's existing routing contract
+
+  Examples:
+    | surface       | binding                      |
+    | project thread | session created by this input |
+    | project thread | launcher-created empty session |
+    | project thread | existing conversation session |
+    | team channel  | existing conversation session |
+    | direct message | session created by this input |
+    | direct message | existing personal session    |
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
 #### UC-ICI3: Non-command text remains conversation
+
+<!-- planned-change:procedure-role-capability-composition -->
 
 ```gherkin
 Given a human uses the TUI New Session modal or Discord text input
@@ -144,6 +216,17 @@ When their text does not begin with an installed command invocation
 Then the text follows ordinary conversation delivery without a command loader
 And mentioning a command in prose or quoting a command example does not activate it
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```gherkin
+Given a human uses the TUI New Session modal or Discord text input
+When their text does not begin with a published entry procedure invocation
+Then the text follows ordinary conversation delivery without a command loader
+And mentioning a command in prose or quoting a command example does not activate it
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-ICI4: Surface confinement
 
@@ -165,12 +248,25 @@ And interpreting the text does not grant privileges or bypass workflow ownership
 
 #### UC-ICI6: Invalid arguments are visible
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```gherkin
 Given a human enters an installed command on an enabled shorthand surface
 When the supplied arguments violate that command's existing admission rules
 Then the human receives the corresponding refusal
 And the command is not silently delivered as ordinary text
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```gherkin
+Given a human enters a published entry procedure on an enabled shorthand surface
+When the supplied arguments violate that command's existing admission rules
+Then the human receives the corresponding refusal
+And the command is not silently delivered as ordinary text
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-ICI7: Owning-computer command resolution
 
@@ -182,7 +278,16 @@ And the command is not silently delivered as ordinary text
   distinction between newly created and existing sessions.
 - **identity** owns caller evidence and clearance; this capability consumes its
   current decisions without adding or widening permissions.
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 - **context** owns the installed command corpus.
+
+<!-- change:procedure-role-capability-composition -->
+
+- **context** owns the published procedures and their entry declarations.
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ## Known caveats
 

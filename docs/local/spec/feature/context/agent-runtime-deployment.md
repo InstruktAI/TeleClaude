@@ -371,6 +371,8 @@ Scenario: UC-ARD40 A session can still load a retiring command until its deliver
 
 #### UC-ARD33: The corpus is reached only through the composed loader
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Scenario: UC-ARD33 Both entry points read the corpus through the composed loader
   Given TeleClaude command documents are deployed to ~/.teleclaude/commands/
@@ -379,6 +381,21 @@ Scenario: UC-ARD33 Both entry points read the corpus through the composed loader
   And a procedure load the state machine emits into an already-running session carries that same composed loader
   And both are produced by one composition, so the two forms cannot diverge
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```
+Scenario: UC-ARD33 A dispatched session reads its brief through the composed loader
+  Given a published entry procedure
+  When a session is dispatched for it
+  Then its startup message is the composed loader naming the brief materialized at procedure entry
+  And a procedure load the state machine emits into an already-running session names the procedure for an inline read
+  And the loader is produced by one composition for every runtime
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
 
 #### UC-ARD10: Command documents deploy to the corpus and to no runtime home
 
@@ -390,6 +407,12 @@ Scenario: UC-ARD10 Command deployment separates the corpus from runtime artifact
   And no per-agent runtime receives any command artifact for them
   And the corpus receives them once, independent of which runtimes are installed
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-ARD10: Command documents deploy to the corpus and to no runtime home
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-ARD14: Legacy Gemini runtime locations receive nothing
 
@@ -449,6 +472,8 @@ Scenario: UC-ARD21 Authored sources and generated output never share a location
   And an author can tell from a file's location alone whether they wrote it or the platform generated it
 ```
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-ARD23: Global commands are partitioned by published domain and gated by ownership
 
 ```
@@ -462,6 +487,14 @@ Scenario: UC-ARD23 Global commands are partitioned by published domain and gated
   And global skills from a repository that is not the mother are refused the same way
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-ARD23: Global commands are partitioned by published domain and gated by ownership
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-ARD24: A global command is deployed under its domain in the corpus
 
 ```
@@ -472,6 +505,14 @@ Scenario: UC-ARD24 A global command is deployed under its domain in the corpus
   And the deployed-commands manifest records it by that relative path under the publishing scope
   And two domains may each carry a command of the same bare name without either overwriting the other
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-ARD24: A global command is deployed under its domain in the corpus
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
 
 #### UC-ARD37: One repository's deploy never retracts another repository's global commands
 
@@ -484,6 +525,14 @@ Scenario: UC-ARD37 One repository's deploy never retracts another repository's g
   And a command that repository itself no longer carries is retracted
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-ARD37: One repository's deploy never retracts another repository's global commands
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-ARD38: Partitioning the corpus retracts nothing a publisher still carries
 
 ```
@@ -494,6 +543,12 @@ Scenario: UC-ARD38 Partitioning the corpus retracts nothing a publisher still ca
   And ownership is recorded for each by its path relative to the corpus root
   And a command the publisher no longer carries is the only thing retracted
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-ARD38: Partitioning the corpus retracts nothing a publisher still carries
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-ARD32: Every artifact source path is classified by one registry boundary
 
@@ -657,11 +712,22 @@ And the agent reads the committed content from the deployed tree
 
 ## Known caveats
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 - TeleClaude command artifacts route to `~/.teleclaude/commands/` rather
   than per-agent native command directories. This is deliberate cross-project
   sharing. The composed loader message is the only runtime entrypoint:
   `telec sessions run` preloads it into a new session, and machine-emitted
   procedure loads carry it into a running one.
+
+<!-- change:procedure-role-capability-composition -->
+
+- No command artifact exists. The composed loader message is the only runtime
+  entrypoint: `telec sessions run` preloads it into a new session naming the
+  brief materialized at procedure entry, and machine-emitted procedure loads
+  name a procedure for an inline read in a running one.
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 - Deployed documentation is read-only. It is a materialized snapshot; authored
   documentation changes only in its owning source tree and becomes visible after

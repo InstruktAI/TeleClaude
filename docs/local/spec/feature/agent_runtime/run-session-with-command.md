@@ -153,6 +153,8 @@ And the accepted request reports the chosen agent and typed routing reason exact
 
 #### Command and arguments normalization
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 #### UC-CLR7: Normalization accepts a bare or slash-prefixed command token
 
 ```
@@ -163,12 +165,39 @@ And the full command becomes "build my-slug"
 And the command is parsed against the known command set for role inference
 ```
 
+<!-- change:procedure-role-capability-composition -->
+
+#### UC-CLR7: Normalization accepts a slash-prefixed procedure ID
+
+```
+Given a request with command "sdlc/procedure/lifecycle/work/build" and args "my-slug"
+When the run-session preparation normalizes the inputs
+Then a leading slash, when present, is stripped from the token
+And the full command becomes "sdlc/procedure/lifecycle/work/build my-slug"
+And the token is resolved against the published entry procedures, never against a command set
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
+
+<!-- planned-change:procedure-role-capability-composition -->
+
 ```
 Given a request whose command carries a leading slash ("/build" or "/sdlc/build")
 When the request is validated
 Then it is accepted and normalized to the command name without the slash
 And no request is rejected for lacking a leading slash
 ```
+
+<!-- change:procedure-role-capability-composition -->
+
+```
+Given a request whose command carries a leading slash ("/sdlc/procedure/lifecycle/work/build")
+When the request is validated
+Then it is accepted and normalized to the procedure ID without the slash
+And no request is rejected for lacking a leading slash
+```
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 ```
 Given a request with an empty project
