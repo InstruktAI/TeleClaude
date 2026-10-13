@@ -63,6 +63,7 @@ class _Annotation(StrEnum):
     DEPRECATED = "deprecated"
     READ_ONLY = "readOnly"
     WRITE_ONLY = "writeOnly"
+    DO_NOT_SUGGEST = "doNotSuggest"
 
 
 class _SubschemaMap(StrEnum):

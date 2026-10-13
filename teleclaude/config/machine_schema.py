@@ -17,6 +17,7 @@ from teleclaude.config._defaults import DEFAULT_CONFIG
 from teleclaude.config._machine_build import _DERIVED_ROOT_FIELDS
 from teleclaude.config._models import TeleclaudeConfig
 from teleclaude.config.schema import CURRENT_SCHEMA_VERSION
+from teleclaude.config.tiers import TIER_METADATA_KEY, Tier, effective_tier, in_public_sample
 from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.models import JsonDict, JsonValue
 
@@ -33,6 +34,7 @@ class _Key(StrEnum):
     ANY_OF = "anyOf"
     ITEMS = "items"
     MIN_ITEMS = "minItems"
+    DO_NOT_SUGGEST = "doNotSuggest"
 
 
 class _Field(StrEnum):
@@ -126,7 +128,10 @@ def machine_document_schema() -> JsonDict:
     summarizer = cast(dict[str, JsonDict], definitions[_SUMMARIZER_MODEL][_Key.PROPERTIES])
     summarizer[_PROVIDER_PRIORITY] = _nullable(summarizer[_PROVIDER_PRIORITY])
     cast(dict[str, JsonDict], definitions[_EVENT_MODEL][_Key.PROPERTIES])[_Field.MESSAGE] = {_Key.TYPE: _STRING}
-    properties[_Field.AGENTS] = _agents_schema(agent)
+    properties[_Field.AGENTS] = {
+        **_agents_schema(agent),
+        TIER_METADATA_KEY: properties[_Field.AGENTS][TIER_METADATA_KEY],
+    }
     properties[_Field.REMOTE_COMPUTERS] = _nullable(
         {_Key.TYPE: _OBJECT, _Key.ADDITIONAL: {_Key.REF: _REF_PREFIX + _REMOTE_MODEL}}
     )
@@ -136,7 +141,38 @@ def machine_document_schema() -> JsonDict:
     for field, default in DEFAULT_CONFIG.items():
         if field in properties and isinstance(default, Mapping):
             properties[field] = _with_defaults(properties[field], default, definitions)
-    return schema
+    return _editor_surface(schema, definitions, Tier.INTERNAL)[0]
+
+
+def _editor_surface(schema: JsonDict, definitions: dict[str, JsonDict], inherited: Tier) -> tuple[JsonDict, bool]:
+    """Keep validation intact while suggesting only explicitly editable fields and their containers."""
+    result = deepcopy(schema)
+    reference = result.pop(_Key.REF, None)
+    if isinstance(reference, str) and reference.startswith(_REF_PREFIX):
+        result = {**deepcopy(definitions[reference.removeprefix(_REF_PREFIX)]), **result}
+    declared = result.get(TIER_METADATA_KEY)
+    tier = effective_tier(Tier(declared) if isinstance(declared, str) else None, inherited)
+    visible = in_public_sample(tier)
+    properties = result.get(_Key.PROPERTIES)
+    if isinstance(properties, dict):
+        for name, child in properties.items():
+            if isinstance(child, dict):
+                properties[name], child_visible = _editor_surface(child, definitions, tier)
+                visible = visible or child_visible
+    branches = result.get(_Key.ANY_OF)
+    if isinstance(branches, list):
+        for index, branch in enumerate(branches):
+            if isinstance(branch, dict):
+                branches[index], child_visible = _editor_surface(branch, definitions, tier)
+                visible = visible or child_visible
+    for keyword in (_Key.ADDITIONAL, _Key.ITEMS):
+        child = result.get(keyword)
+        if isinstance(child, dict):
+            result[keyword], child_visible = _editor_surface(child, definitions, tier)
+            visible = visible or child_visible
+    if not visible:
+        result[_Key.DO_NOT_SUGGEST] = True
+    return result, visible
 
 
 def _agents_schema(agent: JsonDict) -> JsonDict:

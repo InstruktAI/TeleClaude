@@ -21,6 +21,9 @@ declaration fields, defaultable sections, environment references, agent
 inventory and named remote computers. Runtime-derived fields are excluded.
 Publication uses the config context's input projection of its canonical models;
 the runtime remains the authority for cross-field and operational validation.
+Editor suggestions follow effective field editability tiers
+(`local/projects/teleclaude/policy/config-public-surface`); internal fields
+remain valid where the runtime accepts them but are not suggested for editing.
 
 A home-tree configuration file references the published schemas directly; a
 project configuration reaches them through its root's machine-local schema
