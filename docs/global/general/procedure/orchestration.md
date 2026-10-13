@@ -14,9 +14,8 @@ visibility: 'public'
 ### Dispatch Rules
 
 - **Reviewer thinking mode follows the review's scope.**
-  - `fast` when the scope contains doc-snippet changes only.
-  - `slow` for commit reviews containing code, including mixed code-and-doc scope.
-  - `med` for other reviews.
+  - `med` when the scope contains doc-snippet changes only.
+  - `slow` for commit reviews containing code, including mixed code-and-doc scope, and for other reviews.
 
   Context procedures state the resolved mode for their fixed scope; they do not
   choose a different mode.
