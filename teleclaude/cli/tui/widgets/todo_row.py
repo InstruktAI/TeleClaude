@@ -183,17 +183,24 @@ def lifecycle_phase_label(phase: str | None, prepare_review_verdict: str | None 
     return _PHASE_PREFIX_LIFECYCLE, value, color
 
 
-def integration_phase_label(phase: str | None, finalize_status: str | None) -> tuple[str, str, str] | None:
+def integration_phase_label(
+    phase: str | None, finalize_status: str | None, lifecycle_phase: str | None
+) -> tuple[str, str, str] | None:
     """Return the integration-phase column tuple for a todo, if any.
 
     Only two stamped values are recognized: 'started' and 'delivered'.
     Legacy/stale values from the old 12-phase mirror are ignored — todo.py
     maps them to canonical values before they reach here.
     """
-    if phase == "started":
-        return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_STARTED, _ok_color()
     if phase == "delivered":
         return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_DELIVERED, _muted_color()
+    if (
+        coerce_lifecycle_phase(lifecycle_phase) is not LifecyclePhase.FINALIZE_READY
+        or finalize_status != _FINALIZE_LABEL_READY
+    ):
+        return None
+    if phase == "started":
+        return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_STARTED, _ok_color()
     if not phase:
         finalize_to_label = {
             _FINALIZE_LABEL_READY: _INTEGRATION_LABEL_READY,
@@ -394,7 +401,7 @@ class TodoRow(TelecMixin, Widget):
                 if p_result is not None:
                     p_prefix, p_value, _ = p_result
                     maxes["P"] = max(maxes["P"], len(f"{p_prefix}:{p_value}"))
-            i_result = integration_phase_label(t.integration_phase, t.finalize_status)
+            i_result = integration_phase_label(t.integration_phase, t.finalize_status, t.lifecycle_phase)
             if i_result is not None:
                 i_prefix, i_value, _ = i_result
                 maxes["P"] = max(maxes["P"], len(f"{i_prefix}:{i_value}"))
@@ -560,9 +567,10 @@ class TodoRow(TelecMixin, Widget):
         # Phase detection: top-to-bottom, first match wins. All lanes share one
         # phase column slot (I/W/P labels); only D renders beside it.
 
-        # 1. Active or queued integration phase — outranks work labels so a
-        # handed-off or delivered row never masks as W:finalize.
-        i_result = integration_phase_label(self.todo.integration_phase, self.todo.finalize_status)
+        # 1. Current integration handoff or delivery; historical starts cannot mask rework.
+        i_result = integration_phase_label(
+            self.todo.integration_phase, self.todo.finalize_status, self.todo.lifecycle_phase
+        )
         if i_result is not None:
             i_label, i_value, i_color = i_result
             if self.todo.integration_phase == "delivered":
