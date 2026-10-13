@@ -215,25 +215,39 @@ And stage ordering and existing failure handling are preserved
 
 <!-- planned:convergence-overlap-and-failure-reporting -->
 
-#### UC-FMB16: Repositories documentation layout convergence leaves alone do not fail installation
+#### UC-FMB16: An operator sees repositories convergence left alone as a warning on a completed installation
 
 ```gherkin
-Given installation runs documentation layout convergence, in full or dependency-only mode
-And convergence's result has some repository blocked or deferred and none failed
+Given an operator runs installation at a terminal, in full or dependency-only mode
+And documentation layout convergence's result has some repository blocked or deferred and none failed
 When installation completes
-Then it prints a warning that repositories were left blocked or deferred, pointing at convergence's report
-And it reports success
+Then the operator sees a warning that repositories were left blocked or deferred, pointing at convergence's report
+And the operator sees installation report success
 ```
 
-#### UC-FMB17: Installation whose documentation layout convergence failed does not succeed
+#### UC-FMB17: An operator sees a failed documentation layout convergence as an unsuccessful installation
 
 ```gherkin
-Given installation runs documentation layout convergence, in full or dependency-only mode
-And convergence's result has a failed repository
+Given an operator runs installation at a terminal, in full or dependency-only mode
+And documentation layout convergence's result has a failed repository
 When installation reaches its end
-Then it prints that documentation layout convergence failed, pointing at convergence's report
-And it does not report success
-And it exits non-zero
+Then the operator sees that documentation layout convergence failed, pointing at convergence's report
+And the operator does not see installation report success
+```
+
+#### UC-FMB18: An automated caller receives an installation result that fails only on a failed convergence
+
+```gherkin
+Scenario Outline: installation result by documentation layout convergence result
+  Given an automated caller, such as a maintenance action, runs installation without a terminal
+  And documentation layout convergence's result is <convergence result>
+  When installation ends
+  Then the caller receives <installation result>
+
+  Examples:
+    | convergence result                                  | installation result |
+    | some repository blocked or deferred and none failed | a successful result |
+    | a failed repository                                 | a non-zero result   |
 ```
 
 <!-- /planned:convergence-overlap-and-failure-reporting -->
