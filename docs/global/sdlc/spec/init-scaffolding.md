@@ -1,5 +1,5 @@
 ---
-description: 'Schema contract for /projects-analyze enrichment output: discovery-to-taxonomy mapping, snippet ID conventions, file placement, frontmatter template, and merge rules for re-analysis.'
+description: 'Schema contract for sdlc/procedure/project-analysis enrichment output: discovery-to-taxonomy mapping, snippet ID conventions, file placement, frontmatter template, and merge rules for re-analysis.'
 visibility: 'public'
 ---
 
