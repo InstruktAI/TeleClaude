@@ -34,14 +34,10 @@ pull is recognized without bookkeeping. A root whose recorded tree still tracks 
 directory that is gone from the checkout is an interrupted migration: it is
 reported blocked, never current.
 
-<!-- planned:convergence-overlap-and-failure-reporting -->
-
 One run at a time converges a repository on a computer. A run that reaches a
 repository another run is converging says it is waiting for that run, waits,
 and then reads the repository as it stands, so overlapping runs never act on
 one repository together.
-
-<!-- /planned:convergence-overlap-and-failure-reporting -->
 
 A convergence consists of:
 
@@ -67,18 +63,6 @@ A convergence consists of:
   converged layout whose only change is the `local/` prefix converges the same
   way, with a commit carrying only the rewritten paths.
 
-<!-- planned-change:convergence-overlap-and-failure-reporting -->
-
-Convergence runs on every computer: as a post-merge maintenance action on
-computers that follow the branch, and from both install paths, which include
-tag deployments. Where such a run has no attributable party, the roots it
-defers converge on that computer's next attributable run. From an install or a
-tag deployment, a non-zero result is printed as a warning and the install or
-deployment still completes: no deferred or blocked repository fails a platform
-upgrade. The post-merge maintenance action keeps its non-zero result.
-
-<!-- change:convergence-overlap-and-failure-reporting -->
-
 Convergence runs on every computer: as a post-merge maintenance action on
 computers that follow the branch, and from both install paths, which include
 tag deployments. Where such a run has no attributable party, the roots it
@@ -89,8 +73,6 @@ conflict. Both unsettled cases are non-zero, and the post-merge maintenance
 action keeps that as its result. How an install responds to each case is
 installation's contract
 (`local/projects/teleclaude/spec/feature/reconciliation/fresh-machine-bootstrap`).
-
-<!-- /planned-change:convergence-overlap-and-failure-reporting -->
 
 ## Canonical fields
 
@@ -161,21 +143,6 @@ Then the repository is left unchanged
 And the root is reported as blocked by both layouts being present
 ```
 
-<!-- planned-change:convergence-overlap-and-failure-reporting -->
-
-#### UC-DLC8: A refused commit or a failed write reverses only convergence's own changes
-
-```gherkin
-Given a registered repository that UC-DLC1 would converge
-And the sealed commit refuses the convergence commit, or a move, write or staging step fails after convergence began changing the repository
-When layout convergence runs
-Then convergence reverses only its own changes: each rewritten file whose bytes still equal what convergence wrote gets its original bytes back, each moved file whose bytes are still the ones convergence left returns to its original path, and each touched path whose index entry still equals one convergence observed returns to the committed entry
-And a file whose bytes changed since convergence left them, a file convergence did not move, a moved file whose original path is occupied again, or a touched path whose index entry changed, is left exactly where and as found and named there
-And the root is reported as a restore conflict when any such path exists, and otherwise as restored after a refused commit or as failed after a failed write, with the repository's files and index equal to their state before the run
-```
-
-<!-- change:convergence-overlap-and-failure-reporting -->
-
 #### UC-DLC8: A refused commit or a failed write reverses only convergence's own changes
 
 ```gherkin
@@ -189,8 +156,6 @@ And when any such path exists, the root is reported as a restore conflict naming
 And when no such path exists, every path convergence changed is back in its state before the run, and the root is reported as restored after a refused commit or as failed after a failed write
 ```
 
-<!-- /planned-change:convergence-overlap-and-failure-reporting -->
-
 #### UC-DLC9: Published-half mentions and records are reported, not guessed
 
 ```gherkin
@@ -201,34 +166,6 @@ Then those docs/global mentions are unchanged
 And the root's report lists them for the repository's owner
 And changelogs, generated files, and decision-record bodies are unchanged
 ```
-
-<!-- planned-change:convergence-overlap-and-failure-reporting -->
-
-#### UC-DLC10: Every computer converges, tag deployments included
-
-```gherkin
-Given a computer that follows the branch and pulls a merge changing the layout owner
-Or a computer that installs or deploys a tagged release
-When the post-merge maintenance or the install completes
-Then layout convergence has run over that computer's registered repositories
-And where that run had no attributable party, it deferred the roots that would converge (UC-DLC12)
-And the next attributable run on that computer converges them
-And from an install or a tag deployment the run's report is printed and a non-zero result is a warning, while the install or deployment still completes
-And from the post-merge maintenance action a non-zero result stays that action's result
-```
-
-#### UC-DLC11: The run reports every root and fails loudly on blocks
-
-```gherkin
-Given a layout convergence run over the project registry
-When the run completes
-Then it reports one outcome line per registered root and one run line
-And a registered root that is absent on this computer is reported as unavailable and skipped
-And linked worktrees of a converged root are listed in its report
-And the run exits non-zero when any root is blocked, deferred, restored after a refused commit, or in restore conflict
-```
-
-<!-- change:convergence-overlap-and-failure-reporting -->
 
 #### UC-DLC10: Every computer converges, tag deployments included
 
@@ -255,8 +192,6 @@ And the run exits non-zero when any root is blocked, deferred, failed, restored 
 And its run line and its exit status tell a run with a failed, restored or conflicted root apart from a run whose only unsettled roots are blocked or deferred
 ```
 
-<!-- /planned-change:convergence-overlap-and-failure-reporting -->
-
 #### UC-DLC12: A run without an attributable party changes nothing and defers
 
 ```gherkin
@@ -281,8 +216,6 @@ And one commit in that repository, made through the sealed commit path, carries 
 And the root is reported as migrated and committed
 ```
 
-<!-- planned:convergence-overlap-and-failure-reporting -->
-
 #### UC-DLC14: Overlapping runs over one repository take turns
 
 ```gherkin
@@ -303,8 +236,6 @@ Then the root is reported as belonging to another checkout
 And that root makes the run's result neither blocked, deferred nor failed
 ```
 
-<!-- /planned:convergence-overlap-and-failure-reporting -->
-
 ### Cross-context references
 
 - **config** — the project registry's roots and each repository's declared
@@ -316,13 +247,9 @@ And that root makes the run's result neither blocked, deferred nor failed
 - **maintenance** — the post-merge maintenance mechanism and the install paths
   schedule convergence; they decide nothing about its outcome.
 
-<!-- planned:convergence-overlap-and-failure-reporting -->
-
 - **agent_runtime** — whether code loaded from a slug worktree may change a
   registered repository (`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`,
   UC-IAH10); convergence only reports the roots it is refused.
-
-<!-- /planned:convergence-overlap-and-failure-reporting -->
 
 ## Known caveats
 

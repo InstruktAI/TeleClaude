@@ -213,8 +213,6 @@ And the default INFO level omits stage timing records
 And stage ordering and existing failure handling are preserved
 ```
 
-<!-- planned:convergence-overlap-and-failure-reporting -->
-
 #### UC-FMB16: Repositories convergence left alone do not fail installation
 
 ```gherkin
@@ -235,8 +233,6 @@ Then the agent or person reads that documentation layout convergence failed, poi
 And installation does not report success and its result is non-zero
 ```
 
-<!-- /planned:convergence-overlap-and-failure-reporting -->
-
 ### Cross-context references
 
 - **config** — the person registry the owner seed is checked against and
@@ -253,14 +249,10 @@ And installation does not report success and its result is non-zero
   and what installation records in the home's history, under
   `local/projects/teleclaude/spec/feature/reconciliation/home-repository`.
 
-<!-- planned:convergence-overlap-and-failure-reporting -->
-
 - **context** — documentation layout convergence and the classification of
   its result into settled, blocked or deferred, and failed, under
   `local/projects/teleclaude/spec/feature/context/documentation-layout-convergence`.
   Installation decides only how it completes on each class.
-
-<!-- /planned:convergence-overlap-and-failure-reporting -->
 
 ## Known caveats
 
