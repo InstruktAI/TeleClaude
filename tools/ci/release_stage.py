@@ -164,6 +164,7 @@ class AdditionalStageCommand(StrEnum):
 
 _COLLECT_COMMAND = AdditionalStageCommand.COLLECT_ANALYSIS
 _CAPTURE_DIRECTORY_OPTION = "--capture-directory"
+_ATTEMPT_OPTION = "--attempt"
 _JOB_RESULT_SUFFIX = "_JOB_RESULT"
 _ARTIFACT_ID_SUFFIX = "_ARTIFACT_ID"
 _ARTIFACT_DIGEST_SUFFIX = "_ARTIFACT_DIGEST"
@@ -1346,7 +1347,7 @@ def main(argv: list[str] | None = None) -> int:
     collect.add_argument(_CAPTURE_DIRECTORY_OPTION, type=Path, required=True)
     collect.add_argument(_OUTPUT_DIRECTORY_OPTION, type=Path, required=True)
     codex_prepare = commands.add_parser("prepare-codex")
-    codex_prepare.add_argument("--attempt", type=Path, required=True)
+    codex_prepare.add_argument(_ATTEMPT_OPTION, type=Path, required=True)
     codex_prepare.add_argument("--evidence", type=Path, required=True)
     codex_prepare.add_argument("--state-directory", type=Path, required=True)
     codex_prepare.add_argument("--result-directory", type=Path, required=True)
@@ -1359,7 +1360,7 @@ def main(argv: list[str] | None = None) -> int:
     confirm_settled.add_argument("--state-directory", type=Path, required=True)
     confirm_settled.add_argument("--result-directory", type=Path, required=True)
     claude_run = commands.add_parser(AdditionalStageCommand.RUN_CLAUDE.value)
-    claude_run.add_argument("--attempt", type=Path, required=True)
+    claude_run.add_argument(_ATTEMPT_OPTION, type=Path, required=True)
     claude_run.add_argument("--evidence", type=Path, required=True)
     claude_run.add_argument("--output-directory", type=Path, required=True)
     seed = commands.add_parser("seed-codex")
