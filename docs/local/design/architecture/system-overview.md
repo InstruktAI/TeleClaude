@@ -128,7 +128,8 @@ flowchart LR
     TGAdapter --> Ingress
     RedisIngress --> Ingress
 
-    Ingress --> Queue
+    Ingress -->|immediate| Worker
+    Ingress -->|receipt-backed| Queue
     Queue --> Worker
 
     Worker --> Sessions

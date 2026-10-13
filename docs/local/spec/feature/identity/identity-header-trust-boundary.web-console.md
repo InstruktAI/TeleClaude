@@ -18,14 +18,13 @@ headers — `x-caller-principal`, `x-caller-email`, `x-caller-entry-point` and t
 session fields — and the daemon takes them as given without lookup or
 verification. That trust holds because of where the headers can arrive: the
 daemon's Unix socket, reachable only by processes running as the daemon's own
-operating-system user. The boundary check enforces exactly that, and the other
-listener is narrowed to match. The loopback TCP listener the ingress computer
-opens serves the inbound webhook endpoints and nothing else: any other path
-requested on it is refused as not found, whatever headers the request carries.
-On the inbound endpoints caller headers carry nothing: they are dropped before
-the endpoint runs, the request is authenticated by its signature alone, and a
-signed webhook that happens to carry caller headers is relayed exactly as one
-that carries none, attributed to no session.
+operating-system user. The boundary check enforces exactly that. The loopback
+TCP listener the ingress computer opens serves the inbound webhook endpoints
+and nothing else: any other path requested on it is refused as not found,
+whatever headers the request carries. On the inbound endpoints caller headers
+carry nothing: they are dropped before the endpoint runs, and the request
+reaches the endpoint carrying no identity. What the endpoint then does with the
+request is the inbound endpoint framework's contract.
 
 The web service is the one client that turns a browser into a caller. It
 authenticates the person itself — invitation link, passkey, recovery code,
@@ -57,12 +56,11 @@ And the carried identity is never read
 ```
 
 ```
-Given a valid signed inbound webhook request on the loopback TCP listener
+Given an inbound webhook request on the loopback TCP listener
 And the request carries caller headers naming a session
 When the trust boundary evaluates the request
-Then the headers are dropped
-And the inbound endpoint authenticates the request by its signature alone
-And the relayed event is attributed to no session
+Then every caller header is dropped
+And the request reaches the inbound endpoint carrying no identity
 ```
 
 ```
@@ -102,9 +100,8 @@ And never over the loopback TCP listener
   scoped-role decision, and gates
   `local/projects/teleclaude/spec/feature/identity/session-access-visibility`.
 - The loopback TCP listener and its inbound endpoints are owned by
-  `local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`;
-  a signed webhook carrying caller headers is relayed unattributed there, and
-  this boundary prescribes the same outcome.
+  `local/projects/teleclaude/spec/feature/integration/single-ingress-webhook-termination`,
+  which owns the outcome of a request that reaches an inbound endpoint.
 
 ## Known caveats
 
@@ -116,13 +113,9 @@ And never over the loopback TCP listener
   only once this boundary names it, and a listener that leaves the transport
   unidentified is treated as untrusted.
 - On the inbound endpoints the boundary drops every caller header, not only the
-  principal; the headers are one identity assertion. Dropping rather than
-  refusing is deliberate there: a webhook producer may send arbitrary headers,
-  and refusing its signed request on their account would make the endpoint's
-  behaviour depend on headers it never reads.
-- Serving only the inbound endpoints on the TCP listener is a narrowing of that
-  listener: the single-ingress contract already confines the reverse proxy to
-  the inbound path prefix, and the listener now enforces the same confinement
-  itself.
+  principal; the headers are one identity assertion, and a request is never
+  refused on their account.
+- The TCP listener's confinement to the inbound endpoints holds whether or not
+  the reverse proxy in front of it forwards only the inbound path prefix.
 - The socket-side check runs on the upgrade exchange, not on WebSocket frames
   afterwards; a stream only exists where the upgrade passed.
