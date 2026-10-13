@@ -219,7 +219,7 @@ And no session is created
 ## Known caveats
 
 - The brief is read by the agent verbatim, whatever its size. It presents no per-role command surface; presenting a role's explicit set in the brief and narrowing the CLI index a session sees is the role-scoped context delivery's concern, not this contract's.
-- The legacy `system_role` and `job_role` wire projections stay populated for transport while older computers read them, carrying the class-derived legacy projection the fleet interop contract defines; they are authority for nothing.
+- The legacy `system_role` and `job_role` wire projections stay populated while older computers read them, carrying the class-derived legacy projection the fleet interop contract defines; an older node reads them for display and record and by no clearance, and never creates a session carrying a catalog role.
 
 ## See Also
 
