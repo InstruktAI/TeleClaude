@@ -85,10 +85,10 @@ The migrated shape is persisted in exactly two ways:
 
 <!-- planned:config-migration-before-runtime-replacement -->
 
-A migration run never stores a document at a version the running daemon cannot
-read, because the daemon refuses every document newer than its own migration
-list (`local/projects/teleclaude/policy/daemon-availability`). Before it writes,
-the run reads the migration reach the running daemon reports. A daemon that
+A migration run that maintenance or installation performs never stores a
+document at a version the running daemon cannot read
+(`local/projects/teleclaude/policy/daemon-availability`). Before it writes, the
+run reads the migration reach the running daemon reports. A daemon that
 reports a lower reach, reports none, or listens without answering within a
 bounded wait withholds the whole run: no document is stored, no retirement
 runs, and every document the run covers is recorded as withheld, naming the
@@ -412,9 +412,8 @@ And reading it with the same installed schema requires no version conversion
 ```gherkin
 Given the running daemon reports a migration reach below the current version
 And a document the tier registries name is at an older version
-When a migration run runs
+When maintenance or installation runs a migration run
 Then the stored document is byte-identical before and after the run
-And the running daemon's operations that read that document keep succeeding
 And an agent reading the structured records observes that document as withheld, naming the daemon's reach and the current version
 ```
 
