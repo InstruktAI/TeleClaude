@@ -23,16 +23,15 @@ preservation follows `sdlc/policy/version-control-safety`.
 
 ### Selected release
 
-An admitted release resolves to a tag and one immutable commit before its
-activation changes the checkout. The activation retains that identity through
-interruption and replay. Successful source selection means that detached HEAD
-equals that commit, rather than merely containing it in its ancestry. A changed
-or unavailable target leaves the activation incomplete with its cause.
+Detached HEAD refers directly to the immutable source selected under the
+channel-update contract. The selected tag and full commit are retained together
+as the checkout's release identity. Exact-source selection, release ordering and
+activation replay remain governed by that contract and
+`local/projects/teleclaude/design/architecture/deployment-pipeline`.
 
 An ordinary argument-less Git pull in the installed release checkout cannot
 advance its selected source onto the development branch. Release activation
-selects subsequent source through channel admission. Replayed older releases
-leave a newer installed release selected.
+selects subsequent source through channel admission.
 
 Existing branches, unpublished commits and uncommitted work are preserved. A
 source transition that cannot preserve them refuses with a concrete recovery
@@ -58,10 +57,10 @@ and unrelated projects retain their existing maintenance eligibility.
 #### UC-RC1: An admitted release is visibly selected
 
 ```gherkin
-Given an operator's beta or stable installation admits a published release
-When its source activation succeeds
-Then the installed checkout has detached HEAD at that release's resolved commit
-And the selected release tag and full commit identity are observable together
+Given an operator's beta or stable installation has selected an admitted release
+When the operator inspects the installed checkout
+Then its HEAD is detached
+And its selected release tag and full commit identity are observable together
 ```
 
 #### UC-RC2: An ordinary pull cannot advance the release installation
