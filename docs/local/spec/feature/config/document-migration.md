@@ -53,6 +53,8 @@ versions.
 
 The migrated shape is persisted in exactly two ways:
 
+<!-- planned-change:config-migration-before-runtime-replacement -->
+
 - **A migration run.** Canonical-main maintenance runs one when an activation
   changes the migration list, before the daemon restarts, over every document
   the tier registries name: the machine configuration, the home's global
@@ -61,11 +63,40 @@ The migrated shape is persisted in exactly two ways:
   for the root it adds, and installation runs one over the configuration it has
   seeded. A document outside the registries is never migrated by a run; it
   enters through registration.
+
+<!-- change:config-migration-before-runtime-replacement -->
+
+- **A migration run.** Canonical-main maintenance runs one when an activation
+  changes the migration list, after the daemon restarts, over every document
+  the tier registries name: the machine configuration, the home's global
+  configuration, every person and company configuration at its designated
+  location, and every registered project root. Registering a project runs one
+  for the root it adds, and installation runs one over the configuration it has
+  seeded. A document outside the registries is never migrated by a run; it
+  enters through registration.
+
+<!-- /planned-change:config-migration-before-runtime-replacement -->
+
 - **A writer.** A platform operation that changes a registry-named existing
   document first persists that document's pending migrations, then applies its
   own change to the current shape. A write therefore never records an older
   shape at the current version, and never drops a value a migration still has
   to move.
+
+<!-- planned:config-migration-before-runtime-replacement -->
+
+A migration run never stores a document at a version the running daemon cannot
+read, because the daemon refuses every document newer than its own migration
+list (`local/projects/teleclaude/policy/daemon-availability`). Before it writes,
+the run reads the migration reach the running daemon reports. A daemon that
+reports a lower reach, reports none, or listens without answering within a
+bounded wait withholds the whole run: no document is stored, no retirement
+runs, and every document the run covers is recorded as withheld, naming the
+daemon's reach and the current version. When no daemon listens, the run
+proceeds. Installation continues past a withheld run, reading the documents as
+stored through the in-memory migration, and a later migration run stores them.
+
+<!-- /planned:config-migration-before-runtime-replacement -->
 
 <!-- planned:release-tag-checkout-activation -->
 
@@ -116,6 +147,9 @@ The authoring rules every migration obeys are
   declaration supplies a read-only subject when no registry names the
   document; it supplies no instance or registration standing. A migration
   reads the subject, never the document's location.
+
+<!-- planned-change:config-migration-before-runtime-replacement -->
+
 - **Migration run outcome.** One structured record per document naming the
   document, its subject, the version found, the version reached, and one
   outcome: current, migrated and committed, migrated and left uncommitted,
@@ -124,6 +158,21 @@ The authoring rules every migration obeys are
   with that reason and carries the relationship's message, which the run's
   failure diagnostic shows. One document's failure never stops the run over
   the others; a run with any failed document ends failed.
+
+<!-- change:config-migration-before-runtime-replacement -->
+
+- **Migration run outcome.** One structured record per document naming the
+  document, its subject, the version found, the version reached, and one
+  outcome: current, migrated and committed, migrated and left uncommitted,
+  written untracked, restored after a refused commit, withheld for the running
+  daemon's reach, or failed with a reason.
+  A document refused because it breaks a declared field relationship fails
+  with that reason and carries the relationship's message, which the run's
+  failure diagnostic shows. One document's failure never stops the run over
+  the others; a run with any failed document ends failed. A withheld run ends
+  unsuccessful and is distinguishable from a failed one.
+
+<!-- /planned-change:config-migration-before-runtime-replacement -->
 
 ### Use cases
 
@@ -234,6 +283,8 @@ And the destination's conflicting value is unchanged
 And an agent reading the structured records observes the conflict for that document
 ```
 
+<!-- planned-change:config-migration-before-runtime-replacement -->
+
 #### UC-CFG-MIG-10: Installation brings its seeded configuration to the current version
 
 ```gherkin
@@ -242,6 +293,20 @@ When installation completes
 Then the machine configuration and the home's global configuration are stored at the current version
 And installation validates configuration only after they are
 ```
+
+<!-- change:config-migration-before-runtime-replacement -->
+
+#### UC-CFG-MIG-10: Installation brings its seeded configuration to the current version
+
+```gherkin
+Given a machine being installed whose configuration is freshly seeded or already present at an older version
+And no running daemon reports a migration reach below the current version
+When installation completes
+Then the machine configuration and the home's global configuration are stored at the current version
+And installation validates configuration only after they are
+```
+
+<!-- /planned-change:config-migration-before-runtime-replacement -->
 
 #### UC-CFG-MIG-11: A migrated document migrates no further
 
@@ -339,6 +404,21 @@ And reading it with the same installed schema requires no version conversion
 ```
 
 <!-- /planned:config-schema-version-authority -->
+
+<!-- planned:config-migration-before-runtime-replacement -->
+
+#### UC-CFG-MIG-20: A migration run never stores a version the running daemon cannot read
+
+```gherkin
+Given the running daemon reports a migration reach below the current version
+And a document the tier registries name is at an older version
+When a migration run runs
+Then the stored document is byte-identical before and after the run
+And the running daemon's operations that read that document keep succeeding
+And an agent reading the structured records observes that document as withheld, naming the daemon's reach and the current version
+```
+
+<!-- /planned:config-migration-before-runtime-replacement -->
 
 ### Cross-context references
 
