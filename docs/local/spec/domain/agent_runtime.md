@@ -101,6 +101,8 @@ TeleClaudeNext repository.
 
 <!-- /planned-change:procedure-role-capability-composition -->
 
+<!-- planned-change:procedure-role-capability-composition -->
+
 - **Owns (procedure activation runner):** on the computer that emitted an
   event, one standing agent per procedure per activation home — a company, a
   person, a project, or the platform — as the runner's own behavior, unless the
@@ -130,6 +132,41 @@ TeleClaudeNext repository.
   completion or failure is recorded once, a failure is never presented as
   success, and it never moves the responsibility to another agent. The agent's
   lifecycle and its handling of later events belong to the procedure it loads.
+
+<!-- change:procedure-role-capability-composition -->
+
+- **Owns (procedure activation runner):** on the computer that emitted an
+  event, one standing agent per procedure per activation home — a company, a
+  person, a project, or the platform — as the runner's own behavior, unless the
+  procedure declares subject identity (below). The runner
+  resolves the agent through the inbound resolve-or-create seam, serialized per
+  procedure and home so concurrent activations there cannot both start one.
+  When one or more sessions under the system principal already run the
+  procedure for the home, it wakes one and starts none; a session carrying
+  human lineage is never adopted; when none does, it starts one through the procedure entry
+  (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`) —
+  naming the procedure, with the home, subject, attendance and delivery facts
+  as entry context — in that home: the company's home folder, the person's folder,
+  or the project's checkout as `config` answers, or the platform's own checkout
+  for the platform. A named home absent on the computer fails the activation,
+  which is never moved to another home or computer. The session is started
+  under the system principal, with its company set only for a company home. The
+  procedure event-delivery contract owns the initial canonical brief, hook
+  delivery, delivery eligibility and cardinality, and retention of pending
+  activations across session transitions
+  (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-event-delivery`).
+  Activation identity ensures that a repeated activation for the same event,
+  procedure, and home reaches the agent once. A
+  company-home standing agent may also be started by hand, and nothing
+  restricts that; a person-, project-, or platform-home one is started only by
+  an activation. Nothing coordinates computers. Each activation is a durable
+  operation of its own kind, keyed by the activation's identity, whose
+  completed and failed outcome events this context owns and registers;
+  completion or failure is recorded once, a failure is never presented as
+  success, and it never moves the responsibility to another agent. The agent's
+  lifecycle and its handling of later events belong to the procedure it loads.
+
+<!-- /planned-change:procedure-role-capability-composition -->
 
 - **Owns (subject-bound agents):** for a procedure declaring subject identity,
   one agent per procedure, activation home, and the subject the activating
