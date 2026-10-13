@@ -17,9 +17,12 @@ catalog is the closed set of roles a session may carry and the one place a
 role's reach is composed. A **capability** is one named unit of reach: one
 family of `telec` commands, or one grant to start sessions of one class. A
 **role** declares an explicit, minimal set of capabilities. A role marked
-`full_reach` reaches every capability; its explicit set is then the command
-surface its brief presents, not a bound. A role not so marked reaches exactly
-its set.
+`full_reach` reaches every capability; its explicit set is then documentation
+of the role's ordinary surface and binds nothing, and the focus of such a
+session is its procedure's own discipline, with the integrity of shared
+objects staying where it always was — with the object guardrails (claims,
+driver dedup, singleton leases, extraction scope), which no role filter
+replaces. A role not so marked reaches exactly its set.
 
 Every consumer that asks what a role may do or what kind of session it is reads
 the catalog and keeps no role list of its own: command clearance
@@ -188,9 +191,11 @@ And neither class changes which commands the sessions reach
 - A closed session recorded before procedures declared their roles, whose
   record the migration could not map, stays refused if it is revived; the
   migration reports every such record.
-- The explicit set of a full-reach role binds nothing until the role-scoped
-  context delivery presents it as the brief's command surface; until then it is
-  documentation of the role's ordinary surface.
+- The explicit set of a full-reach role binds nothing, and no brief presents
+  it: the procedure-entry brief carries the role's framing line and no command
+  listing. Presenting the set as a brief's command surface, and narrowing the
+  CLI index a session sees to it, is a separate delivery; until it lands the
+  set is documentation of the role's ordinary surface.
 
 ## See Also
 

@@ -57,7 +57,7 @@ persisted invocation.
 : The procedure ID, the bound parameters, the raw argument text, the entry context, and the brief reference, persisted on the session's launch state.
 
 **Brief**
-: The one artifact the loader names: the role's framing line, its command surface, the parameter preamble, the procedure's required-read closure, the entry type's required reads, and additional context once.
+: The one artifact the loader names: the role's framing line, the parameter preamble, the procedure's required-read closure, the entry type's required reads, and additional context once. It carries no command listing of its own; what commands the session reaches is the role catalog's decision, and a role-scoped command surface in the brief is a separate delivery (`local/projects/teleclaude/spec/feature/identity/agent-roles`, Known caveats).
 
 **Entry context**
 : What the entry type supplies beside the arguments — a job's name, an activation's home, subject, attendance and delivery settings.
@@ -68,7 +68,7 @@ persisted invocation.
 2. Arguments are bound to the declared `parameters` once; the raw text is kept. A missing required parameter refuses the request.
 3. The role is resolved through the catalog. A caller carrying a role may start a worker-class target when it holds `dispatch-worker` and any target when it is full-reach; a human session may start anything; no target escapes the check.
 4. Agent order and thinking mode resolve through one resolver: an explicit caller mode, then a scheduled job's effective declaration for a job entry, then the procedure's `dispatch` declaration; an entry procedure without one is a publication defect and refuses. Manual preference, automatic preference and fixed continuation keep their meanings.
-5. The brief is materialized from that one resolved publication through the context's closure validation; a pending dependency refuses the launch.
+5. The brief is materialized from that one resolved publication through the context's closure validation; a pending dependency refuses the launch. The brief presents the role by its framing line and nothing about its reach: a full-reach role's focus at entry is its procedure's own discipline, and the integrity of shared objects stays with the object guardrails the brief never restates.
 6. The startup instruction is composed in the loader shape — a marker line carrying the procedure ID and the raw arguments, and an instruction to read the brief verbatim as the active instruction set — identical for every runtime.
 7. The session is created with `role`, `command` (the procedure ID), `job` (the job name for a scheduled run, the procedure ID for an activation, empty otherwise), `working_slug` where the parameters bind one, `entry_point`, and the resolved invocation.
 
@@ -218,7 +218,7 @@ And no session is created
 
 ## Known caveats
 
-- The brief is read by the agent verbatim, whatever its size; narrowing it is the role-scoped context delivery's concern, not this contract's.
+- The brief is read by the agent verbatim, whatever its size. It presents no per-role command surface; presenting a role's explicit set in the brief and narrowing the CLI index a session sees is the role-scoped context delivery's concern, not this contract's.
 - The legacy `system_role` and `job_role` wire projections stay populated for transport while older computers read them; they carry the role name verbatim and are authority for nothing.
 
 ## See Also
