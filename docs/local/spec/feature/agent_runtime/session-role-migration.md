@@ -1,5 +1,5 @@
 ---
-description: The one-time forward migration that gives every stored session one catalog role — mapping recorded role and job pairs explicitly, reducing the job field to instance identity, keeping unmappable rows refused and reported, and migrating persisted launch state and caller snapshots with the sessions.
+description: The one-time forward migration that gives every stored session one catalog role — mapping recorded role and job pairs explicitly, reducing the job field to instance identity, keeping unmappable rows refused and reported, migrating persisted launch state with the sessions, and leaving every occurrence label as the provenance it recorded.
 delivered_by:
   - procedure-role-capability-composition
 ---
@@ -19,9 +19,7 @@ inventories every distinct recorded combination, maps the combinations the
 catalog can name through an explicit table, reduces the job field to the
 instance identity a scheduled run or an activation carries, and leaves every
 other row with its original representation recorded, refused at runtime and
-reported. It migrates the persisted launch state that drives a session's continuation
-beside the sessions, because continuation reads the new shape after the
-migration. Everything that records who acted at an occurrence — the labels on
+reported. It migrates the persisted launch state that drives a session's continuation beside the sessions. Everything that records who acted at an occurrence — the labels on
 authored turns and the caller snapshots on queued inputs — is provenance: it
 keeps its recorded value and is never re-derived from a session's migrated
 role; the session mirrors keep their own
