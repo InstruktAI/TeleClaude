@@ -29,6 +29,7 @@ _TRANSIENT_SNAPSHOT_LABELS: dict[type[Exception], str] = {
 _TRANSIENT_SNAPSHOT_ERRORS = tuple(_TRANSIENT_SNAPSHOT_LABELS)
 # Consecutive malformed snapshots after which the failure is persistent, not transient.
 _MALFORMED_SNAPSHOT_STREAK_LIMIT = 5
+_POLL_TICK_FAILED_EVENT = "poll_tick_failed"
 
 
 def _next_malformed_streak(exc: Exception, streak: int) -> int:
@@ -401,40 +402,45 @@ class OutputPoller:
 
                 session_existed_last_poll = session_exists_now
 
-                captured_output_raw = snapshot.output_raw
-                captured_output_normalized = snapshot.output_normalized
-                output_changed = captured_output_normalized != previous_output_normalized
-                current_cleaned = captured_output_raw
+                try:
+                    captured_output_raw = snapshot.output_raw
+                    captured_output_normalized = snapshot.output_normalized
+                    output_changed = captured_output_normalized != previous_output_normalized
+                    current_cleaned = captured_output_raw
 
-                self._log_output_tail_change(session_id, captured_output_raw, previous_output_raw)
+                    self._log_output_tail_change(session_id, captured_output_raw, previous_output_raw)
 
-                if output_changed:
-                    maybe_log_idle_summary(force=True)
-                    previous_output_raw = current_cleaned
-                    previous_output_normalized = captured_output_normalized
-                    idle_ticks = 0
-                    last_output_changed_at = time.time()
-                    pending_output = True
-                    pending_idle_flush = True
+                    if output_changed:
+                        maybe_log_idle_summary(force=True)
+                        previous_output_raw = current_cleaned
+                        previous_output_normalized = captured_output_normalized
+                        idle_ticks = 0
+                        last_output_changed_at = time.time()
+                        pending_output = True
+                        pending_idle_flush = True
 
-                (
-                    output_event,
-                    output_sent_at_least_once,
-                    pending_output,
-                    pending_idle_flush,
-                    last_yield_time,
-                    did_yield,
-                ) = self._maybe_yield_output(
-                    session_id=session_id,
-                    current_cleaned=current_cleaned,
-                    started_at=started_at,
-                    last_output_changed_at=last_output_changed_at,
-                    output_sent_at_least_once=output_sent_at_least_once,
-                    pending_output=pending_output,
-                    pending_idle_flush=pending_idle_flush,
-                    last_yield_time=last_yield_time,
-                    output_cadence_s=output_cadence_s,
-                )
+                    (
+                        output_event,
+                        output_sent_at_least_once,
+                        pending_output,
+                        pending_idle_flush,
+                        last_yield_time,
+                        did_yield,
+                    ) = self._maybe_yield_output(
+                        session_id=session_id,
+                        current_cleaned=current_cleaned,
+                        started_at=started_at,
+                        last_output_changed_at=last_output_changed_at,
+                        output_sent_at_least_once=output_sent_at_least_once,
+                        pending_output=pending_output,
+                        pending_idle_flush=pending_idle_flush,
+                        last_yield_time=last_yield_time,
+                        output_cadence_s=output_cadence_s,
+                    )
+                except Exception:
+                    logger.exception(_POLL_TICK_FAILED_EVENT, session_id=session_id)
+                    await asyncio.sleep(poll_interval)
+                    continue
                 if output_event is not None:
                     yield output_event
                     last_sent_output_raw = current_cleaned

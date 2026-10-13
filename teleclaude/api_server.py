@@ -135,6 +135,8 @@ API_MCP_REAPER_INTERVAL_S = config.api.mcp_reaper_interval_s
 WS_POLICY_VIOLATION_CODE = 1008
 _WS_OPTIONS_REFUSED_LOG = "WebSocket connection options refused: %s"
 _HOOK_RECEIVER_ERROR_SOURCE = "hook_receiver"
+_WATCH_INFLIGHT_REPORT_FAILED_LOG = "API watch: in-flight request report failed"
+_METRICS_SAMPLE_FAILED_LOG = "API server metrics sample failed"
 
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 
@@ -729,20 +731,25 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
             if not self._inflight_requests:
                 continue
-            inflight = []
-            now_mono = time.monotonic()
-            for path, started_at in self._inflight_requests.values():
-                age = now_mono - started_at
-                if age >= API_WATCH_INFLIGHT_THRESHOLD_S:
-                    inflight.append((path, age))
+            try:
+                inflight = []
+                now_mono = time.monotonic()
+                for path, started_at in self._inflight_requests.values():
+                    age = now_mono - started_at
+                    if age >= API_WATCH_INFLIGHT_THRESHOLD_S:
+                        inflight.append((path, age))
+                if inflight:
+
+                    def _sort_key(item: tuple[str, float]) -> float:
+                        return item[1]
+
+                    inflight.sort(key=_sort_key, reverse=True)
+                    top = ", ".join(f"{path}:{age:.2f}s" for path, age in inflight[:5])
+                    logger.warning("API watch: slow requests detected (%s)", top)
+            except Exception:
+                logger.exception(_WATCH_INFLIGHT_REPORT_FAILED_LOG)
+                continue
             if inflight:
-
-                def _sort_key(item: tuple[str, float]) -> float:
-                    return item[1]
-
-                inflight.sort(key=_sort_key, reverse=True)
-                top = ", ".join(f"{path}:{age:.2f}s" for path, age in inflight[:5])
-                logger.warning("API watch: slow requests detected (%s)", top)
                 self._dump_stacks("slow_requests")
 
     async def _start_server(self) -> None:
@@ -863,22 +870,25 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
     async def _metrics_loop(self) -> None:
         """Log API server resource metrics periodically."""
         while self._running:
-            fd_count = _get_fd_count()
-            ws_count = len(self._ws_clients)
-            task_count = self.task_registry.task_count() if self.task_registry else 0
-            server = self.server
-            server_started = getattr(server, "started", None) if server else None
-            server_should_exit = getattr(server, "should_exit", None) if server else None
-            server_task_done = self.server_task.done() if self.server_task else None
-            logger.info(
-                "API server metrics: fds=%d ws=%d tasks=%d started=%s should_exit=%s task_done=%s",
-                fd_count,
-                ws_count,
-                task_count,
-                server_started,
-                server_should_exit,
-                server_task_done,
-            )
+            try:
+                fd_count = _get_fd_count()
+                ws_count = len(self._ws_clients)
+                task_count = self.task_registry.task_count() if self.task_registry else 0
+                server = self.server
+                server_started = getattr(server, "started", None) if server else None
+                server_should_exit = getattr(server, "should_exit", None) if server else None
+                server_task_done = self.server_task.done() if self.server_task else None
+                logger.info(
+                    "API server metrics: fds=%d ws=%d tasks=%d started=%s should_exit=%s task_done=%s",
+                    fd_count,
+                    ws_count,
+                    task_count,
+                    server_started,
+                    server_should_exit,
+                    server_task_done,
+                )
+            except Exception:
+                logger.exception(_METRICS_SAMPLE_FAILED_LOG)
             await asyncio.sleep(60)
 
     def _cleanup_socket(self, reason: str) -> None:

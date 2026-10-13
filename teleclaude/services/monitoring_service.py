@@ -25,6 +25,8 @@ logger = get_logger(__name__)
 _FD_WARN = 200
 _ASYNCIO_TASKS_WARN = 500
 _LOOP_LAG_WARN_MS = 1000.0
+_RESOURCE_SNAPSHOT_FAILED_MESSAGE = "Periodic resource snapshot failed; retrying at the next interval"
+_LAUNCHD_PROBE_FAILED_MESSAGE = "Launchd probe failed unexpectedly; retrying at the next interval"
 
 
 def _get_fd_count() -> int | None:
@@ -116,7 +118,10 @@ class MonitoringService:
                 lag_s = (now - self._last_resource_snapshot_time) - self._resource_snapshot_interval_s
                 self._last_loop_lag_ms = max(0.0, lag_s * 1000.0)
             self._last_resource_snapshot_time = now
-            self.log_resource_snapshot("periodic")
+            try:
+                self.log_resource_snapshot("periodic")
+            except Exception:
+                logger.exception(_RESOURCE_SNAPSHOT_FAILED_MESSAGE)
 
     async def launchd_watch_loop(self) -> None:
         """Periodically log launchd state for this job on macOS."""
@@ -148,6 +153,8 @@ class MonitoringService:
                     last_output = output
             except OSError as exc:
                 logger.warning("Launchd probe failed: %s", exc)
+            except Exception:
+                logger.exception(_LAUNCHD_PROBE_FAILED_MESSAGE)
 
     def _get_wal_size_kb(self) -> int | None:
         if not self._db_path:

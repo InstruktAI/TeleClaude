@@ -55,6 +55,8 @@ if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
 
 logger = get_logger(__name__)
+_HOOK_OUTBOX_BATCH_FAILED_MESSAGE = "Hook outbox batch failed; retrying after the poll interval"
+_HOOK_OUTBOX_ROW_FAILED_MESSAGE = "Hook outbox row processing failed; continuing with the next row"
 _HEADLESS_BOOTSTRAP_AUTHORITY_ABSENT = "Ignoring headless session bootstrap without receiver authorization"
 # Headless hook events carry no mode; the launch intent requires one, and "med"
 # is the platform's standard mode.
@@ -619,64 +621,68 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 # Snapshot paused sessions and exclude them at the DB level so their
                 # rows don't consume batch slots (prevents head-of-line blocking).
                 paused_snapshot = frozenset(self._hook_outbox_claim_paused_sessions)
-                rows = await db.fetch_hook_outbox_batch(
-                    now_iso, HOOK_OUTBOX_BATCH_SIZE, lock_cutoff, exclude_session_ids=paused_snapshot
-                )
+                try:
+                    rows = await db.fetch_hook_outbox_batch(
+                        now_iso, HOOK_OUTBOX_BATCH_SIZE, lock_cutoff, exclude_session_ids=paused_snapshot
+                    )
 
-                if not rows:
-                    self._maybe_log_hook_outbox_summary()
-                    await asyncio.sleep(HOOK_OUTBOX_POLL_INTERVAL_S)
-                    continue
-
-                # Drop stale non-lifecycle rows before claiming.
-                stale_row_ids: list[int] = []
-                fresh_rows: list[HookOutboxRow] = []
-                for row in rows:
-                    if self._is_stale_outbox_row(row):
-                        stale_row_ids.append(int(row["id"]))
-                    else:
-                        fresh_rows.append(row)
-
-                if stale_row_ids:
-                    for stale_id in stale_row_ids:
-                        stale_row = next(r for r in rows if int(r["id"]) == stale_id)
-                        event_type = str(stale_row.get("event_type") or "")
-                        logger.info(
-                            "Dropping stale outbox row",
-                            row_id=stale_id,
-                            event_type=event_type,
-                            session_id=str(stale_row.get("session_id") or ""),
-                        )
-                        await db.delete_hook_outbox_row(stale_id)
-                    self._hook_outbox_stale_dropped_count += len(stale_row_ids)
-
-                # Defense-in-depth: re-check pause state for rows that passed the DB
-                # filter (catches snapshot-to-fetch races).
-                claimable_rows: list[HookOutboxRow] = []
-                for row in fresh_rows:
-                    session_id = str(row["session_id"])
-                    if await self._should_pause_hook_outbox_claims(session_id):
-                        continue
-                    claimable_rows.append(row)
-
-                if not claimable_rows:
-                    self._maybe_log_hook_outbox_summary()
-                    await asyncio.sleep(HOOK_OUTBOX_POLL_INTERVAL_S)
-                    continue
-
-                row_ids = [int(row["id"]) for row in claimable_rows]
-                claimed_ids = await db.claim_hook_outbox_batch(row_ids, now_iso, lock_cutoff)
-
-                for row in claimable_rows:
-                    if self.shutdown_event.is_set():
-                        break
-                    if int(row["id"]) not in claimed_ids:
+                    if not rows:
+                        self._maybe_log_hook_outbox_summary()
+                        await asyncio.sleep(HOOK_OUTBOX_POLL_INTERVAL_S)
                         continue
 
-                    session_id = str(row["session_id"])
-                    await self._enqueue_session_outbox_item(session_id, row)
+                    # Drop stale non-lifecycle rows before claiming.
+                    stale_row_ids: list[int] = []
+                    fresh_rows: list[HookOutboxRow] = []
+                    for row in rows:
+                        if self._is_stale_outbox_row(row):
+                            stale_row_ids.append(int(row["id"]))
+                        else:
+                            fresh_rows.append(row)
 
-                self._maybe_log_hook_outbox_summary()
+                    if stale_row_ids:
+                        for stale_id in stale_row_ids:
+                            stale_row = next(r for r in rows if int(r["id"]) == stale_id)
+                            event_type = str(stale_row.get("event_type") or "")
+                            logger.info(
+                                "Dropping stale outbox row",
+                                row_id=stale_id,
+                                event_type=event_type,
+                                session_id=str(stale_row.get("session_id") or ""),
+                            )
+                            await db.delete_hook_outbox_row(stale_id)
+                        self._hook_outbox_stale_dropped_count += len(stale_row_ids)
+
+                    # Defense-in-depth: re-check pause state for rows that passed the DB
+                    # filter (catches snapshot-to-fetch races).
+                    claimable_rows: list[HookOutboxRow] = []
+                    for row in fresh_rows:
+                        session_id = str(row["session_id"])
+                        if await self._should_pause_hook_outbox_claims(session_id):
+                            continue
+                        claimable_rows.append(row)
+
+                    if not claimable_rows:
+                        self._maybe_log_hook_outbox_summary()
+                        await asyncio.sleep(HOOK_OUTBOX_POLL_INTERVAL_S)
+                        continue
+
+                    row_ids = [int(row["id"]) for row in claimable_rows]
+                    claimed_ids = await db.claim_hook_outbox_batch(row_ids, now_iso, lock_cutoff)
+
+                    for row in claimable_rows:
+                        if self.shutdown_event.is_set():
+                            break
+                        if int(row["id"]) not in claimed_ids:
+                            continue
+
+                        session_id = str(row["session_id"])
+                        await self._enqueue_session_outbox_item(session_id, row)
+
+                    self._maybe_log_hook_outbox_summary()
+                except Exception:
+                    logger.exception(_HOOK_OUTBOX_BATCH_FAILED_MESSAGE)
+                    await asyncio.sleep(HOOK_OUTBOX_POLL_INTERVAL_S)
         finally:
             self._maybe_log_hook_outbox_summary(force=True)
 
@@ -910,6 +916,8 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 in_flight_row_id = int(row.get("id") or 0)
                 try:
                     await self._process_outbox_item(row)
+                except Exception:
+                    logger.exception(_HOOK_OUTBOX_ROW_FAILED_MESSAGE, row_id=in_flight_row_id, session_id=session_id)
                 finally:
                     if in_flight_row_id:
                         async with queue_state.lock:

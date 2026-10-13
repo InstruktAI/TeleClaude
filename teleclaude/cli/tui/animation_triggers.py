@@ -5,12 +5,18 @@ from __future__ import annotations
 import asyncio
 import random
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.cli.tui.animation_colors import palette_registry
 from teleclaude.cli.tui.animation_engine import AnimationEngine, AnimationPriority
 from teleclaude.cli.tui.animations.agent import AGENT_ANIMATIONS
 from teleclaude.cli.tui.animations.base import Animation
 from teleclaude.cli.tui.animations.general import GENERAL_ANIMATIONS
 from teleclaude.cli.tui.theme import is_dark_mode
+
+logger = get_logger(__name__)
+
+_ANIMATION_CONSTRUCTION_FAILED_MESSAGE = "Periodic animation construction failed; waiting for the next interval"
 
 
 def filter_animations(
@@ -50,27 +56,31 @@ class PeriodicTrigger:
             if not self.engine.is_enabled:
                 continue
 
-            dark = is_dark_mode()
-            palette = palette_registry.get("spectrum")
-            duration = random.uniform(12, 20)
+            try:
+                dark = is_dark_mode()
+                palette = palette_registry.get("spectrum")
+                duration = random.uniform(12, 20)
 
-            filtered_animations = filter_animations(GENERAL_ANIMATIONS, self.animations_subset, dark)
-            if not filtered_animations:
+                filtered_animations = filter_animations(GENERAL_ANIMATIONS, self.animations_subset, dark)
+                if not filtered_animations:
+                    continue
+
+                # Synchronize: pick ONE animation for both big and small targets
+                anim_class = random.choice(filtered_animations)
+
+                big_animation = anim_class(palette=palette, is_big=True, duration_seconds=duration)
+                small_animation = (
+                    anim_class(palette=palette, is_big=False, duration_seconds=duration)
+                    if anim_class.supports_small
+                    else None
+                )
+            except Exception:
+                logger.exception(_ANIMATION_CONSTRUCTION_FAILED_MESSAGE)
                 continue
 
-            # Synchronize: pick ONE animation for both big and small targets
-            anim_class = random.choice(filtered_animations)
-
-            self.engine.play(
-                anim_class(palette=palette, is_big=True, duration_seconds=duration),
-                priority=AnimationPriority.PERIODIC,
-            )
-
-            if anim_class.supports_small:
-                self.engine.play(
-                    anim_class(palette=palette, is_big=False, duration_seconds=duration),
-                    priority=AnimationPriority.PERIODIC,
-                )
+            self.engine.play(big_animation, priority=AnimationPriority.PERIODIC)
+            if small_animation is not None:
+                self.engine.play(small_animation, priority=AnimationPriority.PERIODIC)
 
     def stop(self) -> None:
         """Cancel the periodic timer task."""

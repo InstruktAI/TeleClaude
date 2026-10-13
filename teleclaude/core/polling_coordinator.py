@@ -63,6 +63,8 @@ OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
 _OUTPUT_CADENCE_SUMMARY_EVENT = "polling_output_cadence_summary"
 _BACKGROUND_POLLER_CRASHED_EVENT = "polling_background_poller_crashed"
 _TRANSCRIPT_BIND_ERROR_EVENT = "polling_transcript_bind_error"
+_PROJECTION_SESSION_READ_FAILED_EVENT = "polling_projection_session_read_failed"
+_PROJECTION_PASS_FAILED_EVENT = "polling_projection_pass_failed"
 _POLLING_LOOP_FAILED_EVENT = "polling_loop_failed"
 _POLLING_ENDED_EVENT = "polling_ended"
 _PROJECTION_DEFERRED_STALE_ORIGIN_EVENT = "polling_projection_deferred_stale_origin"
@@ -702,7 +704,12 @@ async def schedule_session_projection(
     async def _run() -> None:
         try:
             while True:
-                session = await db.get_session(session_id)
+                try:
+                    session = await db.get_session(session_id)
+                except Exception:
+                    logger.exception(_PROJECTION_SESSION_READ_FAILED_EVENT, session_id=session_id)
+                    await _wait_for_session_projection_cadence(session_id)
+                    continue
                 if not session or (headless_only and session.lifecycle_status != "headless"):
                     return
                 if active_compaction_attempt(session) is not None:
@@ -723,7 +730,10 @@ async def schedule_session_projection(
 
                 await _wait_for_session_projection_cadence(session_id)
                 pass_version = await _peek_final_version(session_id)
-                await project_session_from_transcript(session, adapter_client, final_version=pass_version)
+                try:
+                    await project_session_from_transcript(session, adapter_client, final_version=pass_version)
+                except Exception:
+                    logger.exception(_PROJECTION_PASS_FAILED_EVENT, session_id=session_id)
                 if not await _consume_pending_projection(session_id):
                     return
         finally:

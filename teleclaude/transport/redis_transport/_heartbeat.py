@@ -18,6 +18,10 @@ from teleclaude.transport.peer_heartbeat import (
 
 logger = get_logger(__name__)
 
+# Failure families the loop hands to ``_handle_redis_error`` (reconnect behavior).
+_HEARTBEAT_RECOVERABLE_ERRORS = (RedisError, OSError, RuntimeError, TypeError, ValueError)
+_HEARTBEAT_SAMPLE_FAILED_EVENT = "heartbeat_sample_failed"
+
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 
@@ -62,7 +66,7 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
                 await asyncio.sleep(self.heartbeat_interval)
             except asyncio.CancelledError:
                 break
-            except (RedisError, OSError, RuntimeError, TypeError, ValueError) as e:
+            except _HEARTBEAT_RECOVERABLE_ERRORS as e:
                 await self._handle_redis_error("Heartbeat failed", e)
 
     async def _send_heartbeat(self) -> None:
@@ -74,20 +78,27 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         """
         key = heartbeat_key(self.computer_name)
 
-        info = await command_handlers.get_computer_info()
-        payload: dict[str, object] = {  # guard: loose-dict - heartbeat payload
-            "computer_name": self.computer_name,
-            "last_seen": datetime.now(UTC).isoformat(),
-            "user": info.user,
-            "host": info.host,
-            "role": info.role,
-            "system_stats": info.system_stats,
-            "version": info.version,
-            "channel": info.channel,
-            "capability_set": info.capability_set,
-            "is_master": info.is_master,
-            CONVERSATION_ADAPTERS_FIELD: info.conversation_adapters,
-        }
+        try:
+            info = await command_handlers.get_computer_info()
+            payload: dict[str, object] = {  # guard: loose-dict - heartbeat payload
+                "computer_name": self.computer_name,
+                "last_seen": datetime.now(UTC).isoformat(),
+                "user": info.user,
+                "host": info.host,
+                "role": info.role,
+                "system_stats": info.system_stats,
+                "version": info.version,
+                "channel": info.channel,
+                "capability_set": info.capability_set,
+                "is_master": info.is_master,
+                CONVERSATION_ADAPTERS_FIELD: info.conversation_adapters,
+            }
+        except _HEARTBEAT_RECOVERABLE_ERRORS:
+            raise
+        except Exception:
+            # An unrecognized sampling failure skips this beat; the loop paces the next one.
+            logger.exception(_HEARTBEAT_SAMPLE_FAILED_EVENT, computer_name=self.computer_name)
+            return
 
         # Set key with auto-expiry
         redis_client = await self._get_redis()

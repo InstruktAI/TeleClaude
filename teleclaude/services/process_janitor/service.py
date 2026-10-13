@@ -39,6 +39,7 @@ logger = get_logger(__name__)
 
 _REAP_EVENT_DESCRIPTION = "Process janitor reaped a matched process"
 _REAP_PRODUCER = "process-janitor"
+_SCAN_FAILED_MESSAGE = "Process janitor scan failed; retrying at the next interval"
 
 
 @dataclass(frozen=True)
@@ -94,7 +95,10 @@ class ProcessJanitorService:
         """Run scans until the daemon shutdown event is set."""
         await self.seed_default_policies()
         while not self._shutdown_event.is_set():
-            await self.scan_once()
+            try:
+                await self.scan_once()
+            except Exception:
+                logger.exception(_SCAN_FAILED_MESSAGE)
             try:
                 await asyncio.wait_for(self._shutdown_event.wait(), timeout=self._settings.scan_interval_seconds)
             except TimeoutError:

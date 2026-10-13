@@ -25,6 +25,7 @@ from teleclaude.types import SystemStats
 logger = get_logger(__name__)
 
 _REFRESH_EXCEPTIONS = (RedisError, TimeoutError, OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError)
+_PEER_RECORD_FAILED_EVENT = "heartbeat_peer_record_failed"
 
 
 if TYPE_CHECKING:
@@ -262,27 +263,34 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                 # Heartbeat key TTL (60s) can expire between SCAN and GET — skip vanished keys.
                 if not data_bytes:
                     continue
-                data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
-                info_obj: object = json.loads(data_str)
-                info = cast(JsonDict, info_obj)
+                try:
+                    data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
+                    info_obj: object = json.loads(data_str)
+                    info = cast(JsonDict, info_obj)
 
-                computer_name = cast(str, info["computer_name"])
-                if computer_name == self.computer_name:
+                    computer_name = cast(str, info["computer_name"])
+                    if computer_name == self.computer_name:
+                        continue
+
+                    computer_info = ComputerInfo(
+                        name=computer_name,
+                        status="online",
+                        user=optional_shell_safe_identifier(info.get("user"), "heartbeat user"),
+                        host=optional_shell_safe_identifier(info.get("host"), "heartbeat host"),
+                        role=cast("str | None", info.get("role")),
+                        system_stats=cast(SystemStats | None, info.get("system_stats")),
+                        version=cast("str | None", info.get("version")),
+                        channel=cast("str | None", info.get("channel")),
+                        capability_set=decode_capability_set(info.get("capability_set")),
+                        is_master=(cast(bool, info["is_master"]) if isinstance(info.get("is_master"), bool) else None),
+                        conversation_adapters=decode_optional_announced_strings(info.get(CONVERSATION_ADAPTERS_FIELD)),
+                    )
+                except _REFRESH_EXCEPTIONS:
+                    raise
+                except Exception:
+                    # An unrecognized interpretation failure skips this record, never the pass.
+                    logger.exception(_PEER_RECORD_FAILED_EVENT, heartbeat_key=key)
                     continue
-
-                computer_info = ComputerInfo(
-                    name=computer_name,
-                    status="online",
-                    user=optional_shell_safe_identifier(info.get("user"), "heartbeat user"),
-                    host=optional_shell_safe_identifier(info.get("host"), "heartbeat host"),
-                    role=cast("str | None", info.get("role")),
-                    system_stats=cast(SystemStats | None, info.get("system_stats")),
-                    version=cast("str | None", info.get("version")),
-                    channel=cast("str | None", info.get("channel")),
-                    capability_set=decode_capability_set(info.get("capability_set")),
-                    is_master=(cast(bool, info["is_master"]) if isinstance(info.get("is_master"), bool) else None),
-                    conversation_adapters=decode_optional_announced_strings(info.get(CONVERSATION_ADAPTERS_FIELD)),
-                )
                 self.cache.update_computer(computer_info)
 
                 for data_type in ("projects", "sessions"):

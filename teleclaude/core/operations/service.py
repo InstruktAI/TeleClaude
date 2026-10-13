@@ -78,6 +78,7 @@ from teleclaude.core.operations._kinds import (
 from teleclaude.core.operations._outcome import OperationCompletion
 from teleclaude.core.operations._receipt import recovery_command
 from teleclaude.core.operations._relayed_ownership import was_started_by_principal
+from teleclaude.core.operations._rename_payload import ensure_rename_target_matches, rename_payload
 from teleclaude.core.operations.todo_identity import (
     pin_operation_todo_identity,
     todo_operation_context,
@@ -125,6 +126,7 @@ _FOLLOW_THROUGH_TASK_NAME_TEMPLATE = "operation-follow-through-{operation_id}"
 _OPERATION_WORK_TEMPLATE = "operation:{kind}"
 _FOLLOW_THROUGH_WORK = "operation-follow-through"
 _RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE = "{prefix}: {slug} {reason}"
+_LEASE_TOUCH_FAILED_EVENT = "operation_lease_touch_failed"
 
 
 def _operation_payload_abandon(operation: Operation) -> bool:
@@ -413,7 +415,7 @@ class OperationsService:
             slug=old_slug,
             client_request_id=client_request_id,
             payload_json=payload_json,
-            on_existing=lambda op: self._ensure_rename_target_matches(op, new_slug),
+            on_existing=lambda op: ensure_rename_target_matches(op, new_slug),
         )
 
     async def submit(
@@ -755,7 +757,7 @@ class OperationsService:
                 self._live_tasks.pop(operation_id, None)
 
     async def _run_todo_rename(self, operation: Operation) -> str:
-        payload = self._rename_payload(operation)
+        payload = rename_payload(operation)
         rename_module = importlib.import_module("teleclaude.core.next_machine.rename")
         rename_func_obj = getattr(rename_module, "execute_todo_rename", None)
         if not callable(rename_func_obj):
@@ -895,32 +897,16 @@ class OperationsService:
             return reason.value
         return str(reason)
 
-    def _ensure_rename_target_matches(self, operation: Operation, new_slug: str) -> None:
-        payload = self._rename_payload(operation)
-        if payload["new_slug"] != new_slug:
-            raise HTTPException(status_code=409, detail="todo rename operation already targets a different slug")
-
-    def _rename_payload(self, operation: Operation) -> dict[str, str]:
-        try:
-            payload = json.loads(operation.payload_json)
-        except json.JSONDecodeError as exc:
-            raise ValueError("todo rename operation payload is invalid JSON") from exc
-        if not isinstance(payload, dict):
-            raise ValueError("todo rename operation payload must be an object")
-        old_slug = payload.get("old_slug")
-        new_slug = payload.get("new_slug")
-        cwd = payload.get("cwd")
-        if not isinstance(old_slug, str) or not isinstance(new_slug, str) or not isinstance(cwd, str):
-            raise ValueError("todo rename operation payload must include old_slug, new_slug, and cwd")
-        return {"old_slug": old_slug, "new_slug": new_slug, "cwd": cwd}
-
     async def _heartbeat_loop(self, operation_id: str, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
             try:
                 async with asyncio.timeout(self._heartbeat_interval_s):
                     await stop_event.wait()
             except TimeoutError:
-                await self._db.touch_operation(operation_id, datetime.now(UTC).isoformat())
+                try:
+                    await self._db.touch_operation(operation_id, datetime.now(UTC).isoformat())
+                except Exception:
+                    logger.exception(_LEASE_TOUCH_FAILED_EVENT, operation_id=operation_id)
 
     async def _record_progress(self, operation_id: str, phase: str, decision: str, reason: str) -> None:
         await self._db.update_operation_progress(

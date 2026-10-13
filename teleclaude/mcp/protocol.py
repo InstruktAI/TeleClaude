@@ -7,7 +7,13 @@ import json
 from asyncio.subprocess import Process
 from dataclasses import dataclass
 
+from instrukt_ai_logging import get_logger
+
+logger = get_logger(__name__)
+
 MCP_PROTOCOL_VERSION = "2025-11-25"
+_MALFORMED_STDOUT_LOG = "MCP stdout line could not be processed; reading the next line"
+_MALFORMED_STDOUT_FAILURE = "MCP stdout line could not be processed"
 
 type JsonObject = dict[str, object]  # guard: loose-dict - JSON-RPC payloads are schema-bound at MCP boundary.
 
@@ -149,31 +155,39 @@ class StdioMcpClient:
             if not line:
                 self._fail_pending("MCP process closed stdout")
                 return
+            future: asyncio.Future[JsonObject] | None = None
             try:
-                message = json.loads(line.decode("utf-8"))
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(message, dict):
-                continue
-            method = message.get("method")
-            if method == "notifications/tools/list_changed":
-                self._tool_list_changed = True
-                continue
-            raw_id = message.get("id")
-            if not isinstance(raw_id, int):
-                continue
-            future = self._pending.pop(raw_id, None)
-            if future is None or future.done():
-                continue
-            error = message.get("error")
-            if isinstance(error, dict):
-                future.set_exception(McpProtocolError(str(error.get("message", "MCP request failed"))))
-                continue
-            result = message.get("result", {})
-            if not isinstance(result, dict):
-                future.set_exception(McpProtocolError("MCP response result must be an object"))
-                continue
-            future.set_result(dict(result))
+                try:
+                    message = json.loads(line.decode("utf-8"))
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(message, dict):
+                    continue
+                method = message.get("method")
+                if method == "notifications/tools/list_changed":
+                    self._tool_list_changed = True
+                    continue
+                raw_id = message.get("id")
+                if not isinstance(raw_id, int):
+                    continue
+                future = self._pending.pop(raw_id, None)
+                if future is None or future.done():
+                    continue
+                error = message.get("error")
+                if isinstance(error, dict):
+                    future.set_exception(McpProtocolError(str(error.get("message", "MCP request failed"))))
+                    continue
+                result = message.get("result", {})
+                if not isinstance(result, dict):
+                    future.set_exception(McpProtocolError("MCP response result must be an object"))
+                    continue
+                future.set_result(dict(result))
+            except Exception:
+                logger.exception(_MALFORMED_STDOUT_LOG)
+                if future is None:
+                    self._fail_pending(_MALFORMED_STDOUT_FAILURE)
+                elif not future.done():
+                    future.set_exception(McpProtocolError(_MALFORMED_STDOUT_FAILURE))
 
     def _fail_pending(self, message: str) -> None:
         for future in self._pending.values():

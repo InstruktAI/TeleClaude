@@ -40,6 +40,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_ENVELOPE_DECODE_FAILED_MESSAGE = "Identity envelope decode failed; dropping"
+
 
 # Channel pattern subscribed via Redis pub/sub ``PSUBSCRIBE``.
 IDENTITY_PATTERN = "identity.*"
@@ -291,5 +293,8 @@ class IdentityBridge:
             envelope = decode_envelope(raw)
         except MalformedIdentityEnvelopeError as exc:
             logger.warning("Malformed identity envelope; dropping", error=str(exc))
+            return
+        except Exception:
+            logger.exception(_ENVELOPE_DECODE_FAILED_MESSAGE, payload_type=type(raw).__name__)
             return
         self.process_envelope(envelope)

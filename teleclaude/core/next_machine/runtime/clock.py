@@ -18,6 +18,7 @@ from teleclaude.events.wire import LegacyFacts
 logger = get_logger(__name__)
 
 _SCHEDULER_TICK_KEY = "scheduler.tick.minute"
+_TICK_FAILED_EVENT = "scheduler_tick_failed"
 
 
 def next_minute_delay(now: datetime | None = None) -> float:
@@ -48,20 +49,23 @@ class TaskScheduleClock:
                 continue
             ticked_at = datetime.now(UTC).replace(second=0, microsecond=0)
             tick_key = f"{_SCHEDULER_TICK_KEY}:{config.computer.name}:{ticked_at.isoformat()}"
-            await self._producer.emit(
-                SchedulerTickMinute(
-                    id=occurrence_id(tick_key),
-                    subject=ComputerRef(config.computer.name),
-                    home=EventHomeMarker.NONE,
-                    data=SchedulerTickData(computer=config.computer.name, ticked_at=ticked_at.isoformat()),
-                ),
-                LegacyFacts(
-                    producer="daemon",
-                    level=EventLevel.WORKFLOW,
-                    domain="sdlc",
-                    visibility=EventVisibility.CLUSTER,
-                    description="Lifecycle scheduler minute tick",
-                    idempotency_key=tick_key,
-                ),
-            )
-            logger.debug("scheduler minute tick emitted", ticked_at=ticked_at.isoformat())
+            try:
+                await self._producer.emit(
+                    SchedulerTickMinute(
+                        id=occurrence_id(tick_key),
+                        subject=ComputerRef(config.computer.name),
+                        home=EventHomeMarker.NONE,
+                        data=SchedulerTickData(computer=config.computer.name, ticked_at=ticked_at.isoformat()),
+                    ),
+                    LegacyFacts(
+                        producer="daemon",
+                        level=EventLevel.WORKFLOW,
+                        domain="sdlc",
+                        visibility=EventVisibility.CLUSTER,
+                        description="Lifecycle scheduler minute tick",
+                        idempotency_key=tick_key,
+                    ),
+                )
+                logger.debug("scheduler minute tick emitted", ticked_at=ticked_at.isoformat())
+            except Exception:
+                logger.exception(_TICK_FAILED_EVENT, tick_key=tick_key)

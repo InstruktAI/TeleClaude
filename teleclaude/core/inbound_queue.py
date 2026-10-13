@@ -43,6 +43,8 @@ _WORKER_CRASHED_EVENT = "inbound_worker_crashed"
 _WORKER_STARTING_EVENT = "inbound_worker_starting"
 _WORKER_DONE_EVENT = "inbound_worker_done"
 _ROW_CLAIM_FAILED_EVENT = "inbound_row_claim_failed"
+_WORKER_CLAIM_ERRORED_EVENT = "inbound_worker_claim_errored"
+_WORKER_DELIVERY_ERRORED_EVENT = "inbound_worker_delivery_errored"
 _ROW_DELIVERED_EVENT = "inbound_row_delivered"
 _ROW_EXPIRED_EVENT = "inbound_row_expired"
 _ROW_HOLD_NOTICE_FAILED_EVENT = "inbound_hold_expiry_notice_failed"
@@ -387,10 +389,15 @@ class InboundQueueManager:
             # zero units between deciding to claim and owning the claim.
             unit = drain.register(_INBOUND_DELIVERY_WORK)
             try:
-                step = await self._claim_next_row(session_id)
-            except BaseException:
-                unit.release()
-                raise
+                try:
+                    step = await self._claim_next_row(session_id)
+                except BaseException:
+                    unit.release()
+                    raise
+            except Exception:
+                logger.exception(_WORKER_CLAIM_ERRORED_EVENT, session_id=session_id)
+                await asyncio.sleep(_backoff_for_attempt(0))
+                continue
             if step.row is None:
                 unit.release()
                 if step.finished:
@@ -399,7 +406,11 @@ class InboundQueueManager:
                 if step.pause_s > _NO_WAIT_S:
                     await asyncio.sleep(step.pause_s)
                 continue
-            wait_s = await unit.carry(self._deliver_claimed_row(step.row, session_id))
+            try:
+                wait_s = await unit.carry(self._deliver_claimed_row(step.row, session_id))
+            except Exception:
+                logger.exception(_WORKER_DELIVERY_ERRORED_EVENT, session_id=session_id, inbound_row_id=step.row["id"])
+                wait_s = _backoff_for_attempt(0)
             if wait_s > _NO_WAIT_S:
                 await asyncio.sleep(wait_s)
 

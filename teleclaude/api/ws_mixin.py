@@ -57,6 +57,7 @@ _WEBSOCKET_INTERNAL_ERROR_CODE = 1011
 _REACH_RESOLUTION_CLOSE_FAILED = "Failed to close a websocket after reach resolution failed"
 _SNAPSHOT_FAILED_LOG = "Failed to project initial state for stream %s"
 _CONNECTED_LOG = "WebSocket client connected"
+_FRAME_PARSE_FAILED_LOG = "WebSocket frame could not be parsed; reading the next frame"
 _LEGACY_FRAME_IGNORED_LOG = "Ignoring subscription frame on a connection that declared its options"
 _LEGACY_FRAME_INVALID_LOG = "Invalid subscribe format: %s"
 _LEGACY_FRAME_TYPE_INVALID_LOG = "Subscribe type is not usable: %s"
@@ -156,7 +157,11 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             while True:
                 # Receive messages from client
                 message = await websocket.receive_text()
-                data_raw: object = json.loads(message)
+                try:
+                    data_raw: object = json.loads(message)
+                except Exception:
+                    logger.exception(_FRAME_PARSE_FAILED_LOG)
+                    continue
 
                 # Type guard: ensure data is a dict
                 if not isinstance(data_raw, dict):
