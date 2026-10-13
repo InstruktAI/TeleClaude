@@ -451,12 +451,13 @@ And a caller that terminates the daemon within the grace sees the ordinary stop 
 
 ```gherkin
 Given the daemon is running with admission open
-When a long-lived task that one of its capabilities depends on ends for any reason other than cancellation or the daemon's shutdown
-Then the daemon log records which task ended, how it ended, and for a failure its traceback
+And a human operator or an operating agent relies on a capability that a long-lived daemon task provides
+When that task ends for any reason other than cancellation or the daemon's shutdown
+Then the operator or agent reading the daemon log finds which task ended, how it ended, and for a failure its traceback
 And the task's supervisor starts a replacement after a backoff while the task's bounded restart budget lasts
 And when the task cannot be replaced in place, or its restart budget is exhausted, the daemon log records the escalation and the daemon completes its ordinary shutdown
 And the service manager relaunches the service on its installed code
-And the capability that task provides never stays silently absent while the daemon reports itself healthy
+And the operator or agent never finds the capability silently absent while the daemon reports itself healthy
 ```
 
 <!-- /planned:supervise-long-lived-daemon-tasks -->
