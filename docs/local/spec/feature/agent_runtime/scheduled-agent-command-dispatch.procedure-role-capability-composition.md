@@ -17,9 +17,7 @@ creates the session carrying the role that procedure declares, with the job
 name as its instance identity and the open run correlated to the session. The
 boundary hands the declaration's agent preference list and thinking mode to
 dispatch as the candidate order and mode; it never fixes one agent and never
-unions the declaration with the procedure's own dispatch defaults. The brief
-the session reads is the procedure's complete closure together with the
-outcome-reporting instructions a job entry implies. Session bootstrap then
+unions the declaration with the procedure's own dispatch defaults. The brief the session reads is the procedure's complete closure together with `general/procedure/scheduled-job-run`, the close-out a job entry adds as its required read. Session bootstrap then
 issues the job session's system-principal credential through the standard
 identity lifecycle, and the session is standing whatever its role.
 
@@ -48,7 +46,7 @@ And session bootstrap issues the session's system-principal credential
 Given a configured agent job is dispatched to any enabled agent runtime
 When the new session receives its first instruction
 Then the instruction is the loader naming the materialized brief for the job's procedure
-And the brief identifies the job by its declared name and carries the reporting instructions a job entry implies
+And the brief identifies the job by its declared name and carries `general/procedure/scheduled-job-run` as the job entry's required read
 And the runtime does not receive an unrecognized native command
 ```
 

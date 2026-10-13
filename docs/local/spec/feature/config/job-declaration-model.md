@@ -179,7 +179,7 @@ And no agent session can be dispatched for it
 
 <!-- planned:procedure-role-capability-composition -->
 
-#### UC-JDM-23: A job's pointer must name a usable entry procedure
+#### UC-JDM-25: A job's pointer must name a usable entry procedure
 
 ```
 Given a job declaration whose `job` pointer names a delivered procedure that the context does not publish as a usable entry procedure

@@ -57,7 +57,7 @@ persisted invocation.
 : The procedure ID, the bound parameters, the raw argument text, the entry context, and the brief reference, persisted on the session's launch state.
 
 **Brief**
-: The one artifact the loader names: the role's framing line, the parameter preamble, the procedure's required-read closure, the entry type's required reads, and additional context once. It carries no command listing of its own; what commands the session reaches is the role catalog's decision, and a role-scoped command surface in the brief is a separate delivery (`local/projects/teleclaude/spec/feature/identity/agent-roles`, Known caveats).
+: The one artifact the loader names: the role's framing line, the parameter preamble, the procedure's required-read closure, the entry type's required reads — `general/procedure/scheduled-job-run` for a scheduled job, the event-handling closure the delivery settings imply for an activation — and additional context once. It carries no command listing of its own; what commands the session reaches is the role catalog's decision, and a role-scoped command surface in the brief is a separate delivery (`local/projects/teleclaude/spec/feature/identity/agent-roles`, Known caveats).
 
 **Entry context**
 : What the entry type supplies beside the arguments — a job's name, an activation's home, subject, attendance and delivery settings.
@@ -92,7 +92,7 @@ Given a configured agent job whose `job` pointer names an entry procedure
 When the job is due and the runner dispatches it
 Then the session carries the role that procedure declares
 And `job` records the configured job name and the open run is correlated to the session
-And the brief includes the outcome-reporting instructions a job entry implies
+And the brief includes `general/procedure/scheduled-job-run`, the close-out a job entry implies
 And the agent candidates and thinking mode are the job declaration's
 ```
 
