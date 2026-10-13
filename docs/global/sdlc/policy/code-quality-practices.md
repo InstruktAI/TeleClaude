@@ -88,7 +88,7 @@ visibility: 'public'
 
 Apply the code-quality policy and design principles consistently in daily work. Named principles provide shared vocabulary for structural reasoning; these rules translate them into concrete habits.
 
-Specific catches keep an operation's recovery honest: code handles only the failures it understands, and the rest surface where they can be diagnosed. A supervision boundary is where that surfacing happens, so its catch is complete. A boundary that catches a closed list holds only for the failure types that existed when the list was written; the first new type ends the loop, and every later unit — each with its own caller — goes unserved while the process still looks alive. A dead task inside a live process is invisible to the service manager that would otherwise restart it, which is why a long-lived task needs its own supervisor.
+A loop that serves independent callers shares its fate across all of them: whatever ends it denies service to every later caller while the process still looks alive. A closed list of failure types reflects only the types that existed when it was written, so a loop guarded by one stays available only as long as no code it runs ever gains a new failure type. A task that has died inside a live process is invisible to the service manager that would otherwise restart it.
 
 ## Scope
 
