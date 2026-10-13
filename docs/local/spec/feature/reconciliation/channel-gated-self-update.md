@@ -22,15 +22,7 @@ The behavioral contract for how an installation keeps its own running version cu
 - **alpha** — converges to the newest mainline code on every change to the main line. Latest, least vetted.
 - **beta** — converges on every published release. Tagged releases only.
 
-<!-- planned-change:semver-compatible-releases -->
-
-- **stable** — converges only to releases within its declared pinned minor series (`major.minor`). Releases outside that series are ignored until the owner re-pins.
-
-<!-- change:semver-compatible-releases -->
-
 - **stable** — converges to later published releases within the selected compatibility series: the same minor while the major is zero, and the same major from 1.0 onward. Crossing that boundary requires explicit enrollment in the next series. Configuration owns the series declaration (`local/projects/teleclaude/spec/feature/config/stable-channel-pinning-rule`); release classification owns the compatibility promise (`local/projects/teleclaude/spec/release-inspector-prompt`).
-
-<!-- /planned-change:semver-compatible-releases -->
 
 ### Use cases
 
@@ -54,21 +46,6 @@ And mainline changes that are not published releases do NOT trigger convergence
 And it returns to a healthy running state on the release
 ```
 
-<!-- planned-change:semver-compatible-releases -->
-
-#### UC-CSU-3: Stable converges only within its pinned minor
-
-```gherkin
-Given an installation is enrolled on the stable channel with pinned minor 1.2
-When release 1.2.5 is published
-Then the installation converges to 1.2.5
-But when release 1.3.0 is published
-Then the installation does NOT converge to it
-And remains on its current 1.2.x version until the owner re-pins
-```
-
-<!-- change:semver-compatible-releases -->
-
 #### UC-CSU-3: Stable converges within its selected compatibility series
 
 ```gherkin
@@ -86,8 +63,6 @@ Scenario Outline: A stable installation admits a published release
     | 1.8.3     | 1      | 2.0.0     | retain the installed release       |
     | 2.3.1     | 2      | 2.4.0     | advance to the candidate           |
 ```
-
-<!-- /planned-change:semver-compatible-releases -->
 
 #### UC-CSU-4: A target version is applied at most once
 
@@ -166,15 +141,7 @@ And completion awaits the assessment of the actual running revision
 - Owned by `reconciliation` (`@docs/local/spec/domain/reconciliation.md`); the version-convergence concern of that context.
 - The release/version signal is supplied by `integration` via the single-ingress relay (`@docs/local/spec/feature/integration/single-ingress-webhook-termination.md`).
 
-<!-- planned-change:semver-compatible-releases -->
-
-- Channel and pinned-minor inputs come from `config`.
-
-<!-- change:semver-compatible-releases -->
-
 - Channel and compatibility-series inputs come from `config`.
-
-<!-- /planned-change:semver-compatible-releases -->
 
 - Behaviour across a mixed-version fleet is governed by `@docs/local/spec/feature/reconciliation/fleet-cross-version-interop.md`.
 

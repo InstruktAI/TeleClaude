@@ -53,8 +53,6 @@ no-change and no-release outcomes finish successfully before candidate creation.
 Automatic assessment requires a completed baseline. The workflow declaration
 owns the dispatch inputs and activation settings.
 
-<!-- planned:semver-compatible-releases -->
-
 ### Compatibility-aware version decisions
 
 Automatic version selection consumes the classification vocabulary and regimes
@@ -65,7 +63,6 @@ fails the attempt; it is never reduced to a smaller release tier. Existing
 published evidence retains its original decision and immutable candidate under
 `sdlc/policy/backward-compatibility-hygiene`. Candidate proof and publication
 requirements apply unchanged to every selected tier.
-<!-- /planned:semver-compatible-releases -->
 
 ### Inspector
 

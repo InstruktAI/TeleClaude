@@ -10,16 +10,8 @@ visibility: internal
 The selected release inspector independently judges actual changes between a
 published baseline and a captured source revision.
 
-<!-- planned-change:semver-compatible-releases -->
-
-It applies the project's
-pre-major classification policy and produces the report consumed by release
-publication.
-<!-- change:semver-compatible-releases -->
-
 It applies the classification regime of the released baseline and produces the
 report consumed by release publication.
-<!-- /planned-change:semver-compatible-releases -->
 
 Provider selection belongs to
 `local/projects/teleclaude/spec/feature/release/publication`.
@@ -47,15 +39,6 @@ assessment completed; missing coverage is never represented as a clean decision.
 
 ### Classification policy
 
-<!-- planned-change:semver-compatible-releases -->
-
-- A public CLI, event, or configuration surface addition, modification, or removal
-  receives a minor classification under the pre-major version policy.
-- Functional changes confined to internal behavior receive a patch classification.
-- An interval with no functional or public-contract changes receives no release.
-
-<!-- change:semver-compatible-releases -->
-
 - The released baseline's major version selects the classification regime.
 - Before 1.0, a public-contract addition or change receives minor classification;
   patches preserve existing public behavior. This patch compatibility is the
@@ -74,7 +57,6 @@ The classifier examines the supported public behavior and its consumers, not
 only a declaration inventory (`general/principle/grounding`). The chosen version
 and stable update eligibility express the same compatibility boundary under
 `local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`.
-<!-- /planned-change:semver-compatible-releases -->
 
 The inspector reads source behavior and relevant consumers when the manifests
 alone do not establish impact. Purely generated release metadata is accounted for
@@ -100,18 +82,9 @@ Unresolved required implications retain the existing incomplete-report outcome.
 Completeness concerns the version decision and its breaking/upgrade implications,
 grounded through relevant changed source and consumer reads.
 
-<!-- planned-change:semver-compatible-releases -->
-
-A verified public
-change establishes minor under this pre-major policy, but the minor ceiling and
-unchanged manifest declarations do not establish absence of breaking behavior or
-upgrade requirements.
-<!-- change:semver-compatible-releases -->
-
 A verified public change establishes a release need. Its compatibility and the
 baseline's version regime determine the tier; unchanged manifest declarations
 establish neither compatibility nor absence of upgrade requirements.
-<!-- /planned-change:semver-compatible-releases -->
 
 Resolve decision-relevant semantic uncertainty rather than
 inferring compatibility from declarations alone.

@@ -25,16 +25,6 @@ itself on the newest release for its channel without a manual command.
 
 Each computer declares a channel in `config.yml`:
 
-<!-- planned-change:semver-compatible-releases -->
-
-| Channel  | Trigger                            | Notes                             |
-| -------- | ---------------------------------- | --------------------------------- |
-| `alpha`  | Every push to `main`               | Latest code, may be unstable      |
-| `beta`   | GitHub release published           | Tagged releases only              |
-| `stable` | Release within pinned minor series | Requires `pinned_minor` in config |
-
-<!-- change:semver-compatible-releases -->
-
 | Channel  | Trigger                                 | Notes                                    |
 | -------- | --------------------------------------- | ---------------------------------------- |
 | `alpha`  | Every push to `main`                    | Latest code, may be unstable             |
@@ -45,8 +35,6 @@ The stable series declaration is owned by
 `local/projects/teleclaude/spec/feature/config/stable-channel-pinning-rule`, and
 which releases a series admits by
 `local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`.
-
-<!-- /planned-change:semver-compatible-releases -->
 
 ### The ingress terminates external webhooks for the cluster
 
