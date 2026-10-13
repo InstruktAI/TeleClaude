@@ -319,6 +319,8 @@ But a reference naming that domain's generated baseline bundle resolves against 
 And its absence before first deployment is not a finding
 ```
 
+<!-- planned-change:release-tag-checkout-activation -->
+
 #### UC-SPO34: Installation publishes the commit it installed
 
 ```gherkin
@@ -329,6 +331,39 @@ And a home that already records that commit is left unchanged
 And a deployed generation from a different commit is replaced by the installed commit's
 And the installer is told whether that home was published, already current, or skipped with its build error
 ```
+
+<!-- change:release-tag-checkout-activation -->
+
+#### UC-SPO34: Installed publication uses the selected commit
+
+```gherkin
+Scenario: The installer publishes its installed commit
+Given a checkout whose installed commit is a release tag, or the tip of its main branch
+When the full installer publishes the installed checkout's home
+Then the deployed documentation and agent artifacts are those committed at the installed commit
+And a home that already records that commit is left unchanged
+And a deployed generation from a different commit is replaced by the installed commit's
+And the installer is told whether that home was published, already current, or skipped with its build error
+```
+
+```gherkin
+Scenario Outline: Release publication uses installed source through each entry point
+Given an operator's release installation selects a committed release
+And its local main branch points to a different revision
+When <entry_point> publishes the installed checkout's home
+Then deployed documentation and agent artifacts come from the selected installed commit
+And the different main source does not appear in those outputs
+And the invoking operation receives the home's publication outcome
+
+Examples:
+| entry_point |
+| activation maintenance |
+| a recorded activation replay |
+| on-demand maintenance |
+| local catalog refresh |
+```
+
+<!-- /planned-change:release-tag-checkout-activation -->
 
 #### UC-SPO29: telec sync refuses outside a home
 

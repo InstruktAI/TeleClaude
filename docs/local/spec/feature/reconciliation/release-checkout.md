@@ -94,14 +94,8 @@ And the channel-owned activation completes
 Then the installed checkout remains in detached HEAD
 ```
 
-#### UC-RC4: Installed maintenance uses the selected source
-
-```gherkin
-Given an operator's release installation has a local main branch at another revision
-When maintenance or a recorded activation replay publishes its installed artifacts
-Then those artifacts come from the selected installed activation
-And the local main branch's different source is not activated
-```
+Installed publication behavior is owned by UC-SPO34 in
+`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`.
 
 #### UC-RC5: Conflicting local work survives a refused transition
 
