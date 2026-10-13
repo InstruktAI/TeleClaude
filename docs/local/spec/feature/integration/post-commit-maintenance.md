@@ -53,10 +53,26 @@ contract governs only what happens when maintenance runs.
   and recovery are owned by `sdlc/spec/codebase-blueprint` and realized by
   `local/projects/teleclaude/spec/feature/workflow/blueprint-freshness`.
 
+<!-- planned-change:release-tag-checkout-activation -->
+
 - **Location.** Maintenance performs the owed `main_only` actions only from the
   canonical checkout on the main branch. The integration worktree may create the
   delivered commit, but only canonical main's activation range executes
   maintenance; a commit or merge elsewhere performs none.
+
+<!-- change:release-tag-checkout-activation -->
+
+- **Location.** Maintenance performs the owed `main_only` actions from canonical
+  main, or from the installed release checkout identified by reconciliation
+  under `local/projects/teleclaude/spec/feature/reconciliation/release-checkout`.
+  An admitted installed-source transition records its immutable before and after
+  revisions through the same activation boundary. A detached development clone
+  or integration worktree gains no eligibility from its branch posture.
+  The integration worktree can create a delivery, but its commits and merges
+  perform no installed maintenance.
+
+<!-- /planned-change:release-tag-checkout-activation -->
+
 - **Reporting.** Every attempt and every outcome is emitted through the
   structured logging boundary, carrying the commit, the resolved action set,
   and each action's result. The record, not an inference over a transcript, is
@@ -76,12 +92,28 @@ contract governs only what happens when maintenance runs.
   begins. A failing action is reported and the remaining actions still run;
   no failure withdraws, amends, or blocks the commit.
 
+<!-- planned-change:release-tag-checkout-activation -->
+
 - **Committed source.** A publication action is selected by its recorded range
   and publishes the homes that range touched at the repository's committed
   `main` tip, read under publication serialization
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
   Every other repository remains at its previously activated revision until its
   own maintenance or `telec sync` runs. Working-tree files are never inputs.
+
+<!-- change:release-tag-checkout-activation -->
+
+- **Committed source.** A publication action is selected by its recorded range
+  and consumes the committed-source selection owned by
+  `local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`:
+  canonical-main publication reads the committed main tip, while installed
+  release publication reads the selected installed commit. Every other
+  repository remains at its previously activated revision until its own
+  maintenance or `telec sync` runs. Working-tree files are never inputs.
+
+<!-- /planned-change:release-tag-checkout-activation -->
+
+<!-- planned-change:release-tag-checkout-activation -->
 
 - **Recovery.** A failed action is replayed through this executor for its
   original recorded range and action id, with the same attempt and outcome
@@ -90,6 +122,19 @@ contract governs only what happens when maintenance runs.
   recorded, or maintenance did not run or left a root unconverged, `telec sync`
   in the affected root performs that root's maintenance on demand through this
   executor (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`).
+
+<!-- change:release-tag-checkout-activation -->
+
+- **Recovery.** A failed action is replayed through this executor for its
+  original recorded range and action id, with the same attempt and outcome
+  records as the first run. Publication uses the current committed source
+  selected for that checkout, never its working tree or a different checkout's
+  branch. Where no action was recorded, or maintenance did not run or left a root
+  unconverged, `telec sync` in the affected root performs that root's maintenance
+  on demand through this executor
+  (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`).
+
+<!-- /planned-change:release-tag-checkout-activation -->
 
 - **Absence.** A commit made where the hook is not installed performs no
   maintenance and raises no signal. Nothing detects that absence here:

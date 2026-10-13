@@ -52,10 +52,25 @@ project that did not declare it.
   and only of that project. An event whose home is another home, or that has no
   home, selects no project's event binding. Routing reads only the event's type
   and home; the event's data is never consulted to select a binding.
+
+<!-- planned-change:release-tag-checkout-activation -->
+
 - **Where it runs.** Every computer on which the project has a registered
   canonical checkout performs the selected actions in that checkout, on its main
   branch, whichever computer the event originated on. A computer without such a
   checkout performs nothing. A worktree never performs event-bound maintenance.
+
+<!-- change:release-tag-checkout-activation -->
+
+- **Where it runs.** Every computer holding the project's registered canonical
+  checkout performs the selected actions there, whichever computer the event
+  originated on. Eligibility follows the maintenance location contract in
+  `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`,
+  including the installed release checkout. A computer without an eligible
+  checkout performs nothing. A worktree never performs event-bound maintenance.
+
+<!-- /planned-change:release-tag-checkout-activation -->
+
 - **What an action receives.** A command may name `{event_file}`, a file holding
   the whole event as the platform recorded it: its id, type, time, origin, home
   and data. It may also name `{event_type}` and `{event_id}`. The event's data

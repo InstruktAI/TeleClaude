@@ -117,6 +117,22 @@ on-demand publication retain the installed generation. Other projects retain
 their existing activated generations.
 <!-- /planned:release-development-checkouts -->
 
+<!-- planned:release-tag-checkout-activation -->
+
+### Installed release publication
+
+For the installed release checkout identified by
+`local/projects/teleclaude/spec/feature/reconciliation/release-checkout`, all
+three entry points select the installed commit under publication serialization.
+The canonical-main source and location rules above apply to other eligible
+checkouts. A replay retains its original range for selecting touched homes, and
+publishes the currently selected installed source; it does not reinstall an
+older release or read a different local main tip. The installed commit's
+identity is checked again before distribution. If source selection changed,
+publication reports the conflict and leaves that attempt incomplete.
+
+<!-- /planned:release-tag-checkout-activation -->
+
 ## Canonical fields
 
 Each per-project publication phase runs only when the committed declaration
