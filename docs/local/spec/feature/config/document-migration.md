@@ -88,8 +88,9 @@ document at a version the running daemon cannot read
 run reads the migration reach the running daemon reports. A daemon that
 reports a lower reach, reports none, or listens without answering within a
 bounded wait withholds the whole run: no document is stored, no retirement
-runs, and every document the run covers is recorded as withheld, naming the
-daemon's reach and the current version. When no daemon listens, the run
+runs, and every document the run covers, other than one whose source the run
+retains, is recorded as withheld, naming the daemon's reach and the current
+version. When no daemon listens, the run
 proceeds. Installation continues past a withheld run, reading the documents as
 stored through the in-memory migration, and a later migration run stores them.
 
@@ -420,10 +421,10 @@ And reading it with the same installed schema requires no version conversion
 
 ```gherkin
 Given the running daemon reports a migration reach below the current version
-And a document the tier registries name is at an older version
+And the machine configuration is at an older version
 When maintenance or installation runs a migration run
-Then the stored document is byte-identical before and after the run
-And an agent reading the structured records observes that document as withheld, naming the daemon's reach and the current version
+Then the stored machine configuration is byte-identical before and after the run
+And an agent reading the structured records observes it as withheld, naming the daemon's reach and the current version
 ```
 
 <!-- /planned:config-migration-before-runtime-replacement -->
