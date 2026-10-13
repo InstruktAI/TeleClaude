@@ -57,11 +57,12 @@ resolved for its caller (§6):
   legacy projection (`local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`)
   for computers that read only the older name; neither is authority for
   anything beyond the carried identity.
-  A carried identity that names a session and carries no `x-caller-role` is
-  resolved from the receiving daemon's own record of that session, never from
-  `x-caller-system-role`, which is read for provenance alone; one naming no
-  session and carrying only a legacy role is refused before the act. An
-  absent `x-caller-role` never makes a caller roleless.
+  No receiver interprets an absent `x-caller-role`: within one computer the CLI
+  and the daemon are one installation, so a local carried identity always
+  carries it, and across computers only the principal crosses as authority
+  (`local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`).
+  A legacy `x-caller-system-role` is read for provenance alone, and the daemon
+  takes carried identity as given, with no confirming lookup, as §2 states.
 
 <!-- /planned-change:procedure-role-capability-composition -->
 
