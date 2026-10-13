@@ -59,8 +59,9 @@ reference resolves unchanged.
 
 ```gherkin
 Scenario Outline: A reference to something registered here resolves
-  Given a <referent> registered on this computer
-  When a declaration or request names it by slug
+  Given an agent session or a human operator working against this computer
+  And a <referent> registered on this computer
+  When their declaration or request names it by slug
   Then it resolves to that referent's record on this computer
   And no other computer is consulted
 
@@ -76,10 +77,11 @@ Scenario Outline: A reference to something registered here resolves
 
 ```gherkin
 Scenario Outline: A reference to something not registered here is refused
-  Given a well-formed slug that names no <referent> registered on this computer
-  When a declaration or request names it
-  Then the referrer is refused rather than given a partial or substituted record
-  And the refusal names the kind and slug, the computer that answered, and how to register that kind there
+  Given an agent session or a human operator working against this computer
+  And a well-formed slug that names no <referent> registered on this computer
+  When their declaration or request names it
+  Then they are refused rather than given a partial or substituted record
+  And the refusal they read names the kind and slug, the computer that answered, and how to register that kind there
   And the refusal does not present the reference as malformed
 
   Examples:
@@ -93,9 +95,9 @@ Scenario Outline: A reference to something not registered here is refused
 #### UC-CFG-REF3: Registering the referent makes the same reference resolve
 
 ```gherkin
-Given a reference that was refused because its referent was not registered on this computer
+Given an agent session or a human operator whose reference was refused because its referent was not registered on this computer
 And the referent has since been registered here through the surface the refusal named
-When the same reference, unchanged, is resolved again
+When they resolve the same reference, unchanged
 Then it resolves to the referent's record
 ```
 
