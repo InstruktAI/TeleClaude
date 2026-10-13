@@ -78,7 +78,7 @@ work input.
 When the state machine instructs a dispatch, select `--mode`:
 
 - **Builders and fixers**: `med` (well specced out plan should not require slow mode).
-- **Reviewers**: `med`. A lifecycle build review is not a doc-snippet-only review.
+- **Reviewers**: `slow|med`. A lifecycle build review is not a doc-snippet-only review.
 - **Finalizers**: `fast`.
 
 ### 2. Build
