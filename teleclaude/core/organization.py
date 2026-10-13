@@ -24,7 +24,10 @@ from teleclaude.config.loader import (
     load_global_config,
     load_person_config_for_entry,
 )
+from teleclaude.config.referents import ReferentKind, unregistered_referent
+from teleclaude.config.registered_homes import registered_home_folder
 from teleclaude.config.schema import PersonConfig
+from teleclaude.config_subjects import ConfigSubjectKind
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.endpoints import DeskIdentifier
 from teleclaude.core.models import HelpDeskKind
@@ -39,8 +42,7 @@ logger = get_logger(__name__)
 _ORGANIZATION_RESOLVED_EVENT = "organization_resolved"
 _ORGANIZATION_STALE_ASSIGNMENT_EVENT = "organization_stale_assignment"
 _ROSTER_PERSON_UNREADABLE_EVENT = "roster_person_config_unreadable"
-_UNKNOWN_DESK_COMPANY_MESSAGE = "A help desk names company {slug}, which no declaration answers for."
-_UNKNOWN_DESK_PROJECT_MESSAGE = "A help desk names project {slug}, which no declaration answers for."
+_REFUSED_SELECTION_DETAIL = "{outcome}: {company}"
 
 
 @dataclass(frozen=True)
@@ -193,7 +195,7 @@ def _company_roster(company_slug: str) -> set[str]:
     """Everyone on a company's roster, admins and members alike; raises when the company is unknown."""
     declaration = find_company_config_path(company_slug)
     if declaration is None:
-        raise UnknownDeskScopeError(_UNKNOWN_DESK_COMPANY_MESSAGE.format(slug=company_slug))
+        raise UnknownDeskScopeError(str(unregistered_referent(ReferentKind.COMPANY, company_slug)))
     return set(load_company_config(declaration).members)
 
 
@@ -208,7 +210,7 @@ def _project_desk_owner_people(project_slug: str) -> set[str]:
     """The people who own one project's desk through its declared owner; raises when the project is unknown."""
     project = get_project_catalog_service().get_by_slug(project_slug)
     if project is None:
-        raise UnknownDeskScopeError(_UNKNOWN_DESK_PROJECT_MESSAGE.format(slug=project_slug))
+        raise UnknownDeskScopeError(str(unregistered_referent(ReferentKind.PROJECT, project_slug)))
     owner = project_owner_identity(project.config.company, project.config.person)
     if owner is None:
         return set()
@@ -295,7 +297,7 @@ class CompanySelectionRefused(Exception):
         self.outcome = outcome
         self.company = company
         self.eligible = eligible
-        super().__init__(f"{outcome.value}: {company}")
+        super().__init__(_REFUSED_SELECTION_DETAIL.format(outcome=outcome.value, company=company))
 
 
 def resolve_company_selection(company: str, human_email: str | None) -> CompanySelection:
@@ -308,7 +310,7 @@ def resolve_company_selection(company: str, human_email: str | None) -> CompanyS
     memberships and is refused as not_member rather than downgraded to the
     existence-only path.
     """
-    if find_company_config_path(company) is None:
+    if registered_home_folder(ConfigSubjectKind.COMPANY, company) is None:
         return CompanySelection(outcome=CompanySelectionOutcome.UNKNOWN_COMPANY, company=None)
     if not human_email:
         return CompanySelection(outcome=CompanySelectionOutcome.ACCEPTED, company=company)

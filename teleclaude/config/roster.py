@@ -9,6 +9,7 @@ from enum import StrEnum
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.schema import CompanyConfig
 from teleclaude.services.project_catalog import get_project_catalog_service
 
@@ -29,6 +30,13 @@ class RosterRefusal(StrEnum):
     CONTRADICTORY_DELTA = "contradictory_delta"
 
 
+_REFERENT_BY_UNKNOWN_REFUSAL: dict[RosterRefusal, ReferentKind] = {
+    RosterRefusal.UNKNOWN_PERSON: ReferentKind.PERSON,
+    RosterRefusal.UNKNOWN_COMPANY: ReferentKind.COMPANY,
+    RosterRefusal.UNKNOWN_PROJECT: ReferentKind.PROJECT,
+}
+
+
 class RosterWriteKind(StrEnum):
     """The primary roster operation represented in an observation."""
 
@@ -47,12 +55,20 @@ class RosterWriteOutcome(StrEnum):
 
 
 class RosterRefused(ValueError):
-    """A typed roster rejection carrying its reason and referent."""
+    """A typed roster rejection carrying its reason and referent.
+
+    A reason that means the referent is not registered here carries the
+    configuration owner's refusal as its message.
+    """
 
     def __init__(self, reason: RosterRefusal, referent: str) -> None:
         self.reason = reason
         self.referent = referent
-        super().__init__(_REFUSAL_TEMPLATE.format(reason.value, referent))
+        kind = _REFERENT_BY_UNKNOWN_REFUSAL.get(reason)
+        if kind is None:
+            super().__init__(_REFUSAL_TEMPLATE.format(reason.value, referent))
+        else:
+            super().__init__(str(unregistered_referent(kind, referent)))
 
 
 @dataclass(frozen=True)

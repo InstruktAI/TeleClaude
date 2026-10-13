@@ -3,6 +3,7 @@
 from fastapi import HTTPException
 
 from teleclaude.api.work_feedback import DeclaredWorkRefusal
+from teleclaude.config.referents import UnregisteredReferentError
 from teleclaude.core.agent_dispatch import (
     AgentDispatchFailure,
     AgentDispatchOutcome,
@@ -66,6 +67,9 @@ def agent_dispatch_http_refusal(error: Exception) -> HTTPException | None:
         detail = _STARTUP_MESSAGE_DETAIL_TEMPLATE.format(error=error)
         return DeclaredWorkRefusal(status_code=400, detail=detail, work_feedback=detail)
     if isinstance(error, WorkingDirectoryUnavailableError):
+        detail = str(error)
+        return DeclaredWorkRefusal(status_code=400, detail=detail, work_feedback=detail)
+    if isinstance(error, UnregisteredReferentError):
         detail = str(error)
         return DeclaredWorkRefusal(status_code=400, detail=detail, work_feedback=detail)
     return None

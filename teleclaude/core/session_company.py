@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.core.organization import CompanySelectionOutcome, CompanySelectionRefused, resolve_company_selection
 
 logger = get_logger(__name__)
@@ -23,14 +24,17 @@ def resolve_session_creation_company(
     """Validate an explicit company selection, or inherit the parent's.
 
     Returns ``(company, source)`` where source is ``selected``, ``inherited``,
-    or ``none``. Raises ``CompanySelectionRefused``, having logged the
-    refusal, when an explicit selection fails existence or membership
-    validation.
+    or ``none``. Having logged the refusal, raises config's
+    ``UnregisteredReferentError`` when an explicit selection names a company
+    this computer has not registered, and ``CompanySelectionRefused`` when it
+    fails membership validation.
     """
     if company:
         selection = resolve_company_selection(company, human_email)
         if selection.outcome is not CompanySelectionOutcome.ACCEPTED:
             logger.info(_SESSION_COMPANY_REFUSED_EVENT, request_id=request_id, reason=selection.outcome.value)
+            if selection.outcome is CompanySelectionOutcome.UNKNOWN_COMPANY:
+                raise unregistered_referent(ReferentKind.COMPANY, company)
             raise CompanySelectionRefused(selection.outcome, company, selection.eligible)
         return company, "selected"
     if parent_company:

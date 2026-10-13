@@ -17,6 +17,7 @@ from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
 from teleclaude.config.machine import config
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.core.todos_db_path import todos_db_path
 from teleclaude.services.project_catalog.service import get_project_catalog_service
 from teleclaude.slug import validate_slug
@@ -50,7 +51,6 @@ _INVALID_PROJECT_SLUG: Final[str] = "project slug must be an unpadded lowercase 
 _TRANSFERRED_DETAIL: Final[str] = "copy verified intact"
 _SELF_TARGET_DETAIL: Final[str] = "target is this computer"
 _LOCAL_TOOL_MISSING: Final[str] = "sqlite3_rsync is missing; run make install on this computer"
-_LOCAL_PROJECT_MISSING: Final[str] = "project is not registered on this computer"
 _LOCAL_DATABASE_MISSING: Final[str] = "project todo database is missing on this computer"
 _REMOTE_PROJECT_MISSING: Final[str] = "target checkout is absent"
 _REMOTE_HELPER_FAILURE: Final[str] = "target could not run the todo sync helper; update TeleClaude on the target"
@@ -142,7 +142,7 @@ async def transfer_todo_state(project_slugs: list[str], computers: list[str]) ->
     for project_slug in project_slugs:
         node = catalog.get_by_slug(project_slug)
         if node is None:
-            local_databases[project_slug] = (None, _LOCAL_PROJECT_MISSING)
+            local_databases[project_slug] = (None, str(unregistered_referent(ReferentKind.PROJECT, project_slug)))
             continue
         try:
             database_path = todos_db_path(node.root)
@@ -222,7 +222,7 @@ def locate_todo_database(project_slug: str) -> LocateResult:
     validate_slug(project_slug)
     node = get_project_catalog_service().get_by_slug(project_slug)
     if node is None:
-        return LocateResult(LocateStatus.ABSENT, None, _LOCAL_PROJECT_MISSING)
+        return LocateResult(LocateStatus.ABSENT, None, str(unregistered_referent(ReferentKind.PROJECT, project_slug)))
     try:
         database_path = todos_db_path(node.root)
     except FileNotFoundError as error:

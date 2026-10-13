@@ -18,6 +18,7 @@ from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import BUGS_LIST, BUGS_REPORT, BUGS_SUPPRESS, BUGS_SUPPRESSIONS, BUGS_UNSUPPRESS
 from teleclaude.cli.telec.surface_types import CommandAuth
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_roots
 from teleclaude.services.log_bug_hunter_suppressions import (
     Disposition,
@@ -60,7 +61,7 @@ _UNEXPECTED_RESPONSE = "unexpected bugs response: {answer}"
 _BUGS_SUPPRESS_PATH = "bugs suppress"
 _BUGS_SUPPRESSIONS_PATH = "bugs suppressions"
 _BUGS_UNSUPPRESS_PATH = "bugs unsuppress"
-_UNKNOWN_PROJECT_MESSAGE = "Unknown project '{name}'. Must be one of:"
+_REGISTERED_PROJECTS_HEADING = "Registered projects:"
 _UNKNOWN_PROJECT_IDENTITY_ROW = "  - {identity}"
 _BUG_FILING_GATE = (
     "Nothing was filed. Face these before this bug enters the pipeline (bug-kind\n"
@@ -132,7 +133,8 @@ def _resolve_project_by_name(name: str, command_path: str) -> Path:
 
     require_cli_clearance(command_path, auth=_command_auth(command_path), role_target=Platform())
     available = sorted({project.slug for project in projects})
-    print(_UNKNOWN_PROJECT_MESSAGE.format(name=name))
+    print(unregistered_referent(ReferentKind.PROJECT, name))
+    print(_REGISTERED_PROJECTS_HEADING)
     for identity in available:
         print(_UNKNOWN_PROJECT_IDENTITY_ROW.format(identity=identity))
     raise SystemExit(1)

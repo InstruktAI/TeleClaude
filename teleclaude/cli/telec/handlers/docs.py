@@ -17,10 +17,12 @@ from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import DOCS_GET, DOCS_INDEX
 from teleclaude.config.loader import load_app_config
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.schema import ConfigKind
 from teleclaude.context_selector import ActivationClosureError, DocsSelectionError, build_context_output
 from teleclaude.project_root import resolve_invocation_roots
 from teleclaude.snippet_scope import SnippetScope
+from teleclaude.snippet_validation import names_unregistered_domain
 
 __all__ = [
     "_handle_docs",
@@ -137,8 +139,13 @@ def _parse_domains(value: str, subcommand: str) -> list[str]:
     valid = valid_domains()
     invalid = [d for d in requested if d not in valid]
     if invalid:
-        valid_list = ", ".join(sorted(valid)) or "(none registered)"
-        print(f"Invalid --domains value(s): {', '.join(invalid)}. Valid domains: {valid_list}.")
+        unregistered = [d for d in invalid if names_unregistered_domain(d)]
+        malformed = [d for d in invalid if d not in unregistered]
+        for domain in unregistered:
+            print(unregistered_referent(ReferentKind.DOMAIN, domain))
+        if malformed:
+            valid_list = ", ".join(sorted(valid)) or "(none registered)"
+            print(f"Invalid --domains value(s): {', '.join(malformed)}. Valid domains: {valid_list}.")
         print(_usage("docs", subcommand))
         raise SystemExit(1)
     return requested

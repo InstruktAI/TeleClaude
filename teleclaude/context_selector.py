@@ -13,6 +13,7 @@ import yaml
 from instrukt_ai_logging import get_logger
 
 from teleclaude.caller_identity import CliCaller, PersonCliCaller, SystemCliCaller
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.schema import AppConfig, ConfigKind
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
@@ -47,11 +48,13 @@ from teleclaude.snippet_scope import (
     parse_home_snippet_id,
 )
 from teleclaude.snippet_validation import (
+    ALLOWED_TAXONOMIES,
     SnippetClassification,
     SnippetScope,
     companion_slug,
     derive_snippet_classification,
     load_domains,
+    names_unregistered_domain,
     tier_root_kind,
 )
 from teleclaude.third_party_index import ThirdPartyMeta, load_third_party_index
@@ -75,6 +78,8 @@ _BASELINE_MANIFEST_FILENAME = "baseline.md"
 _INDEX_FILENAME = "index.yaml"
 #: ``<domain>/<taxonomy>/<rest>`` — the shortest domain identity.
 _DOMAIN_IDENTITY_MIN_SEGMENTS = 3
+_UNKNOWN_IDS_OUTPUT_SEPARATOR = "\n"
+_ID_SEGMENT_SEPARATOR = "/"
 
 
 class DocsSelectionEvent(StrEnum):
@@ -857,6 +862,23 @@ def _partition_selected_ids(
     return selected_ids, denied_ids, unknown_ids, taxonomy_ids, third_party_ids
 
 
+def _unregistered_domain_refusals(unknown_ids: Iterable[str]) -> list[str]:
+    """The refusal for each domain a complete, well-formed unknown id names that no registered project publishes."""
+    published = valid_domains()
+    domains: set[str] = set()
+    for snippet_id in unknown_ids:
+        parts = snippet_id.split(_ID_SEGMENT_SEPARATOR)
+        if (
+            len(parts) >= _DOMAIN_IDENTITY_MIN_SEGMENTS
+            and all(parts)
+            and parts[1] in ALLOWED_TAXONOMIES
+            and parts[0] not in published
+            and names_unregistered_domain(parts[0])
+        ):
+            domains.add(parts[0])
+    return [str(unregistered_referent(ReferentKind.DOMAIN, domain)) for domain in sorted(domains)]
+
+
 def _read_selected_snippet_body(
     snippet: SnippetMeta,
     *,
@@ -1599,7 +1621,9 @@ def build_context_output(  # TODO: refactor to reduce complexity
             target_superseded_count=0,
             dependency_count=0,
         )
-        return f"ERROR: Unknown snippet IDs: {', '.join(unknown_ids)}"
+        return _UNKNOWN_IDS_OUTPUT_SEPARATOR.join(
+            [f"ERROR: Unknown snippet IDs: {', '.join(unknown_ids)}", *_unregistered_domain_refusals(unknown_ids)]
+        )
 
     resolved = _resolve_requires(taxonomy_ids, snippets, activation_closure=closure)
     _write_test_output(

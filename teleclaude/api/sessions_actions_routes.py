@@ -57,6 +57,7 @@ from teleclaude.api_models import (
 )
 from teleclaude.api_session_actions_models import AgentRestartRequest, AgentRestartResponseDTO
 from teleclaude.config.machine import config
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.config.registered_homes import project_folder
 from teleclaude.constants import (
     COMMAND_ROLE_MAP,
@@ -142,8 +143,6 @@ SLUG_INFERABLE_LIFECYCLE_COMMANDS = {
 SLUG_REQUIRED_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS - {
     command.value for command in NON_SLUG_BOUND_COMMANDS
 }
-
-_UNREGISTERED_PROJECT_DETAIL = "project '{project}' is not registered on {computer}; nothing was run."
 
 _STATE = SimpleNamespace(client=None)
 router = APIRouter()
@@ -630,7 +629,7 @@ def _with_project_folder(request: RunSessionRequest) -> RunSessionRequest:
     if folder is None:
         raise RunSessionRefusal(
             status_code=404,
-            detail=_UNREGISTERED_PROJECT_DETAIL.format(project=request.project, computer=config.computer.name),
+            detail=str(unregistered_referent(ReferentKind.PROJECT, request.project)),
             reason=AgentDispatchReason.PROJECT_REQUIRED,
         )
     return request.model_copy(update={"project": str(folder)})

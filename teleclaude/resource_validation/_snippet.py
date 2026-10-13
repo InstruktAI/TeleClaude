@@ -6,6 +6,7 @@ import re
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 
+from teleclaude.config.referents import ReferentKind, unregistered_referent
 from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
     TYPE_SUFFIX,
@@ -45,11 +46,13 @@ from teleclaude.resource_validation._models import (
 from teleclaude.resource_validation._todo_status import TodoStatusFact, build_todo_status_facts, is_pending_marker_stale
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, iter_tier_snippet_roots
 from teleclaude.snippet_validation import (
+    UNREGISTERED_DOMAIN_REF,
     SnippetClassification,
     SnippetTaxonomy,
     authored_tier_classification_keys,
     derive_snippet_classification,
     generated_domain_bundle_domain,
+    global_ref_domain,
     is_baseline_index,
     is_companion,
     is_generated_domain_artifact_source,
@@ -68,6 +71,7 @@ _LOCAL_HALF = "local"
 _DOCS_DIRNAME = "docs"
 _BASELINE_SEGMENT = "baseline"
 _TIER_CLASSIFICATION_AUTHORED_FINDING = "snippet_tier_classification_authored"
+_INLINE_REF_DOMAIN_UNREGISTERED_FINDING = "snippet_inline_ref_domain_publisher_unregistered"
 # ---------------------------------------------------------------------------
 # Shared ref resolution
 # ---------------------------------------------------------------------------
@@ -142,6 +146,18 @@ def collect_inline_ref_errors(
             errors.append({"code": "snippet_invalid_inline_ref", "path": str(snippet_path), "ref": ref})
             continue
         format_error = validate_inline_ref_format(ref, domains=domains, project_root=project_root)
+        if format_error == UNREGISTERED_DOMAIN_REF:
+            domain = global_ref_domain(ref)
+            assert domain is not None
+            errors.append(
+                {
+                    "code": _INLINE_REF_DOMAIN_UNREGISTERED_FINDING,
+                    "path": str(snippet_path),
+                    "ref": ref,
+                    "reason": str(unregistered_referent(ReferentKind.DOMAIN, domain)),
+                }
+            )
+            continue
         if format_error:
             errors.append(
                 {

@@ -17,7 +17,7 @@ from teleclaude.config.loader import load_declared_project_config
 from teleclaude.constants import TAXONOMY_TYPES
 from teleclaude.domains import publishes_for_root, valid_domains
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, PEOPLE_DIR
-from teleclaude.slug import normalize_slug
+from teleclaude.slug import SLUG_PATTERN, normalize_slug
 from teleclaude.snippet_scope import HOME_SCOPES, RESERVED_HOME_IDENTITY_PREFIXES, home_identity_prefix
 from teleclaude.snippet_scope import SnippetScope as SnippetScope
 
@@ -568,6 +568,14 @@ def validate_inline_ref_format(ref: str, *, domains: Iterable[str], project_root
     return "invalid_prefix"
 
 
+def global_ref_domain(ref: str) -> str | None:
+    """The first address segment of a global documentation ref, or ``None`` when the ref is not a global address."""
+    for abs_prefix in _global_ref_prefixes():
+        if ref.startswith(abs_prefix):
+            return ref[len(abs_prefix) :].split("/", 1)[0]
+    return None
+
+
 def _global_ref_prefixes() -> tuple[str, ...]:
     """Return valid absolute prefixes for global documentation refs."""
     configured_prefix = f"@{GLOBAL_DOCS_DIR}/"
@@ -765,7 +773,19 @@ def generated_domain_bundle_domain(ref: str, *, domains: Iterable[str]) -> str |
     return None
 
 
+#: The reason a complete, well-formed global address names a domain no registered project publishes.
+UNREGISTERED_DOMAIN_REF: Final = "unregistered_domain"
+
 _TIER_ADDRESS_DIRNAMES: frozenset[str] = frozenset({COMPANIES_ROOT.name, PEOPLE_DIR.name})
+
+
+def names_unregistered_domain(segment: str) -> bool:
+    """Whether a first address segment is shaped like a documentation domain, whether or not any project publishes it.
+
+    A slug that is not reserved by the identity grammar can only name a domain, so
+    an unpublished one is an unregistered referent rather than a malformed address.
+    """
+    return SLUG_PATTERN.fullmatch(segment) is not None and segment not in RESERVED_SNIPPET_ID_PREFIXES
 
 
 def _validate_global_ref(ref: str, rel: str, domains: Iterable[str]) -> str | None:
@@ -790,16 +810,17 @@ def _validate_global_ref(ref: str, rel: str, domains: Iterable[str]) -> str | No
         return None
     if len(parts) < 3:
         return "missing_segments"
+    unpublished = parts[0] != "baseline" and parts[0] not in _allowed_scopes(domains)
     if parts[0] == "baseline":
         taxonomy = parts[1]
         if taxonomy not in ALLOWED_TAXONOMIES:
             return "invalid_taxonomy"
     else:
-        if parts[0] not in _allowed_scopes(domains):
+        if unpublished and not names_unregistered_domain(parts[0]):
             return "invalid_scope"
         taxonomy = parts[1]
         if taxonomy not in ALLOWED_TAXONOMIES:
             return "invalid_taxonomy"
     if not parts[-1].endswith(".md"):
         return "missing_md_extension"
-    return None
+    return UNREGISTERED_DOMAIN_REF if unpublished else None
