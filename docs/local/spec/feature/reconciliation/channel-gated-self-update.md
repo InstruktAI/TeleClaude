@@ -127,16 +127,15 @@ Then the installation does NOT converge
 And only a change or release of the platform's own repository can start convergence
 ```
 
-<!-- planned:release-development-checkouts -->
+<!-- planned:release-tag-checkout-activation -->
 
 #### UC-CSU-8: Release adoption selects the exact admitted source
 
 ```gherkin
 Given an operator's installation has selected an eligible published release
-And its associated development source contains newer changes
+And the installed checkout differs from that release
 When release activation completes
 Then the installed source is the selected release revision
-And development history is unchanged
 ```
 
 #### UC-CSU-9: A replayed older release cannot reverse convergence
@@ -147,7 +146,7 @@ When an older release announcement is replayed
 Then the installed revision remains unchanged
 ```
 
-<!-- /planned:release-development-checkouts -->
+<!-- /planned:release-tag-checkout-activation -->
 
 <!-- planned:installation-activation-inspection -->
 
@@ -171,7 +170,7 @@ And completion awaits the assessment of the actual running revision
 
 ## Known caveats
 
-<!-- planned-change:release-development-checkouts -->
+<!-- planned-change:release-tag-checkout-activation -->
 
 - The current checkout updater advances by fast-forward and skips a target
   already contained in the local checkout. An installation enrolled from a
@@ -179,15 +178,15 @@ And completion awaits the assessment of the actual running revision
   or report divergence when the selected release is on a different line of
   ancestry. Changing channels does not itself reconcile that checkout history.
 
-<!-- change:release-development-checkouts -->
+<!-- change:release-tag-checkout-activation -->
 
 - A deliberate enrollment into older source needs a supported data transition;
   unsupported transitions leave the current installation intact and report the
   unmet condition. Selecting a channel alone supplies no backward data migration.
   Installed/development source selection follows
-  `local/projects/teleclaude/design/architecture/deployment-pipeline`.
+  `local/projects/teleclaude/spec/feature/reconciliation/release-checkout`.
 
-<!-- /planned-change:release-development-checkouts -->
+<!-- /planned-change:release-tag-checkout-activation -->
 
 - **Version-agnostic by construction.** This spec names no transport, language, or build tool. Detection (webhook vs poll), fetch (pull vs download), build, and restart mechanics live in the domain spec and the delivering implementation, not here. The swap test applies: every scenario must hold if the entire implementation is replaced.
 - **Exactly-once is per target version, not per signal.** Duplicate or replayed signals are expected and must be absorbed idempotently.

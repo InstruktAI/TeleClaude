@@ -109,19 +109,26 @@ ownership and unpublished source before enabling the association. A transition
 that cannot preserve that work remains incomplete with its concrete recovery
 condition; it does not overwrite the mixed-use checkout.
 
-The deployment action pins the admitted immutable target for its convergence
-attempt. It materializes that target in the installed checkout without consuming
-development history. The installation's actual selected source must equal the
-target; ancestry containment is not an exact-version claim. Later admissible
-targets are ordered against incomplete attempts and the installed version;
-replayed older release events never roll an installation backward. Deliberate
-channel re-enrollment into older source requires a supported data transition
-before activation. The reconciliation record retains the attempted target and
-its outcome rather than treating an ahead checkout as converged.
+Installed revision selection consumes the release-checkout contract
+(`local/projects/teleclaude/spec/feature/reconciliation/release-checkout`).
 
 The source/deployment separation follows `sdlc/principle/design-fundamentals`
 and preserves existing source work under `sdlc/policy/version-control-safety`.
 <!-- /planned:release-development-checkouts -->
+
+<!-- planned:release-tag-checkout-activation -->
+
+### Immutable installed source
+
+The deployment action pins the admitted immutable target for its convergence
+attempt under
+`local/projects/teleclaude/spec/feature/reconciliation/release-checkout`.
+Channel admission retains its current policy until its own delivery changes it.
+The installation's actual source is assessed against that exact target rather
+than ancestry containment. Installed maintenance and publication consume the
+installed source identity; alpha retains ordinary main activation. This contract
+is independent of whether a development companion has been provisioned.
+<!-- /planned:release-tag-checkout-activation -->
 
 <!-- planned:reviewed-pr-contributions -->
 
