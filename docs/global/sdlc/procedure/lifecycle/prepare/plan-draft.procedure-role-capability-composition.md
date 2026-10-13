@@ -258,8 +258,7 @@ the Blueprint unavailable, state the gap in the plan and fall back to manual
 exploration; a stale answer is still used, with its named range checked as that
 procedure describes; never silently skip the step.
 
-For a bug, seed discovery from every matching site in the diagnosis's family
-census. For a bug whose diagnosis identifies a shared-contract root, seed it also from
+For a bug whose diagnosis identifies a shared-contract root, seed discovery also from
 the contract owner and every producer, entry path, and consumer in the diagnosis's
 implementation census — not only from files already expected to change. Reconcile
 the intended change surface against every census entry: name how it uses the single
@@ -366,16 +365,15 @@ the briefing instead.
 
 ### 3c. Bug-scope clamp (kind == bug)
 
-A bug plan removes the diagnosed mechanism (`diagnosis#mechanism`) from every
-matching site in the family census (`diagnosis#family-census`), with the
-smallest change that does so, plus a scenario-bound regression test where the
-project opts into tests. Each matching census site is fixed in this delivery,
-or filed by this session as its own bug carrying the diagnosis's evidence
-(`sdlc/concept/defect-evidence`, family site) when it belongs to another owner
-or would make this delivery incoherent; the plan records which. Sites the
-census marks not matching or undecided are outside the plan.
-Except for a structural-ratchet deepening permitted below, every task traces to
-one of those. Guards against causes no diagnosis has established — extra
+A bug plan removes the diagnosed mechanism (`diagnosis#mechanism`) where the
+diagnosis places it — the reproducing site and, for a shared-contract root,
+every entry in its implementation census — with the smallest change that does
+so, plus a scenario-bound regression test where the project opts into tests.
+The family census (`diagnosis#family-census`) stays a record in the diagnosis;
+its sites outside that boundary are outside the plan, and a family site enters
+the lifecycle only on evidence of its own (`sdlc/concept/defect-evidence`,
+family site). Except for a structural-ratchet deepening permitted below, every
+task traces to removing that mechanism. Guards against causes no diagnosis has established — extra
 validation layers, defensive defaults, fallbacks — and adjacent refactors, new
 capability, or any scenario beyond the single regression scenario below, are
 scope violations to strike before the plan is written, regardless of how
