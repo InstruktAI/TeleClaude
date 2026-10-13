@@ -30,8 +30,9 @@ visibility: 'public'
 
 <!-- planned:client-daemon-seam -->
 
-Chiptunes track preferences — favourites and dislikes — belong to the chiptunes
-context and change only through the daemon's chiptunes routes. The playback
+Chiptunes track preferences — favourites and dislikes — belong to the
+chiptunes player that `local/projects/teleclaude/spec/domain/integration` owns,
+and change only through the daemon's chiptunes routes. The playback
 state the daemon publishes says whether the current track is a favourite and
 whether it is disliked, so a UI shows and toggles them without reading or
 writing the preference store.

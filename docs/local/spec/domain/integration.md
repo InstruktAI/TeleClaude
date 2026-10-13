@@ -50,6 +50,20 @@ implementation remain the current appliance contract.
 - **Published contracts:** normalized inbound commands and events, outbound
   delivery requests and results, and provider-neutral transport types.
 
+<!-- planned:client-daemon-seam -->
+
+- **Owns (chiptunes player):** the host-speaker chiptunes player across its
+  worker process boundary — the playback state it publishes, and the track
+  preferences that decide which tracks it offers: a favourite is a track the
+  person marked, and a disliked track is kept out of the player's track
+  discovery. Clients read the playback state the daemon publishes and change
+  preferences only through the daemon's chiptunes routes
+  (`local/projects/teleclaude/design/architecture/tts-system`). The player's
+  process lifecycle stays with `agent_runtime`'s daemon lifecycle, and its
+  enablement is configuration.
+
+<!-- /planned:client-daemon-seam -->
+
 - **Owns (procedure subscription routing):** reading each published procedure
   subscription — its type patterns, the home kind it answers, the agent
   identity it declares, and the tier it is published in — from the publication
