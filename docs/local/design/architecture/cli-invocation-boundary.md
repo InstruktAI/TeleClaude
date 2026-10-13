@@ -104,8 +104,6 @@ design owns only the path that connects them.
    roughly 200 ms from the shell; the figure is the target that shows invariants 4–6
    hold, not a limit a change is graded against.
 
-<!-- planned:client-daemon-seam -->
-
 8. **Execution locality follows the operation, not the command.** Two allowances
    govern a handler that acts in its own process, and they are distinct. A read of
    state this computer owns — a project's todo store, the mirrors, the configuration
@@ -119,8 +117,6 @@ design owns only the path that connects them.
    selects the route's target. The route and the handler invoke the same domain
    operation; the handler is never a second implementation of it
    (`local/projects/teleclaude/design/architecture/api-server`).
-
-<!-- /planned:client-daemon-seam -->
 
 ## Primary flows
 

@@ -163,8 +163,6 @@ through it
 (`local/projects/teleclaude/spec/feature/integration/computer-addressed-execution`);
 addressed to this computer, the command still runs in the process that invokes it.
 
-<!-- planned:client-daemon-seam -->
-
 The TUI configuration view reaches configuration only through these daemon
 requests; it holds no write authority over a backing file
 (`local/projects/teleclaude/design/architecture/api-server`). An environment
@@ -177,8 +175,6 @@ theirs. A value that is the configuration mask leaves its variable as stored,
 as a patch carrying the mask leaves its field
 (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`
 UC-KAC20).
-
-<!-- /planned:client-daemon-seam -->
 
 #### Use cases (index of feature specs)
 
@@ -220,13 +216,9 @@ and preserve every unrelated key and line. Runtime and TUI consumers use this
 published contract and never parse the store or consult the process environment
 directly.
 
-<!-- planned:client-daemon-seam -->
-
 The inventory is also a daemon request on the person subject, and replacing or
 clearing a key is that person's environment request, both under the person's
 configuration target clearance. A UI reaches the store only through them.
-
-<!-- /planned:client-daemon-seam -->
 
 ### Membership declaration changes
 

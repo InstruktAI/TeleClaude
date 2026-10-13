@@ -71,8 +71,6 @@ session stream.
 - **Safe command boundary:** UI projection changes no mutation authority,
   command response mode, or durable-operation lifecycle.
 
-<!-- planned:client-daemon-seam -->
-
 - **One path per operation:** every operation on state the daemon owns or
   serves from its cache has one daemon-side entry, a route, which admits the
   caller and invokes the domain operation. UI clients — the TUI and the web
@@ -96,8 +94,6 @@ session stream.
   implementation choice per route; the client-visible contract is the response,
   an immediate result or a durable operation receipt
   (`local/projects/teleclaude/design/architecture/command-classification`).
-
-<!-- /planned:client-daemon-seam -->
 
 - **Computer-addressed execution:** an HTTP request that names another computer
   is carried whole to that computer before any route runs here, executes there

@@ -28,16 +28,12 @@ visibility: 'public'
 - Updated voice assignments in the database (adaptive fallback promotion)
 - Chiptunes playback state broadcasts over the API WebSocket so the TUI reflects daemon truth instead of optimistic local state
 
-<!-- planned:client-daemon-seam -->
-
 Chiptunes track preferences — favourites and dislikes — belong to the
 chiptunes player that `local/projects/teleclaude/spec/domain/integration` owns,
 and change only through the daemon's chiptunes routes. The playback
 state the daemon publishes says whether the current track is a favourite and
 whether it is disliked, so a UI shows and toggles them without reading or
 writing the preference store.
-
-<!-- /planned:client-daemon-seam -->
 
 ## Primary flows
 

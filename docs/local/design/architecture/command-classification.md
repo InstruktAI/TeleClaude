@@ -7,18 +7,6 @@ visibility: 'public'
 
 ## Purpose
 
-<!-- planned-change:client-daemon-seam -->
-
-Every mutating API endpoint answers one question: does the result arrive with the
-response, or after it. That answer is the command's response mode. There are two,
-and no command sits between them.
-
-The mode is a property of the command, not of the route — it lives on the
-`InternalCommand` base class and is declared by each command subclass. API routes,
-the transport layer, and the command dispatcher all read this property; they do not
-re-derive it from `isinstance` checks or hardcoded status codes.
-<!-- change:client-daemon-seam -->
-
 Every mutating API endpoint answers one question: does the result arrive with the
 response, or after it. There are two answers — an immediate result, or a durable
 operation receipt — and no endpoint sits between them. That completion contract is
@@ -35,7 +23,6 @@ same two-mode contract; todo lifecycle, artifacts, configuration, settings,
 reminders, jobs, memory and MCP routes take this path, and so does any session
 route whose operation is a direct service call. The path is an implementation
 choice per route; the completion contract is not.
-<!-- /planned-change:client-daemon-seam -->
 
 Every API request also answers a second question before any route runs: which
 computer owns the object it addresses. A request that names another computer is
@@ -44,33 +31,6 @@ route and the same response mode a request made on that computer passes through,
 with the person band decided there from the relayed principal; its answer returns to
 the caller unchanged. A request that names this
 computer, or none, runs here. No route opts into this and no route can miss it.
-
-<!-- planned-change:client-daemon-seam -->
-
-```mermaid
-flowchart TD
-    Request["HTTP Request"]
-    Boundary["API boundary<br/>(which computer?)"]
-    Relay["RelayRequestCommand<br/>(computer = owner)"]
-    Router["API Route"]
-    Command["InternalCommand<br/>(response_mode declared)"]
-    Service["CommandService"]
-    Operations["OperationsService"]
-
-    Request --> Boundary
-    Boundary -->|another computer| Relay
-    Relay -->|transport| Boundary
-    Boundary -->|this computer| Router
-    Router --> Command
-    Command -->|IMMEDIATE| Service
-    Command -->|RECEIPT| Operations
-
-    Service -->|returns data| ImmediateResp["200 + payload"]
-    Operations -->|persists operation row| ReceiptResp["202 + receipt"]
-    Operations -->|terminal transition| Outcome["success_event or failure_event<br/>+ wake the recorded caller"]
-```
-
-<!-- change:client-daemon-seam -->
 
 ```mermaid
 flowchart TD
@@ -98,8 +58,6 @@ flowchart TD
     Operations -->|persists operation row| ReceiptResp["202 + receipt"]
     Operations -->|terminal transition| Outcome["success_event or failure_event<br/>+ wake the recorded caller"]
 ```
-
-<!-- /planned-change:client-daemon-seam -->
 
 ## Inputs/Outputs
 
@@ -136,16 +94,6 @@ Command-to-mode mapping:
 | CloseSessionCommand       | RECEIPT                                     | `session.close.completed` / `session.close.failed`                 |
 | HandoffAgentCommand       | RECEIPT                                     | `agent_runtime.handoff.completed` / `agent_runtime.handoff.failed` |
 
-<!-- planned-change:client-daemon-seam -->
-
-Todo lifecycle work (create, prepare, work, integrate, remove, rename) and task runs
-are receipt-backed operations submitted by their routes directly to the
-`OperationsService`; they carry no `InternalCommand` type. Addressed to another
-computer, they reach that computer's route through the relay and are submitted to
-that computer's `OperationsService`.
-
-<!-- change:client-daemon-seam -->
-
 Todo lifecycle work (create, prepare, work, integrate, remove, rename), task runs
 and job runs are receipt-backed operations submitted by their routes directly to the
 `OperationsService`; they carry no `InternalCommand` type. A job run's operation
@@ -153,8 +101,6 @@ ends when the run it started closes, not when its runner starts
 (`local/projects/teleclaude/design/architecture/jobs-runner`). Addressed to another
 computer, they reach that computer's route through the relay and are submitted to
 that computer's `OperationsService`.
-
-<!-- /planned-change:client-daemon-seam -->
 
 `RelayRequestCommand` is `IMMEDIATE` whatever the relayed route's own mode is: its
 result is that route's complete response, a receipt included. A receipt that crosses

@@ -39,8 +39,6 @@ duplicating canonical config fields into TUI-only Pydantic models, duplicating
 nested config paths into save maps, or excluding a valid field because nobody
 hand-added it to the form.
 
-<!-- planned:client-daemon-seam -->
-
 The view reads and writes configuration only through the daemon's configuration
 operations
 (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`),
@@ -50,8 +48,6 @@ The schemas it renders from are the only configuration knowledge it holds
 locally; values, environment references, set state and personal secret
 inventories reach it from the daemon, and every edit is a daemon operation on
 the subject that owns the field.
-
-<!-- /planned:client-daemon-seam -->
 
 The first visible gap this fixes is the People view: `PersonConfig.settings` and
 `PersonConfig.creds` validate and drive runtime behavior, but the People TUI
@@ -250,29 +246,6 @@ Then it is `internal` and does not render in the config TUI
 And it is absent from a fresh machine configuration generated from the schema
 ```
 
-<!-- planned-change:client-daemon-seam -->
-
-#### UC-CFG-TUI-SCHEMA-16: People exposes registry-derived personal secrets
-
-```
-Given the MCP registry contains a person-scoped server whose launch definition references `OMI_API_KEY`
-And a configured person exists
-When a trusted local operator expands that person in the People view
-Then a Secrets section shows `OMI_API_KEY` with set or unset status
-And it shows which personal MCP servers require the key
-And the inventory is derived from the MCP registry plus existing keys in that person's secret store
-And no duplicate secret list or value is stored on PersonConfig
-And the existing value is never displayed or loaded into an edit buffer
-And keep-existing is the default action
-When the operator keeps, replaces, or clears the secret explicitly
-Then only that person's owner-only secret file is preserved or mutated atomically
-And every unrelated key and line in that person's secret file remains unchanged
-And unrelated person YAML, global environment, and other person secret files remain unchanged
-And the TUI introduces no role gate beyond its trusted local machine and terminal boundary
-```
-
-<!-- change:client-daemon-seam -->
-
 #### UC-CFG-TUI-SCHEMA-16: People exposes registry-derived personal secrets
 
 ```
@@ -290,8 +263,6 @@ Then only that person's owner-only secret file is preserved or mutated atomicall
 And every unrelated key and line in that person's secret file remains unchanged
 And unrelated person YAML, global environment, and other person secret files remain unchanged
 ```
-
-<!-- /planned-change:client-daemon-seam -->
 
 #### UC-CFG-TUI-SCHEMA-17: Required fields are marked, and a set sensitive field is distinguishable from an unset one
 

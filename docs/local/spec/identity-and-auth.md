@@ -125,13 +125,9 @@ configuration subject. A CLI event producer reads it to state the event's origin
 home without listing other sessions; it is absent when the caller has no
 session or the session has no recorded home.
 
-<!-- planned:client-daemon-seam -->
-
 For a person caller registered on this computer, the self-query also returns
 that person's slug, so a UI client addresses the caller's own person subject
 without listing people; it is absent for any other caller.
-
-<!-- /planned:client-daemon-seam -->
 
 **Principal types:**
 

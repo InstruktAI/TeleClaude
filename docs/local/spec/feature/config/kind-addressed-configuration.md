@@ -100,8 +100,6 @@ owns. Those facts remain sourced only from the person registry and company
 rosters, and the projection authorizes nothing
 (`local/projects/teleclaude/design/architecture/scoped-roles`).
 
-<!-- planned:client-daemon-seam -->
-
 A view also reports, as a marked read-only projection, every field whose stored
 value is an environment reference: the field's path, the variable the reference
 names, the environment that owns that variable, and whether the variable has a
@@ -109,8 +107,6 @@ value on this computer. It never carries the value. A reference with no value
 appears in this projection although the effective view leaves its field out, so
 an editor can tell a field that is unset from one that waits on a missing
 variable.
-
-<!-- /planned:client-daemon-seam -->
 
 `patch` targets one kind and instance. Mapping keys merge into the latest
 document and an array supplied by the caller replaces that array in full.
@@ -121,8 +117,6 @@ affected companies and assignments. A patch supplies the revision obtained by
 reading the subject immediately before writing; a stale revision is refused.
 The config owner validates the complete candidate and writes under its file
 transaction. A rejected patch changes none of its target's committed state.
-
-<!-- planned:client-daemon-seam -->
 
 Removing a field from the machine configuration also removes every mapping the
 removal leaves empty, so that document never keeps an empty section that only a
@@ -137,8 +131,6 @@ mapping, and the overlay's validation refuses a field the overlay does not
 declare. A patch that names the same overlay field both at the top level and
 under `overlay` is refused. Neither form writes `slug` or a read-only
 projection.
-
-<!-- /planned:client-daemon-seam -->
 
 Company membership, company role, and project assignments are patched only
 through the company subject. A company roster entry names a registered person;
