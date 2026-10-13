@@ -435,4 +435,10 @@ evidence requirement (`general/principle/grounding`).
 
 - **A timed-out stop ends in a relaunched daemon.** The service manager relaunches a daemon that completes its own shutdown, and the prepared process carries no record of whether its caller asked for a stop or a restart. Keeping the daemon down after a stop whose preparation timed out takes another `make stop` once it is back.
 
-- **Shutdown is best-effort throughout.** Every shutdown step is wrapped so a single failure (e.g., an adapter stop that raises) does not prevent later steps (e.g., storage close) from running. The single-instance lock is released last regardless of upstream errors.
+- **Post-settlement teardown is best-effort.** An ordinary task or component
+  failure is reported with its identifier and traceback and does not prevent
+  later cleanup attempts in the existing order, including storage closure before
+  final lock release. Cancellation semantics and existing budgets are preserved;
+  this isolation does not bypass admission closure or accepted-work settlement.
+  A failed component is not reported as successfully closed, and lock release
+  alone establishes neither successful resource closure nor process exit.

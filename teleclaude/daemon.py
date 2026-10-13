@@ -29,6 +29,14 @@ _PREPARED_EXIT_TASK_NAME = "prepared-instance-exit"
 _PREPARED_EXIT_LABEL = "prepared_instance_exit"
 _PREPARED_EXIT_ATTR = "prepared_exit_task"
 _PREPARED_EXIT_STOPPED = "Prepared-instance exit timer stopped"
+_WORKFLOW_SHUTDOWN_COMPONENT = "workflow_bridge"
+_IDENTITY_SHUTDOWN_COMPONENT = "identity_bridge"
+_CLUSTER_SHUTDOWN_COMPONENT = "cluster_bridge"
+_EVENT_DB_SHUTDOWN_COMPONENT = "event_db"
+_TTS_SHUTDOWN_COMPONENT = "tts_manager"
+_CHIPTUNES_SHUTDOWN_COMPONENT = "chiptunes_manager"
+_REGISTRY_SHUTDOWN_COMPONENT = "task_registry"
+_LIFECYCLE_SHUTDOWN_COMPONENT = "lifecycle"
 _PREPARED_EXIT_WARNING = "No termination arrived within the grace after drained; completing own shutdown"
 _IDENTITY_DECLARATION_WATCH_TASK_NAME = "identity-declarations-watch"
 _IDENTITY_DECLARATION_WATCH_LABEL = "identity_declarations_watch"
@@ -166,7 +174,7 @@ from teleclaude.core.events import ProjectRefreshTrigger, TeleClaudeEvents
 _record_import_timing("teleclaude.core.events", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.lifecycle import DaemonLifecycle
+from teleclaude.core.lifecycle import DaemonLifecycle, shutdown_step
 
 _record_import_timing("teleclaude.core.lifecycle", _t)
 
@@ -1109,17 +1117,20 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         workflow_bridge = getattr(self, "_workflow_bridge", None)
         if workflow_bridge is not None:
-            await workflow_bridge.stop()
+            with shutdown_step(_WORKFLOW_SHUTDOWN_COMPONENT):
+                await workflow_bridge.stop()
         await self._await_task_attr("_workflow_bridge_task", "Workflow Redis bridge stopped", timeout=5.0)
 
         identity_bridge = getattr(self, "_identity_bridge", None)
         if identity_bridge is not None:
-            await identity_bridge.stop()
+            with shutdown_step(_IDENTITY_SHUTDOWN_COMPONENT):
+                await identity_bridge.stop()
         await self._await_task_attr("_identity_bridge_task", "Identity Redis bridge stopped", timeout=5.0)
 
         cluster_bridge = getattr(self, "_cluster_bridge", None)
         if cluster_bridge is not None:
-            await cluster_bridge.stop()
+            with shutdown_step(_CLUSTER_SHUTDOWN_COMPONENT):
+                await cluster_bridge.stop()
         await self._await_task_attr("_cluster_bridge_task", "Cluster Redis bridge stopped", timeout=5.0)
 
         await self._await_task_attr("_task_schedule_clock_task", "Task schedule clock stopped", timeout=5.0)
@@ -1140,25 +1151,30 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         # Close event DB
         if self._event_db:
-            await self._event_db.close()
-            self._event_db = None
-            logger.info("EventDB closed")
+            with shutdown_step(_EVENT_DB_SHUTDOWN_COMPONENT):
+                await self._event_db.close()
+                self._event_db = None
+                logger.info("EventDB closed")
 
         if hasattr(self, "tts_manager"):
-            await self.tts_manager.shutdown()
-            logger.info("TTS manager stopped")
+            with shutdown_step(_TTS_SHUTDOWN_COMPONENT):
+                await self.tts_manager.shutdown()
+                logger.info("TTS manager stopped")
 
         # Disconnect from chiptunes worker (music keeps playing through restart)
         if hasattr(self, "chiptunes_manager"):
-            self.chiptunes_manager.shutdown()
-            logger.info("ChipTunes manager disconnected (worker persists)")
+            with shutdown_step(_CHIPTUNES_SHUTDOWN_COMPONENT):
+                self.chiptunes_manager.shutdown()
+                logger.info("ChipTunes manager disconnected (worker persists)")
 
         # Shutdown task registry (cancel all tracked background tasks)
         if hasattr(self, "task_registry"):
-            await self.task_registry.shutdown(timeout=TASK_REGISTRY_SHUTDOWN_TIMEOUT_S)
-            logger.info("Task registry shutdown complete")
+            with shutdown_step(_REGISTRY_SHUTDOWN_COMPONENT):
+                await self.task_registry.shutdown(timeout=TASK_REGISTRY_SHUTDOWN_TIMEOUT_S)
+                logger.info("Task registry shutdown complete")
 
-        await self.lifecycle.shutdown()
+        with shutdown_step(_LIFECYCLE_SHUTDOWN_COMPONENT):
+            await self.lifecycle.shutdown()
 
         self._release_lock()
         logger.info("Daemon stopped")
@@ -1179,12 +1195,13 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         task = getattr(self, attr_name, None)
         if task is None:
             return
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        logger.info(log_message)
+        with shutdown_step(attr_name):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            logger.info(log_message)
 
     async def _await_task_attr(self, attr_name: str, log_message: str, *, timeout: float) -> None:
         """Await an optional task attribute without cancelling it first.
@@ -1195,18 +1212,19 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         task = getattr(self, attr_name, None)
         if task is None:
             return
-        try:
-            await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
-        except TimeoutError:
-            task.cancel()
+        with shutdown_step(attr_name):
             try:
-                await task
+                await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+            except TimeoutError:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                logger.warning("%s timed out after %.1fs; task was cancelled", attr_name, timeout)
             except asyncio.CancelledError:
                 pass
-            logger.warning("%s timed out after %.1fs; task was cancelled", attr_name, timeout)
-        except asyncio.CancelledError:
-            pass
-        logger.info(log_message)
+            logger.info(log_message)
 
     async def _stop_session_outbox_workers(self) -> None:
         """Stop all per-session hook outbox workers."""
@@ -1220,10 +1238,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         for worker in workers:
             worker.cancel()
         for worker in workers:
-            try:
-                await worker
-            except asyncio.CancelledError:
-                pass
+            with shutdown_step(worker.get_name()):
+                try:
+                    await worker
+                except asyncio.CancelledError:
+                    pass
         logger.info("Session outbox workers stopped (%d)", len(workers))
 
     def request_shutdown(self, reason: str) -> None:

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -46,6 +47,21 @@ from teleclaude.core import command_handlers
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 
 logger = get_logger(__name__)
+
+_SHUTDOWN_COMPONENT_FAILED = "Shutdown component failed; continuing teardown"
+_INBOUND_SHUTDOWN_COMPONENT = "inbound_queue"
+_API_SHUTDOWN_COMPONENT = "api_server"
+_STORAGE_SHUTDOWN_COMPONENT = "storage"
+
+
+@contextmanager
+def shutdown_step(component: str) -> Iterator[None]:
+    """Report an ordinary post-settlement teardown fault without skipping later owners."""
+    try:
+        yield
+    except Exception:
+        logger.exception(_SHUTDOWN_COMPONENT_FAILED, component=component)
+
 
 _CUTOVER_GENERATIONS_SEEDED_EVENT = "lifecycle_cutover_generations_seeded"
 _DISCORD_SEND_INTENTS_RECONCILED_EVENT = "lifecycle_discord_send_intents_reconciled"
@@ -350,18 +366,24 @@ class DaemonLifecycle:
     async def shutdown(self) -> None:
         """Stop core components in a defined order."""
         try:
-            await get_inbound_queue_manager().shutdown()
-            logger.info("Inbound queue manager shut down")
+            inbound = get_inbound_queue_manager()
         except RuntimeError:
             pass  # Not initialized — skip
+        else:
+            with shutdown_step(_INBOUND_SHUTDOWN_COMPONENT):
+                await inbound.shutdown()
+                logger.info("Inbound queue manager shut down")
 
         if self.api_server:
-            await self.api_server.stop()
+            with shutdown_step(_API_SHUTDOWN_COMPONENT):
+                await self.api_server.stop()
         for adapter_name, adapter in self.client.adapters.items():
             logger.info("Stopping %s adapter...", adapter_name)
-            await adapter.stop()
+            with shutdown_step(adapter_name):
+                await adapter.stop()
 
-        await db.close()
+        with shutdown_step(_STORAGE_SHUTDOWN_COMPONENT):
+            await db.close()
 
     def handle_api_server_exit(
         self,
