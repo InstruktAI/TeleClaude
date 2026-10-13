@@ -74,6 +74,7 @@ own identity and is never a session role.
 | `code`                 | Code quality, declarations and commits.                                                                 |
 | `mcp`                  | Listing and calling MCP tools.                                                                          |
 | `peer-talk`            | Sending to and tailing a peer session: the builder a reviewer reviews, the claimant that dispatched it. |
+| `memories-read`        | Listing, searching, deleting and tracing a person's own memories outside an extraction.                 |
 | `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                     |
 
 The command families are the catalog's vocabulary; which command declares
