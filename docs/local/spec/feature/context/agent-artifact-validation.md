@@ -231,6 +231,8 @@ Scenario: An agent commits a retirement companion beside a command
 
 <!-- change:procedure-role-capability-composition -->
 
+#### UC-AAV5: An empty command companion is accepted as a retirement
+
 <!-- /planned-change:procedure-role-capability-composition -->
 
 #### UC-AAV6: A file git ignores under agents/ is not an artifact source
