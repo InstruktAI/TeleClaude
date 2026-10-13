@@ -170,7 +170,13 @@ requests; it holds no write authority over a backing file
 (`local/projects/teleclaude/design/architecture/api-server`). An environment
 request names the environment it changes — the machine's, the global
 configuration's, or one person's — and sets or clears one variable there. A
-person's environment is that person's personal MCP secret store.
+person's environment is that person's personal MCP secret store. The request is
+cleared as a patch of the subject that owns that environment: the computer for
+the machine's, global configuration for the global one, and that person for
+theirs. A value that is the configuration mask leaves its variable as stored,
+as a patch carrying the mask leaves its field
+(`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`
+UC-KAC20).
 
 <!-- /planned:client-daemon-seam -->
 

@@ -359,6 +359,17 @@ an entry across a rename or an identity change.
 - `last_status`: `"running"` | `"success"` | `"failed"` | `"stalled"` | `"never"`.
 - `last_error`: error or stall message, or null.
 
+<!-- planned:client-daemon-seam -->
+
+A job entry also keeps the outcome of each run it closed — status and error —
+keyed by that run's `run_started_at`, for the closed-run retention window the
+state module declares. Within that window a run's outcome stays readable by its
+identity whatever successor opens or closes, so a manual run's operation ends
+with the run it opened and never with a successor's. The runner, the file's
+only writer, drops outcomes older than the window.
+
+<!-- /planned:client-daemon-seam -->
+
 A separate `pending_emissions` collection holds undelivered actionable outcomes, each keyed
 by the run's project, job identity, and `run_started_at`, and carrying its full event
 payload, so a notification survives a transport outage independent of later run state. The
