@@ -156,13 +156,13 @@ Then the load fails naming the document, its version, and the installation's cur
 And the document is not loaded in any shape
 ```
 
-#### UC-CFG-MIG-3: A change to the migration list persists every registered document before restart
+#### UC-CFG-MIG-3: A change to the migration list persists every registered document after restart
 
 ```gherkin
 Given canonical main advances with a change to the configuration migration list
 And documents the tier registries name are at older versions
 When commit-boundary maintenance runs
-Then each writable document is stored at the current version before the daemon restarts
+Then each writable document is stored at the current version after the daemon restarts onto that list
 And an installed release declaration is evaluated without changing its stored source
 And an agent reading the structured records observes one outcome per document
 ```
