@@ -90,6 +90,8 @@ proposal operation before any mainline queue watcher or integration call.
 
 ## Steps
 
+<!-- planned-change:installation-activation-inspection -->
+
 1. Set `integrator-queue-watch` first, then call `telec todo integrate [slug]` to
    enter the state machine. The watch stays live for as long as this session is the
    integrator; never cancel it. It is the integrator's standing way back to the
@@ -143,6 +145,70 @@ maintenance drain` resumes interrupted work and records maintenance
      `.git/hooks/pre-push` that git executes is deployed from the canonical source. The CI
      `make lint` check is a redundant post-push catch layer; the pre-push guard is the
      primary enforcement surface.
+
+<!-- change:installation-activation-inspection -->
+
+1. Set `integrator-queue-watch` first, then call `telec todo integrate [slug]` to
+   enter the state machine. The watch stays live for as long as this session is the
+   integrator; never cancel it. It is the integrator's standing way back to the
+   state machine, and a session that ends removes it.
+
+2. The call returns an operation receipt and does not wait for the machine. Yield;
+   when the operation's outcome wakes this session, read the instruction block
+   with `telec operations get <operation_id>` and execute it verbatim.
+
+3. After executing, call `telec todo integrate` again to advance.
+   3a. After a canonical-main advancement, inspect the maintenance actions recorded
+   for that activation. While the integrator holds the checkout's assessment
+   responsibility (see **Resolve the delivery assignment**), treat pending
+   actions as pending, judge terminal failures and recover within the
+   integration lane, and keep outstanding live-runtime judgment with the
+   integrator. While another session holds it, that session keeps the recovery
+   and the judgment, and the integrator observes its recorded outcome. Continue
+   observing those actions on `integrator-queue-watch` beats when they outlive
+   this drain.
+   After each activation whose assessment the integrator holds, read that
+   delivery's log window with knowledge of the change. Investigate anomalies,
+   handle bounded recovery, and route remaining breakage for a forward fix
+   through the normal bug process.
+   For direct commits on canonical local main, judge any owed log window before
+   publication, or, when another session holds the assessment, publish only
+   after its recorded completion covers the head. If the activated change is sound, push the current committed
+   main head to origin/main from the project root with `git push origin main:main`
+   and verify origin/main contains that exact head. A material activation failure leaves it local until recovery
+   and a new log judgment; a successful log command alone is not a soundness
+   verdict. A direct commit with no live-runtime log judgment is published after
+   its owed maintenance succeeds. The committer owns review and remediation under
+   `general/policy/commits`; the integrator does not inspect or wait for other
+   sessions' review verdicts. Uncommitted repo-root paths are not part of the
+   push and do not block it. The candidate pre-push checks in step 5 do not gate
+   direct-main publication.
+   `telec code maintenance status` reports the checkout's outstanding actions,
+   terminal failures, and integrator judgment, each with its recovery command.
+   After the cause of a terminal failure is addressed, `telec code maintenance
+retry` replays that action for its original activation; `telec code
+maintenance drain` resumes interrupted work and records maintenance
+   readiness when no owed action remains.
+4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
+5. Before a candidate push from the integration worktree, run repo-wide verification:
+   - `telec code lint --all`
+   - `telec code test --all`
+     If either command fails, fix the failures, rerun both, then resume the state machine.
+     Use the `telec code` verbs, not raw `make`: `telec code lint --all` runs the native
+     `make lint` leg **and** the TeleClaude guardrails lane (raw `make lint` skips the
+     guardrails), matching exactly what the pre-push hook enforces.
+   - The pre-push hook enforces `telec code lint --all` automatically. If the hook blocks
+     the push with `ERROR: Integration push blocked — telec code lint --all failed.`,
+     resolve the reported lint violations and retry.
+   - The canonical source is `templates/quality/githooks/pre-push` — edit this to change
+     behavior. The tracked `.githooks/pre-push` is a compatibility entrypoint that resolves
+     the repository root and execs the canonical source; it carries no behavior of its own,
+     so it needs no syncing and neither does any per-worktree copy of it. The active
+     `.git/hooks/pre-push` that git executes is deployed from the canonical source. The CI
+     `make lint` check is a redundant post-push catch layer; the pre-push guard is the
+     primary enforcement surface.
+
+<!-- /planned-change:installation-activation-inspection -->
 
 The state machine returns one of the following instruction blocks at each step.
 
@@ -336,6 +402,8 @@ claimed; a set of paths is never treated as one unit.
 
 #### Reminder: integrator-queue-watch
 
+<!-- planned-change:installation-activation-inspection -->
+
 - **Owner:** Integration procedure and its queue-empty state-machine formatter.
 - **Parameters:** optional `after` override; the queue and integrator session
   derive from the authenticated caller.
@@ -363,6 +431,39 @@ claimed; a set of paths is never treated as one unit.
   reminder is removed when the session ends, and only the human ends an
   integrator.
 - **Invocation:** `telec reminders set integrator-queue-watch`.
+
+<!-- change:installation-activation-inspection -->
+
+- **Owner:** Integration procedure and its queue-empty state-machine formatter.
+- **Parameters:** optional `after` override; the queue and integrator session
+  derive from the authenticated caller.
+- **Activation anchor:** session entry, before the first state-machine call.
+- **Duration:** 15 minutes by default; an explicit caller interval replaces the
+  default without changing this profile's intent.
+- **Recurrence:** recurring for as long as this session is the integrator —
+  through drains, blocks, escalations, and parked queues alike.
+- **Arm condition:** set first, unconditionally. Setting it again replaces it
+  atomically without an unarmed gap.
+- **Intent:** `Recheck the integration queue and outstanding canonical-main maintenance from current source truth. Judge completed maintenance and recover failures within the integration lane; if a candidate is ready, continue the drain, otherwise remain parked.`
+- **Firing behavior:** inspect the checkout's assessment record, its
+  responsibility holder, outstanding maintenance records, and structured
+  terminal outcomes for canonical-main activations, including direct commits
+  with no todo candidate, through `telec code maintenance status`.
+  Keep the judgment pending while any owed action is unfinished or failed.
+  While the integrator holds the assessment, after terminal success read logs
+  from a window beginning no later than the earliest activation recorded on the
+  record; an earlier or narrower read does not complete it. Retain unresolved
+  judgment across reminder beats and route terminal failures through bounded
+  recovery. While another session holds it, leave recovery and judgment with
+  that holder and observe its recorded outcome. Apply the standing post-activation log judgment and direct-main
+  publication in step 3a before invoking the integration state machine once,
+  then execute the returned instruction verbatim.
+- **Cancellation:** none while this session is the integrator (step 1). The
+  reminder is removed when the session ends, and only the human ends an
+  integrator.
+- **Invocation:** `telec reminders set integrator-queue-watch`.
+
+<!-- /planned-change:installation-activation-inspection -->
 
 #### Reminder: integrator-candidate-settledness
 
