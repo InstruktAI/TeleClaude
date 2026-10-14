@@ -13,6 +13,10 @@ from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.todo_routes import _SlugStatusResponse, _validate_slug_for_update
+from teleclaude.core.next_machine.code_conformance_return import (
+    CodeConformanceReturnRefused,
+    return_to_work_for_code_conformance,
+)
 from teleclaude.core.next_machine.session_hold import notify_runner_of_gate_approval
 from teleclaude.core.next_machine.stamps import apply_todo_stamp, is_human_gate_stamp, stamp_follow_through
 from teleclaude.core.next_machine.state_mutation import StateMutationError
@@ -29,6 +33,34 @@ def _human_gate_caller_stamp_id(identity: CallerIdentity) -> str:
     if not identity.session_id and identity.human_role:
         return "human:terminal"
     raise HTTPException(status_code=403, detail="human principal required to approve todo gate")
+
+
+@router.post("/return-to-work", response_model=_SlugStatusResponse)
+async def todo_return_to_work(
+    slug: Annotated[str, Body()],
+    reason: Annotated[str, Body()],
+    evidence: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(carried_caller),
+) -> _SlugStatusResponse:
+    """Return one held, unintegrated finalized candidate to its work cycle."""
+    if not cwd:
+        raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
+    _validate_slug_for_update(slug, field_name="slug")
+    caller_id = identity.session_id or _human_gate_caller_stamp_id(identity)
+    try:
+        await return_to_work_for_code_conformance(
+            cwd=cwd,
+            slug=slug,
+            reason=reason,
+            evidence=evidence,
+            caller_session_id=caller_id,
+        )
+    except CodeConformanceReturnRefused as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (StateMutationError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _SlugStatusResponse(status="ok", slug=slug)
 
 
 @router.post("/stamp", response_model=_SlugStatusResponse)

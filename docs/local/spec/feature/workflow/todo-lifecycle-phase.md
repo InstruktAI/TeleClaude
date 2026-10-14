@@ -21,8 +21,9 @@ the Todo's evidence** — artifacts present, review verdicts, approval stamps, s
 stamps, drift-review stamps — by the workflow engine (`adopt_prepare_handoff_phase`
 for the prepare lane, `apply_authoritative_signal` for the work lane), and is
 re-derived each time the prepare/work state machine is dispatched. There is no
-operator surface that sets the pointer against its evidence and no manual
-realignment command; the pointer is never authored by hand. Legacy phase strings
+general operator surface that sets the pointer against its evidence and no manual
+realignment command; the pointer is never authored by hand. The bounded
+code-conformance return below is the only exception. Legacy phase strings
 on older Todos auto-upcycle on read; the canonical pointer is the single source of
 truth for "where is this Todo, right now."
 
@@ -34,6 +35,16 @@ it is detected objectively (`derive_lifecycle_drift`) and assessed for
 `drift_reviewed` as `substantive` or `cosmetic`, and only a `substantive` verdict
 cascades to clear the affected downstream review verdicts. No code path clears a
 human's approval as a mechanical side effect of editing an artifact.
+
+The only explicit work-phase return is `telec todo return-to-work`. It recovers a
+held, unclaimed, undelivered Todo at `finalize_ready` when independently
+established code-conformance evidence requires another implementation cycle.
+The operation returns the phase to `build_started`, clears only the stale
+finalize-ready and build-review eligibility fields, and records its reason and
+evidence in the Todo's event history in the same state write. Preparation
+approvals, plan and artifacts, worktree, branch, commits, candidate refs, review
+round history, and hold remain intact. This is a bounded recovery operation,
+not a general phase override.
 
 ## Canonical fields
 
@@ -122,6 +133,37 @@ Then the derived phase returns the Todo to plan review
 And no blocker reports the remediation write as absent
 ```
 
+#### UC-TLP4: A held finalized candidate returns to the existing code-conformance cycle
+
+```gherkin
+Given an active, held Todo at lifecycle_phase=finalize_ready
+And no lifecycle claim or active or recovery-pending integration attempt owns it
+And the candidate is not committed to canonical main or delivered
+And an independently established code-conformance finding has an address
+When an operator runs `telec todo return-to-work <slug> --reason <reason> --evidence <address>`
+Then the workflow owner atomically records the reason, evidence address, actor, and candidate SHA
+And returns lifecycle_phase to build_started
+And clears only finalize readiness and the prior build-review eligibility binding
+And preserves preparation approvals, artifacts, worktree, branches, commits, review-round history, and the hold
+And the next `telec todo work <slug>` resumes the ordinary build, independent review, fix, and finalize cycle
+And the return emits no finalize-ready integration transition
+```
+
+```gherkin
+Given a Todo is not active, not held, or not at finalize_ready
+Or a lifecycle claim or active or recovery-pending integration attempt owns it
+Or its candidate is committed to canonical main or the Todo is delivered
+When an operator runs `telec todo return-to-work <slug> --reason <reason> --evidence <address>`
+Then the operation refuses without changing state
+And names the owning gate and its sanctioned path: hold the unclaimed finalized Todo, let its lifecycle claim release, let integration settle or recover through `telec todo integrate`, or handle committed work through its ordinary post-delivery defect or change path
+```
+
+```gherkin
+Given a return request omits a non-empty reason or evidence address
+When `telec todo return-to-work` is invoked
+Then it refuses before mutation and prints the required invocation
+```
+
 ### Cross-context references
 
 - `agent_runtime` — worker dispatch decisions read the canonical phase to decide
@@ -136,8 +178,10 @@ And no blocker reports the remediation write as absent
   regardless of how often state is read.
 - Re-derivation happens on state-machine dispatch (`telec todo prepare`/`work`).
   Editing an artifact between dispatches changes the evidence; the pointer reflects
-  it at the next dispatch. There is no manual realignment command — the removed
-  `telec todo reconcile` and `telec todo mark-phase` surfaces no longer exist.
+  it at the next dispatch. There is no general manual realignment command; the
+  removed `telec todo reconcile` and `telec todo mark-phase` surfaces remain
+  retired. The held-candidate code-conformance return is the sole bounded recovery
+  exception described above.
 - The canonical lifecycle is **strictly forward** under normal progression: draft
   → prepare-lane phases → prepared → work-lane phases → finalize_ready →
   delivered. A substantive artifact edit that drifts already-approved downstream

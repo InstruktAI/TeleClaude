@@ -924,6 +924,19 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(capability=Capability.STAMP, human=_HR_MEMBER),
             ),
+            "return-to-work": CommandDef(
+                desc="Return a held, unintegrated finalized todo to its code-conformance build and review cycle",
+                args="<slug> --reason <reason> --evidence <address>",
+                flags=[F.FLAG_HELP, F.FLAG_TODO_RETURN_REASON, F.FLAG_TODO_RETURN_EVIDENCE],
+                notes=[
+                    "Requires an active, held finalize-ready todo with no active lifecycle claim or integration recovery.",
+                    "Preserves preparation, candidate refs, worktree, commits, review-round history, and the hold.",
+                ],
+                examples=[
+                    'telec todo return-to-work my-feature --reason "review found a code-conformance gap" --evidence "review-findings#finding-1"',
+                ],
+                auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
+            ),
         },
     ),
     "bugs": CommandDef(
@@ -2060,6 +2073,7 @@ TODO_CREATE = CLI_SURFACE["todo"].subcommands["create"]
 TODO_DELIVER = CLI_SURFACE["todo"].subcommands["deliver"]
 TODO_REMOVE = CLI_SURFACE["todo"].subcommands["remove"]
 TODO_STAMP = CLI_SURFACE["todo"].subcommands["stamp"]
+TODO_RETURN_TO_WORK = CLI_SURFACE["todo"].subcommands["return-to-work"]
 TODO_REACTIVATE = CLI_SURFACE["todo"].subcommands["reactivate"]
 TODO_LIST = CLI_SURFACE["todo"].subcommands["list"]
 TODO_SYNC = CLI_SURFACE["todo"].subcommands["sync"]

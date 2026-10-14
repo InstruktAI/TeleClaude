@@ -12,6 +12,8 @@ The agent is the authority on intelligence. Neither does the other's job.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from time import perf_counter
 
@@ -50,6 +52,8 @@ from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.lifecycle_events import _tls
 from teleclaude.core.integration.push_recovery import _step_content_gate_blocked, _step_push_rejected
 from teleclaude.core.integration.step_functions import (
+    _INTEGRATION_LEASE_KEY,
+    _INTEGRATION_LEASE_TTL_SECONDS,
     _NEXT_INTEGRATE_PHASE_LOG,
     _do_merge,
     _step_awaiting_commit,
@@ -82,7 +86,47 @@ _PUBLICATION_CONFIRMATION_FAILED_DIAGNOSTIC = "repo-root publication was not con
 
 # Re-export IntegrationPhase for backward compatibility
 # (external code imports it from this module)
-__all__ = ["IntegrationPhase", "next_integrate"]
+__all__ = ["IntegrationPhase", "IntegrationRecoveryRefused", "hold_integration_for_todo_recovery", "next_integrate"]
+
+
+class IntegrationRecoveryRefused(RuntimeError):
+    """Raised when another integration attempt owns or needs the shared checkpoint."""
+
+
+@contextmanager
+def hold_integration_for_todo_recovery(cwd: str, owner_session_id: str) -> Generator[None, None, None]:
+    """Serialize a bounded todo recovery against integration and crash recovery."""
+    if not owner_session_id:
+        raise IntegrationRecoveryRefused("a caller session is required to serialize todo recovery")
+    state_dir = _default_state_dir(cwd)
+    lease_store = IntegrationLeaseStore(state_path=state_dir / "lease.json")
+    acquired = lease_store.acquire(
+        key=_INTEGRATION_LEASE_KEY,
+        owner_session_id=owner_session_id,
+        ttl_seconds=_INTEGRATION_LEASE_TTL_SECONDS,
+    )
+    if (
+        acquired.status != "acquired"
+        or acquired.lease is None
+        or (acquired.holder is not None and not acquired.replaced_stale)
+    ):
+        holder = acquired.holder.owner_session_id if acquired.holder else "unknown"
+        raise IntegrationRecoveryRefused(
+            f"integration is active under session {holder}; let it settle before returning the todo to work"
+        )
+
+    lease = acquired.lease
+    try:
+        checkpoint = _read_checkpoint(state_dir / "state.json")
+        if checkpoint.phase not in (IntegrationPhase.IDLE.value, IntegrationPhase.COMPLETED.value):
+            raise IntegrationRecoveryRefused(
+                f"integration checkpoint is {checkpoint.phase}; recover it with `telec todo integrate` before returning work"
+            )
+        yield
+    finally:
+        lease_store.release(
+            key=_INTEGRATION_LEASE_KEY, owner_session_id=owner_session_id, lease_token=lease.lease_token
+        )
 
 
 # ---------------------------------------------------------------------------

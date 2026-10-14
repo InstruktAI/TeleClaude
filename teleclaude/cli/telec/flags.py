@@ -372,6 +372,10 @@ FLAG_TODO_SHOW_INCLUDE_ARTIFACT_CONTENT = Flag(
 )
 
 FLAG_TODO_REACTIVATE_ID = Flag("--id", desc="Restore a specific retained row by durable id", arity=VALUE)
+FLAG_TODO_RETURN_REASON = Flag(
+    "--reason", desc="Why independently established code-conformance evidence requires another work cycle", arity=VALUE
+)
+FLAG_TODO_RETURN_EVIDENCE = Flag("--evidence", desc="Address of the code-conformance finding", arity=VALUE)
 
 # =============================================================================
 # todo stamp

@@ -204,6 +204,7 @@ class TodoEventKind(StrEnum):
     """Closed vocabulary of ``Event.kind`` values the lifecycle reads back."""
 
     COMMIT_REVIEW_STAMP = "commit_review_stamp"
+    CODE_CONFORMANCE_RETURN = "code_conformance_return"
     PREPARE_CLAIM = "prepare_claim"
 
 

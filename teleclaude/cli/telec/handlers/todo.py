@@ -85,6 +85,7 @@ class _TodoSubcommand(StrEnum):
     LIST = "list"
     PREPARE = "prepare"
     REACTIVATE = "reactivate"
+    RETURN_TO_WORK = "return-to-work"
     REMOVE = "remove"
     SHOW = "show"
     STAMP = "stamp"
@@ -156,6 +157,15 @@ def _handle_todo_stamp(args: list[str]) -> None:
     )
 
     handle_stamp(args)
+
+
+def _handle_todo_return_to_work(args: list[str]) -> None:
+    """Handle the bounded code-conformance return operation."""
+    from teleclaude.cli.telec.handlers._todo_return_to_work import (  # noqa: PLC0415 - command boundary: API mutation.
+        _handle_todo_return_to_work as handle_return,
+    )
+
+    handle_return(args)
 
 
 def _handle_todo(args: list[str]) -> None:
@@ -898,6 +908,7 @@ _TODO_SUBCOMMAND_HANDLERS: dict[_TodoSubcommand, Callable[[list[str]], None]] = 
     _TodoSubcommand.LIST: _handle_todo_list,
     _TodoSubcommand.PREPARE: _handle_todo_prepare,
     _TodoSubcommand.REACTIVATE: _handle_todo_reactivate,
+    _TodoSubcommand.RETURN_TO_WORK: _handle_todo_return_to_work,
     _TodoSubcommand.REMOVE: _handle_todo_remove,
     _TodoSubcommand.SHOW: _handle_todo_show,
     _TodoSubcommand.STAMP: _handle_todo_stamp,
