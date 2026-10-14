@@ -68,10 +68,11 @@ own identity and is never a session role.
 | `transcript-read`      | Showing the transcript of a named session.                                                               |
 | `operation-read`       | Reading the outcome of an operation one's session started or one's reach admits.                         |
 | `session-act`          | Starting, running, reviving, restarting, ending and messaging sessions other than one's own.             |
-| `self-acts`            | Results, files, ending and restarting for one's own session.                                             |
+| `self-acts`            | Results, files, unsubscribing, ending and restarting for one's own session.                              |
 | `messaging`            | Messaging a person.                                                                                      |
 | `audio`                | Transcribing supplied audio to text.                                                                     |
-| `jobs`                 | Listing, enabling, disabling and running jobs.                                                           |
+| `jobs`                 | Enabling, disabling and running jobs.                                                                    |
+| `jobs-read`            | Listing jobs and their runtime status.                                                                   |
 | `job-report`           | Reporting the result of a job run.                                                                       |
 | `config`               | Changing configuration, and reading person and company configuration.                                    |
 | `config-read`          | Reading and validating machine, global and project configuration.                                        |
@@ -109,8 +110,9 @@ Each role's explicit set represents the commands needed by the procedures that
 declare that role, including their required reads and supported entry duties.
 Every role of class `worker` composes the worker baseline the catalog declares
 and adds to it what its own assignment needs. The baseline holds no capability
-that observes the fleet or starts, revives, restarts or ends another session;
-peer talk with the sessions a worker serves stays in it. No worker lists
+that observes the fleet or starts, revives, restarts or ends another session,
+directly or by running a job; peer talk with the sessions a worker serves stays
+in it. No worker lists
 sessions, searches history, reads the fleet's computers, projects or agents, or
 starts another session (UC-AR3). A worker's reach is focus, not integrity
 (`general/principle/trust-and-guardrails`): the todo's claim and the object

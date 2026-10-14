@@ -98,7 +98,7 @@ _PROJECT_CREATE_AUTH = CommandAuth(
     ),
 )
 _PROJECT_ADOPT_AUTH = CommandAuth(capability=Capability.CONFIG, human=_HR_MEMBER, scope=CommandScope.CALLER_PERSON)
-_JOBS_READ_AUTH = CommandAuth(capability=Capability.JOBS, human=_HR_MEMBER)
+_JOBS_READ_AUTH = CommandAuth(capability=Capability.JOBS_READ, human=_HR_MEMBER)
 _JOBS_CONFIG_AUTH = CommandAuth(capability=Capability.JOBS, human=_HR_MEMBER, scope=CommandScope.INVOCATION)
 _JOBS_RUN_AUTH = CommandAuth(capability=Capability.JOBS, human=_HR_MEMBER, scope=CommandScope.INVOCATION)
 
@@ -353,7 +353,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<session_id>",
                 flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
                 auth=CommandAuth(
-                    capability=Capability.SESSION_ACT,
+                    capability=Capability.SELF_ACTS,
                     human=_HR_MEMBER,
                     scope=CommandScope.TARGET_SESSION,
                 ),

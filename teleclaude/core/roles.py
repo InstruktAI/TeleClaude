@@ -40,6 +40,7 @@ class Capability(StrEnum):
     MESSAGING = "messaging"
     AUDIO = "audio"
     JOBS = "jobs"
+    JOBS_READ = "jobs-read"
     JOB_REPORT = "job-report"
     CONFIG = "config"
     CONFIG_READ = "config-read"
@@ -171,7 +172,7 @@ _WORKER_BASELINE: frozenset[Capability] = frozenset(
         Capability.MCP,
         Capability.PEER_TALK,
         Capability.SELF_ACTS,
-        Capability.JOBS,
+        Capability.JOBS_READ,
         Capability.JOB_REPORT,
         Capability.OPERATION_READ,
         Capability.MESSAGING,
@@ -255,6 +256,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.DISPATCH_WORKER,
                     Capability.SESSION_OBSERVE,
                     Capability.SESSION_ACT,
+                    Capability.SELF_ACTS,
                     Capability.PEER_TALK,
                     Capability.TRANSCRIPT_READ,
                     Capability.OPERATION_READ,
@@ -280,6 +282,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.DISPATCH_WORKER,
                     Capability.SESSION_OBSERVE,
                     Capability.SESSION_ACT,
+                    Capability.SELF_ACTS,
                     Capability.PEER_TALK,
                     Capability.OPERATION_READ,
                 }
@@ -301,6 +304,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.DISPATCH_WORKER,
                     Capability.SESSION_OBSERVE,
                     Capability.SESSION_ACT,
+                    Capability.SELF_ACTS,
                     Capability.PEER_TALK,
                     Capability.OPERATION_READ,
                 }
@@ -386,6 +390,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.CODE_CHECK,
                     Capability.SESSION_OBSERVE,
                     Capability.SESSION_ACT,
+                    Capability.SELF_ACTS,
                     Capability.TRANSCRIPT_READ,
                     Capability.PEER_TALK,
                     Capability.OPERATION_READ,
@@ -408,6 +413,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.SESSION_OBSERVE,
                     Capability.TRANSCRIPT_READ,
                     Capability.SESSION_ACT,
+                    Capability.SELF_ACTS,
                     Capability.PEER_TALK,
                     Capability.TODO_READ,
                     Capability.TODO_WRITE,
@@ -522,6 +528,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.CODE_CHECK,
                     Capability.STAMP,
                     Capability.SESSION_ACT,
+                    Capability.SELF_ACTS,
                     Capability.PEER_TALK,
                     Capability.MCP,
                 }
@@ -540,6 +547,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.CONFIG_READ,
                     Capability.SESSION_OBSERVE,
                     Capability.SESSION_ACT,
+                    Capability.SELF_ACTS,
                     Capability.PEER_TALK,
                     Capability.CODE,
                     Capability.CODE_CHECK,
@@ -561,6 +569,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.CODE_CHECK,
                     Capability.STAMP,
                     Capability.SESSION_ACT,
+                    Capability.SELF_ACTS,
                     Capability.PEER_TALK,
                 }
             ),
