@@ -14,6 +14,10 @@ dispatch:
 
 # Installation Inspection — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/general/procedure/event-handling/overview.md
+
 ## Goal
 
 An installed activation receives one evidence-backed runtime assessment after

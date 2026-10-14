@@ -13,6 +13,7 @@ dispatch:
 
 - @~/.teleclaude/docs/sdlc/concept/defect-evidence.md
 - @~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
+- @~/.teleclaude/docs/general/procedure/scheduled-job-run.md
 
 ## Goal
 

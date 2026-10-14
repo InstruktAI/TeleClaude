@@ -12,8 +12,12 @@ correlate it to the open run, then end the session that ran it.
 
 ## Preconditions
 
-- The session was started by the scheduled-job runner for a declared job; the
-  brief names the job by its declared name and the procedure the job executes.
+- The session was started by the scheduled-job runner for a declared job, and
+  its assignment names the job by its declared name and the procedure the job
+  executes. In any other session, including one that reads a job's procedure
+  inline, this procedure assigns no report and no session end: reading a
+  procedure changes nothing about the session reading it
+  (`general/spec/snippet-authoring-schema`).
 - The procedure's own outputs and recovery steps govern the work; this
   procedure governs only the close-out.
 
