@@ -186,13 +186,7 @@ Valid in both project and global configs.
 - `jobs` holds local job declarations and subscriptions to published global jobs, each identified by its required kebab-case `name`; a subscription overrides any setting it carries except the execution pointer (`local/projects/teleclaude/spec/feature/config/job-declaration-model`).
 - `hooks.inbound` declares this project's own inbound sources, as below.
 
-<!-- planned:issue-126 -->
-
 - `todos.store` selects the project workflow-store adapter. Omission defaults to `local`; `github` is a recognized selection and refuses with an explicit unavailable-capability error until its adapter is installed. Local selection requires no GitHub account or repository.
-
-<!-- /planned:issue-126 -->
-
-<!-- planned:issue-126 -->
 
 #### Workflow store selection
 
@@ -203,7 +197,6 @@ refused with the missing capability named; the project never falls back to
 `local` after an explicit `github` selection. This is project-owned workflow
 configuration, not a machine-wide workflow control plane. Local projects need
 no GitHub repository or credentials.
-<!-- /planned:issue-126 -->
 
 Every home declares the inbound sources that open endpoints in its own name
 under `hooks.inbound`, keyed by protocol, and each tier admits only its own
@@ -220,19 +213,6 @@ is optional, and an omitted block or one without an `enabled` value is
 unsubscribed, so only an explicit value claims a capability
 (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`):
 
-<!-- planned-change:issue-126 -->
-
-```yaml
-code:
-  enabled: bool # the project holds code under the TeleClaude lifecycle
-docs:
-  enabled: bool # the project participates in the snippet pipeline
-agents:
-  enabled: bool # the project holds agent artifacts
-```
-
-<!-- change:issue-126 -->
-
 ```yaml
 code:
   enabled: bool # the project holds code under the TeleClaude lifecycle
@@ -243,8 +223,6 @@ agents:
 todos:
   store: local | github # defaults to local; github refuses until its adapter is installed
 ```
-
-<!-- /planned-change:issue-126 -->
 
 A project and a company each declare whether that home keeps a help desk. An
 omitted block, or one without an `enabled` value, keeps none. How the block is

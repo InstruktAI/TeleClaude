@@ -1,8 +1,7 @@
 ---
-description: Backend-neutral port and local adapter boundary for workflow records, operations, and integration.
+description: Backend-neutral port and local adapter boundary for workflow records,
+  operations, and integration.
 visibility: internal
-delivered_by:
-  - issue-126
 ---
 
 # Workflow Store — Design

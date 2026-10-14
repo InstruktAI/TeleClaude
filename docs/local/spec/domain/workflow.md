@@ -13,15 +13,6 @@ feature specs remain the current contract.
 
 ## Canonical fields
 
-<!-- planned-change:issue-126 -->
-
-- **Current behavior:** `docs/local/spec/feature/workflow/`.
-- **Implementation roots:** `teleclaude/core/todos_db/`,
-  `teleclaude/core/next_machine/`, `teleclaude/core/integration/`, and todo CLI
-  handlers.
-
-<!-- change:issue-126 -->
-
 - **Current behavior:** `docs/local/spec/feature/workflow/`.
 - **Implementation roots:** `teleclaude/core/workflow_store/` owns the
   backend-neutral workflow-store contract, selection and local adapter;
@@ -29,8 +20,6 @@ feature specs remain the current contract.
   and migration owner. `teleclaude/core/next_machine/`,
   `teleclaude/core/integration/`, API routes, services and CLI handlers consume
   the workflow-store contract and do not access a backend directly.
-
-<!-- /planned-change:issue-126 -->
 
 - **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. Replacement work never uses this store or
   lifecycle.
