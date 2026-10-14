@@ -49,9 +49,10 @@ immutable release candidate before the existing full installation proof. Both
 profiles use one scenario definition and result format. The full profile includes the
 cold-entry scenarios and adds the runtime journeys below.
 
-CI runs the full profile on the self-hosted runner inside a fresh disposable
+Standalone push and pull-request CI runs the full profile on the self-hosted
+runner inside a fresh disposable
 macOS virtual machine that the run creates from a base image and deletes when
-it ends. The candidate enters the machine as a Git bundle of its exact revision,
+it ends. The checked revision enters the machine as a Git bundle,
 and the result leaves it through the run's own shared directory. The runner
 host's own installation — its platform home, services, daemon socket and
 registered projects — is neither read nor changed by the run; on the host the
@@ -64,7 +65,8 @@ and the machine's deletion outcome. A machine left behind by an interrupted
 run is deleted by the run's final cleanup step or, failing that, by the next
 run before it starts. The full profile refuses to start, before any scenario,
 where a TeleClaude platform home or daemon socket already exists, so it never
-runs against a live installation.
+runs against a live installation. Release candidate execution placement is
+owned by `local/projects/teleclaude/spec/feature/release/publication`.
 
 <!-- /planned-change:full-acceptance-on-self-hosted-runner -->
 
@@ -233,7 +235,7 @@ And its result retains the original outcome and any cleanup failure
 And a required scenario that did not run is never reported as passed
 ```
 
-<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+<!-- planned-change:owned-release-execution -->
 
 #### UC-RA10: Candidate verification uses the same full profile as hosted CI
 
@@ -245,7 +247,7 @@ And a failure prevents publication even if an earlier source revision passed
 And success leaves the full installation proof required
 ```
 
-<!-- change:full-acceptance-on-self-hosted-runner -->
+<!-- change:owned-release-execution -->
 
 #### UC-RA10: Candidate verification uses the same full profile as CI
 
@@ -257,7 +259,7 @@ And a failure prevents publication even if an earlier source revision passed
 And success leaves the full installation proof required
 ```
 
-<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
+<!-- /planned-change:owned-release-execution -->
 
 #### UC-RA11: Invalid configuration input is refused without changing state
 
@@ -352,8 +354,9 @@ And a fresh authorized memory listing reports no memory added by those attempts
   proof, and it uses no live subscription credentials or external messaging.
 - Existing installation proof and target-specific worktree help checks retain
   their own contracts.
-- The full profile exercises the macOS installation and service paths only;
-  Linux service installation is outside its evidence.
+- Each full-profile run establishes installation and service behavior only on
+  the operating system it actually exercises. Standalone CI uses macOS; release
+  candidate acceptance uses the release workflow's selected Linux target.
 - The self-hosted runner executes one job at a time, so full-profile runs for
   closely spaced pushes and pull requests wait for one another instead of
   running in parallel; their completion order is not guaranteed to follow push

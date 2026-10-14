@@ -22,12 +22,33 @@ Operate and maintain the self-hosted GitHub Actions runner on MozMini (Mac Mini)
 <!-- planned:full-acceptance-on-self-hosted-runner -->
 
 - Tart installed on the runner host with the macOS base image the CI
-  verification controllers clone; full runtime acceptance and release installer
+  verification controllers clone; standalone CI acceptance and release installer
   proof each run inside a disposable virtual machine created from it.
 
 <!-- /planned:full-acceptance-on-self-hosted-runner -->
 
 ## Steps
+
+<!-- planned:owned-release-execution -->
+
+### Release execution destination
+
+1. Inspect the repository routing setting named by the release workflow and the
+   selected runner destination. Discover the runner host through
+   `telec computers list` and its project through `telec projects list`.
+2. Before selecting owned execution, establish the qualified Ubuntu guest base,
+   scoped runner registration and resource partition recorded by the deployment.
+   Use the pinned Fleet release's configuration validation and status surfaces;
+   upstream operations are described in its installation and operations guides.
+3. Operate controller installation and lifecycle through the project's make
+   targets (`local/projects/teleclaude/policy/agent-service-control`). Inspect
+   durable guest and cleanup state before considering a failed run settled.
+4. Change the single routing setting to select the compatible hosted destination
+   when hosted execution is desired. The release verification and authentication
+   contracts remain owned by
+   `local/projects/teleclaude/spec/feature/release/publication`.
+
+<!-- /planned:owned-release-execution -->
 
 ### Check runner status
 
@@ -126,3 +147,13 @@ Before diagnosing runner issues, verify the host is healthy:
   another machine on the host.
 
 <!-- /planned:full-acceptance-on-self-hosted-runner -->
+
+<!-- planned:owned-release-execution -->
+
+## See Also
+
+- https://github.com/vitalyiegorov/tart-runner-fleet/blob/main/INSTALL.md
+- https://github.com/vitalyiegorov/tart-runner-fleet/blob/main/docs/LINUX_BASE_IMAGE.md
+- https://github.com/vitalyiegorov/tart-runner-fleet/blob/main/docs/OPERATIONS.md
+
+<!-- /planned:owned-release-execution -->

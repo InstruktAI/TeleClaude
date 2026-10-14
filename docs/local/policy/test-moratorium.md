@@ -45,7 +45,7 @@ This repository only. Satellite projects keep their own testing contract, declar
 
 ## Exceptions
 
-<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+<!-- planned-change:owned-release-execution -->
 
 - One black-box CLI acceptance harness may be authored and maintained under
   `local/projects/teleclaude/spec/feature/agent_runtime/runtime-acceptance`.
@@ -74,7 +74,7 @@ This repository only. Satellite projects keep their own testing contract, declar
 - Other verification needs require changes to this policy rather than one-off
   additions to the corpus.
 
-<!-- change:full-acceptance-on-self-hosted-runner -->
+<!-- change:owned-release-execution -->
 
 - One black-box CLI acceptance harness may be authored and maintained under
   `local/projects/teleclaude/spec/feature/agent_runtime/runtime-acceptance`.
@@ -103,7 +103,7 @@ This repository only. Satellite projects keep their own testing contract, declar
 - Other verification needs require changes to this policy rather than one-off
   additions to the corpus.
 
-<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
+<!-- /planned-change:owned-release-execution -->
 
 ## See Also
 

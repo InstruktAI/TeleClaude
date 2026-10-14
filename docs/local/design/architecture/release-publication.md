@@ -14,7 +14,7 @@ consumes the installer and update contracts through their existing boundaries.
 
 ## Inputs/Outputs
 
-<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+<!-- planned-change:owned-release-execution -->
 
 - An attempt captures canonical main and the previous completed publication
   after acquiring the release stream's serialization.
@@ -32,7 +32,7 @@ consumes the installer and update contracts through their existing boundaries.
   summary; unavailable summaries retain their outcomes and leave deterministic
   notes publishable. A first manual publication establishes a baseline.
 
-<!-- change:full-acceptance-on-self-hosted-runner -->
+<!-- change:owned-release-execution -->
 
 - An attempt captures canonical main and the previous completed publication
   after acquiring the release stream's serialization.
@@ -50,7 +50,7 @@ consumes the installer and update contracts through their existing boundaries.
   summary; unavailable summaries retain their outcomes and leave deterministic
   notes publishable. A first manual publication establishes a baseline.
 
-<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
+<!-- /planned-change:owned-release-execution -->
 
 ## Invariants
 
@@ -114,7 +114,38 @@ neither a new inspection nor authority to recreate a retired execution path.
 Published Git objects and tags stay immutable; in-memory normalization is
 separate from their original serialized evidence and integrity hashes.
 
+<!-- planned:owned-release-execution -->
+
+### Execution placement
+
+The release workflow reads one repository routing setting for every Linux
+stage. Its hosted and owned destinations provide the same Ubuntu execution
+contract; the separate installation-proof job retains its Mac virtualization
+requirement. Workflow routing changes neither the release stream's
+serialization nor artifact, candidate and credential-settlement authority
+(`local/projects/teleclaude/spec/feature/release/publication`).
+
+Tart Runner Fleet owns fresh Linux guest registration and durable disposal.
+The host controller retains registration authority outside the guests and
+provisions each from a pinned qualified base. Guest tooling satisfies the
+release job prerequisites, including native sandbox readiness and full runtime
+acceptance. The host controller and the external installation-proof controller
+use a bounded resource partition that reserves capacity for the host's live
+installation. Capacity is established from the deployed host and proof image,
+rather than inferred from runner count (`sdlc/policy/security-awareness`).
+
+The existing proof controller owns its VM admission and cleanup, including
+recovery of its own interrupted runs. Fleet ownership applies only to its
+inventory. A retained cleanup failure remains actionable and does not authorize
+reuse of a guest or establish authentication settlement. Repository service
+installation and lifecycle use the sanctioned make surface
+(`local/projects/teleclaude/policy/agent-service-control`).
+
+<!-- /planned:owned-release-execution -->
+
 ### Credentials and inspection
+
+<!-- planned-change:owned-release-execution -->
 
 Capture freezes one source/baseline attempt and bounded evidence artifact before
 inspection. A fresh GitHub-hosted Ubuntu job runs Codex; a separate fresh Ubuntu
@@ -137,6 +168,32 @@ stdin and credentials never enter argv. Owned private directories/files retain
 private permissions and configuration is read-only. Their declarations and owned
 filesystem checks belong to `tools/release/isolated_inspection.py` and the
 provider configuration adapters.
+
+<!-- change:owned-release-execution -->
+
+Capture freezes one source/baseline attempt and bounded evidence artifact before
+inspection. A fresh Ubuntu job runs Codex; a separate fresh Ubuntu
+job runs Claude only when Codex has no eligible complete report with confirmed
+credential settlement. Selection consumes exact artifact identities, digests and
+inventories. Explicit versions request a distinct summary report; unchanged
+automatic source bypasses provider jobs. Missing,
+failed, skipped or cancelled primary job evidence remains an observed failure,
+with no invented client exit or settled-auth claim. Claude does not depend on a
+cleanup signal from another machine.
+
+Each provider runs its pinned native CLI as the ordinary runner UID. Its
+job installs only its own client. Private controller and client configuration
+live outside immutable model-readable evidence in ordinary job temporary
+storage; existing checkout and home permissions are unchanged. There is no
+cross-provider UID switching, privileged filesystem transfer, copied interpreter,
+shared public namespace, ownership claim or staged launcher. Child environments
+contain only the adapter's explicit allowlist; prompts travel byte-exact through
+stdin and credentials never enter argv. Owned private directories/files retain
+private permissions and configuration is read-only. Their declarations and owned
+filesystem checks belong to `tools/release/isolated_inspection.py` and the
+provider configuration adapters.
+
+<!-- /planned-change:owned-release-execution -->
 
 The Codex job installs compatible distribution bubblewrap and Ubuntu's scoped
 AppArmor user-namespace profile using the vendor-supported setup, without
@@ -218,7 +275,7 @@ and seeding use the same serialized stream.
 
 ### Automatically assessed attempt
 
-<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+<!-- planned-change:owned-release-execution -->
 
 1. Resolve any incomplete owned publication before capturing another baseline.
 2. Capture S and B. An unchanged normalized source finishes successfully.
@@ -236,31 +293,30 @@ and seeding use the same serialized stream.
    updates the tag and main, then creates the GitHub Release for R and attaches
    its provenance and proof references.
 
-<!-- change:full-acceptance-on-self-hosted-runner -->
+<!-- change:owned-release-execution -->
 
 1. Resolve any incomplete owned publication before capturing another baseline.
 2. Capture S and B. An unchanged normalized source finishes successfully.
 3. Prepare and retain the compact inventory and public-contract comparison once.
-   Run Codex on its fresh hosted job, then Claude on a separate fresh job only if
+   Run Codex on its fresh Ubuntu job, then Claude on a separate fresh job only if
    Codex's inspection or credential settlement is unsuccessful. Select their
    exact artifact-bound outcomes, retaining runner failure as unsuccessful evidence.
    A valid complete no-release result finishes successfully.
 4. Generate complete commit notes with git-cliff and add the selected assessment's
    summary. Prepare R with final version and lock coherence, released manifests,
    and the cumulative published changelog before committing R.
-5. Run lint and full runtime acceptance on R on the self-hosted runner, the
-   profile inside a disposable machine, then the full existing installer harness
-   in a disposable machine. Retain the candidate identity and evidence; clean up
-   each machine.
+5. Run lint and full runtime acceptance on R on the selected Linux target, then
+   the full existing installer harness on its virtualization-capable target.
+   Retain the candidate identity and evidence; clean up each owned machine.
 6. A dry-run returns these results. Publication reconciles current H, atomically
    updates the tag and main, then creates the GitHub Release for R and attaches
    its provenance and proof references.
 
-<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
+<!-- /planned-change:owned-release-execution -->
 
 ### Explicit-version attempt
 
-<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+<!-- planned-change:owned-release-execution -->
 
 A manual dispatch with an explicit valid newer version captures S and the
 completed baseline when present. It records the operator decision and generates
@@ -273,7 +329,7 @@ proof and publication consume the same identities as the automatic flow. A
 manual dry-run finishes at proof. Automatic publication activation does not
 supply or withhold authority for an explicit-version publication.
 
-<!-- change:full-acceptance-on-self-hosted-runner -->
+<!-- change:owned-release-execution -->
 
 A manual dispatch with an explicit valid newer version captures S and the
 completed baseline when present. It records the operator decision and generates
@@ -286,7 +342,7 @@ proof and publication consume the same identities as the automatic flow. A
 manual dry-run finishes at proof. Automatic publication activation does not
 supply or withhold authority for an explicit-version publication.
 
-<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
+<!-- /planned-change:owned-release-execution -->
 
 ### Publication recovery
 
@@ -297,7 +353,7 @@ version nor interprets an unpublished tag as the completed baseline.
 
 ### Automatic publication activation
 
-<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+<!-- planned-change:owned-release-execution -->
 
 The checked-in automatic-publication setting gates automatically assessed
 publication. Scheduled attempts remain dry-runs until the release maintainer
@@ -306,7 +362,7 @@ interval. Manual version selection and no-change outcomes do not establish that
 validation. Every published candidate, from either decision path, still earns
 its own lint, hosted runtime acceptance and installer proof.
 
-<!-- change:full-acceptance-on-self-hosted-runner -->
+<!-- change:owned-release-execution -->
 
 The checked-in automatic-publication setting gates automatically assessed
 publication. Scheduled attempts remain dry-runs until the release maintainer
@@ -315,7 +371,7 @@ interval. Manual version selection and no-change outcomes do not establish that
 validation. Every published candidate, from either decision path, still earns
 its own lint, runtime acceptance and installer proof.
 
-<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
+<!-- /planned-change:owned-release-execution -->
 
 ## Failure modes
 
