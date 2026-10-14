@@ -58,13 +58,8 @@ persisted invocation.
 : The procedure ID, the bound parameters, the raw argument text, the entry context, the additional context supplied at launch, and the brief reference, persisted on the session's launch state; continuation rebuilds the brief from it in full.
 
 **Brief**
-<!-- planned-change:role-scoped-cli-context -->
-
-: The one artifact the loader names: the role's framing line, the parameter preamble, the procedure's required-read closure, the entry type's required reads — `general/procedure/scheduled-job-run` for a scheduled job, the event-handling closure the delivery settings imply for an activation — and additional context once. It carries no command listing of its own; what commands the session reaches is the role catalog's decision, and a role-scoped command surface in the brief is a separate delivery (`local/projects/teleclaude/spec/feature/identity/agent-roles`, Known caveats).
-<!-- change:role-scoped-cli-context -->
 
 : The one artifact the loader names: the role's framing line, the parameter preamble, the procedure's required-read closure, the entry type's required reads — `general/procedure/scheduled-job-run` for a scheduled job, the event-handling closure the delivery settings imply for an activation — and additional context once. It carries no command listing of its own; what commands the session reaches is the role catalog's decision, and the session retrieves its role's focused commands through help (`local/projects/teleclaude/spec/feature/presentation/cli-help`).
-<!-- /planned-change:role-scoped-cli-context -->
 
 **Entry context**
 : What the entry type supplies beside the arguments — a job's name, an activation's home, subject, attendance and delivery settings.
@@ -225,15 +220,7 @@ And no session is created
 
 ## Known caveats
 
-<!-- planned-change:role-scoped-cli-context -->
-
-- The brief is read by the agent verbatim, whatever its size. It presents no per-role command surface; presenting a role's explicit set in the brief and narrowing the CLI index a session sees is the role-scoped context delivery's concern, not this contract's.
-
-<!-- change:role-scoped-cli-context -->
-
 - The brief is read by the agent verbatim, whatever its size.
-
-<!-- /planned-change:role-scoped-cli-context -->
 
 - The legacy `system_role` and `job_role` wire projections stay populated while older computers read them, carrying the class-derived legacy projection the fleet interop contract defines; an older node reads them for display and record and by no clearance, and never creates a session carrying a catalog role.
 

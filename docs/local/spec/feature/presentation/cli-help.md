@@ -1,8 +1,7 @@
 ---
-description: Discover commands through ordinary help, expand a session's focused role set, or expand its permitted surface within an optional namespace.
+description: Discover commands through ordinary help, expand a session's focused role
+  set, or expand its permitted surface within an optional namespace.
 visibility: internal
-delivered_by:
-  - role-scoped-cli-context
 ---
 
 # CLI Help — Spec

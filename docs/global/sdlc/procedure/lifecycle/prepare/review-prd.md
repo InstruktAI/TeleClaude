@@ -35,13 +35,10 @@ not review architecture, implementation mechanism, or concrete proof.
 
 ## Steps
 
-<!-- planned:role-scoped-cli-context -->
-
 When this procedure is your session’s launch assignment, retrieve its focused tool
 help with `telec -h --expand-role` before starting the assigned work. When reading
 it inline, retain your current session’s tool context. Use `telec <command> -h`
 for individual commands.
-<!-- /planned:role-scoped-cli-context -->
 
 1. Discover the todo's artifacts, then read the `input`, the drafted `prd`, and
    any `log` or deferral material that bears on product intent. Load the relevant

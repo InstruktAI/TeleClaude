@@ -57,13 +57,10 @@ than a standalone snippet; publish a reusable snippet only when the research ear
 
 ## Steps
 
-<!-- planned:role-scoped-cli-context -->
-
 When this procedure is your session’s launch assignment, retrieve its focused tool
 help with `telec -h --expand-role` before starting the assigned work. When reading
 it inline, retain your current session’s tool context. Use `telec <command> -h`
 for individual commands.
-<!-- /planned:role-scoped-cli-context -->
 
 - Identify sources (web or Context7) and record them.
 - Draft an internal snippet that captures only validated facts.

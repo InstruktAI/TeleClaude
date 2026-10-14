@@ -46,13 +46,10 @@ finalize, or commit.
 
 ## Steps
 
-<!-- planned:role-scoped-cli-context -->
-
 When this procedure is your session’s launch assignment, retrieve its focused tool
 help with `telec -h --expand-role` before starting the assigned work. When reading
 it inline, retain your current session’s tool context. Use `telec <command> -h`
 for individual commands.
-<!-- /planned:role-scoped-cli-context -->
 
 1. **Read the evidence first.** You may be a fresh instance — the first dispatch, or
    a revival after a daemon restart — with no memory of prior firings
