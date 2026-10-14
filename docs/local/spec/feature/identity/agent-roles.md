@@ -82,6 +82,8 @@ which family is the CLI surface schema's.
 
 ### Roles
 
+<!-- planned-change:tailored-role-command-sets -->
+
 | Role                                                                                                  | Class    | `full_reach` | Explicit set                                                                                                                                                                       | Label        |
 | ----------------------------------------------------------------------------------------------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
 | `builder`, `reviewer`, `finalizer`, `diagnoser`, `drift-analyzer`, `artist`, `frontender`, `deferrer` | worker   | no           | `docs-read`, `todo-read`, `todo-write`, `artifact-read`, `artifact-write`, `stamp`, `self-acts`, `reminders`, `code`, `jobs`, `mcp`, `peer-talk`                                   | Worker       |
@@ -95,9 +97,56 @@ which family is the CLI surface schema's.
 | `desk-memory-curator`                                                                                 | agent    | no           | `memory-curation`, `docs-read`, `reminders`, `self-acts`                                                                                                                           | Tasker       |
 | `helper`                                                                                              | agent    | yes          | `docs-read`, `todo-read`, `session-observe`, `code`, `reminders`                                                                                                                   | Agent        |
 
+<!-- change:tailored-role-command-sets -->
+
+The role catalog is the authority for each role's name, class, explicit
+capabilities, full-reach opt-in and identity label. Each entry states its own
+composition; a role class describes session behavior and supplies no implicit
+command membership.
+<!-- /planned-change:tailored-role-command-sets -->
+
+<!-- planned-change:tailored-role-command-sets -->
+
 A worker-class role is never marked `full_reach`. The label is the role's name
 in a caller-origin identity header, drawn from the closed label vocabulary of
 `local/projects/teleclaude/spec/message-headers`.
+<!-- change:tailored-role-command-sets -->
+
+`full_reach` is an explicit opt-in on the role, independently of its class.
+It is available to internal roles whose procedures are not directly exposed to
+human input. A role serving a directly human-exposed procedure remains
+restricted. An operator redirecting an internal agent's assignment does not
+change the role's reach. Treatment of indirectly supplied content belongs to
+its own input-handling contract, not an inferred widening or narrowing here.
+
+The label is the role's name in a caller-origin identity header, drawn from
+`local/projects/teleclaude/spec/message-headers`.
+<!-- /planned-change:tailored-role-command-sets -->
+
+<!-- planned:tailored-role-command-sets -->
+
+### Assignment-specific command focus
+
+Each role's explicit set represents the commands needed by the procedures that
+declare that role, including their required reads and supported entry duties.
+Sharing a role class grants no shared command set. Procedures share a role only
+where its focused surface fits their assignments; a shared label alone supplies
+no command membership. The catalog owns the sets, and command declarations own
+capability membership, under
+`local/projects/teleclaude/design/cli-authorization-matrix`.
+
+Capabilities distinguish commands whose assignment needs differ. A role that
+needs inspection or verification does not acquire unrelated mutation commands
+merely because those commands share a broad namespace. Ordinary startup,
+documentation retrieval, reporting, peer communication and completion remain
+available wherever the role's procedure requires them.
+
+The focused set remains explicit for a full-reach role. Full reach broadens
+permission independently of that focused set; it never expands the focused set
+itself. Restricted roles remain bounded by their explicit sets, with object
+guardrails retaining their own authority
+(`general/principle/trust-and-guardrails`).
+<!-- /planned:tailored-role-command-sets -->
 
 ### Class
 
@@ -179,6 +228,28 @@ Then the command is refused with the not-permitted failure naming that role and 
 And an error naming the session and the role is logged
 And the session is not admitted as a human session
 ```
+
+<!-- planned:tailored-role-command-sets -->
+
+#### UC-AR7: Role focus follows the assignment rather than its class
+
+```gherkin
+Given two agent roles of the same class with different procedure duties
+When their focused command sets are resolved
+Then each contains the commands its own assignments need
+And a command needed only by the other assignment is absent
+```
+
+#### UC-AR8: Full reach preserves a separate focused set
+
+```gherkin
+Given an internal agent role explicitly opted into full reach
+When its focused set and permitted reach are resolved
+Then its focused set remains tailored to its assignment
+And its permitted reach includes capabilities outside that set
+```
+
+<!-- /planned:tailored-role-command-sets -->
 
 ## Known caveats
 
