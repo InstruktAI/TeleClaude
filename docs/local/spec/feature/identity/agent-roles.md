@@ -257,11 +257,22 @@ And its permitted reach includes capabilities outside that set
   record the migration could not map, stays refused if it is revived; the
   migration (`local/projects/teleclaude/spec/feature/agent_runtime/session-role-migration`)
   reports every such record.
+
+<!-- planned-change:role-scoped-cli-context -->
+
 - The explicit set of a full-reach role binds nothing, and no brief presents
   it: the procedure-entry brief carries the role's framing line and no command
   listing. Presenting the set as a brief's command surface, and narrowing the
   CLI index a session sees to it, is a separate delivery; until it lands the
   set is documentation of the role's ordinary surface.
+
+<!-- change:role-scoped-cli-context -->
+
+- The explicit set of a full-reach role binds nothing: it is the role's focused
+  set, which help presents on request without narrowing the role's reach
+  (`local/projects/teleclaude/spec/feature/presentation/cli-help`).
+
+<!-- /planned-change:role-scoped-cli-context -->
 
 ## See Also
 

@@ -31,6 +31,12 @@ review context; the shared review procedure supplies the review judgment.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 ### 1. Validate the discrete SHA list
 
 Parse `$ARGUMENTS` as a comma-separated list. Confirm every SHA exists with

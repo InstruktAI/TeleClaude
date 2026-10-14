@@ -46,6 +46,12 @@ finalize, or commit.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 1. **Read the evidence first.** You may be a fresh instance — the first dispatch, or
    a revival after a daemon restart — with no memory of prior firings
    (`general/principle/continuity`). Read the `log` before anything else; it carries

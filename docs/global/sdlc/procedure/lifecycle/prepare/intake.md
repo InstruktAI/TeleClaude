@@ -130,6 +130,12 @@ The human owns final `prd_approved`.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 ### 1. Establish mode and orient
 
 Apply the artifact-discovery rule from `preparation-artifact-quality` first —

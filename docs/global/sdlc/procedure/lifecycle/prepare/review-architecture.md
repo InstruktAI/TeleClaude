@@ -36,6 +36,12 @@ unsupported invention and status-quo absorption.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 First read the sdlc principles as listed in the sdlc baseline that apply to this work with `telec docs get`.
 
 ### 1. Read context

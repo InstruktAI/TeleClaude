@@ -4,7 +4,7 @@ visibility: 'public'
 role: helper
 dispatch:
   agent: [claude, codex, gemini, deepseek]
-  thinking_mode: med
+  thinking_mode: slow
 ---
 
 # Project Onboarding — Procedure
@@ -32,6 +32,12 @@ surface that starts agents.
 - The current working directory is a project root (or will become one).
 
 ## Steps
+
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
 
 1. **Adopt.** From the project root, run `telec config project adopt`. It
    registers the project where it is: it gives the folder its own repository when

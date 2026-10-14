@@ -4,7 +4,7 @@ visibility: 'public'
 role: helper
 dispatch:
   agent: [claude, codex, gemini, deepseek]
-  thinking_mode: med
+  thinking_mode: slow
 ---
 
 # Code Config Assessment — Procedure
@@ -37,6 +37,12 @@ again without undoing a defensible project choice.
   projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence.
 
 ## Steps
+
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
 
 1. Bring the project's Makefile onto the install, lint, test, and format
    interface. The targets delegate to tools the project declares and provisions;

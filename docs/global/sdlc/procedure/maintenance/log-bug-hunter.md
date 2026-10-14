@@ -35,6 +35,12 @@ whose records support a failure in the scanned project's own handling through
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 1. Establish the scan window for this project.
    - Read the saved envelope's `state` object using the schema under Outputs. A missing file or absent checkpoint uses the first-run defaults. A present checkpoint that cannot be read or does not match this procedure's schema follows Recovery.
    - If `incomplete_scan` is present, retry its recorded start/end window. Otherwise, fix the end at the current UTC time and start at `completed_until`; with no completed cursor, start one declared schedule interval before that end. Process records in the half-open interval `[start, end)`. A completed window advances the next start to its end.

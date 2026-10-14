@@ -8,7 +8,7 @@ dispatch:
     - codex
     - gemini
     - deepseek
-  thinking_mode: med
+  thinking_mode: slow
 ---
 
 # Company Analysis — Procedure
@@ -29,6 +29,12 @@ files whose content changed.
 - The company's `meta.yaml` and inbox are readable.
 
 ## Steps
+
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
 
 1. Read the company `meta.yaml` and inbox.
 2. Diff the inbox against the recorded SHA digest to find new and changed

@@ -37,6 +37,12 @@ them. The cases a sweep is answerable for are specified in
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 1. **Fetch the window.** Search their mail for the period being reviewed —
    since the last briefing, or the period they named.
 2. **Read the correction before classifying.** Read the previous run and what

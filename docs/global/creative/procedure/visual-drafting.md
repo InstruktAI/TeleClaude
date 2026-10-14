@@ -38,6 +38,12 @@ guided by the compositional intent of the approved art.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 ### 1. Absorb the inputs
 
 **Read the approved art** in `workspace/{slug}/art/`. Study the mood board images

@@ -137,6 +137,12 @@ evidence and interpretation, kept distinguishable.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 ### 0. Yield to a coordinator already on watch
 
 Run `telec sessions coordinate`. On refusal, end this session without touching

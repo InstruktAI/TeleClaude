@@ -39,6 +39,12 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 First read the sdlc principles as listed in the sdlc baseline that apply to this work with `telec docs get`.
 
 Apply the artifact-discovery rule from `preparation-artifact-quality`

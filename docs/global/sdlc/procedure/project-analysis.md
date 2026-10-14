@@ -1,10 +1,10 @@
 ---
-description: 'AI-driven project analysis procedure run by a sdlc/procedure/project-analysis session started with telec sessions run. Guides the analysis session through codebase discovery, convention inference, and snippet generation.'
+description: 'AI-driven project analysis procedure. Guides the analysis session through codebase discovery, convention inference, and snippet generation.'
 visibility: 'public'
 role: helper
 dispatch:
   agent: [claude, codex, gemini, deepseek]
-  thinking_mode: med
+  thinking_mode: slow
 ---
 
 # Project Analysis — Procedure
@@ -39,6 +39,12 @@ reflect concrete findings from the analyzed repository, not generic templates.
 - The session runs inside the project root with full filesystem read access.
 
 ## Steps
+
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
 
 ### 1. Orientation
 

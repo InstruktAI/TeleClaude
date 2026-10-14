@@ -31,6 +31,12 @@ image generation API.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 ### Text-to-image generation
 
 Generate a new image from a text prompt:

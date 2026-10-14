@@ -35,6 +35,12 @@ shared review procedure supplies the review judgment.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 ### 1. Establish the slug's review context
 
 Use the slug supplied by the dispatch. A build reviewer never selects work from

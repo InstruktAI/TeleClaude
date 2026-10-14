@@ -29,6 +29,12 @@ workflow state reaches `finalize_ready`.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 ### Stage A — Worker: finalize-prepare (worktree)
 
 1. Read `telec todo artifacts read {slug} review-findings` and confirm verdict APPROVE.

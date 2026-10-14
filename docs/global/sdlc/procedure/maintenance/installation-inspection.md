@@ -31,6 +31,12 @@ reference through restarts.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 1. Resolve the installed checkout and the event's current assessment record.
    Read intervening state first. A repeat or superseded event is attention to
    reconcile, never authority to repeat an already completed effect.

@@ -68,6 +68,12 @@ a routing instruction.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 ### 1. Enter the state machine
 
 Call `telec todo work {slug}` for the current slug. The call returns an operation

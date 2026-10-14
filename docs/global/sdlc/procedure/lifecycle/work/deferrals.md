@@ -29,6 +29,12 @@ dispatch:
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 1. Read `telec todo artifacts read {slug} deferrals`. Each entry has a heading
    naming it and these fields:
    - `Kind` — `deferred-task` (a plan task the build did not deliver),

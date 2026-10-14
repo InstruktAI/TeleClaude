@@ -31,6 +31,12 @@ worker; it reads the pending classes per artifact and stamps verdicts.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 ### 1. Identify pending artifacts and pending classes
 
 Read the prepare state machine output (or `telec todo show {slug}`) to

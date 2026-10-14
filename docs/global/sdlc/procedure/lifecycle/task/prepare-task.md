@@ -34,6 +34,12 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 0. **Audit the handoff.** Read `telec todo show {slug}` and the `input`.
    Establish the requested action boundary, result, recipient, and timing from
    what the `input` carries, including its logically necessary implications and

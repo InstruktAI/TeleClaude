@@ -30,6 +30,12 @@ personal-assistant conversations. Carry the assignment across later wakes.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 1. Read `telec memories extraction read <id>` for the activation's extraction.
    Take its bounded conversation evidence and progress state. An already
    completed extraction needs no further handling.

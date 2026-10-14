@@ -90,6 +90,12 @@ proposal operation before any mainline queue watcher or integration call.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 <!-- planned-change:installation-activation-inspection -->
 
 1. Set `integrator-queue-watch` first, then call `telec todo integrate [slug]` to

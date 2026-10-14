@@ -31,6 +31,12 @@ The visitor identity and desk remain this worker's scope across source sessions.
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 1. Read `telec memories extraction read <id>`. Use its bounded conversation
    evidence and progress. An already completed extraction needs no further work.
 2. List `telec memories scope --identity <identity> --desk <desk-id>` using the

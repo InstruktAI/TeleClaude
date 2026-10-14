@@ -36,6 +36,12 @@ another session, prescribe a fix, stamp the diagnosis, or advance the prepare st
 
 ## Steps
 
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
+
 1. Read `telec todo show {slug}` and the `input` artifact. Use the creation record to locate
    the organic trigger and its evidence surface. `human_involved` records participation, not
    authorship or ratification of every detail. Treat agent-added causes, remedies, numeric

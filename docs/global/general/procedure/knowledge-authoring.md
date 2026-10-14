@@ -12,7 +12,7 @@ dispatch:
     - codex
     - gemini
     - deepseek
-  thinking_mode: med
+  thinking_mode: slow
 ---
 
 # Knowledge Authoring — Procedure
@@ -35,6 +35,12 @@ express.
 - The topic is supplied as the argument, or is asked for.
 
 ## Steps
+
+<!-- planned:role-scoped-cli-context -->
+
+Retrieve the commands this assignment uses with `telec -h --expand-role` before
+your first `telec` call; `telec <command> -h` details any single command.
+<!-- /planned:role-scoped-cli-context -->
 
 1. If a topic was given as the argument, start there; otherwise ask the human
    what area to document.
