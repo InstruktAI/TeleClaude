@@ -96,6 +96,8 @@ person's folder carries no human identity and acts as no person.
 
 #### UC-PSA1:
 
+<!-- planned-change:procedure-reference-loaders -->
+
 ```gherkin
 Given no standing agent continues a procedure for a home on the computer that emitted the event
 When an activation for that procedure and home arrives there
@@ -104,6 +106,19 @@ And it carries the role the procedure declares from its creation
 And it receives the loader naming the materialized brief: the procedure, its effective required reads and the event-handling instructions an activation implies
 And its initial event is delivered as hook context under the procedure event-delivery contract
 ```
+
+<!-- change:procedure-reference-loaders -->
+
+```gherkin
+Given no standing agent continues a procedure for a home on the computer that emitted the event
+When an activation for that procedure and home arrives there
+Then a standing agent is started in that home under the system principal through the procedure-entry contract
+And it carries the role the procedure declares from its creation
+And it receives the loader carrying its home and delivery facts and directing it to its procedure's instructions, including the event-handling instructions the procedure declares
+And its initial event is delivered as hook context under the procedure event-delivery contract
+```
+
+<!-- /planned-change:procedure-reference-loaders -->
 
 #### UC-PSA2:
 

@@ -7,10 +7,22 @@ description: Command-and-argument input on the TUI new-session modal and Discord
 
 ## What it is
 
+<!-- planned-change:procedure-reference-loaders -->
+
 A human operator invokes a published entry procedure by entering its snippet ID
 and arguments in the TUI New Session modal or by sending that text through the
 Discord adapter. A leading slash is optional on these surfaces. Each supported
 agent receives the same loader naming the materialized brief.
+
+<!-- change:procedure-reference-loaders -->
+
+A human operator invokes a published entry procedure by entering its snippet ID
+and arguments in the TUI New Session modal or by sending that text through the
+Discord adapter. A leading slash is optional on these surfaces. Each supported
+agent receives the same loader, which directs it to retrieve the procedure's
+instructions.
+
+<!-- /planned-change:procedure-reference-loaders -->
 
 The TUI operation creates the requested session. Discord retains its existing
 conversation binding: a message that creates a session is its first input, and
@@ -67,6 +79,8 @@ to claim work and adopt the corresponding role through its own operations.
 
 #### UC-ICI1: Command startup from the TUI
 
+<!-- planned-change:procedure-reference-loaders -->
+
 ```gherkin
 Scenario Outline: An operator starts a procedure from the new-session modal
   Given a human operator has selected a project and an available agent in the TUI New Session modal
@@ -84,7 +98,30 @@ Scenario Outline: An operator starts a procedure from the new-session modal
     | /sdlc/procedure/lifecycle/prepare/overview example-item |
 ```
 
+<!-- change:procedure-reference-loaders -->
+
+```gherkin
+Scenario Outline: An operator starts a procedure from the new-session modal
+  Given a human operator has selected a project and an available agent in the TUI New Session modal
+  And the requested entry procedure is published and its arguments are valid
+  When the operator submits "<input>" as the initial message
+  Then the new agent session receives the loader carrying the supplied arguments and directing it to the procedure's instructions
+  And the session is identified by the requested procedure and its declared role and work item
+  And the loading behavior is the same for every supported agent
+
+  Examples:
+    | input                                                   |
+    | sdlc/procedure/lifecycle/integrate                      |
+    | /sdlc/procedure/lifecycle/integrate                     |
+    | sdlc/procedure/lifecycle/prepare/overview example-item  |
+    | /sdlc/procedure/lifecycle/prepare/overview example-item |
+```
+
+<!-- /planned-change:procedure-reference-loaders -->
+
 #### UC-ICI2: Command input through Discord
+
+<!-- planned-change:procedure-reference-loaders -->
 
 ```gherkin
 Scenario Outline: A human invokes a procedure in the Discord conversation
@@ -103,6 +140,28 @@ Scenario Outline: A human invokes a procedure in the Discord conversation
     | direct message | session created by this input |
     | direct message | existing personal session    |
 ```
+
+<!-- change:procedure-reference-loaders -->
+
+```gherkin
+Scenario Outline: A human invokes a procedure in the Discord conversation
+  Given a human operator is authorized to invoke the published entry procedure in the Discord conversation
+  And the conversation is a "<surface>" with a "<binding>"
+  When the operator sends the procedure ID with its arguments, with or without a leading slash
+  Then the agent receives the loader carrying the supplied arguments once and directing it to the procedure's instructions
+  And the procedure runs in the session selected by that conversation's existing routing contract
+
+  Examples:
+    | surface       | binding                      |
+    | project thread | session created by this input |
+    | project thread | launcher-created empty session |
+    | project thread | existing conversation session |
+    | team channel  | existing conversation session |
+    | direct message | session created by this input |
+    | direct message | existing personal session    |
+```
+
+<!-- /planned-change:procedure-reference-loaders -->
 
 #### UC-ICI3: Non-command text remains conversation
 

@@ -47,7 +47,8 @@ its configured job identity; an activation retains its home, subject, attendance
 and delivery settings. Those values remain available on continuation.
 
 The session's generated title is its role name followed by its supplied
-arguments. The full procedure ID remains recorded and inspectable in session
+arguments; a scheduled run shows its job name and an activation its home in
+that place. The full procedure ID remains recorded and inspectable in session
 details. Display abbreviation does not change dispatch, continuation or matching
 identity.
 

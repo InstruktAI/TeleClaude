@@ -88,6 +88,15 @@ assignment and delivery metadata carry their own provenance; neither encoding
 nor hook placement promotes event content to instructions
 (`general/policy/message-identity-headers`).
 
+<!-- planned:procedure-reference-loaders -->
+
+The hook context that carries an activation directs the agent to its assigned
+procedure's instructions when they are not loaded. It names no handling
+instructions of its own: the procedure's declared reads supply them
+(`general/spec/snippet-authoring-schema`).
+
+<!-- /planned:procedure-reference-loaders -->
+
 Pending events belong to the continuing procedure responsibility. An explicit
 session close suspends their delivery without itself causing a revival. The
 next eligible continuation, including an ordinary revival or a later activation

@@ -110,6 +110,8 @@ declaration.
 
 ### Continuation of migrated sessions
 
+<!-- planned-change:procedure-reference-loaders -->
+
 A session recorded before the migration has no persisted resolved invocation.
 When such a session is continued — restarted, revived, or handed off — the
 runtime reconstructs the invocation from the row's retained evidence and
@@ -122,6 +124,23 @@ as a research brief or a commit list, an activation home the records no
 longer resolve — is not invented: the continuation is refused naming the
 missing input, the refusal is logged, and the row keeps its migrated role so
 the session stays inspectable.
+
+<!-- change:procedure-reference-loaders -->
+
+A session recorded before the migration has no persisted resolved invocation.
+When such a session is continued — restarted, revived, or handed off — the
+runtime reconstructs the invocation from the row's retained evidence and
+composes its loader from it: the procedure is the row's migrated command;
+the `slug` parameter is the row's working slug; a job entry's context is the
+job name the row carries; an activation's context is the procedure ID the row
+carries with the subject binding and delivery settings recorded on the
+session. A required input the row does not retain — a non-slug argument such
+as a research brief or a commit list, an activation home the records no
+longer resolve — is not invented: the continuation is refused naming the
+missing input, the refusal is logged, and the row keeps its migrated role so
+the session stays inspectable.
+
+<!-- /planned-change:procedure-reference-loaders -->
 
 ### Use cases
 
@@ -155,6 +174,8 @@ And no label is rewritten from the session's migrated role
 
 #### UC-SRM5: A migrated session continues from reconstructed evidence or is refused
 
+<!-- planned-change:procedure-reference-loaders -->
+
 ```gherkin
 Given a session recorded before the migration whose row retains its command, working slug and instance identity
 When an agent restarts, revives or hands off that session
@@ -163,6 +184,19 @@ And given a row whose required input is not retained
 When the same continuation is attempted
 Then it is refused naming the missing input and the row's migrated role is unchanged
 ```
+
+<!-- change:procedure-reference-loaders -->
+
+```gherkin
+Given a session recorded before the migration whose row retains its command, working slug and instance identity
+When an agent restarts, revives or hands off that session
+Then the loader it receives is composed from the reconstructed invocation and directs it to its procedure's instructions
+And given a row whose required input is not retained
+When the same continuation is attempted
+Then it is refused naming the missing input and the row's migrated role is unchanged
+```
+
+<!-- /planned-change:procedure-reference-loaders -->
 
 #### UC-SRM4: The migration runs once and is observable
 

@@ -39,6 +39,8 @@ listing is rendered on demand by `general/procedure/skill-use` — reached from
 catalog stays lazy. Tier-local skills are the ones that reach native CLI
 directories, eager-indexed in their context's generated entrypoint.
 
+<!-- planned-change:procedure-reference-loaders -->
+
 No command artifact exists and no command corpus is deployed. What a session is
 assigned is a published procedure, reached exclusively through the loader
 message TeleClaude composes at procedure entry, which instructs the session to
@@ -48,6 +50,20 @@ and its brief materialized is the agent runtime's contract
 deployed `~/.teleclaude/commands/` directory left by an earlier publication is
 retracted by the owning repository's next publication as an obsolete owned
 destination.
+
+<!-- change:procedure-reference-loaders -->
+
+No command artifact exists and no command corpus is deployed. What a session is
+assigned is a published procedure, reached exclusively through the loader
+message TeleClaude composes at procedure entry, which instructs the session to
+retrieve that procedure's instructions from the publication. How a procedure is
+resolved and its loader composed is the agent runtime's contract
+(`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`). A
+deployed `~/.teleclaude/commands/` directory left by an earlier publication is
+retracted by the owning repository's next publication as an obsolete owned
+destination.
+
+<!-- /planned-change:procedure-reference-loaders -->
 
 Global skills compose to `~/.teleclaude/skills/` and are discovered through the
 catalog the master points at; they reach no runtime home. Tier-local skills — the
@@ -287,6 +303,8 @@ Scenario: UC-ARD40 A session can still load a retiring command until its deliver
 
 #### UC-ARD33: The corpus is reached only through the composed loader
 
+<!-- planned-change:procedure-reference-loaders -->
+
 ```
 Scenario: UC-ARD33 A dispatched session reads its brief through the composed loader
   Given a published entry procedure
@@ -295,6 +313,19 @@ Scenario: UC-ARD33 A dispatched session reads its brief through the composed loa
   And a procedure load the state machine emits into an already-running session names the procedure for an inline read
   And the loader is produced by one composition for every runtime
 ```
+
+<!-- change:procedure-reference-loaders -->
+
+```
+Scenario: UC-ARD33 A dispatched session retrieves its procedure through the composed loader
+  Given a published entry procedure
+  When a session is dispatched for it
+  Then its startup message is the composed loader directing it to retrieve the procedure's published instructions
+  And a procedure load the state machine emits into an already-running session names the procedure for an inline read
+  And the loader is produced by one composition for every runtime
+```
+
+<!-- /planned-change:procedure-reference-loaders -->
 
 #### UC-ARD10: Command documents deploy to the corpus and to no runtime home
 
@@ -516,10 +547,21 @@ And the agent reads the committed content from the deployed tree
 
 ## Known caveats
 
+<!-- planned-change:procedure-reference-loaders -->
+
 - No command artifact exists. The composed loader message is the only runtime
   entrypoint: `telec sessions run` preloads it into a new session naming the
   brief materialized at procedure entry, and machine-emitted procedure loads
   name a procedure for an inline read in a running one.
+
+<!-- change:procedure-reference-loaders -->
+
+- No command artifact exists. The composed loader message is the only runtime
+  entrypoint: `telec sessions run` preloads it into a new session, directing it to
+  the procedure's published instructions, and machine-emitted procedure loads
+  name a procedure for an inline read in a running one.
+
+<!-- /planned-change:procedure-reference-loaders -->
 
 - Deployed documentation is read-only. It is a materialized snapshot; authored
   documentation changes only in its owning source tree and becomes visible after
