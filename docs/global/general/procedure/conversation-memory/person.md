@@ -17,6 +17,7 @@ dispatch:
 
 @~/.teleclaude/docs/general/procedure/conversation-memory/overview.md
 @~/.teleclaude/docs/general/procedure/event-handling/overview.md
+@~/.teleclaude/docs/general/procedure/event-handling/interruptible.md
 
 ## Goal
 
