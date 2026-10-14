@@ -207,6 +207,8 @@ remain independently observable.
 
 ## Primary flows
 
+<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
+
 ```mermaid
 flowchart TD
     GH[External provider webhook] --> ING[Ingress: verify + normalize]
@@ -221,6 +223,27 @@ flowchart TD
     C1 --> M1[Commit-boundary maintenance the advance owes: install, deps, restart]
     P1 -->|no| S1[Complete without acting]
 ```
+
+<!-- change:maintenance-runs-as-stopped-daemon-window -->
+
+```mermaid
+flowchart TD
+    GH[External provider webhook] --> ING[Ingress: verify + normalize]
+    ING -->|relay unconditionally| BUS[Cluster event bus CLUSTER scope]
+    BUS --> N1[Computer A: event-bound maintenance]
+    BUS --> N2[Computer B: event-bound maintenance]
+    BUS --> N3[Computer C: event-bound maintenance]
+    N1 --> O1{event about TeleClaude?}
+    O1 -->|no| S0[Nothing selected]
+    O1 -->|yes| P1{channel admits a target the checkout lacks?}
+    P1 -->|yes| C1[self-update: advance main and record the activation]
+    C1 --> W1[Stopped-daemon window: settle and stop the daemon]
+    W1 --> M1[Owed maintenance: install, deps, installation migrations, configuration migration]
+    M1 --> W2[Start the daemon and verify it on the reached version]
+    P1 -->|no| S1[Complete without acting]
+```
+
+<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 ## Failure modes
 
