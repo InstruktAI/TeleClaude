@@ -78,9 +78,11 @@ checkpoint:
       command:
         - uv
         - sync
+    # Runs after restart: the replacement daemon reads the migration list this run stores, so
+    # the older daemon never meets a document newer than it reads.
     config-migrate:
       main_only: true
-      precedence: 25
+      precedence: 105
       command:
         - uv
         - run
@@ -242,8 +244,8 @@ checkpoint:
     - scope:
         include:
           - teleclaude/config/**
-            # A running TUI holds the config loader it started with, so it reloads
-            # after the migration or it refuses the newer config document.
+            # The TUI reloads before the migration stores newer documents, so a reloaded
+            # TUI already runs the migration list that reads them.
       actions:
         - config-migrate
         - tui-reload

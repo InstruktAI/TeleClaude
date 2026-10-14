@@ -1614,10 +1614,21 @@ validate_config() {
     fi
 }
 
+# Exit status the migration entrypoint publishes (ExitStatus in teleclaude/config/migrations/__main__.py)
+# when it withheld the run because the running daemon cannot read the current configuration version and
+# no document failed.
+CONFIG_MIGRATION_EXIT_WITHHELD=3
+
+# A withheld run warns and the install continues: the documents stay at their stored version and the
+# stages after this one read them through the in-memory migration. Any other non-zero status is a failure.
 migrate_config_documents() {
     print_header "Migrating configuration documents"
-    if PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.config.migrations --trigger install; then
+    local status=0
+    PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.config.migrations --trigger install || status=$?
+    if [ "$status" -eq 0 ]; then
         print_success "Configuration documents are current"
+    elif [ "$status" -eq "$CONFIG_MIGRATION_EXIT_WITHHELD" ]; then
+        print_warning "Configuration documents stay at their stored version while the running daemon's migration reach is lower; a later migration run stores them (report above); install continues"
     else
         print_error "Configuration document migration failed — fix the errors above and re-run install"
         exit 1

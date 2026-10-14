@@ -46,7 +46,8 @@ class PreparationObservationDTO(BaseModel):
 class HealthDTO(BaseModel):
     """Liveness of the daemon, the commit its code checkout stood on at start, and its preparation state.
 
-    The preparation observation is served on the local API socket only.
+    The preparation observation and the configuration migration reach, the newest configuration
+    document version the process reads, are served on the local API socket only.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -54,3 +55,4 @@ class HealthDTO(BaseModel):
     status: Literal["ok"] = "ok"
     start_commit: str | None = None
     preparation: PreparationObservationDTO | None = None
+    config_migration_reach: int | None = None

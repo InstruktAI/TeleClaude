@@ -30,6 +30,7 @@ class MigrationOutcome(StrEnum):
     RESTORED_AFTER_REFUSED_COMMIT = "restored_after_refused_commit"
     MIGRATED_COMMITTED = "migrated_committed"
     UPCAST_IN_MEMORY = "upcast_in_memory"
+    WITHHELD = "withheld"
 
 
 class MigrationFailureReason(StrEnum):
@@ -56,6 +57,7 @@ _OUTCOME_LOG_LEVELS: dict[MigrationOutcome, int] = {
     MigrationOutcome.MIGRATED_COMMITTED: logging.INFO,
     MigrationOutcome.CURRENT: logging.INFO,
     MigrationOutcome.UPCAST_IN_MEMORY: TRACE,
+    MigrationOutcome.WITHHELD: logging.WARNING,
 }
 # A writer migrates in place and commits the document with its own change, so leaving it
 # uncommitted is that trigger's expected outcome.
@@ -68,7 +70,7 @@ class MigrationRecord(TypedDict):
     document_key: str
     subject_kind: str
     subject_source: str
-    from_version: int
+    from_version: int | None
     to_version: int
     trigger: MigrationTrigger
     outcome: MigrationOutcome
@@ -89,7 +91,7 @@ def document_key(path: Path) -> str:
 def record_migration(
     document_key: str,
     subject: SubjectRef,
-    from_version: int,
+    from_version: int | None,
     to_version: int,
     trigger: MigrationTrigger,
     outcome: MigrationOutcome,
@@ -100,6 +102,7 @@ def record_migration(
     """Emit and return the privacy-safe per-document migration record.
 
     ``diagnostic`` carries a refusal's schema-owned text or a refused commit command's output.
+    ``from_version`` is None when the stored version could not be read; a found zero is a version.
     """
     record: MigrationRecord = {
         "document_key": document_key,

@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from collections import Counter
 from collections.abc import Mapping
+from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 from typing import cast
@@ -37,6 +38,7 @@ from teleclaude.config.migrations._records import (
     record_migration,
 )
 from teleclaude.config.migrations._registry import registered_documents
+from teleclaude.config.migrations.daemon_reach import DaemonReach
 from teleclaude.config.migrations.v003_relocate_person_invite_token import DestinationConflict as InvitationConflict
 from teleclaude.config.migrations.v004_relocate_legacy_discord_provider_ids import HandoffConflict
 from teleclaude.config.migrations.v009_fold_trusted_directories import RegistryConflict
@@ -59,6 +61,7 @@ _MIGRATION_ERROR = MigrationFailureReason.MIGRATION_ERROR
 _COMMIT_REFUSED = MigrationFailureReason.COMMIT_REFUSED
 _FIELD_CONSTRAINT_REFUSED = MigrationFailureReason.FIELD_CONSTRAINT_REFUSED
 _READ_VALIDATION_REFUSED = MigrationFailureReason.READ_VALIDATION_REFUSED
+_WITHHELD_UNREADABLE_DIAGNOSTIC = "{reach}; the stored version could not be read ({detail})"
 _MIGRATION_SUBJECT = "chore(config): migrate {path} to configuration version {version}"
 _COMMIT_DOCUMENT_PATH = "{commit}:{path}"
 _HEAD_REFERENCE = "HEAD"
@@ -316,13 +319,72 @@ def _retained_outcome(path: Path, document: Mapping[str, object], migrated: Mapp
     return MigrationOutcome.CURRENT if migrated == document else MigrationOutcome.UPCAST_IN_MEMORY
 
 
-def migrate_registered(trigger: MigrationTrigger) -> tuple[MigrationRecord, ...]:
-    """Migrate each registry-named document and return its structured record."""
+def migrate_registered(trigger: MigrationTrigger, daemon_reach: DaemonReach) -> tuple[MigrationRecord, ...]:
+    """Migrate each registry-named document and return its structured record.
+
+    A run never stores a document at a version the running daemon cannot read. While the daemon's reach
+    withholds the run, nothing is stored and no retirement runs; the installed release declaration, which a
+    run only evaluates, is still evaluated, and every other covered document is recorded as withheld.
+    """
+    withheld = daemon_reach.withholds(CURRENT_SCHEMA_VERSION)
     records: list[MigrationRecord] = []
     for path, subject in registered_documents(trigger):
-        records.append(migrate_document(path, subject, trigger))
+        if withheld and not _is_installed_release_declaration(path, subject):
+            records.append(_withhold_document(path, subject, trigger, daemon_reach))
+        else:
+            records.append(migrate_document(path, subject, trigger))
     _run_summary(trigger, records)
     return tuple(records)
+
+
+def _withhold_document(
+    path: Path, subject: SubjectRef, trigger: MigrationTrigger, daemon_reach: DaemonReach
+) -> MigrationRecord:
+    """Record one document as left at its stored version, naming the daemon's reach and the current version.
+
+    The record carries the stored version when it can be read; otherwise the version is absent and the reason
+    and diagnostic say why it could not be read, without judging the document.
+    """
+    stored = _read_stored_version(path)
+    diagnostic = daemon_reach.describe(CURRENT_SCHEMA_VERSION)
+    if stored.detail is not None:
+        diagnostic = _WITHHELD_UNREADABLE_DIAGNOSTIC.format(reach=diagnostic, detail=stored.detail)
+    return record_migration(
+        document_key(path),
+        subject,
+        stored.version,
+        CURRENT_SCHEMA_VERSION,
+        trigger,
+        MigrationOutcome.WITHHELD,
+        stored.reason,
+        None,
+        diagnostic=diagnostic,
+    )
+
+
+@dataclass(frozen=True)
+class _StoredVersion:
+    """A document's stored version, or why it could not be read."""
+
+    version: int | None = None
+    reason: MigrationFailureReason | None = None
+    detail: str | None = None
+
+
+def _read_stored_version(path: Path) -> _StoredVersion:
+    """Read a document's stored version without judging the document beyond reading it."""
+    try:
+        document = _parse_document(path.read_text(encoding=_UTF8))
+    except (OSError, UnicodeDecodeError) as error:
+        return _StoredVersion(reason=_MIGRATION_ERROR, detail=type(error).__name__)
+    except YAMLError as error:
+        return _StoredVersion(reason=_PARSE_ERROR, detail=type(error).__name__)
+    if not isinstance(document, Mapping):
+        return _StoredVersion(reason=_NOT_A_MAPPING)
+    try:
+        return _StoredVersion(version=document_version(document))
+    except ValueError:
+        return _StoredVersion(reason=_INVALID_VERSION)
 
 
 def _retire(subject: SubjectRef) -> None:

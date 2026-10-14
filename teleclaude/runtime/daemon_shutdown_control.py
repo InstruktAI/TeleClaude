@@ -10,6 +10,9 @@ the restart once its accepted work settles.
 
 The read-only `status` verb reports the same observation for `make status`.
 
+Maintenance callers that must not store configuration documents past what the running daemon reads
+ask `read_migration_reach` for the migration reach the daemon reports.
+
 The explicit legacy activation path serves the one daemon that predates the
 preparation protocol. It identifies that runtime positively, inspects its unfinished
 durable work read-only and reports observed quiescence; it neither closes admission
@@ -34,6 +37,7 @@ from datetime import datetime
 from enum import IntEnum, StrEnum
 from pathlib import Path
 
+from teleclaude.config.migrations.daemon_reach import DaemonReach, ReachState
 from teleclaude.core.session_startup import UNFINISHED_STARTUP_STATES
 from teleclaude.core.shutdown_drain import PREPARATION_PROTOCOL_VERSION, DrainPhase
 from teleclaude.paths import MAIN_DB_PATH
@@ -41,11 +45,15 @@ from teleclaude.paths import MAIN_DB_PATH
 _HEALTH_PATH = "/health"
 _HEALTH_TIMEOUT_S = 2.0
 _POLL_INTERVAL_S = 0.5
+# Bounds how long a listening daemon may stay silent before its migration reach is treated as unanswered.
+_REACH_ANSWER_BOUND_S = 15.0
 _DB_TIMEOUT_S = 2.0
 _HEALTH_STATUS_OK = "ok"
 _START_COMMIT_FIELD = "start_commit"
 _STATUS_FIELD = "status"
 _PREPARATION_FIELD = "preparation"
+_MIGRATION_REACH_FIELD = "config_migration_reach"
+_MIGRATION_REACH_MALFORMED = "migration reach is malformed"
 _STARTED_AT_FIELD = "preparation_started_at"
 _HELD_LABELS_FIELD = "held_labels"
 _GRACE_FIELD = "termination_grace_seconds"
@@ -108,6 +116,13 @@ class ControlRefusal(Exception):
         self.outcome = outcome
 
 
+class NothingListening(ControlRefusal):
+    """The API socket is absent or refuses the connection: no daemon process serves it."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(ControlOutcome.UNREADABLE, detail)
+
+
 @dataclass(frozen=True)
 class PreparationObservation:
     """The preparation block of a supporting daemon's health answer."""
@@ -129,6 +144,7 @@ class HealthObservation:
 
     fields: frozenset[str]
     preparation: PreparationObservation | None
+    migration_reach: int | None = None
 
 
 class _UnixSocketConnection(http.client.HTTPConnection):
@@ -152,6 +168,8 @@ def read_health(socket_path: str) -> HealthObservation:
         response = connection.getresponse()
         body = response.read()
         status = response.status
+    except (FileNotFoundError, ConnectionRefusedError) as exc:
+        raise NothingListening(str(exc)) from exc
     except (OSError, http.client.HTTPException) as exc:
         raise ControlRefusal(ControlOutcome.UNREADABLE, str(exc)) from exc
     finally:
@@ -168,7 +186,46 @@ def read_health(socket_path: str) -> HealthObservation:
     return HealthObservation(
         fields=frozenset(document),
         preparation=_parse_preparation(raw_preparation) if raw_preparation is not None else None,
+        migration_reach=_parse_migration_reach(document.get(_MIGRATION_REACH_FIELD)),
     )
+
+
+def _parse_migration_reach(raw: object) -> int | None:
+    """A reported reach is a non-negative integer; anything else makes the answer unreadable, never a reach."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+        raise ControlRefusal(ControlOutcome.UNREADABLE, _MIGRATION_REACH_MALFORMED)
+    return raw
+
+
+def read_migration_reach(
+    socket_path: str,
+    *,
+    bound_seconds: float = _REACH_ANSWER_BOUND_S,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> DaemonReach:
+    """Ask the daemon on the API socket which configuration migration version it reads.
+
+    An absent or refusing socket means nothing listens. A daemon that answers without a reach predates
+    the field. Something that listens but gives no valid answer within the bound is unanswered, and is
+    retried until then.
+    """
+    deadline = clock() + bound_seconds
+    while True:
+        try:
+            reach = read_health(socket_path).migration_reach
+        except NothingListening:
+            return DaemonReach(ReachState.NOT_LISTENING)
+        except ControlRefusal:
+            if clock() >= deadline:
+                return DaemonReach(ReachState.UNANSWERED)
+            sleep(_POLL_INTERVAL_S)
+            continue
+        if reach is None:
+            return DaemonReach(ReachState.NOT_REPORTED)
+        return DaemonReach(ReachState.REPORTED, reach)
 
 
 def _parse_preparation(raw: object) -> PreparationObservation:
