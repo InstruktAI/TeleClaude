@@ -1551,10 +1551,10 @@ install_macos_tmux_server() {
         return 0
     fi
     print_header "Installing macOS tmux Server Service"
-    # An on-demand run (`telec sync`) marks its commands so (teleclaude/core/integration/maintenance_trigger.py);
-    # it deploys no changed service definition and reloads no running service.
+    # Every maintenance run holds the drain marker (teleclaude/core/integration/maintenance_trigger.py);
+    # it deploys no changed tmux definition and reloads no running server.
     local setup_flags=()
-    if [ "${TELECLAUDE_MAINTENANCE_TRIGGER:-}" = "on_demand" ]; then
+    if [ "${TELECLAUDE_MAINTENANCE_DRAIN_HELD:-}" = "1" ]; then
         setup_flags+=(--defer-changes)
     fi
     if run_macos_setup_action "install-tmux-server" ${setup_flags[@]+"${setup_flags[@]}"}; then

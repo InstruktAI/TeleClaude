@@ -29,9 +29,13 @@ _EVENT_FILENAME = "event.payload"
 _EVENT_KEY_PREFIX = "event-"
 _EVENT_ID_FIELD = "event_id"
 _LOCK_MODE = "a+"
+_ACTIVATION_REGISTRATION_LOCK_FILENAME = "activation-registration.lock"
 _TEXT_ENCODING = "utf-8"
 _NEWLINE = "\n"
 _OUTPUT_TAIL_FIELD = "output_tail"
+_WINDOW_FAILURE_FILENAME = "window-failure.json"
+_ACTIVATION_REGISTRATIONS_FILENAME = "activation-registrations.json"
+_MAX_ACTIVATION_REGISTRATIONS = 512
 
 
 class _CommitRecordPayload(BaseModel):
@@ -64,12 +68,54 @@ class _EventRecordPayload(BaseModel):
     output_tail: str | None
 
 
+class _WindowFailurePayload(BaseModel):
+    """Closed wire model for the last maintenance-window failure visible to status."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str
+    recorded_at: str
+
+
+class _ActivationRegistrationEntry(BaseModel):
+    """The resolved owed actions for one commit advancement."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    after_sha: str
+    action_ids: list[str]
+
+
+class _ActivationRegistrationsPayload(BaseModel):
+    """A bounded history that makes commit-boundary recording idempotent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    registrations: list[_ActivationRegistrationEntry]
+
+
+@dataclass(frozen=True)
+class WindowFailure:
+    """The last refused window opening or unverified window close."""
+
+    reason: str
+    recorded_at: str
+
+
+@dataclass(frozen=True)
+class ActivationRegistration:
+    """The recorded outcome of resolving an advancement's owed action set."""
+
+    action_ids: tuple[str, ...]
+
+
 class MaintenanceRecordState(StrEnum):
     """The retry lifecycle of one owed deterministic maintenance action."""
 
     PENDING = "pending"
     RUNNING = "running"
     FAILED = "failed"
+    HELD = "held"
 
 
 @dataclass(frozen=True)
@@ -100,6 +146,69 @@ def maintenance_directory(project_root: str | Path) -> Path:
     """Return the gitignored record directory for the owning checkout."""
     root = resolve_project_state_root(project_root)
     return root / _STATE_DIRECTORY / _MAINTENANCE_DIRECTORY
+
+
+@contextmanager
+def maintenance_activation_registration_lock(project_root: str | Path) -> Iterator[None]:
+    """Serialize activation record registration with the drain's final empty-record boundary."""
+    lock_path = maintenance_directory(project_root) / _ACTIVATION_REGISTRATION_LOCK_FILENAME
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open(_LOCK_MODE, encoding=_TEXT_ENCODING) as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def window_failure_path(project_root: str | Path) -> Path:
+    """Return the durable status record for the last failed maintenance window."""
+    return maintenance_directory(project_root) / _WINDOW_FAILURE_FILENAME
+
+
+def read_window_failure(project_root: str | Path) -> WindowFailure | None:
+    """Read the last failed maintenance window, if one remains recorded."""
+    path = window_failure_path(project_root)
+    if not path.exists():
+        return None
+    payload = _WindowFailurePayload.model_validate_json(path.read_text(encoding=_TEXT_ENCODING))
+    return WindowFailure(reason=payload.reason, recorded_at=payload.recorded_at)
+
+
+def write_window_failure(project_root: str | Path, failure: WindowFailure) -> None:
+    """Atomically replace the status record with the last failed maintenance window."""
+    payload = _WindowFailurePayload(reason=failure.reason, recorded_at=failure.recorded_at)
+    _write_atomically(window_failure_path(project_root), payload.model_dump_json())
+
+
+def clear_window_failure(project_root: str | Path) -> None:
+    """Clear the status record after a later maintenance window verifies recovery."""
+    window_failure_path(project_root).unlink(missing_ok=True)
+
+
+def read_activation_registration(project_root: str | Path, after_sha: str) -> ActivationRegistration | None:
+    """Read whether one advancement's owed set was resolved, including an empty set."""
+    path = maintenance_directory(project_root) / _ACTIVATION_REGISTRATIONS_FILENAME
+    if not path.exists():
+        return None
+    payload = _ActivationRegistrationsPayload.model_validate_json(path.read_text(encoding=_TEXT_ENCODING))
+    entry = next((registration for registration in payload.registrations if registration.after_sha == after_sha), None)
+    return None if entry is None else ActivationRegistration(action_ids=tuple(entry.action_ids))
+
+
+def write_activation_registration(project_root: str | Path, after_sha: str, action_ids: tuple[str, ...]) -> None:
+    """Record one resolved advancement while holding the activation-registration lock."""
+    path = maintenance_directory(project_root) / _ACTIVATION_REGISTRATIONS_FILENAME
+    registrations = (
+        _ActivationRegistrationsPayload.model_validate_json(path.read_text(encoding=_TEXT_ENCODING)).registrations
+        if path.exists()
+        else []
+    )
+    retained = [registration for registration in registrations if registration.after_sha != after_sha]
+    retained.append(_ActivationRegistrationEntry(after_sha=after_sha, action_ids=list(action_ids)))
+    bounded = retained[-_MAX_ACTIVATION_REGISTRATIONS:]
+    payload = _ActivationRegistrationsPayload(registrations=bounded)
+    _write_atomically(path, payload.model_dump_json())
 
 
 def commit_activation_key(after_sha: str) -> str:

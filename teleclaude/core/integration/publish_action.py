@@ -9,10 +9,8 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.checkpoint_model import ActivationRange
-from teleclaude.core.integration.post_commit_maintenance import (
-    _SYNC_ACTION_ID,
-    activation_range_action_paths,
-)
+from teleclaude.core.integration.activation_registration import _SYNC_ACTION_ID
+from teleclaude.core.integration.post_commit_maintenance import activation_range_action_paths
 from teleclaude.logging_config import setup_logging
 from teleclaude.quality.scope import resolve_dirty_paths
 from teleclaude.sync import HomePublicationOutcome, PublicationMode, PublicationRunFailure, publish_homes

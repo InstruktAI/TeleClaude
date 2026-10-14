@@ -64,8 +64,13 @@ PREPARE_DEFERRED_RETURN=3
 # Set to 1 (make restart LEGACY_ACTIVATION=1) to activate the preparation protocol on a
 # daemon that predates it. It reports observed quiescence only, never atomic draining.
 LEGACY_ACTIVATION="${LEGACY_ACTIVATION:-0}"
+STOP_OUTCOME_FILE="${STOP_OUTCOME_FILE:-}"
 PREPARED_PID=""
 DEFERRED_PID=""
+STOP_OUTCOME_STOPPED="stopped"
+STOP_OUTCOME_CLEANUP_FAILURE="stopped_cleanup_failure"
+STOP_OUTCOME_WITHHELD_DRAINING="withheld_draining"
+STOP_OUTCOME_WITHHELD="withheld"
 
 # Colors for output
 RED='\033[0;31m'
@@ -83,6 +88,12 @@ log_warn() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+record_stop_outcome() {
+    if [ -n "$STOP_OUTCOME_FILE" ]; then
+        printf '%s\n' "$1" > "$STOP_OUTCOME_FILE"
+    fi
 }
 
 unit_name() {
@@ -831,10 +842,12 @@ stop_daemon() {
     if [ "$prepare_rc" -eq "$PREPARE_DEFERRED_RETURN" ]; then
         log_error "Stop withheld: the daemon (pid $DEFERRED_PID) was left running and draining"
         log_error "It completes its own shutdown once its accepted work settles and the service manager relaunches it; keeping it down then takes another 'make stop'"
+        record_stop_outcome "$STOP_OUTCOME_WITHHELD_DRAINING"
         return 1
     fi
     if [ "$prepare_rc" -eq 1 ]; then
         log_error "Stop withheld: the daemon was left running"
+        record_stop_outcome "$STOP_OUTCOME_WITHHELD"
         return 1
     fi
 
@@ -857,12 +870,16 @@ stop_daemon() {
             for entry in "${pid_entries[@]}"; do
                 kill_managed_pid "$(pid_label "$entry")" "$(pid_value "$entry")"
             done
-            wait_for_daemon_death "$STOP_KILL_WAIT_SECONDS" "${pid_entries[@]}"
+            if ! wait_for_daemon_death "$STOP_KILL_WAIT_SECONDS" "${pid_entries[@]}"; then
+                record_stop_outcome "$STOP_OUTCOME_WITHHELD"
+                return 1
+            fi
         fi
 
         while IFS= read -r label; do
             if is_launchd_unit_loaded "$label"; then
                 log_error "$(unit_name "$label"): still loaded after stop"
+                record_stop_outcome "$STOP_OUTCOME_WITHHELD"
                 return 1
             fi
         done < <(managed_launchd_labels)
@@ -871,12 +888,8 @@ stop_daemon() {
             rm -f "$PID_FILE"
         fi
         log_info "Managed launchd units stopped and verified"
+        record_stop_outcome "$STOP_OUTCOME_STOPPED"
         return 0
-    fi
-
-    if ! is_service_loaded; then
-        log_warn "Service not loaded"
-        return "$periodic_cleanup_failed"
     fi
 
     pid="$(systemd_main_pid)"
@@ -887,12 +900,37 @@ stop_daemon() {
 
     # Linux: stop and disable systemd service
     log_info "Stopping and disabling systemd service..."
-    sudo systemctl stop "$SERVICE_LABEL"
-    sudo systemctl disable "$SERVICE_LABEL"
+    local stop_command_failed=0
+    local disable_command_failed=0
+    local final_pid
+    local service_status
+    if ! sudo systemctl stop "$SERVICE_LABEL"; then
+        stop_command_failed=1
+        log_error "The service manager refused to stop $SERVICE_LABEL"
+    fi
+    if ! sudo systemctl disable "$SERVICE_LABEL"; then
+        disable_command_failed=1
+        log_error "The service manager refused to disable $SERVICE_LABEL"
+    fi
 
     if ! wait_for_daemon_death "$STOP_WAIT_SECONDS" "${pid_entries[@]}"; then
         kill_managed_pid "$SERVICE_LABEL" "$pid"
-        wait_for_daemon_death "$STOP_KILL_WAIT_SECONDS" "${pid_entries[@]}"
+        if ! wait_for_daemon_death "$STOP_KILL_WAIT_SECONDS" "${pid_entries[@]}"; then
+            record_stop_outcome "$STOP_OUTCOME_WITHHELD"
+            return 1
+        fi
+    fi
+
+    final_pid="$(systemd_main_pid)"
+    service_status="$(systemctl is-active "$SERVICE_LABEL" 2>/dev/null || true)"
+    if [ -n "$final_pid" ] || { [ "$service_status" != "inactive" ] && [ "$service_status" != "failed" ]; }; then
+        log_error "The systemd service remains active after stop"
+        record_stop_outcome "$STOP_OUTCOME_WITHHELD"
+        return 1
+    fi
+    if [ "$stop_command_failed" -ne 0 ] || [ "$disable_command_failed" -ne 0 ]; then
+        record_stop_outcome "$STOP_OUTCOME_WITHHELD"
+        return 1
     fi
 
     # Clean up PID file
@@ -902,8 +940,11 @@ stop_daemon() {
 
     log_info "Daemon stopped and verified (service unloaded)"
     if [ "$periodic_cleanup_failed" -ne 0 ]; then
+        record_stop_outcome "$STOP_OUTCOME_CLEANUP_FAILURE"
         return 1
     fi
+    record_stop_outcome "$STOP_OUTCOME_STOPPED"
+    return 0
 }
 
 # Check daemon status
@@ -997,6 +1038,8 @@ PY
         log_warn "API socket: MISSING ($API_SOCKET)"
         overall_ok=1
     fi
+
+    "$DAEMON_CONTROL_PYTHON" -m teleclaude.core.integration.daemon_window || true
 
     if [ $overall_ok -eq 0 ]; then
         log_info "Daemon health: HEALTHY (API components responding)"

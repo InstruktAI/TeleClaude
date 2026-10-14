@@ -13,9 +13,13 @@ import time
 from pathlib import Path
 from typing import TypedDict
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.core.reconciliation.launcher_identity import LauncherBundleSignature
 from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.runtime.binaries import resolve_tmux_binary
+
+logger = get_logger(__name__)
 
 _TMUX_SERVER_LABEL = "ai.instrukt.tmux-server"
 _TMUX_SERVER_SWITCH = "--teleclaude-server"
@@ -26,6 +30,7 @@ _LAUNCH_AGENTS_PATH_PARTS = ("Library", "LaunchAgents")
 _TMUX_SERVER_PLIST_FILENAME = f"{_TMUX_SERVER_LABEL}.plist"
 _TMUX_LAUNCHER_MISSING = "tmux launcher missing: {path}"
 _TMUX_SERVER_DRIFT_MESSAGE = "tmux server service definition differs from what installation would deploy: {plist_path}"
+_TMUX_SERVER_DEFERRED_EVENT = "tmux_server_definition_deferred"
 
 
 class _TmuxServerPlist(TypedDict):
@@ -127,6 +132,7 @@ def install_tmux_server_service(
     resolved_teleclaude_home = teleclaude_home or TELECLAUDE_HOME
     plist_path, plist_bytes, changed = _tmux_server_definition(home, teleclaude_home)
     if changed and defer_changes:
+        logger.warning(_TMUX_SERVER_DEFERRED_EVENT, definition=str(plist_path))
         print(_TMUX_SERVER_DRIFT_MESSAGE.format(plist_path=plist_path))
         return
 
