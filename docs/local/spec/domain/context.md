@@ -132,6 +132,8 @@ any location.
   unreadable, never as none. What a pending declaration means for an act is
   decided by the context performing that act.
 
+<!-- planned-change:procedure-reference-loaders -->
+
 - **Also owns (procedure delivery declarations):** validation and publication
   of the delivery settings declared beside subscriptions, their effective
   defaults, and the declaration-implied required-read graph composed with
@@ -142,6 +144,21 @@ any location.
   `local/projects/teleclaude/spec/feature/context/doc-snippet-three-phase-retrieval`).
   Runtime consumes those published facts and owns when and how many events
   reach an agent; context supplies instructions and does not decide event work.
+
+<!-- change:procedure-reference-loaders -->
+
+- **Also owns (procedure delivery declarations):** validation and publication
+  of the delivery settings declared beside subscriptions and their effective
+  defaults. A procedure's required-read graph is its authored dependencies
+  alone; delivery settings imply no documentation dependency. The schema owns the field vocabulary; the context
+  feature contracts own validation and retrieval
+  (`general/spec/snippet-authoring-schema`,
+  `local/projects/teleclaude/spec/feature/context/snippet-frontmatter-validation`,
+  `local/projects/teleclaude/spec/feature/context/doc-snippet-three-phase-retrieval`).
+  Runtime consumes those published facts and owns when and how many events
+  reach an agent; context supplies instructions and does not decide event work.
+
+<!-- /planned-change:procedure-reference-loaders -->
 
 ### Use cases (index of feature specs)
 

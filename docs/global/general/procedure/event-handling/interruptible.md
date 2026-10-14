@@ -19,8 +19,9 @@ arrives during its execution, applying `general/principle/grounding` and
 
 ## Preconditions
 
-- The session's fixed delivery settings, stated in its assignment, accept
-  activation events during a run. A session whose settings do not accept them,
+- The session's fixed delivery settings, stated in its assignment or in the
+  hook context that carries its activation, accept activation events during a
+  run. A session whose settings do not accept them,
   or one that reads this procedure without being activated for its governing
   procedure, takes no instruction from it: delivery settings stay fixed for a
   session (`general/spec/snippet-authoring-schema`).

@@ -90,10 +90,11 @@ nor hook placement promotes event content to instructions
 
 <!-- planned:procedure-reference-loaders -->
 
-The hook context that carries an activation directs the agent to its assigned
-procedure's instructions when they are not loaded. It names no handling
-instructions of its own: the procedure's declared reads supply them
-(`general/spec/snippet-authoring-schema`).
+The hook context that carries an activation states the session's fixed
+delivery settings and directs the agent to its assigned procedure's
+instructions when they are not loaded. It names no handling instructions of its
+own: the procedure's declared reads supply them, applied to the settings it
+states (`general/spec/snippet-authoring-schema`).
 
 <!-- /planned:procedure-reference-loaders -->
 

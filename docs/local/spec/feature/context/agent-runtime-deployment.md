@@ -301,9 +301,9 @@ Scenario: UC-ARD40 A session can still load a retiring command until its deliver
   And an agent session finds no command named after the companion
 ```
 
-#### UC-ARD33: The corpus is reached only through the composed loader
-
 <!-- planned-change:procedure-reference-loaders -->
+
+#### UC-ARD33: The corpus is reached only through the composed loader
 
 ```
 Scenario: UC-ARD33 A dispatched session reads its brief through the composed loader
@@ -315,15 +315,6 @@ Scenario: UC-ARD33 A dispatched session reads its brief through the composed loa
 ```
 
 <!-- change:procedure-reference-loaders -->
-
-```
-Scenario: UC-ARD33 A dispatched session retrieves its procedure through the composed loader
-  Given a published entry procedure
-  When a session is dispatched for it
-  Then its startup message is the composed loader directing it to retrieve the procedure's published instructions
-  And a procedure load the state machine emits into an already-running session names the procedure for an inline read
-  And the loader is produced by one composition for every runtime
-```
 
 <!-- /planned-change:procedure-reference-loaders -->
 
@@ -556,10 +547,9 @@ And the agent reads the committed content from the deployed tree
 
 <!-- change:procedure-reference-loaders -->
 
-- No command artifact exists. The composed loader message is the only runtime
-  entrypoint: `telec sessions run` preloads it into a new session, directing it to
-  the procedure's published instructions, and machine-emitted procedure loads
-  name a procedure for an inline read in a running one.
+- No command artifact exists and no command corpus is deployed: a session reaches
+  an assigned procedure only through its published documentation, under
+  `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`.
 
 <!-- /planned-change:procedure-reference-loaders -->
 
