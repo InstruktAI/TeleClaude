@@ -50,19 +50,6 @@ versions.
 
 The migrated shape is persisted in exactly two ways:
 
-<!-- planned-change:config-migration-before-runtime-replacement -->
-
-- **A migration run.** Canonical-main maintenance runs one when an activation
-  changes the migration list, before the daemon restarts, over every document
-  the tier registries name: the machine configuration, the home's global
-  configuration, every person and company configuration at its designated
-  location, and every registered project root. Registering a project runs one
-  for the root it adds, and installation runs one over the configuration it has
-  seeded. A document outside the registries is never migrated by a run; it
-  enters through registration.
-
-<!-- change:config-migration-before-runtime-replacement -->
-
 - **A migration run.** Canonical-main maintenance runs one when an activation
   changes the migration list, after the daemon restarts, over every document
   the tier registries name: the machine configuration, the home's global
@@ -72,15 +59,11 @@ The migrated shape is persisted in exactly two ways:
   seeded. A document outside the registries is never migrated by a run; it
   enters through registration.
 
-<!-- /planned-change:config-migration-before-runtime-replacement -->
-
 - **A writer.** A platform operation that changes a registry-named existing
   document first persists that document's pending migrations, then applies its
   own change to the current shape. A write therefore never records an older
   shape at the current version, and never drops a value a migration still has
   to move.
-
-<!-- planned:config-migration-before-runtime-replacement -->
 
 A migration run that maintenance or installation performs never stores a
 document at a version the running daemon cannot read
@@ -93,8 +76,6 @@ retains, is recorded as withheld, naming the daemon's reach and the current
 version. When no daemon listens, the run
 proceeds. Installation continues past a withheld run, reading the documents as
 stored through the in-memory migration, and a later migration run stores them.
-
-<!-- /planned:config-migration-before-runtime-replacement -->
 
 The installed release checkout's project declaration is retained source under
 `local/projects/teleclaude/spec/feature/reconciliation/release-checkout`.
@@ -143,19 +124,6 @@ The authoring rules every migration obeys are
   document; it supplies no instance or registration standing. A migration
   reads the subject, never the document's location.
 
-<!-- planned-change:config-migration-before-runtime-replacement -->
-
-- **Migration run outcome.** One structured record per document naming the
-  document, its subject, the version found, the version reached, and one
-  outcome: current, migrated and committed, migrated and left uncommitted,
-  written untracked, restored after a refused commit, or failed with a reason.
-  A document refused because it breaks a declared field relationship fails
-  with that reason and carries the relationship's message, which the run's
-  failure diagnostic shows. One document's failure never stops the run over
-  the others; a run with any failed document ends failed.
-
-<!-- change:config-migration-before-runtime-replacement -->
-
 - **Migration run outcome.** One structured record per document naming the
   document, its subject, the version found, the version reached, and one
   outcome: current, migrated and committed, migrated and left uncommitted,
@@ -166,8 +134,6 @@ The authoring rules every migration obeys are
   failure diagnostic shows. One document's failure never stops the run over
   the others; a run with any failed document ends failed. A withheld run ends
   unsuccessful and is distinguishable from a failed one.
-
-<!-- /planned-change:config-migration-before-runtime-replacement -->
 
 ### Use cases
 
@@ -262,19 +228,6 @@ And the destination's conflicting value is unchanged
 And an agent reading the structured records observes the conflict for that document
 ```
 
-<!-- planned-change:config-migration-before-runtime-replacement -->
-
-#### UC-CFG-MIG-10: Installation brings its seeded configuration to the current version
-
-```gherkin
-Given a machine being installed whose configuration is freshly seeded or already present at an older version
-When installation completes
-Then the machine configuration and the home's global configuration are stored at the current version
-And installation validates configuration only after they are
-```
-
-<!-- change:config-migration-before-runtime-replacement -->
-
 #### UC-CFG-MIG-10: Installation brings its seeded configuration to the current version
 
 ```gherkin
@@ -284,8 +237,6 @@ When installation completes
 Then the machine configuration and the home's global configuration are stored at the current version
 And installation validates configuration only after they are
 ```
-
-<!-- /planned-change:config-migration-before-runtime-replacement -->
 
 #### UC-CFG-MIG-11: A migrated document migrates no further
 
@@ -392,8 +343,6 @@ Then the stored version identifies the shape that was written
 And reading it with the same installed schema requires no version conversion
 ```
 
-<!-- planned:config-migration-before-runtime-replacement -->
-
 #### UC-CFG-MIG-20: A migration run never stores a version the running daemon cannot read
 
 ```gherkin
@@ -403,8 +352,6 @@ When maintenance or installation runs a migration run
 Then the stored machine configuration is byte-identical before and after the run
 And an agent reading the structured records observes it as withheld, naming the daemon's reach and the current version
 ```
-
-<!-- /planned:config-migration-before-runtime-replacement -->
 
 ### Cross-context references
 

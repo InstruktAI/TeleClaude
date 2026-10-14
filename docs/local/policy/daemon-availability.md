@@ -11,19 +11,9 @@ visibility: 'public'
 
 - `make start` and `make restart` first establish that the machine configuration loads; when it does not, they refuse with its finding and leave a running daemon running, because the daemon cannot boot on it.
 
-<!-- planned-change:config-migration-before-runtime-replacement -->
-
-- `make restart` prepares the running daemon before the service-manager action (`local/projects/teleclaude/policy/agent-service-control`) and ends when the service manager accepts the restart. Nothing follows the service-manager action: no wait, check, or other step runs after it inside the command, and `make restart` is the last action of any maintenance or recovery sequence that includes it. Its outcome records that acceptance, the refused machine configuration or refused preparation that withheld the service-manager action, or a restart deferred to the daemon. A preparation that does not complete within its observation window is a deferred restart: the draining daemon completes the restart itself once its accepted work settles (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`), so a deferred restart is a successful outcome that owes no retry.
-
-- After a canonical-main change needing a restart, commit-boundary maintenance invokes `make restart` as its final action; an agent does not repeat it. Agent-operated recovery invokes `make restart` the same way.
-
-<!-- change:config-migration-before-runtime-replacement -->
-
 - `make restart` prepares the running daemon before the service-manager action (`local/projects/teleclaude/policy/agent-service-control`) and ends when the service manager accepts the restart. Nothing follows the service-manager action inside the command: no wait, check, or other step runs after it there. In a maintenance or recovery sequence that includes it, `make restart` is the last action, except for the configuration migration run that follows it (`local/projects/teleclaude/spec/feature/config/document-migration`). Its outcome records that acceptance, the refused machine configuration or refused preparation that withheld the service-manager action, or a restart deferred to the daemon. A preparation that does not complete within its observation window is a deferred restart: the draining daemon completes the restart itself once its accepted work settles (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`), so a deferred restart is a successful outcome that owes no retry.
 
 - After a canonical-main change needing a restart, commit-boundary maintenance invokes `make restart` after every other owed action except the configuration migration run, which follows it; an agent does not repeat it. Agent-operated recovery invokes `make restart` the same way.
-
-<!-- /planned-change:config-migration-before-runtime-replacement -->
 
 - Daemon process-lifecycle observability is in-daemon: the janitor emits one process-reaped event per kill (queryable via `telec events`), and structured logs carry SIGTERM and shutdown attribution. Ad-hoc host probes (`dtrace`/`fs_usage`) installed outside `make` are not used.
 
@@ -43,11 +33,7 @@ visibility: 'public'
 - Explicit restart + separate verification is the safest minimal-downtime path.
 - A restart can terminate the process that requested it, and a daemon in its first seconds is at its busiest. A check inside the restart measures that warm-up rather than whether the restart happened, and turns a successful restart into a failed maintenance record that holds up delivery.
 
-<!-- planned:config-migration-before-runtime-replacement -->
-
 - A configuration document stored at a version the running daemon's code does not know fails every read that daemon makes of it, so a migration stored before the restart takes the daemon's service down for as long as the rest of the maintenance runs. The replacement daemon reads the older stored documents through its migration list in memory, so storing them after the restart costs no service.
-
-<!-- /planned:config-migration-before-runtime-replacement -->
 
 - Stopping a daemon while acknowledged work is still effecting leaves that work half-done with its owner gone. Preparation settles that work first, and a daemon whose preparation has not completed is safer left draining than forced down (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).
 

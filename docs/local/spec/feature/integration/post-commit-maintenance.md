@@ -169,32 +169,6 @@ contract governs only what happens when maintenance runs.
   An integration whose commit owes the restart is accepted work like any other,
   so its own restart never closes admission while it is still running.
 
-<!-- planned-change:config-migration-before-runtime-replacement -->
-
-- **Observation.** Every attempt and terminal outcome retains the immutable
-  activation and action identity in structured records. The commit boundary
-  records a checkout-scoped integrator judgment for every qualifying code
-  activation after its owed action records are durable, including a direct main
-  commit with no todo candidate. The judgment retains the activation time and
-  becomes eligible only after all owed actions succeed. Restart is the final
-  owed action of an activation; it succeeds when the service manager accepts
-  it or when it is deferred to the draining daemon
-  (`local/projects/teleclaude/policy/daemon-availability`), and whether the
-  restarted daemon came back healthy belongs to the integrator's log judgment,
-  not to the action. The drain records the latest maintenance-ready time
-  on that marker; if interrupted before recording readiness, the judgment stays
-  outstanding for integrator recovery even when action files are absent. A log
-  read can discharge it only after that ready time
-  with a window covering the activation through completed maintenance. Operational
-  anomaly detection observes failed or stale actions. A regular committer has no
-  post-commit maintenance log judgment. The standing integrator inspects
-  outstanding and terminal maintenance through its recurring watch, judges
-  the relevant runtime evidence after owed actions complete, and owns bounded
-  recovery. The log bug hunter remains a later anomaly backstop. Maintenance
-  completion sends no notification to the committer.
-
-<!-- change:config-migration-before-runtime-replacement -->
-
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. The commit boundary
   records a checkout-scoped integrator judgment for every qualifying code
@@ -219,8 +193,6 @@ contract governs only what happens when maintenance runs.
   the relevant runtime evidence after owed actions complete, and owns bounded
   recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
-
-<!-- /planned-change:config-migration-before-runtime-replacement -->
 
 <!-- planned:release-development-checkouts -->
 
