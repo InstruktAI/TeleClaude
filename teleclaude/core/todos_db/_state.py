@@ -173,6 +173,21 @@ class TodosDbStateMixin:
         async with self._session() as session:  # type: ignore[attr-defined]
             return await self._is_holder_status(session, slug)
 
+    def list_active_states_sync(self) -> list[tuple[str, dict[str, StateValue]]]:
+        """Read active item states in the stable order used by bug listing."""
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            rows = session.exec(
+                select(Todo.slug, TodoStateModel.state)
+                .join(TodoStateModel, TODO_TABLE.c.id == TODO_STATE_TABLE.c.id)
+                .where(TODO_TABLE.c.status == TodoStatus.ACTIVE.value)
+                .order_by(TODO_TABLE.c.updated_at.desc())
+            ).all()
+        results: list[tuple[str, dict[str, StateValue]]] = []
+        for slug, state_json in rows:
+            raw_state = cast(dict[str, StateValue], json.loads(state_json)) if state_json else {}
+            results.append((str(slug), upcycle_state_dict(raw_state)))
+        return results
+
     async def _stamp_ready_since_for_payload(
         self,
         session: SqlAsyncSession,

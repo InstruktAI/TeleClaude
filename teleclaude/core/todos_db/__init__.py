@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from teleclaude.core.todos_db_path import todos_db_path
@@ -16,6 +16,8 @@ from ._errors import (
     HolderTransitionRefused,
     HolderWriteRefused,
 )
+from ._integration import TodosDbIntegrationMixin
+from ._projection import TodosDbProjectionMixin
 from ._rows import ArtifactMetadataRow, ArtifactVersionRow, ArtifactWritersRow, TodoRow
 from ._state import TodosDbStateMixin
 from ._todo import TodosDbTodoMixin
@@ -32,9 +34,22 @@ class TodosDb(
     TodosDbTodoMixin,
     TodosDbTodoSoftDeleteMixin,
     TodosDbStateMixin,
+    TodosDbIntegrationMixin,
+    TodosDbProjectionMixin,
     TodosDbBase,
 ):
     """Database interface for todo lifecycle state and artifacts."""
+
+    def set_workflow_hooks(
+        self,
+        on_mutation: Callable[[str, Mapping[str, object] | None], None],
+        on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None],
+        on_delivered: Callable[[str, str | None, str], None],
+    ) -> None:
+        """Install the workflow event observers on this canonical local store."""
+        self._on_mutation = on_mutation
+        self._on_phase_transition = on_phase_transition
+        self._on_delivered = on_delivered
 
 
 _instances: dict[str, TodosDb] = {}

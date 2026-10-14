@@ -3,7 +3,6 @@
 DB-backed todo list assembly for CLI, API, and TUI.
 """
 
-import json
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -23,8 +22,7 @@ from teleclaude.core.next_machine.lifecycle import (
     prepare_review_verdict_from_state,
     require_lifecycle_phase,
 )
-from teleclaude.core.todos_db import get_todos_db_sync
-from teleclaude.core.todos_db._upcycle import upcycle_state_dict
+from teleclaude.core.workflow_store import get_workflow_store_sync
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY, TodoState
 
@@ -453,269 +451,181 @@ def assemble_todo_from_db(
     include_removed: bool = False,
     removed_only: bool = False,
 ) -> list[TodoDTO]:
-    """Assemble todo list from todos.db using sync methods.
+    """Assemble the todo list from one typed workflow-store projection read.
 
-    Reads state, todo list entries, and deps from the SQLite database.
-
-    ``include_delivered``/``delivered_only`` return delivered entries.
-    ``delivered_since`` optionally restricts delivered entries to those
-    delivered at or after the given ISO-8601 timestamp. It is applied as a
-    post-derivation display filter, never in SQL. Delivered group labels are
-    projected from the remaining children, independently of active siblings.
-    Callers own their cutoff: the default/TUI list view passes
-    ``now - RECENTLY_DELIVERED_HOURS``; the CLI ``--since`` flag passes the
-    user-requested cutoff; an absent value returns all delivered entries. The
-    value must be a clean ISO timestamp produced by the caller.
+    ``delivered_since`` remains a post-derivation display filter so a holder
+    whose children delivered outside the window still derives as delivered.
     """
     started_at = time.perf_counter()
     init_started_at = time.perf_counter()
-    db = get_todos_db_sync(project_path)
+    store = get_workflow_store_sync(project_path)
     init_dt = time.perf_counter() - init_started_at
 
-    conn_open_started_at = time.perf_counter()
-    conn = db._sync_conn()
-    conn_open_dt = time.perf_counter() - conn_open_started_at
-    try:
-        # Build todo list entries.
-        #
-        # The WHERE clause builds an explicit allow-list of statuses (active,
-        # icebox, delivered) — never a negative predicate. Soft-removed rows
-        # (status = 'removed') are therefore invisible by construction; do not
-        # regress this to ``status != 'delivered'``.
-        #
-        # `delivered_since` is a DISPLAY window applied after holder-status
-        # derivation — never in SQL — so a holder whose children delivered
-        # outside the window still derives as delivered.
-        delivered_clause = "status = 'delivered'"
-        removed_clause = "status = 'removed'"
+    if delivered_only:
+        statuses: tuple[TodoStatus, ...] = (TodoStatus.DELIVERED,)
+    elif icebox_only:
+        statuses = (TodoStatus.ICEBOX,)
+    elif removed_only:
+        statuses = (TodoStatus.REMOVED,)
+    else:
+        selected = [TodoStatus.ACTIVE]
+        if include_icebox:
+            selected.append(TodoStatus.ICEBOX)
+        if include_delivered:
+            selected.append(TodoStatus.DELIVERED)
+        if include_removed:
+            selected.append(TodoStatus.REMOVED)
+        statuses = tuple(selected)
 
-        conditions = []
-        if delivered_only:
-            conditions.append(delivered_clause)
-        elif icebox_only:
-            conditions.append("status = 'icebox'")
-        elif removed_only:
-            conditions.append(removed_clause)
-        else:
-            parts = ["status = 'active'"]
-            if include_icebox:
-                parts.append("status = 'icebox'")
-            if include_delivered:
-                parts.append(delivered_clause)
-            if include_removed:
-                parts.append(removed_clause)
-            conditions.append(" OR ".join(parts))
+    snapshot = store.read_todo_projection_snapshot_sync(statuses)
+    metrics = snapshot.metrics
+    delivered_slug_set = {str(item_id) for item_id in snapshot.delivered_items}
+    deps_map = {str(item_id): [str(dep) for dep in deps] for item_id, deps in snapshot.dependencies.items()}
+    holder_slug_by_id = {str(address): str(slug) for address, slug in snapshot.structural_group_slugs.items()}
 
-        where = conditions[0] if conditions else "1=1"
-        todo_started_at = time.perf_counter()
-        rows = conn.execute(
-            "SELECT id, slug, ready_since, schedule, group_id, description, status, "  # guard: raw-sql
-            f"delivered_at, updated_at, created_at, removed_at, lineage, entry_point, human_involved, context "
-            f"FROM todo WHERE {where} ORDER BY id",
-        ).fetchall()
-        todo_dt = time.perf_counter() - todo_started_at
-
-        delivered_slug_rows = conn.execute(
-            "SELECT slug FROM todo WHERE status = 'delivered'",  # guard: raw-sql
-        ).fetchall()
-        delivered_slug_set = {str(delivered_slug[0]) for delivered_slug in delivered_slug_rows}
-
-        # Load deps
-        deps_started_at = time.perf_counter()
-        dep_rows = conn.execute(
-            "SELECT slug, depends_on FROM todo_deps",  # guard: raw-sql
-        ).fetchall()
-        deps_dt = time.perf_counter() - deps_started_at
-        deps_map: dict[str, list[str]] = {}
-        for dr in dep_rows:
-            deps_map.setdefault(dr[0], []).append(dr[1])
-
-        # Holder rows never match the status allow-list above (never
-        # 'active'/'icebox'/'delivered'/'removed'), so they carry no row of
-        # their own in `rows`. Resolved separately so children can join their
-        # holder's current slug label from the id edge — never a stored copy.
-        holder_rows = conn.execute("SELECT id, slug FROM todo WHERE status = 'holder'").fetchall()  # guard: raw-sql
-        holder_slug_by_id = {str(hid): str(hslug) for hid, hslug in holder_rows}
-
-        todos: list[TodoDTO] = []
-        raw_status_by_id: dict[str, str] = {}
-        state_query_total_dt = 0.0
-        artifact_query_total_dt = 0.0
-        todo_build_total_dt = 0.0
-        for row in rows:
-            row_id = row[0]
-            slug = row[1]
-            raw_status = row[6]
-            raw_status_by_id[str(row_id)] = raw_status
-            state_query_started_at = time.perf_counter()
-            state_row = conn.execute(
-                "SELECT state FROM todo_state WHERE id = ?",  # guard: raw-sql
-                (row_id,),
-            ).fetchone()
-            state_query_total_dt += time.perf_counter() - state_query_started_at
-
-            todo_build_started_at = time.perf_counter()
-            if state_row is None:
-                # A delivered row legitimately carries no state: the legacy
-                # importer records delivered todos as history (todo + artifacts,
-                # no state). A non-delivered row missing state is an integrity
-                # defect worth surfacing. Holder rows never reach this loop at
-                # all — they are excluded by the status allow-list — so no
-                # holder short-circuit is needed here.
-                if raw_status == "delivered":
-                    logger.trace(
-                        "Skipping delivered todo row without todo state",
-                        slug=slug,
-                        project_path=project_path,
-                        todo_id=str(row_id),
-                    )
-                else:
-                    logger.warning(
-                        "Skipping todo row missing todo state",
-                        slug=slug,
-                        status=raw_status,
-                        project_path=project_path,
-                        todo_id=str(row_id),
-                    )
-                continue
-            try:
-                state = upcycle_state_dict(json.loads(state_row[0]))
-            except ValueError as exc:
-                logger.warning(
-                    "Skipping todo with unreadable state",
+    todos: list[TodoDTO] = []
+    raw_status_by_id: dict[str, str] = {}
+    todo_build_total_dt = 0.0
+    for item in snapshot.items:
+        slug = str(item.item_id)
+        row_id = str(item.store_address)
+        raw_status = item.status
+        raw_status_by_id[row_id] = raw_status
+        if item.state_error is not None:
+            logger.warning(
+                "Skipping todo with unreadable state",
+                slug=slug,
+                project_path=project_path,
+                reason=item.state_error,
+            )
+            continue
+        if item.state is None:
+            if raw_status == TodoStatus.DELIVERED.value:
+                logger.trace(
+                    "Skipping delivered todo row without todo state",
                     slug=slug,
                     project_path=project_path,
-                    reason=str(exc),
+                    todo_id=row_id,
                 )
-                continue
-
-            # Check artifact existence from DB (by id)
-            artifact_query_started_at = time.perf_counter()
-            has_req_row = conn.execute(
-                "SELECT 1 FROM todo_artifacts WHERE id = ? AND name = 'requirements'",  # guard: raw-sql
-                (row_id,),
-            ).fetchone()
-            has_plan_row = conn.execute(
-                "SELECT 1 FROM todo_artifacts WHERE id = ? AND name = 'implementation-plan'",  # guard: raw-sql
-                (row_id,),
-            ).fetchone()
-
-            # Preserve artifact names as the ordering contract while projecting recency alongside them.
-            artifact_rows = conn.execute(
-                "SELECT name, updated_at FROM todo_artifacts WHERE id = ? ORDER BY name",  # guard: raw-sql
-                (row_id,),
-            ).fetchall()
-            version_total_row = conn.execute(
-                "SELECT COUNT(*) FROM todo_artifact_versions WHERE id = ?",  # guard: raw-sql
-                (row_id,),
-            ).fetchone()
-            artifact_query_total_dt += time.perf_counter() - artifact_query_started_at
-            version_total = int(version_total_row[0]) if version_total_row is not None else 0
-
-            # --- Derive display values from canonical lifecycle state ---
-
-            artifact_write_timestamps = {
-                artifact_name_to_state_key(str(ar[0])): str(ar[1]) for ar in artifact_rows if isinstance(ar[1], str)
-            }
-            projection = _derive_projection_fields(
-                slug, raw_status, state, artifact_write_timestamps=artifact_write_timestamps
-            )
-            hold_audit = state.get("hold_audit")
-            # Derive hold once at the projection boundary so every UI edge reads
-            # only the verdict.
-            held = effective_hold(hold=bool(state.get("hold")))
-
-            todos.append(
-                TodoDTO(
+            else:
+                logger.warning(
+                    "Skipping todo row missing todo state",
                     slug=slug,
-                    status=projection.todo_status,
-                    description=row[5] or "",
-                    has_requirements=has_req_row is not None,
-                    has_impl_plan=has_plan_row is not None,
-                    kind=projection.kind,
-                    ready_since=row[2],
-                    schedule=row[3],
-                    task_plan_digest=_artifact_digest(state, "task_plan"),
-                    task_approved_digest=_approval_digest(state, "task_approved"),
-                    updated_at=row[8],
-                    created_at=row[9],
-                    build_status=projection.build_status,
-                    review_status=projection.review_status,
-                    after=deps_map.get(slug, []),
-                    group=holder_slug_by_id.get(row[4]) if row[4] else None,
-                    group_id=row[4] if row[4] in holder_slug_by_id else None,
-                    delivered_at=row[7],
-                    lifecycle_phase=projection.lifecycle_phase,
-                    integration_phase=projection.integration_phase,
-                    finalize_status=projection.finalize_status,
-                    prepare_review_verdict=projection.prepare_review_verdict,
-                    hold=bool(state.get("hold")),
-                    held=held,
-                    hold_source=(
-                        str(hold_audit.get("source"))
-                        if isinstance(hold_audit, dict) and isinstance(hold_audit.get("source"), str)
-                        else None
-                    ),
-                    active_runner=(
-                        str(state.get("active_runner")) if isinstance(state.get("active_runner"), str) else None
-                    ),
-                    prepared_session_id=_non_empty_str(state.get(PREPARED_SESSION_ID_STATE_KEY)),
-                    files=[ar[0] for ar in artifact_rows],
-                    artifact_updated_at={ar[0]: ar[1] for ar in artifact_rows if isinstance(ar[1], str)},
-                    version_total=version_total,
-                    todo_id=str(row_id),
-                    removed_at=row[10],
-                    lineage=row[11],
-                    entry_point=row[12],
-                    human_involved=bool(row[13]),
-                    context=row[14],
+                    status=raw_status,
+                    project_path=project_path,
+                    todo_id=row_id,
                 )
-            )
-            todo_build_total_dt += time.perf_counter() - todo_build_started_at
+            continue
+        state = item.state
+        build_started_at = time.perf_counter()
+        artifact_write_timestamps = {
+            artifact_name_to_state_key(artifact.name): artifact.updated_at
+            for artifact in item.artifact_files
+            if artifact.updated_at is not None
+        }
+        projection = _derive_projection_fields(
+            slug,
+            raw_status,
+            state,
+            artifact_write_timestamps=artifact_write_timestamps,
+        )
+        hold_audit = state.get("hold_audit")
+        held = effective_hold(hold=bool(state.get("hold")))
+        group_slug = holder_slug_by_id.get(str(item.group_address)) if item.group_address is not None else None
+        group_id = str(item.group_address) if item.group_address is not None and group_slug is not None else None
 
-        todos = _apply_holder_status(todos, holder_slug_by_id)
-        todos = _apply_removed_holder_labels(todos, holder_slug_by_id)
-        todos = _apply_icebox_holder_labels(todos, holder_slug_by_id)
-        if delivered_since is not None:
-            todos = [
-                t
-                for t in todos
-                if t.status != TodoStatus.DELIVERED or (t.delivered_at and t.delivered_at >= delivered_since)
-            ]
-        todos = _apply_delivered_holder_labels(todos, holder_slug_by_id)
-        todos = _apply_section_ordering(todos, delivered_slug_set, raw_status_by_id)
-
-        total_dt = time.perf_counter() - started_at
-        if total_dt >= 2.0:
-            logger.warning(
-                (
-                    "assemble_todo_from_db was slow: total=%.3fs project=%s rows=%d deps=%d "
-                    "init=%.3fs conn_open=%.3fs todo=%.3fs deps_load=%.3fs "
-                    "state_queries=%.3fs artifact_queries=%.3fs todo_build=%.3fs other=%.3fs"
+        todos.append(
+            TodoDTO(
+                slug=slug,
+                status=projection.todo_status,
+                description=item.description or "",
+                has_requirements=item.has_requirements,
+                has_impl_plan=item.has_implementation_plan,
+                kind=projection.kind,
+                ready_since=item.ready_since,
+                schedule=item.schedule,
+                task_plan_digest=_artifact_digest(state, "task_plan"),
+                task_approved_digest=_approval_digest(state, "task_approved"),
+                updated_at=item.updated_at,
+                created_at=item.created_at,
+                build_status=projection.build_status,
+                review_status=projection.review_status,
+                after=deps_map.get(slug, []),
+                group=group_slug,
+                group_id=group_id,
+                delivered_at=item.delivered_at,
+                lifecycle_phase=projection.lifecycle_phase,
+                integration_phase=projection.integration_phase,
+                finalize_status=projection.finalize_status,
+                prepare_review_verdict=projection.prepare_review_verdict,
+                hold=bool(state.get("hold")),
+                held=held,
+                hold_source=(
+                    str(hold_audit.get("source"))
+                    if isinstance(hold_audit, dict) and isinstance(hold_audit.get("source"), str)
+                    else None
                 ),
-                total_dt,
-                project_path,
-                len(rows),
-                len(dep_rows),
-                init_dt,
-                conn_open_dt,
-                todo_dt,
-                deps_dt,
-                state_query_total_dt,
-                artifact_query_total_dt,
-                todo_build_total_dt,
-                max(
-                    0.0,
-                    total_dt
-                    - init_dt
-                    - conn_open_dt
-                    - todo_dt
-                    - deps_dt
-                    - state_query_total_dt
-                    - artifact_query_total_dt
-                    - todo_build_total_dt,
-                ),
+                active_runner=str(state.get("active_runner")) if isinstance(state.get("active_runner"), str) else None,
+                prepared_session_id=_non_empty_str(state.get(PREPARED_SESSION_ID_STATE_KEY)),
+                files=[artifact.name for artifact in item.artifact_files],
+                artifact_updated_at={
+                    artifact.name: artifact.updated_at
+                    for artifact in item.artifact_files
+                    if artifact.updated_at is not None
+                },
+                version_total=item.version_total,
+                todo_id=row_id,
+                removed_at=item.removed_at,
+                lineage=item.lineage,
+                entry_point=item.entry_point,
+                human_involved=item.human_involved,
+                context=item.context,
             )
-        return todos
-    finally:
-        conn.close()
+        )
+        todo_build_total_dt += time.perf_counter() - build_started_at
+
+    todos = _apply_holder_status(todos, holder_slug_by_id)
+    todos = _apply_removed_holder_labels(todos, holder_slug_by_id)
+    todos = _apply_icebox_holder_labels(todos, holder_slug_by_id)
+    if delivered_since is not None:
+        todos = [
+            todo
+            for todo in todos
+            if todo.status != TodoStatus.DELIVERED or (todo.delivered_at and todo.delivered_at >= delivered_since)
+        ]
+    todos = _apply_delivered_holder_labels(todos, holder_slug_by_id)
+    todos = _apply_section_ordering(todos, delivered_slug_set, raw_status_by_id)
+
+    total_dt = time.perf_counter() - started_at
+    if total_dt >= 2.0:
+        deps_count = sum(len(deps) for deps in snapshot.dependencies.values())
+        logger.warning(
+            (
+                "assemble_todo_from_db was slow: total=%.3fs project=%s rows=%d deps=%d "
+                "init=%.3fs conn_open=%.3fs todo=%.3fs deps_load=%.3fs "
+                "state_queries=%.3fs artifact_queries=%.3fs todo_build=%.3fs other=%.3fs"
+            ),
+            total_dt,
+            project_path,
+            len(snapshot.items),
+            deps_count,
+            init_dt,
+            metrics.connection_seconds,
+            metrics.item_query_seconds,
+            metrics.dependency_query_seconds,
+            metrics.state_query_seconds,
+            metrics.artifact_query_seconds,
+            todo_build_total_dt,
+            max(
+                0.0,
+                total_dt
+                - init_dt
+                - metrics.connection_seconds
+                - metrics.item_query_seconds
+                - metrics.dependency_query_seconds
+                - metrics.state_query_seconds
+                - metrics.artifact_query_seconds
+                - todo_build_total_dt,
+            ),
+        )
+    return todos

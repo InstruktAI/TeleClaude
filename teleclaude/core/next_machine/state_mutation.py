@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
     from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store import WorkflowStore
 
 
 __all__ = [
@@ -126,7 +127,7 @@ class StateWriter:
     def verdict_target(self, review_type: str) -> ReviewVerdictState | BuildReviewState:
         """Return the verdict-bearing sub-state for stamping verdicts."""
         review = getattr(self._model, review_type, None)
-        if not isinstance(review, (ReviewVerdictState, BuildReviewState)):
+        if not isinstance(review, ReviewVerdictState | BuildReviewState):
             raise StateMutationError(f"unknown review phase: {review_type!r}")
         return review
 
@@ -178,7 +179,7 @@ class StateWriter:
         await todos_db.write_state_by_id(todo_id, payload, session=session)
         return payload
 
-    def commit_sync(self, todos_db: TodosDb, slug: str) -> dict[str, StateValue]:
+    def commit_sync(self, todos_db: WorkflowStore, slug: str) -> dict[str, StateValue]:
         """Validate and persist the current state via the sync DB path."""
         payload = self.to_dict()
         todos_db.write_state_sync(slug, payload)
