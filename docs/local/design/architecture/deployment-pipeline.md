@@ -53,6 +53,8 @@ activation of the commit-boundary executor
 (`docs/local/spec/feature/integration/event-bound-maintenance.md`). An event
 about any other project never selects that binding.
 
+<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
+
 The action reads the event it is handed and the computer's channel policy. On a
 match it advances the checkout's main branch to the target the channel admits —
 the newest mainline for alpha, the published release for beta and stable — and
@@ -67,6 +69,29 @@ Channel policy and the exactly-once / healthy-or-failed contract are owned by
 `docs/local/spec/feature/reconciliation/channel-gated-self-update.md`; the
 context model (Installation, Convergence Run, Fleet Capability Map) is in
 `docs/local/spec/domain/reconciliation.md`.
+
+<!-- change:maintenance-runs-as-stopped-daemon-window -->
+
+The action reads the event it is handed and the computer's channel policy. On a
+match it advances the checkout's main branch to the target the channel admits —
+the newest mainline for alpha, the published release for beta and stable. A
+target the checkout already contains is not applied again. The advance is an
+ordinary canonical-main activation: the installation, dependency
+reconciliation and daemon restart it owes are the commit-boundary maintenance
+its changed paths owe
+(`docs/local/spec/feature/integration/post-commit-maintenance.md`), and an
+activation whose range changes the installed version also owes the
+installation migrations between the version it left and the version it
+reached. Those migrations run inside the activation's stopped-daemon window,
+before its configuration migration run. The window verifies that the daemon
+started again on the reached version; whether the runtime then behaves
+correctly is the standing integrator's judgment.
+Channel policy and the exactly-once / healthy-or-failed contract are owned by
+`docs/local/spec/feature/reconciliation/channel-gated-self-update.md`; the
+context model (Installation, Convergence Run, Fleet Capability Map) is in
+`docs/local/spec/domain/reconciliation.md`.
+
+<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 A deliberately multi-version fleet (alpha ahead of beta ahead of stable) stays
 interoperable through the fleet capability map and feature-ID gating in

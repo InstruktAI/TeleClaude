@@ -50,6 +50,8 @@ versions.
 
 The migrated shape is persisted in exactly two ways:
 
+<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
+
 - **A migration run.** Canonical-main maintenance runs one when an activation
   changes the migration list, after the daemon restarts, over every document
   the tier registries name: the machine configuration, the home's global
@@ -59,11 +61,28 @@ The migrated shape is persisted in exactly two ways:
   seeded. A document outside the registries is never migrated by a run; it
   enters through registration.
 
+<!-- change:maintenance-runs-as-stopped-daemon-window -->
+
+- **A migration run.** Canonical-main maintenance runs one when an activation
+  changes the migration list, inside that activation's stopped-daemon window
+  (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`),
+  over every document
+  the tier registries name: the machine configuration, the home's global
+  configuration, every person and company configuration at its designated
+  location, and every registered project root. Registering a project runs one
+  for the root it adds, and installation runs one over the configuration it has
+  seeded. A document outside the registries is never migrated by a run; it
+  enters through registration.
+
+<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
+
 - **A writer.** A platform operation that changes a registry-named existing
   document first persists that document's pending migrations, then applies its
   own change to the current shape. A write therefore never records an older
   shape at the current version, and never drops a value a migration still has
   to move.
+
+<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 A migration run that maintenance or installation performs never stores a
 document at a version the running daemon cannot read
@@ -76,6 +95,23 @@ retains, is recorded as withheld, naming the daemon's reach and the current
 version. When no daemon listens, the run
 proceeds. Installation continues past a withheld run, reading the documents as
 stored through the in-memory migration, and a later migration run stores them.
+
+<!-- change:maintenance-runs-as-stopped-daemon-window -->
+
+A migration run never stores a document at a version a running daemon cannot
+read (`local/projects/teleclaude/policy/daemon-availability`). A maintenance
+run that replaces the daemon performs its migration run while the daemon is
+stopped. Any other migration run that maintenance or installation performs
+reads, before it writes, the migration reach the running daemon reports. A daemon that
+reports a lower reach, reports none, or listens without answering within a
+bounded wait withholds the whole run: no document is stored, no retirement
+runs, and every document the run covers, other than one whose source the run
+retains, is recorded as withheld, naming the daemon's reach and the current
+version. When no daemon listens, the run
+proceeds. Installation continues past a withheld run, reading the documents as
+stored through the in-memory migration, and a later migration run stores them.
+
+<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 The installed release checkout's project declaration is retained source under
 `local/projects/teleclaude/spec/feature/reconciliation/release-checkout`.
@@ -156,6 +192,8 @@ Then the load fails naming the document, its version, and the installation's cur
 And the document is not loaded in any shape
 ```
 
+<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
+
 #### UC-CFG-MIG-3: A change to the migration list persists every registered document after restart
 
 ```gherkin
@@ -166,6 +204,21 @@ Then each writable document is stored at the current version after the daemon re
 And an installed release declaration is evaluated without changing its stored source
 And an agent reading the structured records observes one outcome per document
 ```
+
+<!-- change:maintenance-runs-as-stopped-daemon-window -->
+
+#### UC-CFG-MIG-3: A change to the migration list persists every registered document while the daemon is stopped
+
+```gherkin
+Given canonical main advances with a change to the configuration migration list
+And documents the tier registries name are at older versions
+When commit-boundary maintenance runs
+Then each writable document is stored at the current version while the daemon is stopped, before it starts onto that list
+And an installed release declaration is evaluated without changing its stored source
+And an agent reading the structured records observes one outcome per document
+```
+
+<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 #### UC-CFG-MIG-4: A clean tracked document gets one migration commit in its own repository
 
@@ -343,6 +396,8 @@ Then the stored version identifies the shape that was written
 And reading it with the same installed schema requires no version conversion
 ```
 
+<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
+
 #### UC-CFG-MIG-20: A migration run never stores a version the running daemon cannot read
 
 ```gherkin
@@ -352,6 +407,20 @@ When maintenance or installation runs a migration run
 Then the stored machine configuration is byte-identical before and after the run
 And an agent reading the structured records observes it as withheld, naming the daemon's reach and the current version
 ```
+
+<!-- change:maintenance-runs-as-stopped-daemon-window -->
+
+#### UC-CFG-MIG-20: A migration run never stores a version the running daemon cannot read
+
+```gherkin
+Given the running daemon reports a migration reach below the current version
+And the machine configuration is at an older version
+When installation, or maintenance that does not replace the daemon, runs a migration run
+Then the stored machine configuration is byte-identical before and after the run
+And an agent reading the structured records observes it as withheld, naming the daemon's reach and the current version
+```
+
+<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 ### Cross-context references
 
