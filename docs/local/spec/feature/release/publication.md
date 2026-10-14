@@ -76,9 +76,10 @@ authentication protocol and candidate evidence; publication retains its full
 verification requirements (`sdlc/policy/process-change-authority`). An absent
 or unusable destination produces a visible configuration or scheduling failure.
 
-Owned execution gives each job a fresh disposable Linux machine. Registration
-credentials and the host's live installation remain outside guest access, and
-an external lifecycle owner retains unfinished cleanup across job cancellation
+Owned execution gives each job a fresh disposable Linux machine. Administrative
+registration credentials and the host's live installation remain outside guest
+access; each guest receives only its own ephemeral runner configuration. An
+external lifecycle owner retains unfinished cleanup across job cancellation
 and controller restart (`sdlc/policy/security-awareness`). Disposal does not
 establish provider credential settlement. The installation proof keeps its
 separate virtualization-capable execution target.

@@ -126,7 +126,7 @@ serialization nor artifact, candidate and credential-settlement authority
 (`local/projects/teleclaude/spec/feature/release/publication`).
 
 Tart Runner Fleet owns fresh Linux guest registration and durable disposal.
-The host controller retains registration authority outside the guests and
+The host controller retains administrative registration authority outside the guests and
 provisions each from a pinned qualified base. Guest tooling satisfies the
 release job prerequisites, including native sandbox readiness and full runtime
 acceptance. The host controller and the external installation-proof controller
