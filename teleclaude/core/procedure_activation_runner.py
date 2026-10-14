@@ -227,7 +227,6 @@ async def _create_agent(
                 attendance=attendance,
                 delivery=ProcedureDeliverySettings(event_delivery=cmd.event_delivery, interruptible=cmd.interruptible),
             ),
-            session_id=session_id,
             caller_mode=None,
         )
     except EntryRefusal as exc:
@@ -278,7 +277,6 @@ async def _create_agent(
             event_delivery=cmd.event_delivery,
             interruptible=cmd.interruptible,
             initial_entry_id=activation.activation_id,
-            required_reads=resolved.entry.required_reads,
         ),
     )
     result = await get_command_service().create_session(create_cmd)

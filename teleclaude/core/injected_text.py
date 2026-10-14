@@ -395,6 +395,21 @@ _COMMAND_LOADER_READ_PREFIX = "Read "
 _COMMAND_LOADER_READ_SUFFIX = " verbatim and follow it exactly as the active instruction set for this session."
 _COMMAND_LOADER_INPUTS_HEADING = "Treat the following as provided inputs to that instruction set:"
 _COMMAND_LOADER_INPUTS_SEPARATOR = "\n"
+_REFERENCE_LOADER_INPUTS_HEADING = "## Provided inputs"
+_REFERENCE_LOADER_ENTRY_FACTS_HEADING = "## Entry facts"
+_REFERENCE_LOADER_ADDITIONAL_CONTEXT_HEADING = "## Additional context"
+_REFERENCE_LOADER_READ_INSTRUCTION = (
+    "Load your assigned procedure's instructions with `telec docs get {command} --closure`, "
+    "then follow the returned procedure as this assignment."
+)
+_REFERENCE_LOADER_ARGUMENTS_LABEL = "$ARGUMENTS (the raw argument text)"
+_REFERENCE_LOADER_INPUT_LINE = "- {name}: {value}"
+_REFERENCE_LOADER_FACT_LINE = "- {name}: {value}"
+_REFERENCE_LOADER_RE = re.compile(
+    r"\ATELECLAUDE COMMAND: [^\r\n]+\r?\n\r?\n"
+    r"[\s\S]*\r?\n\r?\nLoad your assigned procedure's instructions with `telec docs get [^\r\n]+ --closure`, "
+    r"then follow the returned procedure as this assignment\.\Z"
+)
 _HISTORICAL_DISPATCH_DOOR_PREFIX = "DISPATCH DOOR: "
 _COMMAND_LOADER_RE = re.compile(
     r"\A"
@@ -623,25 +638,34 @@ def scan_injected_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
     return candidates
 
 
-def render_command_loader(command: str, document: str, args: str) -> str:
-    """Render the dispatch loader that makes a command document a session's instruction set.
-
-    The loader is platform-authored text addressed to the agent: a person never
-    wrote it, yet the agent's turn answers it. Its grammar is owned here so the
-    renderer and every recognizer read one declaration.
-    """
-    marker_args = f"{_COMMAND_LOADER_ARGUMENT_PREFIX}{args}" if args else _EMPTY_TEXT
-    marker = f"{_COMMAND_LOADER_MARKER_PREFIX}{command}{marker_args}"
-    instruction = (
-        f"{_COMMAND_LOADER_READ_PREFIX}{document}{_COMMAND_LOADER_READ_SUFFIX}{_SECTION_SEPARATOR}"
-        f"{_COMMAND_LOADER_INPUTS_HEADING}{_COMMAND_LOADER_INPUTS_SEPARATOR}{args}"
-    )
-    return _SECTION_SEPARATOR.join((marker, instruction))
+def render_reference_loader(
+    command: str,
+    role_framing: str | None,
+    arguments: str,
+    inputs: Mapping[str, str],
+    entry_facts: Mapping[str, str],
+    additional_context: str,
+) -> str:
+    """Render a short assignment loader that retrieves its instructions by reference."""
+    marker_args = f"{_COMMAND_LOADER_ARGUMENT_PREFIX}{arguments}" if arguments else _EMPTY_TEXT
+    parts = [f"{_COMMAND_LOADER_MARKER_PREFIX}{command}{marker_args}"]
+    if role_framing:
+        parts.extend([role_framing, _EMPTY_TEXT])
+    parts.append(_REFERENCE_LOADER_INPUTS_HEADING)
+    parts.extend(_REFERENCE_LOADER_INPUT_LINE.format(name=name, value=value) for name, value in inputs.items())
+    parts.append(_REFERENCE_LOADER_INPUT_LINE.format(name=_REFERENCE_LOADER_ARGUMENTS_LABEL, value=arguments))
+    if entry_facts:
+        parts.extend([_EMPTY_TEXT, _REFERENCE_LOADER_ENTRY_FACTS_HEADING])
+        parts.extend(_REFERENCE_LOADER_FACT_LINE.format(name=name, value=value) for name, value in entry_facts.items())
+    if additional_context:
+        parts.extend([_EMPTY_TEXT, _REFERENCE_LOADER_ADDITIONAL_CONTEXT_HEADING, additional_context])
+    parts.extend([_EMPTY_TEXT, _REFERENCE_LOADER_READ_INSTRUCTION.format(command=command)])
+    return _SECTION_SEPARATOR.join(parts)
 
 
 def is_command_loader(text: str) -> bool:
-    """Recognize a complete dispatch loader occupying the whole text."""
-    return _COMMAND_LOADER_RE.fullmatch(text) is not None
+    """Recognize the current reference loader and the complete historical file loader."""
+    return _COMMAND_LOADER_RE.fullmatch(text) is not None or _REFERENCE_LOADER_RE.fullmatch(text) is not None
 
 
 def cut_transcript_entry(text: str, *, is_user_entry: bool) -> tuple[TranscriptCutSegment, ...]:
@@ -883,7 +907,7 @@ __all__ = [
     "platform_control_envelope",
     "platform_control_text",
     "reminder_envelope",
-    "render_command_loader",
+    "render_reference_loader",
     "scan_injected_envelopes",
     "visible_input_preview",
     "visible_input_update",

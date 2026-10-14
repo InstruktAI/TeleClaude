@@ -276,7 +276,6 @@ def _prepare_run_session(
             project_root=Path(request.project),
             caller=resolve_session_role(identity.role, identity.session_id),
             entry=entry,
-            session_id=session_id,
             caller_mode=caller_mode,
             additional_context=request.additional_context,
         )
@@ -284,7 +283,7 @@ def _prepare_run_session(
         raise RunSessionRefusal(status_code=exc.status_code, detail=exc.detail, reason=exc.reason) from exc
     full_command = f"{resolved.procedure_id} {resolved.arguments}" if resolved.arguments else resolved.procedure_id
     full_command = with_additional_context(full_command, request.additional_context)
-    startup_message = with_additional_context(resolved.loader, request.additional_context)
+    startup_message = resolved.loader
     if resolved.working_slug and resolved.procedure_id in WORKTREE_BOUND_PROCEDURES:
         expected_subfolder = f"{WORKTREE_DIR}/{resolved.working_slug}"
         if request.subfolder != expected_subfolder:

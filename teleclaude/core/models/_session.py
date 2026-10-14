@@ -98,7 +98,7 @@ class OriginRevivalContext:
 
 
 class ProcedureEntryKind(StrEnum):
-    """The entry type a procedure invocation was started through; it adds typed context and required reads, never a role."""
+    """The entry type a procedure invocation was started through; it adds typed facts, never a role."""
 
     DIRECT = "direct"
     JOB = "job"
@@ -113,8 +113,6 @@ class InvocationKey(StrEnum):
     PARAMETERS = "parameters"
     ENTRY_KIND = "entry_kind"
     ENTRY_JOB = "entry_job"
-    ENTRY_READS = "entry_reads"
-    BRIEF_PATH = "brief_path"
     ENTRY_FACTS = "entry_facts"
     ADDITIONAL_CONTEXT = "additional_context"
 
@@ -126,10 +124,9 @@ NO_ADDITIONAL_CONTEXT: Final = ""
 class ProcedureInvocation:
     """The resolved invocation of a procedure entry, persisted on the session's launch state.
 
-    A continuation (restart, revival, handoff) rebuilds the loader from it: the procedure, the raw
-    argument text, the bound parameters, the entry type with its context facts and reads, the additional
-    context supplied at launch, and the brief it composed. A record stored without the additional-context
-    key reads as carrying none.
+    A continuation (restart, revival, handoff) rebuilds the loader from it: the procedure, raw argument
+    text, bound parameters, entry facts, and additional context supplied at launch. A record stored without
+    the additional-context key reads as carrying none.
     """
 
     procedure_id: str
@@ -137,8 +134,6 @@ class ProcedureInvocation:
     parameters: tuple[tuple[str, str], ...]
     entry_kind: ProcedureEntryKind
     entry_job: str | None
-    entry_reads: tuple[str, ...]
-    brief_path: str
     entry_facts: tuple[tuple[str, str], ...] = ()
     additional_context: str = NO_ADDITIONAL_CONTEXT
 
@@ -150,8 +145,6 @@ class ProcedureInvocation:
             InvocationKey.PARAMETERS: [[name, value] for name, value in self.parameters],
             InvocationKey.ENTRY_KIND: self.entry_kind.value,
             InvocationKey.ENTRY_JOB: self.entry_job,
-            InvocationKey.ENTRY_READS: list(self.entry_reads),
-            InvocationKey.BRIEF_PATH: self.brief_path,
             InvocationKey.ENTRY_FACTS: [[name, value] for name, value in self.entry_facts],
             InvocationKey.ADDITIONAL_CONTEXT: self.additional_context,
         }
@@ -167,8 +160,6 @@ class ProcedureInvocation:
             ),
             entry_kind=ProcedureEntryKind(str(data[InvocationKey.ENTRY_KIND])),
             entry_job=cast(str | None, data.get(InvocationKey.ENTRY_JOB)),
-            entry_reads=tuple(cast(list[str], data.get(InvocationKey.ENTRY_READS) or [])),
-            brief_path=str(data[InvocationKey.BRIEF_PATH]),
             entry_facts=tuple(
                 (str(pair[0]), str(pair[1]))
                 for pair in cast(list[list[str]], data.get(InvocationKey.ENTRY_FACTS) or [])

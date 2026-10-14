@@ -131,7 +131,7 @@ def prepare_interactive_create_command(cmd: CreateSessionCommand, human_role: st
     """Resolve one target-local command input through the procedure entry before session creation observes it.
 
     A leading token naming a published entry procedure creates the session with that procedure's role and the
-    loader naming its materialized brief; any other text stays ordinary conversation. A recognized invocation
+    loader naming its published closure; any other text stays ordinary conversation. A recognized invocation
     that violates an argument or authorization rule is refused visibly.
     """
     project_root = Path(cmd.project_path) if cmd.project_path else REPO_ROOT
@@ -149,7 +149,6 @@ def prepare_interactive_create_command(cmd: CreateSessionCommand, human_role: st
             project_root=project_root,
             caller=None,
             entry=EntryContext(),
-            session_id=session_id,
             caller_mode=caller_mode,
         )
     except EntryRefusal as exc:

@@ -17,8 +17,6 @@ _INDEX_FILE_NAME = "index.yaml"
 _COMPANY_SOURCE_PREFIX = "company:"
 _PERSON_SOURCE_PREFIX = "person:"
 _PROCEDURE_TYPE = "procedure"
-_EVENT_HANDLING_OVERVIEW_ID = "general/procedure/event-handling/overview"
-_EVENT_HANDLING_INTERRUPTIBLE_ID = "general/procedure/event-handling/interruptible"
 _UTF8 = "utf-8"
 _UNREADABLE_TIER_ERROR = (
     "Unreadable tier {scope!r} for subscribed procedure {procedure_id!r}. "
@@ -62,7 +60,6 @@ class IndexKey(StrEnum):
     SUBSCRIPTION_ATTENDANCE = "subscription_attendance"
     EVENT_DELIVERY = "event_delivery"
     INTERRUPTIBLE = "interruptible"
-    DELIVERY_REQUIRED_READS = "delivery_required_reads"
 
 
 class EventDeliveryMode(StrEnum):
@@ -106,13 +103,6 @@ def resolve_delivery_settings(metadata: Mapping[str, object]) -> ProcedureDelive
     if not isinstance(raw_interruptible, bool):
         raise DeliveryDeclarationError(IndexKey.INTERRUPTIBLE)
     return ProcedureDeliverySettings(event_delivery=event_delivery, interruptible=raw_interruptible)
-
-
-def required_event_handling_dependencies(settings: ProcedureDeliverySettings) -> tuple[str, ...]:
-    """Return context-owned shared instructions required by a delivery declaration."""
-    if settings.interruptible:
-        return (_EVENT_HANDLING_OVERVIEW_ID, _EVENT_HANDLING_INTERRUPTIBLE_ID)
-    return (_EVENT_HANDLING_OVERVIEW_ID,)
 
 
 class SubscriptionHomeKind(StrEnum):
@@ -175,7 +165,6 @@ class SubscriptionEntry:
     identity: SubscriptionIdentity
     attendance: SubscriptionAttendance
     delivery: ProcedureDeliverySettings
-    required_reads: tuple[str, ...]
 
     def matches_type(self, event_type: str) -> bool:
         """Whether any declared pattern selects the event type."""
@@ -267,7 +256,6 @@ def _subscription_entry(
         identity=identity,
         attendance=attendance,
         delivery=delivery,
-        required_reads=required_event_handling_dependencies(delivery),
     )
 
 

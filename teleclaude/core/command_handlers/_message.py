@@ -926,7 +926,6 @@ async def accept_inbound_message(
                 procedure_token=resolved_input.command,
                 arguments=resolved_input.args,
                 project_root=project_root,
-                session_id=session_id,
             )
         except (CommandInputError, EntryRefusal) as exc:
             raise SessionMessageRejectedError(

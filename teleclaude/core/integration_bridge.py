@@ -310,7 +310,6 @@ async def spawn_integrator_session(
             project_root=Path(project_path),
             caller=None,
             entry=EntryContext(),
-            session_id=session_id,
             caller_mode=None,
         )
     except EntryRefusal as exc:

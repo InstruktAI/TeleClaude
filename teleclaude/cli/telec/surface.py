@@ -274,7 +274,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_COMPANY,
                 ],
                 notes=[
-                    "Creates a fresh session that carries the role the procedure declares and starts from the brief the procedure composes.",
+                    "Creates a fresh session that carries the role the procedure declares and starts from a short loader that directs the agent to retrieve its procedure instructions.",
                     "Name the procedure by its domain-qualified snippet ID; a retired command name is refused.",
                     "Worker lifecycle procedures: build, review-build, finalize (sdlc/procedure/lifecycle/work/...).",
                     (
