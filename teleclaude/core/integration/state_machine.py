@@ -49,7 +49,12 @@ from teleclaude.core.integration.git_ops import (
     _run_git,
     _synchronize_repo_root,
 )
-from teleclaude.core.integration.lease import INTEGRATION_LEASE_STATE_FILENAME, IntegrationLeaseStore
+from teleclaude.core.integration.lease import (
+    INTEGRATION_LEASE_STATE_FILENAME,
+    UNKNOWN_LEASE_HOLDER,
+    IntegrationLeaseStore,
+    LeaseAcquireStatus,
+)
 from teleclaude.core.integration.lifecycle_events import _tls
 from teleclaude.core.integration.push_recovery import _step_content_gate_blocked, _step_push_rejected
 from teleclaude.core.integration.step_functions import (
@@ -114,11 +119,11 @@ def hold_integration_for_todo_recovery(cwd: str, owner_session_id: str) -> Gener
         ttl_seconds=_INTEGRATION_LEASE_TTL_SECONDS,
     )
     if (
-        acquired.status != "acquired"
+        acquired.status is not LeaseAcquireStatus.ACQUIRED
         or acquired.lease is None
         or (acquired.holder is not None and not acquired.replaced_stale)
     ):
-        holder = acquired.holder.owner_session_id if acquired.holder else "unknown"
+        holder = acquired.holder.owner_session_id if acquired.holder else UNKNOWN_LEASE_HOLDER
         raise IntegrationRecoveryRefused(_RECOVERY_ACTIVE_TEMPLATE.format(holder=holder))
 
     lease = acquired.lease

@@ -21,6 +21,11 @@ from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
+from teleclaude.core.workflow_store.types import (
+    TODO_DIAGNOSTIC_FIELD_DELIVERED_AT,
+    TODO_DIAGNOSTIC_FIELD_DELIVERED_COMMIT,
+    TODO_DIAGNOSTIC_FIELD_STATUS,
+)
 from teleclaude.types.todo_return import TodoReturnToWorkAuditField, TodoReturnToWorkGitRef
 from teleclaude.types.todos import Event, FinalizeStatus, TodoEventKind
 
@@ -109,9 +114,13 @@ async def _read_return_candidate(todos_db: WorkflowStore, slug: str, project_roo
     row = await todos_db.read_todo_diagnostic_record(slug)
     if row is None:
         raise CodeConformanceReturnRefused(_NOT_FOUND)
-    if row["status"] is TodoStatus.DELIVERED or row["delivered_at"] or row["delivered_commit"]:
+    if (
+        row[TODO_DIAGNOSTIC_FIELD_STATUS] == TodoStatus.DELIVERED.value
+        or row[TODO_DIAGNOSTIC_FIELD_DELIVERED_AT]
+        or row[TODO_DIAGNOSTIC_FIELD_DELIVERED_COMMIT]
+    ):
         raise CodeConformanceReturnRefused(_COMMITTED)
-    if row["status"] is not TodoStatus.ACTIVE:
+    if row[TODO_DIAGNOSTIC_FIELD_STATUS] != TodoStatus.ACTIVE.value:
         raise CodeConformanceReturnRefused(_NOT_ACTIVE)
 
     raw_state = await todos_db.read_state(slug)

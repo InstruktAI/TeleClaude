@@ -61,7 +61,7 @@ from teleclaude.core.integration.git_ops import (
     _run_git,
     _synchronize_repo_root,
 )
-from teleclaude.core.integration.lease import IntegrationLeaseStore
+from teleclaude.core.integration.lease import UNKNOWN_LEASE_HOLDER, IntegrationLeaseStore, LeaseAcquireStatus
 from teleclaude.core.integration.lifecycle_events import (
     _EVENT_INTEGRATION_DRAIN_COMPLETED,
     _emit_lifecycle_event,
@@ -225,8 +225,8 @@ def _step_idle(
         owner_session_id=session_id,
         ttl_seconds=_INTEGRATION_LEASE_TTL_SECONDS,
     )
-    if acquire_result.status != "acquired" or not acquire_result.lease:
-        holder_id = acquire_result.holder.owner_session_id if acquire_result.holder else "unknown"
+    if acquire_result.status is not LeaseAcquireStatus.ACQUIRED or not acquire_result.lease:
+        holder_id = acquire_result.holder.owner_session_id if acquire_result.holder else UNKNOWN_LEASE_HOLDER
         return False, _format_lease_busy(holder_id)
 
     lease_token = acquire_result.lease.lease_token

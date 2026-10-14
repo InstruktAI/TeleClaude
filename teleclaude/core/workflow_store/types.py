@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import NamedTuple, NewType, Protocol, TypedDict
+from typing import Final, NamedTuple, NewType, Protocol, TypedDict
 
 from teleclaude.constants import TodoStatus
 from teleclaude.types.state_value import StateValue
@@ -65,6 +65,11 @@ class WorkItem(TypedDict):
     entry_point: str | None
     human_involved: bool
     context: str | None
+
+
+TODO_DIAGNOSTIC_FIELD_STATUS: Final = "status"
+TODO_DIAGNOSTIC_FIELD_DELIVERED_AT: Final = "delivered_at"
+TODO_DIAGNOSTIC_FIELD_DELIVERED_COMMIT: Final = "delivered_commit"
 
 
 class TodoDiagnosticRecord(TypedDict):

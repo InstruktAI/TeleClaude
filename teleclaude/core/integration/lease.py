@@ -10,6 +10,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal, TypedDict
 
@@ -19,9 +20,16 @@ class IntegrationLeaseError(RuntimeError):
 
 
 INTEGRATION_LEASE_STATE_FILENAME = "lease.json"
+UNKNOWN_LEASE_HOLDER = "unknown"
 
 
-LeaseAcquireStatus = Literal["acquired", "busy"]
+class LeaseAcquireStatus(StrEnum):
+    """Closed acquisition outcomes for the singleton lease."""
+
+    ACQUIRED = "acquired"
+    BUSY = "busy"
+
+
 LeaseRenewStatus = Literal["renewed", "missing", "stolen", "expired"]
 
 
@@ -112,13 +120,13 @@ class IntegrationLeaseStore:
             if current is not None and not _is_expired(current, resolved_now):
                 if current.owner_session_id == owner_session_id:
                     return LeaseAcquireResult(
-                        status="acquired",
+                        status=LeaseAcquireStatus.ACQUIRED,
                         lease=current,
                         holder=current,
                         replaced_stale=False,
                     )
                 return LeaseAcquireResult(
-                    status="busy",
+                    status=LeaseAcquireStatus.BUSY,
                     lease=None,
                     holder=current,
                     replaced_stale=False,
@@ -138,7 +146,7 @@ class IntegrationLeaseStore:
             self._persist_leases(leases)
 
             return LeaseAcquireResult(
-                status="acquired",
+                status=LeaseAcquireStatus.ACQUIRED,
                 lease=lease,
                 holder=current,
                 replaced_stale=replaced_stale,
