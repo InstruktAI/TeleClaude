@@ -30,34 +30,6 @@ Capabilities keep an agent inside its brief; they are focus, not integrity (`gen
 
 ### Command capability membership
 
-<!-- planned-change:tailored-role-command-sets -->
-
-| Capability             | Commands                                                                                                                                                                                                |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docs-read`            | `docs index`, `docs get`                                                                                                                                                                                |
-| `todo-read`            | `todo list`, `todo show`, `bugs list`, `bugs suppressions`                                                                                                                                              |
-| `todo-write`           | `todo create`, `todo freeze`, `todo unfreeze`, `todo remove`, `todo reactivate`, `todo deliver`, `todo update`, `bugs report`, `bugs suppress`, `bugs unsuppress`, `content dump`                       |
-| `artifact-read`        | `todo artifacts list`, `todo artifacts read`, `todo artifacts diff`                                                                                                                                     |
-| `artifact-write`       | `todo artifacts write`, `todo artifacts remove`                                                                                                                                                         |
-| `stamp`                | `todo stamp`, `code stamp`                                                                                                                                                                              |
-| `todo-orchestration`   | `todo prepare`, `todo work`, `todo design`                                                                                                                                                              |
-| `integration`          | `todo integrate`, `code owners`                                                                                                                                                                         |
-| `maintenance-recovery` | `code maintenance status`, `code maintenance drain`, `code maintenance retry`                                                                                                                           |
-| `memory-curation`      | `memories scope`, `memories add`, `memories update`, `memories retire`, `memories prospect`, `memories extraction read`, `memories extraction complete`, `memories extraction fail`, `memories advance` |
-| `session-observe`      | `sessions list`, `sessions show`, `history search`, `history show`, `computers list`, `projects list`, `agents availability`, `operations get`, `sessions coordinate`                                   |
-| `session-act`          | `sessions start`, `sessions run`, `sessions run-pa`, `sessions revive`, `sessions restart`, `sessions end`, `sessions unsubscribe`, `agents status`                                                     |
-| `peer-talk`            | `sessions send`, `sessions tail`                                                                                                                                                                        |
-| `self-acts`            | `sessions result`, `sessions file`, `sessions escalate`, and a session's own end and restart through the self-acts in `command-clearance`                                                               |
-| `messaging`            | `message`                                                                                                                                                                                               |
-| `jobs`                 | `jobs list`, `jobs status`, `jobs enable`, `jobs disable`, `jobs run`, `jobs report`                                                                                                                    |
-| `config`               | every `config` command except `config wizard`, `events schema`, `signals status`                                                                                                                        |
-| `reminders`            | `reminders set`, `reminders list`, `reminders cancel`                                                                                                                                                   |
-| `code`                 | `code add`, `code commit`, `code blueprint affected`, `code lint`, `code test`, `code format`, `sync`                                                                                                   |
-| `mcp`                  | `mcp list-tools`, `mcp call`                                                                                                                                                                            |
-| `memories-read`        | `memories list`, `memories search`, `memories timeline`, `memories delete`                                                                                                                              |
-
-<!-- change:tailored-role-command-sets -->
-
 | Capability             | Commands                                                                                                                                                                                                |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `docs-read`            | `docs index`, `docs get`                                                                                                                                                                                |
@@ -85,8 +57,6 @@ Capabilities keep an agent inside its brief; they are focus, not integrity (`gen
 | `code`                 | `code format`, `code add`, `code commit`, `sync`                                                                                                                                                        |
 | `mcp`                  | `mcp list-tools`, `mcp call`                                                                                                                                                                            |
 | `memories-read`        | `memories list`, `memories search`, `memories timeline`, `memories delete`                                                                                                                              |
-
-<!-- /planned-change:tailored-role-command-sets -->
 
 The schema's declaration is the authority for every command's exact capability; this table is its grouped reading and is corrected to the schema, never the reverse.
 

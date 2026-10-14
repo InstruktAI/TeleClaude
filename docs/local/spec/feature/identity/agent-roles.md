@@ -52,35 +52,6 @@ own identity and is never a session role.
 
 ### Capabilities
 
-<!-- planned-change:tailored-role-command-sets -->
-
-| Capability             | Reach                                                                                                   |
-| ---------------------- | ------------------------------------------------------------------------------------------------------- |
-| `docs-read`            | Reading documentation.                                                                                  |
-| `todo-read`            | Listing and showing todos and bugs.                                                                     |
-| `todo-write`           | Creating, updating, freezing, removing and delivering todos; filing bugs and suppressions.              |
-| `artifact-read`        | Reading and diffing todo artifacts.                                                                     |
-| `artifact-write`       | Writing and removing todo artifacts.                                                                    |
-| `stamp`                | Stamping todo state and commit-review verdicts.                                                         |
-| `todo-orchestration`   | Driving a todo state machine.                                                                           |
-| `integration`          | Integrating deliveries to canonical main and reading dirty-path ownership.                              |
-| `maintenance-recovery` | Inspecting and recovering canonical-main maintenance.                                                   |
-| `memory-curation`      | Curating memories and prospects from conversation extractions.                                          |
-| `session-observe`      | Listing, showing and tailing sessions; searching and showing history.                                   |
-| `session-act`          | Starting, running, reviving, restarting, ending and messaging sessions other than one's own.            |
-| `self-acts`            | Results, files, ending and restarting for one's own session.                                            |
-| `messaging`            | Messaging a person.                                                                                     |
-| `jobs`                 | Listing, enabling, running and reporting jobs.                                                          |
-| `config`               | Reading and changing configuration.                                                                     |
-| `reminders`            | Arming, listing and cancelling reminders.                                                               |
-| `code`                 | Code quality, declarations and commits.                                                                 |
-| `mcp`                  | Listing and calling MCP tools.                                                                          |
-| `peer-talk`            | Sending to and tailing a peer session: the builder a reviewer reviews, the claimant that dispatched it. |
-| `memories-read`        | Listing, searching, deleting and tracing a person's own memories outside an extraction.                 |
-| `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                     |
-
-<!-- change:tailored-role-command-sets -->
-
 | Capability             | Reach                                                                                                    |
 | ---------------------- | -------------------------------------------------------------------------------------------------------- |
 | `docs-read`            | Reading documentation.                                                                                   |
@@ -110,42 +81,15 @@ own identity and is never a session role.
 | `memories-read`        | Listing, searching, deleting and tracing a person's own memories outside an extraction.                  |
 | `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                      |
 
-<!-- /planned-change:tailored-role-command-sets -->
-
 The command families are the catalog's vocabulary; which command declares
 which family is the CLI surface schema's.
 
 ### Roles
 
-<!-- planned-change:tailored-role-command-sets -->
-
-| Role                                                                                                  | Class    | `full_reach` | Explicit set                                                                                                                                                                       | Label        |
-| ----------------------------------------------------------------------------------------------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `builder`, `reviewer`, `finalizer`, `diagnoser`, `drift-analyzer`, `artist`, `frontender`, `deferrer` | worker   | no           | `docs-read`, `todo-read`, `todo-write`, `artifact-read`, `artifact-write`, `stamp`, `self-acts`, `reminders`, `code`, `jobs`, `mcp`, `peer-talk`                                   | Worker       |
-| `prepare-orchestrator`, `work-orchestrator`, `create-orchestrator`, `intaker`, `architect`, `planner` | agent    | yes          | `todo-orchestration`, `todo-read`, `todo-write`, `artifact-read`, `artifact-write`, `stamp`, `dispatch-worker`, `session-observe`, `session-act`, `docs-read`, `reminders`, `code` | Orchestrator |
-| `integrator`                                                                                          | standing | yes          | `integration`, `maintenance-recovery`, `dispatch-worker`, `code`, `session-observe`, `session-act`, `docs-read`, `todo-read`, `todo-write`, `stamp`, `reminders`                   | Integrator   |
-| `coordinator`                                                                                         | standing | yes          | `session-observe`, `session-act`, `docs-read`, `todo-read`, `messaging`, `reminders`                                                                                               | Orchestrator |
-| `task-preparer`, `task-runner`                                                                        | agent    | yes          | `todo-read`, `todo-write`, `artifact-read`, `artifact-write`, `stamp`, `dispatch-worker`, `docs-read`, `reminders`, `code`                                                         | Tasker       |
-| `bug-hunter`                                                                                          | agent    | yes          | `todo-read`, `todo-write`, `docs-read`, `jobs`, `reminders`                                                                                                                        | Job Runner   |
-| `installation-inspector`                                                                              | agent    | yes          | `maintenance-recovery`, `docs-read`, `todo-read`, `todo-write`, `jobs`, `reminders`                                                                                                | Integrator   |
-| `memory-curator`                                                                                      | agent    | yes          | `memory-curation`, `docs-read`, `reminders`, `self-acts`                                                                                                                           | Tasker       |
-| `desk-memory-curator`                                                                                 | agent    | no           | `memory-curation`, `docs-read`, `reminders`, `self-acts`                                                                                                                           | Tasker       |
-| `helper`                                                                                              | agent    | yes          | `docs-read`, `todo-read`, `session-observe`, `code`, `reminders`                                                                                                                   | Agent        |
-
-<!-- change:tailored-role-command-sets -->
-
 The role catalog is the authority for each role's name, class, explicit
 capabilities, full-reach opt-in and identity label. Each entry states its own
 composition; a role class describes session behavior and supplies no implicit
 command membership.
-<!-- /planned-change:tailored-role-command-sets -->
-
-<!-- planned-change:tailored-role-command-sets -->
-
-A worker-class role is never marked `full_reach`. The label is the role's name
-in a caller-origin identity header, drawn from the closed label vocabulary of
-`local/projects/teleclaude/spec/message-headers`.
-<!-- change:tailored-role-command-sets -->
 
 `full_reach` is an explicit opt-in on the role, independently of its class.
 It is available to internal roles whose procedures are not directly exposed to
@@ -156,9 +100,6 @@ its own input-handling contract, not an inferred widening or narrowing here.
 
 The label is the role's name in a caller-origin identity header, drawn from
 `local/projects/teleclaude/spec/message-headers`.
-<!-- /planned-change:tailored-role-command-sets -->
-
-<!-- planned:tailored-role-command-sets -->
 
 ### Assignment-specific command focus
 
@@ -181,7 +122,6 @@ permission independently of that focused set; it never expands the focused set
 itself. Restricted roles remain bounded by their explicit sets, with object
 guardrails retaining their own authority
 (`general/principle/trust-and-guardrails`).
-<!-- /planned:tailored-role-command-sets -->
 
 ### Class
 
@@ -264,8 +204,6 @@ And an error naming the session and the role is logged
 And the session is not admitted as a human session
 ```
 
-<!-- planned:tailored-role-command-sets -->
-
 #### UC-AR7: Role focus follows the assignment rather than its class
 
 ```gherkin
@@ -283,8 +221,6 @@ When its focused set and permitted reach are resolved
 Then its focused set remains tailored to its assignment
 And its permitted reach includes capabilities outside that set
 ```
-
-<!-- /planned:tailored-role-command-sets -->
 
 ## Known caveats
 
