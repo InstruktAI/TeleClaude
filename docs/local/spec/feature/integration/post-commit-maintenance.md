@@ -220,19 +220,26 @@ contract governs only what happens when maintenance runs.
 
 - **Window extent.** A drain that opened a window keeps the daemon stopped
   while any recorded action remains actionable, activations recorded while the
-  window is open included. It closes on the checkout's tip once no recorded
-  action remains actionable and that tip's own advancement is registered — its
-  owed set resolved by the commit boundary, empty or not. Registration and that
-  final check exclude each other until the window's start has been issued, so
-  every advancement registered before the start runs inside the window and the
-  daemon starts once, after that advancement's actions; one registered later
-  runs in a window of its own. A refused registration never lands, so a tip
-  whose registration has not landed holds the close only for a bound the window
-  owns; past it the window closes on that tip and reports it as unregistered
-  (`local/projects/teleclaude/policy/daemon-availability`). An activation that
-  owed the restart action keeps that obligation while any of its action records
-  remains, so replaying one of its failed actions runs inside a window of its
-  own.
+  window is open included. It starts the daemon only on the checkout's tip, once
+  no recorded action remains actionable and that tip's own advancement is
+  registered — its owed set resolved by the commit boundary, empty or not. A tip
+  whose registration has not landed holds the start for a bound the window owns;
+  a registration still missing at that bound ends the drain with the daemon
+  stopped, every covered restart action failed with that reason, and the reason
+  and its time recorded where `make status` reports them. `telec sync` in the
+  root is the recovery: it performs the root's maintenance on demand and starts
+  the daemon through its own window
+  (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`).
+  The window closes only on a start that no further commit advancement
+  overtook: when, after the window's final check, the checkout's tip has moved
+  or a commit activation has become actionable, the window stops the daemon
+  again, runs that advancement's actions and starts it after them, so the daemon
+  is never left serving an advancement whose owed actions have not run. Every
+  advancement registered while the window is open therefore runs inside it, and
+  the daemon is left serving only a start no advancement overtook. An activation
+  that owed the restart action keeps that obligation while any of its action
+  records remains, so replaying one of its failed actions runs inside a window
+  of its own.
 
 - **Window failure.** The window opens only on the outcome `make stop` records
   as stopped — the daemon exited and its relaunch suppressed — including a stop
@@ -696,21 +703,40 @@ Then they run inside the same window
 And the daemon is started once, from that commit, after they have terminal outcomes
 ```
 
+#### UC-PCM33: A start overtaken by a further advancement is stopped again before that advancement runs
+
+```gherkin
+Given a stopped-daemon window has started the daemon after its last owed step
+And another canonical-main commit advanced the checkout after the window's final check
+When that commit's owed actions are recorded
+Then the daemon is stopped again before any of them runs
+And they run inside the same window
+And the daemon is started and verified from that commit after they have terminal outcomes
+```
+
+#### UC-PCM34: A tip whose registration never lands leaves the daemon stopped with its reason
+
+```gherkin
+Given a stopped-daemon window has run its last owed step
+And the checkout's tip is a commit whose owed actions were never recorded
+When the window's registration bound passes
+Then the daemon stays stopped
+And each restart action the window covered ends failed with that reason
+And an agent running make status sees that reason and when it was recorded
+```
+
 <!-- /planned:maintenance-runs-as-stopped-daemon-window -->
 
 <!-- planned:maintenance-runs-as-stopped-daemon-window -->
 
 ## Known caveats
 
-- An advancement that lands on canonical main after a window's final check —
-  while that window's start is in progress, or later — is registered after the
-  window and runs in a window of its own. Until it does, the daemon that window
-  started can serve the advancement's code before the advancement's owed actions
-  have run, and a started daemon that reports the newer commit does not verify
-  that window's start. The same holds for an advancement registered while
-  `telec sync` holds its window
-  (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`):
-  its owed actions run in a drain window after that run.
+- Nothing gates an advancement of the canonical checkout while the window
+  starts the daemon: a commit or fast-forward that lands during the start
+  changes the files the starting daemon loads. Such a daemon can begin serving
+  that advancement's code for the moments between its start and the window's
+  check after it, which stops it again before the advancement's owed actions
+  run.
 
 <!-- /planned:maintenance-runs-as-stopped-daemon-window -->
 
