@@ -406,26 +406,6 @@ And the service manager relaunches the service on its installed code
 And the agent never finds the capability silently absent while the daemon reports itself healthy
 ```
 
-<!-- planned:record-what-holds-a-stopped-daemon -->
-
-#### UC-DL18: A stopped daemon still alive past its exit window records the threads it observes
-
-```gherkin
-Given the daemon has run its shutdown sequence, whether or not every teardown step succeeded
-And its process has not finished interpreter thread shutdown by the end of a bounded exit window
-When an agent operating the host reads the daemon's retained log
-Then it finds the last shutdown milestone the process reached and how long ago its shutdown sequence ended
-And one record for each other thread the process observes, giving the thread's name, its native thread identity, whether it is a daemon thread, the code that started it, where it was started, and its current call stack
-And the main thread's record shows where the process is waiting
-And the record states which threads the process cannot observe, never reporting them as absent
-And each observed thread seen ending later, and each later shutdown milestone, is recorded with the time elapsed since the shutdown sequence ended
-And no record states that the process exited or that a given thread holds it
-And a process that finishes interpreter thread shutdown within the window adds no record
-And shutdown ordering, admission and accepted-work settlement are unchanged
-```
-
-<!-- /planned:record-what-holds-a-stopped-daemon -->
-
 ### Graceful admission and settlement
 
 The service owns admission and draining across API, adapter, remote-command and
@@ -479,15 +459,3 @@ evidence requirement (`general/principle/grounding`).
   this isolation does not bypass admission closure or accepted-work settlement.
   A failed component is not reported as successfully closed, and lock release
   alone establishes neither successful resource closure nor process exit.
-
-<!-- planned:record-what-holds-a-stopped-daemon -->
-
-- **The exit record ends at the interpreter's exit callbacks.** Reaching the exit callbacks is the last milestone the process records. Interpreter finalization continues after it and can still stall, and a process that ends without reaching it records nothing more. A record that stops at a milestone shows only the last point the process reached, never whether or why the process ended.
-- **Threads without an interpreter thread state are not observed.** A thread the interpreter runs outside Python's threading registry is recorded with no name, daemon flag or starting code. A native thread that never runs Python code is not observed at all.
-- **The exit record waits on the daemon log.** At its exit callbacks the process lets the record writes already under way finish, then writes the rest of the record through the daemon log. It waits on that log with no time limit. A daemon log that cannot be written leaves the process waiting in its exit callbacks, and the record ends at the last record written.
-
-## See Also
-
-- https://docs.python.org/3.12/library/atexit.html — when the interpreter runs its normal-exit callbacks, and which exits skip them.
-
-<!-- /planned:record-what-holds-a-stopped-daemon -->
