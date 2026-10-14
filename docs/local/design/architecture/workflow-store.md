@@ -7,6 +7,15 @@ delivered_by:
 
 # Workflow Store — Design
 
+## Required reads
+
+- @docs/local/spec/domain/workflow.md
+- @docs/local/spec/feature/workflow/todo-management.md
+- @docs/local/spec/feature/workflow/todo-removal.md
+- @docs/local/spec/feature/workflow/todo-state-transfer.md
+- @docs/local/spec/integration-orchestrator.md
+- @~/.teleclaude/docs/sdlc/principle/design-fundamentals.md
+
 ## Purpose
 
 Give workflow consumers one typed, backend-neutral operation surface. The
@@ -16,43 +25,50 @@ explicit `todos.store: github` fails with an unavailable-capability error.
 Consumers do not select a backend, open a connection, inspect tables, or carry
 storage paths.
 
-## Required reads
-
-- `local/projects/teleclaude/spec/domain/workflow`
-- `local/projects/teleclaude/spec/feature/workflow/todo-management`
-- `local/projects/teleclaude/spec/feature/workflow/todo-removal`
-- `local/projects/teleclaude/spec/feature/workflow/todo-state-transfer`
-- `local/projects/teleclaude/spec/integration-orchestrator`
-- `sdlc/principle/design-fundamentals`
-
 ## Inputs/Outputs
 
-The public identity `WorkItemId` is the canonical slug. A separate opaque
-`StoreAddress` carries adapter-local addressing needed for operations that are
-currently row-UUID addressed. Neither value substitutes for the other. Typed
-records include `WorkItem`, `WorkItemQuery`, `Dependency`, `ClaimHolder`,
-`GroupMembership`, `PhaseState`, `ArtifactBody`, `ArtifactVersion`,
-`ArtifactDiff`, `Stamp`, `TrailNote`, `DeliveryLink`, `ReadyCandidate`,
-`StorePresence`, and `StoreCapabilities`. Existing task, schedule and creative
-state remain within workflow state and preserve their current ownership and
-interpretation.
+The canonical item identity is its slug. The typed projection uses
+`WorkItemId` for that identity and a separate opaque `StoreAddress` for local
+row addressing; neither substitutes for the other. Existing protocol methods
+retain slug and row-id string parameters where current consumers use them, and
+the adapter resolves the local address. The operation records currently used
+by `WorkflowStore` are `WorkItem`, `TodoDiagnosticRecord`,
+`WorkItemStateRead`, `IdentityResolution`, `RemovalRequest`,
+`ExpiredRemovedItem`, `PurgedItem`, `ArtifactMetadata`, `ArtifactWriterSet`,
+`ArtifactRemoval`, `ArtifactVersion`, `StoreCapabilities`, and
+`TodoProjectionSnapshot` with `TodoProjectionItem`, `TodoProjectionMetrics`,
+and `ArtifactFile`. Dependency operations use `DependencyEntry`; workflow
+state remains `dict[str, StateValue]`. The selected-store helpers additionally
+use `StorePresence`, `StoreIntegrityStatus`, and the opaque `TransferSource` /
+`TransferResult` pair. Existing task, schedule and creative state remain within
+workflow state and preserve their current ownership and interpretation.
 
-The operation contract has seven parts:
+The seven operation parts are realized by the current state and artifact
+operations:
 
-- **Items:** create, read, list, edit intent body and close; typed projection
-  includes metadata, grouping and dependency facts.
-- **Claims:** claim, release and read the live session holder. Structural group
-  membership and `status=holder` are distinct item facts; they are not claim
-  ownership.
-- **Phases:** read canonical phase and advance through the existing validated
-  transition boundary.
-- **Stamps:** add and read verdicts bound to the current artifact digest or
-  commit SHA.
-- **Notes:** append and read identity-attributed workflow trail records.
-- **Delivery:** link branch/PR, enumerate ready candidates and record delivery
-  against the confirmed final root SHA.
-- **Capabilities:** report adapter operations and refuse an unavailable
-  capability explicitly.
+- **Items:** `add_to_todo`, `list_todo`, `read_todo_diagnostic_record`,
+  state/artifact reads and writes, soft removal/reactivation, and the typed
+  projection cover create, read, list, intent-body edit, close and metadata.
+  Slug identity and row addressing remain distinct.
+- **Claims:** `active_runner` is read and written as workflow state; lifecycle
+  code applies the existing session-liveness and caller-ownership checks around
+  that state. Structural group membership and `status=holder` use separate
+  operations and remain distinct facts.
+- **Phases:** validated phase state is read and written through workflow state;
+  `freeze`, `unfreeze`, `deliver`, and the registered transition hooks preserve
+  existing phase and notification boundaries.
+- **Stamps:** verdict state is bound to `artifact_digest` or commit SHA. The
+  artifact-version reads and `update_state_with_artifact_evidence` provide the
+  revision evidence while preserving the current mutation boundary.
+- **Notes:** the local trail is the versioned `log` artifact, read and written
+  through artifact operations. `artifact_versions` and writer metadata retain
+  the existing trail and attribution behavior.
+- **Delivery:** the typed projection and dependency reads feed existing ready
+  candidate selection; `deliver` / `deliver_sync` record the confirmed root
+  SHA, and downstream dependency cleanup remains a separate operation.
+- **Capabilities:** `WorkflowStore.capabilities` reports the local adapter's
+  supported operations; selecting unavailable GitHub refuses before local
+  storage access.
 
 ## Invariants
 

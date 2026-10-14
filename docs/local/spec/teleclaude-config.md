@@ -185,7 +185,12 @@ Valid in both project and global configs.
 - `business.publishes` declares the domains this project owns and contributes global docs for. The union across all registered projects is the set of valid domains, and each domain has exactly one owning publisher; a second project publishing the same domain is a sync-blocking split. Every entry names its domain and the domain's activation trigger, which is rendered on its Published Domains line in agent outputs. An entry whose trigger is missing, blank, multi-line, or over the bounded length fails config load, so a domain cannot be delivered undiscoverable.
 - `jobs` holds local job declarations and subscriptions to published global jobs, each identified by its required kebab-case `name`; a subscription overrides any setting it carries except the execution pointer (`local/projects/teleclaude/spec/feature/config/job-declaration-model`).
 - `hooks.inbound` declares this project's own inbound sources, as below.
+
+<!-- planned:issue-126 -->
+
 - `todos.store` selects the project workflow-store adapter. Omission defaults to `local`; `github` is a recognized selection and refuses with an explicit unavailable-capability error until its adapter is installed. Local selection requires no GitHub account or repository.
+
+<!-- /planned:issue-126 -->
 
 <!-- planned:issue-126 -->
 
@@ -215,6 +220,19 @@ is optional, and an omitted block or one without an `enabled` value is
 unsubscribed, so only an explicit value claims a capability
 (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`):
 
+<!-- planned-change:issue-126 -->
+
+```yaml
+code:
+  enabled: bool # the project holds code under the TeleClaude lifecycle
+docs:
+  enabled: bool # the project participates in the snippet pipeline
+agents:
+  enabled: bool # the project holds agent artifacts
+```
+
+<!-- change:issue-126 -->
+
 ```yaml
 code:
   enabled: bool # the project holds code under the TeleClaude lifecycle
@@ -225,6 +243,8 @@ agents:
 todos:
   store: local | github # defaults to local; github refuses until its adapter is installed
 ```
+
+<!-- /planned-change:issue-126 -->
 
 A project and a company each declare whether that home keeps a help desk. An
 omitted block, or one without an `enabled` value, keeps none. How the block is
