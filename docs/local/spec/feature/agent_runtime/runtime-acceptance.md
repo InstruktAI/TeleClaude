@@ -336,8 +336,9 @@ And a fresh authorized memory listing reports no memory added by those attempts
   their own contracts.
 - The full profile exercises the macOS installation and service paths only;
   Linux service installation is outside its evidence.
-- The self-hosted runner executes one job at a time, so full-profile results for
-  closely spaced pushes arrive in push order behind each other rather than in
-  parallel.
+- The self-hosted runner executes one job at a time, so full-profile runs for
+  closely spaced pushes and pull requests wait for one another instead of
+  running in parallel; their completion order is not guaranteed to follow push
+  order.
 
 <!-- /planned-change:full-acceptance-on-self-hosted-runner -->
