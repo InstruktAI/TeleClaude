@@ -33,12 +33,16 @@ class Capability(StrEnum):
     MAINTENANCE_RECOVERY = "maintenance-recovery"
     MEMORY_CURATION = "memory-curation"
     SESSION_OBSERVE = "session-observe"
+    TRANSCRIPT_READ = "transcript-read"
+    OPERATION_READ = "operation-read"
     SESSION_ACT = "session-act"
     SELF_ACTS = "self-acts"
     MESSAGING = "messaging"
     JOBS = "jobs"
+    JOB_REPORT = "job-report"
     CONFIG = "config"
     REMINDERS = "reminders"
+    CODE_CHECK = "code-check"
     CODE = "code"
     MCP = "mcp"
     PEER_TALK = "peer-talk"
@@ -91,6 +95,8 @@ class RoleName(StrEnum):
     MEMORY_CURATOR = "memory-curator"
     DESK_MEMORY_CURATOR = "desk-memory-curator"
     HELPER = "helper"
+    ONBOARDER = "onboarder"
+    MAIL_TRIAGER = "mail-triager"
 
 
 class LegacyRole(StrEnum):
@@ -137,79 +143,6 @@ class UnknownRole:
     recorded: str
 
 
-_C = Capability
-
-_WORKER_SET = frozenset(
-    {
-        _C.DOCS_READ,
-        _C.TODO_READ,
-        _C.TODO_WRITE,
-        _C.ARTIFACT_READ,
-        _C.ARTIFACT_WRITE,
-        _C.STAMP,
-        _C.SELF_ACTS,
-        _C.REMINDERS,
-        _C.CODE,
-        _C.JOBS,
-        _C.MCP,
-        _C.PEER_TALK,
-    }
-)
-_ORCHESTRATOR_SET = frozenset(
-    {
-        _C.TODO_ORCHESTRATION,
-        _C.TODO_READ,
-        _C.TODO_WRITE,
-        _C.ARTIFACT_READ,
-        _C.ARTIFACT_WRITE,
-        _C.STAMP,
-        _C.DISPATCH_WORKER,
-        _C.SESSION_OBSERVE,
-        _C.SESSION_ACT,
-        _C.DOCS_READ,
-        _C.REMINDERS,
-        _C.CODE,
-    }
-)
-_INTEGRATOR_SET = frozenset(
-    {
-        _C.INTEGRATION,
-        _C.MAINTENANCE_RECOVERY,
-        _C.DISPATCH_WORKER,
-        _C.CODE,
-        _C.SESSION_OBSERVE,
-        _C.SESSION_ACT,
-        _C.DOCS_READ,
-        _C.TODO_READ,
-        _C.TODO_WRITE,
-        _C.STAMP,
-        _C.REMINDERS,
-    }
-)
-_COORDINATOR_SET = frozenset(
-    {_C.SESSION_OBSERVE, _C.SESSION_ACT, _C.DOCS_READ, _C.TODO_READ, _C.MESSAGING, _C.REMINDERS}
-)
-_TASKER_SET = frozenset(
-    {
-        _C.TODO_READ,
-        _C.TODO_WRITE,
-        _C.ARTIFACT_READ,
-        _C.ARTIFACT_WRITE,
-        _C.STAMP,
-        _C.DISPATCH_WORKER,
-        _C.DOCS_READ,
-        _C.REMINDERS,
-        _C.CODE,
-    }
-)
-_BUG_HUNTER_SET = frozenset({_C.TODO_READ, _C.TODO_WRITE, _C.DOCS_READ, _C.JOBS, _C.REMINDERS})
-_INSTALLATION_INSPECTOR_SET = frozenset(
-    {_C.MAINTENANCE_RECOVERY, _C.DOCS_READ, _C.TODO_READ, _C.TODO_WRITE, _C.JOBS, _C.REMINDERS}
-)
-_MEMORY_CURATOR_SET = frozenset({_C.MEMORY_CURATION, _C.DOCS_READ, _C.REMINDERS, _C.SELF_ACTS})
-_HELPER_SET = frozenset({_C.DOCS_READ, _C.TODO_READ, _C.SESSION_OBSERVE, _C.CODE, _C.REMINDERS})
-
-
 def _entry(
     name: RoleName,
     role_class: RoleClass,
@@ -222,47 +155,447 @@ def _entry(
 
 _CATALOG: dict[RoleName, Role] = dict(
     [
-        *(
-            _entry(name, RoleClass.WORKER, False, _WORKER_SET, RoleLabel.WORKER)
-            for name in (
-                RoleName.BUILDER,
-                RoleName.REVIEWER,
-                RoleName.FINALIZER,
-                RoleName.DIAGNOSER,
-                RoleName.DRIFT_ANALYZER,
-                RoleName.ARTIST,
-                RoleName.FRONTENDER,
-                RoleName.DEFERRER,
-            )
+        _entry(
+            RoleName.BUILDER,
+            RoleClass.WORKER,
+            False,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_READ,
+                    Capability.ARTIFACT_READ,
+                    Capability.ARTIFACT_WRITE,
+                    Capability.STAMP,
+                    Capability.CODE,
+                    Capability.CODE_CHECK,
+                    Capability.MCP,
+                    Capability.PEER_TALK,
+                }
+            ),
+            RoleLabel.WORKER,
         ),
-        *(
-            _entry(name, RoleClass.AGENT, True, _ORCHESTRATOR_SET, RoleLabel.ORCHESTRATOR)
-            for name in (
-                RoleName.PREPARE_ORCHESTRATOR,
-                RoleName.WORK_ORCHESTRATOR,
-                RoleName.CREATE_ORCHESTRATOR,
-                RoleName.INTAKER,
-                RoleName.ARCHITECT,
-                RoleName.PLANNER,
-            )
+        _entry(
+            RoleName.REVIEWER,
+            RoleClass.WORKER,
+            False,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_READ,
+                    Capability.ARTIFACT_READ,
+                    Capability.ARTIFACT_WRITE,
+                    Capability.STAMP,
+                    Capability.CODE_CHECK,
+                    Capability.MCP,
+                    Capability.PEER_TALK,
+                    Capability.TRANSCRIPT_READ,
+                }
+            ),
+            RoleLabel.WORKER,
         ),
-        _entry(RoleName.INTEGRATOR, RoleClass.STANDING, True, _INTEGRATOR_SET, RoleLabel.INTEGRATOR),
-        _entry(RoleName.COORDINATOR, RoleClass.STANDING, True, _COORDINATOR_SET, RoleLabel.ORCHESTRATOR),
-        *(
-            _entry(name, RoleClass.AGENT, True, _TASKER_SET, RoleLabel.TASKER)
-            for name in (RoleName.TASK_PREPARER, RoleName.TASK_RUNNER)
+        _entry(
+            RoleName.FINALIZER,
+            RoleClass.WORKER,
+            False,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_READ,
+                    Capability.ARTIFACT_READ,
+                    Capability.STAMP,
+                    Capability.CODE,
+                    Capability.CODE_CHECK,
+                }
+            ),
+            RoleLabel.WORKER,
         ),
-        _entry(RoleName.BUG_HUNTER, RoleClass.AGENT, True, _BUG_HUNTER_SET, RoleLabel.JOB_RUNNER),
+        _entry(
+            RoleName.DIAGNOSER,
+            RoleClass.WORKER,
+            False,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_READ,
+                    Capability.ARTIFACT_READ,
+                    Capability.ARTIFACT_WRITE,
+                    Capability.CODE_CHECK,
+                    Capability.TRANSCRIPT_READ,
+                }
+            ),
+            RoleLabel.WORKER,
+        ),
+        _entry(
+            RoleName.DRIFT_ANALYZER,
+            RoleClass.WORKER,
+            False,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_READ,
+                    Capability.ARTIFACT_READ,
+                    Capability.STAMP,
+                }
+            ),
+            RoleLabel.WORKER,
+        ),
+        _entry(
+            RoleName.ARTIST,
+            RoleClass.WORKER,
+            False,
+            frozenset({Capability.DOCS_READ, Capability.REMINDERS, Capability.ARTIFACT_READ}),
+            RoleLabel.WORKER,
+        ),
+        _entry(
+            RoleName.FRONTENDER,
+            RoleClass.WORKER,
+            False,
+            frozenset({Capability.DOCS_READ, Capability.REMINDERS, Capability.ARTIFACT_READ}),
+            RoleLabel.WORKER,
+        ),
+        _entry(
+            RoleName.DEFERRER,
+            RoleClass.WORKER,
+            False,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_READ,
+                    Capability.TODO_WRITE,
+                    Capability.ARTIFACT_READ,
+                    Capability.ARTIFACT_WRITE,
+                    Capability.STAMP,
+                    Capability.OPERATION_READ,
+                }
+            ),
+            RoleLabel.WORKER,
+        ),
+        _entry(
+            RoleName.PREPARE_ORCHESTRATOR,
+            RoleClass.AGENT,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_ORCHESTRATION,
+                    Capability.TODO_READ,
+                    Capability.TODO_WRITE,
+                    Capability.ARTIFACT_READ,
+                    Capability.ARTIFACT_WRITE,
+                    Capability.STAMP,
+                    Capability.DISPATCH_WORKER,
+                    Capability.SESSION_OBSERVE,
+                    Capability.SESSION_ACT,
+                    Capability.PEER_TALK,
+                    Capability.TRANSCRIPT_READ,
+                    Capability.OPERATION_READ,
+                    Capability.CODE,
+                    Capability.CODE_CHECK,
+                }
+            ),
+            RoleLabel.ORCHESTRATOR,
+        ),
+        _entry(
+            RoleName.WORK_ORCHESTRATOR,
+            RoleClass.AGENT,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_ORCHESTRATION,
+                    Capability.TODO_READ,
+                    Capability.ARTIFACT_READ,
+                    Capability.ARTIFACT_WRITE,
+                    Capability.STAMP,
+                    Capability.DISPATCH_WORKER,
+                    Capability.SESSION_OBSERVE,
+                    Capability.SESSION_ACT,
+                    Capability.PEER_TALK,
+                    Capability.OPERATION_READ,
+                }
+            ),
+            RoleLabel.ORCHESTRATOR,
+        ),
+        _entry(
+            RoleName.CREATE_ORCHESTRATOR,
+            RoleClass.AGENT,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_ORCHESTRATION,
+                    Capability.TODO_READ,
+                    Capability.ARTIFACT_READ,
+                    Capability.STAMP,
+                    Capability.DISPATCH_WORKER,
+                    Capability.SESSION_OBSERVE,
+                    Capability.SESSION_ACT,
+                    Capability.PEER_TALK,
+                    Capability.OPERATION_READ,
+                }
+            ),
+            RoleLabel.ORCHESTRATOR,
+        ),
+        _entry(
+            RoleName.INTAKER,
+            RoleClass.AGENT,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_ORCHESTRATION,
+                    Capability.TODO_READ,
+                    Capability.TODO_WRITE,
+                    Capability.ARTIFACT_READ,
+                    Capability.ARTIFACT_WRITE,
+                    Capability.STAMP,
+                    Capability.PEER_TALK,
+                    Capability.TRANSCRIPT_READ,
+                    Capability.OPERATION_READ,
+                    Capability.CODE,
+                }
+            ),
+            RoleLabel.ORCHESTRATOR,
+        ),
+        _entry(
+            RoleName.ARCHITECT,
+            RoleClass.AGENT,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_ORCHESTRATION,
+                    Capability.TODO_READ,
+                    Capability.ARTIFACT_READ,
+                    Capability.ARTIFACT_WRITE,
+                    Capability.STAMP,
+                    Capability.OPERATION_READ,
+                    Capability.CODE,
+                    Capability.CODE_CHECK,
+                }
+            ),
+            RoleLabel.ORCHESTRATOR,
+        ),
+        _entry(
+            RoleName.PLANNER,
+            RoleClass.AGENT,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_ORCHESTRATION,
+                    Capability.TODO_READ,
+                    Capability.TODO_WRITE,
+                    Capability.ARTIFACT_READ,
+                    Capability.ARTIFACT_WRITE,
+                    Capability.STAMP,
+                    Capability.PEER_TALK,
+                    Capability.OPERATION_READ,
+                    Capability.CODE,
+                    Capability.CODE_CHECK,
+                }
+            ),
+            RoleLabel.ORCHESTRATOR,
+        ),
+        _entry(
+            RoleName.INTEGRATOR,
+            RoleClass.STANDING,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.INTEGRATION,
+                    Capability.MAINTENANCE_RECOVERY,
+                    Capability.DISPATCH_WORKER,
+                    Capability.CODE,
+                    Capability.CODE_CHECK,
+                    Capability.SESSION_OBSERVE,
+                    Capability.SESSION_ACT,
+                    Capability.TRANSCRIPT_READ,
+                    Capability.PEER_TALK,
+                    Capability.OPERATION_READ,
+                    Capability.TODO_READ,
+                    Capability.TODO_WRITE,
+                    Capability.ARTIFACT_READ,
+                    Capability.STAMP,
+                }
+            ),
+            RoleLabel.INTEGRATOR,
+        ),
+        _entry(
+            RoleName.COORDINATOR,
+            RoleClass.STANDING,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.SESSION_OBSERVE,
+                    Capability.TRANSCRIPT_READ,
+                    Capability.SESSION_ACT,
+                    Capability.PEER_TALK,
+                    Capability.TODO_READ,
+                    Capability.TODO_WRITE,
+                }
+            ),
+            RoleLabel.ORCHESTRATOR,
+        ),
+        _entry(
+            RoleName.TASK_PREPARER,
+            RoleClass.AGENT,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_READ,
+                    Capability.TODO_WRITE,
+                    Capability.ARTIFACT_READ,
+                    Capability.ARTIFACT_WRITE,
+                    Capability.OPERATION_READ,
+                }
+            ),
+            RoleLabel.TASKER,
+        ),
+        _entry(
+            RoleName.TASK_RUNNER,
+            RoleClass.AGENT,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_READ,
+                    Capability.ARTIFACT_READ,
+                    Capability.ARTIFACT_WRITE,
+                    Capability.STAMP,
+                    Capability.MESSAGING,
+                }
+            ),
+            RoleLabel.TASKER,
+        ),
+        _entry(
+            RoleName.BUG_HUNTER,
+            RoleClass.AGENT,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_READ,
+                    Capability.TODO_WRITE,
+                    Capability.ARTIFACT_READ,
+                    Capability.JOB_REPORT,
+                    Capability.OPERATION_READ,
+                }
+            ),
+            RoleLabel.JOB_RUNNER,
+        ),
         _entry(
             RoleName.INSTALLATION_INSPECTOR,
             RoleClass.AGENT,
             True,
-            _INSTALLATION_INSPECTOR_SET,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.MAINTENANCE_RECOVERY,
+                    Capability.TODO_READ,
+                    Capability.TODO_WRITE,
+                    Capability.OPERATION_READ,
+                }
+            ),
             RoleLabel.INTEGRATOR,
         ),
-        _entry(RoleName.MEMORY_CURATOR, RoleClass.AGENT, True, _MEMORY_CURATOR_SET, RoleLabel.TASKER),
-        _entry(RoleName.DESK_MEMORY_CURATOR, RoleClass.AGENT, False, _MEMORY_CURATOR_SET, RoleLabel.TASKER),
-        _entry(RoleName.HELPER, RoleClass.AGENT, True, _HELPER_SET, RoleLabel.AGENT),
+        _entry(
+            RoleName.MEMORY_CURATOR,
+            RoleClass.AGENT,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.MEMORY_CURATION,
+                    Capability.SELF_ACTS,
+                }
+            ),
+            RoleLabel.TASKER,
+        ),
+        _entry(
+            RoleName.DESK_MEMORY_CURATOR,
+            RoleClass.AGENT,
+            False,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.MEMORY_CURATION,
+                    Capability.SELF_ACTS,
+                }
+            ),
+            RoleLabel.TASKER,
+        ),
+        _entry(
+            RoleName.HELPER,
+            RoleClass.AGENT,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.TODO_READ,
+                    Capability.CODE,
+                    Capability.CODE_CHECK,
+                    Capability.STAMP,
+                    Capability.CONFIG,
+                    Capability.SESSION_OBSERVE,
+                    Capability.SESSION_ACT,
+                    Capability.OPERATION_READ,
+                    Capability.MESSAGING,
+                    Capability.JOB_REPORT,
+                }
+            ),
+            RoleLabel.AGENT,
+        ),
+        _entry(
+            RoleName.ONBOARDER,
+            RoleClass.AGENT,
+            True,
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.CONFIG,
+                    Capability.SESSION_OBSERVE,
+                    Capability.SESSION_ACT,
+                    Capability.OPERATION_READ,
+                    Capability.CODE,
+                    Capability.CODE_CHECK,
+                    Capability.STAMP,
+                }
+            ),
+            RoleLabel.AGENT,
+        ),
+        _entry(
+            RoleName.MAIL_TRIAGER,
+            RoleClass.AGENT,
+            True,
+            frozenset({Capability.DOCS_READ, Capability.REMINDERS, Capability.MESSAGING, Capability.JOB_REPORT}),
+            RoleLabel.AGENT,
+        ),
     ]
 )
 
