@@ -38,6 +38,7 @@ class Capability(StrEnum):
     SESSION_ACT = "session-act"
     SELF_ACTS = "self-acts"
     MESSAGING = "messaging"
+    AUDIO = "audio"
     JOBS = "jobs"
     JOB_REPORT = "job-report"
     CONFIG = "config"

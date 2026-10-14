@@ -1,7 +1,7 @@
 """Voice message handling for tmux sessions.
 
 Provides complete voice message functionality:
-- STT backend chain (local Parakeet → cloud Whisper) with configurable priority
+- Integration with the configured STT backend chain (local Parakeet → cloud Whisper)
 - Session business logic (validation, feedback, input forwarding)
 
 Extracted from daemon.py to reduce file size and improve organization.
@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config.machine import config
 from teleclaude.constants import (
     VOICE_TRANSCRIPTION_NOTICE_EDIT_MAX_CHARS,
     VOICE_TRANSCRIPTION_STATE_FAILED,
@@ -30,7 +29,8 @@ from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import ContentFormat, MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
-from teleclaude.stt.backends import BACKENDS, STTBackend
+from teleclaude.stt.backends import BACKENDS
+from teleclaude.stt.chain import transcribe_voice
 
 if TYPE_CHECKING:
     pass
@@ -54,70 +54,9 @@ class TranscribedVoice:
     audio_path: str
 
 
-# ============================================================================
-# LOW-LEVEL: STT Backend Chain
-# ============================================================================
-
-
-def _get_service_chain() -> list[tuple[str, STTBackend]]:
-    """Build the ordered STT backend chain from the section's effective ``enabled`` and its priority.
-
-    A disabled ``stt`` section has an empty chain. Otherwise a backend joins the chain
-    unless its service is configured and not enabled.
-    """
-    stt_cfg = config.stt
-    if stt_cfg is None or not stt_cfg.enabled:
-        return []
-    chain: list[tuple[str, STTBackend]] = []
-    for name in stt_cfg.service_priority or BACKENDS.keys():
-        service_cfg = (stt_cfg.services or {}).get(name)
-        if service_cfg is not None and not service_cfg.enabled:
-            continue
-        backend = BACKENDS.get(name)
-        if backend:
-            chain.append((name, backend))
-    return chain
-
-
 def init_voice_handler() -> None:
     """Initialize the configured voice backends."""
     logger.info("Voice handler initialized (STT backends: %s)", list(BACKENDS.keys()))
-
-
-async def transcribe_voice(
-    audio_file_path: str,
-    language: str | None = None,
-) -> str:
-    """Transcribe audio file using STT backend chain.
-
-    Tries each backend in priority order until one succeeds.
-
-    Args:
-        audio_file_path: Path to audio file
-        language: Optional language code (e.g., 'en'). Some backends ignore this.
-
-    Returns:
-        Transcribed text
-
-    Raises:
-        RuntimeError: If all backends fail
-    """
-    chain = _get_service_chain()
-    if not chain:
-        raise RuntimeError("No STT backends available")
-
-    errors: list[str] = []
-    for name, backend in chain:
-        try:
-            text = await backend.transcribe(audio_file_path, language)
-            if text:
-                logger.info("STT transcribed via %s: %d chars", name, len(text))
-                return text
-        except Exception as e:
-            errors.append(f"{name}: {e}")
-            logger.warning("STT backend %s failed: %s", name, e)
-
-    raise RuntimeError(f"All STT backends failed: {'; '.join(errors)}")
 
 
 async def transcribe_voice_with_retry(

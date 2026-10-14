@@ -160,6 +160,14 @@ FLAG_MSG_SUBJECT = Flag(
 FLAG_MSG_CHANNEL = Flag("--channel", desc="Override channel: telegram, discord, whatsapp, email", arity=VALUE)
 
 # =============================================================================
+# audio
+# =============================================================================
+
+FLAG_AUDIO_URL = Flag("--url", desc="Audio URL to transcribe", arity=VALUE)
+FLAG_AUDIO_PATH = Flag("--path", desc="Local audio file to transcribe", arity=VALUE)
+FLAG_AUDIO_LANGUAGE = Flag("--language", desc="Optional language code hint", arity=VALUE)
+
+# =============================================================================
 # docs
 # =============================================================================
 

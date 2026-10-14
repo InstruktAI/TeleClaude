@@ -529,6 +529,26 @@ CLI_SURFACE: dict[str, CommandDef] = {
         ],
         auth=CommandAuth(capability=Capability.MESSAGING, human=_HR_MEMBER),
     ),
+    "audio": CommandDef(
+        desc="Transcribe supplied audio",
+        subcommands={
+            "stt": CommandDef(
+                desc="Transcribe audio from a URL or local file",
+                args="[--url <url>] [--path <path>] [--language <code>]",
+                flags=[F.FLAG_HELP, F.FLAG_AUDIO_URL, F.FLAG_AUDIO_PATH, F.FLAG_AUDIO_LANGUAGE],
+                notes=[
+                    "The transcript is written to standard output.",
+                    "Exit status 3: source unavailable; 4: unsupported media; 5: no STT service; 6: transcription failed.",
+                    "Usage faults and request-level errors exit 1.",
+                ],
+                examples=[
+                    "telec audio stt --url https://example.com/recording.ogg",
+                    "telec audio stt --path ./recording.m4a --language nl",
+                ],
+                auth=CommandAuth(capability=Capability.AUDIO, human=_HR_MEMBER),
+            ),
+        },
+    ),
     "docs": CommandDef(
         desc="Query documentation snippets",
         subcommands={
@@ -2073,6 +2093,7 @@ MEMORIES_EXTRACTION_COMPLETE = CLI_SURFACE["memories"].subcommands["extraction"]
 MEMORIES_EXTRACTION_FAIL = CLI_SURFACE["memories"].subcommands["extraction"].subcommands["fail"]
 
 MESSAGE = CLI_SURFACE["message"]
+AUDIO = CLI_SURFACE["audio"].subcommands["stt"]
 
 SYNC = CLI_SURFACE["sync"]
 

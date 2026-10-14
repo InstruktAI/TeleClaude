@@ -1,5 +1,6 @@
 """API request/response models for API server."""
 
+from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
@@ -31,6 +32,7 @@ PERSON_MESSAGE_ROUTE = "/message"
 PERSON_MESSAGE_PATH = PEOPLE_API_PREFIX + PERSON_MESSAGE_ROUTE
 _CARRIED_FILE_INCOMPLETE_ERROR = "A carried file names both file_name and file_content_b64, or neither."
 _CARRIED_FILE_AND_PATH_ERROR = "A request names a file by path or carries its content, not both."
+_AUDIO_STT_SOURCE_EXCLUSIVE_ERROR = "Exactly one of url or path is required."
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionSnapshot
@@ -538,6 +540,60 @@ class PersonMessageRequest(BaseModel):
         if self.file is not None and self.file_content_b64 is not None:
             raise ValueError(_CARRIED_FILE_AND_PATH_ERROR)
         return self
+
+
+class AudioSTTFailureKind(StrEnum):
+    """Closed set of supplied-audio transcription failure outcomes."""
+
+    SOURCE_UNAVAILABLE = "source_unavailable"
+    UNSUPPORTED_MEDIA = "unsupported_media"
+    NO_STT_SERVICE = "no_stt_service"
+    TRANSCRIPTION_FAILED = "transcription_failed"
+
+
+class AudioSTTResponseStatus(StrEnum):
+    """Closed status vocabulary for supplied-audio transcription responses."""
+
+    OK = "ok"
+    FAILED = "failed"
+
+
+class AudioSTTRequest(BaseModel):
+    """Request to transcribe one supplied URL or absolute local path."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    url: str | None = None
+    path: str | None = None
+    language: str | None = None
+
+    @model_validator(mode="after")
+    def _require_one_source(self) -> "AudioSTTRequest":
+        if (self.url is None) == (self.path is None):
+            raise ValueError(_AUDIO_STT_SOURCE_EXCLUSIVE_ERROR)
+        return self
+
+
+class AudioSTTOkResponse(BaseModel):
+    """Successful transcript returned to the requesting CLI."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: Literal[AudioSTTResponseStatus.OK]
+    transcript: str
+
+
+class AudioSTTFailureResponse(BaseModel):
+    """Typed failure returned to the requesting CLI."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: Literal[AudioSTTResponseStatus.FAILED]
+    failure_kind: AudioSTTFailureKind
+    reason: str
+
+
+AudioSTTResponse = AudioSTTOkResponse | AudioSTTFailureResponse
 
 
 # WebSocket Event DTOs

@@ -6,10 +6,12 @@ from instrukt_ai_logging import get_logger
 from openai import AsyncOpenAI
 
 from teleclaude.config.machine import config
+from teleclaude.stt.errors import STTServiceUnavailableError
 
 logger = get_logger(__name__)
 
 OPENAI_SERVICE = "openai"
+_OPENAI_UNAVAILABLE_MESSAGE = "OpenAI Whisper STT unavailable: stt.services.openai.api_key not set"
 
 
 class OpenAIWhisperBackend:
@@ -46,7 +48,7 @@ class OpenAIWhisperBackend:
             FileNotFoundError: If audio file does not exist
         """
         if not self._ensure_client():
-            raise RuntimeError("OpenAI Whisper STT unavailable: stt.services.openai.api_key not set")
+            raise STTServiceUnavailableError(_OPENAI_UNAVAILABLE_MESSAGE)
 
         audio_path = Path(audio_file_path)
         if not audio_path.exists():

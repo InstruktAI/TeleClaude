@@ -35,6 +35,7 @@ class TelecCommand(str, Enum):
     MCP = "mcp"
     CODE = "code"
     MESSAGE = "message"
+    AUDIO = "audio"
     SYNC = "sync"
 
 

@@ -28,6 +28,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api import (
     agents_routes,
+    audio_routes,
     chiptunes_routes,
     computers_routes,
     history_routes,
@@ -211,6 +212,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(readiness_routes.router)
         self.app.include_router(reminders_routes.router)
         self.app.include_router(agents_routes.router)
+        self.app.include_router(audio_routes.router)
         self.app.include_router(people_routes.router)
         self.app.include_router(settings_routes.router)
         self.app.include_router(tui_routes.router)

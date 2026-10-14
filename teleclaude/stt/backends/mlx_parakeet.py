@@ -14,6 +14,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config._models import STTServiceConfig
 from teleclaude.config.machine import config
 from teleclaude.mlx_utils import is_local_path, resolve_model_ref
+from teleclaude.stt.errors import STTServiceUnavailableError
 
 load_stt_model = None
 mlx_audio_import_error: Exception | None = None
@@ -24,6 +25,7 @@ logger = get_logger(__name__)
 DEFAULT_MODEL = "mlx-community/parakeet-tdt-0.6b-v3"
 PARAKEET_SERVICE = "parakeet"
 _UNRESOLVED_MODEL_REF = ""
+_PARAKEET_UNAVAILABLE_MESSAGE = "Parakeet STT unavailable"
 
 
 class MLXParakeetBackend:
@@ -146,7 +148,7 @@ class MLXParakeetBackend:
 
         await asyncio.to_thread(self._prepare)
         if not await asyncio.to_thread(self._ensure_model):
-            raise RuntimeError("Parakeet STT unavailable")
+            raise STTServiceUnavailableError(_PARAKEET_UNAVAILABLE_MESSAGE)
 
         if self._model is None and self._cli_bin:
             return await asyncio.to_thread(self._transcribe_cli, audio_file_path, language)
