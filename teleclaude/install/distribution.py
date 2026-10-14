@@ -55,6 +55,7 @@ from teleclaude.paths import (
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
+from teleclaude.session_identity import SessionIdentityMarkerEnvironmentVariable
 from teleclaude.snippet_validation import (
     GENERATED_DOMAIN_BUNDLE_FILENAME,
     RETIRED_DOMAIN_BUNDLE_FILENAME,
@@ -907,6 +908,8 @@ def _progressive_sibling_sections(
 
 def _exec_directive_env(project_root: Path) -> dict[str, str]:
     env = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
+    for marker_variable in SessionIdentityMarkerEnvironmentVariable:
+        env.pop(marker_variable, None)
     path_entries = [
         str(project_root / ".venv" / "bin"),
         str(_REPO_ROOT / ".venv" / "bin"),

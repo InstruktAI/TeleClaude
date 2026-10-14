@@ -66,9 +66,8 @@ def main(clear: ClearanceGate) -> None:
 
     argv = sys.argv[1:]
 
-    # Handle --help / -h
-    if argv and argv[0] in ("--help", "-h"):
-        print(_usage())
+    # Handle root help before command resolution or clearance.
+    if argv and _maybe_show_help(None, argv):
         return
 
     if argv:

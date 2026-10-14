@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from enum import StrEnum
 from pathlib import Path
 
 from teleclaude.constants import MarkerState
@@ -13,12 +14,29 @@ _IDENTITY_FILENAME = "teleclaude_identity.json"
 _SESSION_ID_FIELD = "session_id"
 
 
+class SessionIdentityMarkerEnvironmentVariable(StrEnum):
+    """Environment variables that locate the current process's session marker."""
+
+    TMPDIR = "TMPDIR"
+    TMP = "TMP"
+    TEMP = "TEMP"
+
+
 def _identity_path() -> Path | None:
     """Return the path to the session identity file, or None if no TMPDIR."""
-    tmpdir = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+    tmpdir = _session_marker_directory()
     if not tmpdir:
         return None
     return Path(tmpdir) / _IDENTITY_FILENAME
+
+
+def _session_marker_directory() -> str | None:
+    """Return the first directory variable that carries the session marker."""
+    for variable in SessionIdentityMarkerEnvironmentVariable:
+        value = os.environ.get(variable)  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+        if value:
+            return value
+    return None
 
 
 def inspect_session_identity_marker() -> tuple[MarkerState, str | None]:

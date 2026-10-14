@@ -139,7 +139,7 @@ _INVOCATION_IDENTITY: ContextVar[ResolvedCliIdentity | None] = ContextVar(
 )
 _INVOCATION_COMMAND_NAME = "telec_cli_invocation_command"
 _INVOCATION_COMMAND: ContextVar[str | None] = ContextVar(_INVOCATION_COMMAND_NAME, default=None)
-_SELF_TARGET = "self"
+SELF_SESSION_TARGET = "self"
 _UNAUTHORIZED_ROLE = "unauthorized"
 _SESSION_END_PATH = "sessions end"
 _SESSION_RESTART_PATH = "sessions restart"
@@ -381,7 +381,7 @@ def _fallback_role_target(
     if auth.scope is CommandScope.PLATFORM:
         return Platform()
     if auth.scope is CommandScope.TARGET_SESSION:
-        resolved_target = identity.session_id if target_session_id == _SELF_TARGET else target_session_id
+        resolved_target = identity.session_id if target_session_id == SELF_SESSION_TARGET else target_session_id
         if resolved_target is None:
             return ProjectPath(invocation_cwd())
         facts = _load_session_record(resolved_target)
@@ -441,7 +441,9 @@ def cli_clearance(
     }.get(command_path)
     if action is not None:
         # Showing a session without naming one shows the caller's own.
-        names_self = target_session_id == _SELF_TARGET or (action is SessionAct.SHOW and target_session_id is None)
+        names_self = target_session_id == SELF_SESSION_TARGET or (
+            action is SessionAct.SHOW and target_session_id is None
+        )
         action_session_target = identity.session_id if names_self else target_session_id
         exception = session_act_exception(
             action,
