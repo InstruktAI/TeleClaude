@@ -195,6 +195,8 @@ documentation and configuration readiness, the harness's access probes, repeat
 installation, and restart/reinstallation. Evidence is retained on success and
 failure, and the disposable machine is cleaned up.
 
+<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+
 ### Hosted runtime acceptance
 
 The final candidate passes the full GitHub-hosted runtime profile defined by
@@ -202,6 +204,19 @@ The final candidate passes the full GitHub-hosted runtime profile defined by
 before full installation proof. Publication requires both results for that
 candidate. The bounded journey allowance and its verification purpose are owned
 by `local/projects/teleclaude/policy/test-moratorium`.
+
+<!-- change:full-acceptance-on-self-hosted-runner -->
+
+### Runtime acceptance
+
+The final candidate passes the full runtime profile defined by
+`local/projects/teleclaude/spec/feature/agent_runtime/runtime-acceptance`,
+run in a disposable virtual machine on the self-hosted runner, before full
+installation proof. Publication requires both results for that candidate. The
+bounded journey allowance and its verification purpose are owned by
+`local/projects/teleclaude/policy/test-moratorium`.
+
+<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
 
 Acceptance evidence identifies the exact candidate and tree, the full profile,
 all required journey outcomes and cleanup. Its digest travels in the durable

@@ -1,5 +1,5 @@
 ---
-description: Bounded real-process CLI acceptance evidence gates commits and hosted
+description: Bounded real-process CLI acceptance evidence gates commits and CI
   validation against independently reviewed public journeys.
 visibility: internal
 ---
@@ -29,6 +29,8 @@ and authentication paths. It does not inherit live host credentials or adapters.
 Terminal authentication uses a real terminal. Runtime isolation belongs to the
 harness; agents invoking it do not redirect their own home or platform home.
 
+<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+
 The fast profile covers cold CLI startup, version/help entry paths and the
 installer's safe entry path. It runs once against the materialized prospective
 commit tree at the sealed commit gate, separately from routine lint. The full
@@ -36,6 +38,35 @@ profile runs on GitHub-hosted Ubuntu for normal CI and on the final immutable
 release candidate before the existing full installation proof. Both profiles
 use one scenario definition and result format. The full profile includes the
 cold-entry scenarios and adds the runtime journeys below.
+
+<!-- change:full-acceptance-on-self-hosted-runner -->
+
+The fast profile covers cold CLI startup, version/help entry paths and the
+installer's safe entry path. It runs once against the materialized prospective
+commit tree at the sealed commit gate, separately from routine lint. The full
+profile runs in CI for every push and pull request to main and on the final
+immutable release candidate before the existing full installation proof. Both
+profiles use one scenario definition and result format. The full profile includes the
+cold-entry scenarios and adds the runtime journeys below.
+
+CI runs the full profile on the self-hosted runner inside a fresh disposable
+macOS virtual machine that the run creates from a base image and deletes when
+it ends. The candidate enters the machine as a Git bundle of its exact revision,
+and the result leaves it through the run's own shared directory. The runner
+host's own installation — its platform home, services, daemon socket and
+registered projects — is neither read nor changed by the run; on the host the
+run executes only the virtual-machine lifecycle, the bundle and its own
+temporary files. After the profile, the run verifies inside the machine that
+the checked candidate's revision, tree and working copy are unchanged. Beside
+the unchanged result format, the run retains the machine's identity and base
+image, every command it executed on the host, that in-machine identity check
+and the machine's deletion outcome. A machine left behind by an interrupted
+run is deleted by the run's final cleanup step or, failing that, by the next
+run before it starts. The full profile refuses to start, before any scenario,
+where a TeleClaude platform home or daemon socket already exists, so it never
+runs against a live installation.
+
+<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
 
 A result identifies the checked revision or materialized tree, selected profile,
 executed scenarios, duration and outcome. Failure evidence contains the failing
@@ -184,6 +215,8 @@ And its result retains the original outcome and any cleanup failure
 And a required scenario that did not run is never reported as passed
 ```
 
+<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+
 #### UC-RA10: Candidate verification uses the same full profile as hosted CI
 
 ```gherkin
@@ -193,6 +226,20 @@ Then the full journey set executes against that exact candidate
 And a failure prevents publication even if an earlier source revision passed
 And success leaves the full installation proof required
 ```
+
+<!-- change:full-acceptance-on-self-hosted-runner -->
+
+#### UC-RA10: Candidate verification uses the same full profile as CI
+
+```gherkin
+Given a release operator has a final immutable candidate
+When release runtime acceptance runs
+Then the full journey set executes against that exact candidate
+And a failure prevents publication even if an earlier source revision passed
+And success leaves the full installation proof required
+```
+
+<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
 
 #### UC-RA11: Invalid configuration input is refused without changing state
 
@@ -270,9 +317,27 @@ And a fresh authorized memory listing reports no memory added by those attempts
 
 ## Known caveats
 
+<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+
 - These journeys establish their named observable behavior, not exhaustive CLI,
   integration, provider, or platform coverage.
 - Hosted runtime acceptance does not replace full operating-system installation
   proof, and it uses no live subscription credentials or external messaging.
 - Existing installation proof and target-specific worktree help checks retain
   their own contracts.
+
+<!-- change:full-acceptance-on-self-hosted-runner -->
+
+- These journeys establish their named observable behavior, not exhaustive CLI,
+  integration, provider, or platform coverage.
+- Runtime acceptance does not replace full operating-system installation
+  proof, and it uses no live subscription credentials or external messaging.
+- Existing installation proof and target-specific worktree help checks retain
+  their own contracts.
+- The full profile exercises the macOS installation and service paths only;
+  Linux service installation is outside its evidence.
+- The self-hosted runner executes one job at a time, so full-profile results for
+  closely spaced pushes arrive in push order behind each other rather than in
+  parallel.
+
+<!-- /planned-change:full-acceptance-on-self-hosted-runner -->

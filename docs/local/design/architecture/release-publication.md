@@ -14,6 +14,8 @@ consumes the installer and update contracts through their existing boundaries.
 
 ## Inputs/Outputs
 
+<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+
 - An attempt captures canonical main and the previous completed publication
   after acquiring the release stream's serialization.
 - Inspection consumes the captured source, released public-contract baseline,
@@ -29,6 +31,26 @@ consumes the installer and update contracts through their existing boundaries.
   version assessment. The same isolated provider order attempts an optional
   summary; unavailable summaries retain their outcomes and leave deterministic
   notes publishable. A first manual publication establishes a baseline.
+
+<!-- change:full-acceptance-on-self-hosted-runner -->
+
+- An attempt captures canonical main and the previous completed publication
+  after acquiring the release stream's serialization.
+- Inspection consumes the captured source, released public-contract baseline,
+  and bounded repository evidence. It produces a complete assessment or a
+  provider failure, with every attempted provider's outcome retained.
+- Preparation produces a final candidate and an incremental Git bundle, together
+  with source, baseline, tree, version, and artifact identities.
+- Verification produces lint, runtime acceptance and disposable-machine installation proof bound to the candidate.
+- Publication produces the exact candidate tag, its GitHub Release, retained
+  evidence, and a mainline metadata reconciliation when main has advanced.
+- A manually supplied version produces an operator-decided candidate through
+  the same candidate and proof boundary, with deterministic commit notes and no
+  version assessment. The same isolated provider order attempts an optional
+  summary; unavailable summaries retain their outcomes and leave deterministic
+  notes publishable. A first manual publication establishes a baseline.
+
+<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
 
 ## Invariants
 
@@ -196,6 +218,8 @@ and seeding use the same serialized stream.
 
 ### Automatically assessed attempt
 
+<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+
 1. Resolve any incomplete owned publication before capturing another baseline.
 2. Capture S and B. An unchanged normalized source finishes successfully.
 3. Prepare and retain the compact inventory and public-contract comparison once.
@@ -212,7 +236,31 @@ and seeding use the same serialized stream.
    updates the tag and main, then creates the GitHub Release for R and attaches
    its provenance and proof references.
 
+<!-- change:full-acceptance-on-self-hosted-runner -->
+
+1. Resolve any incomplete owned publication before capturing another baseline.
+2. Capture S and B. An unchanged normalized source finishes successfully.
+3. Prepare and retain the compact inventory and public-contract comparison once.
+   Run Codex on its fresh hosted job, then Claude on a separate fresh job only if
+   Codex's inspection or credential settlement is unsuccessful. Select their
+   exact artifact-bound outcomes, retaining runner failure as unsuccessful evidence.
+   A valid complete no-release result finishes successfully.
+4. Generate complete commit notes with git-cliff and add the selected assessment's
+   summary. Prepare R with final version and lock coherence, released manifests,
+   and the cumulative published changelog before committing R.
+5. Run lint and full runtime acceptance on R on the self-hosted runner, the
+   profile inside a disposable machine, then the full existing installer harness
+   in a disposable machine. Retain the candidate identity and evidence; clean up
+   each machine.
+6. A dry-run returns these results. Publication reconciles current H, atomically
+   updates the tag and main, then creates the GitHub Release for R and attaches
+   its provenance and proof references.
+
+<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
+
 ### Explicit-version attempt
+
+<!-- planned-change:full-acceptance-on-self-hosted-runner -->
 
 A manual dispatch with an explicit valid newer version captures S and the
 completed baseline when present. It records the operator decision and generates
@@ -225,6 +273,21 @@ proof and publication consume the same identities as the automatic flow. A
 manual dry-run finishes at proof. Automatic publication activation does not
 supply or withhold authority for an explicit-version publication.
 
+<!-- change:full-acceptance-on-self-hosted-runner -->
+
+A manual dispatch with an explicit valid newer version captures S and the
+completed baseline when present. It records the operator decision and generates
+the commit notes through the same git-cliff configuration. Frozen evidence feeds
+the native Codex-first/Claude-fallback jobs with a summary-only task, including
+captured reachable history when no baseline exists. A valid settled summary is
+added before the complete notes; unsuccessful summary attempts remain visible
+and the deterministic notes remain usable. Candidate preparation, lint, runtime acceptance, full installer
+proof and publication consume the same identities as the automatic flow. A
+manual dry-run finishes at proof. Automatic publication activation does not
+supply or withhold authority for an explicit-version publication.
+
+<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
+
 ### Publication recovery
 
 Remote references may have advanced before a release API response is received.
@@ -234,12 +297,25 @@ version nor interprets an unpublished tag as the completed baseline.
 
 ### Automatic publication activation
 
+<!-- planned-change:full-acceptance-on-self-hosted-runner -->
+
 The checked-in automatic-publication setting gates automatically assessed
 publication. Scheduled attempts remain dry-runs until the release maintainer
 records a successful complete automatic-path validation over a real releasable
 interval. Manual version selection and no-change outcomes do not establish that
 validation. Every published candidate, from either decision path, still earns
 its own lint, hosted runtime acceptance and installer proof.
+
+<!-- change:full-acceptance-on-self-hosted-runner -->
+
+The checked-in automatic-publication setting gates automatically assessed
+publication. Scheduled attempts remain dry-runs until the release maintainer
+records a successful complete automatic-path validation over a real releasable
+interval. Manual version selection and no-change outcomes do not establish that
+validation. Every published candidate, from either decision path, still earns
+its own lint, runtime acceptance and installer proof.
+
+<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
 
 ## Failure modes
 
