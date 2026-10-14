@@ -70,6 +70,13 @@ retained activation rather than this source-delivery loop. When source delivery
 owes runtime judgment, consume the installed activation's assessment through
 its owning surface; do not start competing recovery
 (`general/principle/trust-and-guardrails`).
+
+One session holds a checkout's assessment responsibility at a time. The
+integrator takes it when no live session holds it, and then performs the
+judgment and recovery steps below itself. When another session holds it, the
+maintenance recovery surface names that holder; leave recovery and judgment
+with it, and publish an ahead canonical local main head only after the
+assessment status records its completion for that head.
 <!-- /planned:installation-activation-inspection -->
 
 <!-- planned:reviewed-pr-contributions -->

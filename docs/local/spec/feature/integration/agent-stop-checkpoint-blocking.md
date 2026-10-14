@@ -48,6 +48,8 @@ commit-review stamp covers this session's commits. A force-fire that has
 nothing left to surface — no changed files, no required actions, no
 observations, and no commit action — produces no checkpoint.
 
+<!-- planned-change:installation-activation-inspection -->
+
 An **integrator-maintenance marker** carries canonical-main activations whose
 deterministic maintenance was recorded and whose live-runtime log judgment
 remains. It is keyed to the canonical checkout rather than to a session, so a
@@ -59,6 +61,25 @@ the executor records its latest maintenance-ready time. The integrator reads
 logs after that time from a window beginning no later than the earliest
 activation. Earlier or narrower log evidence cannot discharge the marker. A regular
 committing session receives no maintenance log-check action from this project.
+<!-- change:installation-activation-inspection -->
+
+An **assessment record** carries the checkout's activations whose
+deterministic maintenance was recorded and whose live-runtime log judgment
+remains (`local/projects/teleclaude/spec/feature/integration/installation-assessment`).
+It is keyed to the checkout rather than to a session, so a successor inherits
+unfinished judgment without repeating mechanical work. The activation boundary
+records it for direct main commits, integration advancements and admitted
+installed-release transitions alike, after the owed action records are durable.
+It retains the activation times and becomes eligible only after every owed
+action succeeds; the executor records its latest maintenance-ready time. The
+integrator and the installation inspector are the assessing roles, and the
+checkpoint surfaces the record's judgment only to the one session holding its
+assessment responsibility. That holder reads logs after the ready time from a
+window beginning no later than the earliest activation. Earlier or narrower log
+evidence, or a read while the running daemon still predates an activation that
+owes its restart, cannot complete the assessment. A regular committing session
+receives no maintenance log-check action from this project.
+<!-- /planned-change:installation-activation-inspection -->
 
 The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and is
@@ -272,6 +293,8 @@ And any distinct branch-eligible actions still follow their bindings and evidenc
 And categories for those eligible actions remain in the changed-category summary even after evidence satisfies them
 ```
 
+<!-- planned-change:installation-activation-inspection -->
+
 #### UC-CP11: Integrator post-advance log-check force-fire
 
 ```gherkin
@@ -292,6 +315,34 @@ Then it does not force-fire log judgment yet
 And the marker remains for integrator recovery and a later eligible check
 ```
 
+<!-- change:installation-activation-inspection -->
+
+#### UC-CP11: Integrator post-advance log-check force-fire
+
+```gherkin
+Given a session whose role is integrator
+And a canonical-main advancement has a checkout assessment record for live-runtime judgment
+And every action owed by that record has succeeded with a maintenance-ready time recorded
+And no other live session holds the record's assessment responsibility
+When the heuristic engine evaluates the turn window
+Then the integrator holds the assessment responsibility
+And the checkpoint force-fires despite no turn-local Edit or Write change
+And it surfaces the log-check action for the accumulated activations
+And it instructs the integrator to publish any ahead canonical local main head after judging the owed logs sound
+And other sessions' review state and unrelated uncommitted paths do not delay that push
+And a material failure keeps that head local for recovery and a new log judgment
+And no mechanical maintenance or unrelated judgment action is surfaced from that record
+
+Given an owed action is pending, failed, or interrupted, or no maintenance-ready time is recorded
+When the heuristic engine evaluates that record
+Then it does not force-fire log judgment yet
+And the record remains for recovery and a later eligible check
+```
+
+<!-- /planned-change:installation-activation-inspection -->
+
+<!-- planned-change:installation-activation-inspection -->
+
 #### UC-CP29: Main movement without a log marker creates no checkpoint
 
 ```gherkin
@@ -301,6 +352,20 @@ And no checkout-scoped log-check marker is present
 When the heuristic engine evaluates the turn window
 Then no checkpoint is force-fired on account of the moved main HEAD
 ```
+
+<!-- change:installation-activation-inspection -->
+
+#### UC-CP29: Main movement without an assessment record creates no checkpoint
+
+```gherkin
+Given a session whose role is not an assessing role
+And repository-root main advanced for any reason
+And no checkout assessment record is present
+When the heuristic engine evaluates the turn window
+Then no checkpoint is force-fired on account of the moved main HEAD
+```
+
+<!-- /planned-change:installation-activation-inspection -->
 
 #### UC-CP13: Parent snippet edited without its pending companion
 
@@ -391,6 +456,8 @@ And the commit action is not required
 (A commit persists already-made mutations; it is never itself a mutation of the files it commits, so it can never be the last mutation those files must be committed after — the self-referential ordering that would demand a commit strictly after the commit is excluded.)
 ```
 
+<!-- planned-change:installation-activation-inspection -->
+
 #### UC-CP20: Post-advance log judgment begins with a range-only marker
 
 ```gherkin
@@ -401,6 +468,22 @@ Then the marker carries that advancement and its activation time but no mechanic
 And it remains ineligible for discharge until every owed action succeeds
 ```
 
+<!-- change:installation-activation-inspection -->
+
+#### UC-CP20: Post-advance log judgment begins with a range-only assessment record
+
+```gherkin
+Given a canonical-main advancement whose paths owe live-runtime judgment
+And its deterministic maintenance actions are durably recorded
+When the commit boundary records the checkout's assessment record
+Then the record carries that advancement and its activation time but no mechanical action id
+And it remains ineligible for completion until every owed action succeeds
+```
+
+<!-- /planned-change:installation-activation-inspection -->
+
+<!-- planned-change:installation-activation-inspection -->
+
 #### UC-CP30: Post-delivery log markers accumulate ranges
 
 ```gherkin
@@ -409,6 +492,21 @@ When its range is recorded
 Then the checkout-scoped marker accumulates both ranges and their activation times
 And one later log read must cover the earliest activation through the latest completed maintenance
 ```
+
+<!-- change:installation-activation-inspection -->
+
+#### UC-CP30: Post-delivery assessment records accumulate ranges
+
+```gherkin
+Given another qualifying advancement occurs before the assessment is completed
+When its range is recorded
+Then the checkout's assessment record accumulates both ranges and their activation times
+And one later log read must cover the earliest activation through the latest completed maintenance
+```
+
+<!-- /planned-change:installation-activation-inspection -->
+
+<!-- planned-change:installation-activation-inspection -->
 
 #### UC-CP31: Log evidence discharges the range marker
 
@@ -420,6 +518,25 @@ Then the marker is removed and no post-delivery checkpoint force-fires for those
 But an earlier read or a narrower window leaves the marker outstanding
 ```
 
+<!-- change:installation-activation-inspection -->
+
+#### UC-CP31: Log evidence completes the observed assessment
+
+```gherkin
+Given every action owed by the record's accumulated activations has succeeded
+And the assessment holder reads logs after the latest maintenance completion with a window beginning no later than the earliest activation
+And the running daemon reports a start commit containing every observed activation that owes its restart
+When a later agent-stop observes that evidence
+Then the observed activations are recorded as assessed with that window, the daemon's start commit and the holding session
+And no post-activation checkpoint force-fires for those activations again
+But an earlier read, a narrower window or a daemon that cannot report its start commit leaves the assessment outstanding
+And an activation recorded after the holder observed the record remains outstanding
+```
+
+<!-- /planned-change:installation-activation-inspection -->
+
+<!-- planned-change:installation-activation-inspection -->
+
 #### UC-CP32: A successor integrator inherits unfinished log judgment
 
 ```gherkin
@@ -429,6 +546,20 @@ When the successor inspects the marker
 Then it inherits the accumulated activations and any unfinished maintenance recovery
 And the log-check obligation surfaces only after every owed action succeeds and maintenance readiness is recorded
 ```
+
+<!-- change:installation-activation-inspection -->
+
+#### UC-CP32: A successor inherits unfinished log judgment
+
+```gherkin
+Given the assessment holder's session ends while the checkout's assessment record remains outstanding
+And another assessing session later evaluates that record
+When its checkpoint finds no live holder
+Then it inherits the accumulated activations and any unfinished maintenance recovery
+And the log-check obligation surfaces only after every owed action succeeds and maintenance readiness is recorded
+```
+
+<!-- /planned-change:installation-activation-inspection -->
 
 #### UC-CP23: Worktree checkpoints omit live-runtime log checks
 
@@ -567,6 +698,31 @@ When the heuristic engine evaluates the turn window
 Then the post-commit review-gate surfacing action is not emitted
 And the authored-main-commit marker is consumed
 ```
+
+<!-- planned:installation-activation-inspection -->
+
+#### UC-CP40: The installation inspector judges without publication
+
+```gherkin
+Given a session whose role is installation-inspector
+And the installed checkout's assessment record is ready
+And no other live session holds its assessment responsibility
+When the heuristic engine evaluates the turn window
+Then the inspector holds the assessment responsibility
+And the checkpoint force-fires the log-check action for the accumulated activations
+And it carries no source-publication step
+```
+
+#### UC-CP41: Another session's held assessment raises no checkpoint
+
+```gherkin
+Given an assessing session holds a checkout's assessment responsibility
+When another assessing session's turn ends on the same checkout
+Then that session receives no assessment checkpoint for the record
+And the holder's responsibility is unchanged
+```
+
+<!-- /planned:installation-activation-inspection -->
 
 ### Cross-context references
 

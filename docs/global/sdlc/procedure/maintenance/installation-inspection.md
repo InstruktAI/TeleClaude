@@ -7,6 +7,9 @@ subscriptions:
   - teleclaude.integration.installation.maintenance_settled
   - teleclaude.system.daemon.restarted
 subscription_home: platform
+dispatch:
+  agent: [claude, codex, gemini, deepseek]
+  thinking_mode: med
 ---
 
 # Installation Inspection — Procedure

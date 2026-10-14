@@ -231,6 +231,13 @@ The installation-inspection assignment and a delivery integrator share one
 assessment responsibility. Checkpoint and recurring instructions follow the
 assignment's subject; a release installation receives no source-publication step.
 An interrupted emission is recoverable from the retained obligation.
+
+The checkout's assessment obligation is retained with its maintenance records,
+so temporary-file cleanup and restart leave it intact. A replay or drain an
+agent invokes acts for the session holding that checkout's assessment
+responsibility: it takes the responsibility when no live session holds it, and
+when another session holds it the request is refused, names that holder and
+changes no record. The executor's own drains need no responsibility.
 <!-- /planned:installation-activation-inspection -->
 
 ### Use cases

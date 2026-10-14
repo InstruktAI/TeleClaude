@@ -43,6 +43,11 @@ remains incomplete. An interrupted action keeps its recovery identity. Startup
 and recurring recovery attention reconcile unsettled or unassessed records;
 neither an event delivered once nor an agent started once discharges them.
 
+The installation's service status reports an activation whose assessment is
+incomplete, with its maintenance result, from the retained record alone, so an
+operator observes an unfinished adoption even while the daemon is not
+answering.
+
 ### Assignment and completion
 
 The subscribed inspection procedure runs against the installed checkout. It
@@ -57,7 +62,11 @@ integrator attention and subscribed inspection share that ownership and result;
 they do not perform competing recovery. Repeat events reconcile the same
 obligation. A successful completion clears only the activation evidence it
 actually examined; a newly recorded activation remains outstanding. Every
-outcome names its target revision and evidence window.
+outcome names its target revision, its evidence window and the start revision
+the running daemon reported. A daemon still running from before an activation
+that owes its restart cannot supply that completion. A responsibility whose
+holder has stopped attending lapses after a bounded interval, so a successor
+can take it without a manual release.
 
 The inspection assignment reads, judges and performs bounded operational
 recovery through sanctioned maintenance/service surfaces. Code correction is

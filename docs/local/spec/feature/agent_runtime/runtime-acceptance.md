@@ -126,6 +126,24 @@ development checkout journeys ran.
 
 <!-- /planned:release-development-checkouts -->
 
+<!-- planned:installation-activation-inspection -->
+
+### Installation assessment journeys
+
+The full profile exercises the retained-failure scenario in
+`local/projects/teleclaude/spec/feature/integration/installation-assessment` and
+the incomplete-adoption scenario in
+`local/projects/teleclaude/spec/feature/reconciliation/channel-gated-self-update`.
+They reuse the release journeys' disposable installation and public maintenance
+module entry points, and observe the assessment state through the operator's
+service status entry point. An assessment obligation retained in its earlier
+stored form is a fixture state supplied before the entry point runs; the journey
+observes it carried forward unchanged. No journey starts an agent, so agent
+assessment and ownership scenarios stay outside this profile. The controller
+reports which installation assessment journeys ran.
+
+<!-- /planned:installation-activation-inspection -->
+
 ### Use cases
 
 #### UC-RA1: Cold public entry points execute from the checked source
