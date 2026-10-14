@@ -95,7 +95,7 @@ own identity and is never a session role.
 | `memory-curation`      | Curating memories and prospects from conversation extractions.                                           |
 | `session-observe`      | Listing and showing sessions, searching history, and reading the fleet's computers, projects and agents. |
 | `transcript-read`      | Showing the transcript of a named session.                                                               |
-| `operation-read`       | Reading the outcome of one's own operations.                                                             |
+| `operation-read`       | Reading the outcome of an operation one's session started or one's reach admits.                         |
 | `session-act`          | Starting, running, reviving, restarting, ending and messaging sessions other than one's own.             |
 | `self-acts`            | Results, files, ending and restarting for one's own session.                                             |
 | `messaging`            | Messaging a person.                                                                                      |
