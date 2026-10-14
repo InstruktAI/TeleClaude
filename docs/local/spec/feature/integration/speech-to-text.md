@@ -1,7 +1,7 @@
 ---
-description: Agents turn a supplied audio file or audio URL into text through the computer's configured speech-to-text service chain, with a distinct outcome for every way it can fail.
-delivered_by:
-  - agent-audio-transcription-tool
+description: Agents turn a supplied audio file or audio URL into text through the
+  computer's configured speech-to-text service chain, with a distinct outcome for
+  every way it can fail.
 ---
 
 # Speech To Text — Spec
