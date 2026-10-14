@@ -20,7 +20,7 @@ from teleclaude.constants import (
 )
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 
 def compute_artifact_diff(cwd: str, slug: str, artifact_name: str, base_sha: str) -> str:
@@ -46,7 +46,7 @@ def artifact_name_to_state_key(artifact_name: str) -> str:
     return mapping.get(artifact_name, artifact_name.replace(".", "_").replace("-", "_"))
 
 
-async def read_artifact_write_timestamps(todos_db: TodosDb, slug: str) -> dict[str, str]:
+async def read_artifact_write_timestamps(todos_db: WorkflowStore, slug: str) -> dict[str, str]:
     """Return each stored artifact's durable write timestamp, keyed by state key.
 
     Reads ``TodoArtifact.updated_at`` — committed atomically with the artifact's

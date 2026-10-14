@@ -21,6 +21,7 @@ from teleclaude.config.field_constraints import (
     refuse_violations,
 )
 from teleclaude.config.identity_schema import CompanyMember, PersonEntry
+from teleclaude.config.project_models import CapabilityConfig, TodoStoreConfig
 from teleclaude.config.tiers import Tier
 from teleclaude.constants import (
     CHECKPOINT_BASE_ACTIONS,
@@ -677,12 +678,6 @@ class CheckpointConfig(ClosedModel):
         return self
 
 
-class CapabilityConfig(ClosedModel):
-    """Subscription state; an omitted block makes no capability claim."""
-
-    enabled: bool = False
-
-
 class HelpDeskConfig(ClosedModel):
     """Whether a home keeps a help desk; an omitted block keeps none."""
 
@@ -743,6 +738,7 @@ class ProjectConfig(TierDocument):
     frontend_root: str | None = None
     business: BusinessConfig = BusinessConfig()
     hooks: HooksConfig = HooksConfig()
+    todos: TodoStoreConfig = TodoStoreConfig()
     jobs: list[JobScheduleConfig] = []
     checkpoint: CheckpointConfig | None = None
     code: CapabilityConfig = CapabilityConfig()

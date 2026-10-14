@@ -18,7 +18,7 @@ from teleclaude.core.next_machine.runtime.scripts import format_review_in_progre
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_with_status_for_slug
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.next_machine.state_mutation import StateWriter
 
@@ -34,7 +34,7 @@ class ReviewDispatchContext:
     """Stable inputs for one review-resolution decision."""
 
     db: Db
-    todos_db: TodosDb
+    todos_db: WorkflowStore
     worktree_cwd: str
     slug: str
 
@@ -49,7 +49,7 @@ class ReviewResolution:
 
 
 async def _persist_review_dispatch_metadata(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     state: dict[str, StateValue],
     *,

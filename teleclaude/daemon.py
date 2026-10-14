@@ -242,7 +242,7 @@ from teleclaude.core.task_registry import TASK_REGISTRY_SHUTDOWN_TIMEOUT_S, Supe
 _record_import_timing("teleclaude.core.task_registry", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.todos_db import TodosDb, set_todos_mutation_hook
+from teleclaude.core.workflow_store.store import WorkflowStore, set_workflow_store_mutation_hook
 
 _record_import_timing("teleclaude.core.todos_db", _t)
 
@@ -705,10 +705,10 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         api_server._broadcast_payload("chiptunes_state", payload)
 
     def _register_todos_mutation_hook(self) -> None:
-        """Wire TodosDb mutation callbacks to daemon cache refresh.
+        """Wire WorkflowStore mutation callbacks to daemon cache refresh.
 
-        Called at daemon startup after the event loop is running. Every TodosDb
-        instance created after this point (via get_todos_db or get_todos_db_sync)
+        Called at daemon startup after the event loop is running. Every WorkflowStore
+        instance created after this point (via get_workflow_store or get_workflow_store_sync)
         in teleclaude.core.todos_db
         will call refresh_local_todos on the DaemonCache whenever a mutation
         (write_state, deliver, write_artifact, etc.) is committed.
@@ -717,7 +717,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         cache = self.cache
         computer = config.computer.name
 
-        def _hook(instance: TodosDb, project_root: str) -> None:
+        def _hook(instance: WorkflowStore, project_root: str) -> None:
             async def _emit_finalize_ready(slug: str, state: Mapping[str, object]) -> None:
                 finalize = state.get("finalize")
                 finalize_state = finalize if isinstance(finalize, dict) else {}
@@ -824,11 +824,9 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     lambda: asyncio.ensure_future(_emit_delivered(slug, delivery_commit, delivered_at))
                 )
 
-            instance._on_mutation = _on_mutation
-            instance._on_phase_transition = _on_phase_transition
-            instance._on_delivered = _on_delivered
+            instance.set_workflow_hooks(_on_mutation, _on_phase_transition, _on_delivered)
 
-        set_todos_mutation_hook(_hook)
+        set_workflow_store_mutation_hook(_hook)
         logger.info("Todos mutation hook registered (computer=%s)", computer)
 
     def _acquire_lock(self) -> None:

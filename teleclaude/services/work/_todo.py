@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -15,9 +14,7 @@ from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecy
 from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.next_machine.review_evidence import BuildReviewVerdict
 from teleclaude.core.todo import assemble_todo_from_db
-from teleclaude.core.todos_db import get_todos_db_sync
-from teleclaude.core.todos_db._upcycle import upcycle_state_dict
-from teleclaude.types.state_value import StateValue
+from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.types.todo_kind import TodoKind
 
 if TYPE_CHECKING:
@@ -46,12 +43,6 @@ class BugFixStatus(StrEnum):
 
 _EMPTY_TEXT = ""
 _PENDING_FINALIZE_STATUSES = frozenset({_EMPTY_TEXT, TodoStatus.PENDING.value})
-_ACTIVE_TODO_STATES_QUERY = (
-    "SELECT r.slug, s.state FROM todo r "  # guard: raw-sql
-    "JOIN todo_state s ON r.id = s.id "
-    "WHERE r.status = ? "
-    "ORDER BY r.updated_at DESC"
-)
 
 
 class TodoOps:
@@ -90,17 +81,10 @@ class TodoOps:
 
     def bug_entries(self) -> list[BugListEntryDTO]:
         """Return active bug todos with their workflow progress labels."""
-        db = get_todos_db_sync(self._base.project_root)
-        conn = db._sync_conn()
-        try:
-            rows = conn.execute(_ACTIVE_TODO_STATES_QUERY, (TodoStatus.ACTIVE.value,)).fetchall()
-        finally:
-            conn.close()
+        rows = get_workflow_store_sync(self._base.project_root).list_active_states_sync()
 
         bugs: list[BugListEntryDTO] = []
-        for slug, state_json in rows:
-            raw_state = cast(dict[str, StateValue], json.loads(state_json)) if state_json else {}
-            state = upcycle_state_dict(raw_state)
+        for slug, state in rows:
             if state.get(_TodoStateField.KIND) != TodoKind.BUG:
                 continue
             lifecycle_phase = coerce_lifecycle_phase(state.get(_TodoStateField.LIFECYCLE_PHASE))

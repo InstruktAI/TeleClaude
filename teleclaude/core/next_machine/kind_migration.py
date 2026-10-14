@@ -18,7 +18,7 @@ from teleclaude.core.next_machine.state_mutation import StateMutationError, Stat
 from teleclaude.types.todo_kind import TodoKind
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 _ORPHAN_CHECK_ORDER = (
     ARTIFACT_PRD,
@@ -53,7 +53,7 @@ class KindMigrationRequiresForce(StateMutationError):
 
 
 async def migrate_todo_kind(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     *,
     target_kind: str,
@@ -89,24 +89,21 @@ async def migrate_todo_kind(
         input_body = await todos_db.read_artifact(slug, ARTIFACT_INPUT)
         implementation_plan_body = await todos_db.read_artifact(slug, ARTIFACT_IMPLEMENTATION_PLAN)
 
-    async with todos_db._session() as session:  # pylint: disable=protected-access
-        async with session.begin():
-            if seeded_plan_fold:
-                folded_input = _fold_plan_into_input(input_body, implementation_plan_body)
-                await todos_db.write_artifact(
-                    slug,
-                    ARTIFACT_INPUT,
-                    folded_input,
-                    session=session,
-                )
-                folded_artifact = ARTIFACT_IMPLEMENTATION_PLAN
-                warnings.append("folded implementation-plan into input before permanently removing implementation-plan")
+    replacement_input = None
+    if seeded_plan_fold:
+        replacement_input = _fold_plan_into_input(input_body, implementation_plan_body)
+        folded_artifact = ARTIFACT_IMPLEMENTATION_PLAN
+        warnings.append("folded implementation-plan into input before permanently removing implementation-plan")
 
-            for artifact_name in orphaned_artifacts:
-                await todos_db.delete_artifact(slug, artifact_name, session=session)
-                clear_artifact_provenance(writer, slug, artifact_name)
+    for artifact_name in orphaned_artifacts:
+        clear_artifact_provenance(writer, slug, artifact_name)
 
-            await writer.commit(todos_db, slug, session=session)
+    await todos_db.replace_item_state_and_artifacts(
+        slug,
+        writer.to_dict(),
+        replacement_input=replacement_input,
+        deleted_artifacts=orphaned_artifacts,
+    )
 
     if orphaned_artifacts and not seeded_plan_fold:
         warnings.append(f"permanently removed orphaned artifacts: {_format_artifacts(orphaned_artifacts)}")

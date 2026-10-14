@@ -44,7 +44,7 @@ from teleclaude.snippet_validation import (
 from teleclaude.types.todos import ArtifactEntry, TodoState
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     ARTIFACT_INPUT: STATE_KEY_INPUT,
@@ -69,7 +69,7 @@ _PROJECT_DOCS_DIRECTORY = "docs"
 
 
 async def sync_artifact_provenance(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     writer: StateWriter,
     slug: str,
     artifact_name: str,
@@ -173,7 +173,7 @@ def clear_artifact_provenance(writer: StateWriter, slug: str, artifact_name: str
 
 
 async def read_owned_snippet_digests(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     artifact_name: str,
     *,
@@ -206,7 +206,7 @@ async def read_dependency_artifact_snapshot(
 
 
 async def read_referenced_snippet_digests(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     artifact_name: str,
     artifact_body: str,

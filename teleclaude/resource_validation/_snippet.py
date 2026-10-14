@@ -11,7 +11,8 @@ from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
     TYPE_SUFFIX,
 )
-from teleclaude.core.todos_db_path import todos_db_path
+from teleclaude.core.workflow_store.selection import inspect_workflow_store_presence
+from teleclaude.core.workflow_store.types import StorePresenceKind
 from teleclaude.docs_publishers import DocsPublisherResolutionError, resolve_global_doc_source
 from teleclaude.paths import GLOBAL_DOCS_ROOTS
 from teleclaude.required_reads import extract_required_reads
@@ -799,7 +800,7 @@ def _resolve_todo_status_facts(project_root: Path) -> dict[str, TodoStatusFact] 
     the delivered_by todo-validity check rather than flagging every slug as
     missing. An empty map with a present DB is a real empty todo and still runs.
     """
-    if todos_db_path(project_root).exists():
+    if inspect_workflow_store_presence(project_root).kind is not StorePresenceKind.ABSENT:
         return build_todo_status_facts(project_root)
     return None
 

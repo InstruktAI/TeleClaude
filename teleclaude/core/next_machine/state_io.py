@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -51,12 +50,9 @@ from teleclaude.core.next_machine.review_evidence import (
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.core.todos_db import get_todos_db_sync
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store_sync
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import BreakdownState, FinalizeModel
-
-if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
 
@@ -78,23 +74,14 @@ def initial_todo_state_for_kind(kind: TodoKind) -> dict[str, StateValue]:
 
 def _artifact_digest(cwd: str, slug: str, artifact_name: str) -> str:
     """Read artifact digest from todos.db."""
-    db = get_todos_db_sync(cwd)
-    conn = db._sync_conn()
-    try:
-        row = conn.execute(
-            "SELECT digest FROM todo_artifacts WHERE slug = ? AND name = ? LIMIT 1",  # guard: raw-sql
-            (slug, artifact_name),
-        ).fetchone()
-        return row[0] if row else ""
-    finally:
-        conn.close()
+    return get_workflow_store_sync(cwd).artifact_digest_sync(slug, artifact_name)
 
 
 def _sync_artifact_state(cwd: str, slug: str, artifact_name: str) -> None:
     """Refresh artifact digest in state."""
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
-    db = get_todos_db_sync(cwd)
+    db = get_workflow_store_sync(cwd)
     _sync_artifact_provenance_subset_from_db(cwd, slug, artifact_name, writer, db=db)
     writer.commit_sync(db, slug)
 
@@ -110,10 +97,10 @@ def _sync_artifact_provenance_subset_from_db(
     artifact_name: str,
     writer: StateWriter,
     *,
-    db: object | None = None,
+    db: WorkflowStore | None = None,
 ) -> str:
     """Sync provenance fields available from sync callers and return the digest."""
-    todos_db = db if db is not None else get_todos_db_sync(cwd)
+    todos_db = db if db is not None else get_workflow_store_sync(cwd)
     digest = _artifact_digest(cwd, slug, artifact_name)
     if not digest:
         clear_artifact_provenance(writer, slug, artifact_name)
@@ -128,7 +115,7 @@ def _sync_artifact_provenance_subset_from_db(
         entry = getattr(writer.state.artifacts, state_key)
         if entry.async_provenance_complete and entry.digest == digest:
             return digest
-    artifact_body = todos_db.read_artifact_sync(slug, artifact_name)  # type: ignore[attr-defined]
+    artifact_body = todos_db.read_artifact_sync(slug, artifact_name)
     sync_artifact_provenance_sync_subset(
         writer,
         slug,
@@ -167,10 +154,10 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Read state for a work item from todos.db.
 
     Returns default state if no state exists in the database. Existing rows are
-    upcycled by the ``TodosDb`` read path. v2 prepare blobs are persisted as
+    upcycled by the ``WorkflowStore`` read path. v2 prepare blobs are persisted as
     v3 on first read so the migration decision is logged exactly once.
     """
-    db = get_todos_db_sync(cwd)
+    db = get_workflow_store_sync(cwd)
     raw = db.read_state_sync(slug)
     if raw is None:
         return default_state()
@@ -179,7 +166,7 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
 
 def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
     """Write state to todos.db."""
-    db = get_todos_db_sync(cwd)
+    db = get_workflow_store_sync(cwd)
     db.write_state_sync(slug, state)
 
 
@@ -213,7 +200,7 @@ def stamp_finalize_ready(cwd: str, slug: str, caller_session_id: str = "") -> di
     worktree_path = Path(project_root) / WORKTREE_DIR / slug
     head_sha = get_head_commit(str(worktree_path)) if worktree_path.exists() else ""
 
-    db = get_todos_db_sync(cwd)
+    db = get_workflow_store_sync(cwd)
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
     now = datetime.now(UTC).isoformat()
@@ -279,7 +266,7 @@ def _has_nontrivial_content(text: str) -> bool:
     return len(lines) > 0
 
 
-async def ensure_quality_checklist(todos_db: TodosDb, slug: str) -> None:
+async def ensure_quality_checklist(todos_db: WorkflowStore, slug: str) -> None:
     """Seed the standard quality checklist when its current content is trivial."""
     content = await todos_db.read_artifact(slug, ARTIFACT_QUALITY_CHECKLIST)
     if _has_nontrivial_content(content):
@@ -319,7 +306,7 @@ def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str])
         assessed: Whether breakdown assessment has been performed
         todos: List of child todo slugs created by breakdown (empty if no breakdown)
     """
-    db = get_todos_db_sync(cwd)
+    db = get_workflow_store_sync(cwd)
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
     writer.state.breakdown = BreakdownState(assessed=assessed, todos=list(todos))
@@ -340,16 +327,8 @@ def has_pending_deferrals(cwd: str, slug: str) -> bool:
     if state.get("deferrals_processed") is True:
         return False
 
-    db = get_todos_db_sync(cwd)
-    conn = db._sync_conn()  # pylint: disable=protected-access
-    try:
-        row = conn.execute(
-            "SELECT 1 FROM todo_artifacts WHERE slug = ? AND name = 'deferrals' LIMIT 1",  # guard: raw-sql
-            (slug,),
-        ).fetchone()
-        return row is not None
-    finally:
-        conn.close()
+    db = get_workflow_store_sync(cwd)
+    return db.artifact_exists_sync(slug, "deferrals")
 
 
 def is_bug_todo(cwd: str, slug: str) -> bool:

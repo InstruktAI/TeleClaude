@@ -1,30 +1,25 @@
-"""Base holder for WorkService — owns the TodosDb connection.
+"""Base holder for WorkService — resolves the workflow store.
 
 Sub-services (todo, state, artifacts) hold a reference to this base
-and call _ensure_db() to get a ready TodosDb instance. The base exists
-so sub-services don't each own their own connection lifecycle.
+and call _ensure_db() to get the canonical project store. The base exists
+so sub-services share its canonical-root identity.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 
 
 class WorkServiceBase:
-    """Owns the TodosDb lifecycle for all work sub-services."""
+    """Resolves the canonical workflow store for all work sub-services."""
 
     def __init__(self, project_root: str) -> None:
         self._project_root = project_root
-        self._db: TodosDb | None = None
+        self._db: WorkflowStore | None = None
 
-    async def _ensure_db(self) -> TodosDb:
+    async def _ensure_db(self) -> WorkflowStore:
         if self._db is None:
-            db_path = str(Path(self._project_root) / ".teleclaude" / "todos.db")
-            db = TodosDb(db_path)
-            await db.initialize()
-            self._db = db
+            self._db = await get_workflow_store(self._project_root)
         return self._db
 
     @property

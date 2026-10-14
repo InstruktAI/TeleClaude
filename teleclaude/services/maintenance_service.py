@@ -54,8 +54,8 @@ from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.shutdown_drain import ShutdownRefusal, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
-from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.docs_reconcile import SnippetWriteResult, reconcile_snippets_for_purged_slugs
 from teleclaude.events import get_event_db
@@ -67,8 +67,9 @@ from teleclaude.resource_validation._todo_status import build_todo_status_map
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
-    from teleclaude.core.todos_db import TodosDb
-    from teleclaude.core.todos_db._todo import ExpiredRemovedRow, PurgedRemovedRow
+    from teleclaude.core.workflow_store.store import WorkflowStore
+    from teleclaude.core.workflow_store.types import ExpiredRemovedItem as ExpiredRemovedRow
+    from teleclaude.core.workflow_store.types import PurgedItem as PurgedRemovedRow
 
 logger = get_logger(__name__)
 
@@ -256,7 +257,7 @@ async def _cleanup_orphan_voice_audio_files(
 
 
 async def _finalize_removed_row(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     row: ExpiredRemovedRow,
 ) -> PurgedRemovedRow | None:
     await todos_db.clear_pending_purge_paths(row["id"])
@@ -316,7 +317,7 @@ def _verify_layer3(
 
 async def _commit_and_finalize_removed_row(
     project_root: Path,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     row: ExpiredRemovedRow,
     *,
     pending_paths: list[str],
@@ -377,7 +378,7 @@ async def _commit_and_finalize_removed_row(
 
 async def _cleanup_removed_todo_row(
     project_root: Path,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     row: ExpiredRemovedRow,
     todo_status_map: Mapping[str, str],
 ) -> PurgedRemovedRow | None:
@@ -636,7 +637,7 @@ class MaintenanceService:
             if not is_project_checkout(project_root):
                 continue
             try:
-                todos_db = await get_todos_db(str(project_root))
+                todos_db = await get_workflow_store(str(project_root))
                 todo_status_map = build_todo_status_map(project_root)
                 rows = await todos_db.list_expired_removed(cutoff_iso)
                 for row in rows:

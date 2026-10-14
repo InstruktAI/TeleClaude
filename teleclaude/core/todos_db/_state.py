@@ -6,7 +6,7 @@ import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import NamedTuple, cast
+from typing import cast
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy import update
@@ -17,6 +17,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 from teleclaude.constants import ARTIFACT_DEFERRALS, WORKTREE_DIR, TodoStatus
 from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG
 from teleclaude.core.next_machine.lifecycle import READY_BAND_PHASES, coerce_lifecycle_phase, is_ready_band_eligible
+from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
 from teleclaude.types.state_value import StateValue
 
 from ._errors import HolderWriteRefused
@@ -42,14 +43,6 @@ _V2_PREPARE_PHASES = {
     "re_grounding",
     "prepared",
 }
-
-
-class TodoStatusStateRead(NamedTuple):
-    """Current row classification and state read from one database session."""
-
-    status: str | None
-    state: dict[str, StateValue] | None
-    is_holder: bool
 
 
 def _rename_breakdown_todos(
@@ -173,6 +166,25 @@ class TodosDbStateMixin:
         async with self._session() as session:  # type: ignore[attr-defined]
             return await self._is_holder_status(session, slug)
 
+    async def is_structural_group_holder(self, slug: str) -> bool:
+        """Whether the item is a structural group parent, not a live claim holder."""
+        return await self.is_holder(slug)
+
+    def list_active_states_sync(self) -> list[tuple[str, dict[str, StateValue]]]:
+        """Read active item states in the stable order used by bug listing."""
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            rows = session.exec(
+                select(Todo.slug, TodoStateModel.state)
+                .join(TodoStateModel, TODO_TABLE.c.id == TODO_STATE_TABLE.c.id)
+                .where(TODO_TABLE.c.status == TodoStatus.ACTIVE.value)
+                .order_by(TODO_TABLE.c.updated_at.desc())
+            ).all()
+        results: list[tuple[str, dict[str, StateValue]]] = []
+        for slug, state_json in rows:
+            raw_state = cast(dict[str, StateValue], json.loads(state_json)) if state_json else {}
+            results.append((str(slug), upcycle_state_dict(raw_state)))
+        return results
+
     async def _stamp_ready_since_for_payload(
         self,
         session: SqlAsyncSession,
@@ -290,13 +302,13 @@ class TodosDbStateMixin:
         async with self._session() as session:  # type: ignore[attr-defined]
             entry = await session.get(Todo, todo_id)
             if entry is None:
-                return TodoStatusStateRead(status=None, state=None, is_holder=False)
+                return TodoStatusStateRead(status=None, state=None, is_structural_group_holder=False)
             is_holder = entry.status == TodoStatus.HOLDER.value
             if is_holder:
-                return TodoStatusStateRead(status=entry.status, state=None, is_holder=True)
+                return TodoStatusStateRead(status=entry.status, state=None, is_structural_group_holder=True)
             state_model = await session.get(TodoStateModel, todo_id)
             if state_model is None:
-                return TodoStatusStateRead(status=entry.status, state=None, is_holder=False)
+                return TodoStatusStateRead(status=entry.status, state=None, is_structural_group_holder=False)
             raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
             payload = upcycle_state_dict(raw_state)
             if self._record_v2_to_v3_if_needed(entry.slug, raw_state, payload):
@@ -305,7 +317,7 @@ class TodosDbStateMixin:
                 session.add(state_model)
                 await session.commit()
                 self._on_mutation("todo_updated", None)
-            return TodoStatusStateRead(status=entry.status, state=payload, is_holder=is_holder)
+            return TodoStatusStateRead(status=entry.status, state=payload, is_structural_group_holder=is_holder)
 
     async def read_status_and_states_by_id(self, todo_ids: list[str]) -> dict[str, TodoStatusStateRead]:
         """Read current statuses and upcycled states for a corpus in one session."""
@@ -323,7 +335,9 @@ class TodosDbStateMixin:
             for entry, state_model in result.all():
                 is_holder = entry.status == TodoStatus.HOLDER.value
                 if is_holder or state_model is None:
-                    reads[entry.id] = TodoStatusStateRead(status=entry.status, state=None, is_holder=is_holder)
+                    reads[entry.id] = TodoStatusStateRead(
+                        status=entry.status, state=None, is_structural_group_holder=is_holder
+                    )
                     continue
                 raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
                 payload = upcycle_state_dict(raw_state)
@@ -332,7 +346,9 @@ class TodosDbStateMixin:
                     state_model.updated_at = datetime.now(UTC).isoformat()
                     session.add(state_model)
                     migrated = True
-                reads[entry.id] = TodoStatusStateRead(status=entry.status, state=payload, is_holder=False)
+                reads[entry.id] = TodoStatusStateRead(
+                    status=entry.status, state=payload, is_structural_group_holder=False
+                )
             if migrated:
                 await session.commit()
                 self._on_mutation("todo_updated", None)

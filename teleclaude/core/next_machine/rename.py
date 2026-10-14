@@ -24,7 +24,7 @@ from teleclaude.core.next_machine.marker_reconciliation import (
 )
 from teleclaude.core.operation_caller_identity import get_caller_session_id
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.runtime.agy_workspace_trust import move_worktree_trust
 from teleclaude.slug import validate_slug
 
@@ -112,7 +112,7 @@ async def execute_todo_rename(
 
     project_root = resolve_project_root(cwd)
     project_root_str = str(project_root)
-    todos_db = await get_todos_db(project_root)
+    todos_db = await get_workflow_store(project_root)
 
     if not await todos_db.slug_in_todo(old_slug):
         return _refusal(f"todo {old_slug!r} was not found")
@@ -142,14 +142,7 @@ async def execute_todo_rename(
     try:
         moves = move_todo_slug_surfaces(project_root_str, old_slug, new_slug)
 
-        async with todos_db._session() as session:  # pylint: disable=protected-access
-            async with session.begin():
-                if not await todos_db.rename_state_slug(old_slug, new_slug, session=session):
-                    raise RuntimeError(f"state rename failed for {old_slug!r}")
-                if not await todos_db.rename_artifacts_slug(old_slug, new_slug, session=session):
-                    raise RuntimeError(f"artifact rename failed for {old_slug!r}")
-                if not await todos_db.rename_todo_slug(old_slug, new_slug, session=session):
-                    raise RuntimeError(f"todo rename failed for {old_slug!r}")
+        await todos_db.rename_item(old_slug, new_slug)
     except Exception:
         if receipt.plan is not None:
             restore_lifecycle_markers(project_root, old_slug, receipt.plan)
@@ -175,7 +168,7 @@ async def execute_todo_rename(
         "renamed_by_principal": await _renamed_by_principal(db),
         "surfaces_moved": surfaces_moved,
     }
-    todos_db.on_committed(CacheEvent.TODO_RENAMED.value, cast(Mapping[str, object], event_payload))
+    todos_db.notify_committed(CacheEvent.TODO_RENAMED.value, cast(Mapping[str, object], event_payload))
 
     logger.info("Renamed todo %s -> %s", old_slug, new_slug)
     return _summary(old_slug, new_slug, surfaces=surfaces_moved)

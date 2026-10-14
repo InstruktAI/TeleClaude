@@ -73,8 +73,9 @@ from teleclaude.core.next_machine.state_mutation import StateMutationError, Stat
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.core.todos_db import HolderReconciliationRefused, HolderTransitionRefused, get_todos_db
+from teleclaude.core.todos_db import HolderReconciliationRefused, HolderTransitionRefused
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
+from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.envelope_facts import home_for_project_path
 from teleclaude.events.producer import publish_event
@@ -89,7 +90,7 @@ from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import HoldAuditSource
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 logger = get_logger(__name__)
 
@@ -329,7 +330,7 @@ async def todo_update(  # pyright: ignore
 
     warnings: list[str] = []
     migration_result: KindMigrationResult | None = None
-    todos_db = await _get_todos_db_from_cwd(cwd)
+    todos_db = await _get_workflow_store_from_cwd(cwd)
 
     await require_slug_in_todo(todos_db, slug)
     await refuse_todo_update_outside_claiming_group(todos_db, identity, slug)
@@ -473,7 +474,7 @@ def _validate_slug_for_create(slug: str, *, field_name: str) -> None:
         raise HTTPException(status_code=400, detail=f"invalid {field_name} '{slug}': {exc}") from exc
 
 
-async def _todo_build_started(todos_db: TodosDb, slug: str) -> bool:
+async def _todo_build_started(todos_db: WorkflowStore, slug: str) -> bool:
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
         raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
@@ -489,7 +490,7 @@ async def _todo_build_started(todos_db: TodosDb, slug: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-async def _get_todos_db_from_cwd(cwd: str) -> TodosDb:
+async def _get_workflow_store_from_cwd(cwd: str) -> WorkflowStore:
     """Resolve the todos DB for the given project cwd.
 
     Raises a 400 (not the caller-observed 404 'slug not found') when ``cwd``
@@ -500,11 +501,11 @@ async def _get_todos_db_from_cwd(cwd: str) -> TodosDb:
         project_root = resolve_project_root(cwd)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return await get_todos_db(project_root)
+    return await get_workflow_store(project_root)
 
 
 async def _sync_artifact_provenance_state(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     artifact_name: str,
     *,
@@ -570,7 +571,7 @@ async def todo_content_create(
             _validate_slug_for_create(request.group, field_name="group")
 
         effective_cwd = request.cwd or _default_cwd()
-        todos_db = await _get_todos_db_from_cwd(effective_cwd)
+        todos_db = await _get_workflow_store_from_cwd(effective_cwd)
 
         conflicting_status = await todos_db.find_live_slug_conflict(slug)
         if conflicting_status is not None:
@@ -628,54 +629,34 @@ async def todo_content_create(
             }
         pickup_requested = not request.icebox and not request.hold
 
-        written_artifact_name = ""
-        written_artifact_body = ""
-        async with todos_db._session() as session:  # pylint: disable=protected-access
-            async with session.begin():
-                await todos_db.add_to_todo(
-                    slug,
-                    lineage=lineage.encode(),
-                    after=request.after if request.after else None,
-                    schedule=normalized_schedule,
-                    group_slug=request.group,
-                    status=TodoStatus.ICEBOX if request.icebox else TodoStatus.ACTIVE,
-                    entry_point=entry_point.value if entry_point is not None else None,
-                    human_involved=human_involved,
-                    context=creation_context,
-                    cwd=effective_cwd,
-                    session=session,
-                )
-                await todos_db.write_state(slug, state, session=session)
-
-                if request.plan:
-                    is_task_plan = request.kind == TodoKind.TASK
-                    plan_content = (
-                        f"# {slug} — Task Plan\n\n{request.content}\n"
-                        if is_task_plan
-                        else f"# {slug} — Implementation Plan\n\n{request.content}\n"
-                    )
-                    written_artifact_name = ARTIFACT_TASK_PLAN if is_task_plan else ARTIFACT_IMPLEMENTATION_PLAN
-                    written_artifact_body = plan_content
-                    await todos_db.write_artifact(
-                        slug,
-                        written_artifact_name,
-                        plan_content,
-                        updated_by=identity.session_id,
-                        session=session,
-                    )
-                else:
-                    input_content = f"# {slug} — Input\n\n{request.content}\n"
-                    written_artifact_name = ARTIFACT_INPUT
-                    written_artifact_body = input_content
-                    await todos_db.write_artifact(
-                        slug,
-                        ARTIFACT_INPUT,
-                        input_content,
-                        updated_by=identity.session_id,
-                        session=session,
-                    )
-
-        todos_db.on_committed("todo_updated")
+        if request.plan:
+            is_task_plan = request.kind == TodoKind.TASK
+            written_artifact_name = ARTIFACT_TASK_PLAN if is_task_plan else ARTIFACT_IMPLEMENTATION_PLAN
+            written_artifact_body = (
+                f"# {slug} — Task Plan\n\n{request.content}\n"
+                if is_task_plan
+                else f"# {slug} — Implementation Plan\n\n{request.content}\n"
+            )
+        else:
+            written_artifact_name = ARTIFACT_INPUT
+            written_artifact_body = f"# {slug} — Input\n\n{request.content}\n"
+        await todos_db.create_item_with_initial_artifact(
+            slug,
+            state,
+            lineage=lineage.encode(),
+            after=request.after if request.after else None,
+            description=None,
+            schedule=normalized_schedule,
+            group_slug=request.group,
+            status=TodoStatus.ICEBOX if request.icebox else TodoStatus.ACTIVE,
+            entry_point=entry_point.value if entry_point is not None else None,
+            human_involved=human_involved,
+            context=creation_context,
+            cwd=effective_cwd,
+            artifact_name=written_artifact_name,
+            artifact_body=written_artifact_body,
+            updated_by=identity.session_id,
+        )
 
         if written_artifact_name in _DRIFT_TRACKED_ARTIFACT_NAMES:
             await _sync_artifact_provenance_state(
@@ -692,7 +673,7 @@ async def todo_content_create(
             # seed_plan_drafting); it must run after the seeding write's
             # provenance sync above, which would otherwise clear the seed.
             state["lifecycle_phase"] = await seed_plan_drafting(todos_db, slug, repo_root=effective_cwd)
-            todos_db.on_committed("todo_updated")
+            todos_db.notify_committed("todo_updated")
         elif request.plan and request.kind == TodoKind.TASK:
             state["lifecycle_phase"] = await seed_task_plan_authorization(
                 todos_db,
@@ -700,7 +681,7 @@ async def todo_content_create(
                 caller_session_id=identity.session_id,
                 prepared_session_id=identity.session_id,
             )
-            todos_db.on_committed("todo_updated")
+            todos_db.notify_committed("todo_updated")
 
         lifecycle_phase = state.get("lifecycle_phase")
         event_lifecycle_phase = lifecycle_phase if isinstance(lifecycle_phase, str) else None
@@ -782,7 +763,7 @@ async def todo_reactivate(
 ) -> _SlugStatusResponse:
     """Restore a soft-removed todo addressed by slug."""
     effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    todos_db = await _get_workflow_store_from_cwd(effective_cwd)
 
     # Resolve slug to removed-row id (refuse if ambiguous)
     removed_entries = await todos_db.list_todo(include_removed=True, removed_only=True)
@@ -823,7 +804,7 @@ async def todo_reactivate_by_id(
 ) -> _SlugStatusResponse:
     """Restore a soft-removed todo addressed by its durable row id."""
     effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    todos_db = await _get_workflow_store_from_cwd(effective_cwd)
     try:
         slug = await todos_db.reactivate_removed(todo_id, cwd=effective_cwd)
     except ReactivateRefused as exc:

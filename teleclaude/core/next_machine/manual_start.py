@@ -61,13 +61,13 @@ from teleclaude.core.next_machine.slug_resolution import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
-from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._exceptions import (
     ClaimConflict,
     LaneCrossingRefused,
     ReviewerConflict,
     ReviewerIdentityUnresolved,
 )
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import Event, PrepareClaimDetail, TodoEventKind, TodoState
@@ -186,7 +186,7 @@ async def _reflect_claim_on_caller_session(
 async def adopt_headless_session(
     *,
     runtime_db: Db,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     session_id: str,
     lane: RunnerLane = RunnerLane.WORK,
@@ -216,7 +216,7 @@ async def adopt_headless_session(
 
 
 async def _target_for_manual_start(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     runtime_db: Db,
     slug: str,
     lane: RunnerLane,
@@ -378,7 +378,7 @@ async def guard_driver_start(
         return DriverStartGuardResult()
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
-    todos_db = await get_todos_db(project_root)
+    todos_db = await get_workflow_store(project_root)
     effective_caller = None if launch_class is DriverLaunchClass.ORCHESTRATOR else caller_session_id
     todo, reason, holder = await _target_for_manual_start(
         todos_db,
@@ -404,7 +404,7 @@ async def manual_start_lifecycle_session(
 ) -> ManualLifecycleSessionResult:
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
-    todos_db = await get_todos_db(project_root)
+    todos_db = await get_workflow_store(project_root)
     _todo, reason, owner_session_id = await _target_for_manual_start(todos_db, runtime_db, slug, lane, project_root)
     if reason is not None:
         return ManualLifecycleSessionResult(
@@ -477,7 +477,7 @@ async def _refuse_lane_crossing(
 
 
 async def _record_prepare_claim(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     caller_session_id: str,
     project_root: Path,
@@ -553,7 +553,7 @@ async def adopt_manual_lifecycle_session(
     """
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
-    todos_db = await get_todos_db(project_root)
+    todos_db = await get_workflow_store(project_root)
     todo, reason, owner_session_id = await _target_for_manual_start(
         todos_db,
         runtime_db,
@@ -659,7 +659,7 @@ async def adopt_manual_lifecycle_session(
 
 
 async def resolve_manual_dispatch_intent(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     *,
     requested_lane: RunnerLane | None = None,
