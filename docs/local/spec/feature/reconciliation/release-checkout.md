@@ -113,6 +113,20 @@ When its repository receives a release event or performs local maintenance
 Then detachment alone does not authorize installed-runtime activation there
 ```
 
+<!-- planned:queued-release-events-strand-superseded-posture-action -->
+
+#### UC-RC7: A superseded release's owed posture settles without moving source
+
+```gherkin
+Given an operator's installation owes posture normalization for an admitted release
+And a later admitted release descending from it is selected before that normalization runs
+When the owed normalization for the earlier release runs or is replayed
+Then it completes without selecting the earlier release's source
+And the installed checkout still selects the later release in detached HEAD
+```
+
+<!-- /planned:queued-release-events-strand-superseded-posture-action -->
+
 ## Known caveats
 
 - Detached HEAD alone does not determine argument-less pull behavior: Git can
