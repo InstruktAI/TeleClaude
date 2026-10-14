@@ -275,6 +275,19 @@ And the unconfigured required field is distinguishable from the configured one w
 And the marking reflects the same required-field rule the write path enforces, so the two cannot disagree
 ```
 
+<!-- planned:tui-own-person-config-blocked-by-client-clearance -->
+
+#### UC-CFG-TUI-SCHEMA-18: A person without roster standing works on their own People entry
+
+```
+Given a registered person whose standing does not admit listing every person
+When that person opens the People view in the ordinary TUI
+Then the view shows that person's own entry instead of reporting a load failure
+And the person can read and save their own overlay fields and personal secrets from that entry
+```
+
+<!-- /planned:tui-own-person-config-blocked-by-client-clearance -->
+
 The `tui` tier is the wizard's render set: the operator-facing fields the config
 wizard shows, declared per field in code. The `tier` marker is the opt-in form of
 the schema view metadata named in UC-CFG-TUI-SCHEMA-9 — declaration to show,
