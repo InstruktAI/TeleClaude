@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from teleclaude.constants import TodoStatus
-from teleclaude.core.workflow_store import read_local_validation_status_rows
+from teleclaude.core.workflow_store.selection import read_workflow_validation_status_rows
 from teleclaude.git import GitCommandError, Repo
 
 _TODO_STATUS_VALUES = (
@@ -47,7 +47,7 @@ def build_todo_status_facts(project_root: Path) -> dict[str, TodoStatusFact]:
     git worktree where ``.teleclaude/todos.db`` is not present. On a DB that
     still predates the substrate rename, reads the legacy ``roadmap`` table.
     """
-    rows = read_local_validation_status_rows(project_root)
+    rows = read_workflow_validation_status_rows(project_root)
     if rows is None:
         return {}
 

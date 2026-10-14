@@ -33,7 +33,7 @@ from teleclaude.core.session_config_subject import (
     backfill_session_subject_owners,
 )
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
-from teleclaude.core.workflow_store import close_workflow_stores
+from teleclaude.core.workflow_store.store import close_workflow_stores
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.memory.store import MemoryStore
 from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME

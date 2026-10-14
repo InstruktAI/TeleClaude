@@ -5,6 +5,9 @@ from __future__ import annotations
 import sqlite3
 from typing import Protocol, cast
 
+_DOWNSTREAM_DEPENDENCIES_QUERY = "SELECT slug FROM todo_deps WHERE depends_on = ?"
+_DELETE_DEPENDENCY_REFERENCES_QUERY = "DELETE FROM todo_deps WHERE depends_on = ?"
+
 
 class _SyncConnectionHost(Protocol):
     def _sync_conn(self) -> sqlite3.Connection: ...
@@ -18,7 +21,7 @@ class TodosDbIntegrationMixin:
         connection = cast(_SyncConnectionHost, self)._sync_conn()
         try:
             rows = connection.execute(
-                "SELECT slug FROM todo_deps WHERE depends_on = ?",  # guard: raw-sql
+                _DOWNSTREAM_DEPENDENCIES_QUERY,  # guard: raw-sql
                 (slug,),
             ).fetchall()
         finally:
@@ -34,7 +37,7 @@ class TodosDbIntegrationMixin:
         connection = cast(_SyncConnectionHost, self)._sync_conn()
         try:
             connection.execute(
-                "DELETE FROM todo_deps WHERE depends_on = ?",  # guard: raw-sql
+                _DELETE_DEPENDENCY_REFERENCES_QUERY,  # guard: raw-sql
                 (slug,),
             )
             connection.commit()

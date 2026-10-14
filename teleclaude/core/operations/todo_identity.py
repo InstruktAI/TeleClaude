@@ -12,8 +12,7 @@ from fastapi import HTTPException
 
 from teleclaude.core.db_models import Operation
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.core.todos_db import get_todos_db
-from teleclaude.core.todos_db._identity_pin import todo_identity_pin
+from teleclaude.core.workflow_store.store import get_workflow_store
 
 _ADDRESSED_TODO_ID_FIELD = "addressed_todo_id"
 _OPERATION_KIND_FIELD = "kind"
@@ -153,6 +152,6 @@ async def pin_operation_todo_identity(operation: Operation) -> AsyncIterator[Non
     if operation.slug is None or operation.cwd is None:
         raise ValueError(_ADDRESSED_OPERATION_TODO_REQUIRED)
     project_root = resolve_project_root(operation.cwd)
-    todos_db = await get_todos_db(project_root)
-    with todo_identity_pin(db_path=todos_db.db_path, slug=operation.slug, todo_id=todo_id):
+    todos_db = await get_workflow_store(project_root)
+    with todos_db.identity_scope(operation.slug, todo_id):
         yield

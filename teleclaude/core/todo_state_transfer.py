@@ -16,12 +16,13 @@ from redis.exceptions import RedisError
 
 from teleclaude.config.machine import config
 from teleclaude.config.referents import ReferentKind, unregistered_referent
-from teleclaude.core.workflow_store import (
-    TransferSource,
-    check_local_database_integrity,
-    get_local_transfer_source,
-    local_database_location,
+from teleclaude.core.workflow_store.selection import (
+    check_workflow_store_integrity,
+    get_workflow_transfer_source,
+    workflow_store_database_location,
 )
+from teleclaude.core.workflow_store.types import StoreIntegrityStatus as IntegrityStatus
+from teleclaude.core.workflow_store.types import TransferSource
 from teleclaude.services.project_catalog.service import get_project_catalog_service
 from teleclaude.slug import validate_slug
 from teleclaude.transport.peer_heartbeat import PeerAddress, PeerNotOnline, lookup_peer_address
@@ -75,14 +76,6 @@ class LocateStatus(StrEnum):
 
     FOUND = "found"
     ABSENT = "absent"
-
-
-class IntegrityStatus(StrEnum):
-    """Result of checking a target todo database."""
-
-    OK = "ok"
-    ABSENT = "absent"
-    FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -144,7 +137,7 @@ async def transfer_todo_state(project_slugs: list[str], computers: list[str]) ->
             local_databases[project_slug] = (None, str(unregistered_referent(ReferentKind.PROJECT, project_slug)))
             continue
         try:
-            source = get_local_transfer_source(node.root)
+            source = get_workflow_transfer_source(node.root)
         except FileNotFoundError as error:
             local_databases[project_slug] = (None, _exception_detail(error))
         else:
@@ -220,7 +213,7 @@ def locate_todo_database(project_slug: str) -> LocateResult:
     if node is None:
         return LocateResult(LocateStatus.ABSENT, None, str(unregistered_referent(ReferentKind.PROJECT, project_slug)))
     try:
-        database_path = local_database_location(node.root)
+        database_path = workflow_store_database_location(node.root)
     except FileNotFoundError as error:
         return LocateResult(LocateStatus.ABSENT, None, _exception_detail(error))
     if database_path is None:
@@ -237,7 +230,7 @@ def check_todo_database(project_slug: str) -> IntegrityResult:
     if node is None:
         return IntegrityResult(IntegrityStatus.ABSENT, str(unregistered_referent(ReferentKind.PROJECT, project_slug)))
     try:
-        status, detail = check_local_database_integrity(node.root)
+        status, detail = check_workflow_store_integrity(node.root)
     except FileNotFoundError as error:
         return IntegrityResult(IntegrityStatus.ABSENT, _exception_detail(error))
     return IntegrityResult(IntegrityStatus(status), detail)

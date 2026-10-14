@@ -6,6 +6,7 @@ DB-backed todo list assembly for CLI, API, and TUI.
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
 from instrukt_ai_logging import get_logger
 
@@ -22,11 +23,31 @@ from teleclaude.core.next_machine.lifecycle import (
     prepare_review_verdict_from_state,
     require_lifecycle_phase,
 )
-from teleclaude.core.workflow_store import get_workflow_store_sync
+from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY, TodoState
 
 logger = get_logger(__name__)
+
+_SKIP_DELIVERED_STATE_LOG = "Skipping delivered todo row without todo state"
+_SKIP_MISSING_STATE_LOG = "Skipping todo row missing todo state"
+_SKIP_UNREADABLE_STATE_LOG = "Skipping todo with unreadable state"
+_EMPTY_TEXT = ""
+_SLOW_ASSEMBLE_LOG = (
+    "assemble_todo_from_db was slow: total=%.3fs project=%s rows=%d deps=%d "
+    "init=%.3fs conn_open=%.3fs todo=%.3fs deps_load=%.3fs "
+    "state_queries=%.3fs artifact_queries=%.3fs todo_build=%.3fs other=%.3fs"
+)
+
+
+class _ProjectionStateKey(StrEnum):
+    HOLD = "hold"
+    HOLD_AUDIT = "hold_audit"
+    HOLD_SOURCE = "source"
+    ACTIVE_RUNNER = "active_runner"
+    TASK_PLAN = "task_plan"
+    TASK_APPROVED = "task_approved"
+
 
 RECENTLY_DELIVERED_HOURS = 168
 READY_BAND = "ready"
@@ -493,7 +514,7 @@ def assemble_todo_from_db(
         raw_status_by_id[row_id] = raw_status
         if item.state_error is not None:
             logger.warning(
-                "Skipping todo with unreadable state",
+                _SKIP_UNREADABLE_STATE_LOG,
                 slug=slug,
                 project_path=project_path,
                 reason=item.state_error,
@@ -502,14 +523,14 @@ def assemble_todo_from_db(
         if item.state is None:
             if raw_status == TodoStatus.DELIVERED.value:
                 logger.trace(
-                    "Skipping delivered todo row without todo state",
+                    _SKIP_DELIVERED_STATE_LOG,
                     slug=slug,
                     project_path=project_path,
                     todo_id=row_id,
                 )
             else:
                 logger.warning(
-                    "Skipping todo row missing todo state",
+                    _SKIP_MISSING_STATE_LOG,
                     slug=slug,
                     status=raw_status,
                     project_path=project_path,
@@ -529,8 +550,8 @@ def assemble_todo_from_db(
             state,
             artifact_write_timestamps=artifact_write_timestamps,
         )
-        hold_audit = state.get("hold_audit")
-        held = effective_hold(hold=bool(state.get("hold")))
+        hold_audit = state.get(_ProjectionStateKey.HOLD_AUDIT)
+        held = effective_hold(hold=bool(state.get(_ProjectionStateKey.HOLD)))
         group_slug = holder_slug_by_id.get(str(item.group_address)) if item.group_address is not None else None
         group_id = str(item.group_address) if item.group_address is not None and group_slug is not None else None
 
@@ -538,14 +559,14 @@ def assemble_todo_from_db(
             TodoDTO(
                 slug=slug,
                 status=projection.todo_status,
-                description=item.description or "",
+                description=item.description or _EMPTY_TEXT,
                 has_requirements=item.has_requirements,
                 has_impl_plan=item.has_implementation_plan,
                 kind=projection.kind,
                 ready_since=item.ready_since,
                 schedule=item.schedule,
-                task_plan_digest=_artifact_digest(state, "task_plan"),
-                task_approved_digest=_approval_digest(state, "task_approved"),
+                task_plan_digest=_artifact_digest(state, _ProjectionStateKey.TASK_PLAN),
+                task_approved_digest=_approval_digest(state, _ProjectionStateKey.TASK_APPROVED),
                 updated_at=item.updated_at,
                 created_at=item.created_at,
                 build_status=projection.build_status,
@@ -558,14 +579,18 @@ def assemble_todo_from_db(
                 integration_phase=projection.integration_phase,
                 finalize_status=projection.finalize_status,
                 prepare_review_verdict=projection.prepare_review_verdict,
-                hold=bool(state.get("hold")),
+                hold=bool(state.get(_ProjectionStateKey.HOLD)),
                 held=held,
                 hold_source=(
-                    str(hold_audit.get("source"))
-                    if isinstance(hold_audit, dict) and isinstance(hold_audit.get("source"), str)
+                    str(hold_audit.get(_ProjectionStateKey.HOLD_SOURCE))
+                    if isinstance(hold_audit, dict) and isinstance(hold_audit.get(_ProjectionStateKey.HOLD_SOURCE), str)
                     else None
                 ),
-                active_runner=str(state.get("active_runner")) if isinstance(state.get("active_runner"), str) else None,
+                active_runner=(
+                    str(state.get(_ProjectionStateKey.ACTIVE_RUNNER))
+                    if isinstance(state.get(_ProjectionStateKey.ACTIVE_RUNNER), str)
+                    else None
+                ),
                 prepared_session_id=_non_empty_str(state.get(PREPARED_SESSION_ID_STATE_KEY)),
                 files=[artifact.name for artifact in item.artifact_files],
                 artifact_updated_at={
@@ -600,11 +625,7 @@ def assemble_todo_from_db(
     if total_dt >= 2.0:
         deps_count = sum(len(deps) for deps in snapshot.dependencies.values())
         logger.warning(
-            (
-                "assemble_todo_from_db was slow: total=%.3fs project=%s rows=%d deps=%d "
-                "init=%.3fs conn_open=%.3fs todo=%.3fs deps_load=%.3fs "
-                "state_queries=%.3fs artifact_queries=%.3fs todo_build=%.3fs other=%.3fs"
-            ),
+            _SLOW_ASSEMBLE_LOG,
             total_dt,
             project_path,
             len(snapshot.items),

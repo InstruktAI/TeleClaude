@@ -50,7 +50,7 @@ from teleclaude.core.next_machine.review_evidence import (
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.core.workflow_store import WorkflowStore, get_workflow_store_sync
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store_sync
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import BreakdownState, FinalizeModel
 

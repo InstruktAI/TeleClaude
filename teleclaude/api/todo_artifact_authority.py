@@ -20,7 +20,7 @@ from teleclaude.core.session_utils import session_in_claiming_group
 from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX, Lineage
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 _FOREIGN_ARTIFACT_CLAIM_DETAIL = (
     "todo '{slug}' is claimed by session '{holder}'; write refused. "
@@ -77,7 +77,7 @@ def resolve_creation_lineage(identity: CallerIdentity | None) -> Lineage:
     )
 
 
-async def refuse_foreign_claim(todos_db: TodosDb, identity: CallerIdentity, slug: str) -> None:
+async def refuse_foreign_claim(todos_db: WorkflowStore, identity: CallerIdentity, slug: str) -> None:
     """Refuse an artifact write from outside a claimed slug's claiming group.
 
     A live ``active_runner`` on the slug's state names the claim holder; its
@@ -99,7 +99,7 @@ async def refuse_foreign_claim(todos_db: TodosDb, identity: CallerIdentity, slug
 
 
 async def refuse_todo_update_outside_claiming_group(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     identity: CallerIdentity,
     slug: str,
 ) -> None:
@@ -116,7 +116,7 @@ async def refuse_todo_update_outside_claiming_group(
 
 
 async def _foreign_live_claim_holder(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     caller_session_id: str,
     slug: str,
 ) -> str | None:

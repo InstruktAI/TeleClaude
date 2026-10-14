@@ -21,7 +21,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 
 class DispatchReason(StrEnum):
@@ -100,7 +100,7 @@ def review_digest_pair(
 
 
 async def build_upstream_diff_pairs(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     upstream_digests: dict[str, str],
     expected_upstreams: tuple[tuple[str, str, str], ...],

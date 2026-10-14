@@ -23,7 +23,7 @@ from teleclaude.api.todo_artifact_authority import (
 from teleclaude.api.todo_routes import (
     _DRIFT_TRACKED_ARTIFACT_NAMES,
     _default_cwd,
-    _get_todos_db_from_cwd,
+    _get_workflow_store_from_cwd,
     _sync_artifact_provenance_state,
 )
 from teleclaude.api.todo_update_support import require_slug_in_todo
@@ -40,7 +40,7 @@ from teleclaude.core.todos_db import HolderWriteRefused, malformed_digest_detail
 from teleclaude.project_root import resolve_project_root
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 logger = get_logger(__name__)
 
@@ -94,7 +94,7 @@ class _ArtifactListResponse(BaseModel):
     artifacts: list[_ArtifactListEntry]
 
 
-async def _clear_artifact_provenance_state(todos_db: TodosDb, slug: str, artifact_name: str) -> None:
+async def _clear_artifact_provenance_state(todos_db: WorkflowStore, slug: str, artifact_name: str) -> None:
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
         return
@@ -103,9 +103,9 @@ async def _clear_artifact_provenance_state(todos_db: TodosDb, slug: str, artifac
     await writer.commit(todos_db, slug)
 
 
-async def _refuse_holder_mutation(todos_db: TodosDb, slug: str) -> None:
+async def _refuse_holder_mutation(todos_db: WorkflowStore, slug: str) -> None:
     """Raise a 409 if ``slug`` is a structural holder; its artifacts are frozen evidence."""
-    if await todos_db.is_holder(slug):
+    if await todos_db.is_structural_group_holder(slug):
         raise HTTPException(
             status_code=409,
             detail=(
@@ -124,7 +124,7 @@ async def read_artifact(
 ) -> _ArtifactReadResponse:
     """Read a todo artifact by slug and name."""
     effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    todos_db = await _get_workflow_store_from_cwd(effective_cwd)
     content = await todos_db.read_artifact(slug, name, include_removed=True)
     return _ArtifactReadResponse(slug=slug, name=name, content=content)
 
@@ -160,7 +160,7 @@ async def write_artifact(
         project_root = str(resolve_project_root(effective_cwd))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    todos_db = await _get_todos_db_from_cwd(project_root)
+    todos_db = await _get_workflow_store_from_cwd(project_root)
     await _refuse_holder_mutation(todos_db, slug)
     await require_slug_in_todo(todos_db, slug)
     await refuse_foreign_claim(todos_db, identity, slug)
@@ -210,7 +210,7 @@ async def remove_artifact(
 ) -> _ArtifactRemoveResponse:
     """Remove a todo artifact and its version history."""
     effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    todos_db = await _get_workflow_store_from_cwd(effective_cwd)
     await _refuse_holder_mutation(todos_db, slug)
     if name == ARTIFACT_INPUT:
         raise HTTPException(status_code=400, detail="input artifact cannot be removed")
@@ -261,7 +261,7 @@ async def diff_artifact(
     malformed_detail = malformed_digest_detail(old_digest, new_digest)
     if malformed_detail is not None:
         raise HTTPException(status_code=422, detail=malformed_detail)
-    todos_db = await _get_todos_db_from_cwd(cwd or _default_cwd())
+    todos_db = await _get_workflow_store_from_cwd(cwd or _default_cwd())
     try:
         diff = await todos_db.artifacts_diff(slug, name, old_digest, new_digest, include_removed=True)
     except ValueError as exc:
@@ -277,7 +277,7 @@ async def list_artifacts(
 ) -> _ArtifactListResponse:
     """List artifact names for a slug, with each artifact's distinct writers."""
     effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    todos_db = await _get_workflow_store_from_cwd(effective_cwd)
     rows = await todos_db.list_artifacts_with_writers(slug, include_removed=True)
     entries = [_ArtifactListEntry(name=row["name"], writers=row["writers"]) for row in rows]
     return _ArtifactListResponse(slug=slug, artifacts=entries)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.core.workflow_store import write_workflow_artifact_sync
+from teleclaude.core.workflow_store.store import write_workflow_artifact_sync
 
 
 def artifact_display_filename(artifact_name: str) -> str:

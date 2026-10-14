@@ -16,7 +16,7 @@ from teleclaude.cli.telec.surface import TODO_LIST
 from teleclaude.constants import TodoStatus
 from teleclaude.core.todo import parse_since_to_cutoff
 from teleclaude.core.todo_tree import TodoNode, build_todo_sections, flatten
-from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.services.work import get_work_service
 
 __all__ = ["_handle_todo_list"]
@@ -43,7 +43,7 @@ def _handle_todo_list(args: list[str]) -> None:
     show_icebox = parsed["include_icebox"] or parsed["icebox_only"]
     show_removed = parsed["include_removed"] or parsed["removed_only"]
 
-    async def read_entries(_todos_db: TodosDb) -> list[TodoDTO]:
+    async def read_entries(_todos_db: WorkflowStore) -> list[TodoDTO]:
         project_root = _resolve_project_root_or_exit()
         return get_work_service(str(project_root)).todo.entries(
             include_icebox=True,

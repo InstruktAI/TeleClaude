@@ -5,7 +5,7 @@ mutations through ``StateWriter`` (full-state validation against
 :class:`TodoState`), ``ApprovalsManager`` (approval / skip / drift stamps), and
 ``ReviewManager`` (verdict and findings bookkeeping).
 
-No direct :class:`TodosDb` writes happen outside this module in the migrated
+No direct :class:`WorkflowStore` writes happen outside this module in the migrated
 flows — persistence is always driven by ``StateWriter``.
 """
 
@@ -40,10 +40,7 @@ from teleclaude.types.todos import (
 )
 
 if TYPE_CHECKING:
-    from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
-
-    from teleclaude.core.todos_db import TodosDb
-    from teleclaude.core.workflow_store import WorkflowStore
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 
 __all__ = [
@@ -148,35 +145,22 @@ class StateWriter:
 
     async def commit(
         self,
-        todos_db: TodosDb,
+        todos_db: WorkflowStore,
         slug: str,
-        *,
-        session: SqlAsyncSession | None = None,
     ) -> dict[str, StateValue]:
-        """Validate and persist the current state via the async DB session.
-
-        When ``session`` is provided the write participates in that caller-owned
-        transaction, so transactional flows (e.g. ``todo_content_create``) can
-        keep state persistence on the single validated boundary without opening a
-        nested session.
-        """
+        """Validate and persist the current state through the workflow store."""
         payload = self.to_dict()
-        if session is None:
-            await todos_db.write_state(slug, payload)
-        else:
-            await todos_db.write_state(slug, payload, session=session)
+        await todos_db.write_state(slug, payload)
         return payload
 
     async def commit_by_id(
         self,
-        todos_db: TodosDb,
+        todos_db: WorkflowStore,
         todo_id: str,
-        *,
-        session: SqlAsyncSession | None = None,
     ) -> dict[str, StateValue]:
         """Validate and persist the current state by durable todo row id."""
         payload = self.to_dict()
-        await todos_db.write_state_by_id(todo_id, payload, session=session)
+        await todos_db.write_state_by_id(todo_id, payload)
         return payload
 
     def commit_sync(self, todos_db: WorkflowStore, slug: str) -> dict[str, StateValue]:

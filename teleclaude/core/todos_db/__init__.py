@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 
 from teleclaude.core.todos_db_path import todos_db_path
+from teleclaude.core.workflow_store.types import IdentityResolution as TodoIdentityResolution
 
 from ._artifacts import TodosDbArtifactsMixin, malformed_digest_detail
 from ._base import TodosDbBase
@@ -16,6 +18,7 @@ from ._errors import (
     HolderTransitionRefused,
     HolderWriteRefused,
 )
+from ._identity_pin import todo_identity_pin
 from ._integration import TodosDbIntegrationMixin
 from ._projection import TodosDbProjectionMixin
 from ._rows import ArtifactMetadataRow, ArtifactVersionRow, ArtifactWritersRow, TodoRow
@@ -24,9 +27,9 @@ from ._todo import TodosDbTodoMixin
 from ._todo_soft_delete import (
     TodoIdentityActionRefused,
     TodoIdentityNotFound,
-    TodoIdentityResolution,
     TodosDbTodoSoftDeleteMixin,
 )
+from ._workflow_operations import TodosDbWorkflowOperationsMixin
 
 
 class TodosDb(
@@ -36,9 +39,15 @@ class TodosDb(
     TodosDbStateMixin,
     TodosDbIntegrationMixin,
     TodosDbProjectionMixin,
+    TodosDbWorkflowOperationsMixin,
     TodosDbBase,
 ):
     """Database interface for todo lifecycle state and artifacts."""
+
+    @property
+    def project_root(self) -> Path:
+        """Return the canonical project root without exposing its database path."""
+        return self._db_path.parent.parent if self._db_path.parent.name == ".teleclaude" else self._db_path.parent
 
     def set_workflow_hooks(
         self,
@@ -50,6 +59,20 @@ class TodosDb(
         self._on_mutation = on_mutation
         self._on_phase_transition = on_phase_transition
         self._on_delivered = on_delivered
+
+    @contextmanager
+    def identity_scope(self, slug: str, todo_id: str) -> Iterator[None]:
+        """Pin an identity-addressed operation without publishing the DB path."""
+        with todo_identity_pin(db_path=self.db_path, slug=slug, todo_id=todo_id):
+            yield
+
+    def notify_committed(
+        self,
+        event_hint: str = "todo_updated",
+        event_data: Mapping[str, object] | None = None,
+    ) -> None:
+        """Publish the existing mutation event after a caller-owned commit."""
+        self.on_committed(event_hint, event_data)
 
 
 _instances: dict[str, TodosDb] = {}

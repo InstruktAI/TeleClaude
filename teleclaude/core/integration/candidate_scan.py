@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.integration.git_ops import _run_git
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
-from teleclaude.core.workflow_store import get_workflow_store_sync
+from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.types.state_value import StateValue
 
 logger = get_logger(__name__)

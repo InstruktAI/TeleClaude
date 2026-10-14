@@ -63,7 +63,7 @@ from teleclaude.core.session_listing import SessionListingSelection
 from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.session_utils import WorkingDirectoryUnavailableError, resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
-from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.events.envelope import EventHomeMarker, EventVisibility
 from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.project_root import is_project_checkout
@@ -106,13 +106,13 @@ async def _read_todo_owner_principal(project_path: str, slug: str) -> str | None
     The caller establishes the human root only from a proven owner; an
     unreadable owner is an error, never a license to fall back.
     """
-    todos_db = await get_todos_db(project_path)
+    todos_db = await get_workflow_store(project_path)
     return Lineage.root_of(await todos_db.read_lineage(slug))
 
 
 async def _resolve_prepare_todo_kind(project_path: str, slug: str) -> str:
     """Read the authoritative prepare kind on the target machine."""
-    state = await (await get_todos_db(project_path)).read_state(slug)
+    state = await (await get_workflow_store(project_path)).read_state(slug)
     kind = state.get("kind") if state else None
     if not isinstance(kind, str) or kind not in ALL_DUMP_KINDS:
         raise ValueError(f"Prepare routing requires canonical todo kind for '{slug}'")

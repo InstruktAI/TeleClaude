@@ -14,7 +14,7 @@ from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecy
 from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.next_machine.review_evidence import BuildReviewVerdict
 from teleclaude.core.todo import assemble_todo_from_db
-from teleclaude.core.workflow_store import get_workflow_store_sync
+from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.types.todo_kind import TodoKind
 
 if TYPE_CHECKING:

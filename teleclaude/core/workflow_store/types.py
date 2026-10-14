@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import NewType, Protocol
+from typing import NamedTuple, NewType, Protocol, TypedDict
 
+from teleclaude.constants import TodoStatus
 from teleclaude.types.state_value import StateValue
 
 WorkItemId = NewType("WorkItemId", str)
@@ -20,6 +21,12 @@ class StorePresenceKind(StrEnum):
     ABSENT = "absent"
     PRESENT = "present"
     INVALID = "invalid"
+
+
+class StoreIntegrityStatus(StrEnum):
+    OK = "ok"
+    ABSENT = "absent"
+    FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -38,6 +45,78 @@ class StoreCapabilities:
     trail: bool
     delivery_candidates: bool
     incremental_replica_transfer: bool
+
+
+class WorkItem(TypedDict):
+    id: str
+    slug: str
+    ready_since: str | None
+    schedule: str | None
+    group_id: str | None
+    description: str | None
+    status: str
+    delivered_at: str | None
+    delivered_commit: str | None
+    updated_at: str
+    created_at: str
+    removed_at: str | None
+    children: list[str] | None
+    lineage: str | None
+    entry_point: str | None
+    human_involved: bool
+    context: str | None
+
+
+class ArtifactWriterSet(TypedDict):
+    name: str
+    writers: list[str]
+
+
+class ArtifactMetadata(TypedDict):
+    name: str
+    digest: str
+    updated_by: str
+    updated_at: str
+
+
+class ArtifactRemoval(TypedDict):
+    removed: bool
+    versions_deleted: int
+
+
+class WorkItemStateRead(NamedTuple):
+    status: str | None
+    state: dict[str, StateValue] | None
+    is_structural_group_holder: bool
+
+
+class DependencyStatus(NamedTuple):
+    dep_slug: str
+    todo_status: TodoStatus
+
+
+class IdentityResolution(NamedTuple):
+    slug: WorkItemId
+    status: TodoStatus
+
+
+class ExpiredRemovedItem(TypedDict):
+    id: str
+    slug: str
+    removed_at: str
+    pending_purge_paths: list[str] | None
+
+
+class PurgedItem(TypedDict):
+    id: str
+    slug: str
+    removed_at: str
+
+
+class RemovalRequest(TypedDict):
+    force: bool
+    operation_id: str | None
+    caller_session_id: str | None
 
 
 @dataclass(frozen=True)
@@ -65,13 +144,13 @@ class GroupMembership:
     parent: WorkItemId | None
 
 
-@dataclass(frozen=True)
-class ArtifactVersion:
-    """Immutable content revision and its attribution."""
+class ArtifactVersion(TypedDict):
+    """Immutable artifact body revision and its attribution."""
 
-    revision: str
+    content: str
+    digest: str
     created_at: str
-    updated_by: str | None
+    updated_by: str
 
 
 @dataclass(frozen=True)

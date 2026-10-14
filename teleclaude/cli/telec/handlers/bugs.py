@@ -36,7 +36,7 @@ from teleclaude.types.todo_kind import TodoKind
 
 if TYPE_CHECKING:
     from teleclaude.api_models import BugListEntryDTO
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 __all__ = [
     "_handle_bugs",
@@ -294,7 +294,7 @@ def _handle_bugs_list(args: list[str]) -> None:
         print(_usage("bugs", "list"))
         raise SystemExit(1)
 
-    async def read_bugs(_todos_db: TodosDb) -> list[BugListEntryDTO]:
+    async def read_bugs(_todos_db: WorkflowStore) -> list[BugListEntryDTO]:
         from teleclaude.services.work import get_work_service  # noqa: PLC0415 - deferred command-local dependency.
 
         project_root = resolve_invocation_roots().require_project_root()

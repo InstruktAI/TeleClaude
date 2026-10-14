@@ -18,8 +18,8 @@ from typing import Self
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.todo_dependency_warnings import freeze_dependent_warnings, unfreeze_frozen_dep_warnings
-from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._errors import DeliveryProvenanceRefused
+from teleclaude.core.workflow_store.store import get_workflow_store
 
 _OUTCOME_FIELD = "outcome"
 _DETAIL_FIELD = "detail"
@@ -66,7 +66,7 @@ class SlugActionResult:
 
 async def freeze_todo(project_root: Path, slug: str) -> SlugActionResult:
     """Move a todo to the icebox, warning about active todos it leaves waiting."""
-    todos_db = await get_todos_db(project_root)
+    todos_db = await get_workflow_store(project_root)
     if not await todos_db.freeze(slug):
         return SlugActionResult(outcome=SlugActionOutcome.NOT_FOUND)
     open_dependents = await todos_db.get_open_dependents(slug)
@@ -75,7 +75,7 @@ async def freeze_todo(project_root: Path, slug: str) -> SlugActionResult:
 
 async def unfreeze_todo(project_root: Path, slug: str) -> SlugActionResult:
     """Return an iceboxed todo to the active list, warning about dependencies still iceboxed."""
-    todos_db = await get_todos_db(project_root)
+    todos_db = await get_workflow_store(project_root)
     if not await todos_db.unfreeze(slug):
         return SlugActionResult(outcome=SlugActionOutcome.NOT_FOUND)
     dependencies = await todos_db.get_deps_with_status(slug)
@@ -90,7 +90,7 @@ async def deliver_todo(project_root: Path, slug: str, commit: str | None) -> Slu
             outcome=SlugActionOutcome.REFUSED,
             detail=_RECONCILIATION_FAILED_DETAIL.format(slug=slug, reason=receipt.reason),
         )
-    todos_db = await get_todos_db(project_root)
+    todos_db = await get_workflow_store(project_root)
     try:
         delivered = await todos_db.deliver(
             slug,

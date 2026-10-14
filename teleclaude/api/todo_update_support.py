@@ -31,8 +31,8 @@ from teleclaude.core.todos_db import (
     GroupDependencyConflict,
     HolderReconciliationRefused,
     HolderTransitionRefused,
-    TodosDb,
 )
+from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS
 from teleclaude.types.todos import HoldAuditSource
 
@@ -101,7 +101,7 @@ def normalize_schedule_request(schedule: str | None) -> str | None:
 
 
 async def apply_group_membership_update(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     *,
     slug: str,
     group_slug: str | None,
@@ -110,7 +110,7 @@ async def apply_group_membership_update(
     identity: CallerIdentity,
 ) -> None:
     """Validate and apply the group leg before other update legs can write."""
-    if group_slug is not None and not await todos_db.is_holder(group_slug):
+    if group_slug is not None and not await todos_db.is_structural_group_holder(group_slug):
         await refuse_todo_update_outside_claiming_group(todos_db, identity, group_slug)
     if requested_after is not None:
         await validate_requested_dependencies(todos_db, slug, requested_after, check_membership=False)
@@ -149,7 +149,7 @@ async def apply_group_membership_update(
 
 
 async def apply_dependency_update(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     *,
     slug: str,
     requested_after: list[str] | None,
@@ -174,7 +174,7 @@ async def apply_dependency_update(
     return []
 
 
-async def resolve_current_group_slug(todos_db: TodosDb, slug: str) -> str | None:
+async def resolve_current_group_slug(todos_db: WorkflowStore, slug: str) -> str | None:
     """Return the live todo's holder slug, or None when it is ungrouped."""
     rows = await todos_db.list_todo(include_icebox=True, include_holders=True)
     slug_by_id = {row["id"]: row["slug"] for row in rows}
@@ -205,7 +205,7 @@ def require_slug_found(slug: str, *, found: bool, detail: str = SLUG_NOT_FOUND_D
         raise HTTPException(status_code=404, detail=detail.format(slug=slug))
 
 
-async def require_slug_in_todo(todos_db: TodosDb, slug: str) -> None:
+async def require_slug_in_todo(todos_db: WorkflowStore, slug: str) -> None:
     """Require a live slug and explain retained removed state when it exists."""
     if await todos_db.slug_in_todo(slug):
         return
@@ -219,7 +219,7 @@ async def require_slug_in_todo(todos_db: TodosDb, slug: str) -> None:
 
 
 async def apply_hold_update(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     *,
     hold: bool,

@@ -78,7 +78,7 @@ from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.git_ops import build_git_hook_env
 from teleclaude.core.next_machine.marker_reconciliation import MarkerReceipt
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
-from teleclaude.core.workflow_store import get_workflow_store_sync
+from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.quality.gate import LintGateOutcome, run_lint_gate
 from teleclaude.runtime.agy_workspace_trust import remove_vanished_worktree_trust

@@ -26,10 +26,8 @@ from teleclaude.constants import (
 from teleclaude.slug import validate_slug
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import (
-        ArtifactWritersRow,
-        TodosDb,
-    )
+    from teleclaude.core.todos_db import ArtifactWritersRow
+    from teleclaude.core.workflow_store.store import WorkflowStore
     from teleclaude.services.work.slug_actions import SlugActionResult
 
 
@@ -686,7 +684,7 @@ def _handle_artifacts_list(args: list[str]) -> None:
 
     slug = args[0]
 
-    async def read_artifacts(todos_db: TodosDb) -> list[ArtifactWritersRow]:
+    async def read_artifacts(todos_db: WorkflowStore) -> list[ArtifactWritersRow]:
         return await todos_db.list_artifacts_with_writers(slug, include_removed=True)
 
     if addressed_computer() is not None:
@@ -717,7 +715,7 @@ def _handle_artifacts_read(args: list[str]) -> None:
     slug, name = args[0], args[1]
     _validate_artifact_name(name)
 
-    async def read_artifact(todos_db: TodosDb) -> str:
+    async def read_artifact(todos_db: WorkflowStore) -> str:
         return await todos_db.read_artifact(slug, name, include_removed=True)
 
     if addressed_computer() is not None:
@@ -744,7 +742,7 @@ def _handle_artifacts_diff(args: list[str]) -> None:
         print(f"Error: {malformed_detail}", file=sys.stderr)
         raise SystemExit(1)
 
-    async def read_diff(todos_db: TodosDb) -> str:
+    async def read_diff(todos_db: WorkflowStore) -> str:
         return await todos_db.artifacts_diff(slug, name, old_digest, new_digest, include_removed=True)
 
     if addressed_computer() is not None:

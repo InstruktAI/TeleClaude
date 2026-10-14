@@ -61,7 +61,7 @@ from teleclaude.core.integration.step_functions import (
 )
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.core.workflow_store import get_workflow_store_sync
+from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.runtime.command_runner import (
     ProcessGroupCancellation,
     ProcessGroupCancellationRequested,

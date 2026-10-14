@@ -79,12 +79,12 @@ from teleclaude.session_identity import get_session_id
 from teleclaude.snippet_validation import snippet_body_digest_for
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.operation_follow_through import defer_follow_through
 from teleclaude.core.operation_progress import emit_operation_progress
-from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 _NO_CURRENT_WORK_SCRIPT = (
@@ -230,7 +230,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         Plain text instructions for the orchestrator to execute
     """
     cwd = await _normalize_next_work_cwd(cwd)
-    todos_db = await get_todos_db(cwd)
+    todos_db = await get_workflow_store(cwd)
 
     phase_slug = slug or "<auto>"
     resolved_slug, slug_error = await _resolve_work_slug(todos_db, slug, phase_slug)
@@ -375,7 +375,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
 
 
 async def _advance_prepared_to_build_started(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     state: dict[str, StateValue],
     worktree_cwd: str,
@@ -457,7 +457,7 @@ def _merge_main_recovery_wait_clause(slug: str, lifecycle_phase: str) -> str:
 
 
 async def _check_work_entry_drift(
-    db: Db, todos_db: TodosDb, resolved_slug: str, cwd: str, phase_slug: str
+    db: Db, todos_db: WorkflowStore, resolved_slug: str, cwd: str, phase_slug: str
 ) -> str | None:
     """Own the work-entry drift path before any worktree setup can run.
 
@@ -510,7 +510,7 @@ async def _check_work_entry_drift(
     return _return_to_preparation(db, cwd, resolved_slug, WorkLaneReturnReason.SUBSTANTIVE_DRIFT)
 
 
-async def _check_work_entry_kickback(db: Db, todos_db: TodosDb, resolved_slug: str, cwd: str) -> str | None:
+async def _check_work_entry_kickback(db: Db, todos_db: WorkflowStore, resolved_slug: str, cwd: str) -> str | None:
     """Recognize a kickback on work re-entry and return the todo to preparation.
 
     A kickback (``telec todo stamp <slug> --kickback``) invalidates the implementation-plan
@@ -624,7 +624,7 @@ async def _normalize_next_work_cwd(cwd: str) -> str:
     return canonical_cwd
 
 
-async def _resolve_work_slug(todos_db: TodosDb, slug: str | None, phase_slug: str) -> tuple[str, str | None]:
+async def _resolve_work_slug(todos_db: WorkflowStore, slug: str | None, phase_slug: str) -> tuple[str, str | None]:
     """Resolve the target slug or return a formatted early-exit message."""
     slug_resolution_started = perf_counter()
     if slug is not None:
@@ -639,7 +639,7 @@ async def _resolve_work_slug(todos_db: TodosDb, slug: str | None, phase_slug: st
 
 
 async def _resolve_explicit_work_slug(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     phase_slug: str,
     slug_resolution_started: float,
@@ -651,7 +651,7 @@ async def _resolve_explicit_work_slug(
     # slug never matches slug_in_todo (active/icebox only), so checking
     # membership first would reject it as not-found before the holder
     # resolver below ever runs.
-    is_holder_slug = not is_bug and await todos_db.is_holder(slug)
+    is_holder_slug = not is_bug and await todos_db.is_structural_group_holder(slug)
     delivered = set()
     if not is_bug:
         delivered = await todos_db.delivered_slugs()
@@ -679,7 +679,7 @@ async def _resolve_explicit_work_slug(
 
 
 async def _resolve_holder_slug(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     deps: dict[str, list[str]],
     phase_slug: str,
@@ -734,7 +734,7 @@ async def _resolve_holder_slug(
 
 
 async def _validate_explicit_slug_readiness(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     phase: str,
     deps: dict[str, list[str]],
@@ -774,7 +774,7 @@ async def _validate_work_preconditions(cwd: str, resolved_slug: str) -> str | No
 
 
 async def _ensure_worktree_ready(
-    cwd: str, resolved_slug: str, phase_slug: str, todos_db: TodosDb
+    cwd: str, resolved_slug: str, phase_slug: str, todos_db: WorkflowStore
 ) -> tuple[str, str | None]:
     """Ensure the worktree exists and is prepared under the slug single-flight lock."""
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / resolved_slug)

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import time
-from typing import Any, cast
+from typing import Protocol, cast
 
 from teleclaude.constants import TodoStatus
 from teleclaude.core.workflow_store.types import (
@@ -19,34 +20,54 @@ from teleclaude.types.state_value import StateValue
 
 from ._upcycle import upcycle_state_dict
 
+_TODO_ROWS_QUERY_PREFIX = (
+    "SELECT id, slug, ready_since, schedule, group_id, description, status, delivered_at, "
+    "updated_at, created_at, removed_at, lineage, entry_point, human_involved, context FROM todo WHERE status IN ("
+)
+_TODO_ROWS_QUERY_SUFFIX = ") ORDER BY id"
+_DELIVERED_SLUGS_QUERY = "SELECT slug FROM todo WHERE status = 'delivered'"
+_DEPENDENCIES_QUERY = "SELECT slug, depends_on FROM todo_deps"
+_STRUCTURAL_GROUPS_QUERY = "SELECT id, slug FROM todo WHERE status = 'holder'"
+_ITEM_STATE_QUERY = "SELECT state FROM todo_state WHERE id = ?"
+_REQUIREMENTS_EXISTS_QUERY = "SELECT 1 FROM todo_artifacts WHERE id = ? AND name = 'requirements'"
+_IMPLEMENTATION_PLAN_EXISTS_QUERY = "SELECT 1 FROM todo_artifacts WHERE id = ? AND name = 'implementation-plan'"
+_ARTIFACTS_FOR_ITEM_QUERY = "SELECT name, updated_at FROM todo_artifacts WHERE id = ? ORDER BY name"
+_ARTIFACT_VERSION_COUNT_QUERY = "SELECT COUNT(*) FROM todo_artifact_versions WHERE id = ?"
+_SQL_PLACEHOLDER = "?"
+_PLACEHOLDER_SEPARATOR = ", "
+
+
+class _ProjectionConnectionHost(Protocol):
+    def _sync_conn(self) -> sqlite3.Connection: ...
+
 
 class TodosDbProjectionMixin:
     """Read workflow projection facts without exposing SQLite to consumers."""
 
-    def read_todo_projection_snapshot_sync(self, statuses: tuple[TodoStatus, ...]) -> TodoProjectionSnapshot:
-        db = cast(Any, self)
+    def read_todo_projection_snapshot_sync(
+        self: _ProjectionConnectionHost,
+        statuses: tuple[TodoStatus, ...],
+    ) -> TodoProjectionSnapshot:
         connection_started = time.perf_counter()
-        connection = db._sync_conn()
+        connection = self._sync_conn()
         connection_seconds = time.perf_counter() - connection_started
         try:
-            placeholders = ", ".join("?" for _ in statuses)
+            placeholders = _PLACEHOLDER_SEPARATOR.join(_SQL_PLACEHOLDER for _ in statuses)
             item_started = time.perf_counter()
             rows = connection.execute(
-                "SELECT id, slug, ready_since, schedule, group_id, description, status, "
-                "delivered_at, updated_at, created_at, removed_at, lineage, entry_point, "
-                f"human_involved, context FROM todo WHERE status IN ({placeholders}) ORDER BY id",  # guard: raw-sql
+                f"{_TODO_ROWS_QUERY_PREFIX}{placeholders}{_TODO_ROWS_QUERY_SUFFIX}",  # guard: raw-sql
                 tuple(status.value for status in statuses),
             ).fetchall()
             item_query_seconds = time.perf_counter() - item_started
 
             delivered_rows = connection.execute(
-                "SELECT slug FROM todo WHERE status = 'delivered'",  # guard: raw-sql
+                _DELIVERED_SLUGS_QUERY,  # guard: raw-sql
             ).fetchall()
             delivered_items = frozenset(WorkItemId(str(row[0])) for row in delivered_rows if isinstance(row[0], str))
 
             dependency_started = time.perf_counter()
             dependency_rows = connection.execute(
-                "SELECT slug, depends_on FROM todo_deps",  # guard: raw-sql
+                _DEPENDENCIES_QUERY,  # guard: raw-sql
             ).fetchall()
             dependencies: dict[WorkItemId, list[WorkItemId]] = {}
             for dependent, prerequisite in dependency_rows:
@@ -55,7 +76,7 @@ class TodosDbProjectionMixin:
             dependency_query_seconds = time.perf_counter() - dependency_started
 
             holders = connection.execute(
-                "SELECT id, slug FROM todo WHERE status = 'holder'",  # guard: raw-sql
+                _STRUCTURAL_GROUPS_QUERY,  # guard: raw-sql
             ).fetchall()
             structural_group_slugs = {
                 StoreAddress(str(row_id)): WorkItemId(str(slug))
@@ -72,7 +93,7 @@ class TodosDbProjectionMixin:
                 row_id, slug = row[0], row[1]
                 state_started = time.perf_counter()
                 state_row = connection.execute(
-                    "SELECT state FROM todo_state WHERE id = ?",  # guard: raw-sql
+                    _ITEM_STATE_QUERY,  # guard: raw-sql
                     (row_id,),
                 ).fetchone()
                 state_query_seconds += time.perf_counter() - state_started
@@ -89,24 +110,24 @@ class TodosDbProjectionMixin:
                 artifact_started = time.perf_counter()
                 has_requirements = (
                     connection.execute(
-                        "SELECT 1 FROM todo_artifacts WHERE id = ? AND name = 'requirements'",  # guard: raw-sql
+                        _REQUIREMENTS_EXISTS_QUERY,  # guard: raw-sql
                         (row_id,),
                     ).fetchone()
                     is not None
                 )
                 has_implementation_plan = (
                     connection.execute(
-                        "SELECT 1 FROM todo_artifacts WHERE id = ? AND name = 'implementation-plan'",  # guard: raw-sql
+                        _IMPLEMENTATION_PLAN_EXISTS_QUERY,  # guard: raw-sql
                         (row_id,),
                     ).fetchone()
                     is not None
                 )
                 artifact_rows = connection.execute(
-                    "SELECT name, updated_at FROM todo_artifacts WHERE id = ? ORDER BY name",  # guard: raw-sql
+                    _ARTIFACTS_FOR_ITEM_QUERY,  # guard: raw-sql
                     (row_id,),
                 ).fetchall()
                 version_row = connection.execute(
-                    "SELECT COUNT(*) FROM todo_artifact_versions WHERE id = ?",  # guard: raw-sql
+                    _ARTIFACT_VERSION_COUNT_QUERY,  # guard: raw-sql
                     (row_id,),
                 ).fetchone()
                 artifact_query_seconds += time.perf_counter() - artifact_started

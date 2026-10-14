@@ -7,7 +7,7 @@ so sub-services share its canonical-root identity.
 
 from __future__ import annotations
 
-from teleclaude.core.workflow_store import WorkflowStore, get_workflow_store
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 
 
 class WorkServiceBase:

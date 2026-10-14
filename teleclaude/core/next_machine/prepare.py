@@ -52,7 +52,7 @@ from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.state_value import StateValue
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 from teleclaude.core.next_machine._types import PreparePhase as _PP
 from teleclaude.core.next_machine.lanes import LifecycleProcedure
@@ -61,7 +61,7 @@ from teleclaude.core.next_machine.slug_resolution import (
     HolderResolutionReason,
     resolve_runnable_holder_children_db,
 )
-from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.workflow_store.store import get_workflow_store
 
 logger = get_logger(__name__)
 
@@ -116,7 +116,7 @@ def _format_holder_prepare_instruction(
 
 
 async def _hydrate_artifact_presence_for_adoption(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     writer: StateWriter,
     *,
@@ -164,7 +164,7 @@ async def _hydrate_artifact_presence_for_adoption(
 
 
 async def _adopt_prepare_phase(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     raw_state: dict[str, StateValue],
     *,
@@ -261,7 +261,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     _ = _commit_writer
 
     cwd = str(resolve_project_root(cwd))
-    todos_db = await get_todos_db(cwd)
+    todos_db = await get_workflow_store(cwd)
 
     if slug is None:
         return format_error("TODO_SLUG_REQUIRED", PREPARE_SLUG_REQUIRED_MESSAGE)
@@ -272,7 +272,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     # slug never matches slug_in_todo (active/icebox only), so checking
     # membership first would reject a childless holder as not-found instead
     # of the ended-group refusal below.
-    is_holder_slug = await todos_db.is_holder(resolved_slug)
+    is_holder_slug = await todos_db.is_structural_group_holder(resolved_slug)
 
     holder_resolution = await resolve_runnable_holder_children_db(
         todos_db,

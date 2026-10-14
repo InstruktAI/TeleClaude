@@ -24,7 +24,7 @@ from teleclaude.commit_identity import SESSION_TRAILER_KEY
 from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine.git_ops import run_git_command
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_project_root
 from teleclaude.types.state_value import StateValue
@@ -204,7 +204,7 @@ async def _append_stamps(
     verdict: CommitReviewVerdict,
     reason: str,
 ) -> None:
-    todos_db = await get_todos_db(project_root)
+    todos_db = await get_workflow_store(project_root)
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
         logger.warning(_LOG_STAMP_NO_STATE, slug=slug, stamping_session=session_id)

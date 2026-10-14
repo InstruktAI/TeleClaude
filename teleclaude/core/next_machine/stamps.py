@@ -5,7 +5,7 @@ parsed stamp intent, validates the relevant evidence, and persists the resulting
 state through :class:`StateWriter`.
 
 Database access goes through the project's memoized factories
-(``get_db``, ``get_todos_db``). They are the singular location and are
+(``get_db``, ``get_workflow_store``). They are the singular location and are
 free to call inline — each operation that needs a database just calls the
 factory; nothing is threaded through parameters.
 """
@@ -79,7 +79,7 @@ from teleclaude.core.next_machine.state_mutation import (
 from teleclaude.core.next_machine.work_lane_release import WorkLaneReturnReason, work_lane_return_follow_through
 from teleclaude.core.operation_follow_through import FollowThrough
 from teleclaude.core.roles import RoleName
-from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_project_root
 from teleclaude.snippet_validation import snippet_body_digest_for
@@ -89,7 +89,7 @@ from teleclaude.types.todos import HoldAuditSource, HoldAuditState
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 _ALL_VERDICT_PHASES = (*_PREPARE_VERDICT_PHASES, _BUILD_VERDICT_PHASE)
 
@@ -184,7 +184,7 @@ async def apply_todo_stamp(
             request_id=request_id,
         )
 
-    todos_db = await get_todos_db(project_root)
+    todos_db = await get_workflow_store(project_root)
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
         raise ValueError(f"no state found for slug '{slug}'")
@@ -243,7 +243,7 @@ def stamp_follow_through(
 
 
 async def _apply_mutation_stamp(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     writer: StateWriter,
     slug: str,
     *,
@@ -412,7 +412,7 @@ def _validate_and_log_verdict_stamp_request(
 
 
 async def _apply_verdict_stamp(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     cwd: str,
     slug: str,
     phase: str,
@@ -422,17 +422,28 @@ async def _apply_verdict_stamp(
 ) -> dict[str, StateValue]:
     """Bind a verdict and both current evidence digests in one DB transaction."""
     binding = REVIEW_EVIDENCE_ARTIFACTS[phase]
-    async with todos_db._session() as session:  # pylint: disable=protected-access
-        raw_state = await todos_db.read_state_in_session(slug, session)
+    external_target_digest = ""
+    if binding.target_artifact_key is None:
+        worktree = Path(cwd) / WORKTREE_DIR / slug
+        external_target_digest = await asyncio.to_thread(get_head_commit, str(worktree))
+    artifact_names = [binding.report_artifact_name]
+    target_artifact = None
+    if binding.target_artifact_key is not None:
+        target_artifact = _STATE_KEY_TO_ARTIFACT_NAME[binding.target_artifact_key]
+        artifact_names.append(target_artifact)
+
+    target_digest = ""
+    report_digest = ""
+
+    def update_state(
+        raw_state: dict[str, StateValue] | None,
+        digests: dict[str, str],
+    ) -> dict[str, StateValue]:
+        nonlocal target_digest, report_digest
         if raw_state is None:
             raise ValueError(f"no state found for slug '{slug}'")
-        report_digest = await todos_db.artifact_digest_in_session(slug, binding.report_artifact_name, session)
-        if binding.target_artifact_key is None:
-            worktree = Path(cwd) / WORKTREE_DIR / slug
-            target_digest = await asyncio.to_thread(get_head_commit, str(worktree))
-        else:
-            target_artifact = _STATE_KEY_TO_ARTIFACT_NAME[binding.target_artifact_key]
-            target_digest = await todos_db.artifact_digest_in_session(slug, target_artifact, session)
+        report_digest = digests[binding.report_artifact_name]
+        target_digest = external_target_digest if target_artifact is None else digests[target_artifact]
         refusal_reason = ""
         if not target_digest:
             refusal_reason = "missing_target_digest"
@@ -460,9 +471,9 @@ async def _apply_verdict_stamp(
             review_report_digest=report_digest,
             caller_session_id=caller_session_id,
         )
-        payload = await writer.commit(todos_db, slug, session=session)
-        await session.commit()
-    todos_db.on_committed()
+        return writer.to_dict()
+
+    payload = await todos_db.update_state_with_artifact_evidence(slug, artifact_names, update_state)
     logger.info(
         "workflow.review_verdict_stamp_decided",
         slug=slug,
@@ -478,7 +489,7 @@ async def _apply_verdict_stamp(
 
 
 async def _apply_readiness_stamp(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     writer: StateWriter,
     slug: str,
     artifact_name: str,
@@ -511,7 +522,7 @@ async def _apply_readiness_stamp(
 
 
 async def _apply_approval_stamp(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     writer: StateWriter,
     slug: str,
     artifact_name: str,
@@ -541,7 +552,7 @@ async def _apply_approval_stamp(
 
 
 async def _apply_task_approval_stamp(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     writer: StateWriter,
     slug: str,
     caller_session_id: str | None,
@@ -572,7 +583,7 @@ async def _apply_task_approval_stamp(
 
 
 async def _apply_diagnosis_settled_stamp(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     writer: StateWriter,
     slug: str,
     caller_session_id: str | None,
@@ -643,7 +654,7 @@ def _apply_creative_gate_stamp(writer: StateWriter, *, section: str, flag: str) 
 
 
 async def _apply_drift_reviewed_stamp(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     writer: StateWriter,
     slug: str,
     value: str,
@@ -764,7 +775,7 @@ def _format_kickback_block(reason: str) -> str:
 
 
 async def _apply_kickback_stamp(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     writer: StateWriter,
     slug: str,
     *,
@@ -827,7 +838,7 @@ async def _apply_kickback_stamp(
 
 
 async def _apply_task_outcome_stamp(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     writer: StateWriter,
     slug: str,
     *,

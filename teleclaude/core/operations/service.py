@@ -80,8 +80,8 @@ from teleclaude.core.operations.todo_removal import run_todo_remove_operation
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.shutdown_drain import OwnedUnit, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
-from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._exceptions import ClaimConflict, OperationErrorPayload, OperationFailure
+from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.identity_reach import resolve_reach
 from teleclaude.types.command_wire import command_from_dict
@@ -254,7 +254,7 @@ class OperationsService:
         if slug is None:
             return OperationKind.TODO_WORK
         project_root = self._require_resolved_checkout(cwd)
-        todos_db = await get_todos_db(project_root)
+        todos_db = await get_workflow_store(project_root)
         state = await todos_db.read_state(slug)
         if state is None:
             return OperationKind.TODO_WORK
@@ -861,7 +861,7 @@ class OperationsService:
 
         slug = operation.slug
         project_root = self._require_resolved_checkout(cwd)
-        todos_db = await get_todos_db(project_root)
+        todos_db = await get_workflow_store(project_root)
 
         if lane in _HOLDER_AWARE_LANES and await resolve_holder_children_db(todos_db, slug):
             return await state_machine(operation, cwd)

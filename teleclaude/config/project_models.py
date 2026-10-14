@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from enum import StrEnum
 
 from teleclaude.closed_model import ClosedModel
 
@@ -13,7 +13,12 @@ class CapabilityConfig(ClosedModel):
     enabled: bool = False
 
 
+class TodoStoreBackend(StrEnum):
+    LOCAL = "local"
+    GITHUB = "github"
+
+
 class TodoStoreConfig(ClosedModel):
     """Project selection for the workflow store adapter."""
 
-    store: Literal["local", "github"] = "local"
+    store: TodoStoreBackend = TodoStoreBackend.LOCAL

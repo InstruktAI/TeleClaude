@@ -14,10 +14,10 @@ from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
 from teleclaude.core.next_machine.state_mutation import ApprovalsManager, StateWriter
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 
-async def seed_plan_drafting(todos_db: TodosDb, slug: str, *, repo_root: str) -> str:
+async def seed_plan_drafting(todos_db: WorkflowStore, slug: str, *, repo_root: str) -> str:
     """Mark a supplied ``--plan`` implementation-plan as a plan-drafting seed.
 
     A supplied plan is an unverified draft basis, not an approved artifact: set
@@ -46,7 +46,7 @@ async def seed_plan_drafting(todos_db: TodosDb, slug: str, *, repo_root: str) ->
 
 
 async def seed_task_plan_authorization(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     *,
     caller_session_id: str,

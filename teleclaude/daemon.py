@@ -242,7 +242,7 @@ from teleclaude.core.task_registry import TASK_REGISTRY_SHUTDOWN_TIMEOUT_S, Supe
 _record_import_timing("teleclaude.core.task_registry", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.workflow_store import WorkflowStore, set_workflow_store_mutation_hook
+from teleclaude.core.workflow_store.store import WorkflowStore, set_workflow_store_mutation_hook
 
 _record_import_timing("teleclaude.core.todos_db", _t)
 
@@ -705,10 +705,10 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         api_server._broadcast_payload("chiptunes_state", payload)
 
     def _register_todos_mutation_hook(self) -> None:
-        """Wire TodosDb mutation callbacks to daemon cache refresh.
+        """Wire WorkflowStore mutation callbacks to daemon cache refresh.
 
-        Called at daemon startup after the event loop is running. Every TodosDb
-        instance created after this point (via get_todos_db or get_todos_db_sync)
+        Called at daemon startup after the event loop is running. Every WorkflowStore
+        instance created after this point (via get_workflow_store or get_workflow_store_sync)
         in teleclaude.core.todos_db
         will call refresh_local_todos on the DaemonCache whenever a mutation
         (write_state, deliver, write_artifact, etc.) is committed.

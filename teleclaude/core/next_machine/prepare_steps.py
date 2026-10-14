@@ -48,7 +48,7 @@ from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.snippet_validation import snippet_body_digest_for
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 
 logger = get_logger(__name__)
@@ -160,7 +160,7 @@ def _drift_anomaly_halt_instruction(
 
 async def _derive_and_commit_drift(
     *,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
@@ -188,7 +188,7 @@ The worker produces {expected}.
 async def _dispatch_worker(
     *,
     db: Db,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     cwd: str,
     phase: PreparePhase,
@@ -379,7 +379,7 @@ def _blocker_resolution(
 async def _prepare_dispatch(
     *,
     db: Db,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     cwd: str,
     phase: PreparePhase,

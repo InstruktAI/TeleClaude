@@ -54,9 +54,9 @@ from teleclaude.core.next_machine.slug_resolution import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
-from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._rows import TodoRow
-from teleclaude.core.todos_db._state import TodoStatusStateRead
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
+from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TodoKind
@@ -319,15 +319,15 @@ def _read_runner_todo(row: TodoRow, status_read: TodoStatusStateRead) -> _Runner
                 schedule=row["schedule"],
             ),
             current_status=current_status,
-            is_holder=status_read.is_holder,
+            is_holder=status_read.is_structural_group_holder,
         )
     if current_status not in _LIVE_TODO_STATUSES:
         return _RunnerTodoRead(
             todo=None,
             current_status=current_status,
-            is_holder=status_read.is_holder,
+            is_holder=status_read.is_structural_group_holder,
         )
-    if status_read.is_holder:
+    if status_read.is_structural_group_holder:
         return _RunnerTodoRead(
             todo=None,
             current_status=current_status,
@@ -393,7 +393,7 @@ def _approval_from_state(state: Mapping[str, StateValue], approval_key: str) -> 
     return approval.get("approved") is True, approved_digest if isinstance(approved_digest, str) else ""
 
 
-async def _clear_active_runner(todos_db: TodosDb, row: TodoRow) -> None:
+async def _clear_active_runner(todos_db: WorkflowStore, row: TodoRow) -> None:
     state = await todos_db.read_state_by_id(row["id"])
     if state is None:
         return
@@ -404,7 +404,7 @@ async def _clear_active_runner(todos_db: TodosDb, row: TodoRow) -> None:
 
 
 async def _set_active_runner(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     session_id: str,
     *,
@@ -433,7 +433,7 @@ async def _set_active_runner(
     await writer.commit(todos_db, slug)
 
 
-async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo], list[str]]:
+async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, RunnerTodo], list[str]]:
     rows = sorted(
         await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True),
         key=lambda row: {"removed": 0, "delivered": 1, "icebox": 2, "active": 3}.get(row["status"], -1),
@@ -443,7 +443,10 @@ async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo],
     states_by_slug: dict[str, TodoState | None] = {}
     statuses_by_slug: dict[str, TodoStatus] = {}
     for row in rows:
-        status_read = status_reads.get(row["id"], TodoStatusStateRead(status=None, state=None, is_holder=False))
+        status_read = status_reads.get(
+            row["id"],
+            TodoStatusStateRead(status=None, state=None, is_structural_group_holder=False),
+        )
         if status_read.status is not None:
             statuses_by_slug[row["slug"]] = TodoStatus(status_read.status)
         states_by_slug[row["slug"]] = (
@@ -452,7 +455,10 @@ async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo],
     loaded: dict[str, RunnerTodo] = {}
     reconciled: list[str] = []
     for row in rows:
-        status_read = status_reads.get(row["id"], TodoStatusStateRead(status=None, state=None, is_holder=False))
+        status_read = status_reads.get(
+            row["id"],
+            TodoStatusStateRead(status=None, state=None, is_structural_group_holder=False),
+        )
         read = _read_runner_todo(row, status_read)
         todo = read.todo
         if todo is None:
@@ -572,7 +578,7 @@ async def dispatch_lifecycle_session(
     *,
     client: SessionRunner,
     runtime_db: Db,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     project_path: str,
     intent: DispatchIntent,
     origin: DispatchOrigin,
@@ -618,7 +624,7 @@ async def run_lifecycle_runner(
 ) -> RunnerResult:
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
-    todos_db = await get_todos_db(project_root)
+    todos_db = await get_workflow_store(project_root)
     todos, reconciled = await _load_todos(todos_db, runtime_db)
     prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
     delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
