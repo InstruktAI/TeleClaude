@@ -27,12 +27,15 @@ Before activation can restart the daemon, the installation retains its identity,
 previous and target revisions, activation time and owed maintenance. Its
 inspection obligation survives process restart and ordinary temporary-file
 cleanup. It records the maintenance result and assessment separately. A service
-manager accepting restart is not a healthy-runtime verdict.
+manager accepting restart is not a healthy-runtime verdict. Every admitted
+release activation owes an assessment; a canonical-main activation owes one when
+its changed paths owe live-runtime log judgment.
 
 An installation's maintenance reaches a settled result when its required actions
 have either succeeded or recorded a terminal failure. The producer publishes
-the local installation-maintenance-settled event from that retained result,
-carrying its activation reference and outcome. This platform-origin event is
+the local installation maintenance event naming that settled state, succeeded
+or failed, from the retained result, carrying its activation reference. One
+settled result keeps one event identity however often its emission is retried. This platform-origin event is
 about the installation on its emitting computer; it is not the upstream
 repository's release announcement. Event emission can be retried from the
 retained obligation after restart without creating new assessment work.

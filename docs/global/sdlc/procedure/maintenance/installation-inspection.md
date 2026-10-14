@@ -4,7 +4,7 @@ delivered_by:
   - installation-activation-inspection
 role: installation-inspector
 subscriptions:
-  - teleclaude.integration.installation.maintenance_settled
+  - teleclaude.integration.installation.maintenance.*
   - teleclaude.system.daemon.restarted
 subscription_home: platform
 dispatch:
