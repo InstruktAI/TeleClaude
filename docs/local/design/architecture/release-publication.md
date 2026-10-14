@@ -131,7 +131,7 @@ provisions each from a pinned qualified base. Guest tooling satisfies the
 release job prerequisites, including native sandbox readiness and full runtime
 acceptance. The release-only scale set and serialized attempt graph separate Linux work
 from external Mac installation proof. A Mac host-admission stage precedes every
-Linux entry path, including outcome reporting. It reconciles durable proof
+Linux entry path. It reconciles durable proof
 ownership from interrupted attempts and admits only a qualified host. Before
 creating its proof VM, the proof controller establishes fresh Fleet observations
 with no live instances or queued demand and confirms preceding owned VMs absent
@@ -145,6 +145,10 @@ record and withholds a Linux successor; the next host-admission stage performs
 bounded recovery. Fleet ownership applies only to its inventory. Recovery is
 owed before the next attempt, without claiming immediate cleanup while the
 host is unavailable. Disposal establishes no provider credential settlement.
+Outcome reporting runs on native Mac capacity and allocates no guest or
+provider; unsuccessful proof withholds Linux publication through the existing
+proof-success requirement. Reporting describes retained evidence only when its
+availability is established (`general/principle/grounding`).
 
 Fleet retains bounded, pressure-aware Linux admission. Proof admission accounts
 for its pinned image and the live host workload separately. The separation
