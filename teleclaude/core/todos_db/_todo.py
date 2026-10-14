@@ -100,6 +100,8 @@ def _todo_row(model: Todo) -> TodoRow:
         status=model.status,
         delivered_at=model.delivered_at,
         delivered_commit=model.delivered_commit,
+        updated_at=model.updated_at,
+        created_at=model.created_at,
         removed_at=model.removed_at,
         children=children if isinstance(children, list) else None,
         lineage=model.lineage,
@@ -115,23 +117,6 @@ class _EntryUpdates(TypedDict, total=False):
     group_id: str
     description: str
     updated_at: str
-
-
-class ExpiredRemovedRow(TypedDict):
-    """Removed todo row eligible for purge planning."""
-
-    id: str
-    slug: str
-    removed_at: str
-    pending_purge_paths: list[str] | None
-
-
-class PurgedRemovedRow(TypedDict):
-    """Removed todo row that was hard-deleted."""
-
-    id: str
-    slug: str
-    removed_at: str
 
 
 def _collect_entry_updates(
@@ -463,6 +448,10 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
             )
             entry_id = session.exec(apply_todo_identity_pin(statement, self, slug)).first()
             return str(entry_id) if entry_id is not None else None
+
+    def resolve_store_address_sync(self, slug: str) -> str | None:
+        """Resolve adapter row addressing separately from canonical slug identity."""
+        return self.resolve_id_sync(slug)
 
     async def deliver(
         self,

@@ -364,6 +364,26 @@ class TodosDbArtifactsMixin:
             artifact = await session.get(TodoArtifact, (row_id, name))
             return artifact.digest if artifact is not None else ""
 
+    def artifact_digest_sync(self, slug: str, name: str) -> str:
+        """Synchronous current artifact digest read for worker-thread callers."""
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            digest = session.exec(
+                select(TodoArtifact.digest)
+                .where(TODO_ARTIFACT_TABLE.c.slug == slug, TODO_ARTIFACT_TABLE.c.name == name)
+                .limit(1)
+            ).first()
+        return str(digest) if isinstance(digest, str) else ""
+
+    def artifact_exists_sync(self, slug: str, name: str) -> bool:
+        """Synchronous current artifact existence read."""
+        with self._sync_session() as session:  # type: ignore[attr-defined]
+            row = session.exec(
+                select(TodoArtifact.id)
+                .where(TODO_ARTIFACT_TABLE.c.slug == slug, TODO_ARTIFACT_TABLE.c.name == name)
+                .limit(1)
+            ).first()
+        return row is not None
+
     async def artifact_digest_in_session(self, slug: str, name: str, session: SqlAsyncSession) -> str:
         """Read an artifact digest through a caller-owned transaction."""
         row_id = await self._resolve_artifact_id(slug, session)

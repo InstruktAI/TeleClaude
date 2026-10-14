@@ -20,7 +20,7 @@ from teleclaude.services.work._todo import TodoOps
 
 
 class SqliteWorkService(WorkServiceBase):
-    """Work service backed by TodosDb (SQLite).
+    """Work service backed by the project's workflow store.
 
     Composes TodoOps, StateOps, and ArtifactOps as sub-services.
     Each sub-service is a plain class with a focused responsibility.

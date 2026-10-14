@@ -23,10 +23,10 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 from teleclaude.core.next_machine.lanes import LifecycleProcedure
-from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.workflow_store.store import get_workflow_store
 
 logger = get_logger(__name__)
 
@@ -151,7 +151,7 @@ def _derive_creative_phase(
     return phase
 
 
-async def _find_next_creative_slug(todos_db: TodosDb, cwd: str) -> str | None:
+async def _find_next_creative_slug(todos_db: WorkflowStore, cwd: str) -> str | None:
     """Find the next active slug that needs creative work from DB.
 
     Phase is never cached — each candidate is re-derived from workspace
@@ -295,7 +295,7 @@ async def next_create(db: Db, slug: str | None, cwd: str) -> str:
     Derives creative phase from DB state and artifacts,
     returns plain text instructions for the orchestrator to execute.
     """
-    todos_db = await get_todos_db(cwd)
+    todos_db = await get_workflow_store(cwd)
 
     resolved_slug = slug or await _find_next_creative_slug(todos_db, cwd)
     if not resolved_slug:

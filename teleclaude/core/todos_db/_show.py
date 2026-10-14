@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, cast
@@ -13,15 +12,13 @@ from teleclaude.core.next_machine.artifacts import artifact_name_to_state_key
 from teleclaude.core.next_machine.commit_review_stamps import current_outcomes
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
 from teleclaude.core.next_machine.slug_resolution import effective_delivered_slugs_for_dependencies
-from teleclaude.core.todos_db._models import Todo, TodoStateModel
-from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, TASK_LIFECYCLE_PHASE_ORDER
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import HoldAuditReason, TodoState
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
-    from teleclaude.core.todos_db._rows import ArtifactMetadataRow
+    from teleclaude.core.workflow_store.store import WorkflowStore
+    from teleclaude.core.workflow_store.types import ArtifactMetadata, TodoDiagnosticRecord
 
 
 # Map derived phase value → human-readable phase label for CurrentBlock.phase.
@@ -137,10 +134,9 @@ ShowPayload = TodoShowPayload | HolderShowPayload
 # ── Derivation helpers ──────────────────────────────────────────────────────
 
 
-def _project_root_from_db(todos_db: TodosDb) -> Path:
-    """Return the project root directory inferred from a TodosDb instance."""
-    db_path = todos_db._db_path
-    return db_path.parent.parent if db_path.parent.name == ".teleclaude" else db_path.parent
+def _project_root_from_db(todos_db: WorkflowStore) -> Path:
+    """Return the canonical project root owned by the selected store."""
+    return todos_db.project_root
 
 
 def _worktree_cwd_for(project_root: Path, slug: str) -> str:
@@ -150,7 +146,7 @@ def _worktree_cwd_for(project_root: Path, slug: str) -> str:
 
 async def _derive_phase_value(
     state: dict[str, StateValue],
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     worktree_cwd: str,
 ) -> str:
@@ -179,7 +175,7 @@ def _phase_label(current_value: str) -> str:
     return _PHASE_LABEL_OVERRIDES.get(lifecycle_phase, lifecycle_phase.value)
 
 
-async def derive_active_todo_stage(todos_db: TodosDb, slug: str, state: dict[str, StateValue]) -> TodoShowStage:
+async def derive_active_todo_stage(todos_db: WorkflowStore, slug: str, state: dict[str, StateValue]) -> TodoShowStage:
     """Classify an in-flight (non-delivered) todo state into its stage bucket.
 
     Reuses the same phase/stage derivation that backs the show payload so callers
@@ -219,13 +215,17 @@ def _derive_current_block(current_value: str, state: dict[str, StateValue]) -> C
     return block
 
 
-def _derive_todo_block(row: Todo | None, deps: dict[str, list[str]], slug: str) -> dict[str, StateValue]:
+def _derive_todo_block(
+    row: TodoDiagnosticRecord | None,
+    deps: dict[str, list[str]],
+    slug: str,
+) -> dict[str, StateValue]:
     """Project the complete persisted todo row for ``slug``, plus derived deps."""
     block: dict[str, StateValue] = {"deps": cast(StateValue, deps.get(slug, []))}
     if row is None:
         return block
 
-    block.update(cast(dict[str, StateValue], row.model_dump()))
+    block.update(cast(dict[str, StateValue], dict(row)))
     return block
 
 
@@ -296,7 +296,7 @@ def _derive_work_block(state_model: TodoState) -> dict[str, StateValue]:
 
 def _derive_artifact_state_block(
     state_model: TodoState,
-    artifact_rows: list[ArtifactMetadataRow],
+    artifact_rows: list[ArtifactMetadata],
 ) -> dict[str, dict[str, StateValue]]:
     """Project per-artifact provenance metadata without body content."""
     artifacts = state_model.artifacts
@@ -307,7 +307,7 @@ def _derive_artifact_state_block(
         entry = getattr(artifacts, state_key, None)
         metadata: dict[str, StateValue]
         if entry is not None:
-            metadata = cast(dict[str, StateValue], entry.model_dump())
+            metadata = cast(dict[str, StateValue], dict(entry))
             if not metadata.get("digest"):
                 metadata["digest"] = artifact_row["digest"]
             if not metadata.get("produced_at"):
@@ -388,7 +388,7 @@ async def _build_blocked_by(
     deps: dict[str, list[str]],
     delivered_slugs: set[str],
     all_states: dict[str, dict[str, StateValue]],
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     project_root: Path,
     *,
     visited: set[str] | None = None,
@@ -434,16 +434,12 @@ async def _build_blocked_by(
     return blockers if blockers else None
 
 
-async def _find_todo_row(todos_db: TodosDb, slug: str) -> Todo | None:
+async def _find_todo_row(todos_db: WorkflowStore, slug: str) -> TodoDiagnosticRecord | None:
     """Return the active/icebox/delivered/holder todo row that backs the show payload."""
-    rows = await todos_db._list_todo_models(include_icebox=True, include_delivered=True, include_holders=True)
-    for row in rows:
-        if row.slug == slug:
-            return row
-    return None
+    return await todos_db.read_todo_diagnostic_record(slug)
 
 
-async def _holder_children(todos_db: TodosDb, holder_id: str) -> list[str]:
+async def _holder_children(todos_db: WorkflowStore, holder_id: str) -> list[str]:
     """Return non-removed direct group children for a structural holder id."""
     entries = await todos_db.list_todo(include_icebox=True, include_delivered=True)
     children = [
@@ -454,7 +450,7 @@ async def _holder_children(todos_db: TodosDb, holder_id: str) -> list[str]:
     return sorted(children)
 
 
-async def _resolve_holder_label(todos_db: TodosDb, group_id: str | None) -> str | None:
+async def _resolve_holder_label(todos_db: WorkflowStore, group_id: str | None) -> str | None:
     """Resolve a child's ``group_id`` to its holder's current slug, or None.
 
     A live join at request time — never a stored copy — so a holder rename
@@ -462,30 +458,29 @@ async def _resolve_holder_label(todos_db: TodosDb, group_id: str | None) -> str 
     """
     if not group_id:
         return None
-    async with todos_db._session() as session:
-        entry = await session.get(Todo, group_id)
-        return entry.slug if entry is not None and entry.status == TodoStatus.HOLDER.value else None
+    rows = await todos_db.list_todo(include_holders=True)
+    holder = next((row for row in rows if row["id"] == group_id), None)
+    return holder["slug"] if holder is not None and holder["status"] == TodoStatus.HOLDER.value else None
 
 
 # ── Main assembler ──────────────────────────────────────────────────────────
 
 
-async def _lookup_removed_state(todos_db: TodosDb, slug: str) -> tuple[dict[str, StateValue], str] | None:
+async def _lookup_removed_state(todos_db: WorkflowStore, slug: str) -> tuple[dict[str, StateValue], str] | None:
     """Resolve slug to its most recently removed row and return state plus durable id."""
     removed_entries = await todos_db.list_todo(include_removed=True, removed_only=True)
     matches = [r for r in removed_entries if r["slug"] == slug]
     if matches:
         # Removed-only entries arrive newest-first by removed_at.
         todo_id = matches[0]["id"]
-        async with todos_db._session() as session:
-            state_model = await session.get(TodoStateModel, todo_id)
-            if state_model is not None:
-                return upcycle_state_dict(json.loads(state_model.state)), todo_id
+        state = await todos_db.read_state_by_id(todo_id)
+        if state is not None:
+            return state, todo_id
     return None
 
 
 async def _resolve_show_state(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     *,
     include_removed: bool,
@@ -509,10 +504,10 @@ async def _resolve_show_state(
 
 
 async def _assemble_holder_payload(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     *,
-    todo_row: Todo,
+    todo_row: TodoDiagnosticRecord,
     holder_children: list[str],
     include_artifact_content: bool,
 ) -> HolderShowPayload:
@@ -528,8 +523,9 @@ async def _assemble_holder_payload(
         roadmap=todo_block,
         artifacts=list(artifact_names),
     )
-    if todo_row.description:
-        payload["description"] = todo_row.description
+    description = todo_row.get("description")
+    if description:
+        payload["description"] = description
     if include_artifact_content:
         artifact_content: dict[str, str] = {}
         for name in artifact_names:
@@ -539,7 +535,7 @@ async def _assemble_holder_payload(
 
 
 async def assemble_show_payload(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     include_removed: bool = False,
     *,
@@ -547,8 +543,8 @@ async def assemble_show_payload(
 ) -> ShowPayload | None:
     """Assemble the full show payload for a slug. Returns None if not found."""
     todo_row = await _find_todo_row(todos_db, slug)
-    if todo_row is not None and todo_row.status == TodoStatus.HOLDER.value:
-        holder_children = await _holder_children(todos_db, todo_row.id)
+    if todo_row is not None and todo_row["status"] == TodoStatus.HOLDER.value:
+        holder_children = await _holder_children(todos_db, todo_row["id"])
         if not holder_children:
             # A childless holder is genuinely outside the todo surface — the
             # show/update-404 scenario this model exists to make unrepresentable
@@ -600,7 +596,7 @@ async def assemble_show_payload(
     if todo_row is not None:
         # Joined from the holder's row at request time — never a stored copy
         # on the child — so a holder rename needs no child-side update.
-        todo_block["group_slug"] = cast(StateValue, await _resolve_holder_label(todos_db, todo_row.group_id))
+        todo_block["group_slug"] = cast(StateValue, await _resolve_holder_label(todos_db, todo_row["group_id"]))
     payload["roadmap"] = todo_block
     payload["state"] = _derive_state_block(state_model)
     payload["approvals"] = _derive_approvals_block(state_model)

@@ -15,7 +15,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.person_display import with_person_chips_on_todos
-from teleclaude.api.todo_routes import _default_cwd, _get_todos_db_from_cwd
+from teleclaude.api.todo_routes import _default_cwd, _get_workflow_store_from_cwd
 from teleclaude.api_models import TodoDTO
 from teleclaude.constants import SLUG_NOT_FOUND_DETAIL
 from teleclaude.core.todos_db._show import assemble_show_payload
@@ -63,7 +63,7 @@ async def show_todo(
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> object:
     """Return the diagnostic state payload of one todo."""
-    todos_db = await _get_todos_db_from_cwd(str(request_project_root(cwd)))
+    todos_db = await _get_workflow_store_from_cwd(str(request_project_root(cwd)))
     payload = await assemble_show_payload(
         todos_db,
         slug,

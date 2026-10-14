@@ -7,8 +7,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.operation_caller_identity import get_caller_session_id
-from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._exceptions import RemoveRefusedLiveWork
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 
 logger = get_logger(__name__)
 
@@ -16,7 +16,7 @@ _CALLER_BINDING_RELEASED_EVENT = "todo removal released caller binding"
 
 
 async def _release_caller_binding_once_removed(
-    db: Db, todos_db: TodosDb, slug: str, caller_session_id: str | None
+    db: Db, todos_db: WorkflowStore, slug: str, caller_session_id: str | None
 ) -> None:
     """Unbind the caller from ``slug`` once the slug no longer resolves to a live todo.
 
@@ -46,7 +46,7 @@ async def execute_todo_remove(
     """Soft-remove a todo via the shared DB primitive.
 
     Follows the standard engine entry contract ``(db, slug, cwd) -> str``. The
-    ``db`` parameter is the daemon DB (unused — TodosDb is resolved from
+    ``db`` parameter is the daemon DB (unused — WorkflowStore is resolved from
     ``cwd``). The soft-remove primitive owns the full cascade: tombstone +
     dependency scrub + slug-keyed filesystem teardown.
     """
@@ -54,7 +54,7 @@ async def execute_todo_remove(
     if not slug:
         raise ValueError("slug is required for remove")
 
-    todos_db = await get_todos_db(cwd)
+    todos_db = await get_workflow_store(cwd)
     caller_session_id = get_caller_session_id()
     state = await todos_db.read_state(slug)
     raw_claim_holder = state.get("active_runner") if isinstance(state, dict) else None

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.core.todos_db import get_todos_db_sync, todos_db_path
+from teleclaude.core.workflow_store.store import write_workflow_artifact_sync
 
 
 def artifact_display_filename(artifact_name: str) -> str:
@@ -12,15 +12,6 @@ def artifact_display_filename(artifact_name: str) -> str:
     return artifact_name
 
 
-def _require_todos_db(project_root: Path) -> Path:
-    """Refuse silent DB creation: artifact ops require the project DB to exist."""
-    db_path = todos_db_path(project_root)
-    if not db_path.exists():
-        raise FileNotFoundError(f"Todos DB not found: {db_path}")
-    return db_path
-
-
 def write_artifact_content(project_root: Path, slug: str, artifact_name: str, content: str) -> None:
-    """Write a todo artifact through the TodosDb sync API and append version history."""
-    _require_todos_db(project_root)
-    get_todos_db_sync(project_root).write_artifact_sync(slug, artifact_name, content)
+    """Write a workflow artifact through the selected store."""
+    write_workflow_artifact_sync(project_root, slug, artifact_name, content)

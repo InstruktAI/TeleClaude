@@ -45,7 +45,7 @@ class _PrepareCompletionLogFields(TypedDict):
 
 if TYPE_CHECKING:
     from teleclaude.core.db import Db
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 
 def worker_idle_post_block(slug: str) -> str:
@@ -71,7 +71,7 @@ def derive_project_root(cwd: str, slug: str) -> str:
 
 async def commit_writer(
     writer: StateWriter,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     state: dict[str, StateValue],
 ) -> None:
@@ -81,7 +81,7 @@ async def commit_writer(
     state.update(payload)
 
 
-async def prepare_step_prepared(db: Db, todos_db: TodosDb, slug: str, *, project_root: str) -> tuple[bool, str]:
+async def prepare_step_prepared(db: Db, todos_db: WorkflowStore, slug: str, *, project_root: str) -> tuple[bool, str]:
     """PREPARED: release the claim; the lifecycle runner dispatches the next lane's orchestrator."""
     state = await todos_db.read_state(slug)
     if state is None:

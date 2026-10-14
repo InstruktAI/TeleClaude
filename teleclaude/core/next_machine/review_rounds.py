@@ -12,7 +12,7 @@ from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.types.todos import BuildReviewState, ReviewVerdictState
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 
 class ReviewPhase(StrEnum):
@@ -87,7 +87,7 @@ def _build_cycle_admission(review: BuildReviewState) -> ReviewAdmission:
 
 
 async def admit_prepare_review(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     state: dict[str, StateValue],
     admission: ReviewAdmission,
@@ -102,7 +102,7 @@ async def admit_prepare_review(
 
 
 async def admit_build_review(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     state: dict[str, StateValue],
     admission: ReviewAdmission,
@@ -163,7 +163,7 @@ def _admission_for(
 
 async def _commit(
     writer: StateWriter,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     state: dict[str, StateValue],
 ) -> None:

@@ -23,10 +23,10 @@ from teleclaude.types.lifecycle import TASK_LIFECYCLE_PHASES
 from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
-from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.core.todos_db._rows import TodoRow
+from teleclaude.core.workflow_store.store import get_workflow_store_sync
 
 
 class HolderResolutionMode(StrEnum):
@@ -58,7 +58,7 @@ class HolderChildResolution:
 
 
 async def resolve_slug_async(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str | None,
     ready_only: bool = False,
     dependencies: dict[str, list[str]] | None = None,
@@ -106,7 +106,7 @@ async def resolve_slug_async(
 
 
 async def _get_item_phase_db(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     delivered: set[str] | None = None,
 ) -> str:
@@ -130,7 +130,7 @@ async def _get_item_phase_db(
     raise ValueError(msg)
 
 
-async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
+async def _is_ready_for_work_db(todos_db: WorkflowStore, slug: str) -> bool:
     """DB-backed wrapper around the canonical readiness gate."""
     state = await todos_db.read_state(slug)
     if state is None:
@@ -166,7 +166,7 @@ def _children_by_group(entries: list[TodoRow]) -> dict[str, list[str]]:
 
 
 async def _resolve_holder_children_from_entries(
-    _todos_db: TodosDb,
+    _todos_db: WorkflowStore,
     holder_slug: str,
     grouped_children: dict[str, list[str]],
 ) -> list[str]:
@@ -175,7 +175,7 @@ async def _resolve_holder_children_from_entries(
 
 
 async def effective_delivered_slugs_for_dependencies(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     delivered: set[str] | None = None,
 ) -> set[str]:
     """Return raw delivered slugs plus holders whose children are all delivered.
@@ -222,7 +222,7 @@ def _state_counts_as_dependency_prepared(state: dict[str, StateValue] | None) ->
 
 
 async def effective_prepared_slugs_for_dependencies(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     delivered: set[str] | None = None,
 ) -> set[str]:
     """Return delivered/prepared slugs plus holders whose children are all prepared."""
@@ -262,7 +262,7 @@ def _is_prepare_runnable_lifecycle(state: dict[str, StateValue] | None) -> bool:
     return lifecycle_phase_index(phase) < lifecycle_phase_index(LifecyclePhase.PREPARED)
 
 
-async def set_item_phase_db(todos_db: TodosDb, slug: str, phase: str) -> None:
+async def set_item_phase_db(todos_db: WorkflowStore, slug: str, phase: str) -> None:
     """Set phase for a work item in todos.db."""
     state = await todos_db.read_state(slug)
     if state is None:
@@ -271,14 +271,14 @@ async def set_item_phase_db(todos_db: TodosDb, slug: str, phase: str) -> None:
     await todos_db.write_state(slug, state)
 
 
-async def resolve_holder_children_db(todos_db: TodosDb, holder_slug: str) -> list[str]:
+async def resolve_holder_children_db(todos_db: WorkflowStore, holder_slug: str) -> list[str]:
     """Resolve container/holder child slugs from DB todo grouping."""
     entries = await todos_db.list_todo(include_delivered=True, include_holders=True)
     return await _resolve_holder_children_from_entries(todos_db, holder_slug, _children_by_group(entries))
 
 
 async def resolve_runnable_holder_children_db(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     holder_slug: str,
     dependencies: dict[str, list[str]],
     *,
@@ -357,10 +357,10 @@ async def resolve_runnable_holder_children_db(
 
 def get_item_phase(cwd: str, slug: str) -> str:
     """Sync legacy: resolve item phase using todos.db-backed state."""
-    todos_db = get_todos_db_sync(cwd)
+    todos_db = get_workflow_store_sync(cwd)
     delivered = todos_db.delivered_slugs_sync()
     is_delivered = slug in delivered
-    is_in_todo = todos_db.resolve_id_sync(slug) is not None
+    is_in_todo = todos_db.resolve_store_address_sync(slug) is not None
 
     if is_in_todo:
         state = todos_db.read_state_sync(slug)
@@ -376,7 +376,7 @@ def get_item_phase(cwd: str, slug: str) -> str:
     raise ValueError(msg)
 
 
-async def slug_in_todo(todos_db: TodosDb, slug: str) -> bool:
+async def slug_in_todo(todos_db: WorkflowStore, slug: str) -> bool:
     """Compatibility shim for callers/tests that still patch module-level todo checks."""
     return await todos_db.slug_in_todo(slug)
 

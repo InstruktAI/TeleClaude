@@ -12,7 +12,7 @@ from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.workflow_store.store import get_workflow_store
 
 _TODO_NOT_FOUND_MESSAGE = "error: todo {slug!r} was not found"
 _CONFLICTING_BINDING_MESSAGE = (
@@ -192,7 +192,7 @@ async def unclaim_todo_for_caller(
     caller_session_id: str | None,
 ) -> ClaimReleaseOutcome:
     project_root = resolve_project_root(cwd)
-    todos_db = await get_todos_db(project_root)
+    todos_db = await get_workflow_store(project_root)
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
         return ClaimReleaseTodoNotFound(slug=slug)

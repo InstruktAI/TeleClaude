@@ -65,7 +65,7 @@ from teleclaude.events.envelope_facts import home_for_project_path
 from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.next_machine.review_evidence import (
     BUILD_REVIEW_PHASE,
@@ -166,7 +166,7 @@ def _artifact_contract_note(slug: str, kind: str) -> str:
 async def _handle_build_complete_claim(
     *,
     db: Db,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     worktree_cwd: str,
     state: dict[str, StateValue],
@@ -222,7 +222,7 @@ async def _handle_build_complete_claim(
 async def _work_step_build_started(
     *,
     db: Db,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     cwd: str,
     worktree_cwd: str,
@@ -347,7 +347,7 @@ def _log_build_reconcile_route(
 
 async def _consume_build_review_verdict(
     *,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     worktree_cwd: str,
     state: dict[str, StateValue],
@@ -438,7 +438,7 @@ async def _consume_build_review_verdict(
 async def _work_step_build_complete(
     *,
     db: Db,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     cwd: str,
     worktree_cwd: str,
@@ -523,7 +523,7 @@ async def _work_step_build_complete(
 async def _work_step_review_changes_requested(
     *,
     db: Db,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     cwd: str,
     worktree_cwd: str,
@@ -639,7 +639,7 @@ async def _handle_finalize_ready_claim(
     slug: str,
     cwd: str,
     worktree_cwd: str,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     state: dict[str, StateValue],
 ) -> tuple[bool, str] | None:
     """Consume a finalize-ready claim by validating triple-ref consistency.
@@ -650,7 +650,7 @@ async def _handle_finalize_ready_claim(
 
     - On valid triple-ref: fires ``finalize_ready`` signal and commits the
       lifecycle change through the state writer, returns ``keep_going=True``.
-      The TodosDb phase-transition chokepoint owns integration event emission.
+      The WorkflowStore phase-transition chokepoint owns integration event emission.
     - On invalid: returns a fix-relay script instructing the orchestrator to
       surface the mismatch (e.g., remote ref drift) and re-stamp.
     """
@@ -712,7 +712,7 @@ async def _handle_finalize_ready_claim(
 async def _work_step_review_approved(
     *,
     db: Db,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     cwd: str,
     worktree_cwd: str,
@@ -786,7 +786,7 @@ async def _work_step_review_approved(
 async def _work_step_finalize_ready(
     *,
     db: Db,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     cwd: str,
     worktree_cwd: str,
@@ -824,7 +824,7 @@ async def _work_step_finalize_ready(
 async def _work_dispatch(
     *,
     db: Db,
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     cwd: str,
     worktree_cwd: str,

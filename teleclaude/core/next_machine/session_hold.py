@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.session_listeners import notify_gate_approved
-from teleclaude.core.todos_db import TodosDb, get_todos_db
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.envelope_facts import home_for_project_path
 from teleclaude.events.producer import publish_event
@@ -119,7 +119,7 @@ async def _manual_close_driver_correlation(db: Db, session_id: str) -> ManualClo
             project_path=None,
             reason=ManualCloseDriverReason(reason),
         )
-    todos_db = await get_todos_db(project_path)
+    todos_db = await get_workflow_store(project_path)
     matches: list[str] = []
     for row in await todos_db.list_todo(include_icebox=True):
         state = await todos_db.read_state(row["slug"])
@@ -187,7 +187,9 @@ async def _project_path_for_session_end(db: Db, session_id: str) -> tuple[str | 
     return _workflow_project_path(session.project_path)
 
 
-async def reconcile_driver_ownership_for_session(todos_db: TodosDb, session_id: str) -> DriverOwnershipReconciliation:
+async def reconcile_driver_ownership_for_session(
+    todos_db: WorkflowStore, session_id: str
+) -> DriverOwnershipReconciliation:
     """Clear every active driver link for a terminal session."""
     cleared_slugs: list[str] = []
     for row in await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True):
@@ -237,7 +239,7 @@ async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveR
         )
 
     assert correlation.slug is not None and correlation.project_path is not None
-    todos_db = await get_todos_db(correlation.project_path)
+    todos_db = await get_workflow_store(correlation.project_path)
     state = await todos_db.read_state(correlation.slug)
     if state is None:
         state_missing = ManualCloseDriverCorrelation(
@@ -279,7 +281,7 @@ async def clear_active_runner_for_session_end(db: Db, session_id: str) -> Active
     project_path, reason = await _project_path_for_session_end(db, session_id)
     if project_path is None:
         return ActiveRunnerMutationResult(slug=None, project_path=None, mutated=False, reason=reason)
-    todos_db = await get_todos_db(project_path)
+    todos_db = await get_workflow_store(project_path)
     reconciliation = await reconcile_driver_ownership_for_session(todos_db, session_id)
     if reconciliation.cleared_slugs:
         logger.info(
@@ -310,7 +312,7 @@ async def notify_runner_of_gate_approval(cwd: str, slug: str, *, acting_session_
     closed, or concurrently disappearing claimants are best-effort outcomes.
     """
     project_path = resolve_project_root(cwd)
-    todos_db = await get_todos_db(project_path)
+    todos_db = await get_workflow_store(project_path)
     await emit_todo_updated(slug=slug, project_root=str(project_path), source=_GATE_APPROVAL_EVENT_SOURCE)
     state = await todos_db.read_state(slug)
     if state is None:

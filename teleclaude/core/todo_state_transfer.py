@@ -5,9 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import sqlite3
 from collections.abc import Mapping
-from contextlib import closing
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -18,7 +16,13 @@ from redis.exceptions import RedisError
 
 from teleclaude.config.machine import config
 from teleclaude.config.referents import ReferentKind, unregistered_referent
-from teleclaude.core.todos_db_path import todos_db_path
+from teleclaude.core.workflow_store.selection import (
+    check_workflow_store_integrity,
+    get_workflow_transfer_source,
+    workflow_store_database_location,
+)
+from teleclaude.core.workflow_store.types import StoreIntegrityStatus as IntegrityStatus
+from teleclaude.core.workflow_store.types import TransferSource
 from teleclaude.services.project_catalog.service import get_project_catalog_service
 from teleclaude.slug import validate_slug
 from teleclaude.transport.peer_heartbeat import PeerAddress, PeerNotOnline, lookup_peer_address
@@ -38,15 +42,11 @@ _REMOTE_TODO_COMMAND: Final[str] = "todo"
 _REMOTE_SYNC_REPLICA_COMMAND: Final[str] = "sync-replica"
 _REMOTE_LOCATE_MODE: Final[str] = "locate"
 _REMOTE_CHECK_MODE: Final[str] = "check"
-_SYNC_EXECUTABLE_OPTION: Final[str] = "--exe"
 _JSON_ENCODING: Final[str] = "utf-8"
-_READ_ONLY_QUERY: Final[str] = "?mode=ro"
-_INTEGRITY_CHECK_SQL: Final[str] = "PRAGMA integrity_check"
 _STATUS_FIELD: Final[str] = "status"
 _PATH_FIELD: Final[str] = "path"
 _REASON_FIELD: Final[str] = "reason"
 _DETAIL_FIELD: Final[str] = "detail"
-_OK_VALUE: Final[str] = "ok"
 _INVALID_PROJECT_SLUG: Final[str] = "project slug must be an unpadded lowercase kebab-case value"
 _TRANSFERRED_DETAIL: Final[str] = "copy verified intact"
 _SELF_TARGET_DETAIL: Final[str] = "target is this computer"
@@ -76,14 +76,6 @@ class LocateStatus(StrEnum):
 
     FOUND = "found"
     ABSENT = "absent"
-
-
-class IntegrityStatus(StrEnum):
-    """Result of checking a target todo database."""
-
-    OK = "ok"
-    ABSENT = "absent"
-    FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -138,21 +130,18 @@ async def transfer_todo_state(project_slugs: list[str], computers: list[str]) ->
     local_computer = config.computer.name
 
     catalog = get_project_catalog_service()
-    local_databases: dict[str, tuple[Path | None, str | None]] = {}
+    local_databases: dict[str, tuple[TransferSource | None, str | None]] = {}
     for project_slug in project_slugs:
         node = catalog.get_by_slug(project_slug)
         if node is None:
             local_databases[project_slug] = (None, str(unregistered_referent(ReferentKind.PROJECT, project_slug)))
             continue
         try:
-            database_path = todos_db_path(node.root)
-        except FileNotFoundError:
-            local_databases[project_slug] = (None, _LOCAL_DATABASE_MISSING)
-            continue
-        if database_path.is_file():
-            local_databases[project_slug] = (database_path, None)
+            source = get_workflow_transfer_source(node.root)
+        except FileNotFoundError as error:
+            local_databases[project_slug] = (None, _exception_detail(error))
         else:
-            local_databases[project_slug] = (None, _LOCAL_DATABASE_MISSING)
+            local_databases[project_slug] = (source, None if source is not None else _LOCAL_DATABASE_MISSING)
 
     outcomes: list[TransferOutcome] = []
     for computer in computers:
@@ -202,11 +191,11 @@ async def transfer_todo_state(project_slugs: list[str], computers: list[str]) ->
             continue
 
         for project_slug in transferable_slugs:
-            database_path = local_databases[project_slug][0]
-            if database_path is None:
+            source = local_databases[project_slug][0]
+            if source is None:
                 continue
             try:
-                outcome = await _transfer_one(project_slug, database_path, computer, peer, tool_path)
+                outcome = await _transfer_one(project_slug, source, computer, peer, tool_path)
             except (OSError, TimeoutError, ValueError, json.JSONDecodeError, _RemoteCommandError) as error:
                 outcome = _outcome(project_slug, computer, TransferStatus.FAILED, _exception_detail(error))
             outcomes.append(outcome)
@@ -224,34 +213,32 @@ def locate_todo_database(project_slug: str) -> LocateResult:
     if node is None:
         return LocateResult(LocateStatus.ABSENT, None, str(unregistered_referent(ReferentKind.PROJECT, project_slug)))
     try:
-        database_path = todos_db_path(node.root)
+        database_path = workflow_store_database_location(node.root)
     except FileNotFoundError as error:
         return LocateResult(LocateStatus.ABSENT, None, _exception_detail(error))
-    return LocateResult(LocateStatus.FOUND, str(database_path), None)
+    if database_path is None:
+        return LocateResult(LocateStatus.ABSENT, None, _LOCAL_DATABASE_MISSING)
+    return LocateResult(LocateStatus.FOUND, database_path, None)
 
 
 def check_todo_database(project_slug: str) -> IntegrityResult:
     """Check the registered todo database without acquiring write access."""
-    location = locate_todo_database(project_slug)
-    if location.status is LocateStatus.ABSENT or location.path is None:
-        return IntegrityResult(IntegrityStatus.ABSENT, location.reason or _LOCAL_DATABASE_MISSING)
-    database_uri = Path(location.path).as_uri() + _READ_ONLY_QUERY
+    if project_slug != project_slug.strip():
+        raise ValueError(_INVALID_PROJECT_SLUG)
+    validate_slug(project_slug)
+    node = get_project_catalog_service().get_by_slug(project_slug)
+    if node is None:
+        return IntegrityResult(IntegrityStatus.ABSENT, str(unregistered_referent(ReferentKind.PROJECT, project_slug)))
     try:
-        with closing(sqlite3.connect(database_uri, uri=True)) as connection:
-            row = connection.execute(_INTEGRITY_CHECK_SQL).fetchone()
-    except (OSError, sqlite3.Error) as error:
-        return IntegrityResult(IntegrityStatus.FAILED, _exception_detail(error))
-    if row is None:
-        return IntegrityResult(IntegrityStatus.FAILED, _UNKNOWN_REMOTE_RESULT)
-    result = str(row[0])
-    if result == _OK_VALUE:
-        return IntegrityResult(IntegrityStatus.OK, result)
-    return IntegrityResult(IntegrityStatus.FAILED, result)
+        status, detail = check_workflow_store_integrity(node.root)
+    except FileNotFoundError as error:
+        return IntegrityResult(IntegrityStatus.ABSENT, _exception_detail(error))
+    return IntegrityResult(IntegrityStatus(status), detail)
 
 
 async def _transfer_one(
     project_slug: str,
-    source: Path,
+    source: TransferSource,
     computer: str,
     peer: PeerAddress,
     tool_path: Path,
@@ -263,13 +250,7 @@ async def _transfer_one(
         raise _RemoteCommandError(_UNKNOWN_REMOTE_RESULT)
 
     destination = f"{peer.user}{_SSH_ARGUMENT_SEPARATOR}{peer.host}{_SSH_TARGET_SEPARATOR}{location.path}"
-    sync_result = await _run_process(
-        str(tool_path),
-        str(source),
-        destination,
-        _SYNC_EXECUTABLE_OPTION,
-        _REMOTE_SYNC_TOOL_PATH,
-    )
+    sync_result = await source.sync_to(tool_path, destination, _REMOTE_SYNC_TOOL_PATH)
     if sync_result.returncode != 0:
         stderr = _stderr_detail(sync_result.stderr)
         detail = f"{_REMOTE_SYNC_FAILURE}: {stderr}" if stderr else _REMOTE_SYNC_FAILURE

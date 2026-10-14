@@ -2,56 +2,20 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from teleclaude.core.workflow_store.types import (
+    ArtifactMetadata as ArtifactMetadataRow,
+)
+from teleclaude.core.workflow_store.types import (
+    ArtifactRemoval as ArtifactRemovalResult,
+)
+from teleclaude.core.workflow_store.types import (
+    ArtifactVersion as ArtifactVersionRow,
+)
+from teleclaude.core.workflow_store.types import (
+    ArtifactWriterSet as ArtifactWritersRow,
+)
+from teleclaude.core.workflow_store.types import (
+    WorkItem as TodoRow,
+)
 
-
-class TodoRow(TypedDict):
-    """A single todo entry as returned by list_todo."""
-
-    id: str
-    slug: str
-    ready_since: str | None
-    schedule: str | None
-    group_id: str | None
-    description: str | None
-    status: str
-    delivered_at: str | None
-    delivered_commit: str | None
-    removed_at: str | None
-    children: list[str] | None
-    lineage: str | None
-    entry_point: str | None
-    human_involved: bool
-    context: str | None
-
-
-class ArtifactVersionRow(TypedDict):
-    """A single artifact version history entry."""
-
-    content: str
-    digest: str
-    updated_by: str
-    created_at: str
-
-
-class ArtifactMetadataRow(TypedDict):
-    """Current metadata for one stored artifact body."""
-
-    name: str
-    digest: str
-    updated_by: str
-    updated_at: str
-
-
-class ArtifactWritersRow(TypedDict):
-    """One stored artifact with the distinct writers recorded across its versions."""
-
-    name: str
-    writers: list[str]
-
-
-class ArtifactRemovalResult(TypedDict):
-    """Result from deleting one named todo artifact."""
-
-    removed: bool
-    versions_deleted: int
+__all__ = ["ArtifactMetadataRow", "ArtifactRemovalResult", "ArtifactVersionRow", "ArtifactWritersRow", "TodoRow"]

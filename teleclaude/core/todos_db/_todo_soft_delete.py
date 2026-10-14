@@ -6,7 +6,7 @@ import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, NamedTuple, TypedDict, cast
+from typing import Any, cast
 
 from sqlalchemy import delete, update
 from sqlmodel import select
@@ -30,6 +30,19 @@ from teleclaude.core.todos_db._models import (
     TodoStateModel,
 )
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
+from teleclaude.core.workflow_store.types import (
+    ExpiredRemovedItem as ExpiredRemovedRow,
+)
+from teleclaude.core.workflow_store.types import (
+    IdentityResolution as TodoIdentityResolution,
+)
+from teleclaude.core.workflow_store.types import (
+    PurgedItem as PurgedRemovedRow,
+)
+from teleclaude.core.workflow_store.types import (
+    RemovalRequest as RemovalContext,
+)
+from teleclaude.core.workflow_store.types import WorkItemId
 from teleclaude.docs_reconcile import (
     ReconciliationCarrier,
     ReconciliationMode,
@@ -49,14 +62,6 @@ _IDENTITY_ACTION_REFUSAL = "Todo {todo_id} ({slug}) with status {status} does no
 _IDENTITY_NOT_FOUND = "Todo identity {todo_id} was not found."
 _REACTIVATE_NOT_REMOVED_FEEDBACK = "This todo is not removed, so it cannot be reactivated."
 _REACTIVATE_LIVE_TWIN_FEEDBACK = "Another live todo already uses this slug; resolve that entry before reactivating."
-
-
-class RemovalContext(TypedDict):
-    """Operation facts retained with a tombstone claim snapshot."""
-
-    force: bool
-    operation_id: str | None
-    caller_session_id: str | None
 
 
 def _encode_removed_doc_reconciliation(plan: ReconciliationPlan) -> str:
@@ -189,30 +194,6 @@ class TodoIdentityNotFound(Exception):
         super().__init__(_IDENTITY_NOT_FOUND.format(todo_id=todo_id))
 
 
-class TodoIdentityResolution(NamedTuple):
-    """The live todo address resolved from one durable identity."""
-
-    slug: str
-    status: TodoStatus
-
-
-class ExpiredRemovedRow(TypedDict):
-    """Removed todo row eligible for purge planning."""
-
-    id: str
-    slug: str
-    removed_at: str
-    pending_purge_paths: list[str] | None
-
-
-class PurgedRemovedRow(TypedDict):
-    """Removed todo row that was hard-deleted."""
-
-    id: str
-    slug: str
-    removed_at: str
-
-
 class TodosDbTodoSoftDeleteMixin:
     """Persistence logic for soft-removed todo entries and their retention lifecycle."""
 
@@ -227,7 +208,7 @@ class TodosDbTodoSoftDeleteMixin:
         status = TodoStatus(entry.status)
         if status not in _LIVE_SLUG_STATUSES:
             raise TodoIdentityActionRefused(todo_id=todo_id, slug=entry.slug, status=status)
-        return TodoIdentityResolution(slug=entry.slug, status=status)
+        return TodoIdentityResolution(slug=WorkItemId(entry.slug), status=status)
 
     async def soft_remove_from_todo(
         self,

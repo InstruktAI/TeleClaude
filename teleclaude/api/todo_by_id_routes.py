@@ -23,9 +23,8 @@ from teleclaude.core.todos_db import (
     TodoIdentityActionRefused,
     TodoIdentityNotFound,
     TodoIdentityResolution,
-    TodosDb,
 )
-from teleclaude.core.todos_db._identity_pin import todo_identity_pin
+from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.services.work.slug_actions import SlugActionOutcome, freeze_todo, unfreeze_todo
 
 logger = get_logger(__name__)
@@ -82,9 +81,9 @@ async def _resolve_identity(
     action: _IdentityAction,
     todo_id: str,
     cwd: str,
-) -> tuple[TodosDb, TodoIdentityResolution]:
+) -> tuple[WorkflowStore, TodoIdentityResolution]:
     try:
-        todos_db = await todo_routes._get_todos_db_from_cwd(cwd)
+        todos_db = await todo_routes._get_workflow_store_from_cwd(cwd)
         resolution = await todos_db.resolve_live_slug_by_id(todo_id)
     except TodoIdentityActionRefused as exc:
         resolution = TodoIdentityResolution(slug=exc.slug, status=exc.status)
@@ -135,7 +134,7 @@ async def _perform_identity_action[ResultT](
     effective_cwd = cwd or todo_routes._default_cwd()
     todos_db, resolution = await _resolve_identity(action=action, todo_id=todo_id, cwd=effective_cwd)
     try:
-        with todo_identity_pin(db_path=todos_db.db_path, slug=resolution.slug, todo_id=todo_id):
+        with todos_db.identity_scope(resolution.slug, todo_id):
             result = await perform(resolution, effective_cwd)
     except HTTPException:
         try:
@@ -398,7 +397,7 @@ async def read_artifact_by_id(
     _identity: CallerIdentity = Depends(carried_caller),
 ) -> _ArtifactByIdResponse:
     """Read an artifact of exactly the identified todo row, including a retained row."""
-    todos_db = await todo_routes._get_todos_db_from_cwd(cwd or todo_routes._default_cwd())
+    todos_db = await todo_routes._get_workflow_store_from_cwd(cwd or todo_routes._default_cwd())
     content = await todos_db.read_artifact_by_id(todo_id, name)
     return _ArtifactByIdResponse(todo_id=todo_id, name=name, content=content)
 

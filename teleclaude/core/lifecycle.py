@@ -32,8 +32,8 @@ from teleclaude.core.session_config_subject import (
     backfill_session_config_subjects,
     backfill_session_subject_owners,
 )
-from teleclaude.core.todos_db import close_todos_db_instances
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
+from teleclaude.core.workflow_store.store import close_workflow_stores
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.memory.store import MemoryStore
 from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
@@ -402,7 +402,7 @@ class DaemonLifecycle:
         with cleanup_step(_STORAGE_SHUTDOWN_COMPONENT):
             await db.close()
         with cleanup_step(_TODOS_STORAGE_SHUTDOWN_COMPONENT):
-            await close_todos_db_instances()
+            await close_workflow_stores()
 
     def handle_api_server_exit(
         self,

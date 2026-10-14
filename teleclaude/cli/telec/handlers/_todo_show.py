@@ -10,8 +10,8 @@ from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.surface import TODO_SHOW
 from teleclaude.constants import SLUG_NOT_FOUND_DETAIL
-from teleclaude.core.todos_db import TodosDb
 from teleclaude.core.todos_db._show import ShowPayload, assemble_show_payload
+from teleclaude.core.workflow_store.store import WorkflowStore
 
 __all__ = ["_handle_todo_show"]
 
@@ -29,7 +29,7 @@ def _handle_todo_show(args: list[str]) -> None:
     include_artifact_content = parsed.has(F.FLAG_TODO_SHOW_INCLUDE_ARTIFACT_CONTENT)
     include_removed = parsed.has(F.FLAG_TODO_SHOW_INCLUDE_REMOVED)
 
-    async def read_show(todos_db: TodosDb) -> ShowPayload | None:
+    async def read_show(todos_db: WorkflowStore) -> ShowPayload | None:
         return await assemble_show_payload(
             todos_db,
             slug,

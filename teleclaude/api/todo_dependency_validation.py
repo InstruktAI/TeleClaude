@@ -9,11 +9,11 @@ from fastapi import HTTPException
 from teleclaude.core.todos_db import GroupDependencyConflict
 
 if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.workflow_store.store import WorkflowStore
 
 
 async def validate_requested_dependencies(
-    todos_db: TodosDb,
+    todos_db: WorkflowStore,
     slug: str,
     requested_after: list[str],
     *,
@@ -27,6 +27,7 @@ async def validate_requested_dependencies(
         try:
             await todos_db.check_membership_update(
                 slug,
+                group_slug=None,
                 group_present=False,
                 after=requested_after,
             )

@@ -78,7 +78,7 @@ from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.git_ops import build_git_hook_env
 from teleclaude.core.next_machine.marker_reconciliation import MarkerReceipt
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
-from teleclaude.core.todos_db import get_todos_db_sync
+from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.quality.gate import LintGateOutcome, run_lint_gate
 from teleclaude.runtime.agy_workspace_trust import remove_vanished_worktree_trust
@@ -146,7 +146,7 @@ class RootFinalizationResult:
 def _read_artifact_safe(cwd: str, slug: str, name: str) -> str:
     """Read a todo artifact from todos.db, returning empty string on failure."""
     try:
-        db = get_todos_db_sync(cwd)
+        db = get_workflow_store_sync(cwd)
         return str(db.read_artifact_sync(slug, name))
     except Exception:
         logger.debug("_read_artifact_safe failed for %s/%s", slug, name, exc_info=True)
@@ -411,7 +411,7 @@ def _step_awaiting_commit(
         merge_type = (checkpoint.error_context or {}).get("merge_type")
         head_sha = _get_head_sha(wt)
         pre_merge = checkpoint.pre_merge_head
-        state = get_todos_db_sync(cwd).read_state_sync(key.slug)
+        state = get_workflow_store_sync(cwd).read_state_sync(key.slug)
         if (
             merge_type != "clean"
             or not state
@@ -690,7 +690,7 @@ def _step_push_succeeded(
 
     checkpoint.pushed_sha = final_sha
 
-    todos_db = get_todos_db_sync(cwd)
+    todos_db = get_workflow_store_sync(cwd)
     delivered = todos_db.deliver_sync(
         key.slug,
         reconciliation_receipt=receipt,
@@ -708,12 +708,7 @@ def _step_push_succeeded(
                 "DELIVERY_FAILED",
                 f"todos_db.deliver_sync returned False for {key.slug} and the slug is not in delivered_slugs — todo entry is missing",
             )
-    conn = todos_db._sync_conn()  # clean dependency references on the same gated path
-    try:
-        conn.execute("DELETE FROM todo_deps WHERE depends_on = ?", (key.slug,))  # guard: raw-sql
-        conn.commit()
-    finally:
-        conn.close()
+    todos_db.clean_dep_references_sync(key.slug)
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)
     cleanup_continues, cleanup_instruction = _do_cleanup(

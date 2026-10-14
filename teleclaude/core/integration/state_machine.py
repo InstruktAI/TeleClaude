@@ -61,7 +61,7 @@ from teleclaude.core.integration.step_functions import (
 )
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.core.todos_db import get_todos_db_sync
+from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.runtime.command_runner import (
     ProcessGroupCancellation,
     ProcessGroupCancellationRequested,
@@ -189,7 +189,7 @@ def _recover_delivered_markers(
     keeps being handed over until the fold actually lands and stops the moment it
     does.
     """
-    recovery = recover_delivered_marker_divergence(Path(cwd), get_todos_db_sync(cwd).delivered_slugs_sync())
+    recovery = recover_delivered_marker_divergence(Path(cwd), get_workflow_store_sync(cwd).delivered_slugs_sync())
     anomalies: list[str] = []
     for fault in recovery.faults:
         _log_delivered_marker_recovery_fault(fault, session_id=session_id, sync_id=sync_id)
