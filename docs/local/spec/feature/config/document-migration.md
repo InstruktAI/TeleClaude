@@ -445,3 +445,9 @@ And an agent reading the structured records observes it as withheld, naming the 
   content, so they merge without conflict.
 - Installation-level migrations under `migrations/` are a separate mechanism
   governed by the deployment migration runner, and are not part of this list.
+- The daemon's migration reach guards migration runs only. A writer stores the
+  document it changes at the current version without reading that reach, and
+  installation's agent-settings stage is such a writer of the machine
+  configuration, running before installation's migration run. An installation
+  run while an older daemon serves can therefore leave that daemon refusing its
+  configuration until it is replaced.
