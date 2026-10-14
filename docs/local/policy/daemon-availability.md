@@ -54,7 +54,7 @@ visibility: 'public'
 
 <!-- planned:maintenance-runs-as-stopped-daemon-window -->
 
-- `make stop` records its outcome where a caller names a location for it, because `make` reports every failing recipe with the same status: stopped, meaning the daemon exited and its service manager will not relaunch it; stopped with a managed-unit cleanup failure; withheld while the daemon drains; or withheld, with its reason. The record states the daemon's state after the stop, so a caller acts on that state rather than on the command's exit status.
+- `make stop` records its outcome where a caller names a location for it, because `make` reports every failing recipe with the same status: stopped, meaning no daemon process remains and its service manager will not relaunch it, whether or not this stop had to terminate it; stopped with a managed-unit cleanup failure; withheld while the daemon drains; or withheld, with its reason. The record states the daemon's state after the stop, so a caller acts on that state rather than on the command's exit status.
 
 <!-- /planned:maintenance-runs-as-stopped-daemon-window -->
 
