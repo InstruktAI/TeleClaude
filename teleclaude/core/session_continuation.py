@@ -41,13 +41,12 @@ from teleclaude.docs_subscriptions import (
     SubscriptionAttendance,
     required_event_handling_dependencies,
 )
-from teleclaude.paths import REPO_ROOT, session_tmp_dir
+from teleclaude.paths import REPO_ROOT, SESSION_BRIEF_FILENAME, session_tmp_dir
 from teleclaude.types.procedure_delivery import BINDING_SECTION, BindingField
 
 logger = get_logger(__name__)
 
 _CONTINUATION_REFUSED_EVENT: Final = "session_continuation_refused"
-_BRIEF_FILENAME: Final = "brief.md"
 _ARGUMENT_JOINER: Final = " "
 _UNKNOWN_ROLE_TEMPLATE: Final = "the session carries the role '{role}', which the catalog does not name"
 _MISSING_INPUT_TEMPLATE: Final = "the session's row retains no {missing}, which {procedure} requires"
@@ -168,7 +167,7 @@ async def reconstruct_invocation(session: Session, intent: SessionLaunchIntent |
         entry_kind=kind,
         entry_job=job,
         entry_reads=reads,
-        brief_path=str(session_tmp_dir(session.session_id) / _BRIEF_FILENAME),
+        brief_path=str(session_tmp_dir(session.session_id) / SESSION_BRIEF_FILENAME),
         entry_facts=facts,
     )
 

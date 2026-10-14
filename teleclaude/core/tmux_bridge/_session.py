@@ -13,7 +13,9 @@ from teleclaude.config.machine import config
 from teleclaude.paths import (
     BIN_DIR,
     DEFAULT_TELECLAUDE_HOME,
+    SESSION_BRIEF_FILENAME,
     SESSION_DECLARATIONS_FILENAME,
+    SESSION_INLINE_BRIEF_FILENAME_PREFIX,
     SHELL_DIR,
     TELECLAUDE_HOME,
     TMP_SESSIONS_DIR,
@@ -127,24 +129,30 @@ def get_session_tmpdir_base() -> Path:
     return TMP_SESSIONS_DIR
 
 
+def _is_session_brief(name: str) -> bool:
+    """Whether ``name`` is a brief the session's startup loader points the agent at."""
+    return name == SESSION_BRIEF_FILENAME or name.startswith(SESSION_INLINE_BRIEF_FILENAME_PREFIX)
+
+
 def _prepare_session_tmp_dir(session_id: str) -> Path:
-    """Prepare a per-session temp directory, retaining its live declaration record.
+    """Prepare a per-session temp directory, retaining its declaration record and its briefs.
 
     Claude Code (and other tools) may attempt to fs.watch() everything under TMPDIR.
     If TMPDIR contains unix sockets (e.g. docker_cli_*), Node-based watchers can crash.
-    Clearing prior temporary entries avoids stray sockets without losing declarations.
+    Clearing prior temporary entries avoids stray sockets without losing the files the
+    session is launched to read: its declarations and the briefs entry resolution wrote.
     """
     base_dir = TMP_SESSIONS_DIR
     session_tmp = session_tmp_dir(session_id)
 
     base_dir.mkdir(parents=True, exist_ok=True)
 
-    # Remove prior temporary entries, including sockets, while preserving declarations.
+    # Remove prior temporary entries, including sockets, while preserving declarations and briefs.
     if session_tmp.exists():
         try:
             if session_tmp.is_dir() and not session_tmp.is_symlink():
                 for child in session_tmp.iterdir():
-                    if child.name == SESSION_DECLARATIONS_FILENAME:
+                    if child.name == SESSION_DECLARATIONS_FILENAME or _is_session_brief(child.name):
                         continue
                     if child.is_dir() and not child.is_symlink():
                         shutil.rmtree(child)

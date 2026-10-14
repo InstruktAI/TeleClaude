@@ -34,7 +34,7 @@ from teleclaude.docs_subscriptions import (
 )
 from teleclaude.entry_declarations import EntryDeclarations, ProcedureParameter
 from teleclaude.helpers.agent_types import ThinkingMode
-from teleclaude.paths import session_tmp_dir
+from teleclaude.paths import SESSION_BRIEF_FILENAME, SESSION_INLINE_BRIEF_FILENAME_PREFIX, session_tmp_dir
 
 SCHEDULED_JOB_RUN_PROCEDURE_ID: Final = "general/procedure/scheduled-job-run"
 SLUG_PARAMETER: Final = "slug"
@@ -48,8 +48,7 @@ FACT_INTERRUPTIBLE: Final = "interruptible"
 _SEGMENT_SEPARATOR: Final = "/"
 _SEGMENT_PATTERN: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _MIN_SEGMENTS: Final = 3
-_BRIEF_FILENAME: Final = "brief.md"
-_INLINE_BRIEF_FILENAME_TEMPLATE: Final = "brief-{digest}.md"
+_INLINE_BRIEF_FILENAME_TEMPLATE: Final = SESSION_INLINE_BRIEF_FILENAME_PREFIX + "{digest}.md"
 _INLINE_DIGEST_LENGTH: Final = 12
 _INLINE_DIGEST_SEPARATOR: Final = "\0"
 _UTF8: Final = "utf-8"
@@ -413,7 +412,7 @@ def resolve_entry(
     thinking_mode = caller_mode or entry.thinking_mode or dispatch.thinking_mode
     brief_path = _write_brief(
         procedure_id=procedure_id,
-        brief_path=session_tmp_dir(session_id) / _BRIEF_FILENAME,
+        brief_path=session_tmp_dir(session_id) / SESSION_BRIEF_FILENAME,
         closure=published.closure,
         role=declarations.role,
         parameters=parameters,
