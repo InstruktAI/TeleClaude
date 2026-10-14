@@ -6,6 +6,8 @@ description: Scheduled agent jobs enter the procedure-entry contract with their 
 
 ## What it is
 
+<!-- planned-change:procedure-reference-loaders -->
+
 A scheduled agent job starts through the procedure-entry contract
 (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`) like
 every other dispatched assignment. The scheduler supplies the job's identity —
@@ -20,6 +22,24 @@ dispatch as the candidate order and mode; it never fixes one agent and never
 unions the declaration with the procedure's own dispatch defaults. The brief the session reads is the procedure's complete closure together with `general/procedure/scheduled-job-run`, the close-out a job entry adds as its required read. Session bootstrap then
 issues the job session's system-principal credential through the standard
 identity lifecycle, and the session is standing whatever its role.
+<!-- change:procedure-reference-loaders -->
+
+A scheduled agent job starts through the procedure-entry contract
+(`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`) like
+every other dispatched assignment. The scheduler supplies the job's identity —
+its declared name — to the daemon-owned run boundary; that boundary finds the
+declaration carrying that name in the project's composed effective job set (a
+local declaration, or a published global declaration overlaid by that project's
+subscription), resolves the entry procedure its `job` pointer names, and
+creates the session carrying the role that procedure declares, with the job
+name as its instance identity and the open run correlated to the session. The
+boundary hands the declaration's agent preference list and thinking mode to
+dispatch as the candidate order and mode; it never fixes one agent and never
+unions the declaration with the procedure's own dispatch defaults. Assignment
+loading follows the procedure-entry contract. Session bootstrap issues the job
+session's system-principal credential through the standard identity lifecycle,
+and the session is standing whatever its role.
+<!-- /planned-change:procedure-reference-loaders -->
 
 Job configuration remains owned by the configuration context. A scheduler
 cannot redefine the configured agent preference, thinking mode or job procedure
@@ -42,6 +62,8 @@ And session bootstrap issues the session's system-principal credential
 
 #### UC-SACD2:
 
+<!-- planned-change:procedure-reference-loaders -->
+
 ```gherkin
 Given a configured agent job is dispatched to any enabled agent runtime
 When the new session receives its first instruction
@@ -49,6 +71,18 @@ Then the instruction is the loader naming the materialized brief for the job's p
 And the brief identifies the job by its declared name and carries `general/procedure/scheduled-job-run` as the job entry's required read
 And the runtime does not receive an unrecognized native command
 ```
+
+<!-- change:procedure-reference-loaders -->
+
+```gherkin
+Given a configured agent job is dispatched to any enabled agent runtime
+When the new session receives its first instruction
+Then the loader identifies the configured job and its procedure assignment
+And directs the agent to retrieve that procedure's instructions
+And the runtime does not receive an unrecognized native command
+```
+
+<!-- /planned-change:procedure-reference-loaders -->
 
 #### UC-SACD3:
 

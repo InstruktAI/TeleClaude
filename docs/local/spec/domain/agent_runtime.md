@@ -146,6 +146,8 @@ TeleClaudeNext repository.
   works, what it may do, or how its work is recorded. A session started by
   hand, or by an agent, is attended.
 
+<!-- planned-change:procedure-reference-loaders -->
+
 - **Owns (procedure entry):** every assignment's session is created by naming
   a published procedure. This context resolves the procedure's declared role,
   parameters and dispatch defaults from `context`'s publication before the
@@ -167,6 +169,16 @@ TeleClaudeNext repository.
   `local/projects/teleclaude/spec/feature/agent_runtime/session-role-migration`.
   The behavioral contract is
   `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`.
+
+<!-- change:procedure-reference-loaders -->
+
+- **Owns (procedure entry):** resolves a published procedure's entry
+  declarations, binds and persists the assignment, applies identity-owned
+  dispatch privilege, and composes the short reference loader shared by fresh
+  entry and continuation. The behavioral contract is
+  `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`.
+
+<!-- /planned-change:procedure-reference-loaders -->
 
 - **Owns (session company):** a session has a company only when it is created
   with `--company` or started from a session that has one; the company is

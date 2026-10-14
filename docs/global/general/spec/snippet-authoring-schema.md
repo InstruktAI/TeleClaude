@@ -102,6 +102,8 @@ fixed for that session, including revival. Newly initialized successor sessions
 use the current declaration. Publication changes do not reconfigure a running
 agent beneath its assignment (`general/principle/trust-and-guardrails`).
 
+<!-- planned-change:procedure-reference-loaders -->
+
 The effective required reads of a subscribed procedure include
 `general/procedure/event-handling/overview`; an interruptible procedure also
 includes `general/procedure/event-handling/interruptible`. Authored required
@@ -110,6 +112,17 @@ The context publication and retrieval surfaces expose these effective
 dependencies.
 Both delivery cardinalities use the same handling prose
 (`general/principle/priming`).
+<!-- change:procedure-reference-loaders -->
+
+A subscribed procedure explicitly declares its applicable shared event-handling
+instructions in Required reads. A scheduled-job procedure likewise declares its
+job-handling instructions. Publication and retrieval resolve those authored
+references through the ordinary dependency graph; delivery metadata supplies
+runtime settings rather than injecting documentation dependencies. Shared
+handling duties are conditional on the actual invocation and its fixed settings,
+including when the procedure is read inline
+(`general/policy/referencing-doc-snippets`, `general/principle/priming`).
+<!-- /planned-change:procedure-reference-loaders -->
 
 Document structure:
 

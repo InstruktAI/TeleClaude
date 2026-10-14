@@ -239,6 +239,8 @@ And no content body or withheld notice is returned
 And the refusal is the same whether or not that person is declared
 ```
 
+<!-- planned-change:procedure-reference-loaders -->
+
 #### UC-3PR16:
 
 ```gherkin
@@ -283,6 +285,44 @@ the existing visibility and deduplication rules. A missing, withheld, or pending
 mandatory event-handling dependency makes the activation closure incomplete.
 The procedure and its required shared instructions become current together
 (`general/policy/documentation-discipline`, `general/principle/priming`).
+<!-- change:procedure-reference-loaders -->
+
+#### UC-3PR16:
+
+```gherkin
+Given an agent loads a procedure with explicitly declared shared handling instructions
+When it requests the complete procedure closure
+Then the closure includes those declared dependencies
+And each dependency is rendered once even when reachable through several paths
+```
+
+#### UC-3PR17:
+
+```gherkin
+Given an agent discovers a subscribed procedure and retrieves it without closure expansion
+When it inspects the procedure's required reads
+Then it sees the dependencies the procedure explicitly declares
+And ordinary retrieval leaves their bodies for explicit follow-up
+And delivery metadata adds no undeclared documentation dependency
+```
+
+#### UC-3PR18:
+
+```gherkin
+Given a subscribed procedure explicitly requires shared handling instructions
+And those instructions are unavailable as eligible current content
+When an agent requests its activation closure
+Then the request fails visibly rather than claiming a complete instruction set
+And the failure identifies the unavailable dependency
+```
+
+The context owner resolves the authored Required reads graph under
+`general/spec/snippet-authoring-schema`. Publication exposes that graph;
+ordinary retrieval lists its dependencies; closure retrieval expands it under
+its visibility and deduplication rules. The procedure and its required shared
+instructions become current together
+(`general/policy/documentation-discipline`, `general/principle/priming`).
+<!-- /planned-change:procedure-reference-loaders -->
 
 ### Cross-context references
 
