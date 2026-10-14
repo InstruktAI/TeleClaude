@@ -29,6 +29,7 @@ from .types import (
     PurgedItem,
     RemovalRequest,
     StoreCapabilities,
+    TodoDiagnosticRecord,
     TodoProjectionSnapshot,
     WorkItem,
     WorkItemStateRead,
@@ -125,6 +126,7 @@ class WorkflowStore(Protocol):
         removed_only: bool = False,
         include_holders: bool = False,
     ) -> list[WorkItem]: ...
+    async def read_todo_diagnostic_record(self, slug: str) -> TodoDiagnosticRecord | None: ...
     async def add_to_todo(
         self,
         slug: str,

@@ -67,6 +67,33 @@ class WorkItem(TypedDict):
     context: str | None
 
 
+class TodoDiagnosticRecord(TypedDict):
+    """Complete persisted todo row as serialized by the diagnostic surfaces."""
+
+    id: str
+    slug: str
+    ready_since: str | None
+    schedule: str | None
+    group_id: str | None
+    description: str | None
+    status: str
+    delivered_at: str | None
+    delivered_commit: str | None
+    children: str | None
+    lineage: str | None
+    entry_point: str | None
+    human_involved: bool
+    context: str | None
+    removed_at: str | None
+    prev_status: str | None
+    removed_deps: str | None
+    removed_claim: str | None
+    removed_doc_reconciliation: str | None
+    pending_purge_paths: str | None
+    created_at: str
+    updated_at: str
+
+
 class ArtifactWriterSet(TypedDict):
     name: str
     writers: list[str]

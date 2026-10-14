@@ -10,6 +10,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import ARTIFACT_INPUT, TodoStatus
 from teleclaude.core.next_machine._types import StateValue
+from teleclaude.core.todos_db._models import Todo
+from teleclaude.core.workflow_store.types import TodoDiagnosticRecord
 
 _TODO_UPDATED_EVENT = "todo_updated"
 _STATE_RENAME_FAILURE = "state rename failed for {slug!r}"
@@ -68,7 +70,51 @@ class _RenameItemHost(Protocol):
     async def rename_todo_slug(self, old_slug: str, new_slug: str, *, session: SqlAsyncSession) -> bool: ...
 
 
+class _DiagnosticRecordHost(Protocol):
+    async def _list_todo_models(
+        self,
+        *,
+        include_icebox: bool = False,
+        include_delivered: bool = False,
+        include_holders: bool = False,
+    ) -> list[Todo]: ...
+
+
 class TodosDbWorkflowOperationsMixin:
+    async def read_todo_diagnostic_record(
+        self: _DiagnosticRecordHost,
+        slug: str,
+    ) -> TodoDiagnosticRecord | None:
+        """Read the complete persisted row with the diagnostic surface's wire shape."""
+        rows = await self._list_todo_models(include_icebox=True, include_delivered=True, include_holders=True)
+        for row in rows:
+            if row.slug == slug:
+                return {
+                    "id": row.id,
+                    "slug": row.slug,
+                    "ready_since": row.ready_since,
+                    "schedule": row.schedule,
+                    "group_id": row.group_id,
+                    "description": row.description,
+                    "status": row.status,
+                    "delivered_at": row.delivered_at,
+                    "delivered_commit": row.delivered_commit,
+                    "children": row.children,
+                    "lineage": row.lineage,
+                    "entry_point": row.entry_point,
+                    "human_involved": row.human_involved,
+                    "context": row.context,
+                    "removed_at": row.removed_at,
+                    "prev_status": row.prev_status,
+                    "removed_deps": row.removed_deps,
+                    "removed_claim": row.removed_claim,
+                    "removed_doc_reconciliation": row.removed_doc_reconciliation,
+                    "pending_purge_paths": row.pending_purge_paths,
+                    "created_at": row.created_at,
+                    "updated_at": row.updated_at,
+                }
+        return None
+
     async def create_item_with_initial_artifact(
         self: _CreateItemHost,
         slug: str,

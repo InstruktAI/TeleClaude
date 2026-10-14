@@ -18,7 +18,7 @@ from teleclaude.types.todos import HoldAuditReason, TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
-    from teleclaude.core.workflow_store.types import ArtifactMetadata, WorkItem
+    from teleclaude.core.workflow_store.types import ArtifactMetadata, TodoDiagnosticRecord
 
 
 # Map derived phase value → human-readable phase label for CurrentBlock.phase.
@@ -215,7 +215,11 @@ def _derive_current_block(current_value: str, state: dict[str, StateValue]) -> C
     return block
 
 
-def _derive_todo_block(row: WorkItem | None, deps: dict[str, list[str]], slug: str) -> dict[str, StateValue]:
+def _derive_todo_block(
+    row: TodoDiagnosticRecord | None,
+    deps: dict[str, list[str]],
+    slug: str,
+) -> dict[str, StateValue]:
     """Project the complete persisted todo row for ``slug``, plus derived deps."""
     block: dict[str, StateValue] = {"deps": cast(StateValue, deps.get(slug, []))}
     if row is None:
@@ -430,13 +434,9 @@ async def _build_blocked_by(
     return blockers if blockers else None
 
 
-async def _find_todo_row(todos_db: WorkflowStore, slug: str) -> WorkItem | None:
+async def _find_todo_row(todos_db: WorkflowStore, slug: str) -> TodoDiagnosticRecord | None:
     """Return the active/icebox/delivered/holder todo row that backs the show payload."""
-    rows = await todos_db.list_todo(include_icebox=True, include_delivered=True, include_holders=True)
-    for row in rows:
-        if row["slug"] == slug:
-            return row
-    return None
+    return await todos_db.read_todo_diagnostic_record(slug)
 
 
 async def _holder_children(todos_db: WorkflowStore, holder_id: str) -> list[str]:
@@ -507,7 +507,7 @@ async def _assemble_holder_payload(
     todos_db: WorkflowStore,
     slug: str,
     *,
-    todo_row: WorkItem,
+    todo_row: TodoDiagnosticRecord,
     holder_children: list[str],
     include_artifact_content: bool,
 ) -> HolderShowPayload:
