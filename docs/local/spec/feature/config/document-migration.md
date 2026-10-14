@@ -353,6 +353,20 @@ Then the stored machine configuration is byte-identical before and after the run
 And an agent reading the structured records observes it as withheld, naming the daemon's reach and the current version
 ```
 
+<!-- planned:installer-writes-machine-config-ahead-of-daemon-reach-gate -->
+
+#### UC-CFG-MIG-21: Installation leaves a lower-reach daemon's machine configuration readable
+
+```gherkin
+Given the running daemon reports a migration reach below the current version
+And the machine configuration is at an older version
+When a full installation runs to completion
+Then the stored machine configuration is byte-identical before and after the installation
+And the installation's output states that the agent settings were not stored, naming the daemon's reach and the current version
+```
+
+<!-- /planned:installer-writes-machine-config-ahead-of-daemon-reach-gate -->
+
 ### Cross-context references
 
 - Commit-boundary maintenance selects and runs the migration run as one of its
