@@ -37,3 +37,4 @@ returns a positive exit code. The documentation names no specific code.
 
 - https://ffmpeg.org/ffprobe.html
 - https://packages.debian.org/bookworm/amd64/ffmpeg/filelist
+- https://formulae.brew.sh/formula/ffmpeg
