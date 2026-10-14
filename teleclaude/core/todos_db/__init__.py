@@ -8,6 +8,7 @@ from pathlib import Path
 
 from teleclaude.core.todos_db_path import todos_db_path
 from teleclaude.core.workflow_store.types import IdentityResolution as TodoIdentityResolution
+from teleclaude.core.workflow_store.types import StoreCapabilities
 
 from ._artifacts import TodosDbArtifactsMixin, malformed_digest_detail
 from ._base import TodosDbBase
@@ -48,6 +49,20 @@ class TodosDb(
     def project_root(self) -> Path:
         """Return the canonical project root without exposing its database path."""
         return self._db_path.parent.parent if self._db_path.parent.name == ".teleclaude" else self._db_path.parent
+
+    @property
+    def capabilities(self) -> StoreCapabilities:
+        """Describe the operations implemented by the local adapter."""
+        return StoreCapabilities(
+            local_items=True,
+            claims=True,
+            phases=True,
+            artifacts=True,
+            revision_stamps=True,
+            trail=True,
+            delivery_candidates=True,
+            incremental_replica_transfer=True,
+        )
 
     def set_workflow_hooks(
         self,

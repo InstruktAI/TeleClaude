@@ -28,6 +28,7 @@ from .types import (
     IdentityResolution,
     PurgedItem,
     RemovalRequest,
+    StoreCapabilities,
     TodoProjectionSnapshot,
     WorkItem,
     WorkItemStateRead,
@@ -45,6 +46,9 @@ class WorkflowStore(Protocol):
 
     @property
     def project_root(self) -> Path: ...
+
+    @property
+    def capabilities(self) -> StoreCapabilities: ...
 
     def set_workflow_hooks(
         self,
