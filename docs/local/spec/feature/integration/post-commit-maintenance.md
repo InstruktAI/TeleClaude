@@ -222,24 +222,26 @@ contract governs only what happens when maintenance runs.
   while any recorded action remains actionable, activations recorded while the
   window is open included. It starts the daemon only on the checkout's tip, once
   no recorded action remains actionable and that tip's own advancement is
-  registered — its owed set resolved by the commit boundary, empty or not. A tip
-  whose registration has not landed holds the start for a bound the window owns;
-  a registration still missing at that bound ends the drain with the daemon
-  stopped, every covered restart action failed with that reason, and the reason
-  and its time recorded where `make status` reports them. `telec sync` in the
-  root is the recovery: it performs the root's maintenance on demand and starts
-  the daemon through its own window
-  (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`).
-  The window closes only on a start that no further commit advancement
-  overtook: when, after the window's final check, the checkout's tip has moved
-  or a commit activation has become actionable, the window stops the daemon
-  again, runs that advancement's actions and starts it after them, so the daemon
-  is never left serving an advancement whose owed actions have not run. Every
-  advancement registered while the window is open therefore runs inside it, and
-  the daemon is left serving only a start no advancement overtook. An activation
-  that owed the restart action keeps that obligation while any of its action
-  records remains, so replaying one of its failed actions runs inside a window
-  of its own.
+  registered — its owed set resolved by the commit boundary, empty or not.
+  Registration waits from that final check until the window has closed, so an
+  advancement registered before the close runs inside the window and the daemon
+  starts once, after its actions; one registered after the close runs in a
+  window of its own. When the tip's advancement is not yet registered at the
+  final check, the window registers it itself through the commit boundary's
+  recording, over the range from the checkout's previous position to the tip —
+  the range that advancement's own hook resolves — and a later recording of the
+  same advancement is a repeated recording. A registration the window cannot
+  complete leaves the daemon stopped: each restart action the window covered
+  ends failed with that refusal's reason, the reason and its time are recorded
+  where `make status` reports them, and replaying a restart action once the
+  cause is resolved reopens the window on the stopped daemon. A start that a
+  further advancement overtook — the checkout's tip moved after the final check
+  — is stopped again within the same window, which runs that advancement's
+  actions and starts the daemon from it after them, so the daemon is never left
+  serving an advancement whose owed actions have not run. An activation that
+  owed the restart action keeps that obligation while any of its action records
+  remains, so replaying one of its failed actions runs inside a window of its
+  own.
 
 - **Window failure.** The window opens only on the outcome `make stop` records
   as stopped — the daemon exited and its relaunch suppressed — including a stop
@@ -698,8 +700,8 @@ And an agent reading the structured records observes the cleanup failure
 ```gherkin
 Given a stopped-daemon window is open for one canonical-main advancement
 And another canonical-main commit has advanced the checkout but its owed actions are not yet recorded when the window's last owed step ends
-When that commit's owed actions are recorded
-Then they run inside the same window
+When the window reaches its final check
+Then that commit's owed actions are recorded once and run inside the same window
 And the daemon is started once, from that commit, after they have terminal outcomes
 ```
 
@@ -707,22 +709,23 @@ And the daemon is started once, from that commit, after they have terminal outco
 
 ```gherkin
 Given a stopped-daemon window has started the daemon after its last owed step
-And another canonical-main commit advanced the checkout after the window's final check
-When that commit's owed actions are recorded
-Then the daemon is stopped again before any of them runs
+And another canonical-main commit advanced the checkout while that start was in progress
+When the window checks the start it made
+Then the daemon is stopped again before any of that commit's owed actions runs
 And they run inside the same window
 And the daemon is started and verified from that commit after they have terminal outcomes
 ```
 
-#### UC-PCM34: A tip whose registration never lands leaves the daemon stopped with its reason
+#### UC-PCM34: A tip whose owed actions cannot be recorded leaves the daemon stopped with its reason
 
 ```gherkin
 Given a stopped-daemon window has run its last owed step
-And the checkout's tip is a commit whose owed actions were never recorded
-When the window's registration bound passes
+And the checkout's tip is a commit whose owed actions cannot be recorded
+When the window tries to record them
 Then the daemon stays stopped
-And each restart action the window covered ends failed with that reason
+And each restart action the window covered ends failed with the refusal's reason
 And an agent running make status sees that reason and when it was recorded
+And replaying a restart action after the cause is resolved records the tip's owed actions, runs them and starts the daemon from the tip
 ```
 
 <!-- /planned:maintenance-runs-as-stopped-daemon-window -->
@@ -737,6 +740,9 @@ And an agent running make status sees that reason and when it was recorded
   that advancement's code for the moments between its start and the window's
   check after it, which stops it again before the advancement's owed actions
   run.
+- A commit-boundary registration that arrives while a window is closing waits
+  for that close, so the commit or merge whose hook records it returns only
+  after the window's start has been verified or has failed.
 
 <!-- /planned:maintenance-runs-as-stopped-daemon-window -->
 
