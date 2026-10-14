@@ -689,7 +689,7 @@ def _handle_artifacts_list(args: list[str]) -> None:
 
     if addressed_computer() is not None:
         remote = _remote_read(f"/todos/artifacts/{slug}")
-        artifacts = cast(list[ArtifactWritersRow], remote.get("artifacts") or [])
+        artifacts = cast("list[ArtifactWritersRow]", remote.get("artifacts") or [])
     else:
         artifacts = run_todo_read(read_artifacts)
     if not artifacts:

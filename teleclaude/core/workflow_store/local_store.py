@@ -20,12 +20,12 @@ if TYPE_CHECKING:
 
 async def get_local_workflow_store(project_root_or_cwd: str | Path) -> WorkflowStore:
     """Resolve the canonical cached local implementation for async callers."""
-    return cast(WorkflowStore, await get_todos_db(project_root_or_cwd))
+    return cast("WorkflowStore", await get_todos_db(project_root_or_cwd))
 
 
 def get_local_workflow_store_sync(project_root_or_cwd: str | Path) -> WorkflowStore:
     """Resolve the canonical cached local implementation for native sync callers."""
-    return cast(WorkflowStore, get_todos_db_sync(project_root_or_cwd))
+    return cast("WorkflowStore", get_todos_db_sync(project_root_or_cwd))
 
 
 def set_local_workflow_store_hook(hook: Callable[[WorkflowStore, str], None] | None) -> None:
