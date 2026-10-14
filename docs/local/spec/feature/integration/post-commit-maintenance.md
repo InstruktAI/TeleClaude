@@ -220,10 +220,19 @@ contract governs only what happens when maintenance runs.
 
 - **Window extent.** A drain that opened a window keeps the daemon stopped
   while any recorded action remains actionable, activations recorded while the
-  window is open included, and closes the window when none remains. An
-  activation that owed the restart action keeps that obligation while any of its
-  action records remains, so replaying one of its failed actions runs inside a
-  window of its own.
+  window is open included. It closes on the checkout's tip once no recorded
+  action remains actionable and that tip's own advancement is registered — its
+  owed set resolved by the commit boundary, empty or not. Registration and that
+  final check exclude each other until the window's start has been issued, so
+  every advancement registered before the start runs inside the window and the
+  daemon starts once, after that advancement's actions; one registered later
+  runs in a window of its own. A refused registration never lands, so a tip
+  whose registration has not landed holds the close only for a bound the window
+  owns; past it the window closes on that tip and reports it as unregistered
+  (`local/projects/teleclaude/policy/daemon-availability`). An activation that
+  owed the restart action keeps that obligation while any of its action records
+  remains, so replaying one of its failed actions runs inside a window of its
+  own.
 
 - **Window failure.** The window opens only on the outcome `make stop` records
   as stopped — the daemon exited and its relaunch suppressed — including a stop
@@ -676,6 +685,32 @@ When make stop records that the daemon stopped with its relaunch suppressed and 
 Then the window opens and the owed steps run
 And an agent reading the structured records observes the cleanup failure
 ```
+
+#### UC-PCM32: An advancement still registering when the window's last step ends shares the window
+
+```gherkin
+Given a stopped-daemon window is open for one canonical-main advancement
+And another canonical-main commit has advanced the checkout but its owed actions are not yet recorded when the window's last owed step ends
+When that commit's owed actions are recorded
+Then they run inside the same window
+And the daemon is started once, from that commit, after they have terminal outcomes
+```
+
+<!-- /planned:maintenance-runs-as-stopped-daemon-window -->
+
+<!-- planned:maintenance-runs-as-stopped-daemon-window -->
+
+## Known caveats
+
+- An advancement that lands on canonical main after a window's final check —
+  while that window's start is in progress, or later — is registered after the
+  window and runs in a window of its own. Until it does, the daemon that window
+  started can serve the advancement's code before the advancement's owed actions
+  have run, and a started daemon that reports the newer commit does not verify
+  that window's start. The same holds for an advancement registered while
+  `telec sync` holds its window
+  (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`):
+  its owed actions run in a drain window after that run.
 
 <!-- /planned:maintenance-runs-as-stopped-daemon-window -->
 
