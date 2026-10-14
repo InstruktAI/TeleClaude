@@ -129,15 +129,28 @@ Tart Runner Fleet owns fresh Linux guest registration and durable disposal.
 The host controller retains administrative registration authority outside the guests and
 provisions each from a pinned qualified base. Guest tooling satisfies the
 release job prerequisites, including native sandbox readiness and full runtime
-acceptance. The host controller and the external installation-proof controller
-use a bounded resource partition that reserves capacity for the host's live
-installation. Capacity is established from the deployed host and proof image,
-rather than inferred from runner count (`sdlc/policy/security-awareness`).
+acceptance. The release-only scale set and serialized attempt graph separate Linux work
+from external Mac installation proof. A Mac host-admission stage precedes every
+Linux entry path, including outcome reporting. It reconciles durable proof
+ownership from interrupted attempts and admits only a qualified host. Before
+creating its proof VM, the proof controller establishes fresh Fleet observations
+with no live instances or queued demand and confirms preceding owned VMs absent
+from Tart. Job completion alone establishes no disposal
+(`sdlc/policy/security-awareness`).
 
-The existing proof controller owns its VM admission and cleanup, including
-recovery of its own interrupted runs. Fleet ownership applies only to its
-inventory. A retained cleanup failure remains actionable and does not authorize
-reuse of a guest or establish authentication settlement. Repository service
+The proof controller records its exact VM ownership durably before creation,
+outside job-temporary storage. It owns cleanup and confirms deletion before
+Linux successors become eligible. Missing disposal confirmation retains the
+record and withholds a Linux successor; the next host-admission stage performs
+bounded recovery. Fleet ownership applies only to its inventory. Recovery is
+owed before the next attempt, without claiming immediate cleanup while the
+host is unavailable. Disposal establishes no provider credential settlement.
+
+Fleet retains bounded, pressure-aware Linux admission. Proof admission accounts
+for its pinned image and the live host workload separately. The separation
+argument depends on the release-only scale set, the complete dependency graph
+and the serialized attempt stream. Another VM consumer earns its own shared
+admission assessment (`sdlc/policy/security-awareness`). Repository service
 installation and lifecycle use the sanctioned make surface
 (`local/projects/teleclaude/policy/agent-service-control`).
 

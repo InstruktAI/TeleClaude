@@ -417,6 +417,20 @@ And an unavailable selected target produces a visible failure
 
 <!-- /planned:owned-release-execution -->
 
+<!-- planned:owned-release-execution -->
+
+#### UC-RP12: Unfinished proof cleanup withholds further guest work
+
+```gherkin
+Given a human release operator has an attempt interrupted during machine proof
+When its proof machine's disposal is unconfirmed
+Then subsequent Linux release work is withheld
+And the next attempt recovers the recorded proof machine before admitting Linux work
+And uncertain recovery remains visible as unsuccessful admission
+```
+
+<!-- /planned:owned-release-execution -->
+
 ### Cross-context references
 
 - Installation proof consumes
