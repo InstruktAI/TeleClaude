@@ -42,17 +42,6 @@ contract governs only what happens when maintenance runs.
   tips. Changed-file resolution, command expansion, outcomes, and replay all use
   those immutable fields.
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-- **Owed set.** The main-only maintenance actions selected by the merged
-  registry's path bindings and canonical-main activation bindings. An
-  activation binding applies even when the commit changes no paths. The shared
-  matcher owns this selection under
-  `local/projects/teleclaude/design/architecture/checkpoint-system`. Actions run
-  in declared precedence waves; a failure does not cancel later waves.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 - **Owed set.** The main-only maintenance actions selected by the merged
   registry's path bindings and canonical-main activation bindings. An
   activation binding applies even when the commit changes no paths. The shared
@@ -62,8 +51,6 @@ contract governs only what happens when maintenance runs.
   actions whose effects it needs and after nothing else; a failure does not
   cancel later waves. An owed restart action is not a wave: it is the
   stopped-daemon window the other owed actions run inside.
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 - **Recording outcome.** The activation boundary distinguishes an owed set
   durably recorded, an explicitly empty owed set, and a refused activation with
@@ -179,16 +166,6 @@ contract governs only what happens when maintenance runs.
   An event activation records no integrator judgment: the maintenance an advance
   of canonical main owes is that advance's own activation.
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-- **Restart admission.** The restart action begins the daemon's preparation
-  only once the daemon holds no accepted work, waiting with admission still open
-  up to a bound the action owns; when the bound expires it prepares regardless.
-  An integration whose commit owes the restart is accepted work like any other,
-  so its own restart never closes admission while it is still running.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 - **Replacement owed.** In a root whose registry declares the restart action,
   every activation whose changed paths select any maintenance action other than
   publication owes the restart action, whatever its bindings name. An activation
@@ -260,37 +237,6 @@ contract governs only what happens when maintenance runs.
   reason and its time are also recorded where `make status` reports them until
   a later window verifies a start.
 
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-- **Observation.** Every attempt and terminal outcome retains the immutable
-  activation and action identity in structured records. The commit boundary
-  records a checkout-scoped integrator judgment for every qualifying code
-  activation after its owed action records are durable, including a direct main
-  commit with no todo candidate. The judgment retains the activation time and
-  becomes eligible only after all owed actions succeed. Restart follows every
-  other owed action of an activation except the configuration migration run,
-  which follows it
-  (`local/projects/teleclaude/spec/feature/config/document-migration`). Restart
-  succeeds when the service manager accepts it or when it is deferred to the
-  draining daemon
-  (`local/projects/teleclaude/policy/daemon-availability`), and whether the
-  restarted daemon came back healthy belongs to the integrator's log judgment,
-  not to the action. The drain records the latest maintenance-ready time
-  on that marker; if interrupted before recording readiness, the judgment stays
-  outstanding for integrator recovery even when action files are absent. A log
-  read can discharge it only after that ready time
-  with a window covering the activation through completed maintenance. Operational
-  anomaly detection observes failed or stale actions. A regular committer has no
-  post-commit maintenance log judgment. The standing integrator inspects
-  outstanding and terminal maintenance through its recurring watch, judges
-  the relevant runtime evidence after owed actions complete, and owns bounded
-  recovery. The log bug hunter remains a later anomaly backstop. Maintenance
-  completion sends no notification to the committer.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. The commit boundary
   records a checkout-scoped integrator judgment for every qualifying code
@@ -310,8 +256,6 @@ contract governs only what happens when maintenance runs.
   the relevant runtime evidence after owed actions complete, and owns bounded
   recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 <!-- planned:release-development-checkouts -->
 
@@ -551,21 +495,6 @@ And no generated AGENTS.md beside those masters enters the commit, because the r
 But the same path shape in an ordinary project does not acquire a home-only maintenance binding
 ```
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-#### UC-PCM19: A restart owed by an integration does not close admission on that integration
-
-```gherkin
-Given an integration advances canonical main and its activation owes a daemon restart
-And that integration's own accepted work is still running in the daemon
-When the restart action runs
-Then the daemon keeps accepting work while any accepted work is held, up to the action's bound
-And preparation begins once the daemon holds no accepted work, or when the bound expires
-And the integration completes without having had its own restart close admission around it
-```
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 #### UC-PCM19: A restart owed by an integration does not close admission on that integration
 
 ```gherkin
@@ -576,10 +505,6 @@ Then the daemon keeps accepting work while any accepted work is held, up to the 
 And preparation begins once the daemon holds no accepted work, or when the bound expires
 And the integration completes without having had its own window close admission around it
 ```
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-<!-- planned:maintenance-runs-as-stopped-daemon-window -->
 
 #### UC-PCM20: Every owed step runs against a stopped daemon
 
@@ -731,10 +656,6 @@ And an agent running make status sees that reason and when it was recorded
 And replaying a restart action after the cause is resolved records the tip's owed actions, runs them and starts the daemon from the tip
 ```
 
-<!-- /planned:maintenance-runs-as-stopped-daemon-window -->
-
-<!-- planned:maintenance-runs-as-stopped-daemon-window -->
-
 ## Known caveats
 
 - Nothing gates an advancement of the canonical checkout while the window
@@ -746,8 +667,6 @@ And replaying a restart action after the cause is resolved records the tip's owe
 - A commit-boundary registration that arrives while a window is closing waits
   for that close, so the commit or merge whose hook records it returns only
   after the window's start has been verified or has failed.
-
-<!-- /planned:maintenance-runs-as-stopped-daemon-window -->
 
 ## See Also
 

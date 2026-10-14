@@ -7,56 +7,26 @@ visibility: 'public'
 
 ## Rules
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-- The daemon is a 24/7 service; downtime is not acceptable outside controlled restarts.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 - The daemon is a 24/7 service; downtime is not acceptable outside controlled restarts.
 
 - A maintenance run that replaces the daemon is a controlled restart. The daemon is down for the length of that run: it settles its accepted work and stops before the run's first step, no step runs while it serves, and it starts again after the last step (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). The run succeeds only once the started daemon is verified recovered. A run that cannot establish the daemon stopped leaves it as it is and runs no step, and a run whose start does not verify leaves the daemon with that reason recorded; `make status` reports either reason.
 
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
-
 - `make start` and `make restart` first establish that the machine configuration loads; when it does not, they refuse with its finding and leave a running daemon running, because the daemon cannot boot on it.
-
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-- `make restart` prepares the running daemon before the service-manager action (`local/projects/teleclaude/policy/agent-service-control`) and ends when the service manager accepts the restart. Nothing follows the service-manager action inside the command: no wait, check, or other step runs after it there. In a maintenance or recovery sequence that includes it, `make restart` is the last action, except for the configuration migration run that follows it (`local/projects/teleclaude/spec/feature/config/document-migration`). Its outcome records that acceptance, the refused machine configuration or refused preparation that withheld the service-manager action, or a restart deferred to the daemon. A preparation that does not complete within its observation window is a deferred restart: the draining daemon completes the restart itself once its accepted work settles (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`), so a deferred restart is a successful outcome that owes no retry.
-
-- After a canonical-main change needing a restart, commit-boundary maintenance invokes `make restart` after every other owed action except the configuration migration run, which follows it; an agent does not repeat it. Agent-operated recovery invokes `make restart` the same way.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
 
 - `make restart` prepares the running daemon before the service-manager action (`local/projects/teleclaude/policy/agent-service-control`) and ends when the service manager accepts the restart. Nothing follows the service-manager action inside the command: no wait, check, or other step runs after it there. Its outcome records that acceptance, the refused machine configuration or refused preparation that withheld the service-manager action, or a restart deferred to the daemon. A preparation that does not complete within its observation window is a deferred restart: the draining daemon completes the restart itself once its accepted work settles (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`), so a deferred restart is a successful outcome that owes no retry.
 
 - A maintenance run replaces the daemon through `make stop` and `make start`, never through `make restart`; an agent does not repeat completed maintenance. Agent-operated recovery outside a maintenance run uses `make restart`.
 
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
-
 - Daemon process-lifecycle observability is in-daemon: the janitor emits one process-reaped event per kill (queryable via `telec events`), and structured logs carry SIGTERM and shutdown attribution. Ad-hoc host probes (`dtrace`/`fs_usage`) installed outside `make` are not used.
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-- Daemon health (API socket, API health/read endpoints, adapters, preparation phase) is verified by `make status`, a separate invocation that is never part of `make restart`. A daemon whose admission is closed is reported as draining — its phase, when preparation began, and the accepted work it still holds — and never as healthy. After a canonical-main activation, the standing integrator's log judgment establishes whether the restarted daemon came back healthy.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 - Daemon health (API socket, API health/read endpoints, adapters, preparation phase) is verified by `make status`, a separate invocation that is never part of `make restart`. A daemon whose admission is closed is reported as draining — its phase, when preparation began, and the accepted work it still holds — and never as healthy. `make status` also names the reason, and the time, a maintenance run last refused to open its window or left the daemon without a verified start, until a later run verifies one. After a canonical-main activation, the standing integrator's log judgment establishes whether the runtime behaves correctly after the maintenance run.
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 - If Redis is configured for the event platform, startup must expose Redis reachability and pending recovery progress through daemon state or structured logs before continuing degraded; a silent healthy-but-no-Streams state is forbidden.
 - `make stop` and `make restart` bring down the daemon and its managed launchd units only; they never signal an agent session, the tmux server, or a spawn-registry lease-holder. Sessions and leased detached workers (e.g. the chiptunes worker) outlive the daemon by design: sessions end only through the caller-driven path (see `general/principle/session-lifecycle`); leased workers are re-adopted via adopt-or-kill on the next start (see `local/projects/teleclaude/design/process-lifecycle`).
 
 - `make stop` prepares the running daemon before stopping it. A preparation that does not complete within its observation window is reported and leaves the daemon running and draining; it is never forcibly terminated by that stop, and once its accepted work settles the daemon completes its own shutdown and the service manager relaunches it. Once the daemon is prepared, the stop is bounded and verified: SIGTERM the daemon, confirm exit within 30 seconds, then SIGKILL it if it has not exited. Termination targets the daemon and managed-unit pids only, never a process-group sweep.
 
-<!-- planned:maintenance-runs-as-stopped-daemon-window -->
-
 - `make stop` records its outcome where a caller names a location for it, because `make` reports every failing recipe with the same status: stopped, meaning no daemon process remains and its service manager will not relaunch it, whether or not this stop had to terminate it; stopped with a managed-unit cleanup failure; withheld while the daemon drains; or withheld, with its reason. The record states the daemon's state after the stop, so a caller acts on that state rather than on the command's exit status. Once preparation allows it, `make stop` issues its service manager's stop whatever state the daemon starts from.
-
-<!-- /planned:maintenance-runs-as-stopped-daemon-window -->
 
 - A leaked daemon-bound process — one with no live session and no registry lease — is reaped by the in-daemon janitor on the next start, never left to accumulate (see `local/projects/teleclaude/design/process-lifecycle`).
 - Every TeleClaude-installed launchd unit is in the managed set; no monitoring or helper unit runs independently of `make`.
@@ -67,19 +37,11 @@ visibility: 'public'
 - Explicit restart + separate verification is the safest minimal-downtime path.
 - A restart can terminate the process that requested it, and a daemon in its first seconds is at its busiest. A check inside the restart measures that warm-up rather than whether the restart happened, and turns a successful restart into a failed maintenance record that holds up delivery.
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-- A configuration document stored at a version the running daemon's code does not know fails every read that daemon makes of it, so a migration stored before the restart takes the daemon's service down for as long as the rest of the maintenance runs. The replacement daemon reads the older stored documents through its migration list in memory, so storing them after the restart costs no service.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 - A daemon that keeps serving while maintenance changes the code, dependencies, configuration and service definitions it runs on reads state its loaded code may not understand. Keeping it safe then needs every writer ordered around the restart or gated on what the old process can read, and a single writer that escapes the ordering leaves the daemon refusing its own configuration. With the daemon stopped there is no older reader to protect, so the steps need only their own dependency order. The cost is downtime for the length of the run: sessions, leased workers and the hook outbox already outlive a stopped daemon, and callers already meet a refusal that tells them to retry.
 
 - Maintenance runs detached from the daemon it stops, so it outlives the stop and can wait out the started daemon's warm-up within a bound before it judges the start. A run that reported success without that verification would leave a daemon that never came back to be discovered by whoever next needed it, and a reason recorded where `make status` reads it reaches that person first.
 
 - A service manager that relaunches the daemon on exit keeps doing so for a unit that is merely disabled; only its explicit stop cancels a relaunch it has scheduled. A stop that skipped that call for an already-disabled unit could report a stopped daemon while a relaunch was pending, and maintenance would then run against a daemon about to come back.
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 - Stopping a daemon while acknowledged work is still effecting leaves that work half-done with its owner gone. Preparation settles that work first, and a daemon whose preparation has not completed is safer left draining than forced down (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).
 

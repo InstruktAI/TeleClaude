@@ -53,25 +53,6 @@ activation of the commit-boundary executor
 (`docs/local/spec/feature/integration/event-bound-maintenance.md`). An event
 about any other project never selects that binding.
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-The action reads the event it is handed and the computer's channel policy. On a
-match it advances the checkout's main branch to the target the channel admits —
-the newest mainline for alpha, the published release for beta and stable — and
-runs the installation migrations between the version it left and the version it
-reached. A target the checkout already contains is not applied again. The
-advance is an ordinary canonical-main activation: the installation, dependency
-reconciliation and daemon restart it owes are the commit-boundary maintenance
-its changed paths owe
-(`docs/local/spec/feature/integration/post-commit-maintenance.md`), and whether
-the restarted daemon came back healthy is the standing integrator's judgment.
-Channel policy and the exactly-once / healthy-or-failed contract are owned by
-`docs/local/spec/feature/reconciliation/channel-gated-self-update.md`; the
-context model (Installation, Convergence Run, Fleet Capability Map) is in
-`docs/local/spec/domain/reconciliation.md`.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 The action reads the event it is handed and the computer's channel policy. On a
 match it advances the checkout's main branch to the target the channel admits —
 the newest mainline for alpha, the published release for beta and stable. A
@@ -90,8 +71,6 @@ Channel policy and the exactly-once / healthy-or-failed contract are owned by
 `docs/local/spec/feature/reconciliation/channel-gated-self-update.md`; the
 context model (Installation, Convergence Run, Fleet Capability Map) is in
 `docs/local/spec/domain/reconciliation.md`.
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 A deliberately multi-version fleet (alpha ahead of beta ahead of stable) stays
 interoperable through the fleet capability map and feature-ID gating in
@@ -207,25 +186,6 @@ remain independently observable.
 
 ## Primary flows
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-```mermaid
-flowchart TD
-    GH[External provider webhook] --> ING[Ingress: verify + normalize]
-    ING -->|relay unconditionally| BUS[Cluster event bus CLUSTER scope]
-    BUS --> N1[Computer A: event-bound maintenance]
-    BUS --> N2[Computer B: event-bound maintenance]
-    BUS --> N3[Computer C: event-bound maintenance]
-    N1 --> O1{event about TeleClaude?}
-    O1 -->|no| S0[Nothing selected]
-    O1 -->|yes| P1{channel admits a target the checkout lacks?}
-    P1 -->|yes| C1[self-update: advance main and migrate]
-    C1 --> M1[Commit-boundary maintenance the advance owes: install, deps, restart]
-    P1 -->|no| S1[Complete without acting]
-```
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 ```mermaid
 flowchart TD
     GH[External provider webhook] --> ING[Ingress: verify + normalize]
@@ -242,8 +202,6 @@ flowchart TD
     M1 --> W2[Start the daemon and verify it on the reached version]
     P1 -->|no| S1[Complete without acting]
 ```
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 ## Failure modes
 

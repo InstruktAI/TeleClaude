@@ -81,15 +81,7 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 18. **Code-scoped post-commit review gate**: The session-scoped authored-main-commit latch is armed by `telec code commit` only when the committed pathspec includes code. The latch triggers only the post-commit review gate — never the action or evidence ledger; commit-action suppression derives from commit evidence in the timeline, not from the latch. Doc-only main commits commit but do not arm the review gate — under doc-first, documentation is reviewed in the lifecycle, not at the post-commit review gate.
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-19. **Integrator post-advance judgment**: Every canonical-main advancement records the tailored deterministic maintenance resolved for its immutable activation and starts the one-shot drain. A root commit enters through post-commit; a merge or fast-forward enters through post-merge. After the action records are durable, that same commit boundary records a checkout-scoped marker when the changed paths owe `log-check`, including a direct main commit with no todo candidate. The marker accumulates qualifying activations, each with its activation time, and carries no mechanical action id. It becomes eligible for log judgment only after every owed action for those activations has terminal success, where a restart succeeds once the service manager accepts it and the restarted daemon's health is judged by the log read rather than by the action; a pending, failed, or interrupted action keeps the marker outstanding. The executor records the latest maintenance-ready time on the marker when this condition is met. An absent ready time also keeps the marker outstanding for integrator recovery if the executor was interrupted after removing its last action file. The integrator then reads structured results and runtime logs covering the earliest activation through the post-maintenance interval. A log read made before that ready time or with a window beginning after activation never discharges the marker. Its recurring watch discovers the marker even when an action's success file was removed before the watch fired. Ordinary committing sessions do not receive this repository's maintenance log judgment; delayed anomalies remain eligible for the log bug hunter. Checkout addressing lets a successor integrator inherit an unfinished judgment without repeating mechanical maintenance.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 19. **Integrator post-advance judgment**: Every canonical-main advancement records the tailored deterministic maintenance resolved for its immutable activation and starts the one-shot drain. A root commit enters through post-commit; a merge or fast-forward enters through post-merge. After the action records are durable, that same commit boundary records a checkout-scoped marker when the changed paths owe `log-check`, including a direct main commit with no todo candidate. The marker accumulates qualifying activations, each with its activation time, and carries no mechanical action id. It becomes eligible for log judgment only after every owed action for those activations has terminal success, where the restart action succeeds only once its stopped-daemon window has verified the started daemon (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`) and the runtime's behavior after it is judged by the log read rather than by the action; a pending, failed, or interrupted action keeps the marker outstanding. The executor records the latest maintenance-ready time on the marker when this condition is met. An absent ready time also keeps the marker outstanding for integrator recovery if the executor was interrupted after removing its last action file. The integrator then reads structured results and runtime logs covering the earliest activation through the post-maintenance interval. A log read made before that ready time or with a window beginning after activation never discharges the marker. Its recurring watch discovers the marker even when an action's success file was removed before the watch fired. Ordinary committing sessions do not receive this repository's maintenance log judgment; delayed anomalies remain eligible for the log bug hunter. Checkout addressing lets a successor integrator inherit an unfinished judgment without repeating mechanical maintenance.
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 20. **The commit boundary records what a commit's paths owe**: A sealed `telec code commit` on the canonical checkout's main branch records and starts the maintenance its committed paths owe (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`) before returning. The checkpoint engine carries no mechanical maintenance obligation against that commit: action records and structured outcomes belong to the one-shot executor, not transcript substring matching. Tests remain cycle-local advisories on the dirty tree. In this repository, the file-based checkpoint does not surface `log-check` to an ordinary committing session; the standing integrator owns the post-maintenance judgment. The commit remains the attributing action for files the agent committed but did not itself Edit or Write. The post-commit review latch of Invariant 18 is unaffected — routing review is a judgment, not a command, and the latch that arms it is independent of maintenance completion.
 
@@ -107,15 +99,7 @@ remains unconditional, with capability-gated path bindings. Consumers resolve
 the composed model rather than imposing their own capability rules, under
 `sdlc/policy/domain-ownership`.
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-23. **Action registries and bindings (verb/noun split)**: Detection is three tables joined by action id. The **checkpoint registry** maps an id to the agent-facing `run`, transcript `evidence`, `main_only`, `off_main_eligible`, `precedence`, and optional `evidence_must_follow_last_mutation`; it carries no executable command. The **maintenance registry** maps an id to the `command` an automated consumer executes, `main_only`, `precedence`, and its on-demand disposition (Invariant 29); it carries no agent-facing instruction or transcript evidence. Automated consumers execute selected maintenance actions in precedence waves: equal-precedence actions run concurrently, the next wave waits for every prior terminal outcome, and failure never cancels a later wave. The single **binding table** maps a scope to action ids without owning registry membership. Each action id belongs to exactly one registry, while every binding and consumer resolves through the same joined model.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 23. **Action registries and bindings (verb/noun split)**: Detection is three tables joined by action id. The **checkpoint registry** maps an id to the agent-facing `run`, transcript `evidence`, `main_only`, `off_main_eligible`, `precedence`, and optional `evidence_must_follow_last_mutation`; it carries no executable command. The **maintenance registry** maps an id to the `command` an automated consumer executes, `main_only`, `precedence`, and its on-demand disposition (Invariant 29); it carries no agent-facing instruction or transcript evidence. Automated consumers execute selected maintenance actions in precedence waves: equal-precedence actions run concurrently, the next wave waits for every prior terminal outcome, and failure never cancels a later wave. An owed `restart` action is not a wave: it is the stopped-daemon window the other owed actions run inside (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). The single **binding table** maps a scope to action ids without owning registry membership. Each action id belongs to exactly one registry, while every binding and consumer resolves through the same joined model.
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 TeleClaude owns both platform base registries. A project references their ids in its bindings and extends the registry whose eligibility contract its project-specific action satisfies.
 
@@ -126,18 +110,6 @@ The agent-stop engine continues to select judgment actions from path bindings;
 an activation binding names maintenance only. Capability composition admits the
 Blueprint action and its activation binding only in code-enabled projects.
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-Blueprint maintenance runs after its toolchain prerequisites and before a
-restart wave. Its writer takes the Blueprint serialization boundary beneath
-the maintenance drain boundary. Query observation waits through the maintenance
-completion interface and then pins a published generation; it performs no
-extraction and holds no Blueprint lock while waiting for maintenance. This lock
-order and one execution owner follow `sdlc/policy/code-quality-practices` and
-`sdlc/principle/design-fundamentals`.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 Blueprint maintenance runs after its toolchain prerequisites, inside the
 stopped-daemon window when the activation owes one. Its writer takes the Blueprint serialization boundary beneath
 the maintenance drain boundary. Query observation waits through the maintenance
@@ -145,8 +117,6 @@ completion interface and then pins a published generation; it performs no
 extraction and holds no Blueprint lock while waiting for maintenance. This lock
 order and one execution owner follow `sdlc/policy/code-quality-practices` and
 `sdlc/principle/design-fundamentals`.
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 The cache baseline and query guarantee belong to `sdlc/spec/codebase-blueprint`;
 the local behavioral contract is
@@ -247,24 +217,6 @@ root. TeleClaude's overlay overrides `plumbing-convergence` by id with fleet
 convergence, bound to its hook templates and to its help-desk and home master
 templates, the latter also owing publication.
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-TeleClaude's overlay declares `restart` and `tui-reload` `defer`. Each probe
-reads the commit the daemon, or each live TUI, started from, and reports the
-action owed when that commit is older than the converged tip and the changed
-paths between the two owe the action under the root's own bindings, through the
-same scope matcher (Invariant 25). A start commit that is not an ancestor of the
-tip is a cannot-tell, one that already contains the tip owes nothing, and no
-live process owes nothing. The overlay also declares `service-deploy`, deferred
-and bound to no scope, whose command is `make install` and whose probe names
-each service whose definition TeleClaude's installation renders and whose
-deployed definition differs from the rendered one, and each service
-installation would withdraw.
-Commit-boundary installation deploys and reloads those services as before
-(`local/projects/teleclaude/policy/agent-service-control`).
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 TeleClaude's overlay declares `tui-reload` `defer`. Its probe reads the
 commit each live TUI started from, and reports the action owed when that commit
 is older than the converged tip and the changed paths between the two owe the
@@ -281,8 +233,6 @@ deployed definition differs from the rendered one, and each service
 installation would withdraw.
 Commit-boundary installation deploys and reloads those services as before
 (`local/projects/teleclaude/policy/agent-service-control`).
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 An on-demand run fills a command without a range. `{after_sha}` takes the
 converged tip, the `--before-sha {before_sha}` pair is omitted, and the

@@ -12,23 +12,11 @@ visibility: 'public'
 
 - **On-demand maintenance defers service deployment.** Run as a step of `telec sync` (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`), `make install` deploys none of the service definitions it renders and stops, restarts or reloads no running service, though it may still start a service that is not running; the run instead reports a plain `make install` as owed whenever a deployed definition differs from what installation would deploy, or a service is due for withdrawal.
 
-<!-- planned:maintenance-runs-as-stopped-daemon-window -->
-
 - **Maintenance leaves the tmux server running.** Run as a step of any maintenance run, commit-boundary or on-demand, `make install` deploys no changed tmux server definition and names the deferred change instead, so the sessions the tmux server hosts survive the run's controlled restart. Deploying that definition is a plain `make install` outside maintenance, which ends those sessions.
-
-<!-- /planned:maintenance-runs-as-stopped-daemon-window -->
 
 - **Lifecycle and setup `make` targets are first-class agent commands:** `make restart`, `make start`, `make stop`, `make status`, `make install`, alongside `telec config wizard`. `make stop`/`make start` cover the case where a restart is insufficient.
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
-- **Commit-boundary maintenance and agent-operated recovery use the same targets.** The deterministic maintenance a canonical-main advancement owes — `make install` after setup changes, `make restart` after daemon-code changes — is performed automatically from the canonical checkout (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). An agent does not repeat completed maintenance. When separate operational or recovery work requires the same effect, the agent invokes the applicable `make` target and never substitutes a raw host primitive — even when that target internally deploys or reloads a service definition.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
 - **Commit-boundary maintenance and agent-operated recovery use the same targets.** The deterministic maintenance a canonical-main advancement owes — `make install` after setup changes, and `make stop` before and `make start` after a run that replaces the daemon — is performed automatically from the canonical checkout (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`). An agent does not repeat completed maintenance. When separate operational or recovery work requires the same effect, the agent invokes the applicable `make` target and never substitutes a raw host primitive — even when that target internally deploys or reloads a service definition.
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 - **Checks:** `make status`, `instrukt-ai-logs teleclaude --since <window> --grep <str>`.
 - **Do not hand-invoke host service primitives directly** — `bin/daemon-control.sh`, `bin/init/install_services.sh`, `launchctl`, `systemctl`, raw service bootout/bootstrap/unload/load. Route every service operation through the `make` targets, which wrap these safely. This is a use-the-sanctioned-wrapper rule, not an approval gate.
