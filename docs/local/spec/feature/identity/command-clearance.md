@@ -185,11 +185,11 @@ And a platform administrator receives the existing unknown-name listing
 
 ### Claim-scoped todo update
 
-`telec todo update` replaces role privilege with object state. The verb's system band admits every agent system role except `worker`; a roleless agent session is admitted through the verb's human band. Every admitted caller other than a direct human identity — dispatch-capable roles and roleless sessions included — is then checked against the todo's claim. No role holds unrestricted access to this verb.
+`telec todo update` replaces role privilege with object state. The verb admits every agent role whose set composes `todo-write`, worker roles included; a roleless agent session is admitted through the verb's human band. Every admitted caller other than a direct human identity — workers, dispatch-capable roles and roleless sessions included — is then checked against the todo's claim. No role holds unrestricted access to this verb.
 
 The claim gate is the claiming-group predicate governing artifact writes (`feature/workflow/artifact-versioning`, Write authority). A todo whose `active_runner` names a live session is claimed; its claiming group is the holding session plus every session it dispatched, transitively through `initiator_session_id`. The gate admits a caller inside the claiming group, and admits any caller on an unclaimed todo — no `active_runner`, or one naming a session that is no longer live. It refuses a caller outside a live claim's group with the claim-conflict shape naming the holding session: the caller's door is that session. The todo state is unchanged by a refused update.
 
-`worker` is excluded at the verb band before any claim lookup runs. A direct human-identity caller — a login-resolved human principal carrying no agent session id and no system role — is not a session, is not gated by the claim, and is evaluated against the verb's human band; it is the caller class the artifact-write claim gate exempts (`feature/workflow/artifact-versioning`, UC-WAV16, UC-WAV23). Any other caller carrying no agent session id, such as the daemon's own credential, belongs to no claiming group and is refused on a live claim.
+A direct human-identity caller — a login-resolved human principal carrying no agent session id and no system role — is not a session, is not gated by the claim, and is evaluated against the verb's human band; it is the caller class the artifact-write claim gate exempts (`feature/workflow/artifact-versioning`, UC-WAV16, UC-WAV23). Any other caller carrying no agent session id, such as the daemon's own credential, belongs to no claiming group and is refused on a live claim.
 
 The `--unclaim` leg releases only the caller's own claim or the caller's own binding to the todo; it never clears another session's claim. A claiming-group member other than the holder passes the gate, and `--unclaim` then releases at most its own binding, leaving the holder's claim in place. The build-started freeze on slug/kind mutation is a phase invariant owned by the todo-management contract, orthogonal to this gate.
 
@@ -233,14 +233,14 @@ Then the claim gate accepts (the todo is unclaimed)
 And the requested mutation is applied to the todo state
 ```
 
-#### UC-CSU5: Worker is refused regardless of claim state
+#### UC-CSU5: A worker is claim-gated like every agent caller
 
 ```
-Given a worker agent session with system_role=`worker` and session_id=`w-1`
-And a todo whose active_runner is absent, and separately a todo whose active_runner is `w-1`
-When the session calls `telec todo update` on either todo
-Then the verb band rejects the caller before any claim lookup runs
-And the response is a not-permitted authorization failure for `telec todo update`
+Given a builder session `w-1` dispatched by the live session `t-1` that holds the claim on a todo
+And a second todo whose active_runner names a different live session whose claiming group does not include `w-1`
+When `w-1` calls `telec todo update` on each todo
+Then the claim gate accepts the update to the first todo
+And refuses the second with a claim conflict naming the holding session
 ```
 
 #### UC-CSU6: Orchestrator outside the claiming group is refused

@@ -42,6 +42,7 @@ class Capability(StrEnum):
     JOBS = "jobs"
     JOB_REPORT = "job-report"
     CONFIG = "config"
+    CONFIG_READ = "config-read"
     REMINDERS = "reminders"
     CODE_CHECK = "code-check"
     CODE = "code"
@@ -154,127 +155,87 @@ def _entry(
     return name, Role(name, role_class, full_reach, capabilities, label)
 
 
+# The set every worker-class role starts from. It holds no capability that observes the fleet or acts on
+# another session (``local/projects/teleclaude/spec/feature/identity/agent-roles``).
+_WORKER_BASELINE: frozenset[Capability] = frozenset(
+    {
+        Capability.DOCS_READ,
+        Capability.REMINDERS,
+        Capability.TODO_READ,
+        Capability.TODO_WRITE,
+        Capability.ARTIFACT_READ,
+        Capability.ARTIFACT_WRITE,
+        Capability.STAMP,
+        Capability.CODE,
+        Capability.CODE_CHECK,
+        Capability.MCP,
+        Capability.PEER_TALK,
+        Capability.SELF_ACTS,
+        Capability.JOBS,
+        Capability.JOB_REPORT,
+        Capability.OPERATION_READ,
+        Capability.MESSAGING,
+        Capability.MEMORIES_READ,
+        Capability.CONFIG_READ,
+    }
+)
+
 _CATALOG: dict[RoleName, Role] = dict(
     [
         _entry(
             RoleName.BUILDER,
             RoleClass.WORKER,
             False,
-            frozenset(
-                {
-                    Capability.DOCS_READ,
-                    Capability.REMINDERS,
-                    Capability.TODO_READ,
-                    Capability.ARTIFACT_READ,
-                    Capability.ARTIFACT_WRITE,
-                    Capability.STAMP,
-                    Capability.CODE,
-                    Capability.CODE_CHECK,
-                    Capability.MCP,
-                    Capability.PEER_TALK,
-                }
-            ),
+            _WORKER_BASELINE,
             RoleLabel.WORKER,
         ),
         _entry(
             RoleName.REVIEWER,
             RoleClass.WORKER,
             False,
-            frozenset(
-                {
-                    Capability.DOCS_READ,
-                    Capability.REMINDERS,
-                    Capability.TODO_READ,
-                    Capability.ARTIFACT_READ,
-                    Capability.ARTIFACT_WRITE,
-                    Capability.STAMP,
-                    Capability.CODE_CHECK,
-                    Capability.MCP,
-                    Capability.PEER_TALK,
-                    Capability.TRANSCRIPT_READ,
-                }
-            ),
+            _WORKER_BASELINE | {Capability.TRANSCRIPT_READ},
             RoleLabel.WORKER,
         ),
         _entry(
             RoleName.FINALIZER,
             RoleClass.WORKER,
             False,
-            frozenset(
-                {
-                    Capability.DOCS_READ,
-                    Capability.REMINDERS,
-                    Capability.TODO_READ,
-                    Capability.ARTIFACT_READ,
-                    Capability.STAMP,
-                    Capability.CODE,
-                    Capability.CODE_CHECK,
-                }
-            ),
+            _WORKER_BASELINE,
             RoleLabel.WORKER,
         ),
         _entry(
             RoleName.DIAGNOSER,
             RoleClass.WORKER,
             False,
-            frozenset(
-                {
-                    Capability.DOCS_READ,
-                    Capability.REMINDERS,
-                    Capability.TODO_READ,
-                    Capability.ARTIFACT_READ,
-                    Capability.ARTIFACT_WRITE,
-                    Capability.CODE_CHECK,
-                    Capability.TRANSCRIPT_READ,
-                }
-            ),
+            _WORKER_BASELINE | {Capability.TRANSCRIPT_READ},
             RoleLabel.WORKER,
         ),
         _entry(
             RoleName.DRIFT_ANALYZER,
             RoleClass.WORKER,
             False,
-            frozenset(
-                {
-                    Capability.DOCS_READ,
-                    Capability.REMINDERS,
-                    Capability.TODO_READ,
-                    Capability.ARTIFACT_READ,
-                    Capability.STAMP,
-                }
-            ),
+            _WORKER_BASELINE,
             RoleLabel.WORKER,
         ),
         _entry(
             RoleName.ARTIST,
             RoleClass.WORKER,
             False,
-            frozenset({Capability.DOCS_READ, Capability.REMINDERS, Capability.ARTIFACT_READ}),
+            _WORKER_BASELINE,
             RoleLabel.WORKER,
         ),
         _entry(
             RoleName.FRONTENDER,
             RoleClass.WORKER,
             False,
-            frozenset({Capability.DOCS_READ, Capability.REMINDERS, Capability.ARTIFACT_READ}),
+            _WORKER_BASELINE,
             RoleLabel.WORKER,
         ),
         _entry(
             RoleName.DEFERRER,
             RoleClass.WORKER,
             False,
-            frozenset(
-                {
-                    Capability.DOCS_READ,
-                    Capability.REMINDERS,
-                    Capability.TODO_READ,
-                    Capability.TODO_WRITE,
-                    Capability.ARTIFACT_READ,
-                    Capability.ARTIFACT_WRITE,
-                    Capability.STAMP,
-                    Capability.OPERATION_READ,
-                }
-            ),
+            _WORKER_BASELINE,
             RoleLabel.WORKER,
         ),
         _entry(
@@ -576,6 +537,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.DOCS_READ,
                     Capability.REMINDERS,
                     Capability.CONFIG,
+                    Capability.CONFIG_READ,
                     Capability.SESSION_OBSERVE,
                     Capability.SESSION_ACT,
                     Capability.PEER_TALK,

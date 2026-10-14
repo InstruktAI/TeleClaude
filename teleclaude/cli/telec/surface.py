@@ -1209,7 +1209,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc="List computer subjects (singleton)",
                         flags=[F.FLAG_HELP],
                         auth=CommandAuth(
-                            capability=Capability.CONFIG,
+                            capability=Capability.CONFIG_READ,
                             human=_HR_MEMBER,
                             scope=CommandScope.PLATFORM,
                         ),
@@ -1219,7 +1219,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="[paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
                         auth=CommandAuth(
-                            capability=Capability.CONFIG,
+                            capability=Capability.CONFIG_READ,
                             human=_HR_MEMBER,
                             scope=CommandScope.PLATFORM,
                         ),
@@ -1250,7 +1250,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc="List global subjects (singleton)",
                         flags=[F.FLAG_HELP],
                         auth=CommandAuth(
-                            capability=Capability.CONFIG,
+                            capability=Capability.CONFIG_READ,
                             human=_HR_MEMBER,
                             scope=CommandScope.PLATFORM,
                         ),
@@ -1260,7 +1260,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="[paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
                         auth=CommandAuth(
-                            capability=Capability.CONFIG,
+                            capability=Capability.CONFIG_READ,
                             human=_HR_MEMBER,
                             scope=CommandScope.PLATFORM,
                         ),
@@ -1415,7 +1415,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc="List registered project slugs",
                         flags=[F.FLAG_HELP],
                         auth=CommandAuth(
-                            capability=Capability.CONFIG,
+                            capability=Capability.CONFIG_READ,
                             human=_HR_MEMBER,
                             scope=CommandScope.PLATFORM,
                         ),
@@ -1425,7 +1425,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="<slug> [paths...] [--format <fmt>]",
                         flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
                         auth=CommandAuth(
-                            capability=Capability.CONFIG,
+                            capability=Capability.CONFIG_READ,
                             human=_HR_MEMBER,
                             scope=CommandScope.CONFIG_SUBJECT,
                         ),
@@ -1493,7 +1493,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Full validation",
                 flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
                 auth=CommandAuth(
-                    capability=Capability.CONFIG,
+                    capability=Capability.CONFIG_READ,
                     human=_HR_MEMBER,
                     scope=CommandScope.PLATFORM,
                 ),

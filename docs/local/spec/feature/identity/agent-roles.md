@@ -73,7 +73,8 @@ own identity and is never a session role.
 | `audio`                | Transcribing supplied audio to text.                                                                     |
 | `jobs`                 | Listing, enabling, disabling and running jobs.                                                           |
 | `job-report`           | Reporting the result of a job run.                                                                       |
-| `config`               | Reading and changing configuration.                                                                      |
+| `config`               | Changing configuration, and reading person and company configuration.                                    |
+| `config-read`          | Reading and validating machine, global and project configuration.                                        |
 | `reminders`            | Arming, listing and cancelling reminders.                                                                |
 | `code-check`           | Inspecting code: blast radius, lint and tests.                                                           |
 | `code`                 | Formatting, file declarations and commits.                                                               |
@@ -106,17 +107,26 @@ The label is the role's name in a caller-origin identity header, drawn from
 
 Each role's explicit set represents the commands needed by the procedures that
 declare that role, including their required reads and supported entry duties.
-Sharing a role class grants no shared command set. Procedures share a role only
-where its focused surface fits their assignments; a shared label alone supplies
-no command membership. The catalog owns the sets, and command declarations own
-capability membership, under
+Every role of class `worker` composes the worker baseline the catalog declares
+and adds to it what its own assignment needs. The baseline holds no capability
+that observes the fleet or acts on another session, so no worker lists
+sessions, searches history, reads the fleet's computers, projects or agents, or
+starts another session (UC-AR3). A worker's reach is focus, not integrity
+(`general/principle/trust-and-guardrails`): the todo's claim and the object
+owners still decide what it may change.
+
+Outside the worker class, sharing a role class grants no shared command set.
+Procedures share a role only where its focused surface fits their assignments;
+a shared label alone supplies no command membership. The catalog owns the sets,
+and command declarations own capability membership, under
 `local/projects/teleclaude/design/cli-authorization-matrix`.
 
-Capabilities distinguish commands whose assignment needs differ. A role that
-needs inspection or verification does not acquire unrelated mutation commands
-merely because those commands share a broad namespace. Ordinary startup,
-documentation retrieval, reporting, peer communication and completion remain
-available wherever the role's procedure requires them.
+Capabilities distinguish commands whose assignment needs differ. Beyond the
+worker baseline, a role that needs inspection or verification does not acquire
+unrelated mutation commands merely because those commands share a broad
+namespace. Ordinary startup, documentation retrieval, reporting, peer
+communication and completion remain available wherever the role's procedure
+requires them.
 
 The focused set remains explicit for a full-reach role. Full reach broadens
 permission independently of that focused set; it never expands the focused set
@@ -211,7 +221,7 @@ And the session is not admitted as a human session
 Given two agent roles of the same class with different procedure duties
 When their focused command sets are resolved
 Then each contains the commands its own assignments need
-And a command needed only by the other assignment is absent
+And a command outside the worker baseline needed only by the other assignment is absent
 ```
 
 #### UC-AR8: Full reach preserves a separate focused set
@@ -221,6 +231,15 @@ Given an internal agent role explicitly opted into full reach
 When its focused set and permitted reach are resolved
 Then its focused set remains tailored to its assignment
 And its permitted reach includes capabilities outside that set
+```
+
+#### UC-AR9: Every worker composes the worker baseline
+
+```gherkin
+Given an agent session whose role is `artist`
+When it runs `telec todo stamp`, `telec sessions result` or `telec config project get`
+Then each command is admitted
+But `telec computers list` and `telec sessions start` are refused with the not-permitted failure naming `artist` and the verb
 ```
 
 ## Known caveats
