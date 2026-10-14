@@ -32,8 +32,10 @@ files whose content changed.
 
 <!-- planned:role-scoped-cli-context -->
 
-Retrieve the commands this assignment uses with `telec -h --expand-role` before
-your first `telec` call; `telec <command> -h` details any single command.
+When this procedure is your session’s launch assignment, retrieve its focused tool
+help with `telec -h --expand-role` before starting the assigned work. When reading
+it inline, retain your current session’s tool context. Use `telec <command> -h`
+for individual commands.
 <!-- /planned:role-scoped-cli-context -->
 
 1. Read the company `meta.yaml` and inbox.
