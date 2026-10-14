@@ -1,10 +1,10 @@
 ---
-description: 'AI-driven project analysis procedure. Guides the analysis session through codebase discovery, convention inference, and snippet generation.'
+description: 'AI-driven project analysis procedure run by a sdlc/procedure/project-analysis session started with telec sessions run. Guides the analysis session through codebase discovery, convention inference, and snippet generation.'
 visibility: 'public'
 role: helper
 dispatch:
   agent: [claude, codex, gemini, deepseek]
-  thinking_mode: slow
+  thinking_mode: med
 ---
 
 # Project Analysis — Procedure

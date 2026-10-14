@@ -4,7 +4,7 @@ visibility: 'public'
 role: helper
 dispatch:
   agent: [claude, codex, gemini, deepseek]
-  thinking_mode: slow
+  thinking_mode: med
 ---
 
 # Code Config Assessment — Procedure

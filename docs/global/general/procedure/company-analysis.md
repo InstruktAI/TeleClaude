@@ -8,7 +8,7 @@ dispatch:
     - codex
     - gemini
     - deepseek
-  thinking_mode: slow
+  thinking_mode: med
 ---
 
 # Company Analysis — Procedure
