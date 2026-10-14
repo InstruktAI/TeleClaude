@@ -75,6 +75,10 @@ that setting alone. Both destinations consume the same immutable attempt,
 authentication protocol and candidate evidence; publication retains its full
 verification requirements (`sdlc/policy/process-change-authority`). An absent
 or unusable destination produces a visible configuration or scheduling failure.
+An owned destination earns infrastructure and credential-free qualification
+before a controlled pipeline dry-run. Unattended publication on that destination
+requires retained full dry-run and cleanup evidence; selecting it for validation
+alone supplies no publication activation (`sdlc/policy/process-change-authority`).
 
 Owned execution gives each job a fresh disposable Linux machine. Administrative
 registration credentials and the host's live installation remain outside guest

@@ -36,14 +36,19 @@ Operate and maintain the self-hosted GitHub Actions runner on MozMini (Mac Mini)
 1. Inspect the repository routing setting named by the release workflow and the
    selected runner destination. Discover the runner host through
    `telec computers list` and its project through `telec projects list`.
-2. Before selecting owned execution, establish the qualified Ubuntu guest base,
-   scoped runner registration and resource partition recorded by the deployment.
-   Use the pinned Fleet release's configuration validation and status surfaces;
-   upstream operations are described in its installation and operations guides.
-3. Operate controller installation and lifecycle through the project's make
+2. Qualify the Ubuntu guest base, scoped runner registration, resource partition,
+   toolchain and credential-free native confinement before selecting owned
+   execution for a controlled dry-run. Use the pinned Fleet release's validation
+   and status surfaces; upstream operations are described in its guides.
+3. Through the existing release workflow, retain a complete owned dry-run's
+   provider and encrypted-settlement results, exact-candidate lint and full
+   runtime acceptance, installer proof, and interrupted-run cleanup/recovery
+   evidence before enabling unattended owned publication
+   (`local/projects/teleclaude/spec/feature/release/publication`).
+4. Operate controller installation and lifecycle through the project's make
    targets (`local/projects/teleclaude/policy/agent-service-control`). Inspect
    durable guest and cleanup state before considering a failed run settled.
-4. Change the single routing setting to select the compatible hosted destination
+5. Change the single routing setting to select the compatible hosted destination
    when hosted execution is desired. The release verification and authentication
    contracts remain owned by
    `local/projects/teleclaude/spec/feature/release/publication`.
