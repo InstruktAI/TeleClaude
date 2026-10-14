@@ -153,4 +153,3 @@ And concurrent validators use that prepared environment
 
 - docs/local/adr/0064-runner-reaps-process-group-on-normal-exit.md
 - docs/local/adr/0050-restore-declarative-test-budgets.md
-- docs/global/general/spec/tools/telec-cli.md

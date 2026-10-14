@@ -14,4 +14,3 @@
 @~/.teleclaude/docs/general/policy/no-output-turn.md
 @~/.teleclaude/docs/general/policy/reminder.md
 @~/.teleclaude/docs/general/procedure/invoke-mcp-server-tools.md
-@~/.teleclaude/docs/general/spec/tools/telec-cli.md

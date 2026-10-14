@@ -30,7 +30,7 @@ and the refusal is the same wherever the reference was met and whichever
 computer it was made from: it names the referent's kind and slug, the computer
 that answered, and the registration surface for that kind on that computer.
 The registration surfaces are the existing ones — the company and person
-initialization commands and project adoption (`general/spec/tools/telec-cli`);
+initialization commands and project adoption;
 a documentation domain is registered by adopting the project that publishes it
 and publishing that project
 (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).

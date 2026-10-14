@@ -75,7 +75,3 @@ for supported CLIs.
 ## Recovery
 
 - If the commit gate reports artifact validation findings, fix them and rerun `telec code commit`.
-
-## See Also
-
-- ~/.teleclaude/docs/general/spec/tools/telec-cli.md

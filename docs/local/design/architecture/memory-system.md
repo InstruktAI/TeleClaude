@@ -214,7 +214,6 @@ sequenceDiagram
 
 ## See Also
 
-- ~/.teleclaude/docs/general/spec/tools/telec-cli.md — telec CLI spec (includes `telec memories` commands)
 - ~/.teleclaude/docs/general/concept/memory-tiers.md — Where memory fits in the agent knowledge gradient
 - docs/local/spec/domain/memory.md — Target memory bounded context (v2)
 - docs/local/design/architecture/database.md — Parent database architecture

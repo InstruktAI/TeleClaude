@@ -1047,5 +1047,4 @@ And the agent is told the branch was not published because it is not the todo's 
 ## See also
 
 - docs/local/design/code-commit.md
-- docs/global/general/spec/tools/telec-cli.md
 - docs/global/sdlc/policy/version-control-safety.md

@@ -26,11 +26,9 @@ Add new CLI commands to `telec` consistently, following REST resource convention
 
 7. **Bind functional tests to the command's feature-spec scenarios.** Where the command exposes observable product behavior, bind tests via `@spec` to the scenarios in its feature spec, exercising the real API integration at the handler boundary with real DB fixtures, not mock theater. A command that is pure contract tooling (a thin wrapper, a fixed-response shim) is not tested — the artifact is the spec.
 
-8. **Evaluate `@exec` expansion.** Only add to `telec-cli.md` tool spec with 100% certainty of global need. Most commands do not need `@exec`.
+8. **Add to `Required tools`** in relevant lifecycle procedure docs if the command is procedure-scoped.
 
-9. **Add to `Required tools`** in relevant lifecycle procedure docs if the command is procedure-scoped.
-
-10. **Verify.** `make restart && make status` for daemon-backed commands. Smoke test the full flow.
+9. **Verify.** `make restart && make status` for daemon-backed commands. Smoke test the full flow.
 
 ## Preconditions
 

@@ -66,7 +66,7 @@ Before saving, route the information to its proper home:
    - _Bad:_ "I noticed the user prefers concise answers so I will be concise."
    - _Good:_ "User demands extreme conciseness; max 3 lines for non-tool responses."
 
-5. **Save:** Use `telec memories save` (see `telec-cli` spec).
+5. **Save:** Use `telec memories save`.
    - Title: Short, searchable hook.
    - Text: The standalone truth.
    - Type: One of the observation types above.
@@ -82,5 +82,4 @@ Before saving, route the information to its proper home:
 
 ## See Also
 
-- ~/.teleclaude/docs/general/spec/tools/telec-cli.md
 - ~/.teleclaude/docs/general/concept/memory-tiers.md

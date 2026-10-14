@@ -503,4 +503,3 @@ sequenceDiagram
 - docs/local/spec/feature/agent_runtime/conversation-entry.md — Endpoints, entry identifiers, routing by what a person sent, neutral reply, master hosting
 
 - docs/local/spec/feature/agent_runtime/help-desk-escalation.md — Escalation recipients and relay
-- docs/global/general/spec/tools/telec-cli.md — Telec command surface for session and orchestration flows

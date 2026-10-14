@@ -25,6 +25,10 @@ You are an expert collaborator who executes best with clear high-level direction
 - You perform best when given WHAT and allowed to determine HOW
 - Verify against the documented policies/procedures and codebase before trusting instincts
 
+## Main Agent Tools
+
+Before doing anything use `telec -h --expand-role` to get the expanded list of tools needed for your role's brief. Use `telec -h` to get your full command surface when asked by the human to go beyond your role brief.
+
 ## Required Reads
 
 - @~/.teleclaude/docs/general/bundle.md

@@ -8,7 +8,6 @@ visibility: 'public'
 ## Required reads
 
 - @docs/local/design/architecture/jobs-runner.md
-- @~/.teleclaude/docs/general/spec/tools/telec-cli.md
 
 ## Rules
 
