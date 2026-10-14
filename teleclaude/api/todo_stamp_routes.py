@@ -21,8 +21,14 @@ from teleclaude.core.next_machine.session_hold import notify_runner_of_gate_appr
 from teleclaude.core.next_machine.stamps import apply_todo_stamp, is_human_gate_stamp, stamp_follow_through
 from teleclaude.core.next_machine.state_mutation import StateMutationError
 from teleclaude.git import GitCommandError
+from teleclaude.types.todo_return import (
+    TodoReturnToWorkApiRoute,
+    TodoReturnToWorkRequestField,
+    TodoReturnToWorkResultStatus,
+)
 
 router = APIRouter(prefix="/todos", tags=["todos"])
+_RETURN_TO_WORK_CWD_REQUIRED = "cwd required: working directory not provided"
 
 
 def _human_gate_caller_stamp_id(identity: CallerIdentity) -> str:
@@ -35,7 +41,7 @@ def _human_gate_caller_stamp_id(identity: CallerIdentity) -> str:
     raise HTTPException(status_code=403, detail="human principal required to approve todo gate")
 
 
-@router.post("/return-to-work", response_model=_SlugStatusResponse)
+@router.post(TodoReturnToWorkApiRoute.ROUTER_PATH, response_model=_SlugStatusResponse)
 async def todo_return_to_work(
     slug: Annotated[str, Body()],
     reason: Annotated[str, Body()],
@@ -45,8 +51,8 @@ async def todo_return_to_work(
 ) -> _SlugStatusResponse:
     """Return one held, unintegrated finalized candidate to its work cycle."""
     if not cwd:
-        raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-    _validate_slug_for_update(slug, field_name="slug")
+        raise HTTPException(status_code=400, detail=_RETURN_TO_WORK_CWD_REQUIRED)
+    _validate_slug_for_update(slug, field_name=TodoReturnToWorkRequestField.SLUG.value)
     caller_id = identity.session_id or _human_gate_caller_stamp_id(identity)
     try:
         await return_to_work_for_code_conformance(
@@ -60,7 +66,7 @@ async def todo_return_to_work(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (StateMutationError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _SlugStatusResponse(status="ok", slug=slug)
+    return _SlugStatusResponse(status=TodoReturnToWorkResultStatus.OK, slug=slug)
 
 
 @router.post("/stamp", response_model=_SlugStatusResponse)

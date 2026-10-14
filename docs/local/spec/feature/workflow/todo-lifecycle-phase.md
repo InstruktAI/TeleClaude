@@ -133,35 +133,82 @@ Then the derived phase returns the Todo to plan review
 And no blocker reports the remediation write as absent
 ```
 
-#### UC-TLP4: A held finalized candidate returns to the existing code-conformance cycle
+#### UC-TLP4: A code-conformance finding returns a held candidate to the work cycle
 
 ```gherkin
-Given an active, held Todo at lifecycle_phase=finalize_ready
-And no lifecycle claim or active or recovery-pending integration attempt owns it
-And the candidate is not committed to canonical main or delivered
-And an independently established code-conformance finding has an address
-When an operator runs `telec todo return-to-work <slug> --reason <reason> --evidence <address>`
-Then the workflow owner atomically records the reason, evidence address, actor, and candidate SHA
-And returns lifecycle_phase to build_started
-And clears only finalize readiness and the prior build-review eligibility binding
-And preserves preparation approvals, artifacts, worktree, branches, commits, review-round history, and the hold
-And the next `telec todo work <slug>` resumes the ordinary build, independent review, fix, and finalize cycle
-And the return emits no finalize-ready integration transition
+Given an agent has an active todo held after finalization
+And its code-conformance review found an addressable issue
+And no work session is active in this project's candidate worktree
+And no integration attempt owns the candidate
+When the agent returns the candidate with a reason and evidence address
+Then the reason, evidence address, agent, and candidate revision are recorded together
+And the prior finalization and independent approval no longer authorize integration
+And preparation approvals, plan, branch, worktree, commits, review-round history, and hold remain unchanged
+And a later manual work invocation starts the ordinary build, independent review, fix, and finalization cycle
 ```
 
-```gherkin
-Given a Todo is not active, not held, or not at finalize_ready
-Or a lifecycle claim or active or recovery-pending integration attempt owns it
-Or its candidate is committed to canonical main or the Todo is delivered
-When an operator runs `telec todo return-to-work <slug> --reason <reason> --evidence <address>`
-Then the operation refuses without changing state
-And names the owning gate and its sanctioned path: hold the unclaimed finalized Todo, let its lifecycle claim release, let integration settle or recover through `telec todo integrate`, or handle committed work through its ordinary post-delivery defect or change path
-```
+#### UC-TLP5: A return without its finding is refused with the invocation
 
 ```gherkin
-Given a return request omits a non-empty reason or evidence address
-When `telec todo return-to-work` is invoked
-Then it refuses before mutation and prints the required invocation
+Given an agent has a held candidate after finalization
+When it requests a return without a reason or evidence address
+Then the platform refuses before changing the candidate
+And prints usage showing that the command requires both values
+```
+
+#### UC-TLP6: A candidate without a completed finalization cannot return to work
+
+```gherkin
+Given an active todo is held but has not completed finalization
+When an agent requests a code-conformance return
+Then the platform refuses without changing the todo
+And directs the agent to continue through the ordinary work cycle
+```
+
+#### UC-TLP7: An unheld candidate cannot return to work
+
+```gherkin
+Given an active todo has completed finalization but is not held
+When an agent requests a code-conformance return
+Then the platform refuses without changing the todo
+And names the hold command needed to park the candidate first
+```
+
+#### UC-TLP8: A live work session keeps ownership of its candidate
+
+```gherkin
+Given an active todo has completed finalization and a live work session owns its candidate
+When another agent requests a code-conformance return
+Then the platform refuses without changing the todo
+And directs the requester to let the owning work session finish and release its claim
+```
+
+#### UC-TLP9: An active integration attempt keeps ownership of its candidate
+
+```gherkin
+Given an integration attempt is active or awaiting recovery
+When an agent requests a code-conformance return for its candidate
+Then the platform refuses without changing the todo
+And directs the agent to let integration settle or recover through the integration lifecycle
+```
+
+#### UC-TLP10: A delivered candidate uses the post-delivery correction path
+
+```gherkin
+Given a candidate has already been committed to the shared branch or delivered
+When an agent requests a code-conformance return
+Then the platform refuses without changing the todo
+And directs the agent to the ordinary post-delivery defect or change path
+```
+
+#### UC-TLP11: A same-named session in another project does not own this candidate
+
+```gherkin
+Given two projects each have an active todo with the same slug
+And only the other project has a live worktree session for that slug
+And this project's held candidate has no active work or integration owner
+When an agent returns this project's candidate after a code-conformance finding
+Then the other project's session does not block the return
 ```
 
 ### Cross-context references

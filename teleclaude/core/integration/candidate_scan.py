@@ -15,6 +15,7 @@ from teleclaude.core.integration.git_ops import _run_git
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import FinalizeField, FinalizeStatus
 
 logger = get_logger(__name__)
 
@@ -57,7 +58,7 @@ def _is_held_or_kicked_back(state: dict[str, StateValue]) -> bool:
     """True when persisted state shows the candidate held or kicked back.
 
     A human ``--kickback``/``--hold`` stamp is meant to retract a candidate from
-    the integration pool, but leaves ``finalize.status`` at ``"ready"`` — these
+    the integration pool, but leaves ``finalize.status`` at ``FinalizeStatus.READY`` — these
     are the real signals that must additionally gate eligibility (exact
     ``TodoState`` field paths: ``hold: bool``,
     ``plan_review.cleared_by_substantive_drift: bool``).
@@ -126,9 +127,9 @@ def _scan_finalize_ready_candidates(
         if not isinstance(finalize, dict):
             continue
 
-        status = finalize.get("status")
+        status = finalize.get(FinalizeField.STATUS)
 
-        if status != "ready":
+        if status != FinalizeStatus.READY.value:
             continue
 
         if _is_held_or_kicked_back(state):
@@ -188,9 +189,9 @@ def _verify_slug_ready(cwd: str, slug: str, *, parked_slugs: set[str]) -> Scanne
     if not isinstance(finalize, dict):
         return None
 
-    status = finalize.get("status")
+    status = finalize.get(FinalizeField.STATUS)
 
-    if status != "ready":
+    if status != FinalizeStatus.READY.value:
         return None
 
     if _is_held_or_kicked_back(state):

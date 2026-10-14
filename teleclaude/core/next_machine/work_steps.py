@@ -63,6 +63,7 @@ from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.unclaim import ClaimReleaseOutcome, unclaim_todo_for_caller
 from teleclaude.events.envelope_facts import home_for_project_path
 from teleclaude.session_identity import get_session_id
+from teleclaude.types.todos import FinalizeStatus
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -655,7 +656,7 @@ async def _handle_finalize_ready_claim(
       surface the mismatch (e.g., remote ref drift) and re-stamp.
     """
     writer = StateWriter(state)
-    if writer.state.finalize.status != "ready":
+    if writer.state.finalize.status is not FinalizeStatus.READY:
         return None
     if writer.state.lifecycle_phase != LifecyclePhase.REVIEW_APPROVED.value:
         return None

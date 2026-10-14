@@ -52,7 +52,7 @@ from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store_sync
 from teleclaude.types.todo_kind import TodoKind
-from teleclaude.types.todos import BreakdownState, FinalizeModel
+from teleclaude.types.todos import BreakdownState, FinalizeModel, FinalizeStatus
 
 logger = get_logger(__name__)
 
@@ -205,7 +205,7 @@ def stamp_finalize_ready(cwd: str, slug: str, caller_session_id: str = "") -> di
     writer = StateWriter(state)
     now = datetime.now(UTC).isoformat()
     writer.state.finalize = FinalizeModel(
-        status="ready",
+        status=FinalizeStatus.READY,
         branch=slug,
         sha=head_sha,
         ready_at=now,

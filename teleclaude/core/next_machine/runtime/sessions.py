@@ -87,11 +87,18 @@ async def find_all_live_sessions_for_slug(
     db: Db,
     slug: str,
     subdir_override: str | None = None,
+    project_path: str | Path | None = None,
 ) -> list[str]:
-    """Return all live session ids for a slug, regardless of command family."""
+    """Return live session ids for a slug, optionally scoped to its project."""
     expected_subdir = _expected_subdir(slug, subdir_override)
+    project_root = Path(project_path).resolve() if project_path is not None else None
     sessions = await db.list_sessions(include_closed=False)
-    return [session.session_id for session in sessions if session.subdir == expected_subdir]
+    return [
+        session.session_id
+        for session in sessions
+        if session.subdir == expected_subdir
+        and (project_root is None or _same_project_root(session.project_path, project_root))
+    ]
 
 
 async def is_live_session_id(db: Db, session_id: str) -> bool:

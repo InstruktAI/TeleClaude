@@ -50,10 +50,23 @@ class BreakdownState(BaseModel):
     todos: list[str] = Field(default_factory=list)
 
 
+class FinalizeStatus(StrEnum):
+    """Closed lifecycle status of a todo's finalize claim."""
+
+    PENDING = "pending"
+    READY = "ready"
+
+
+class FinalizeField(StrEnum):
+    """Field names in the raw persisted finalize-state mapping."""
+
+    STATUS = "status"
+
+
 class FinalizeModel(BaseModel):
     """Finalize phase state."""
 
-    status: str = "pending"
+    status: FinalizeStatus = FinalizeStatus.PENDING
     branch: str = ""
     sha: str = ""
     ready_at: str = ""

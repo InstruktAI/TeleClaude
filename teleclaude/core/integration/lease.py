@@ -18,6 +18,9 @@ class IntegrationLeaseError(RuntimeError):
     """Raised when lease state cannot be read or updated safely."""
 
 
+INTEGRATION_LEASE_STATE_FILENAME = "lease.json"
+
+
 LeaseAcquireStatus = Literal["acquired", "busy"]
 LeaseRenewStatus = Literal["renewed", "missing", "stolen", "expired"]
 

@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 
 _CHECKPOINT_VERSION_V1 = 1
 _CHECKPOINT_VERSION = 2
+CHECKPOINT_STATE_FILENAME = "state.json"
 _CHECKPOINT_VERSION_FIELD = "version"
 _CHECKPOINT_PARKED_FIELD = "parked"
 _UNSUPPORTED_CHECKPOINT_VERSION = "Unsupported integration checkpoint version: {version}"
@@ -245,6 +246,7 @@ def _get_candidate_key(checkpoint: IntegrationCheckpoint) -> CandidateKey | None
 
 
 __all__ = [
+    "CHECKPOINT_STATE_FILENAME",
     "_CHECKPOINT_VERSION",
     "IntegrationCheckpoint",
     "IntegrationPhase",

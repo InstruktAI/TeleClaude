@@ -66,7 +66,14 @@ from teleclaude.types.lifecycle import (
     LifecyclePhase,
 )
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TodoKind
-from teleclaude.types.todos import ApprovalStamp, ArtifactEntry, BuildReviewState, ReviewVerdictState, TodoState
+from teleclaude.types.todos import (
+    ApprovalStamp,
+    ArtifactEntry,
+    BuildReviewState,
+    FinalizeStatus,
+    ReviewVerdictState,
+    TodoState,
+)
 
 __all__ = [
     "LIFECYCLE_PHASE_ORDER",
@@ -520,7 +527,7 @@ def _clear_build_review(model: TodoState) -> None:
 
 
 def _reset_finalize(model: TodoState) -> None:
-    model.finalize.status = "pending"
+    model.finalize.status = FinalizeStatus.PENDING
     model.finalize.ready_at = ""
 
 
@@ -929,7 +936,11 @@ def apply_authoritative_signal(
         model.manually_started = False
         return _move_to(model, LifecyclePhase.DELIVERED)
 
-    if signal == "finalize_ready" and current == LifecyclePhase.REVIEW_APPROVED and model.finalize.status == "ready":
+    if (
+        signal == "finalize_ready"
+        and current == LifecyclePhase.REVIEW_APPROVED
+        and model.finalize.status is FinalizeStatus.READY
+    ):
         return _move_to(model, LifecyclePhase.FINALIZE_READY)
 
     return current
