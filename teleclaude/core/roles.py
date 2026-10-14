@@ -581,7 +581,7 @@ _CATALOG: dict[RoleName, Role] = dict(
                     Capability.CONFIG,
                     Capability.SESSION_OBSERVE,
                     Capability.SESSION_ACT,
-                    Capability.OPERATION_READ,
+                    Capability.PEER_TALK,
                     Capability.CODE,
                     Capability.CODE_CHECK,
                     Capability.STAMP,
@@ -593,7 +593,18 @@ _CATALOG: dict[RoleName, Role] = dict(
             RoleName.MAIL_TRIAGER,
             RoleClass.AGENT,
             True,
-            frozenset({Capability.DOCS_READ, Capability.REMINDERS, Capability.MESSAGING, Capability.JOB_REPORT}),
+            frozenset(
+                {
+                    Capability.DOCS_READ,
+                    Capability.REMINDERS,
+                    Capability.MESSAGING,
+                    Capability.CODE,
+                    Capability.CODE_CHECK,
+                    Capability.STAMP,
+                    Capability.SESSION_ACT,
+                    Capability.PEER_TALK,
+                }
+            ),
             RoleLabel.AGENT,
         ),
     ]
