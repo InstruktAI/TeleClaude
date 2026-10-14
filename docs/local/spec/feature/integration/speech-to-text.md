@@ -29,6 +29,10 @@ capability membership is in
 - **Audio as supplied.** The audio reaches the service chain as it was
   supplied, with no conversion step before it. The formats accepted are the
   formats the chain's services accept.
+- **Media inspection.** Every obtained source is inspected for an audio stream
+  with FFmpeg's media prober before any service is asked, and the command
+  requires it. On a computer without it, the command refuses before obtaining
+  the source, with a general error naming the missing tool.
 - **Language.** An optional language code is passed to the chain as a hint;
   without one, each service detects the language itself.
 - **Output.** The transcript is the command's standard output. The command
@@ -37,10 +41,11 @@ capability membership is in
   of its own and its reason on standard error. The CLI surface declares the
   status values.
   - _Source unavailable_ — the URL cannot be fetched (a network failure, a
-    response that is not a success, or a scheme other than `http`/`https`), or
-    the path does not name a readable file.
+    response that is not a success, a scheme other than `http`/`https`, or a
+    fetch that does not complete within its limit), or the path does not name a
+    readable file.
   - _Unsupported media_ — the obtained content carries no decodable audio
-    stream.
+    stream, or its inspection does not complete within its limit.
   - _No speech-to-text service_ — the chain holds no service that can run on
     this computer: speech-to-text is disabled, or every service in the chain
     reports that it cannot run here.
@@ -113,12 +118,18 @@ Then the command fails with the transcription-failed status
 And the reason names each service's failure
 ```
 
+#### UC-STT8:
+
+```gherkin
+Given the computer has no media prober installed
+When an agent transcribes a URL or a path
+Then the command refuses with a reason naming the missing tool
+And no source is fetched and no speech-to-text service is asked to transcribe anything
+```
+
 ## Known caveats
 
 - The command transcribes on the computer it is invoked on; it takes no
   computer argument.
 - Speech-to-text is configured per computer, so the same audio can succeed on
   one computer and fail with the no-service status on another.
-- Recognizing unsupported media relies on FFmpeg's media inspection, which
-  installation provides. On a computer without it, content that is not audio
-  reaches the chain and fails with the transcription-failed status instead.
