@@ -27,9 +27,13 @@ Before activation can restart the daemon, the installation retains its identity,
 previous and target revisions, activation time and owed maintenance. Its
 inspection obligation survives process restart and ordinary temporary-file
 cleanup. It records the maintenance result and assessment separately. A service
-manager accepting restart is not a healthy-runtime verdict. Every admitted
-release activation owes an assessment; a canonical-main activation owes one when
-its changed paths owe live-runtime log judgment.
+manager accepting restart is not a healthy-runtime verdict. An activation of the
+installed checkout, on any channel, owes an assessment when it replaces the
+running runtime, that is when its owed maintenance includes the daemon restart,
+or when its changed paths owe live-runtime log judgment. An activation that
+replaces no runtime leaves nothing runtime-side to assess. Another checkout's
+canonical-main activation owes one only when its changed paths owe that
+judgment.
 
 An installation's maintenance reaches a settled result when its required actions
 have either succeeded or recorded a terminal failure. The producer publishes
