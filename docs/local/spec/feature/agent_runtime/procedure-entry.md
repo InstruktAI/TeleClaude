@@ -231,7 +231,7 @@ And no session is created
 
 <!-- change:role-scoped-cli-context -->
 
-- The brief is read by the agent verbatim, whatever its size. It presents no per-role command surface; a session retrieves its role's focused set through help (`local/projects/teleclaude/spec/feature/presentation/cli-help`).
+- The brief is read by the agent verbatim, whatever its size.
 
 <!-- /planned-change:role-scoped-cli-context -->
 
