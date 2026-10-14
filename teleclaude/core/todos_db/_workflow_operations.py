@@ -89,30 +89,30 @@ class TodosDbWorkflowOperationsMixin:
         rows = await self._list_todo_models(include_icebox=True, include_delivered=True, include_holders=True)
         for row in rows:
             if row.slug == slug:
-                return {
-                    "id": row.id,
-                    "slug": row.slug,
-                    "ready_since": row.ready_since,
-                    "schedule": row.schedule,
-                    "group_id": row.group_id,
-                    "description": row.description,
-                    "status": row.status,
-                    "delivered_at": row.delivered_at,
-                    "delivered_commit": row.delivered_commit,
-                    "children": row.children,
-                    "lineage": row.lineage,
-                    "entry_point": row.entry_point,
-                    "human_involved": row.human_involved,
-                    "context": row.context,
-                    "removed_at": row.removed_at,
-                    "prev_status": row.prev_status,
-                    "removed_deps": row.removed_deps,
-                    "removed_claim": row.removed_claim,
-                    "removed_doc_reconciliation": row.removed_doc_reconciliation,
-                    "pending_purge_paths": row.pending_purge_paths,
-                    "created_at": row.created_at,
-                    "updated_at": row.updated_at,
-                }
+                return TodoDiagnosticRecord(
+                    id=row.id,
+                    slug=row.slug,
+                    ready_since=row.ready_since,
+                    schedule=row.schedule,
+                    group_id=row.group_id,
+                    description=row.description,
+                    status=row.status,
+                    delivered_at=row.delivered_at,
+                    delivered_commit=row.delivered_commit,
+                    children=row.children,
+                    lineage=row.lineage,
+                    entry_point=row.entry_point,
+                    human_involved=row.human_involved,
+                    context=row.context,
+                    removed_at=row.removed_at,
+                    prev_status=row.prev_status,
+                    removed_deps=row.removed_deps,
+                    removed_claim=row.removed_claim,
+                    removed_doc_reconciliation=row.removed_doc_reconciliation,
+                    pending_purge_paths=row.pending_purge_paths,
+                    created_at=row.created_at,
+                    updated_at=row.updated_at,
+                )
         return None
 
     async def create_item_with_initial_artifact(

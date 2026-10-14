@@ -10,13 +10,16 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.constants import WORKTREE_DIR, TodoStatus
 from teleclaude.core.integration.git_ops import _run_git
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.types.state_value import StateValue
 
 logger = get_logger(__name__)
+
+_WORKFLOW_STATUSES = (TodoStatus.ACTIVE, TodoStatus.ICEBOX)
+_RESERVED_TREE_PREFIX = "_"
 
 
 @dataclass(frozen=True, order=True)
@@ -86,11 +89,10 @@ def _scan_finalize_ready_candidates(
     parked_slugs: set[str],
     exclude_slug: str | None = None,
 ) -> list[ScannedCandidate]:
-    """Scan worktree todo states for finalize-ready candidates.
+    """Scan store-projected todo states for finalize-ready worktree candidates.
 
-    Iterates ``trees/`` subdirectories (skipping ``_integration``), reads each
-    worktree's state from todos.db and returns candidates whose
-    ``finalize.status`` is ``"ready"``.
+    The store supplies candidate identities and state. Existing worktree and
+    Git checks remain integrator-owned validation of those store candidates.
 
     Each candidate is validated: branch must exist on origin and SHA must not
     already be an ancestor of main.
@@ -103,14 +105,14 @@ def _scan_finalize_ready_candidates(
     trees_dir = Path(cwd) / WORKTREE_DIR
     if not trees_dir.is_dir():
         return []
-
+    snapshot = todos_db.read_todo_projection_snapshot_sync(_WORKFLOW_STATUSES)
     candidates: list[ScannedCandidate] = []
 
-    for entry in sorted(trees_dir.iterdir()):
-        if not entry.is_dir() or entry.name.startswith("_"):
+    for item in sorted(snapshot.items, key=lambda candidate: str(candidate.item_id)):
+        slug = str(item.item_id)
+        if slug.startswith(_RESERVED_TREE_PREFIX) or slug == exclude_slug or slug in excluded:
             continue
-        slug = entry.name
-        if slug == exclude_slug or slug in excluded:
+        if not (trees_dir / slug).is_dir():
             continue
 
         try:
