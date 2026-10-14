@@ -85,20 +85,13 @@ Publication is one of those steps and keeps its own contract
 
 <!-- change:maintenance-runs-as-stopped-daemon-window -->
 
-- **Daemon replacement.** In a root whose steps include the restart action,
-  the run first establishes whether the daemon's replacement is owed: it is
-  owed when the daemon started from an earlier commit than the one the run
-  converges and the changes between the two owe the restart under the root's
-  own bindings, and also when which commit the daemon started from cannot be
-  established, a daemon that is not running included. When it is owed, the
-  whole run is performed inside the stopped-daemon window that commit-boundary
-  maintenance uses
-  (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`):
-  the daemon settles and stops before the first step, and is started and
-  verified after the last. The run reports whether it replaced the daemon, and
-  when the start did not verify, its reason; a run with an unverified start
-  exits non-zero. When the replacement is not owed, the daemon keeps serving
-  through the run.
+- **Daemon replacement.** In a root whose registry declares the restart
+  action, every run owes the daemon's replacement and is performed inside the
+  stopped-daemon window that commit-boundary maintenance uses
+  (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
+  The run reports the window's opening, or why it did not open, and the start's
+  verification, or why it did not verify; a run whose window did not open or
+  whose start did not verify exits non-zero.
 - **Other disruptive steps.** Apart from the daemon's replacement, nothing a
   run performs stops, restarts or reloads a running service. Reloading the
   terminal interface is never performed by a run. During a run, installation
@@ -139,8 +132,8 @@ Publication is one of those steps and keeps its own contract
   verification, then earlier failures, and owed disruptive steps last.
 - **Listing.** `telec sync --list` prints, in order, every step the root's
   registry declares with what a run would do with it — perform it, replace the
-  daemon around the run when that is owed, or only report whether it is owed —
-  and changes nothing.
+  daemon around the run, or only report whether it is owed — and changes
+  nothing.
 
 <!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
@@ -219,33 +212,21 @@ Then the agent sees that whether a restart is owed could not be established
 
 <!-- change:maintenance-runs-as-stopped-daemon-window -->
 
-#### UC-ODM4: An owed replacement runs the whole run against a stopped daemon
+#### UC-ODM4: A run in the platform's checkout replaces the daemon
 
 ```gherkin
-Given the running daemon started from code older than the code telec sync converges
-And the changes between the two owe the daemon's restart
-When an agent runs telec sync in the platform's canonical checkout
-Then the daemon has stopped before the first step runs
-And the daemon is started after the last step and verified on the converged code
-And the agent sees that the run replaced the daemon
+Given an agent in the platform's canonical checkout
+When the agent runs telec sync
+Then the run is performed inside the stopped-daemon window
+And the agent sees the window open before the first step and the daemon's verified start after the last
 ```
 
 #### UC-ODM5: Nothing owed adds nothing
 
 ```gherkin
-Given the running daemon and terminal interface run the code telec sync just converged
+Given the running terminal interface runs the code telec sync just converged
 When telec sync finishes its steps
-Then the daemon kept serving throughout the run
-And the run reports no owed reload
-```
-
-#### UC-ODM6: An undeterminable start commit is treated as an owed replacement
-
-```gherkin
-Given telec sync cannot establish which code the daemon started from, or no daemon is running
-When an agent runs telec sync in the platform's canonical checkout
-Then the run is performed inside the stopped-daemon window
-And the agent sees why the replacement was treated as owed
+Then the run reports no owed reload
 ```
 
 <!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
@@ -326,7 +307,7 @@ And states that it performs the root's maintenance steps, leaves restarts and re
 Given an agent unsure how to recover a root after maintenance did not run
 When the agent reads telec sync's help
 Then the help describes it as the manual fallback for commit-boundary maintenance
-And states that it performs the root's maintenance steps, stops and restarts the daemon around them when its replacement is owed, leaves reloads undone, and names what is owed
+And states that it performs the root's maintenance steps, stops the daemon before them and starts it after them in the platform's checkout, leaves reloads undone, and names what is owed
 ```
 
 <!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->

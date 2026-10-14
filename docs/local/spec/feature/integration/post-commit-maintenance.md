@@ -189,6 +189,14 @@ contract governs only what happens when maintenance runs.
 
 <!-- change:maintenance-runs-as-stopped-daemon-window -->
 
+- **Replacement owed.** In a root whose registry declares the restart action,
+  every activation whose changed paths select any maintenance action other than
+  publication owes the restart action, whatever its bindings name. An activation
+  whose changed paths select only publication, or nothing — a
+  documentation-only change among them — owes no restart and runs, together
+  with the actions every canonical-main activation owes, while the daemon keeps
+  serving. A root that declares no restart action has no window.
+
 - **Stopped-daemon window.** An activation whose owed set includes the
   restart action replaces the daemon inside a stopped-daemon window, a
   controlled restart under `local/projects/teleclaude/policy/daemon-availability`.
@@ -202,7 +210,9 @@ contract governs only what happens when maintenance runs.
   A preparation that does not complete within its observation window is
   reported, and the window keeps waiting and stopping again until the daemon
   has stopped; no owed action runs while the daemon serves. With the daemon
-  stopped, every other owed action runs in its precedence waves. The window
+  stopped, every other owed action runs in its precedence waves; installation
+  inside the window leaves the tmux server running
+  (`local/projects/teleclaude/policy/agent-service-control`). The window
   closes after the last of them: it starts the daemon through `make start` and
   verifies, within a bound it owns, that the started daemon answers its health
   read with admission open and reports the checkout's current tip as the commit
@@ -213,14 +223,19 @@ contract governs only what happens when maintenance runs.
   window is open included, and closes the window when none remains. An
   activation that owed the restart action keeps that obligation while any of its
   action records remains, so replaying one of its failed actions runs inside a
-  window of its own. An activation whose owed set excludes the restart action —
-  a documentation-only change among them — runs while the daemon keeps serving.
+  window of its own.
 
-- **Window failure.** A stop refused for any reason other than incomplete
-  preparation leaves the window unopened: the daemon keeps serving, the
-  activation's actions stay recorded and unperformed, and the refusal is
-  reported at error level with its reason. A failed action inside an open
-  window is reported and the window still closes. A start that does not verify
+- **Window failure.** The window opens once the daemon is verified stopped,
+  whatever `make stop` reported; a stop failure that left it stopped is
+  reported with the opening. A stop that leaves the daemon serving with
+  admission open, for any reason other than incomplete preparation, leaves the
+  window unopened: the daemon keeps serving, the activation's actions stay
+  recorded and unperformed, and the refusal is reported at error level with
+  its reason. A stop that leaves the daemon neither serving nor verifiably
+  stopped is followed by the window's start as recovery; the activation's
+  actions stay recorded and unperformed, and the stop's reason is recorded
+  where `make status` reports it. A failed action inside an open window is
+  reported and the window still closes. A start that does not verify
   is the restart action's terminal failure, carrying the start's reason; the
   reason and its time are also recorded where `make status` reports them until
   a later window verifies a start.
@@ -591,7 +606,7 @@ And an agent running make status sees that reason and when it was recorded
 
 ```gherkin
 Given a canonical-main advancement owes a daemon restart
-When the daemon's stop is refused for a reason other than incomplete preparation
+When the daemon's stop is refused for a reason other than incomplete preparation and the daemon still serves
 Then the daemon keeps serving
 And none of the activation's owed steps has run
 And an agent reading the structured records observes the refusal and its reason
@@ -607,10 +622,10 @@ Then the daemon is stopped before the replayed step runs
 And the daemon is started and verified after it
 ```
 
-#### UC-PCM26: An advancement that owes no restart leaves the daemon serving
+#### UC-PCM26: A documentation-only advancement leaves the daemon serving
 
 ```gherkin
-Given a canonical-main commit changing only documentation, owing publication and no daemon restart
+Given a canonical-main commit in the platform's checkout changing only documentation
 When its maintenance runs
 Then the daemon keeps serving throughout
 And the publication step runs
@@ -623,6 +638,35 @@ Given a stopped-daemon window is open for one canonical-main advancement
 When another advancement records its own owed actions before the window closes
 Then the later advancement's actions run inside the same window
 And the daemon is started once, after both advancements' actions have terminal outcomes
+```
+
+#### UC-PCM28: A stop that fails after stopping the daemon still ends with the daemon recovered or reasoned
+
+```gherkin
+Given a canonical-main advancement owes a daemon restart
+When the daemon's stop reports failure and the daemon no longer serves
+Then the window opens if the daemon is verified stopped, and otherwise the daemon is started as recovery
+And an agent reading the structured records observes the stop's reported failure
+And when no verified start follows, an agent running make status sees the reason
+```
+
+#### UC-PCM29: An installation-only advancement stops the daemon
+
+```gherkin
+Given a canonical-main commit in the platform's checkout changing only installation templates
+When its maintenance runs
+Then the daemon has stopped before the installation step begins
+And the daemon is started and verified after it
+```
+
+#### UC-PCM30: Installation inside a window leaves sessions running
+
+```gherkin
+Given agent sessions run in the tmux server
+And a canonical-main advancement owes installation while the tmux server's rendered definition differs from the deployed one
+When its maintenance runs inside the stopped-daemon window
+Then the sessions are still running after the window closes
+And an agent reading the structured records observes that the tmux server definition change was deferred
 ```
 
 <!-- /planned:maintenance-runs-as-stopped-daemon-window -->

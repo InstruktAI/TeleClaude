@@ -213,24 +213,11 @@ the action's `on_demand` disposition:
 
 - `run`, the default: performed.
 
-<!-- planned-change:maintenance-runs-as-stopped-daemon-window -->
-
 - `defer`: never performed on demand. The action's `owed_probe` command
   decides whether the run reports it as owed: it prints one line per reason the
   action is owed, prints nothing when nothing is owed, and exits non-zero when it
   cannot tell. With no probe, or a probe that cannot tell, the run reports that
   it cannot tell. The run names the action's command beside its reasons.
-
-<!-- change:maintenance-runs-as-stopped-daemon-window -->
-
-- `defer`: not performed on demand, except for the `restart` action below. The
-  action's `owed_probe` command
-  decides whether the run reports it as owed: it prints one line per reason the
-  action is owed, prints nothing when nothing is owed, and exits non-zero when it
-  cannot tell. With no probe, or a probe that cannot tell, the run reports that
-  it cannot tell. The run names the action's command beside its reasons.
-
-<!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
 An on-demand run tells each command that it is on demand. Service lifecycle and
 deployment follow the non-disruptive contract in
@@ -278,16 +265,14 @@ Commit-boundary installation deploys and reloads those services as before
 
 <!-- change:maintenance-runs-as-stopped-daemon-window -->
 
-TeleClaude's overlay declares `restart` and `tui-reload` `defer`. Each probe
-reads the commit the daemon, or each live TUI, started from, and reports the
-action owed when that commit is older than the converged tip and the changed
-paths between the two owe the action under the root's own bindings, through the
-same scope matcher (Invariant 25). A start commit that is not an ancestor of the
-tip is a cannot-tell, one that already contains the tip owes nothing, and no
-live TUI owes nothing; a daemon that cannot be reached is a cannot-tell. The
-`restart` action is the one deferred action an on-demand run can perform: when
-its probe reports it owed or cannot tell, the run is performed inside the
-action's stopped-daemon window instead of naming it
+TeleClaude's overlay declares `tui-reload` `defer`. Its probe reads the
+commit each live TUI started from, and reports the action owed when that commit
+is older than the converged tip and the changed paths between the two owe the
+action under the root's own bindings, through the same scope matcher
+(Invariant 25). A start commit that is not an ancestor of the tip is a
+cannot-tell, one that already contains the tip owes nothing, and no live TUI
+owes nothing. The overlay's `restart` action is performed by an on-demand run
+as the run's stopped-daemon window, not as a step
 (`local/projects/teleclaude/spec/feature/integration/on-demand-maintenance`).
 The overlay also declares `service-deploy`, deferred
 and bound to no scope, whose command is `make install` and whose probe names
