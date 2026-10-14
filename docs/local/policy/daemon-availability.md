@@ -54,7 +54,7 @@ visibility: 'public'
 
 <!-- planned:maintenance-runs-as-stopped-daemon-window -->
 
-- `make stop` records its outcome where a caller names a location for it, because `make` reports every failing recipe with the same status: stopped, meaning no daemon process remains and its service manager will not relaunch it, whether or not this stop had to terminate it; stopped with a managed-unit cleanup failure; withheld while the daemon drains; or withheld, with its reason. The record states the daemon's state after the stop, so a caller acts on that state rather than on the command's exit status. Once preparation allows it, `make stop` issues its service manager's stop whatever state the daemon starts from, because only that stop cancels an automatic relaunch the service manager has scheduled; a disabled unit alone does not.
+- `make stop` records its outcome where a caller names a location for it, because `make` reports every failing recipe with the same status: stopped, meaning no daemon process remains and its service manager will not relaunch it, whether or not this stop had to terminate it; stopped with a managed-unit cleanup failure; withheld while the daemon drains; or withheld, with its reason. The record states the daemon's state after the stop, so a caller acts on that state rather than on the command's exit status. Once preparation allows it, `make stop` issues its service manager's stop whatever state the daemon starts from.
 
 <!-- /planned:maintenance-runs-as-stopped-daemon-window -->
 
@@ -76,6 +76,8 @@ visibility: 'public'
 - A daemon that keeps serving while maintenance changes the code, dependencies, configuration and service definitions it runs on reads state its loaded code may not understand. Keeping it safe then needs every writer ordered around the restart or gated on what the old process can read, and a single writer that escapes the ordering leaves the daemon refusing its own configuration. With the daemon stopped there is no older reader to protect, so the steps need only their own dependency order. The cost is downtime for the length of the run: sessions, leased workers and the hook outbox already outlive a stopped daemon, and callers already meet a refusal that tells them to retry.
 
 - Maintenance runs detached from the daemon it stops, so it outlives the stop and can wait out the started daemon's warm-up within a bound before it judges the start. A run that reported success without that verification would leave a daemon that never came back to be discovered by whoever next needed it, and a reason recorded where `make status` reads it reaches that person first.
+
+- A service manager that relaunches the daemon on exit keeps doing so for a unit that is merely disabled; only its explicit stop cancels a relaunch it has scheduled. A stop that skipped that call for an already-disabled unit could report a stopped daemon while a relaunch was pending, and maintenance would then run against a daemon about to come back.
 
 <!-- /planned-change:maintenance-runs-as-stopped-daemon-window -->
 
