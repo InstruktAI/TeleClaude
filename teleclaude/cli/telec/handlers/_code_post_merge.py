@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import sys
 
+from teleclaude.core.integration.activation_registration import resolve_post_merge_activation_range
 from teleclaude.core.integration.post_commit_maintenance import (
     OwedSetRecorded,
     record_activation,
     refusal_notice,
-    resolve_post_merge_activation_range,
     start_drain_contender,
 )
 from teleclaude.project_root import resolve_invocation_roots, resolve_project_root

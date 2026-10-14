@@ -19,13 +19,18 @@ from teleclaude.checkpoint_model import (
     fill_event_activation,
     load_checkpoint_model,
     load_committed_checkpoint_model,
-    main_only_judgment_action_ids_for_files,
     main_only_maintenance_action_ids_for_model,
+    triggered_action_ids,
 )
 from teleclaude.config.errors import ConfigLoadError, describe_load_error
-from teleclaude.config.secret_masking import declared_secret_values, mask_secret_values
-from teleclaude.constants import LOG_CHECK_ACTION_ID, CheckpointActivation, CheckpointModel, MaintenanceAction
+from teleclaude.constants import (
+    RESTART_MAINTENANCE_ACTION_ID,
+    CheckpointActivation,
+    CheckpointModel,
+    MaintenanceAction,
+)
 from teleclaude.core.integration._maintenance_records import (
+    ActivationRegistration,
     EventActivation,
     MaintenanceActionRecord,
     MaintenanceActivation,
@@ -34,15 +39,32 @@ from teleclaude.core.integration._maintenance_records import (
     activation_key,
     commit_activation_key,
     event_file_path,
+    maintenance_activation_registration_lock,
     maintenance_drain_is_running,
     maintenance_drain_lock,
+    read_activation_registration,
     read_record,
     read_records,
     record_path,
     remove_record,
+    write_activation_registration,
     write_event_file,
     write_record,
 )
+from teleclaude.core.integration.activation_registration import (
+    derive_window_action,
+    resolve_current_tip_activation_range,
+    write_owed_records,
+)
+from teleclaude.core.integration.daemon_window import (
+    WindowCloseResult,
+    open_window,
+)
+from teleclaude.core.integration.drain_window_boundary import (
+    WindowBoundaryDecision,
+    close_drain_window,
+)
+from teleclaude.core.integration.maintenance_output import secret_output_masker
 from teleclaude.core.integration.maintenance_trigger import DRAIN_HELD_ENV, DRAIN_HELD_VALUE, MaintenanceTrigger
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.deployment.release_checkout import is_release_installation, selected_revision
@@ -52,7 +74,6 @@ from teleclaude.hooks.integrator_judgment_marker import (
     IntegratorJudgmentMarker,
     mark_integrator_judgment_ready,
     read_integrator_judgment_marker,
-    record_integrator_judgment_activation,
 )
 from teleclaude.logging_config import setup_logging
 from teleclaude.project_root import resolve_project_root
@@ -62,12 +83,9 @@ logger = get_logger(__name__)
 
 _GIT_NAME_ONLY_ARGUMENT = "--name-only"
 _GIT_DIFF_TREE_ARGUMENTS = ("--root", "--no-commit-id", _GIT_NAME_ONLY_ARGUMENT, "-r")
-_SYNC_ACTION_ID = "sync"
 _FULL_COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
 _MAIN_BRANCH_NAME = "main"
 _CANONICAL_MAIN_REFERENCE = "refs/heads/main"
-_GIT_HEAD_REFERENCE = "HEAD"
-_GIT_ORIGINAL_HEAD_REFERENCE = "ORIG_HEAD"
 _GIT_COUNT_FLAG = "--count"
 _PUBLISHER_MODULE = "teleclaude.core.integration.post_commit_maintenance"
 _MAINTENANCE_RECORDED_EVENT = "post_commit_maintenance_recorded"
@@ -77,15 +95,18 @@ _MAINTENANCE_DRAIN_STARTED_EVENT = "post_commit_maintenance_drain_started"
 _MAINTENANCE_DRAIN_FINISHED_EVENT = "post_commit_maintenance_drain_finished"
 _MAINTENANCE_ACTION_STARTED_EVENT = "post_commit_maintenance_action_started"
 _MAINTENANCE_ACTION_FINISHED_EVENT = "post_commit_maintenance_action_finished"
-_SECRET_DISCOVERY_FAILED_EVENT = "post_commit_maintenance_secret_discovery_failed"
-_OUTPUT_WITHHELD = "output withheld: the configuration that declares its secrets does not load ({reason})"
 _MAINTENANCE_ACTION_INTERRUPTED_EVENT = "post_commit_maintenance_action_interrupted"
 _MAINTENANCE_ACTION_RETRIED_EVENT = "post_commit_maintenance_action_retried"
 _MAINTENANCE_RESOLVED_EVENT = "post_commit_maintenance_resolved"
 _MAINTENANCE_SKIPPED_EVENT = "post_commit_maintenance_skipped"
+_MAINTENANCE_WINDOW_OPENED_EVENT = "post_commit_maintenance_window_opened"
+_MAINTENANCE_WINDOW_ACTIVATION_COVERED_EVENT = "post_commit_maintenance_window_activation_covered"
+_MAINTENANCE_WINDOW_REFUSED_EVENT = "post_commit_maintenance_window_open_refused"
 _INELIGIBLE_LOCATION_DETAIL = "{root} is neither the canonical checkout on main nor the installed release checkout"
 _INVALID_RANGE_DETAIL = "the activation range is not a literal range of the checked-out source"
 _REFUSAL_NOTICE = "Maintenance for this activation was not recorded ({reason}): {detail}. Run {command} to perform it."
+_WINDOW_START_UNVERIFIED = "daemon did not verify healthy with admission open on checkout tip within the bound"
+_WINDOW_FAILURE_OUTPUT = "{reason}\n{output_tail}"
 _UNKNOWN_ACTION_EXIT_CODE = 127
 _SUCCESS_OUTCOME = "success"
 _REPLAY_COMMIT_COMMAND = "telec code maintenance retry --after-sha {after_sha} --action {action_id}"
@@ -158,31 +179,6 @@ def refusal_notice(recording: ActivationRecording) -> str | None:
         return None
     return _REFUSAL_NOTICE.format(
         reason=recording.reason, detail=recording.detail, command=ON_DEMAND_MAINTENANCE_COMMAND
-    )
-
-
-def resolve_activation_range(project_root: Path, before_ref: str | None, after_ref: str) -> ActivationRange:
-    """Resolve hook refs to immutable object ids before selecting any action."""
-    repository = Repo(str(project_root.resolve()))
-    before_sha = repository.commit(before_ref).hexsha if before_ref is not None else None
-    after_sha = repository.commit(after_ref).hexsha
-    return ActivationRange(before_sha=before_sha, after_sha=after_sha)
-
-
-def resolve_post_commit_activation_range(project_root: Path) -> ActivationRange:
-    """Resolve the new tip and its parent, preserving an absent root parent."""
-    repository = Repo(str(project_root.resolve()))
-    after_commit = repository.commit(_GIT_HEAD_REFERENCE)
-    before_sha = after_commit.parents[0].hexsha if after_commit.parents else None
-    return ActivationRange(before_sha=before_sha, after_sha=after_commit.hexsha)
-
-
-def resolve_post_merge_activation_range(project_root: Path) -> ActivationRange:
-    """Resolve the pre-merge and post-merge tips before any maintenance runs."""
-    return resolve_activation_range(
-        project_root,
-        _GIT_ORIGINAL_HEAD_REFERENCE,
-        _GIT_HEAD_REFERENCE,
     )
 
 
@@ -274,11 +270,16 @@ def record_activation(project_root: Path, activation_range: ActivationRange) -> 
         return _refuse(activation_range, root, ActivationRefusal.GIT_UNAVAILABLE, str(exc))
 
     try:
-        action_ids = tuple(
-            main_only_maintenance_action_ids_for_model(
-                list(changed_files), CheckpointActivation.CANONICAL_MAIN, maintenance_model(root)
-            )
+        model = maintenance_model(root)
+        selected_action_ids = tuple(
+            main_only_maintenance_action_ids_for_model(list(changed_files), CheckpointActivation.CANONICAL_MAIN, model)
         )
+        path_action_ids = tuple(
+            action_id
+            for action_id in triggered_action_ids(list(changed_files), model)
+            if action_id in model.maintenance and model.maintenance[action_id].main_only
+        )
+        action_ids = derive_window_action(selected_action_ids, path_action_ids, model)
     except ConfigLoadError as exc:
         return _refuse(activation_range, root, ActivationRefusal.CONFIGURATION_UNRESOLVED, describe_load_error(exc))
     except _GIT_FAILURES as exc:
@@ -290,13 +291,18 @@ def record_activation(project_root: Path, activation_range: ActivationRange) -> 
         action_ids=action_ids,
         changed_files=changed_files,
     )
+    try:
+        with maintenance_activation_registration_lock(root):
+            registration = read_activation_registration(root, activation_range.after_sha)
+            if registration is not None:
+                return _registration_outcome(registration)
+            if action_ids:
+                write_owed_records(root, activation_range, action_ids, changed_files)
+            write_activation_registration(root, activation_range.after_sha, action_ids)
+    except (OSError, ValueError) as exc:
+        return _refuse(activation_range, root, ActivationRefusal.RECORD_FAILED, str(exc))
     if not action_ids:
         return OwedSetEmpty()
-
-    try:
-        _write_owed_records(root, activation_range, action_ids, changed_files)
-    except OSError as exc:
-        return _refuse(activation_range, root, ActivationRefusal.RECORD_FAILED, str(exc))
     logger.info(
         _MAINTENANCE_RECORDED_EVENT,
         before_sha=activation_range.before_sha,
@@ -306,31 +312,30 @@ def record_activation(project_root: Path, activation_range: ActivationRange) -> 
     return OwedSetRecorded(action_ids)
 
 
-def _write_owed_records(
-    root: Path, activation_range: ActivationRange, action_ids: tuple[str, ...], changed_files: tuple[str, ...]
-) -> None:
-    """Write each owed action's record that does not exist yet, then the integrator judgment the paths owe."""
-    queued_at = datetime.now(UTC).isoformat()
-    for action_id in action_ids:
-        path = record_path(root, commit_activation_key(activation_range.after_sha), action_id)
-        if path.exists():
-            continue
-        record = MaintenanceActionRecord(
-            activation=activation_range,
-            action_id=action_id,
-            queued_at=queued_at,
-            state=MaintenanceRecordState.PENDING,
-        )
-        write_record(path, record)
+def _registration_outcome(registration: ActivationRegistration) -> ActivationRecording:
+    """Return an advancement's existing outcome without re-writing any records."""
+    if registration.action_ids:
+        return OwedSetRecorded(registration.action_ids)
+    return OwedSetEmpty()
 
-    judgment_action_ids = main_only_judgment_action_ids_for_files(list(changed_files), root)
-    if LOG_CHECK_ACTION_ID in judgment_action_ids:
-        record_integrator_judgment_activation(
-            root,
-            activation_range,
-            [LOG_CHECK_ACTION_ID],
-            queued_at,
-        )
+
+def _recording_action_ids(recording: ActivationRecording) -> tuple[str, ...]:
+    """Expose only the resolved owed set from a successful registration result."""
+    if isinstance(recording, OwedSetRecorded):
+        return recording.action_ids
+    return ()
+
+
+def _register_tip_for_window_close(
+    root: Path,
+    after_sha: str,
+) -> tuple[ActivationRange, tuple[str, ...] | None, str | None]:
+    """Register a close-boundary tip and translate its result for the window owner."""
+    activation_range = resolve_current_tip_activation_range(root, after_sha)
+    recording = record_activation(root, activation_range)
+    if isinstance(recording, ActivationRefused):
+        return activation_range, None, recording.detail
+    return activation_range, _recording_action_ids(recording), None
 
 
 def record_event_activation(project_root: Path, event: ReceivedEvent, action_ids: tuple[str, ...]) -> bool:
@@ -345,19 +350,20 @@ def record_event_activation(project_root: Path, event: ReceivedEvent, action_ids
         return False
     activation = EventActivation(event_id=event.id, event_type=event.type)
     key = activation_key(activation)
-    owed = tuple(action_id for action_id in action_ids if not record_path(root, key, action_id).exists())
-    if not owed:
-        return True
-    write_event_file(root, event)
-    queued_at = datetime.now(UTC).isoformat()
-    for action_id in owed:
-        record = MaintenanceActionRecord(
-            activation=activation,
-            action_id=action_id,
-            queued_at=queued_at,
-            state=MaintenanceRecordState.PENDING,
-        )
-        write_record(record_path(root, key, action_id), record)
+    with maintenance_activation_registration_lock(root):
+        owed = tuple(action_id for action_id in action_ids if not record_path(root, key, action_id).exists())
+        if not owed:
+            return True
+        write_event_file(root, event)
+        queued_at = datetime.now(UTC).isoformat()
+        for action_id in owed:
+            record = MaintenanceActionRecord(
+                activation=activation,
+                action_id=action_id,
+                queued_at=queued_at,
+                state=MaintenanceRecordState.PENDING,
+            )
+            write_record(record_path(root, key, action_id), record)
     logger.info(_MAINTENANCE_RECORDED_EVENT, event_id=event.id, event_type=event.type, action_ids=owed)
     return True
 
@@ -393,8 +399,8 @@ def drain_maintenance(project_root: Path) -> bool:
     if root is None:
         return False
     with maintenance_drain_lock(root):
-        _drain_locked(root)
-    return not any(record.state is MaintenanceRecordState.FAILED for record in read_records(root))
+        processed = _drain_locked(root)
+    return processed and not any(record.state is MaintenanceRecordState.FAILED for record in read_records(root))
 
 
 def main() -> int:
@@ -491,31 +497,100 @@ def eligible_maintenance_root(project_root: Path) -> Path | None:
     return root
 
 
-def _drain_locked(project_root: Path) -> None:
-    """Run eligible action records while the caller holds the drain lock."""
+def _drain_locked(project_root: Path) -> bool:
+    """Run eligible action records and any enclosing daemon window under the drain lock."""
     root = project_root
     logger.info(_MAINTENANCE_DRAIN_STARTED_EVENT, project_root=str(root))
     repository = Repo(str(root))
+    window_open = False
+    window_activations: list[MaintenanceActivation] = []
     while True:
-        records = read_records(root)
-        actionable = tuple(
-            record
-            for record in records
-            if record.state in (MaintenanceRecordState.PENDING, MaintenanceRecordState.RUNNING)
+        activation: MaintenanceActivation | None = None
+        activation_records: tuple[MaintenanceActionRecord, ...] = ()
+        records: tuple[MaintenanceActionRecord, ...] = ()
+        model: CheckpointModel | None = None
+        known_records: dict[str, MaintenanceActionRecord] = {}
+        close_boundary = False
+        with maintenance_activation_registration_lock(root):
+            records = read_records(root)
+            actionable = tuple(
+                record
+                for record in records
+                if record.state in (MaintenanceRecordState.PENDING, MaintenanceRecordState.RUNNING)
+            )
+            if actionable:
+                activation = _next_activation(repository, actionable)
+                activation_records = tuple(record for record in actionable if record.activation == activation)
+                # The model is resolved as each activation is reached: an earlier action may have advanced the checkout.
+                model = maintenance_model(root)
+                known_records = {
+                    record.action_id: record for record in activation_records if record.action_id in model.maintenance
+                }
+                for record in activation_records:
+                    if record.action_id not in known_records:
+                        _finish_unknown_action(root, record)
+            elif window_open:
+                close_boundary = True
+            else:
+                # No actionable records and no open window remain; later registrations belong to another drain.
+                break
+
+        if close_boundary:
+            boundary = close_drain_window(
+                root,
+                repository,
+                window_activations,
+                lambda after_sha: _register_tip_for_window_close(root, after_sha),
+                _settle_window_records,
+            )
+            window_open = boundary.window_open
+            if boundary.decision is WindowBoundaryDecision.COMPLETE:
+                break
+            if boundary.decision is WindowBoundaryDecision.REFUSED:
+                return False
+            continue
+
+        if activation is None or model is None:
+            continue
+
+        all_activation_records = tuple(record for record in records if record.activation == activation)
+        window_record = next(
+            (record for record in all_activation_records if record.action_id == RESTART_MAINTENANCE_ACTION_ID),
+            None,
         )
-        if not actionable:
-            break
-        activation = _next_activation(repository, actionable)
-        activation_records = tuple(record for record in actionable if record.activation == activation)
-        # The model is resolved as each activation is reached: an earlier action may have advanced the checkout.
-        model = maintenance_model(root)
-        known_records = {
-            record.action_id: record for record in activation_records if record.action_id in model.maintenance
-        }
-        for record in activation_records:
-            if record.action_id not in known_records:
-                _finish_unknown_action(root, record)
-        _run_activation(root, activation, known_records, model.maintenance)
+        if window_record is not None:
+            if not window_open:
+                result = open_window(root, activation)
+                if not result.opened:
+                    logger.error(
+                        _MAINTENANCE_WINDOW_REFUSED_EVENT,
+                        **_activation_log_fields(activation),
+                        reason=result.reason,
+                    )
+                    return False
+                window_open = True
+                logger.info(
+                    _MAINTENANCE_WINDOW_OPENED_EVENT,
+                    **_activation_log_fields(activation),
+                    stop_cleanup_warning=result.warning,
+                )
+            if activation not in window_activations:
+                window_activations.append(activation)
+            _hold_window_record(root, window_record)
+        if window_open and activation not in window_activations:
+            window_activations.append(activation)
+            logger.info(
+                _MAINTENANCE_WINDOW_ACTIVATION_COVERED_EVENT,
+                **_activation_log_fields(activation),
+            )
+        action_ids = tuple(action_id for action_id in known_records if action_id != RESTART_MAINTENANCE_ACTION_ID)
+        if action_ids:
+            _run_activation(
+                root,
+                activation,
+                {action_id: known_records[action_id] for action_id in action_ids},
+                model.maintenance,
+            )
 
     ready_at = datetime.now(UTC).isoformat()
     mark_integrator_judgment_ready(
@@ -528,6 +603,65 @@ def _drain_locked(project_root: Path) -> None:
         failed_action_count=sum(record.state is MaintenanceRecordState.FAILED for record in remaining),
         pending_action_count=sum(record.state is MaintenanceRecordState.PENDING for record in remaining),
     )
+    return True
+
+
+def _hold_window_record(root: Path, record: MaintenanceActionRecord) -> None:
+    """Keep a non-actionable window obligation beside an activation until its last record is gone."""
+    path = record_path(root, activation_key(record.activation), RESTART_MAINTENANCE_ACTION_ID)
+    current = read_record(path)
+    if current.state is not MaintenanceRecordState.HELD:
+        write_record(
+            path,
+            replace(
+                current,
+                state=MaintenanceRecordState.HELD,
+                exit_code=None,
+                finished_at=None,
+                output_tail=None,
+            ),
+        )
+
+
+def _settle_window_records(
+    root: Path,
+    activations: list[MaintenanceActivation],
+    result: WindowCloseResult,
+) -> None:
+    """Retire verified window obligations after their steps, or retain a failed start for replay."""
+    for activation in activations:
+        path = record_path(root, activation_key(activation), RESTART_MAINTENANCE_ACTION_ID)
+        if not path.exists():
+            continue
+        record = read_record(path)
+        if result.verified:
+            other_records = tuple(
+                current
+                for current in read_records(root)
+                if current.activation == activation and current.action_id != RESTART_MAINTENANCE_ACTION_ID
+            )
+            if not other_records:
+                remove_record(path)
+            else:
+                write_record(path, replace(record, state=MaintenanceRecordState.HELD))
+            continue
+        finished_at = datetime.now(UTC).isoformat()
+        reason = result.reason or _WINDOW_START_UNVERIFIED
+        output_tail = (
+            _WINDOW_FAILURE_OUTPUT.format(reason=reason, output_tail=result.output_tail)
+            if result.output_tail
+            else reason
+        )
+        write_record(
+            path,
+            replace(
+                record,
+                state=MaintenanceRecordState.FAILED,
+                exit_code=1,
+                finished_at=finished_at,
+                output_tail=output_tail,
+            ),
+        )
 
 
 def _run_activation(
@@ -611,33 +745,9 @@ def run_maintenance_waves(
             completed.append((action_id, result))
 
         run_process_group_commands(
-            commands, root, child_env, report, capture_output=_secret_masker(root) if capture_output else None
+            commands, root, child_env, report, capture_output=secret_output_masker(root) if capture_output else None
         )
     return tuple(completed)
-
-
-def _secret_masker(root: Path) -> Callable[[str], str]:
-    """Mask the configuration's declared secrets in captured output; withhold it when they are unknown."""
-    secrets: frozenset[str] | None = None
-    unknown: str | None = None
-
-    def mask(output: str) -> str:
-        nonlocal secrets, unknown
-        if secrets is None and unknown is None:
-            try:
-                secrets = declared_secret_values(root)
-            except ConfigLoadError as error:
-                unknown = describe_load_error(error)
-            # Fail closed: an unforeseen discovery failure withholds the output, and reporting a
-            # failure never aborts the drain.
-            except Exception as error:
-                unknown = type(error).__name__
-                logger.error(_SECRET_DISCOVERY_FAILED_EVENT, project_root=str(root), error_kind=unknown)
-        if secrets is None:
-            return _OUTPUT_WITHHELD.format(reason=unknown)
-        return mask_secret_values(output, secrets)
-
-    return mask
 
 
 def _next_activation(repository: Repo, actionable: tuple[MaintenanceActionRecord, ...]) -> MaintenanceActivation:

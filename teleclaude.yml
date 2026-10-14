@@ -45,19 +45,11 @@ checkpoint:
         - teleclaude.project_setup.plumbing
     restart:
       main_only: true
-      precedence: 100
-      on_demand: defer
-      owed_probe:
-        - '{interpreter}'
-        - -m
-        - teleclaude.core.integration.deferred_probes
-        - restart
-        - --tip
-        - '{after_sha}'
+      precedence: 0
       command:
         - '{interpreter}'
         - -m
-        - teleclaude.core.integration.restart_admission
+        - teleclaude.core.integration.daemon_window
     # Deploying the service definitions installation renders is deferred on
     # demand, so a manual run reports it instead; no scope binds it, so the
     # commit boundary never runs it.
@@ -78,11 +70,10 @@ checkpoint:
       command:
         - uv
         - sync
-    # Runs after restart: the replacement daemon reads the migration list this run stores, so
-    # the older daemon never meets a document newer than it reads.
+    # Runs after deps and tui-reload: the runtime is available and the reloaded TUI reads the stored shape.
     config-migrate:
       main_only: true
-      precedence: 105
+      precedence: 50
       command:
         - uv
         - run
@@ -90,6 +81,17 @@ checkpoint:
         - python
         - -m
         - teleclaude.config.migrations
+    installation-migrations:
+      main_only: true
+      precedence: 35
+      command:
+        - '{interpreter}'
+        - -m
+        - teleclaude.deployment.migration_runner
+        - --before-sha
+        - '{before_sha}'
+        - --after-sha
+        - '{after_sha}'
     declaration-views-discard:
       main_only: true
       precedence: 35
@@ -153,59 +155,6 @@ checkpoint:
           - teleclaude/**/*.py
       actions:
         - log-check
-          # Every module the daemon process imports owes a restart. Exclusions name
-          # only modules outside the daemon's import closure; CLI modules the daemon
-          # imports are re-included by override despite the broad cli/** exclusion.
-    - scope:
-        include:
-          - teleclaude/**/*.py
-        exclude:
-          - teleclaude/hooks/checkpoint/**
-          - teleclaude/hooks/receiver/**
-          - teleclaude/hooks/utils/**
-          - teleclaude/hooks/checkpoint_flags.py
-          - teleclaude/hooks/edit_declarations.py
-          - teleclaude/hooks/integrator_judgment_marker.py
-          - teleclaude/hooks/receiver_args.py
-          - teleclaude/cli/**
-          - teleclaude/quality/toolchain.py
-          - teleclaude/project_setup/launcher_signing.py
-          - teleclaude/project_setup/macos_setup.py
-          - teleclaude/codegen/**
-          - teleclaude/entrypoints/**
-          - teleclaude/tagging/**
-          - teleclaude/helpers/agent_cli.py
-          - teleclaude/helpers/agent_cli_command_assembly.py
-          - teleclaude/helpers/youtube/**
-        override:
-          - teleclaude/cli/__init__.py
-          - teleclaude/cli/api_client.py
-          - teleclaude/cli/api_client_health.py
-          - teleclaude/cli/api_client_identity.py
-          - teleclaude/cli/api_client_request.py
-          - teleclaude/cli/api_client_runtime.py
-          - teleclaude/cli/api_session_args.py
-          - teleclaude/cli/clearance.py
-          - teleclaude/cli/config_handlers.py
-          - teleclaude/cli/models.py
-          - teleclaude/cli/telec/__init__.py
-          - teleclaude/cli/telec/surface.py
-          - teleclaude/cli/telec/surface_types.py
-          - teleclaude/cli/telec/auth.py
-          - teleclaude/cli/telec/flags.py
-          - teleclaude/cli/telec/help.py
-          - teleclaude/cli/telec/_shared.py
-          - teleclaude/cli/telec/_run_tui.py
-          - teleclaude/cli/tool_client.py
-          - teleclaude/cli/session_auth.py
-          - teleclaude/cli/tui_clearance.py
-      actions:
-        - restart
-    - scope:
-        include:
-          - config.yml
-      actions:
-        - restart
     - scope:
         include:
           - pyproject.toml
@@ -213,7 +162,6 @@ checkpoint:
           - uv.lock
       actions:
         - deps
-        - restart
     - scope:
         include:
           - teleclaude/install/**
@@ -277,6 +225,7 @@ checkpoint:
     - activation: canonical_main
       actions:
         - release-posture
+        - installation-migrations
 jobs:
   - category: system
     name: temp-reaper

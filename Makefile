@@ -2,6 +2,7 @@
 
 CRON_SMOKE_SINCE ?= 15m
 LEGACY_ACTIVATION ?= 0
+STOP_OUTCOME_FILE ?=
 
 # Default target
 help:
@@ -42,7 +43,7 @@ start:
 	@./bin/daemon-control.sh start
 
 stop:
-	@LEGACY_ACTIVATION="$(LEGACY_ACTIVATION)" ./bin/daemon-control.sh stop
+	@LEGACY_ACTIVATION="$(LEGACY_ACTIVATION)" STOP_OUTCOME_FILE="$(STOP_OUTCOME_FILE)" ./bin/daemon-control.sh stop
 
 restart:
 	@LEGACY_ACTIVATION="$(LEGACY_ACTIVATION)" ./bin/daemon-control.sh restart

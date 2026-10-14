@@ -7,10 +7,9 @@ installation selects the release's exact commit in detached HEAD, resolved once 
 source it runs never depends on what a branch or a moved tag names later. A release advances the source
 only to a strictly later version whose history contains the installed commit; an older announcement the
 installation already contains leaves it unchanged, and any other transition is refused before the source
-moves. Either way the migrations between the version left and the version reached run, and the advance
-is recorded as an ordinary canonical-main activation, whose installation, dependency and restart steps
-the commit-boundary bindings already own. A recording the maintenance executor refuses leaves the
-convergence pending.
+moves. The advance is recorded as an ordinary canonical-main activation; its maintenance includes the
+installation migrations and controlled daemon window. A recording the maintenance executor refuses leaves
+the convergence pending.
 
 A convergence is recorded as pending before anything is fetched and cleared only after its last step
 succeeded. Every run completes a pending convergence first, so a replay finishes whatever a failed
@@ -37,7 +36,7 @@ from teleclaude.config.compatibility_series import CompatibilitySeries
 from teleclaude.config.machine import config
 from teleclaude.core.integration.post_commit_maintenance import ActivationRefused, record_activation
 from teleclaude.deployment import parse_version, version_cmp
-from teleclaude.deployment.migration_runner import run_migrations
+from teleclaude.deployment.migration_runner import DeploymentMigrationError, committed_version
 from teleclaude.deployment.release_checkout import PostureUnmet, select_release
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo, no_autostash_env
@@ -61,7 +60,6 @@ _TAG_TEMPLATE = "v{major}.{minor}.{patch}"
 _FETCH_ARGUMENTS = ("--tags", "origin", "main")
 _FAST_FORWARD_ARGUMENTS = ("merge", "--ff-only")
 _PYPROJECT_FILENAME = "pyproject.toml"
-_COMMITTED_FILE_TEMPLATE = "{commit}:{path}"
 _PROJECT_TABLE = "project"
 _VERSION_KEY = "version"
 _TEXT_ENCODING = "utf-8"
@@ -75,7 +73,6 @@ _NO_VERSION_ERROR = "{path} declares no project version"
 _NO_SERIES_ERROR = "stable self-update requires a compatibility series, and this installation declares none"
 _UNKNOWN_TARGET_ERROR = "target {target!r} is not an advance this action performs"
 _MISSING_TARGET_ERROR = "target {target} is not available after fetching"
-_MIGRATION_ERROR = "migrations failed: {error}"
 _NOT_INSTALLATION_ERROR = "{root} is not the installed checkout, so it selects no release"
 _RECOVERY_CONFLICT_ERROR = (
     "the checkout is at {head}, neither where the convergence left from ({from_commit}) nor its target ({target})"
@@ -114,7 +111,6 @@ class ConvergenceStep(StrEnum):
     """The ordered steps of a convergence."""
 
     ADVANCE = "advance"
-    MIGRATE = "migrate"
     RECORD = "record"
     CLEAR = "clear"
 
@@ -207,15 +203,6 @@ def _checkout_version(root: Path) -> str:
     """The version the checkout's files declare, which is what its migrations are keyed to."""
     pyproject = root / _PYPROJECT_FILENAME
     return _declared_version(pyproject.read_text(encoding=_TEXT_ENCODING), str(pyproject))
-
-
-def _committed_version(repo: Repo, commit: str) -> str:
-    """The version a commit declares in its committed ``pyproject.toml``, whatever the working tree holds."""
-    try:
-        text = str(repo.git.show(_COMMITTED_FILE_TEMPLATE.format(commit=commit, path=_PYPROJECT_FILENAME)))
-        return _declared_version(text, _COMMITTED_FILE_TEMPLATE.format(commit=commit, path=_PYPROJECT_FILENAME))
-    except (GitCommandError, tomllib.TOMLDecodeError) as error:
-        raise SelfUpdateError(_TARGET_VERSION_UNREADABLE_ERROR.format(commit=commit, error=error)) from error
 
 
 def _upgrade_stored_pending() -> None:
@@ -311,7 +298,10 @@ def _require_supported_transition(repo: Repo, pending: PendingConvergence) -> No
     assert target_commit is not None
     if pending.from_commit == target_commit:
         return
-    target_version = _committed_version(repo, target_commit)
+    try:
+        target_version = committed_version(repo, target_commit)
+    except DeploymentMigrationError as error:
+        raise SelfUpdateError(_TARGET_VERSION_UNREADABLE_ERROR.format(commit=target_commit, error=error)) from error
     if parse_version(target_version) != parse_version(pending.target):
         raise SelfUpdateError(
             _TAG_VERSION_MISMATCH_ERROR.format(tag=pending.target, commit=target_commit, version=target_version)
@@ -359,22 +349,6 @@ def _select_release(root: Path, repo: Repo, pending: PendingConvergence) -> bool
     return True
 
 
-def _migrate(root: Path, pending: PendingConvergence) -> None:
-    """Run the migrations between the version the convergence left and the version the checkout now carries."""
-    reached_version = _checkout_version(root)
-    if version_cmp(pending.from_version, reached_version) >= 0:
-        return
-    result = run_migrations(pending.from_version, reached_version)
-    if result["error"] is not None:
-        raise SelfUpdateError(_MIGRATION_ERROR.format(error=result["error"]))
-    logger.info(
-        _STEP_EVENT,
-        step=ConvergenceStep.MIGRATE,
-        migrations_run=result["migrations_run"],
-        migrations_skipped=result["migrations_skipped"],
-    )
-
-
 def _record_advance(root: Path, repo: Repo, pending: PendingConvergence) -> None:
     """Record the advance as a canonical-main activation; a refused recording leaves the convergence pending.
 
@@ -409,7 +383,6 @@ def _complete(root: Path, pending: PendingConvergence) -> None:
         if not _select_release(root, repo, pending):
             _clear_pending()
             return
-    _migrate(root, pending)
     _record_advance(root, repo, pending)
     _clear_pending()
     logger.info(_STEP_EVENT, step=ConvergenceStep.CLEAR, target=pending.target)

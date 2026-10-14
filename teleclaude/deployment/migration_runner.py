@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
 import os
 import re
+import sys
+import tomllib
 import traceback
 from operator import itemgetter
 from pathlib import Path
 from typing import TypedDict, cast
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.deployment import parse_version, version_cmp, version_in_range
+from teleclaude.git import GitCommandError, Repo
+from teleclaude.logging_config import setup_logging
 from teleclaude.paths import MIGRATION_STATE_PATH
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -20,6 +27,20 @@ MIGRATION_STATE_FILE = MIGRATION_STATE_PATH
 
 _VERSION_DIR_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 _MIGRATION_FILE_RE = re.compile(r"^(\d{3})_[a-zA-Z0-9_]+\.py$")
+_PROJECT_TABLE = "project"
+_VERSION_KEY = "version"
+_PYPROJECT_FILENAME = "pyproject.toml"
+_COMMITTED_FILE_TEMPLATE = "{commit}:{path}"
+_VERSION_ERROR = "{path} declares no project version"
+_VERSION_UNREADABLE_ERROR = "the committed version at {commit} is unreadable: {error}"
+_MIGRATION_ERROR = "migrations failed: {error}"
+_BEFORE_SHA_FLAG = "--before-sha"
+_AFTER_SHA_FLAG = "--after-sha"
+_NO_MIGRATIONS_EVENT = "deployment_migrations_not_required"
+_NO_BEFORE_REVISION = "activation has no before revision"
+_MIGRATIONS_COMPLETED_EVENT = "deployment_migrations_completed"
+_FAILED_EXIT_CODE = 1
+logger = get_logger(__name__)
 
 
 class MigrationState(TypedDict):
@@ -47,6 +68,24 @@ class MigrationModuleContract:
     def migrate(self) -> bool:
         """Execute the migration and return True on success."""
         raise NotImplementedError
+
+
+class DeploymentMigrationError(ValueError):
+    """A committed project version could not be read for deployment migration."""
+
+
+def committed_version(repository: Repo, commit: str) -> str:
+    """Read the project version declared by one commit's pyproject, independent of working-tree state."""
+    try:
+        text = str(repository.git.show(_COMMITTED_FILE_TEMPLATE.format(commit=commit, path=_PYPROJECT_FILENAME)))
+        project = tomllib.loads(text).get(_PROJECT_TABLE)
+        version = project.get(_VERSION_KEY) if isinstance(project, dict) else None
+        if not isinstance(version, str) or not version:
+            path = _COMMITTED_FILE_TEMPLATE.format(commit=commit, path=_PYPROJECT_FILENAME)
+            raise DeploymentMigrationError(_VERSION_ERROR.format(path=path))
+        return version
+    except (GitCommandError, tomllib.TOMLDecodeError) as error:
+        raise DeploymentMigrationError(_VERSION_UNREADABLE_ERROR.format(commit=commit, error=error)) from error
 
 
 def _normalize_version(version: str) -> str:
@@ -212,4 +251,56 @@ def run_migrations(from_ver: str, to_ver: str, dry_run: bool = False) -> Migrati
     return result
 
 
-__all__ = ["MIGRATIONS_DIR", "MIGRATION_STATE_FILE", "discover_migrations", "run_migrations"]
+def main(arguments: list[str] | None = None) -> int:
+    """Run installation migrations when a committed activation advances the declared project version."""
+    setup_logging()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(_BEFORE_SHA_FLAG)
+    parser.add_argument(_AFTER_SHA_FLAG, required=True)
+    args = parser.parse_args(arguments)
+    if args.before_sha is None:
+        logger.info(_NO_MIGRATIONS_EVENT, reason=_NO_BEFORE_REVISION)
+        return 0
+
+    try:
+        repository = Repo(str(Path.cwd()))
+        from_version = committed_version(repository, args.before_sha)
+        to_version = committed_version(repository, args.after_sha)
+        if version_cmp(from_version, to_version) >= 0:
+            logger.info(
+                _NO_MIGRATIONS_EVENT,
+                before_version=from_version,
+                after_version=to_version,
+            )
+            return 0
+        result = run_migrations(from_version, to_version)
+    except (DeploymentMigrationError, GitCommandError, OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return _FAILED_EXIT_CODE
+
+    if result["error"] is not None:
+        print(_MIGRATION_ERROR.format(error=result["error"]), file=sys.stderr)
+        return _FAILED_EXIT_CODE
+    logger.info(
+        _MIGRATIONS_COMPLETED_EVENT,
+        from_version=from_version,
+        to_version=to_version,
+        migrations_run=result["migrations_run"],
+        migrations_skipped=result["migrations_skipped"],
+    )
+    return 0
+
+
+__all__ = [
+    "MIGRATIONS_DIR",
+    "MIGRATION_STATE_FILE",
+    "DeploymentMigrationError",
+    "committed_version",
+    "discover_migrations",
+    "main",
+    "run_migrations",
+]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
