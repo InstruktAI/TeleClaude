@@ -52,6 +52,8 @@ own identity and is never a session role.
 
 ### Capabilities
 
+<!-- planned-change:agent-audio-transcription-tool -->
+
 | Capability             | Reach                                                                                                    |
 | ---------------------- | -------------------------------------------------------------------------------------------------------- |
 | `docs-read`            | Reading documentation.                                                                                   |
@@ -80,6 +82,40 @@ own identity and is never a session role.
 | `peer-talk`            | Sending to and tailing a peer session: the builder a reviewer reviews, the claimant that dispatched it.  |
 | `memories-read`        | Listing, searching, deleting and tracing a person's own memories outside an extraction.                  |
 | `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                      |
+
+<!-- change:agent-audio-transcription-tool -->
+
+| Capability             | Reach                                                                                                    |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- |
+| `docs-read`            | Reading documentation.                                                                                   |
+| `todo-read`            | Listing and showing todos and bugs.                                                                      |
+| `todo-write`           | Creating, updating, freezing, removing and delivering todos; filing bugs and suppressions.               |
+| `artifact-read`        | Reading and diffing todo artifacts.                                                                      |
+| `artifact-write`       | Writing and removing todo artifacts.                                                                     |
+| `stamp`                | Stamping todo state and commit-review verdicts.                                                          |
+| `todo-orchestration`   | Driving a todo state machine.                                                                            |
+| `integration`          | Integrating deliveries to canonical main and reading dirty-path ownership.                               |
+| `maintenance-recovery` | Inspecting and recovering canonical-main maintenance.                                                    |
+| `memory-curation`      | Curating memories and prospects from conversation extractions.                                           |
+| `session-observe`      | Listing and showing sessions, searching history, and reading the fleet's computers, projects and agents. |
+| `transcript-read`      | Showing the transcript of a named session.                                                               |
+| `operation-read`       | Reading the outcome of an operation one's session started or one's reach admits.                         |
+| `session-act`          | Starting, running, reviving, restarting, ending and messaging sessions other than one's own.             |
+| `self-acts`            | Results, files, ending and restarting for one's own session.                                             |
+| `messaging`            | Messaging a person.                                                                                      |
+| `audio`                | Transcribing supplied audio to text.                                                                     |
+| `jobs`                 | Listing, enabling, disabling and running jobs.                                                           |
+| `job-report`           | Reporting the result of a job run.                                                                       |
+| `config`               | Reading and changing configuration.                                                                      |
+| `reminders`            | Arming, listing and cancelling reminders.                                                                |
+| `code-check`           | Inspecting code: blast radius, lint and tests.                                                           |
+| `code`                 | Formatting, file declarations and commits.                                                               |
+| `mcp`                  | Listing and calling MCP tools.                                                                           |
+| `peer-talk`            | Sending to and tailing a peer session: the builder a reviewer reviews, the claimant that dispatched it.  |
+| `memories-read`        | Listing, searching, deleting and tracing a person's own memories outside an extraction.                  |
+| `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                      |
+
+<!-- /planned-change:agent-audio-transcription-tool -->
 
 The command families are the catalog's vocabulary; which command declares
 which family is the CLI surface schema's.

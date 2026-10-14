@@ -48,6 +48,12 @@ visibility: 'public'
   - `telec config company help-desk-links <slug>` and `telec config project help-desk-links <slug>` render that home's help-desk entry links, one per adapter that carries desk entry and is configured on the computer that runs them, and fail when the desk is not enabled or not hosted there (`local/projects/teleclaude/spec/feature/agent_runtime/conversation-entry`).
   - `telec sessions escalate --customer <name> --reason <text> [--summary <text>]` hands a help-desk visitor to everyone in the desk's scope, in a thread of the desk's escalations forum (`local/projects/teleclaude/spec/feature/agent_runtime/help-desk-escalation`).
 
+<!-- planned:agent-audio-transcription-tool -->
+
+- Speech-to-text CLI mapping: `telec audio stt --url <url>` or `telec audio stt --path <path>`, with an optional `--language <code>`, prints the transcript of the supplied audio (`local/projects/teleclaude/spec/feature/integration/speech-to-text`).
+
+<!-- /planned:agent-audio-transcription-tool -->
+
 ## Known caveats
 
 - Some commands are adapter-specific (e.g., Telegram-only UX actions).
