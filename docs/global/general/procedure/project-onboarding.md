@@ -1,7 +1,7 @@
 ---
 description: 'AI-driven project onboarding — adopt the project with telec config project adopt, then explicitly start the quality-config assessment and doc-snippet analysis sessions.'
 visibility: 'public'
-role: helper
+role: onboarder
 dispatch:
   agent: [claude, codex, gemini, deepseek]
   thinking_mode: med
