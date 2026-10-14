@@ -185,6 +185,20 @@ Valid in both project and global configs.
 - `business.publishes` declares the domains this project owns and contributes global docs for. The union across all registered projects is the set of valid domains, and each domain has exactly one owning publisher; a second project publishing the same domain is a sync-blocking split. Every entry names its domain and the domain's activation trigger, which is rendered on its Published Domains line in agent outputs. An entry whose trigger is missing, blank, multi-line, or over the bounded length fails config load, so a domain cannot be delivered undiscoverable.
 - `jobs` holds local job declarations and subscriptions to published global jobs, each identified by its required kebab-case `name`; a subscription overrides any setting it carries except the execution pointer (`local/projects/teleclaude/spec/feature/config/job-declaration-model`).
 - `hooks.inbound` declares this project's own inbound sources, as below.
+- `todos.store` selects the project workflow-store adapter. Omission defaults to `local`; `github` is a recognized selection and refuses with an explicit unavailable-capability error until its adapter is installed. Local selection requires no GitHub account or repository.
+
+<!-- planned:issue-126 -->
+
+#### Workflow store selection
+
+An optional `todos.store` project setting selects the workflow store. When it is
+omitted, the project uses `local`. The accepted values are `local` and
+`github`. Until a GitHub store adapter is available, selecting `github` is
+refused with the missing capability named; the project never falls back to
+`local` after an explicit `github` selection. This is project-owned workflow
+configuration, not a machine-wide workflow control plane. Local projects need
+no GitHub repository or credentials.
+<!-- /planned:issue-126 -->
 
 Every home declares the inbound sources that open endpoints in its own name
 under `hooks.inbound`, keyed by protocol, and each tier admits only its own
@@ -208,6 +222,8 @@ docs:
   enabled: bool # the project participates in the snippet pipeline
 agents:
   enabled: bool # the project holds agent artifacts
+todos:
+  store: local | github # defaults to local; github refuses until its adapter is installed
 ```
 
 A project and a company each declare whether that home keeps a help desk. An
