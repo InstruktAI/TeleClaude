@@ -91,11 +91,13 @@ Publication is one of those steps and keeps its own contract
   (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
   The run reports the window's opening, or why it did not open, and the start's
   verification, or why it did not verify; a run whose window did not open or
-  whose start did not verify exits non-zero. A commit activation recorded
-  during the run, or one that overtakes its start, is not the run's to perform:
-  the run leaves the daemon stopped, reports the activation it leaves to the
-  drain, and the drain that performs it starts the daemon through its own
-  window.
+  whose start did not verify exits non-zero. A commit activation owing the
+  restart action that is recorded during the run, or that overtakes its start,
+  is not the run's to perform: the run leaves the daemon stopped, reports the
+  activation it leaves to the drain, and the drain that performs it starts the
+  daemon through that activation's own window. A commit activation that owes no
+  restart leaves the run's start unchanged and is drained while the daemon
+  serves.
 - **Other disruptive steps.** Apart from the daemon's replacement, nothing a
   run performs stops, restarts or reloads a running service. Reloading the
   terminal interface is never performed by a run. During a run, installation

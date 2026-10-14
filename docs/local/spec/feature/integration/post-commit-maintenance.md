@@ -234,11 +234,14 @@ contract governs only what happens when maintenance runs.
   complete leaves the daemon stopped: each restart action the window covered
   ends failed with that refusal's reason, the reason and its time are recorded
   where `make status` reports them, and replaying a restart action once the
-  cause is resolved reopens the window on the stopped daemon. A start that a
-  further advancement overtook — the checkout's tip moved after the final check
-  — is stopped again within the same window, which runs that advancement's
-  actions and starts the daemon from it after them, so the daemon is never left
-  serving an advancement whose owed actions have not run. An activation that
+  cause is resolved reopens the window on the stopped daemon. When the
+  checkout's tip moved after the final check, the window registers that
+  advancement in the same way; if it owes the restart action, the start it
+  overtook is stopped again within the same window, which runs that
+  advancement's actions and starts the daemon from it after them, so the daemon
+  is never left serving an advancement whose owed actions have not run. An
+  advancement that owes no restart runs after the close while the daemon
+  serves, as any such activation does. An activation that
   owed the restart action keeps that obligation while any of its action records
   remains, so replaying one of its failed actions runs inside a window of its
   own.
@@ -709,7 +712,7 @@ And the daemon is started once, from that commit, after they have terminal outco
 
 ```gherkin
 Given a stopped-daemon window has started the daemon after its last owed step
-And another canonical-main commit advanced the checkout while that start was in progress
+And another canonical-main commit that owes a daemon restart advanced the checkout while that start was in progress
 When the window checks the start it made
 Then the daemon is stopped again before any of that commit's owed actions runs
 And they run inside the same window
