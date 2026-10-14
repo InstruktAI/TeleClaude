@@ -557,16 +557,12 @@ _CATALOG: dict[RoleName, Role] = dict(
                 {
                     Capability.DOCS_READ,
                     Capability.REMINDERS,
-                    Capability.TODO_READ,
                     Capability.CODE,
                     Capability.CODE_CHECK,
                     Capability.STAMP,
-                    Capability.CONFIG,
-                    Capability.SESSION_OBSERVE,
                     Capability.SESSION_ACT,
-                    Capability.OPERATION_READ,
-                    Capability.MESSAGING,
-                    Capability.JOB_REPORT,
+                    Capability.PEER_TALK,
+                    Capability.MCP,
                 }
             ),
             RoleLabel.AGENT,
