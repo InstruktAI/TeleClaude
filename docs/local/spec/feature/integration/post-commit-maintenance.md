@@ -225,17 +225,16 @@ contract governs only what happens when maintenance runs.
   action records remains, so replaying one of its failed actions runs inside a
   window of its own.
 
-- **Window failure.** The window opens once the daemon is verified stopped,
-  whatever `make stop` reported; a stop failure that left it stopped is
-  reported with the opening. A stop that leaves the daemon serving with
-  admission open, for any reason other than incomplete preparation, leaves the
-  window unopened: the daemon keeps serving, the activation's actions stay
-  recorded and unperformed, and the refusal is reported at error level with
-  its reason. A stop that leaves the daemon neither serving nor verifiably
-  stopped is followed by the window's start as recovery; the activation's
-  actions stay recorded and unperformed, and the stop's reason is recorded
-  where `make status` reports it. A failed action inside an open window is
-  reported and the window still closes. A start that does not verify
+- **Window failure.** The window opens only on the outcome `make stop` records
+  as stopped — the daemon exited and its relaunch suppressed — including a stop
+  that also reports a managed-unit cleanup failure, which is reported with the
+  opening (`local/projects/teleclaude/policy/daemon-availability`). Any other
+  outcome than stopped or incomplete preparation leaves the window unopened:
+  nothing starts, stops or replaces the daemon further, the activation's
+  actions stay recorded and unperformed, the refusal is reported at error level
+  with its reason, and the reason and its time are recorded where `make status`
+  reports them. A failed action inside an open window is reported and the
+  window still closes. A start that does not verify
   is the restart action's terminal failure, carrying the start's reason; the
   reason and its time are also recorded where `make status` reports them until
   a later window verifies a start.
@@ -606,7 +605,7 @@ And an agent running make status sees that reason and when it was recorded
 
 ```gherkin
 Given a canonical-main advancement owes a daemon restart
-When the daemon's stop is refused for a reason other than incomplete preparation and the daemon still serves
+When make stop withholds the stop for a reason other than incomplete preparation and the daemon still serves
 Then the daemon keeps serving
 And none of the activation's owed steps has run
 And an agent reading the structured records observes the refusal and its reason
@@ -640,14 +639,14 @@ Then the later advancement's actions run inside the same window
 And the daemon is started once, after both advancements' actions have terminal outcomes
 ```
 
-#### UC-PCM28: A stop that fails after stopping the daemon still ends with the daemon recovered or reasoned
+#### UC-PCM28: A stop that does not establish a stopped daemon leaves it untouched with its reason
 
 ```gherkin
 Given a canonical-main advancement owes a daemon restart
-When the daemon's stop reports failure and the daemon no longer serves
-Then the window opens if the daemon is verified stopped, and otherwise the daemon is started as recovery
-And an agent reading the structured records observes the stop's reported failure
-And when no verified start follows, an agent running make status sees the reason
+When make stop records an outcome other than stopped or incomplete preparation
+Then none of the activation's owed steps has run
+And the window neither starts nor replaces the daemon
+And an agent running make status sees the stop's reason and when it was recorded
 ```
 
 #### UC-PCM29: An installation-only advancement stops the daemon
@@ -667,6 +666,15 @@ And a canonical-main advancement owes installation while the tmux server's rende
 When its maintenance runs inside the stopped-daemon window
 Then the sessions are still running after the window closes
 And an agent reading the structured records observes that the tmux server definition change was deferred
+```
+
+#### UC-PCM31: A stop that stopped the daemon but failed a unit cleanup still opens the window
+
+```gherkin
+Given a canonical-main advancement owes a daemon restart
+When make stop records that the daemon stopped with its relaunch suppressed and a managed-unit cleanup failed
+Then the window opens and the owed steps run
+And an agent reading the structured records observes the cleanup failure
 ```
 
 <!-- /planned:maintenance-runs-as-stopped-daemon-window -->
