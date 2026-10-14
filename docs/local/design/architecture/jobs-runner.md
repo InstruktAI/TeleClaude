@@ -19,24 +19,12 @@ One-off operations (e.g., initial YouTube subscription fetch during onboarding) 
 
 ### Execution ownership
 
-<!-- planned-change:procedure-reference-loaders -->
-
-An agent job executes the procedure named by its declaration. That procedure owns
-the task, its artifacts, its recovery steps and the role its session carries;
-the brief a job entry materializes adds the outcome-reporting instructions.
-A script job runs in-process and returns its outcome directly. Scheduling,
-dispatch, and outcome notification belong to the runner.
-
-<!-- change:procedure-reference-loaders -->
-
 An agent job executes the procedure named by its declaration. That procedure owns
 the task, its artifacts, its recovery steps and the role its session carries;
 the procedure declares the shared outcome-reporting instructions among its
 required reads, and the job entry contributes the job's identity.
 A script job runs in-process and returns its outcome directly. Scheduling,
 dispatch, and outcome notification belong to the runner.
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 ### The generic closed-loop run lifecycle
 
@@ -389,17 +377,7 @@ cron_runner.py --list       List available jobs and their status
 
 ### Job procedures
 
-<!-- planned-change:procedure-reference-loaders -->
-
-An agent job's complete mandate is the procedure its `job` pointer names. There is no
-separate job document: the procedure carries the workflow, its dependencies and its
-declared role; the job entry adds the structured close-out instructions to the brief.
-
-<!-- change:procedure-reference-loaders -->
-
 An agent job's complete mandate is the procedure its `job` pointer names. There is no
 separate job document: the procedure carries the workflow, its dependencies and its
 declared role, and it declares the structured close-out instructions among its required
 reads; the job entry contributes the job's identity.
-
-<!-- /planned-change:procedure-reference-loaders -->

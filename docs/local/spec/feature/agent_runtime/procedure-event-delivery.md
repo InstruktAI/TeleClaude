@@ -7,25 +7,12 @@ description: Procedure activation briefs establish the assignment while durable 
 
 ## What it is
 
-<!-- planned-change:procedure-reference-loaders -->
-
-A subscribed procedure receives its assignment through the procedure-entry
-startup brief (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`)
-and its activation data through durable hook delivery. The brief carries the
-procedure's complete effective required-read closure and the event-handling
-instructions an activation implies, and the session carries the procedure's
-declared role from its creation. The agent applies that contract before
-processing the initial event and throughout later activations
-(`general/principle/priming`, `general/principle/grounding`).
-<!-- change:procedure-reference-loaders -->
-
 A subscribed procedure receives its assignment through the procedure-entry
 loader (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`)
 and its activation data through durable hook delivery. The session carries the
 procedure's declared role from creation. The agent loads its procedure contract
 before processing the initial event and applies it throughout later activations
 (`general/principle/priming`, `general/principle/grounding`).
-<!-- /planned-change:procedure-reference-loaders -->
 
 Context publishes two independent delivery declarations under
 `general/spec/snippet-authoring-schema`. Runtime enforces their timing and
@@ -40,16 +27,6 @@ published declaration. The activation retains its accepted declaration as
 source evidence; revival retains the session's settings, while a newly created
 successor adopts the then-current declaration.
 
-<!-- planned-change:procedure-reference-loaders -->
-
-The startup brief also identifies the shared handling procedures required by
-the session's fixed settings, using context's same dependency composition. The
-agent loads any of these not already included by its current procedure closure.
-This supplies the applicable instructions even if publication changes between
-session initialization and the procedure read. Settings persistence preserves
-no historical document generation (`general/principle/grounding`).
-<!-- change:procedure-reference-loaders -->
-
 The loader retains the session's fixed delivery settings as entry facts. The
 procedure's declared reads supply handling instructions applicable to those
 facts, including when the published delivery declaration changes before the
@@ -57,7 +34,6 @@ procedure is read. Shared handling instructions apply their duties to the
 invocation's fixed settings rather than inferring them from the current
 publication. Settings persistence preserves no historical document generation
 (`general/principle/grounding`).
-<!-- /planned-change:procedure-reference-loaders -->
 
 The initial event is durably associated with the activation before bootstrap
 can offer the initial hook. That hook supplies event context alongside the
@@ -88,15 +64,11 @@ assignment and delivery metadata carry their own provenance; neither encoding
 nor hook placement promotes event content to instructions
 (`general/policy/message-identity-headers`).
 
-<!-- planned:procedure-reference-loaders -->
-
 The hook context that carries an activation states the session's fixed
 delivery settings and directs the agent to its assigned procedure's
 instructions when they are not loaded. It names no handling instructions of its
 own: the procedure's declared reads supply them, applied to the settings it
 states (`general/spec/snippet-authoring-schema`).
-
-<!-- /planned:procedure-reference-loaders -->
 
 Pending events belong to the continuing procedure responsibility. An explicit
 session close suspends their delivery without itself causing a revival. The
@@ -225,18 +197,6 @@ Scenario Outline: Initialization fixes an agent's delivery settings
 
 #### UC-PED11:
 
-<!-- planned-change:procedure-reference-loaders -->
-
-```gherkin
-Given a procedure agent is initialized to accept interjected events
-And the published declaration changes before it loads the procedure
-When the agent receives its startup brief
-Then the brief still requires the shared interruption-handling instructions
-And the agent loads those instructions before processing events
-```
-
-<!-- change:procedure-reference-loaders -->
-
 ```gherkin
 Given a procedure agent is initialized to accept interjected events
 And the published declaration changes before it loads the procedure
@@ -244,8 +204,6 @@ When the agent retrieves its assigned procedure instructions
 Then the instructions cover handling under its original delivery settings
 And the agent loads that handling before processing events
 ```
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 ### Cross-context references
 

@@ -69,19 +69,9 @@ Frontmatter (optional, authored):
 
 - `subscription_attendance` — optional on a procedure declaring `subscriptions`. Whether people watch the procedure's agent: `attended`, the default when the field is omitted, is an agent shown wherever sessions are shown; `unattended` is an agent no person watches, left out of the places people look at sessions unless they ask for it, whose work is a run: once its session has closed it is never brought back, and a later event that would have reached it starts a new agent. Attendance changes nothing else about which agent answers an event, where it works, or what it may do. Validation rejects any other value, and the field on any snippet that declares no `subscriptions`.
 
-<!-- planned-change:procedure-reference-loaders -->
-
-- `role` — procedures only. The session role an agent carries when this procedure is its launch root: the procedure a dispatcher, a job declaration or a subscription names. The value names a role in the agent role catalog (`local/projects/teleclaude/spec/feature/identity/agent-roles`). Required on a procedure declaring `subscriptions` and on every procedure a dispatcher or job names. A procedure may be both a launch root and a dependency or hat another session reads: the entry declarations are interpreted only when the procedure is the launch root, and reading a procedure inside a session interprets none of them and changes nothing about that session. Validation rejects the field on any non-procedure snippet and a value the catalog does not name.
-- `parameters` — procedures only, beside `role`. An ordered list of the arguments the procedure takes at its launch: each entry has `name`, optional `required` (bool, `false` when omitted: an entry is optional unless it says otherwise), and optional `default` (a literal string, meaningful only on an optional entry); at most one final entry may carry `rest: true`, taking the whole remaining argument text verbatim. Position is implicit from list order. The launch tokenizes the raw argument text on whitespace, binding one token per positional entry in order and the untokenized remainder to the `rest` entry; a required entry with no token refuses the launch before a session exists; an omitted optional entry takes its default or is absent; surplus tokens with no `rest` entry refuse the launch. A procedure declaring no `parameters` takes no arguments and refuses any. The brief carries a preamble mapping each name to its bound value, and `$ARGUMENTS` names the raw argument text wherever a body refers to it. The entry context an entry type supplies — a job's name, an activation's home — is never a parameter. Validation rejects a duplicate name, a `rest` entry that is not last, a default on a required entry, and the field on a snippet that declares no `role`.
-- `dispatch` — procedures only, beside `role`. The procedure's launch defaults: `agent`, a non-empty ordered agent preference list, and `thinking_mode`, one of `fast`, `med`, `slow`. A scheduled job's effective declaration overrides both for its own runs. Validation rejects an empty list, an unknown agent name, an unknown mode, and the field on a snippet that declares no `role`.
-
-<!-- change:procedure-reference-loaders -->
-
 - `role` — procedures only. The session role an agent carries when this procedure is its launch root: the procedure a dispatcher, a job declaration or a subscription names. The value names a role in the agent role catalog (`local/projects/teleclaude/spec/feature/identity/agent-roles`). Required on a procedure declaring `subscriptions` and on every procedure a dispatcher or job names. A procedure may be both a launch root and a dependency or hat another session reads: the entry declarations are interpreted only when the procedure is the launch root, and reading a procedure inside a session interprets none of them and changes nothing about that session. Validation rejects the field on any non-procedure snippet and a value the catalog does not name.
 - `parameters` — procedures only, beside `role`. An ordered list of the arguments the procedure takes at its launch: each entry has `name`, optional `required` (bool, `false` when omitted: an entry is optional unless it says otherwise), and optional `default` (a literal string, meaningful only on an optional entry); at most one final entry may carry `rest: true`, taking the whole remaining argument text verbatim. Position is implicit from list order. The launch tokenizes the raw argument text on whitespace, binding one token per positional entry in order and the untokenized remainder to the `rest` entry; a required entry with no token refuses the launch before a session exists; an omitted optional entry takes its default or is absent; surplus tokens with no `rest` entry refuse the launch. A procedure declaring no `parameters` takes no arguments and refuses any. The loader that starts the session carries a preamble mapping each name to its bound value, and `$ARGUMENTS` names the raw argument text wherever a body refers to it. The entry context an entry type supplies — a job's name, an activation's home — is never a parameter. Validation rejects a duplicate name, a `rest` entry that is not last, a default on a required entry, and the field on a snippet that declares no `role`.
 - `dispatch` — procedures only, beside `role`. The procedure's launch defaults: `agent`, a non-empty ordered agent preference list, and `thinking_mode`, one of `fast`, `med`, `slow`. A scheduled job's effective declaration overrides both for its own runs. Validation rejects an empty list, an unknown agent name, an unknown mode, and the field on a snippet that declares no `role`.
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 - `delivered_by` — list of todo slugs that materialize a **brand-new** snippet's intended state. Optional and non-empty when present; absence means the snippet describes the current platform contract. A snippet carrying `delivered_by` is **pending** and `telec docs index` flags it inline with a `(delivered by: <slugs>)` suffix (never hidden; the slug name is coordination metadata, not content). `telec docs index --target <slug>` narrows the listing to one todo's new snippets. The pending **body** stays invisible until active. Lifecycle code owns roadmap relationship checks and clears `delivered_by` on delivery (see `sdlc/principle/documentation-first-development` §10); source validation checks frontmatter shape and the index build records the source state it receives. `delivered_by` is the **only** pending-state frontmatter field. A change to an already-live snippet is **never** marked in frontmatter: its pending material lives in a companion filename (`<stem>.<slug>.md`), an in-body `&lt;!-- planned:slug --&gt;` block, or an in-body `&lt;!-- planned-change:slug --&gt;` block. The index derives the parallel `(superseded by: <slugs>)` suffix on the parent's line from companions, planned blocks, and planned-change blocks, not from any field.
 
@@ -112,18 +102,6 @@ fixed for that session, including revival. Newly initialized successor sessions
 use the current declaration. Publication changes do not reconfigure a running
 agent beneath its assignment (`general/principle/trust-and-guardrails`).
 
-<!-- planned-change:procedure-reference-loaders -->
-
-The effective required reads of a subscribed procedure include
-`general/procedure/event-handling/overview`; an interruptible procedure also
-includes `general/procedure/event-handling/interruptible`. Authored required
-reads remain in the same graph, with recursive expansion and deduplication.
-The context publication and retrieval surfaces expose these effective
-dependencies.
-Both delivery cardinalities use the same handling prose
-(`general/principle/priming`).
-<!-- change:procedure-reference-loaders -->
-
 A subscribed procedure explicitly declares its applicable shared event-handling
 instructions in Required reads. A scheduled-job procedure likewise declares its
 job-handling instructions. Publication and retrieval resolve those authored
@@ -132,7 +110,6 @@ runtime settings rather than injecting documentation dependencies. Shared
 handling duties are conditional on the actual invocation and its fixed settings,
 including when the procedure is read inline
 (`general/policy/referencing-doc-snippets`, `general/principle/priming`).
-<!-- /planned-change:procedure-reference-loaders -->
 
 Document structure:
 

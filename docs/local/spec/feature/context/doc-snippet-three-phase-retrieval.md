@@ -15,26 +15,6 @@ visibility: 'public'
 The Index is exposed to agents and operators through a three-phase
 retrieval flow:
 
-<!-- planned-change:procedure-reference-loaders -->
-
-1. **Phase 1 — discover.** `telec docs index` returns curated metadata
-   (IDs, descriptions, and a ` (delivered by: …)` suffix for pending entries)
-   so the caller can pick what to load.
-2. **Phase 2 — fetch.** `telec docs get <id> [<id>...]` returns full
-   content for the chosen IDs, with a `# Required reads (not loaded)`
-   header listing dependency IDs the body referenced.
-3. **Phase 3 — follow up explicitly.** Required reads are never auto-loaded
-   by default. To pull a dependency, the caller re-runs `telec docs get`
-   against the listed dependency IDs. Separately, the generated Activatable
-   Procedures catalog supplies a hidden one-pass fetch instruction for a
-   delivered procedure; that instruction returns the procedure's eligible
-   transitive required-read closure exactly once. A scheduled agent job's
-   startup instruction uses the same one-pass fetch for the procedure its
-   declaration names. Ordinary retrieval keeps the caller in deliberate control
-   of its context budget and never exposes or activates the hidden form.
-
-<!-- change:procedure-reference-loaders -->
-
 1. **Phase 1 — discover.** `telec docs index` returns curated metadata
    (IDs, descriptions, and a ` (delivered by: …)` suffix for pending entries)
    so the caller can pick what to load.
@@ -51,20 +31,14 @@ retrieval flow:
    procedure read into a running session. Ordinary retrieval keeps the caller in deliberate control
    of its context budget and never exposes or activates the hidden form.
 
-<!-- /planned-change:procedure-reference-loaders -->
-
 Read depth is resolved at phases 1 and 2 from the caller's resolved identity
 and relationships, per the Selection policy; the same depth applies to any
 phase-3 follow-up fetch.
-
-<!-- planned:procedure-reference-loaders -->
 
 The one-pass form also renders, once, every generated domain bundle that the
 closure's Required reads name, so the procedure's closure is the complete
 instruction set a dispatched session retrieves at its start
 (`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`).
-
-<!-- /planned:procedure-reference-loaders -->
 
 ## Canonical fields
 
@@ -185,20 +159,6 @@ And no "# Required reads (not loaded)" header is emitted
 
 #### UC-3PR8: The hidden activation option appears only on its authorized surfaces
 
-<!-- planned-change:procedure-reference-loaders -->
-
-```
-Given the CLI help, generated CLI documentation, baseline index instructions, default retrieval output, generated Activatable Procedures catalogs, and the job-runner startup instruction
-When those surfaces are rendered
-Then the hidden activation option appears in the telec docs get leaf-help Notes
-And it appears in the generated Activatable Procedures catalog instruction
-And it appears in the startup instruction a scheduled agent job receives for its procedure
-But it is absent from CLI usage and option listings, generated CLI documentation, baseline index instructions, and default retrieval output
-And using it with multiple requested IDs, a snippet that is not a procedure, a pending procedure, a third-party document, or a scope, project, or target filter fails before retrieval
-```
-
-<!-- change:procedure-reference-loaders -->
-
 ```
 Given the CLI help, generated CLI documentation, baseline index instructions, default retrieval output, generated Activatable Procedures catalogs, and procedure-entry loaders
 When those surfaces are rendered
@@ -208,8 +168,6 @@ And it appears in the loader a procedure-entry session receives for its procedur
 But it is absent from CLI usage and option listings, generated CLI documentation, baseline index instructions, and default retrieval output
 And using it with multiple requested IDs, a snippet that is not a procedure, a pending procedure, a third-party document, or a scope, project, or target filter fails before retrieval
 ```
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 #### UC-3PR9: Catalog activation distinguishes unreadable from ineligible closure members
 
@@ -286,54 +244,6 @@ And no content body or withheld notice is returned
 And the refusal is the same whether or not that person is declared
 ```
 
-<!-- planned-change:procedure-reference-loaders -->
-
-#### UC-3PR16:
-
-```gherkin
-Scenario Outline: A procedure's delivery declaration composes its activation instructions
-  Given an agent loads a delivered subscribed procedure with <interruptibility>
-  When it requests the complete activation closure
-  Then the closure contains the procedure's authored dependencies and <shared instructions>
-  And each dependency is rendered once even when reachable through several paths
-  And the same dependencies apply for either event delivery cardinality
-
-  Examples:
-    | interruptibility       | shared instructions                                |
-    | interruption disabled  | the common event-handling procedure                |
-    | interruption enabled   | the common and interruptible event-handling procedures |
-```
-
-#### UC-3PR17:
-
-```gherkin
-Given an agent discovers a subscribed procedure and retrieves it without closure expansion
-When it inspects the procedure's effective required reads
-Then it can see the authored and declaration-implied dependencies
-And ordinary retrieval leaves their bodies for explicit follow-up
-And a procedure without subscriptions acquires no event-handling dependencies automatically
-```
-
-#### UC-3PR18:
-
-```gherkin
-Given a subscribed procedure requires shared instructions implied by its delivery declaration
-And those instructions are unavailable as eligible current content
-When an agent requests its activation closure
-Then the request fails visibly rather than claiming a complete instruction set
-And the failure identifies the unavailable dependency
-```
-
-The context owner composes one effective required-read graph from authored
-dependencies and the declaration-implied identities in
-`general/spec/snippet-authoring-schema`. Publication exposes that graph;
-ordinary retrieval lists its dependencies; activation closure expands it under
-the existing visibility and deduplication rules. A missing, withheld, or pending
-mandatory event-handling dependency makes the activation closure incomplete.
-The procedure and its required shared instructions become current together
-(`general/policy/documentation-discipline`, `general/principle/priming`).
-<!-- change:procedure-reference-loaders -->
-
 #### UC-3PR16:
 
 ```gherkin
@@ -369,9 +279,6 @@ ordinary retrieval lists its dependencies; closure retrieval expands it under
 its visibility and deduplication rules. The procedure and its required shared
 instructions become current together
 (`general/policy/documentation-discipline`, `general/principle/priming`).
-<!-- /planned-change:procedure-reference-loaders -->
-
-<!-- planned:procedure-reference-loaders -->
 
 #### UC-3PR19:
 
@@ -380,8 +287,6 @@ Given a delivered procedure whose required reads name a generated domain bundle
 When an agent requests that procedure's one-pass closure
 Then the output renders the bundle once alongside the procedure and its required-read snippets
 ```
-
-<!-- /planned:procedure-reference-loaders -->
 
 ### Cross-context references
 

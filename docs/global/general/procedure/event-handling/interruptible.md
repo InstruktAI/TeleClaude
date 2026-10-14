@@ -19,17 +19,6 @@ arrives during its execution, applying `general/principle/grounding` and
 
 ## Preconditions
 
-<!-- planned-change:procedure-reference-loaders -->
-
-- The session's fixed delivery settings, stated in its assignment, accept
-  activation events during a run. A session whose settings do not accept them,
-  or one that reads this procedure without being activated for its governing
-  procedure, takes no instruction from it: delivery settings stay fixed for a
-  session (`general/spec/snippet-authoring-schema`).
-- The governing procedure and the common event-handling procedure are loaded.
-
-<!-- change:procedure-reference-loaders -->
-
 - The session's fixed delivery settings, stated in its assignment or in the
   hook context that carries its activation, accept activation events during a
   run. A session whose settings do not accept them, or one that reads this
@@ -37,8 +26,6 @@ arrives during its execution, applying `general/principle/grounding` and
   instruction from it: delivery settings stay fixed for a session
   (`general/spec/snippet-authoring-schema`).
 - The governing procedure and the common event-handling procedure are loaded.
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 ## Steps
 

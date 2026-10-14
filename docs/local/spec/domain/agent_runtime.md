@@ -146,39 +146,11 @@ TeleClaudeNext repository.
   works, what it may do, or how its work is recorded. A session started by
   hand, or by an agent, is attended.
 
-<!-- planned-change:procedure-reference-loaders -->
-
-- **Owns (procedure entry):** every assignment's session is created by naming
-  a published procedure. This context resolves the procedure's declared role,
-  parameters and dispatch defaults from `context`'s publication before the
-  session exists, binds the arguments, applies dispatch privilege against
-  `identity`'s catalog, materializes the procedure's complete brief as one
-  artifact, composes the loader naming it, and persists the resolved
-  invocation on the session's launch state for continuation. A scheduled job
-  run, an activation, a lifecycle dispatch, interactive command input and a
-  hand-started run all enter this way; an entry type adds typed context and
-  the required reads it implies, never a role. A procedure read inside a
-  session changes nothing about that session, whether or not it declares entry
-  fields. Everything else that read a session's former role or job pair keeps
-  its meaning with the one role: launch ownership reads role presence, a
-  session's end category and a conversation's continuability read role
-  presence as they read it before, the session listing's `--job` filter reads
-  the instance identity the field now holds alone, and the lane a session
-  belongs to is `workflow`'s grouping of role names. Stored records receive the
-  one-time migration in
-  `local/projects/teleclaude/spec/feature/agent_runtime/session-role-migration`.
-  The behavioral contract is
-  `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`.
-
-<!-- change:procedure-reference-loaders -->
-
 - **Owns (procedure entry):** resolves a published procedure's entry
   declarations, binds and persists the assignment, applies identity-owned
   dispatch privilege, and composes the short reference loader shared by fresh
   entry and continuation. The behavioral contract is
   `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`.
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 - **Owns (session company):** a session has a company only when it is created
   with `--company` or started from a session that has one; the company is

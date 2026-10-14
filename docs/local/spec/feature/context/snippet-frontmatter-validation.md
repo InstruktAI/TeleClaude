@@ -328,23 +328,12 @@ Scenario Outline: Event delivery declarations are validated structurally
     | delivery settings without subscriptions                        | a finding identifying the misplaced setting |
 ```
 
-<!-- planned-change:procedure-reference-loaders -->
-
-Publication resolves the declaration defaults and publishes the effective
-delivery settings alongside the existing subscription facts. Field names,
-values, defaults, and implied required reads are owned by
-`general/spec/snippet-authoring-schema`; interpretation uses the same resolved
-declaration for publication, retrieval, and activation routing
-(`sdlc/principle/design-fundamentals`).
-<!-- change:procedure-reference-loaders -->
-
 Publication resolves the declaration defaults and publishes the effective
 delivery settings alongside the existing subscription facts. Field names,
 values and defaults are owned by `general/spec/snippet-authoring-schema`;
 interpretation uses the same resolved declaration for publication and activation
 routing. Required reads are authored references resolved by the context's
 ordinary dependency contract (`sdlc/principle/design-fundamentals`).
-<!-- /planned-change:procedure-reference-loaders -->
 
 #### UC-SFV11: A procedure's role declaration names a catalog role
 

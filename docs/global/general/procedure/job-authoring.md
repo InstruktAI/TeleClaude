@@ -40,19 +40,6 @@ Place it by the job's nature:
 - Domain-specific jobs: `docs/global/{domain}/procedure/{job-slug}.md`
 - Project-only jobs: `docs/local/procedure/{job-slug}.md`
 
-<!-- planned-change:procedure-reference-loaders -->
-
-Define the job-specific artifacts and report under Outputs, including any history
-the next run consumes. Declare in frontmatter the `role` the job's session
-carries — a role the agent role catalog names — and the procedure's `dispatch`
-defaults; the job declaration's own candidate order and thinking mode override
-them for scheduled runs (`general/spec/snippet-authoring-schema`). The brief a
-job entry materializes adds the structured outcome submission. A job procedure
-carries no `activation_trigger`: triggers belong to procedures an agent may
-invoke on its own judgment, and a job procedure is executed by the runner.
-
-<!-- change:procedure-reference-loaders -->
-
 Define the job-specific artifacts and report under Outputs, including any history
 the next run consumes. Declare in frontmatter the `role` the job's session
 carries — a role the agent role catalog names — and the procedure's `dispatch`
@@ -63,8 +50,6 @@ carries the structured outcome submission, which applies only to a scheduled run
 of the job. A job procedure
 carries no `activation_trigger`: triggers belong to procedures an agent may
 invoke on its own judgment, and a job procedure is executed by the runner.
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 The declaration's pointer is resolved against the owning publisher's snippet
 source tree, so the procedure file only needs to exist at its taxonomy path

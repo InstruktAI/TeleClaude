@@ -33,27 +33,6 @@ And returns success if the pane is present at function exit, failure otherwise
 
 #### A fresh host pane is created with a TeleClaude-controlled shell and a sealed env
 
-<!-- planned-change:procedure-reference-loaders -->
-
-```
-Given the create primitive is invoked for (name, working_dir, session_id, env_vars)
-When the bridge builds the create command
-Then a per-session tmpdir is materialized under the configured per-session tmpdir base, keyed by the session id
-And the directory is prepared with restrictive mode, dropping any stray unix sockets while retaining its declaration record and the procedure briefs entry resolution wrote
-And the TeleClaude-controlled env dict injects TELECLAUDE_HOME only when the daemon runs from a home other than the default one, and injects the TeleClaude shell selector, the configured rc roots, PATH, COLORTERM=truecolor, UV_NO_SYNC=1, the working-directory tracking marker, and TMPDIR/TMP/TEMP all pointing at the per-session tmpdir
-And authorized agent env vars are resolved from the global and per-project env allowlists
-And TeleClaude-owned non-secret runtime env vars are preserved for the agent pane, including appearance, locale, voice selectors, and the platform log level
-And common runtime env filtering uses one shared allowlist for appearance and locale keys, with TUI and agent panes adding only surface-specific extras
-And agent env vars are written to a private file under the per-session tmpdir
-And each env var name is validated against a strict identifier pattern — invalid names are refused
-And the multiplexer is invoked to create a detached session with only TeleClaude-controlled values surfaced
-And the shell command sources the private agent env file before executing the TeleClaude shell
-And on success, a follow-up environment-setup chain runs to drop NO_COLOR and set hooks, with per-step markers logged so the failing step can be identified
-And the call returns success on a zero-exit create, failure otherwise (including subprocess-timeout)
-```
-
-<!-- change:procedure-reference-loaders -->
-
 ```
 Given the create primitive is invoked for (name, working_dir, session_id, env_vars)
 When the bridge builds the create command
@@ -71,24 +50,7 @@ And on success, a follow-up environment-setup chain runs to drop NO_COLOR and se
 And the call returns success on a zero-exit create, failure otherwise (including subprocess-timeout)
 ```
 
-<!-- /planned-change:procedure-reference-loaders -->
-
 #### Per-session tmpdir layout
-
-<!-- planned-change:procedure-reference-loaders -->
-
-```
-Given a host pane is created for session id S
-When the per-session tmpdir is prepared
-Then the path is anchored under the configured per-session tmpdir base
-And the base defaults to <TELECLAUDE_HOME>/tmp/sessions, overridable via the configured override variable
-And the safe-component helper returns the raw id when it matches the safe pattern, otherwise a SHA-256 prefix
-And prior temporary contents (including unix sockets) are removed before creation, while the declaration record and the procedure briefs are retained
-And the directory is created with restrictive mode
-And later requests for the tmpdir return its path if it still exists, or nothing
-```
-
-<!-- change:procedure-reference-loaders -->
 
 ```
 Given a host pane is created for session id S
@@ -100,8 +62,6 @@ And prior temporary contents (including unix sockets) are removed before creatio
 And the directory is created with restrictive mode
 And later requests for the tmpdir return its path if it still exists, or nothing
 ```
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 #### A single host-pane snapshot returns the polling state
 
@@ -292,15 +252,7 @@ But a different non-transient terminal failure remains explicit
 - **Pane capture line budgets and message char budgets are separate.** The capture primitives accept an optional capture-line budget; when omitted, the budget defaults to the configured default (currently 200). Session-data fallback callers use a smaller line budget for the pane read, then apply their independent character-budget on the resulting text.
 - **send-keys auto-creates on miss.** If the named host pane is gone (crashed, killed externally), send-keys silently calls the ensure primitive and the text is delivered to a freshly created pane with no prior state. This is explicit: "Previous state is lost — this is NOT recovery, just creating a new session so the user can continue working." Callers that need miss-as-error must use the existing-pane variant (with their own existence check) instead.
 
-<!-- planned-change:procedure-reference-loaders -->
-
-- **Per-session tmpdir is the Claude Code unix-socket workaround.** Claude Code's filesystem watcher can crash on macOS if TMPDIR contains stray unix sockets (e.g., docker CLI sockets). The bridge mitigates this by giving every host pane its own mode-700 tmpdir cleared of temporary entries, retaining only its declaration record and procedure briefs, rather than sharing the global one. The directory is created on session start and not removed by the kill primitive — cleanup lives with higher-level lifecycle code.
-
-<!-- change:procedure-reference-loaders -->
-
 - **Per-session tmpdir is the Claude Code unix-socket workaround.** Claude Code's filesystem watcher can crash on macOS if TMPDIR contains stray unix sockets (e.g., docker CLI sockets). The bridge mitigates this by giving every host pane its own mode-700 tmpdir cleared of temporary entries, retaining only its declaration record, rather than sharing the global one. The directory is created on session start and not removed by the kill primitive — cleanup lives with higher-level lifecycle code.
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 - **Setup-chain failures are non-fatal but only logged.** After create succeeds, the environment-setup chain runs and is allowed to fail — a per-step descriptor reconstructs which step failed from chain markers in stdout. The session is still considered created. Symptoms (color leakage, premature destroy on detach) may surface later if a step silently failed.
 - **Pipe-pane wake-signal interpretation is internal.** The pipe attach/detach primitives attach/detach a command to the pane's output stream. This byte-arrival signal is used as the Codex wake mechanism (any bytes set a dirty flag, triggering a snapshot on the next cadence cycle). The plumbing primitives are stable; the semantic interpretation upstream may diverge — the bridge itself merely manages the multiplexer attach/detach.

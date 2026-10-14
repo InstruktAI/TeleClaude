@@ -11,15 +11,7 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:procedure-reference-loaders -->
-
-The run-session-with-command flow creates a brand-new agent session whose first agent input loads and runs a published entry procedure — not a free-form user message. The CLI verb `telec sessions run --command <procedure-id> --args ... --path ... --agent ... --mode ...` normalizes the request, resolves the procedure's declared role, parameters and dispatch defaults under `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`, resolves the effective agent, materializes the brief and composes the loader startup message naming it, sets the session title from the structured fields as `<procedure-id> <args>`, builds a typed launch intent that asks the agent_runtime service to start the agent and then deliver that message, and hands the request to session creation. The new session boots in its host pane with the resolved agent CLI; once the agent is ready, the loader message is delivered and polling begins. The loader is identical for every enabled runtime — no agent-specific rewrite exists. This is conceptually distinct from `sessions start` because the session is preloaded with an assignment: the very first thing the agent sees is the loader, not a human turn.
-
-<!-- change:procedure-reference-loaders -->
-
 The run-session-with-command flow creates a brand-new agent session whose first agent input loads and runs a published entry procedure — not a free-form user message. The CLI verb `telec sessions run --command <procedure-id> --args ... --path ... --agent ... --mode ...` normalizes the request, resolves the procedure's declared role, parameters and dispatch defaults under `local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`, resolves the effective agent, composes the loader startup message that directs the agent to retrieve the procedure's instructions, sets the session title from the structured fields as `<role> <args>`, builds a typed launch intent that asks the agent_runtime service to start the agent and then deliver that message, and hands the request to session creation. The new session boots in its host pane with the resolved agent CLI; once the agent is ready, the loader message is delivered and polling begins. The loader is identical for every enabled runtime — no agent-specific rewrite exists. This is conceptually distinct from `sessions start` because the session is preloaded with an assignment: the very first thing the agent sees is the loader, not a human turn.
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 How the startup message reaches the agent depends on the agent CLI's own launch surface. An agent CLI that accepts an initial prompt as a launch argument receives the startup message that way — the message is part of the command that starts the agent, so the CLI consumes it when its own startup completes and there is no separate delivery step to time. An agent CLI with no such argument receives the startup message through prompt-state delivery once the readiness gate opens.
 
@@ -169,19 +161,6 @@ Then it is rejected naming the missing parameter
 
 #### UC-CLR6: Startup-message assembly composes the runtime-identical loader
 
-<!-- planned-change:procedure-reference-loaders -->
-
-```
-Given a run-session request whose command token resolves to a published entry procedure
-When startup-message assembly runs
-Then the startup message is the loader: a structural marker line "TELECLAUDE COMMAND: <procedure-id> [<args>]" followed by an instruction to read the materialized brief as the active instruction set, with the args labelled as its provided inputs
-And the loader is identical for every enabled runtime
-And the public full-command (used for the human-visible initial-input echo) carries the bare "<procedure-id> <args>" form
-And structured lifecycle metadata such as role, job, and `working_slug` is resolved from the procedure's declarations and the bound args before or alongside loader assembly, never from the loader message
-```
-
-<!-- change:procedure-reference-loaders -->
-
 ```
 Given a run-session request whose command token resolves to a published entry procedure
 When startup-message assembly runs
@@ -190,8 +169,6 @@ And the loader is identical for every enabled runtime
 And the public full-command (used for the human-visible initial-input echo) carries the bare "<procedure-id> <args>" form
 And structured lifecycle metadata such as role, job, and `working_slug` is resolved from the procedure's declarations and the bound args before or alongside loader assembly, never from the loader message
 ```
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 #### UC-CLR4: A dispatch names its procedure by domain-qualified snippet ID
 
@@ -234,19 +211,6 @@ And a launch the parameters admit with empty arguments reaches loader compositio
 
 #### UC-CLR2: Empty arguments produce the loader message
 
-<!-- planned-change:procedure-reference-loaders -->
-
-```
-Given loader composition runs for a published entry procedure
-And the args field is empty
-When the startup message is composed
-Then the startup message is the loader naming the materialized brief
-And its marker line carries the procedure ID with no argument token
-And its provided-inputs section is empty rather than absent
-```
-
-<!-- change:procedure-reference-loaders -->
-
 ```
 Given loader composition runs for a published entry procedure
 And the args field is empty
@@ -256,22 +220,7 @@ And its marker line carries the procedure ID with no argument token
 And its provided-inputs section is empty rather than absent
 ```
 
-<!-- /planned-change:procedure-reference-loaders -->
-
 #### UC-CLR3: A dispatched session's title reflects its record fields and is read by nothing
-
-<!-- planned-change:procedure-reference-loaders -->
-
-```
-Given a run-session request with a normalized command and args
-When the session is created
-Then its title is "<command> <args>" composed from the structured dispatch fields — no leading slash and no wrapper token
-And the title is a presentation of those fields: no consumer resolves a session, a command, or a slug by reading it
-And generated titles never replace it while the session's recorded command is set
-And a session created without a dispatch command starts untitled and receives generated titles as today
-```
-
-<!-- change:procedure-reference-loaders -->
 
 ```
 Given a run-session request with a normalized command and args
@@ -281,8 +230,6 @@ And the title is a presentation of those fields: no consumer resolves a session,
 And generated titles never replace it while the session's recorded command is set
 And a session created without a dispatch command starts untitled and receives generated titles as today
 ```
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 #### UC-CLR8: The session record carries the command the session was dispatched with
 
@@ -364,25 +311,12 @@ Then no session is started and the refusal names the unknown command
 
 #### UC-CLR13: An orchestrator finds the session it dispatched by the command it dispatched
 
-<!-- planned-change:procedure-reference-loaders -->
-
-```
-Given an orchestrator dispatched a session with a domain-qualified command for a slug
-When the orchestrator later asks for the live session for that slug and command
-Then it is given that session
-And the session's recorded command and title carry the command exactly as dispatched
-```
-
-<!-- change:procedure-reference-loaders -->
-
 ```
 Given an orchestrator dispatched a session with a domain-qualified command for a slug
 When the orchestrator later asks for the live session for that slug and command
 Then it is given that session
 And the session's recorded command carries the command exactly as dispatched
 ```
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 #### Dispatch privilege enforcement
 

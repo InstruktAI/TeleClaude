@@ -17,20 +17,6 @@ entrypoint master each CLI reads unprompted, emitted per target in that
 target's expected shape, and the tier-local skill packages a repository authors
 for its own sessions, rendered per target into the native skill directories
 
-<!-- planned-change:procedure-reference-loaders -->
-
-because preloading is their purpose. Global skill packages compose into
-`~/.teleclaude/skills/`; they produce no per-agent runtime output, and
-subagent definitions are not an artifact class at all. No command corpus is
-produced: what a session is assigned is a procedure, reached through the
-loader message TeleClaude composes at procedure entry
-(`local/projects/teleclaude/spec/feature/agent_runtime/procedure-entry`), and
-the parameter preamble that brief carries is the procedure entry's, not this
-transpiler's. The transpiler serializes YAML frontmatter through the shared
-emitter.
-
-<!-- change:procedure-reference-loaders -->
-
 because preloading is their purpose. Global skill packages compose into
 `~/.teleclaude/skills/`; they produce no per-agent runtime output, and
 subagent definitions are not an artifact class at all. No command corpus is
@@ -40,8 +26,6 @@ loader message TeleClaude composes at procedure entry
 the parameter preamble that loader carries is the procedure entry's, not this
 transpiler's. The transpiler serializes YAML frontmatter through the shared
 emitter.
-
-<!-- /planned-change:procedure-reference-loaders -->
 
 ## Canonical fields
 
