@@ -359,9 +359,10 @@ And an agent reading the structured records observes it as withheld, naming the 
 
 ```gherkin
 Given the running daemon reports a migration reach below the current version
-And the machine configuration is at an older version
+And the stored machine configuration is at a version within that reach
 When a full installation runs to completion
 Then the stored machine configuration is byte-identical before and after the installation
+And the running daemon still reads it
 And the installation's output states that the agent settings were not stored, naming the daemon's reach and the current version
 ```
 
