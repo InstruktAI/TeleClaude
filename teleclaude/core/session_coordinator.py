@@ -123,7 +123,7 @@ async def adopt_coordinator(
         former_spawner = caller.initiator_session_id
         await runtime_db.update_session(
             caller.session_id,
-            title=compose_command_session_title(_COORDINATOR_COMMAND, ""),
+            title=compose_command_session_title(_COORDINATOR_COMMAND, "", role=RoleName.COORDINATOR.value),
             command=_COORDINATOR_COMMAND,
             role=RoleName.COORDINATOR.value,
             job=None,

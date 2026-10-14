@@ -42,10 +42,8 @@ class ProcedureDeliveryInitializationField(StrEnum):
     EVENT_DELIVERY = "event_delivery"
     INTERRUPTIBLE = "interruptible"
     INITIAL_ENTRY_ID = "initial_entry_id"
-    REQUIRED_READS = "required_reads"
 
 
-_INVALID_PROCEDURE_DELIVERY_READS = "procedure delivery initialization requires string read IDs"
 _INVALID_PROCEDURE_DELIVERY_VALUES = "procedure delivery initialization has invalid policy values"
 _INVALID_PROCEDURE_DELIVERY_IDENTITY = "procedure delivery initialization has invalid identity fields"
 
@@ -60,7 +58,6 @@ class ProcedureSessionDeliveryInitialization:
     event_delivery: EventDeliveryMode
     interruptible: bool
     initial_entry_id: str
-    required_reads: tuple[str, ...]
 
     def to_dict(self) -> JsonDict:
         return {
@@ -70,14 +67,10 @@ class ProcedureSessionDeliveryInitialization:
             ProcedureDeliveryInitializationField.EVENT_DELIVERY.value: self.event_delivery.value,
             ProcedureDeliveryInitializationField.INTERRUPTIBLE.value: self.interruptible,
             ProcedureDeliveryInitializationField.INITIAL_ENTRY_ID.value: self.initial_entry_id,
-            ProcedureDeliveryInitializationField.REQUIRED_READS.value: list(self.required_reads),
         }
 
     @staticmethod
     def from_dict(data: Mapping[str, object]) -> "ProcedureSessionDeliveryInitialization":
-        required_reads = data.get(ProcedureDeliveryInitializationField.REQUIRED_READS)
-        if not isinstance(required_reads, list) or not all(isinstance(item, str) for item in required_reads):
-            raise ValueError(_INVALID_PROCEDURE_DELIVERY_READS)
         activation_ids = data.get(ProcedureDeliveryInitializationField.ACTIVATION_IDS)
         if (
             not isinstance(activation_ids, list)
@@ -103,5 +96,4 @@ class ProcedureSessionDeliveryInitialization:
             event_delivery=EventDeliveryMode(event_delivery),
             interruptible=interruptible,
             initial_entry_id=cast(str, data[ProcedureDeliveryInitializationField.INITIAL_ENTRY_ID]),
-            required_reads=tuple(required_reads),
         )

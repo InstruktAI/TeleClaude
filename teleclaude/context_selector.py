@@ -32,7 +32,10 @@ from teleclaude.docs_publishers import (
     DocsPublisherResolutionError,
     resolve_global_doc_source,
 )
-from teleclaude.docs_subscriptions import IndexKey, required_event_handling_dependencies, resolve_delivery_settings
+from teleclaude.docs_subscriptions import (
+    ProcedureDeliverySettings,
+    resolve_delivery_settings,
+)
 from teleclaude.domains import publishes_for_root, valid_domains
 from teleclaude.entry_declarations import NO_ENTRY_DECLARATIONS, EntryParse, parse_entry_declarations
 from teleclaude.identity_reach import Reach, resolve_reach
@@ -192,7 +195,7 @@ class SnippetMeta:
     activation_trigger: str | None = None
     delivered_by: tuple[str, ...] = ()
     superseded_by: tuple[str, ...] = ()
-    delivery_required_reads: tuple[str, ...] = ()
+    subscription_delivery: ProcedureDeliverySettings | None = None
     entry: EntryParse = NO_ENTRY_DECLARATIONS
 
 
@@ -521,8 +524,9 @@ def _resolve_requires(
 
     An entry closure additionally refuses any required read that is pending delivery or that resolves
     neither to a published snippet nor to a deployed generated domain bundle; the bundles it names are
-    returned so the brief carries them.
+    returned with the resolved closure.
     """
+    selected_ids = list(selected_ids)
     snippets_by_id = {s.snippet_id: s for s in snippets}
     snippets_by_path = {str(s.path): s for s in snippets}
 
@@ -530,6 +534,11 @@ def _resolve_requires(
     bundles: list[Path] = []
     seen: set[str] = set()
     stack: list[SnippetMeta] = []
+
+    selected_root = snippets_by_id.get(selected_ids[0]) if selected_ids else None
+    strict_entry_closure = entry_closure or (
+        activation_closure and selected_root is not None and selected_root.entry.declarations is not None
+    )
 
     for sid in selected_ids:
         snippet = snippets_by_id.get(sid)
@@ -556,10 +565,14 @@ def _resolve_requires(
             req_snippet = snippets_by_path.get(str(ref_resolved))
             if not req_snippet and not Path(ref).is_absolute():
                 req_snippet = snippets_by_path.get(str((current.path.parent / ref).resolve()))
-            if entry_closure:
+            if strict_entry_closure:
                 _admit_entry_required_read(ref, ref_resolved, req_snippet, current, bundles)
                 if req_snippet is None:
                     continue
+            elif activation_closure and req_snippet is None:
+                bundle = _entry_generated_bundle(ref_resolved)
+                if bundle is not None and bundle not in bundles:
+                    bundles.append(bundle)
             if not req_snippet or str(req_snippet.path) in seen:
                 continue
             same_project = req_snippet.source_project == current.source_project
@@ -567,15 +580,6 @@ def _resolve_requires(
                 continue
             if req_snippet:
                 stack.append(req_snippet)
-        for required_id in current.delivery_required_reads:
-            required_snippet = snippets_by_id.get(required_id)
-            if required_snippet is None or required_snippet.delivered_by:
-                if activation_closure or entry_closure:
-                    raise ActivationClosureError(ACTIVATION_CLOSURE_UNREADABLE_ERROR.format(required_id))
-                continue
-            if str(required_snippet.path) not in seen:
-                stack.append(required_snippet)
-
     resolved.sort(key=lambda s: (TAXONOMY_TYPES.index(s.snippet_type), _scope_rank(s.scope), s.snippet_id))
     return ResolvedRequires(snippets=resolved, bundles=bundles)
 
@@ -760,13 +764,6 @@ def _load_index(
                 if isinstance(raw_superseded_by, list) and all(isinstance(slug, str) for slug in raw_superseded_by)
                 else ()
             )
-            raw_delivery_required_reads = item.get(IndexKey.DELIVERY_REQUIRED_READS)
-            delivery_required_reads = (
-                tuple(raw_delivery_required_reads)
-                if isinstance(raw_delivery_required_reads, list)
-                and all(isinstance(snippet_id, str) for snippet_id in raw_delivery_required_reads)
-                else ()
-            )
             loaded_entries.append(
                 SnippetMeta(
                     snippet_id=snippet_id,
@@ -781,7 +778,7 @@ def _load_index(
                     activation_trigger=activation_trigger,
                     delivered_by=delivered_by,
                     superseded_by=superseded_by,
-                    delivery_required_reads=delivery_required_reads,
+                    subscription_delivery=resolve_delivery_settings(item),
                     entry=parse_entry_declarations(item),
                 )
             )
@@ -804,7 +801,7 @@ def _load_index(
                 activation_trigger=snippet.activation_trigger,
                 delivered_by=snippet.delivered_by,
                 superseded_by=snippet.superseded_by,
-                delivery_required_reads=snippet.delivery_required_reads,
+                subscription_delivery=snippet.subscription_delivery,
                 entry=snippet.entry,
             )
         )
@@ -1199,7 +1196,7 @@ def _snippet_meta_from_file(
         visibility=raw_visibility if isinstance(raw_visibility, str) else SNIPPET_VISIBILITY_INTERNAL,
         activation_trigger=activation_trigger if isinstance(activation_trigger, str) else None,
         delivered_by=delivered_by,
-        delivery_required_reads=(required_event_handling_dependencies(delivery) if delivery is not None else ()),
+        subscription_delivery=delivery,
         entry=parse_entry_declarations(metadata),
     )
 
@@ -1308,15 +1305,6 @@ def resolve_snippet_meta(
     return _resolve_global_scope_meta(requested, *parts, project_root=project_root)
 
 
-def _entry_read_ids(entry_reads: list[str], snippets: list[SnippetMeta]) -> list[str]:
-    """The entry type's required reads, each of which must be a published snippet."""
-    published = {snippet.snippet_id for snippet in snippets}
-    for read_id in entry_reads:
-        if read_id not in published:
-            raise ActivationClosureError(ENTRY_CLOSURE_UNRESOLVED_ERROR.format(read_id))
-    return entry_reads
-
-
 def _generated_bundle_id(bundle: Path) -> str:
     """The identity a generated domain bundle is rendered under: its domain and file stem."""
     return f"{bundle.parent.name}/{bundle.stem}"
@@ -1346,8 +1334,6 @@ def _render_phase2_taxonomy_bodies(
         if closure_root is None and snippet.snippet_id not in requested_set:
             continue
         if closure_root is not None and snippet.snippet_id != closure_root.snippet_id and snippet.delivered_by:
-            if snippet.snippet_id in closure_root.delivery_required_reads:
-                raise ActivationClosureError(ACTIVATION_CLOSURE_UNREADABLE_ERROR.format(snippet.snippet_id))
             continue
         body = _read_selected_snippet_body(
             snippet,
@@ -1731,7 +1717,6 @@ def build_context_output(  # TODO: refactor to reduce complexity
     scope: SnippetScope | None = None,
     closure: bool = False,
     entry_closure: bool = False,
-    entry_reads: list[str] | None = None,
     on_closure_root: Callable[[SnippetMeta | None], None] | None = None,
     landing_kind: ConfigKind | None = None,
     retrieval_id: str | None = None,
@@ -1879,10 +1864,7 @@ def build_context_output(  # TODO: refactor to reduce complexity
             [f"ERROR: Unknown snippet IDs: {', '.join(unknown_ids)}", *_unregistered_domain_refusals(unknown_ids)]
         )
 
-    entry_read_ids = _entry_read_ids(entry_reads or [], snippets) if entry_closure else []
-    required = _resolve_requires(
-        [*taxonomy_ids, *entry_read_ids], snippets, activation_closure=closure, entry_closure=entry_closure
-    )
+    required = _resolve_requires(taxonomy_ids, snippets, activation_closure=closure, entry_closure=entry_closure)
     resolved = required.snippets
     _write_test_output(
         phase="phase2",

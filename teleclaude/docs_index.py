@@ -24,7 +24,7 @@ from teleclaude.constants import (
     SNIPPET_VISIBILITY_VALUES,
 )
 from teleclaude.doc_body import PLANNED_BLOCK_RE, PLANNED_CHANGE_BLOCK_RE
-from teleclaude.docs_subscriptions import IndexKey, required_event_handling_dependencies, resolve_delivery_settings
+from teleclaude.docs_subscriptions import IndexKey, resolve_delivery_settings
 from teleclaude.entry_declarations import (
     DispatchPayload,
     EntryKey,
@@ -134,7 +134,6 @@ class SnippetEntry(TypedDict):
     subscription_attendance: NotRequired[str]
     event_delivery: NotRequired[str]
     interruptible: NotRequired[bool]
-    delivery_required_reads: NotRequired[list[str]]
     role: NotRequired[str]
     parameters: NotRequired[list[ParameterPayload]]
     dispatch: NotRequired[DispatchPayload]
@@ -195,7 +194,6 @@ def _copy_subscriptions_metadata(entry: SnippetEntry, metadata: Mapping[str, obj
     if delivery is not None:
         entry[IndexKey.EVENT_DELIVERY.value] = delivery.event_delivery.value
         entry[IndexKey.INTERRUPTIBLE.value] = delivery.interruptible
-        entry[IndexKey.DELIVERY_REQUIRED_READS.value] = list(required_event_handling_dependencies(delivery))
 
 
 def _copy_entry_declarations(entry: SnippetEntry, metadata: Mapping[str, object]) -> None:

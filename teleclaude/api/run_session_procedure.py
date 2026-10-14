@@ -51,7 +51,7 @@ def manual_activation(
     except EntryRefusal:
         return None
     snippet = resolve_snippet_meta(procedure_id, project_root=Path(request.project))
-    if entry_procedure_gap(snippet) is not None or snippet is None or not snippet.delivery_required_reads:
+    if entry_procedure_gap(snippet) is not None or snippet is None or snippet.subscription_delivery is None:
         return None
     company = request.company or identity.company
     if company is None:
@@ -60,7 +60,6 @@ def manual_activation(
         entry=manual_activation_entry(
             procedure_id=procedure_id,
             home=ActivationHome(SubscriptionHomeKind.COMPANY, company).to_token(),
-            required_reads=snippet.delivery_required_reads,
         ),
         company=company,
     )

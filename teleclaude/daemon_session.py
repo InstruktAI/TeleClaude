@@ -501,9 +501,9 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         """The intent an unfinished startup resumes with: a procedure-bearing startup resumes with a rebuilt loader.
 
         A startup that carries a resolved invocation, or a command-era loader recorded before the cutover,
-        is a procedure startup. Its brief is rebuilt in full through the shared continuation path — from the
+        is a procedure startup. Its loader is rebuilt through the shared continuation path — from the
         persisted invocation, additional context included, or from the session's retained evidence when none
-        was persisted — and the loader naming it replaces the stored message, which carries nothing beside it.
+        was persisted — and replaces the stored message, which carries nothing beside it.
         The stored role is kept; an input the row does not retain, or a procedure that is no longer usable,
         ends the startup FAILED with the cause logged. A conversational start resumes unchanged.
         """

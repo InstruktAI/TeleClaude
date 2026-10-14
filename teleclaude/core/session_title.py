@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import db
+from teleclaude.core.roles import Role, resolve_role
 from teleclaude.core.session_transcript import session_transcript
 from teleclaude.core.summarizer import generate_session_title
 from teleclaude.utils.transcript import extract_last_authored_exchange
@@ -25,9 +26,11 @@ _ASSISTANT_ROLE = "assistant"
 _REPLY_SEPARATOR = "\n\n"
 
 
-def compose_command_session_title(command: str, args: str) -> str:
-    """Render a command session title from its stored command and arguments."""
-    return _COMMAND_TITLE_TEMPLATE.format(command=command, args=args).strip()
+def compose_command_session_title(command: str, args: str, *, role: str | None = None) -> str:
+    """Render a command session title from its catalog role when available, otherwise its command."""
+    resolved_role = resolve_role(role)
+    title_identity = resolved_role.name.value if isinstance(resolved_role, Role) else command
+    return _COMMAND_TITLE_TEMPLATE.format(command=title_identity, args=args).strip()
 
 
 def clear_title_projection_state(session_id: str) -> None:

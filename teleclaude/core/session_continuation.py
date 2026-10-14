@@ -1,12 +1,12 @@
 """Continuation of a procedure session: restart, revival and handoff rebuild its loader from the resolved invocation.
 
 A session started through a procedure entry persists its resolved invocation on its launch state; every
-continuation door re-materializes the brief from it (the file may be gone) and keeps the role the session
-carries. A session recorded before procedure entry has no persisted invocation: it is reconstructed from the
-evidence its row retained, exactly as ``local/projects/teleclaude/spec/feature/agent_runtime/session-role-migration``
-states it — the migrated command is the procedure, the working slug the ``slug`` parameter, the job the entry
-context, the delivery settings and subject binding the activation's. A required input the row does not retain
-is never invented: the continuation is refused naming it, and the row keeps the role it has.
+continuation door rebuilds the reference loader and keeps the role the session carries. A session recorded
+before procedure entry has no persisted invocation: it is reconstructed from the evidence its row retained,
+exactly as ``local/projects/teleclaude/spec/feature/agent_runtime/session-role-migration`` states it — the
+migrated command is the procedure, the working slug the ``slug`` parameter, the job the entry context, and
+the delivery settings and subject binding the activation's. A required input the row does not retain is never
+invented: the continuation is refused naming it, and the row keeps the role it has.
 """
 
 from __future__ import annotations
@@ -28,20 +28,15 @@ from teleclaude.core.procedure_entry import (
     FACT_INTERRUPTIBLE,
     FACT_JOB,
     FACT_SUBJECT,
-    SCHEDULED_JOB_RUN_PROCEDURE_ID,
     SLUG_PARAMETER,
     EntryRefusal,
     published_entry_declarations,
-    rematerialize_invocation,
+    rebuild_invocation_loader,
 )
 from teleclaude.core.procedure_event_delivery import procedure_responsibility_parts
 from teleclaude.core.roles import Role, UnknownRole, resolve_role
-from teleclaude.docs_subscriptions import (
-    ProcedureDeliverySettings,
-    SubscriptionAttendance,
-    required_event_handling_dependencies,
-)
-from teleclaude.paths import REPO_ROOT, SESSION_BRIEF_FILENAME, session_tmp_dir
+from teleclaude.docs_subscriptions import ProcedureDeliverySettings, SubscriptionAttendance
+from teleclaude.paths import REPO_ROOT
 from teleclaude.types.procedure_delivery import BINDING_SECTION, BindingField
 
 logger = get_logger(__name__)
@@ -68,10 +63,9 @@ class ContinuationRefused(RuntimeError):
 
 @dataclass(frozen=True)
 class ContinuationLoader:
-    """The loader a continuation hands the relaunched agent, and the brief it names."""
+    """The reference loader a continuation hands the relaunched agent."""
 
     procedure_id: str
-    brief_path: Path
     loader: str
 
 
@@ -113,10 +107,8 @@ def _entry_kind(session: Session, intent: SessionLaunchIntent | None) -> Procedu
     return ProcedureEntryKind.DIRECT
 
 
-async def _activation_context(
-    session: Session, procedure_id: str
-) -> tuple[tuple[tuple[str, str], ...], tuple[str, ...]]:
-    """The activation facts and reads the row retains: the delivery settings, home and subject binding."""
+async def _activation_context(session: Session, procedure_id: str) -> tuple[tuple[str, str], ...]:
+    """The activation facts the row retains: delivery settings, home and subject binding."""
     delivery = await db.get_procedure_delivery_session(session_id=session.session_id)
     if delivery is None:
         raise ContinuationRefused(_MISSING_INPUT_TEMPLATE.format(missing=_MISSING_DELIVERY, procedure=procedure_id))
@@ -138,7 +130,7 @@ async def _activation_context(
             (FACT_INTERRUPTIBLE, _TRUE if settings.interruptible else _FALSE),
         )
     )
-    return tuple(facts), required_event_handling_dependencies(settings)
+    return tuple(facts)
 
 
 async def reconstruct_invocation(session: Session, intent: SessionLaunchIntent | None) -> ProcedureInvocation:
@@ -149,31 +141,27 @@ async def reconstruct_invocation(session: Session, intent: SessionLaunchIntent |
     parameters = _reconstructed_parameters(session, procedure_id)
     kind = _entry_kind(session, intent)
     facts: tuple[tuple[str, str], ...] = ()
-    reads: tuple[str, ...] = ()
     job: str | None = None
     if kind is ProcedureEntryKind.JOB:
         if not session.job:
             raise ContinuationRefused(_MISSING_INPUT_TEMPLATE.format(missing=_MISSING_JOB, procedure=procedure_id))
         job = session.job
         facts = ((FACT_JOB, job),)
-        reads = (SCHEDULED_JOB_RUN_PROCEDURE_ID,)
     elif kind is ProcedureEntryKind.ACTIVATION:
         job = session.job or procedure_id
-        facts, reads = await _activation_context(session, procedure_id)
+        facts = await _activation_context(session, procedure_id)
     return ProcedureInvocation(
         procedure_id=procedure_id,
         arguments=_ARGUMENT_JOINER.join(value for _, value in parameters),
         parameters=parameters,
         entry_kind=kind,
         entry_job=job,
-        entry_reads=reads,
-        brief_path=str(session_tmp_dir(session.session_id) / SESSION_BRIEF_FILENAME),
         entry_facts=facts,
     )
 
 
 async def rebuild_continuation_loader(session: Session) -> ContinuationLoader | None:
-    """Re-materialize the brief a session was started with and return the loader naming it.
+    """Rebuild the reference loader a session was started with.
 
     ``None`` for a session started without a procedure. The stored role is kept: a role the catalog does
     not name refuses the continuation, as does a procedure that is no longer a usable entry procedure or an
@@ -189,7 +177,7 @@ async def rebuild_continuation_loader(session: Session) -> ContinuationLoader | 
         if isinstance(role, UnknownRole):
             raise ContinuationRefused(_UNKNOWN_ROLE_TEMPLATE.format(role=role.recorded))
         invocation = stored if stored is not None else await reconstruct_invocation(session, intent)
-        rebuilt = rematerialize_invocation(
+        rebuilt = rebuild_invocation_loader(
             invocation=invocation, role=role if isinstance(role, Role) else None, project_root=_project_root(session)
         )
     except EntryRefusal as exc:
@@ -199,4 +187,4 @@ async def rebuild_continuation_loader(session: Session) -> ContinuationLoader | 
     except ContinuationRefused as exc:
         logger.error(_CONTINUATION_REFUSED_EVENT, session_id=session.session_id, detail=exc.detail)
         raise
-    return ContinuationLoader(procedure_id=rebuilt.procedure_id, brief_path=rebuilt.brief_path, loader=rebuilt.loader)
+    return ContinuationLoader(procedure_id=rebuilt.procedure_id, loader=rebuilt.loader)
