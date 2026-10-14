@@ -233,6 +233,21 @@ Then the agent or person reads that documentation layout convergence failed, poi
 And installation does not report success and its result is non-zero
 ```
 
+<!-- planned:installer-writes-machine-config-ahead-of-daemon-reach-gate -->
+
+#### UC-FMB18: A full installation leaves the running daemon able to read its machine configuration
+
+```gherkin
+Given a running daemon that is not known to read the current configuration version
+And the stored machine configuration is at a version that daemon reads
+When an agent or a person runs a full installation to completion
+Then the stored machine configuration is byte-identical before and after the installation
+And the running daemon still reads it
+And the agent or person reads that the agent settings were not stored, with the daemon's reported reach or why it is unknown
+```
+
+<!-- /planned:installer-writes-machine-config-ahead-of-daemon-reach-gate -->
+
 ### Cross-context references
 
 - **config** — the person registry the owner seed is checked against and
@@ -253,6 +268,14 @@ And installation does not report success and its result is non-zero
   its result into settled, blocked or deferred, and failed, under
   `local/projects/teleclaude/spec/feature/context/documentation-layout-convergence`.
   Installation decides only how it completes on each class.
+
+<!-- planned:installer-writes-machine-config-ahead-of-daemon-reach-gate -->
+
+- **config** — whether the running daemon reads the current configuration
+  version is its reported migration reach, under
+  `local/projects/teleclaude/spec/feature/config/document-migration`.
+
+<!-- /planned:installer-writes-machine-config-ahead-of-daemon-reach-gate -->
 
 <!-- planned:release-development-checkouts -->
 
