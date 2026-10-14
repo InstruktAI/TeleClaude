@@ -155,8 +155,8 @@ def _entry(
     return name, Role(name, role_class, full_reach, capabilities, label)
 
 
-# The set every worker-class role starts from. It holds no capability that observes the fleet or acts on
-# another session (``local/projects/teleclaude/spec/feature/identity/agent-roles``).
+# The set every worker-class role starts from. It holds no capability that observes the fleet or starts,
+# revives, restarts or ends another session (``local/projects/teleclaude/spec/feature/identity/agent-roles``).
 _WORKER_BASELINE: frozenset[Capability] = frozenset(
     {
         Capability.DOCS_READ,

@@ -109,7 +109,8 @@ Each role's explicit set represents the commands needed by the procedures that
 declare that role, including their required reads and supported entry duties.
 Every role of class `worker` composes the worker baseline the catalog declares
 and adds to it what its own assignment needs. The baseline holds no capability
-that observes the fleet or acts on another session, so no worker lists
+that observes the fleet or starts, revives, restarts or ends another session;
+peer talk with the sessions a worker serves stays in it. No worker lists
 sessions, searches history, reads the fleet's computers, projects or agents, or
 starts another session (UC-AR3). A worker's reach is focus, not integrity
 (`general/principle/trust-and-guardrails`): the todo's claim and the object
