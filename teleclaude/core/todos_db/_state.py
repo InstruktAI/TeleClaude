@@ -19,6 +19,7 @@ from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_B
 from teleclaude.core.next_machine.lifecycle import READY_BAND_PHASES, coerce_lifecycle_phase, is_ready_band_eligible
 from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
 from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY
 
 from ._errors import HolderWriteRefused
 from ._identity_pin import apply_todo_identity_pin
@@ -72,6 +73,7 @@ class TodosDbStateMixin:
 
     _on_mutation: Callable[[str, Mapping[str, object] | None], None]
     _on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None]
+    _on_claim_changed: Callable[[str, str | None, str | None], None]
     db_path: str
 
     def _stored_lifecycle_phase(self, state_model: TodoStateModel | None) -> str:
@@ -81,6 +83,17 @@ class TodosDbStateMixin:
         payload = upcycle_state_dict(raw_state)
         phase = payload.get("lifecycle_phase")
         return phase if isinstance(phase, str) else ""
+
+    def _stored_holder(self, state_model: TodoStateModel | None) -> str | None:
+        """The claim holder recorded in a persisted state row, or None."""
+        if state_model is None:
+            return None
+        raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
+        return self._payload_holder(raw_state)
+
+    def _payload_holder(self, payload: Mapping[str, StateValue]) -> str | None:
+        holder = payload.get(ACTIVE_RUNNER_STATE_KEY)
+        return holder if isinstance(holder, str) and holder else None
 
     def _payload_lifecycle_phase(self, payload: Mapping[str, StateValue]) -> str:
         phase = payload.get("lifecycle_phase")
@@ -423,6 +436,7 @@ class TodosDbStateMixin:
             now = datetime.now(UTC).isoformat()
             state_model = await db_session.get(TodoStateModel, row_id)
             prior_phase = self._stored_lifecycle_phase(state_model)
+            prior_holder = self._stored_holder(state_model)
             if state_model is None:
                 state_model = TodoStateModel(
                     id=row_id,
@@ -452,6 +466,9 @@ class TodosDbStateMixin:
             new_phase = self._payload_lifecycle_phase(payload)
             if prior_phase != new_phase:
                 self._on_phase_transition(slug, prior_phase, new_phase, payload)
+            holder = self._payload_holder(payload)
+            if prior_holder != holder:
+                self._on_claim_changed(slug, prior_holder, holder)
         finally:
             if owns_session:
                 await db_session.close()
@@ -635,6 +652,7 @@ class TodosDbStateMixin:
             now = datetime.now(UTC).isoformat()
             state_model = session.get(TodoStateModel, str(row_id))
             prior_phase = self._stored_lifecycle_phase(state_model)
+            prior_holder = self._stored_holder(state_model)
             if state_model is None:
                 state_model = TodoStateModel(
                     id=str(row_id),
@@ -661,3 +679,6 @@ class TodosDbStateMixin:
         new_phase = self._payload_lifecycle_phase(payload)
         if prior_phase != new_phase:
             self._on_phase_transition(slug, prior_phase, new_phase, payload)
+        holder = self._payload_holder(payload)
+        if prior_holder != holder:
+            self._on_claim_changed(slug, prior_holder, holder)

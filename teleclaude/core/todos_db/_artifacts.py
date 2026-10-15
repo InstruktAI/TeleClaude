@@ -384,6 +384,13 @@ class TodosDbArtifactsMixin:
             ).first()
         return row is not None
 
+    async def read_artifact_in_session(self, slug: str, name: str, session: SqlAsyncSession) -> str:
+        """Read artifact content through a caller-owned transaction; empty for an unknown slug or name."""
+        row_id = await self._resolve_artifact_id(slug, session)
+        if row_id is None:
+            return ""
+        return await self._read_artifact_by_id(row_id, name, session)
+
     async def artifact_digest_in_session(self, slug: str, name: str, session: SqlAsyncSession) -> str:
         """Read an artifact digest through a caller-owned transaction."""
         row_id = await self._resolve_artifact_id(slug, session)

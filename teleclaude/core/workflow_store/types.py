@@ -17,6 +17,24 @@ StoreAddress = NewType("StoreAddress", str)
 """Adapter address for identity-pinned row operations; never workflow identity."""
 
 
+@dataclass(frozen=True)
+class ItemChange:
+    """The result of an atomic item change: the state to persist and the log entry to append with it."""
+
+    state: dict[str, StateValue]
+    log_entry: str = ""
+
+
+class ArtifactRevisionMismatch(Exception):
+    """An artifact is not at the revision an atomic change required; nothing was written."""
+
+    def __init__(self, name: str, expected: str, actual: str) -> None:
+        super().__init__(name, expected, actual)
+        self.name = name
+        self.expected = expected
+        self.actual = actual
+
+
 class StorePresenceKind(StrEnum):
     ABSENT = "absent"
     PRESENT = "present"
@@ -45,6 +63,7 @@ class StoreCapabilities:
     trail: bool
     delivery_candidates: bool
     incremental_replica_transfer: bool
+    atomic_item_change: bool
 
 
 class WorkItem(TypedDict):

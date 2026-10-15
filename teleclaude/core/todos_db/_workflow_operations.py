@@ -8,12 +8,14 @@ from typing import Protocol
 
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
-from teleclaude.constants import ARTIFACT_INPUT, TodoStatus
+from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_LOG, TodoStatus
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.todos_db._models import Todo
-from teleclaude.core.workflow_store.types import TodoDiagnosticRecord
+from teleclaude.core.workflow_store.types import ArtifactRevisionMismatch, ItemChange, TodoDiagnosticRecord
+from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, LIFECYCLE_PHASE_STATE_KEY
 
 _TODO_UPDATED_EVENT = "todo_updated"
+_BEGIN_IMMEDIATE_SQL = "BEGIN IMMEDIATE"
 _STATE_RENAME_FAILURE = "state rename failed for {slug!r}"
 _ARTIFACT_RENAME_FAILURE = "artifact rename failed for {slug!r}"
 _TODO_RENAME_FAILURE = "todo rename failed for {slug!r}"
@@ -55,9 +57,14 @@ class _CreateItemHost(Protocol):
 
     async def read_state_in_session(self, slug: str, session: SqlAsyncSession) -> dict[str, StateValue] | None: ...
 
+    async def read_artifact_in_session(self, slug: str, name: str, session: SqlAsyncSession) -> str: ...
+
     async def artifact_digest_in_session(self, slug: str, name: str, session: SqlAsyncSession) -> str: ...
 
     def on_committed(self, event_hint: str, event_data: Mapping[str, object] | None = None) -> None: ...
+
+    _on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None]
+    _on_claim_changed: Callable[[str, str | None, str | None], None]
 
 
 class _RenameItemHost(Protocol):
@@ -189,6 +196,56 @@ class TodosDbWorkflowOperationsMixin:
                     raise RuntimeError(_ARTIFACT_RENAME_FAILURE.format(slug=old_slug))
                 if not await self.rename_todo_slug(old_slug, new_slug, session=session):
                     raise RuntimeError(_TODO_RENAME_FAILURE.format(slug=old_slug))
+
+    async def commit_item_change(
+        self: _CreateItemHost,
+        slug: str,
+        *,
+        expect_digests: Mapping[str, str],
+        mutate: Callable[[dict[str, StateValue] | None, Mapping[str, str]], ItemChange],
+        updated_by: str | None,
+    ) -> ItemChange:
+        """Apply one change to an item under the writer lock, or write nothing.
+
+        The artifact revisions, the state read, the mutation, the state write and the log append
+        share one write transaction. A revision that differs from the expected one raises before any
+        write, naming both. The phase and claim observers fire after the commit.
+        """
+        async with self._session() as session:
+            connection = await session.connection()
+            await connection.exec_driver_sql(_BEGIN_IMMEDIATE_SQL)
+            try:
+                prior = await self.read_state_in_session(slug, session)
+                digests = {name: await self.artifact_digest_in_session(slug, name, session) for name in expect_digests}
+                for name, expected in expect_digests.items():
+                    if digests[name] != expected:
+                        raise ArtifactRevisionMismatch(name, expected, digests[name])
+                change = mutate(prior, digests)
+                await self.write_state(slug, change.state, session=session)
+                if change.log_entry:
+                    existing = await self.read_artifact_in_session(slug, ARTIFACT_LOG, session)
+                    await self.write_artifact(
+                        slug, ARTIFACT_LOG, existing + change.log_entry, updated_by=updated_by, session=session
+                    )
+                await session.commit()
+            except BaseException:
+                await session.rollback()
+                raise
+        self.on_committed(_TODO_UPDATED_EVENT)
+        prior_state = prior or {}
+        prior_phase = prior_state.get(LIFECYCLE_PHASE_STATE_KEY)
+        new_phase = change.state.get(LIFECYCLE_PHASE_STATE_KEY)
+        if isinstance(new_phase, str) and new_phase != prior_phase:
+            self._on_phase_transition(
+                slug, prior_phase if isinstance(prior_phase, str) else "", new_phase, change.state
+            )
+        prior_holder = prior_state.get(ACTIVE_RUNNER_STATE_KEY)
+        holder = change.state.get(ACTIVE_RUNNER_STATE_KEY)
+        prior_holder = prior_holder if isinstance(prior_holder, str) and prior_holder else None
+        holder = holder if isinstance(holder, str) and holder else None
+        if prior_holder != holder:
+            self._on_claim_changed(slug, prior_holder, holder)
+        return change
 
     async def update_state_with_artifact_evidence(
         self: _CreateItemHost,

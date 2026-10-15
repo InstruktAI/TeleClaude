@@ -26,6 +26,7 @@ from .types import (
     ArtifactWriterSet,
     ExpiredRemovedItem,
     IdentityResolution,
+    ItemChange,
     PurgedItem,
     RemovalRequest,
     StoreCapabilities,
@@ -56,6 +57,7 @@ class WorkflowStore(Protocol):
         on_mutation: Callable[[str, Mapping[str, object] | None], None],
         on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None],
         on_delivered: Callable[[str, str | None, str], None],
+        on_claim_changed: Callable[[str, str | None, str | None], None],
     ) -> None: ...
     def identity_scope(self, slug: str, todo_id: str) -> AbstractContextManager[None]: ...
     def notify_committed(
@@ -89,6 +91,14 @@ class WorkflowStore(Protocol):
         deleted_artifacts: list[str],
     ) -> None: ...
     async def rename_item(self, old_slug: str, new_slug: str) -> None: ...
+    async def commit_item_change(
+        self,
+        slug: str,
+        *,
+        expect_digests: Mapping[str, str],
+        mutate: Callable[[dict[str, StateValue] | None, Mapping[str, str]], ItemChange],
+        updated_by: str | None,
+    ) -> ItemChange: ...
     async def update_state_with_artifact_evidence(
         self,
         slug: str,

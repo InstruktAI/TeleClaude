@@ -62,6 +62,7 @@ class TodosDb(
             trail=True,
             delivery_candidates=True,
             incremental_replica_transfer=True,
+            atomic_item_change=True,
         )
 
     def set_workflow_hooks(
@@ -69,11 +70,13 @@ class TodosDb(
         on_mutation: Callable[[str, Mapping[str, object] | None], None],
         on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None],
         on_delivered: Callable[[str, str | None, str], None],
+        on_claim_changed: Callable[[str, str | None, str | None], None],
     ) -> None:
         """Install the workflow event observers on this canonical local store."""
         self._on_mutation = on_mutation
         self._on_phase_transition = on_phase_transition
         self._on_delivered = on_delivered
+        self._on_claim_changed = on_claim_changed
 
     @contextmanager
     def identity_scope(self, slug: str, todo_id: str) -> Iterator[None]:

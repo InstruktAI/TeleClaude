@@ -59,6 +59,14 @@ def _default_on_delivered(
     """Default no-op delivery callback."""
 
 
+def _default_on_claim_changed(
+    _slug: str,
+    _prior_holder: str | None,
+    _holder: str | None,
+) -> None:
+    """Default no-op claim-change callback."""
+
+
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     """Return whether a table exists."""
     row = conn.execute(
@@ -648,6 +656,7 @@ class TodosDbBase:
         self._on_mutation: Callable[[str, Mapping[str, object] | None], None] = _default_on_mutation
         self._on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None] = _default_on_phase_transition
         self._on_delivered: Callable[[str, str | None, str], None] = _default_on_delivered
+        self._on_claim_changed: Callable[[str, str | None, str | None], None] = _default_on_claim_changed
 
     def on_committed(self, event_hint: str = "todo_updated", event_data: Mapping[str, object] | None = None) -> None:
         """Signal that a caller-managed transaction has committed.

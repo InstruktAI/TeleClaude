@@ -64,6 +64,44 @@ class TodoFinalizeReadyData(EventData):
     worker_session_id: str
 
 
+class TodoClaimChangedData(EventData):
+    holder: str | None = None
+    prior_holder: str | None = None
+    project_path: str
+    slug: str
+
+
+class TodoHeadAdvancedData(EventData):
+    branch: str
+    project_path: str
+    sha: str
+    slug: str
+
+
+class TodoWaitingData(EventData):
+    person: str
+    project_path: str
+    slug: str
+    waited_phase: str
+
+
+class TodoReadyData(EventData):
+    branch: str
+    driver_session_id: str
+    project_path: str
+    ready_at: str
+    sha: str
+    slug: str
+
+
+class TodoDriverRequestedData(EventData):
+    phase: str
+    project_path: str
+    requested_by: str
+    reservation_key: str
+    slug: str
+
+
 class DorAssessedData(EventData):
     score: JsonValue | None = None
     slug: str
@@ -229,6 +267,36 @@ class TodoDelivered(PlatformEvent[TodoRef, TodoDeliveredData]):
 class RoadmapEntryMoved(PlatformEvent[TodoRef, TodoSlugData]):
     NAME = "sdlc.roadmap.entry_moved"
     DESCRIPTION = "A roadmap entry moved between queues or dependency positions"
+    HOME_KINDS = _PROJECT_HOME
+
+
+class TodoClaimChanged(PlatformEvent[TodoRef, TodoClaimChangedData]):
+    NAME = "sdlc.todo.claim_changed"
+    DESCRIPTION = "The session holding a workflow todo's claim changed"
+    HOME_KINDS = _PROJECT_HOME
+
+
+class TodoHeadAdvanced(PlatformEvent[TodoRef, TodoHeadAdvancedData]):
+    NAME = "sdlc.todo.head_advanced"
+    DESCRIPTION = "A commit was observed on a workflow todo's integration ref and its work driver reviews it"
+    HOME_KINDS = _PROJECT_HOME
+
+
+class TodoWaiting(PlatformEvent[TodoRef, TodoWaitingData]):
+    NAME = "sdlc.todo.waiting"
+    DESCRIPTION = "A workflow todo waits on a question only a named person can answer"
+    HOME_KINDS = _PROJECT_HOME
+
+
+class TodoReady(PlatformEvent[TodoRef, TodoReadyData]):
+    NAME = "sdlc.todo.ready"
+    DESCRIPTION = "A workflow todo is ready at a stamped commit and is a candidate for integration"
+    HOME_KINDS = _PROJECT_HOME
+
+
+class TodoDriverRequested(PlatformEvent[TodoRef, TodoDriverRequestedData]):
+    NAME = "sdlc.todo.driver_requested"
+    DESCRIPTION = "A workflow todo's phase needs its driver session started"
     HOME_KINDS = _PROJECT_HOME
 
 
@@ -430,6 +498,11 @@ DECLARED: tuple[DeclaredEvent, ...] = (
     TodoDelivered,
     RoadmapEntryMoved,
     TodoFinalizeReady,
+    TodoClaimChanged,
+    TodoHeadAdvanced,
+    TodoWaiting,
+    TodoReady,
+    TodoDriverRequested,
     DorAssessed,
     PrepareArtifactInvalidated,
     PrepareArtifactProduced,

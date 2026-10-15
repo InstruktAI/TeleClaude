@@ -269,6 +269,8 @@ from teleclaude.events.envelope_facts import home_for_project_path as _workflow_
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import ConfigurationRef, TodoRef
 from teleclaude.events.schemas.sdlc import (
+    TodoClaimChanged,
+    TodoClaimChangedData,
     TodoDelivered,
     TodoDeliveredData,
     TodoFinalizeReady,
@@ -769,6 +771,28 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     ),
                 )
 
+            async def _emit_claim_changed(slug: str, prior_holder: str | None, holder: str | None) -> None:
+                await publish_event(
+                    TodoClaimChanged(
+                        subject=TodoRef(slug),
+                        home=_workflow_event_home(project_root),
+                        data=TodoClaimChangedData(
+                            slug=slug,
+                            project_path=project_root,
+                            prior_holder=prior_holder,
+                            holder=holder,
+                        ),
+                    ),
+                    LegacyFacts(
+                        producer="workflow",
+                        level=EventLevel.WORKFLOW,
+                        domain="sdlc",
+                        visibility=EventVisibility.LOCAL,
+                        entity=slug,
+                        description=f"Claim on {slug} moved from {prior_holder or 'none'} to {holder or 'none'}",
+                    ),
+                )
+
             async def _emit_delivered(slug: str, delivery_commit: str | None, delivered_at: str) -> None:
                 await publish_event(
                     TodoDelivered(
@@ -817,6 +841,13 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     )
                 )
 
+            def _on_claim_changed(slug: str, prior_holder: str | None, holder: str | None) -> None:
+                if loop is None or not loop.is_running():
+                    return
+                loop.call_soon_threadsafe(
+                    lambda: asyncio.ensure_future(_emit_claim_changed(slug, prior_holder, holder))
+                )
+
             def _on_delivered(slug: str, delivery_commit: str | None, delivered_at: str) -> None:
                 if loop is None or not loop.is_running():
                     return
@@ -824,7 +855,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     lambda: asyncio.ensure_future(_emit_delivered(slug, delivery_commit, delivered_at))
                 )
 
-            instance.set_workflow_hooks(_on_mutation, _on_phase_transition, _on_delivered)
+            instance.set_workflow_hooks(_on_mutation, _on_phase_transition, _on_delivered, _on_claim_changed)
 
         set_workflow_store_mutation_hook(_hook)
         logger.info("Todos mutation hook registered (computer=%s)", computer)
