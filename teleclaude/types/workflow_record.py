@@ -90,6 +90,7 @@ class EffectKind(StrEnum):
     END_SESSION = "end_session"
     WAKE_SESSION = "wake_session"
     RELEASE_CLAIM = "release_claim"
+    ENSURE_WORKTREE = "ensure_worktree"
 
 
 class LedgerEntry(BaseModel):

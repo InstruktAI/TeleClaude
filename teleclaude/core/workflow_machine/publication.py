@@ -147,3 +147,10 @@ def driver_publication_snapshot(procedure_id: str, project_root: Path) -> str:
     if declarations.workflow is None:
         return NO_WORKFLOW_PUBLICATION
     return published_workflow_publication().to_json()
+
+
+def pinned_declarations(snapshot: str, procedure_id: str) -> EntryDeclarations | None:
+    """The declarations a driver's snapshot holds for a procedure; None when there is no snapshot."""
+    if not snapshot:
+        return None
+    return WorkflowPublication.from_json(snapshot).declared(procedure_id).declarations

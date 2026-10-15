@@ -327,6 +327,7 @@ def resolve_entry(
     entry: EntryContext,
     caller_mode: ThinkingMode | None,
     additional_context: str = NO_ADDITIONAL_CONTEXT,
+    pinned: EntryDeclarations | None = None,
 ) -> ResolvedInvocation:
     """Resolve a named procedure into the invocation its session is created from, or refuse before any side effect.
 
@@ -334,7 +335,7 @@ def resolve_entry(
     """
     procedure_id = normalize_procedure_id(procedure_token)
     published = _published_entry(procedure_id, project_root)
-    declarations = published.declarations
+    declarations = pinned if pinned is not None else published.declarations
     dispatch = declarations.dispatch
     if dispatch is None:
         raise _gap_refusal(procedure_id, EntryGap.NO_DISPATCH)

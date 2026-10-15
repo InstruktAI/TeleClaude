@@ -13,9 +13,12 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
+from teleclaude.api.sessions_actions_routes import run_session
+from teleclaude.api_models import RunSessionRequest
 from teleclaude.core.workflow_machine.act_types import ActRefused, ActRequest
 from teleclaude.core.workflow_machine.acts import perform_act
-from teleclaude.types.todo_act import TodoActApiRoute
+from teleclaude.core.workflow_machine.entry import EntryRefused, plan_child
+from teleclaude.types.todo_act import TodoActApiRoute, TodoChildApiRoute
 from teleclaude.types.workflow_record import Act
 
 
@@ -80,3 +83,39 @@ async def todo_act(
         complete=result.complete,
         finding_key=result.finding_key,
     )
+
+
+class TodoChildResponse(BaseModel):
+    """The child session a holding driver started."""
+
+    status: str
+    session_id: str
+    procedure: str
+
+
+@router.post(TodoChildApiRoute.ROUTER_PATH)
+async def todo_child(
+    item: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(carried_caller),
+) -> TodoChildResponse:
+    """Start the child the holding driver's declarations name, as a session in the driver's claiming group."""
+    if not cwd:
+        raise HTTPException(status_code=_STATUS_BAD_REQUEST, detail=_CWD_REQUIRED)
+    if not identity.session_id:
+        raise HTTPException(status_code=_STATUS_FORBIDDEN, detail=_SESSION_REQUIRED)
+    try:
+        plan = await plan_child(cwd, item, identity.session_id)
+    except EntryRefused as refusal:
+        raise HTTPException(status_code=_STATUS_REFUSED, detail=str(refusal)) from refusal
+    created = await run_session(
+        RunSessionRequest(
+            command=plan.procedure_id,
+            args=plan.arguments,
+            project=cwd,
+            subfolder=plan.subfolder,
+            workflow_snapshot=plan.snapshot,
+        ),
+        identity,
+    )
+    return TodoChildResponse(status=_STATUS_OK, session_id=str(created.session_id), procedure=plan.procedure_id)

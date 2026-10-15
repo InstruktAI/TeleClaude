@@ -85,6 +85,7 @@ from teleclaude.core.procedure_entry import (
     EntryContext,
     EntryRefusal,
     job_entry,
+    normalize_procedure_id,
     resolve_entry,
     with_additional_context,
 )
@@ -94,6 +95,7 @@ from teleclaude.core.session_message_projection import (
     build_session_messages_dto,
 )
 from teleclaude.core.session_utils import split_project_path_and_subdir
+from teleclaude.core.workflow_machine.publication import pinned_declarations
 from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.project_manifest_runtime import load_registered_entries
 from teleclaude.types.commands import (
@@ -278,6 +280,7 @@ def _prepare_run_session(
             entry=entry,
             caller_mode=caller_mode,
             additional_context=request.additional_context,
+            pinned=pinned_declarations(request.workflow_snapshot, normalize_procedure_id(procedure_token)),
         )
     except EntryRefusal as exc:
         raise RunSessionRefusal(status_code=exc.status_code, detail=exc.detail, reason=exc.reason) from exc

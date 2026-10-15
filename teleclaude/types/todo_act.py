@@ -34,3 +34,10 @@ class TodoActApiRoute:
 
     ROUTER_PATH: Final = "/act"
     PATH: Final = "/todos/act"
+
+
+class TodoChildApiRoute:
+    """The route of the child command."""
+
+    ROUTER_PATH: Final = "/child"
+    PATH: Final = "/todos/child"

@@ -78,6 +78,7 @@ class _TodoSubcommand(StrEnum):
 
     ACT = "act"
     ARTIFACTS = "artifacts"
+    CHILD = "child"
     CREATE = "create"
     DELIVER = "deliver"
     DESIGN = "design"
@@ -167,6 +168,15 @@ def _handle_todo_act(args: list[str]) -> None:
     )
 
     handle_act(args)
+
+
+def _handle_todo_child(args: list[str]) -> None:
+    """Handle the child command."""
+    from teleclaude.cli.telec.handlers._todo_act import (  # noqa: PLC0415 - command boundary: API mutation.
+        _handle_todo_child as handle_child,
+    )
+
+    handle_child(args)
 
 
 def _handle_todo_return_to_work(args: list[str]) -> None:
@@ -911,6 +921,7 @@ def _handle_todo_reactivate(args: list[str]) -> None:
 _TODO_SUBCOMMAND_HANDLERS: dict[_TodoSubcommand, Callable[[list[str]], None]] = {
     _TodoSubcommand.ACT: _handle_todo_act,
     _TodoSubcommand.ARTIFACTS: _handle_todo_artifacts,
+    _TodoSubcommand.CHILD: _handle_todo_child,
     _TodoSubcommand.CREATE: _handle_todo_create,
     _TodoSubcommand.DELIVER: _handle_todo_deliver,
     _TodoSubcommand.DESIGN: _handle_todo_design,

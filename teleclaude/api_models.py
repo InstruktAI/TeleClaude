@@ -970,6 +970,10 @@ class RunSessionRequest(BaseModel):
     additional_context: str = ""
     company: str | None = None
     job: str | None = Field(default=None, description="Configured job name when the run is a scheduled job entry")
+    workflow_snapshot: str = Field(
+        default="",
+        description="A lifecycle driver's workflow publication; the child is launched with the declarations it holds",
+    )
 
 
 class AgentStatusRequest(BaseModel):

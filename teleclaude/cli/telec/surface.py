@@ -908,6 +908,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 literal_dash_tokens=True,
                 auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
             ),
+            "child": CommandDef(
+                desc="Start the child session your driver procedure names, from the declarations you were started under",
+                args="<item>",
+                flags=[F.FLAG_HELP],
+                notes=[
+                    "Only the session that holds the item may start its child. The child carries the role, "
+                    "arguments and launch defaults of the declarations the holding driver was initialized under, "
+                    "and joins the driver's claiming group.",
+                ],
+                examples=["telec todo child my-item"],
+                auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
+            ),
             "stamp": CommandDef(
                 desc="Stamp a verdict or readiness marker into todo state",
                 args=(
@@ -2104,6 +2116,7 @@ TODO_CREATE = CLI_SURFACE["todo"].subcommands["create"]
 TODO_DELIVER = CLI_SURFACE["todo"].subcommands["deliver"]
 TODO_REMOVE = CLI_SURFACE["todo"].subcommands["remove"]
 TODO_ACT = CLI_SURFACE["todo"].subcommands["act"]
+TODO_CHILD = CLI_SURFACE["todo"].subcommands["child"]
 TODO_STAMP = CLI_SURFACE["todo"].subcommands["stamp"]
 TODO_RETURN_TO_WORK = CLI_SURFACE["todo"].subcommands["return-to-work"]
 TODO_REACTIVATE = CLI_SURFACE["todo"].subcommands["reactivate"]

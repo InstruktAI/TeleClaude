@@ -7,12 +7,12 @@ from http import HTTPMethod
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.addressing import project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
-from teleclaude.cli.telec.surface import TODO_ACT
+from teleclaude.cli.telec.surface import TODO_ACT, TODO_CHILD
 from teleclaude.cli.tool_client import print_json, tool_api_call
-from teleclaude.types.todo_act import TodoActApiRoute, TodoActRequestField, TodoActResponseField
+from teleclaude.types.todo_act import TodoActApiRoute, TodoActRequestField, TodoActResponseField, TodoChildApiRoute
 from teleclaude.types.workflow_record import Act
 
-__all__ = ["_handle_todo_act"]
+__all__ = ["_handle_todo_act", "_handle_todo_child"]
 
 _ACT_USAGE = "Usage: telec todo act <item> <act> [<text>] [--sha <commit>] [--revision <digest>] [--person <slug>] [--finding <key>]"
 _UNKNOWN_ACT_TEMPLATE = "Unknown act {act!r}; the acts are: {acts}"
@@ -80,3 +80,26 @@ def _handle_todo_act(args: list[str]) -> None:
     finding_key = response.get(TodoActResponseField.FINDING_KEY)
     if finding_key:
         print(_FINDING_TEMPLATE.format(key=finding_key))
+
+
+_CHILD_USAGE = "Usage: telec todo child <item>"
+_CHILD_STARTED_TEMPLATE = "Started {procedure} as session {session_id}"
+
+
+def _handle_todo_child(args: list[str]) -> None:
+    """Start the holding driver's child."""
+    parsed = parse_command_args(TODO_CHILD, args)
+    if len(parsed.positionals) != 1:
+        print(_CHILD_USAGE)
+        raise SystemExit(1)
+    response = tool_api_call(
+        HTTPMethod.POST,
+        TodoChildApiRoute.PATH,
+        json_body={TodoActRequestField.ITEM: parsed.positionals[0], TodoActRequestField.CWD: project_reference()},
+    )
+    if isinstance(response, dict) and response.get("status") == "ok":
+        print(
+            _CHILD_STARTED_TEMPLATE.format(procedure=response.get("procedure"), session_id=response.get("session_id"))
+        )
+        return
+    print_json(response)

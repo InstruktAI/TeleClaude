@@ -20,6 +20,7 @@ from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
+from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import PendingEffectItem
 from teleclaude.events.catalog import PlatformEvent
@@ -202,7 +203,13 @@ async def _end_session(context: EffectContext, effect: PendingEffect) -> None:
         raise EffectNotFinished(effect.id)
 
 
+async def _ensure_worktree(context: EffectContext, effect: PendingEffect) -> None:
+    """Create the item's worktree and branch, deriving both names from the item identity; repeating it is safe."""
+    await ensure_worktree_with_policy_async(context.project_root, context.item.slug)
+
+
 _HANDLERS: Final = {
+    EffectKind.ENSURE_WORKTREE: _ensure_worktree,
     EffectKind.EMIT_EVENT: _emit_event,
     EffectKind.RELEASE_CLAIM: _release_claim,
     EffectKind.END_SESSION: _end_session,
