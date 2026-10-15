@@ -1,0 +1,36 @@
+"""The wire contract of the sealed act command between the CLI and the daemon."""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Final
+
+
+class TodoActRequestField(StrEnum):
+    """The fields of an act request body."""
+
+    ITEM = "item"
+    ACT = "act"
+    TEXT = "text"
+    SHA = "sha"
+    REVISION = "revision"
+    PERSON = "person"
+    FINDING = "finding"
+    CWD = "cwd"
+
+
+class TodoActResponseField(StrEnum):
+    """The fields of an act response."""
+
+    STATUS = "status"
+    ACT_KEY = "act_key"
+    PHASE = "phase"
+    COMPLETE = "complete"
+    FINDING_KEY = "finding_key"
+
+
+class TodoActApiRoute:
+    """The route of the act command."""
+
+    ROUTER_PATH: Final = "/act"
+    PATH: Final = "/todos/act"
