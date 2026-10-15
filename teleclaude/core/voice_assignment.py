@@ -1,19 +1,8 @@
-"""Voice assignment for TeleClaude sessions.
-
-Assigns random TTS voices to new sessions for distinct AI personalities.
-"""
+"""Voice configuration for TeleClaude sessions and its environment-variable form."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-
-from instrukt_ai_logging import get_logger
-
-if TYPE_CHECKING:
-    from teleclaude.tts.manager import TTSManager
-
-logger = get_logger(__name__)
 
 
 @dataclass
@@ -27,33 +16,6 @@ class VoiceConfig:
 
     service_name: str
     voice: str
-
-
-# Lazy-initialized TTS manager (avoids circular import)
-_tts_manager: TTSManager | None = None
-
-
-def _get_tts_manager() -> TTSManager:
-    """Get or create TTS manager instance (lazy import to avoid circular dependency)."""
-    global _tts_manager
-    if _tts_manager is None:
-        _tts_manager = TTSManager()
-    return _tts_manager
-
-
-async def get_random_voice() -> VoiceConfig | None:
-    """Get a random voice assignment for a session.
-
-    Returns:
-        VoiceConfig with (service_name, voice) or None if no voices configured.
-    """
-    manager = _get_tts_manager()
-    voice_assignment = await manager.get_random_voice_for_session()
-    if voice_assignment:
-        service_name, voice_param = voice_assignment
-        logger.info("Assigned voice: %s from service %s", voice_param, service_name)
-        return VoiceConfig(service_name=service_name, voice=voice_param or "")
-    return None
 
 
 def get_voice_env_vars(voice: VoiceConfig) -> dict[str, str]:
