@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.state_mutation import StateWriter, commit_on_current_by_id
 from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
@@ -118,11 +118,4 @@ async def settle_mark_on_any_row(todos_db: WorkflowStore, slug: str, session_id:
     for row in await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True):
         if row["slug"] != slug:
             continue
-        state = await todos_db.read_state_by_id(row["id"])
-        if state is None:
-            continue
-        writer = StateWriter(state)
-        before = writer.state.hold_audit.model_copy(deep=True)
-        give_back(writer, session_id, accepted=True)
-        if writer.state.hold_audit != before:
-            await writer.commit_by_id(todos_db, row["id"])
+        await commit_on_current_by_id(todos_db, row["id"], lambda writer: give_back(writer, session_id, accepted=True))

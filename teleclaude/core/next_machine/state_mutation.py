@@ -203,10 +203,19 @@ class StateWriter:
         todos_db: WorkflowStore,
         todo_id: str,
     ) -> dict[str, StateValue]:
-        """Validate and persist the current state by durable todo row id."""
-        payload = self.to_dict()
-        await todos_db.write_state_by_id(todo_id, payload)
-        return payload
+        """Validate the state and persist what this writer changed, merged onto the row read inside the transaction."""
+        final = self.to_dict()
+        merged: list[dict[str, StateValue]] = []
+
+        def merge(stored: dict[str, StateValue]) -> dict[str, StateValue] | None:
+            combined = self._merged_onto(stored, final)
+            merged.append(combined)
+            return combined if combined != stored else None
+
+        if not await todos_db.merge_state_by_id(todo_id, merge) and not merged:
+            await todos_db.write_state_by_id(todo_id, final)
+            return final
+        return merged[-1]
 
     def commit_sync(self, todos_db: WorkflowStore, slug: str) -> dict[str, StateValue]:
         """Validate the state and persist what this writer changed, merged onto the stored row inside the transaction."""
@@ -249,6 +258,28 @@ async def commit_on_current(
 
     await todos_db.commit_item_change(slug, expect_digests={}, mutate=mutate, updated_by=updated_by)
     return outcome[-1]
+
+
+async def commit_on_current_by_id(
+    todos_db: WorkflowStore, todo_id: str, change: Callable[[StateWriter], None]
+) -> TodoState | None:
+    """Apply ``change`` to the state of the row with this durable id, as the write\'s own transaction reads it.
+
+    The by-id counterpart of :func:`commit_on_current` for a row that is not live (removed or delivered): ``change``
+    sees the state as it is when the transaction reads it, may raise to write nothing, and every field it does not
+    touch is carried. None when the row has no state.
+    """
+    outcome: list[TodoState] = []
+
+    def merge(stored: dict[str, StateValue]) -> dict[str, StateValue] | None:
+        writer = StateWriter(stored)
+        change(writer)
+        outcome.append(writer.state.model_copy(deep=True))
+        combined = writer.to_dict()
+        return combined if combined != stored else None
+
+    await todos_db.merge_state_by_id(todo_id, merge)
+    return outcome[-1] if outcome else None
 
 
 class ApprovalsManager:

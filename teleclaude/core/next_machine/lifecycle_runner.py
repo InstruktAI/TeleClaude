@@ -56,7 +56,12 @@ from teleclaude.core.next_machine.start_reservation import (
     record_reservation,
     settle_mark_on_any_row,
 )
-from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter, commit_on_current
+from teleclaude.core.next_machine.state_mutation import (
+    StateMutationError,
+    StateWriter,
+    commit_on_current,
+    commit_on_current_by_id,
+)
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db._rows import TodoRow
@@ -456,13 +461,7 @@ async def _clear_active_runner(
 
     if row["status"] in _LIVE_ROW_STATUSES:
         return await commit_on_current(todos_db, row["slug"], change)
-    state = await todos_db.read_state_by_id(row["id"])
-    if state is None:
-        return None
-    writer = StateWriter(state)
-    change(writer)
-    await writer.commit_by_id(todos_db, row["id"])
-    return writer.state
+    return await commit_on_current_by_id(todos_db, row["id"], change)
 
 
 async def _set_active_runner(

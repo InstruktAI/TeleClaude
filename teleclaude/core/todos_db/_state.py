@@ -429,6 +429,42 @@ class TodosDbStateMixin:
             if owns_session:
                 await db_session.close()
 
+    async def merge_state_by_id(
+        self,
+        todo_id: str,
+        merge: Callable[[dict[str, StateValue]], dict[str, StateValue] | None],
+    ) -> bool:
+        """Turn a row\'s stored state into the state to write, decided on the state this transaction reads.
+
+        The row is addressed by its durable id, whatever its status. The write transaction is taken up front, so no
+        other writer commits between the read and the write; ``merge`` may raise to write nothing, and returns None
+        when the state needs no write. True when a state was written.
+        """
+        async with self._session() as session:  # type: ignore[attr-defined]
+            connection = await session.connection()
+            await connection.exec_driver_sql(_BEGIN_IMMEDIATE_SQL)
+            try:
+                state_model = await session.get(TodoStateModel, todo_id)
+                if state_model is None:
+                    await session.rollback()
+                    return False
+                prior_holder = self._stored_holder(state_model)
+                merged = merge(upcycle_state_dict(cast(dict[str, StateValue], json.loads(state_model.state))))
+                if merged is None:
+                    await session.rollback()
+                    return False
+                await self.write_state_by_id(todo_id, merged, session=session)
+                await session.commit()
+            except BaseException:
+                await session.rollback()
+                raise
+        slug = str(state_model.slug)
+        self._on_mutation("todo_updated", None)
+        holder = self._payload_holder(merged)
+        if prior_holder != holder:
+            self._on_claim_changed(slug, prior_holder, holder)
+        return True
+
     async def write_state(
         self,
         slug: str,

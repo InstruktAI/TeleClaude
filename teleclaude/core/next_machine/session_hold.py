@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -11,7 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.start_reservation import give_back
-from teleclaude.core.next_machine.state_mutation import StateWriter, commit_on_current
+from teleclaude.core.next_machine.state_mutation import StateWriter, commit_on_current, commit_on_current_by_id
 from teleclaude.core.session_listeners import notify_gate_approved
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.events.envelope import EventLevel
@@ -200,16 +201,28 @@ async def reconcile_driver_ownership_for_session(
         if row["status"] in _LIVE_ROW_STATUSES:
             await _release_if_still_held(todos_db, row["slug"], session_id)
         else:
-            writer = StateWriter(state)
-            writer.state.active_runner = None
-            writer.state.manually_started = False
-            give_back(writer, session_id, accepted=True)
-            await writer.commit_by_id(todos_db, row["id"])
+            await commit_on_current_by_id(todos_db, row["id"], _unlink_ended_session(session_id))
         cleared_slugs.append(row["slug"])
     return DriverOwnershipReconciliation(cleared_slugs=tuple(cleared_slugs))
 
 
 _LIVE_ROW_STATUSES = frozenset({"active", "icebox"})
+
+
+def _unlink_ended_session(session_id: str) -> Callable[[StateWriter], None]:
+    """The change that clears an ended session\'s link on a row that is not live, decided on the row as read.
+
+    Only a link that is still the session\'s is cleared, and the start\'s mark is settled as accepted in the same write.
+    """
+
+    def change(writer: StateWriter) -> None:
+        if writer.state.active_runner != session_id:
+            return
+        writer.state.active_runner = None
+        writer.state.manually_started = False
+        give_back(writer, session_id, accepted=True)
+
+    return change
 
 
 async def _release_if_still_held(todos_db: WorkflowStore, slug: str, session_id: str) -> None:
