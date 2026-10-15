@@ -14,7 +14,6 @@ from typing import TypedDict
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.config.machine import config
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.integration.checkpoint import ParkedCandidate
@@ -272,6 +271,9 @@ async def spawn_integrator_session(
     If none is running for this project, spawns a fresh integrator via the
     command service.
 
+    The integrator is an independent platform activation: it records no initiator, so it is never in the claiming group
+    of the driver whose stamp caused it. ``caller_session_id`` names the requester for the log and the notice only.
+
     Returns session info dict on spawn, or None if an integrator is already open
     for this project.
     Raises on spawn failure — the caller (the integration trigger consumer) is responsible for handling.
@@ -331,8 +333,6 @@ async def spawn_integrator_session(
         role=resolved.role.name.value,
         entry_point=SessionEntryPoint.INTEGRATION,
         skip_listener_registration=True,
-        initiator_session_id=caller_session_id,
-        initiator_computer=config.computer.name,
     )
     await get_command_service().create_session(cmd)
     logger.info("Spawned integrator session for %s (caller=%s)", slug, caller_session_id)
