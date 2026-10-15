@@ -232,7 +232,6 @@ def _apply_claim(
         text=CLAIM_NOTE,
     )
     record.ledger.append(entry)
-    record.driver_cycle += 1
     record.launch = None
     effects: list[PendingEffect] = []
     if phase in (Phase.PREPARED, Phase.WORK):

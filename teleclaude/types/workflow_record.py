@@ -212,7 +212,6 @@ class WorkflowRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     claim_epoch: int = 0
-    driver_cycle: int = 0
     ledger: list[LedgerEntry] = Field(default_factory=list)
     act_status: dict[str, ActStatus] = Field(default_factory=dict)
     pending_effects: list[PendingEffect] = Field(default_factory=list)

@@ -111,11 +111,7 @@ def _digest(text: str) -> str:
 
 
 def _content_digest(request: ActRequest) -> str:
-    """The identity of what one invocation asks for, from the request alone.
-
-    Together with the item and the driver cycle it names the invocation, so repeating it after an
-    interruption finds the original whatever the item's phase or holder has become since.
-    """
+    """The identity of what one invocation asks for, from the request alone, calling session included."""
     parts = (
         request.caller_session_id,
         request.sha,
@@ -127,9 +123,26 @@ def _content_digest(request: ActRequest) -> str:
     return _digest(BOUND_SEPARATOR.join(parts))
 
 
+def _instance_anchor(request: ActRequest, record: WorkflowRecord) -> str:
+    """The instance an invocation answers: a decision answers the latest wait, whatever has been cleared since."""
+    if request.act is not Act.DECISION:
+        return NO_SESSION
+    waits = [entry.key for entry in record.ledger if entry.act is Act.WAITING]
+    return waits[-1] if waits else NO_SESSION
+
+
 def _act_key(request: ActRequest, item_id: str, record: WorkflowRecord) -> str:
+    """The identity of one invocation, stable across the item's later phases, holders and claims.
+
+    A session claims or is dispatched once, so the calling session plus the request content names the
+    invocation for as long as it can be repeated; a decision also names the wait it answers.
+    """
     return occurrence_id(
-        request.project_root, item_id, request.act.value, _content_digest(request), str(record.driver_cycle)
+        request.project_root,
+        item_id,
+        request.act.value,
+        _content_digest(request),
+        _instance_anchor(request, record),
     )
 
 
@@ -383,7 +396,7 @@ async def _resolve_facts(store: WorkflowStore, request: ActRequest, state: TodoS
 
 
 def _apply(
-    request: ActRequest, facts: _Facts, state_dict: dict[str, StateValue] | None, outcome: list[ActResult]
+    request: ActRequest, facts: _Facts, state_dict: dict[str, StateValue] | None, outcome: list[str]
 ) -> ItemChange | None:
     """Decide the act against the state read inside the commit and build the change, or refuse.
 
@@ -394,6 +407,7 @@ def _apply(
     state = TodoState.model_validate(state_dict)
     existing = _act_key(request, facts.item_id, state.workflow)
     if existing in state.workflow.act_status:
+        outcome.append(existing)
         return None
     holder_now = state.active_runner or None
     if holder_now != facts.holder:
@@ -429,8 +443,7 @@ def _apply(
     new_state: dict[str, StateValue] = {**state_dict, WORKFLOW_STATE_KEY: updated.to_state()}
     if decision.phase is not None:
         new_state[LIFECYCLE_PHASE_STATE_KEY] = decision.phase.value
-    new_phase = read_phase(TodoState.model_validate(new_state), integration_head=NO_SESSION, creative_incomplete=False)
-    outcome.append(ActResult(act_key=key, phase=new_phase.phase, complete=not decision.effects, finding_key=key))
+    outcome.append(key)
     return ItemChange(state=new_state, log_entry=_log_entry(entry))
 
 
@@ -451,18 +464,21 @@ async def perform_act(request: ActRequest) -> ActResult:
     key = _act_key(request, facts.item_id, state.workflow)
     if key not in state.workflow.act_status:
         _authorize(request, facts)
-        await _commit(store, request, facts, state)
+        key = await _commit(store, request, facts, state)
     await reconcile_slug_supervised(request.project_root, request.item)
     return await _result(store, request, key)
 
 
-async def _commit(store: WorkflowStore, request: ActRequest, facts: _Facts, state: TodoState) -> None:
+async def _commit(store: WorkflowStore, request: ActRequest, facts: _Facts, state: TodoState) -> str:
+    """Commit the act and return the key the transaction recorded it under."""
     expected = _DECIDERS[request.act](
         request, facts, state, read_phase(state, integration_head=NO_SESSION, creative_incomplete=False)
     ).expect_digests
 
+    recorded: list[str] = []
+
     def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
-        return _apply(request, facts, current, [])
+        return _apply(request, facts, current, recorded)
 
     try:
         await store.commit_item_change(
@@ -476,6 +492,7 @@ async def _commit(store: WorkflowStore, request: ActRequest, facts: _Facts, stat
             actual=mismatch.actual,
             expected=mismatch.expected,
         ) from mismatch
+    return recorded[-1]
 
 
 async def _result(store: WorkflowStore, request: ActRequest, key: str) -> ActResult:
@@ -485,9 +502,11 @@ async def _result(store: WorkflowStore, request: ActRequest, key: str) -> ActRes
         raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)
     state = TodoState.model_validate(refreshed)
     status = state.workflow.act_status.get(key)
+    if status is None:
+        raise _refuse(Refusal.NOT_RECORDED, act=request.act.value)
     return ActResult(
         act_key=key,
         phase=read_phase(state, integration_head=NO_SESSION, creative_incomplete=False).phase,
-        complete=status is not ActStatus.IN_PROGRESS,
+        complete=status is ActStatus.COMPLETE,
         finding_key=key if request.act is Act.FINDING else NO_SESSION,
     )
