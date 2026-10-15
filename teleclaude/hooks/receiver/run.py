@@ -49,6 +49,7 @@ from teleclaude.core.models import JsonDict, Session
 from teleclaude.core.organization import CompanyMembership, resolve_organization
 from teleclaude.core.session_ended import is_conversation_session
 from teleclaude.core.session_status import AgentStatusReason
+from teleclaude.core.workflow_machine.findings import SupplyBoundary
 from teleclaude.git import GitCommandError
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.hooks.adapters.base import HookAdapter, HookNormalizationReason, read_stdin_payload
@@ -70,6 +71,7 @@ from teleclaude.hooks.edit_declarations import (
     hold_certain_edit,
     settle_certain_edit,
 )
+from teleclaude.hooks.findings_supply import findings_for_boundary, record_offer
 from teleclaude.hooks.receiver._tool_admission import native_tool_denial_for_source
 from teleclaude.hooks.receiver_args import parse_receiver_args
 from teleclaude.hooks.session_map import (
@@ -1506,8 +1508,15 @@ def _maybe_emit_boundary_response(
             session_id=session_id,
         )
 
+    supply = None
+    if checkpoint_reason is None and event_type == AgentHookEvents.AGENT_STOP and adapter.supports_hook_checkpoint:
+        supply = findings_for_boundary(session_id, SupplyBoundary.STOP)
+        checkpoint_reason = supply.text if supply is not None else None
+
     if checkpoint_reason is not None:
         write_emission(adapter.render_response(raw_event_type, ContinueWithReason(checkpoint_reason)))
+        if supply is not None:
+            record_offer(supply)
         return True
 
     return emit_pending_control_payloads(
@@ -1577,6 +1586,9 @@ def _run_ordinary_hook_effects(
         provider=agent,
         receiver_ingress_id=receiver_ingress_id,
     )
+    if startup_context is None and event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
+        turn_supply = findings_for_boundary(session_id, SupplyBoundary.TURN_START)
+        startup_context = turn_supply.text if turn_supply is not None else None
     response_emitted = _maybe_emit_boundary_response(
         event_type=event_type,
         adapter=adapter,

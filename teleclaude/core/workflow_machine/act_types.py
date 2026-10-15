@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 
 from teleclaude.types.workflow_record import Act, Phase
+
+BOUND_SEPARATOR: Final = ":"
 
 
 class Refusal(StrEnum):

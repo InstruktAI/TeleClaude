@@ -19,7 +19,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ARTIFACT_INPUT
 from teleclaude.core.roles import RoleName
-from teleclaude.core.workflow_machine.act_types import ActRefused, ActRequest, ActResult, Refusal
+from teleclaude.core.workflow_machine.act_types import BOUND_SEPARATOR, ActRefused, ActRequest, ActResult, Refusal
 from teleclaude.core.workflow_machine.authority import configured_person, has_project_authority
 from teleclaude.core.workflow_machine.caller import CallerFacts, child_sessions_of, in_claiming_group, load_caller
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
@@ -70,7 +70,6 @@ READY_AT_PARAM: Final = "ready_at"
 EFFECT_REQUEST: Final = "request"
 NO_SESSION: Final = ""
 DIGEST_LENGTH: Final = 16
-BOUND_SEPARATOR: Final = ":"
 ARGUMENT_TEXT: Final = "text"
 ARGUMENT_SHA: Final = "--sha"
 ARGUMENT_REVISION: Final = "--revision"
