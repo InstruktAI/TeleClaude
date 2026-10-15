@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 
 _WORKFLOW_STATUSES = (TodoStatus.ACTIVE, TodoStatus.ICEBOX)
 _RESERVED_TREE_PREFIX = "_"
+UNMARKED_STORE_LOG = "candidate scan skipped: the store is not activated yet, the next tick of the daemon activates it"
 
 
 @dataclass(frozen=True, order=True)
@@ -156,6 +157,10 @@ def _scan_finalize_ready_candidates(
     validation of those store candidates. Returns candidates sorted by ``(ready_at, slug)`` for stable FIFO ordering.
     """
     todos_db = get_workflow_store_sync(cwd)
+    in_place, marked = todos_db.read_activation_sync()
+    if not (in_place and marked):
+        logger.warning(UNMARKED_STORE_LOG, project_root=cwd)
+        return []
     excluded = _parked_candidate_closure(cwd, parked_slugs)
 
     trees_dir = Path(cwd) / WORKTREE_DIR

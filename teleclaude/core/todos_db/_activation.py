@@ -103,6 +103,10 @@ async def apply_rewrite(session: SqlAsyncSession, rewrite: RowRewrite, now: str)
 class TodosDbActivationMixin:
     """The activation mark and the transaction that records it."""
 
+    def read_activation_sync(self: _ActivationHost) -> tuple[bool, bool]:
+        """The same reading for a caller on a worker thread."""
+        return _schema_and_mark(self.db_path)
+
     async def read_activation(self: _ActivationHost) -> tuple[bool, bool]:
         """Whether the converted-row schema is in place and whether the store carries the completion mark."""
         return await asyncio.to_thread(_schema_and_mark, self.db_path)
