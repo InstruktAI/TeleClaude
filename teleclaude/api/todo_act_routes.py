@@ -21,7 +21,7 @@ from teleclaude.core.operations.todo_stamp import StampSubmission
 from teleclaude.core.workflow_machine.act_types import ActRefused, ActRequest
 from teleclaude.core.workflow_machine.acts import perform_act
 from teleclaude.core.workflow_machine.entry import EntryRefused, plan_child
-from teleclaude.core.workflow_machine.helpers import HelperStartRefused, register_helper_start, settle_helper_start
+from teleclaude.core.workflow_machine.helpers import HelperStartRefused
 from teleclaude.types.todo_act import TodoActApiRoute, TodoChildApiRoute, TodoStampApiRoute
 from teleclaude.types.workflow_record import Act
 
@@ -143,17 +143,11 @@ async def todo_child(
         raise HTTPException(status_code=_STATUS_FORBIDDEN, detail=_SESSION_REQUIRED)
     try:
         plan = await plan_child(cwd, item, identity.session_id)
-        start_key = await register_helper_start(cwd, item, identity.session_id)
-    except (EntryRefused, HelperStartRefused) as refusal:
-        raise HTTPException(status_code=_STATUS_REFUSED, detail=str(refusal)) from refusal
-    try:
         created = await run_pinned_session(
             RunSessionRequest(command=plan.procedure_id, args=plan.arguments, project=cwd, subfolder=plan.subfolder),
             identity,
             plan.declarations,
         )
-    except BaseException:
-        await settle_helper_start(cwd, item, start_key, "")
-        raise
-    await settle_helper_start(cwd, item, start_key, str(created.session_id))
+    except (EntryRefused, HelperStartRefused) as refusal:
+        raise HTTPException(status_code=_STATUS_REFUSED, detail=str(refusal)) from refusal
     return TodoChildResponse(status=_STATUS_OK, session_id=str(created.session_id), procedure=plan.procedure_id)

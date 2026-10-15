@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 from instrukt_ai_logging import get_logger
@@ -22,6 +21,7 @@ from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
+from teleclaude.core.process_identity import boot_session
 from teleclaude.core.workflow_machine.caller import group_sessions_of
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import PendingEffectItem
@@ -75,7 +75,6 @@ NO_HANDLER_LOG: Final = "workflow effect has no handler"
 NOT_FINISHED_LOG: Final = "workflow effect not finished yet; it stays pending and later effects of the item wait"
 CLOSE_WAIT_SECONDS: Final = 10.0
 CLOSE_POLL_SECONDS: Final = 0.25
-START_DEADLINE_SECONDS: Final = 120
 SWEEP_ROUNDS: Final = 6
 
 
@@ -257,14 +256,14 @@ async def _end_session(context: EffectContext, effect: PendingEffect) -> None:
 
 
 def _starts_in_flight(record: WorkflowRecord) -> bool:
-    """Whether a helper start was recorded and has neither named its session nor outlived the deadline."""
-    now = datetime.now(UTC)
-    for start in record.helper_starts:
-        if start.session_id:
-            continue
-        if now - datetime.fromisoformat(start.requested_at) < timedelta(seconds=START_DEADLINE_SECONDS):
-            return True
-    return False
+    """Whether a helper start was recorded by this daemon boot and no session has been named or withdrawn for it.
+
+    Time is no evidence that a creation ended. The creation runs in the process that recorded the start, so only that
+    process's end proves it can never produce a session; a start of an earlier boot is settled, and a session it
+    created is found by the listing of the holder's group.
+    """
+    boot = boot_session()
+    return any(not start.session_id and start.boot == boot for start in record.helper_starts)
 
 
 async def _sweep_helpers(context: EffectContext, effect: PendingEffect) -> None:
@@ -291,12 +290,22 @@ async def _ensure_worktree(context: EffectContext, effect: PendingEffect) -> Non
     await ensure_worktree_with_policy_async(context.project_root, context.item.slug)
 
 
+async def _creative_dispatch(context: EffectContext, effect: PendingEffect) -> None:
+    """The creative dispatch: its instruction was committed with the handoff and is given once this effect completes.
+
+    It runs only after the sweep has found nothing, so an instruction is never given while old helpers remain; the
+    effect has nothing else to do, and repeating it is safe.
+    """
+    _ = context, effect
+
+
 _HANDLERS: Final = {
     EffectKind.ENSURE_WORKTREE: _ensure_worktree,
     EffectKind.EMIT_EVENT: _emit_event,
     EffectKind.RELEASE_CLAIM: _release_claim,
     EffectKind.END_SESSION: _end_session,
     EffectKind.SWEEP_HELPERS: _sweep_helpers,
+    EffectKind.CREATIVE_DISPATCH: _creative_dispatch,
 }
 
 

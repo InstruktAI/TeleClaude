@@ -64,6 +64,7 @@ from teleclaude.core.session_snapshot import project_session_snapshot
 from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.session_utils import WorkingDirectoryUnavailableError, resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
+from teleclaude.core.workflow_machine.helpers import helper_start_fence
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.events.envelope import EventHomeMarker, EventVisibility
 from teleclaude.events.home_owner import EventHomeOwnerMarker
@@ -416,37 +417,39 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
 
     # Create session atomically with all known fields — the SESSION_STARTED
     # event must carry complete data so downstream consumers never see partial state.
-    session = await db.create_session(
-        computer_name=computer_name,
-        tmux_session_name=_UNBOUND_TMUX_NAME,
-        last_input_origin=last_input_origin,
-        title=title,
-        project_path=project_path,
-        subdir=subfolder,
-        config_subject=config_subject,
-        subject_owner=subject_owner,
-        session_id=session_id,
-        command=cmd.command,
-        working_slug=working_slug,
-        initiator_session_id=initiator_session_id,
-        initiator_computer=initiator_computer,
-        detached=cmd.skip_listener_registration,
-        human_email=human_email,
-        human_role=human_role,
-        principal=principal,
-        lifecycle_status="headless" if cmd.headless else "initializing",
-        role=cmd_role,
-        job=cmd_job,
-        company=company,
-        active_agent=launch.agent if launch else None,
-        thinking_mode=launch.thinking_mode if launch else None,
-        native_session_id=cmd.native_session_id or (launch.native_session_id if launch else None),
-        native_log_file=cmd.native_log_file,
-        origin_metadata=creation_metadata,
-        startup_intent=None if cmd.headless else launch,
-        procedure_delivery=cmd.procedure_delivery,
-        emit_session_started=False,
-    )
+    async with helper_start_fence(project_path, working_slug, initiator_session_id) as helper_fence:
+        session = await db.create_session(
+            computer_name=computer_name,
+            tmux_session_name=_UNBOUND_TMUX_NAME,
+            last_input_origin=last_input_origin,
+            title=title,
+            project_path=project_path,
+            subdir=subfolder,
+            config_subject=config_subject,
+            subject_owner=subject_owner,
+            session_id=session_id,
+            command=cmd.command,
+            working_slug=working_slug,
+            initiator_session_id=initiator_session_id,
+            initiator_computer=initiator_computer,
+            detached=cmd.skip_listener_registration,
+            human_email=human_email,
+            human_role=human_role,
+            principal=principal,
+            lifecycle_status="headless" if cmd.headless else "initializing",
+            role=cmd_role,
+            job=cmd_job,
+            company=company,
+            active_agent=launch.agent if launch else None,
+            thinking_mode=launch.thinking_mode if launch else None,
+            native_session_id=cmd.native_session_id or (launch.native_session_id if launch else None),
+            native_log_file=cmd.native_log_file,
+            origin_metadata=creation_metadata,
+            startup_intent=None if cmd.headless else launch,
+            procedure_delivery=cmd.procedure_delivery,
+            emit_session_started=False,
+        )
+        helper_fence.named(session.session_id)
 
     record_session_company_resolved(cmd.request_id, session.session_id, company, company_source, initiator_session_id)
     # An undetached AI-to-AI start establishes persistent supervision.

@@ -23,7 +23,7 @@ from teleclaude.core.next_machine.output_formatting import (
 )
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
 from teleclaude.core.workflow_machine.creative import CreativeCapability, open_episode
-from teleclaude.core.workflow_machine.creative_commit import open_creative_episode
+from teleclaude.core.workflow_machine.creative_commit import hand_off_to_creative, open_creative_episode
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -34,6 +34,13 @@ from teleclaude.core.workflow_store.store import get_workflow_store
 logger = get_logger(__name__)
 
 _IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".svg"})
+
+
+_CLAIM_CLOSING = (
+    "CLAIM_CLOSING: {slug}\n\n"
+    "Your claim is closing and the sessions you started are still ending. No instruction is given until they have;\n"
+    "call `telec todo design {slug}` again."
+)
 
 
 def _human_review_file_list(cwd: str, slug: str, folder: str, suffixes: set[str] | frozenset[str]) -> str:
@@ -347,6 +354,11 @@ async def next_create(db: Db, slug: str | None, cwd: str, caller_session_id: str
     phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
 
     logger.info("NEXT_CREATE_PHASE slug=%s phase=%s", resolved_slug, phase.value)
+    if caller_session_id and state.get("active_runner") == caller_session_id:
+        instruction = await _creative_instruction(db, resolved_slug, cwd, phase)
+        if await hand_off_to_creative(todos_db, resolved_slug, caller_session_id, instruction):
+            return instruction
+        return _CLAIM_CLOSING.format(slug=resolved_slug)
     if phase == CreativePhase.CREATIVE_COMPLETE:
         open_episode(resolved_slug, state, capability=CreativeCapability.DESIGN, caller_session_id=caller_session_id)
     else:

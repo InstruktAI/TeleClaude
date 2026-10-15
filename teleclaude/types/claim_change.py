@@ -50,4 +50,7 @@ def with_claim_change(payload: dict[str, StateValue], prior_holder: str | None) 
         event=EmittedEvent.CLAIM_CHANGED,
         params={PRIOR_HOLDER_PARAM: prior_holder or NO_HOLDER, HOLDER_PARAM: holder or NO_HOLDER},
     )
-    return {**payload, WORKFLOW_STATE_KEY: record.with_claim_change(effect).to_state()}
+    changed = record.with_claim_change(effect)
+    if prior_holder and prior_holder not in changed.claimers:
+        changed.claimers.append(prior_holder)
+    return {**payload, WORKFLOW_STATE_KEY: changed.to_state()}

@@ -9,12 +9,14 @@ on a start that cannot finish.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from teleclaude.core.db import db
 from teleclaude.core.next_machine._types import StateValue
-from teleclaude.core.workflow_machine.caller import group_sessions_of
+from teleclaude.core.process_identity import boot_session
+from teleclaude.core.workflow_machine.caller import group_sessions_of, in_claiming_group
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.events.envelope import occurrence_id
@@ -40,12 +42,14 @@ async def earlier_claim_sessions(record: WorkflowRecord, holder: str) -> tuple[s
     """The live sessions of every earlier claiming group the item records, outside the current holder's group.
 
     A claiming group is the claimer and every session started from it, transitively. The earlier claims are the ones
-    the item's ledger records; the current holder, the sessions it started and sessions already closed are not among
+    the item's ledger records and the holders its claim changes have displaced, which includes a claim the previous
+    machine made without any ledger act; the current holder, the sessions it started and sessions already closed are not among
     them.
     """
     current = {holder, *await group_sessions_of(holder)} if holder else set()
     found: list[str] = []
-    for claimer in dict.fromkeys(entry.session_id for entry in record.ledger if entry.act is Act.CLAIM):
+    recorded = [entry.session_id for entry in record.ledger if entry.act is Act.CLAIM]
+    for claimer in dict.fromkeys([*recorded, *record.claimers]):
         if not claimer or claimer in current:
             continue
         session = await db.get_session(claimer)
@@ -72,7 +76,9 @@ async def register_helper_start(project_root: str, item: str, caller_session_id:
         key = occurrence_id(
             project_root, item_id, START_ACT, str(record.claim_epoch), str(len(record.helper_starts)), _now()
         )
-        record.helper_starts.append(HelperStart(key=key, epoch=record.claim_epoch, requested_at=_now()))
+        record.helper_starts.append(
+            HelperStart(key=key, epoch=record.claim_epoch, requested_at=_now(), boot=boot_session())
+        )
         keys.append(key)
         return ItemChange(state={**current, WORKFLOW_STATE_KEY: record.to_state()})
 
@@ -100,3 +106,44 @@ async def settle_helper_start(project_root: str, item: str, key: str, session_id
         return ItemChange(state={**current, WORKFLOW_STATE_KEY: record.to_state()})
 
     await store.commit_item_change(item, expect_digests={}, mutate=mutate, updated_by=None)
+
+
+class HelperFence:
+    """The outcome of a creation inside a helper-start fence: the session it created, once there is one."""
+
+    def __init__(self) -> None:
+        self.session_id = ""
+
+    def named(self, session_id: str) -> None:
+        """Record the session the creation produced."""
+        self.session_id = session_id
+
+
+@asynccontextmanager
+async def helper_start_fence(
+    project_root: str, working_slug: str | None, initiator_session_id: str | None
+) -> AsyncIterator[HelperFence]:
+    """Record a session creation as a helper start when it is made from the group of an item's holder.
+
+    This is the common creation boundary, so it covers every session started from the holder, transitively, not only
+    the declared child: the item named by the new session's working slug is read, and when the resolved initiator is
+    the holder or descends from it, the start is recorded on the item in a conditional write before the session is
+    created. A closing claim or a holder who changed refuses the creation. The record names the created session, or is
+    withdrawn when none was created.
+    """
+    fence = HelperFence()
+    key = ""
+    if working_slug and initiator_session_id:
+        store = await get_workflow_store(project_root)
+        raw = await store.read_state(working_slug)
+        holder = TodoState.model_validate(raw).active_runner if raw is not None else None
+        if holder and await in_claiming_group(initiator_session_id, holder):
+            key = await register_helper_start(project_root, working_slug, holder)
+    try:
+        yield fence
+    except BaseException:
+        if key:
+            await settle_helper_start(project_root, working_slug or "", key, "")
+        raise
+    if key:
+        await settle_helper_start(project_root, working_slug or "", key, fence.session_id)

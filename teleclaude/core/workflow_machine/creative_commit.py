@@ -18,25 +18,31 @@ from teleclaude.types.workflow_record import ActStatus, EffectKind, PendingEffec
 HANDOFF_ACT: Final = "creative-handoff"
 EFFECT_SWEEP: Final = "sweep-helpers"
 EFFECT_RELEASE: Final = "release"
+EFFECT_DISPATCH: Final = "creative-dispatch"
+INSTRUCTION_PARAM: Final = "instruction"
 EFFECT_ID_TEMPLATE: Final = "{key}:{name}"
 SESSION_PARAM: Final = "session_id"
 WORKFLOW_PROJECT: Final = "workflow"
 
 
-def _closing_state(item: str, state: dict[str, StateValue], holder: str) -> dict[str, StateValue]:
-    """The state with the claim marked closing and the sweep and release recorded as pending effects."""
+def _closing_state(item: str, state: dict[str, StateValue], holder: str, instruction: str) -> dict[str, StateValue]:
+    """The state with the claim marked closing and the sweep, the dispatch and the release recorded as pending effects.
+
+    The dispatch is the durable intent: the instruction the creative lane gives is part of the commit, and the dispatch
+    effect completes only after the sweep found nothing, with the release of the claim last.
+    """
     record = TodoState.model_validate(state).workflow.model_copy(deep=True)
     if record.closing:
         return state
     key = occurrence_id(WORKFLOW_PROJECT, item, HANDOFF_ACT, str(record.claim_epoch))
-    for name, kind in ((EFFECT_SWEEP, EffectKind.SWEEP_HELPERS), (EFFECT_RELEASE, EffectKind.RELEASE_CLAIM)):
+    steps = (
+        (EFFECT_SWEEP, EffectKind.SWEEP_HELPERS, {SESSION_PARAM: holder}),
+        (EFFECT_DISPATCH, EffectKind.CREATIVE_DISPATCH, {SESSION_PARAM: holder, INSTRUCTION_PARAM: instruction}),
+        (EFFECT_RELEASE, EffectKind.RELEASE_CLAIM, {SESSION_PARAM: holder}),
+    )
+    for name, kind, params in steps:
         record.pending_effects.append(
-            PendingEffect(
-                id=EFFECT_ID_TEMPLATE.format(key=key, name=name),
-                act_key=key,
-                kind=kind,
-                params={SESSION_PARAM: holder},
-            )
+            PendingEffect(id=EFFECT_ID_TEMPLATE.format(key=key, name=name), act_key=key, kind=kind, params=params)
         )
     record.act_status[key] = ActStatus.IN_PROGRESS
     record.closing = True
@@ -51,7 +57,7 @@ def episode_mutation(
     caller_session_id: str,
     apply: Callable[[dict[str, StateValue]], dict[str, StateValue]] | None = None,
     *,
-    hand_off: bool = False,
+    dispatch: str | None = None,
 ) -> Callable[[dict[str, StateValue] | None], ItemChange | None]:
     """The change that decides the capability against the row it reads, opens the episode and applies the write's state.
 
@@ -62,8 +68,8 @@ def episode_mutation(
     def mutate(current: dict[str, StateValue] | None) -> ItemChange | None:
         opening = open_episode(item, current, capability=capability, caller_session_id=caller_session_id)
         state = apply(opening.state) if apply is not None else opening.state
-        if hand_off and caller_session_id and state.get(ACTIVE_RUNNER_STATE_KEY) == caller_session_id:
-            state = _closing_state(item, state, caller_session_id)
+        if dispatch is not None and caller_session_id and state.get(ACTIVE_RUNNER_STATE_KEY) == caller_session_id:
+            state = _closing_state(item, state, caller_session_id, dispatch)
         if state is current:
             return None
         return ItemChange(
@@ -76,18 +82,31 @@ def episode_mutation(
 async def open_creative_episode(
     store: WorkflowStore, item: str, capability: CreativeCapability, caller_session_id: str
 ) -> None:
-    """Open the item's creative episode for a capability that has no artifact or stamp of its own.
-
-    The holder of a preparation item hands the item to the creative lane instead: one commit opens the episode, marks
-    the claim closing and records the sweep of its helpers and the release of the claim as pending effects; the
-    dispatch completes only after the sweep found nothing, and the claim is released last.
-    """
-    mutate = episode_mutation(item, capability, caller_session_id, hand_off=True)
+    """Open the item's creative episode for a capability that has no artifact or stamp of its own."""
+    mutate = episode_mutation(item, capability, caller_session_id)
     await store.commit_item_change(
         item,
         expect_digests={},
         mutate=lambda current, _digests: mutate(current),
         updated_by=caller_session_id or None,
     )
-    if capability is CreativeCapability.DESIGN:
-        await reconcile_slug_supervised(str(store.project_root), item)
+
+
+async def hand_off_to_creative(store: WorkflowStore, item: str, holder: str, instruction: str) -> bool:
+    """The holder's creative handoff: one commit, then the sweep, the dispatch and the release in that order.
+
+    The commit opens the episode, converts a legacy phase, records the dispatch as a durable intent and marks the claim
+    closing. Whether the effects have all run is reported; when one cannot finish yet the instruction is not given, and
+    repeating the call after the sweep has settled completes the same handoff.
+    """
+    mutate = episode_mutation(item, CreativeCapability.DESIGN, holder, dispatch=instruction)
+    await store.commit_item_change(
+        item, expect_digests={}, mutate=lambda current, _digests: mutate(current), updated_by=holder
+    )
+    await reconcile_slug_supervised(str(store.project_root), item)
+    raw = await store.read_state(item)
+    if raw is None:
+        return False
+    state = TodoState.model_validate(raw)
+    owed = {EffectKind.SWEEP_HELPERS, EffectKind.CREATIVE_DISPATCH, EffectKind.RELEASE_CLAIM}
+    return state.active_runner != holder and not any(effect.kind in owed for effect in state.workflow.pending_effects)

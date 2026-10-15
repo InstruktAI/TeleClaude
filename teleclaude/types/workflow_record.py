@@ -99,6 +99,7 @@ class EffectKind(StrEnum):
     RELEASE_CLAIM = "release_claim"
     ENSURE_WORKTREE = "ensure_worktree"
     SWEEP_HELPERS = "sweep_helpers"
+    CREATIVE_DISPATCH = "creative_dispatch"
 
 
 class LedgerEntry(BaseModel):
@@ -295,7 +296,11 @@ class CreativeEpisode(BaseModel):
 
 
 class HelperStart(BaseModel):
-    """A helper start a holder recorded before it created the session; it names the session once that exists."""
+    """A helper start a holder recorded before it created the session; it names the session once that exists.
+
+    ``boot`` is the daemon boot that recorded it: the creation runs inside that process, so a start no session names
+    after that boot has ended can never produce one.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -303,6 +308,7 @@ class HelperStart(BaseModel):
     epoch: int
     requested_at: str
     session_id: str = ""
+    boot: str = ""
 
 
 class WorkflowRecord(BaseModel):
@@ -327,6 +333,7 @@ class WorkflowRecord(BaseModel):
     episode: CreativeEpisode | None = None
     closing: bool = False
     helper_starts: list[HelperStart] = Field(default_factory=list)
+    claimers: list[str] = Field(default_factory=list)
 
     def with_effect(self, effect: PendingEffect) -> WorkflowRecord:
         """A copy with the effect appended to the pending list."""

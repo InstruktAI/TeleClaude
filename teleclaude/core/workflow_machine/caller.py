@@ -69,13 +69,23 @@ async def child_sessions_of(holder_session_id: str) -> tuple[str, ...]:
 
 
 async def group_sessions_of(holder_session_id: str) -> tuple[str, ...]:
-    """Every open session started from the holder, transitively; the holder itself is not among them."""
-    found: list[str] = []
+    """Every open session started from the holder, transitively; the holder itself is not among them.
+
+    The persisted initiator links are followed through sessions that have already ended, so a live session started by
+    an ended helper is still found.
+    """
+    seen: set[str] = {holder_session_id}
+    live: list[str] = []
     frontier = [holder_session_id]
     while frontier:
-        started = await child_sessions_of(frontier.pop())
-        for session_id in started:
-            if session_id not in found and session_id != holder_session_id:
-                found.append(session_id)
-                frontier.append(session_id)
-    return tuple(found)
+        started = await db.list_sessions(
+            include_closed=True, include_headless=True, initiator_session_id=frontier.pop()
+        )
+        for session in started:
+            if session.session_id in seen:
+                continue
+            seen.add(session.session_id)
+            frontier.append(session.session_id)
+            if session.closed_at is None:
+                live.append(session.session_id)
+    return tuple(live)

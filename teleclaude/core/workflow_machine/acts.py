@@ -503,7 +503,9 @@ async def _resolve_facts(store: WorkflowStore, request: ActRequest, state: TodoS
         person_email=person.email if person is not None else NO_SESSION,
         person_authorized=person is not None and has_project_authority(person, request.project_root),
         waiting_digest=waiting.question_digest if waiting is not None else NO_SESSION,
-        earlier_sessions=await earlier_claim_sessions(state.workflow, holder or NO_SESSION)
+        earlier_sessions=await earlier_claim_sessions(
+            state.workflow, NO_SESSION if state.workflow.closing else (holder or NO_SESSION)
+        )
         if request.act is Act.DECISION
         else (),
     )
