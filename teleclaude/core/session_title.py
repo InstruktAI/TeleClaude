@@ -12,6 +12,7 @@ from teleclaude.core.models._session import ProcedureEntryKind
 from teleclaude.core.roles import Role, resolve_role
 from teleclaude.core.session_transcript import session_transcript
 from teleclaude.core.summarizer import generate_session_title
+from teleclaude.types.work_subject import WorkSubjectParameter
 from teleclaude.utils.transcript import extract_last_authored_exchange
 
 if TYPE_CHECKING:
@@ -23,7 +24,6 @@ logger = get_logger(__name__)
 
 _title_projection_signatures: dict[str, tuple[tuple[str, str], ...]] = {}
 _COMMAND_TITLE_TEMPLATE = "{command} {args}"
-_BRANCH_PARAMETER = "branch"
 _USER_ROLE = "user"
 _ASSISTANT_ROLE = "assistant"
 _REPLY_SEPARATOR = "\n\n"
@@ -38,7 +38,7 @@ def compose_command_session_title(
 ) -> str:
     """Render a command session title from its catalog role when available, otherwise its command."""
     if invocation is not None and invocation.entry_kind is ProcedureEntryKind.DIRECT:
-        args = dict(invocation.parameters).get(_BRANCH_PARAMETER, args)
+        args = dict(invocation.parameters).get(WorkSubjectParameter.BRANCH, args)
     resolved_role = resolve_role(role)
     title_identity = resolved_role.name.value if isinstance(resolved_role, Role) else command
     return _COMMAND_TITLE_TEMPLATE.format(command=title_identity, args=args).strip()

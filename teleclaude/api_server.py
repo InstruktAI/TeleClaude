@@ -104,13 +104,14 @@ from teleclaude.core.events import (
     SessionUpdatedContext,
     TeleClaudeEvents,
 )
-from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
+from teleclaude.core.models import JsonDict, MessageMetadata
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.relay_carrier import configure as configure_relay_carrier
 from teleclaude.core.relayed_request import configure as configure_relayed_request
 from teleclaude.core.session_lifecycle import LifecycleTransitionReason
+from teleclaude.core.session_snapshot import project_session_snapshot
 from teleclaude.core.shutdown_drain import CONTINUATION_HEADER, ShutdownRefusal, get_shutdown_drain
 from teleclaude.hooks.inbound import INBOUND_PATH_PREFIX
 from teleclaude.identity_reach import ReachCache
@@ -314,7 +315,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         if session.closed_at:
             self.cache.remove_session(context.session_id)
             return
-        snapshot = SessionSnapshot.from_db_session(session, computer=config.computer.name)
+        snapshot = await project_session_snapshot(db, session, computer=config.computer.name)
         self.cache.update_session(snapshot)
 
     async def _handle_session_started_event(
@@ -329,7 +330,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         session = await db.get_session(context.session_id)
         if not session:
             return
-        snapshot = SessionSnapshot.from_db_session(session, computer=config.computer.name)
+        snapshot = await project_session_snapshot(db, session, computer=config.computer.name)
         self.cache.update_session(snapshot)
 
     async def _handle_session_closed_event(
@@ -357,7 +358,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         session = await db.get_session(context.session_id)
         if session is None:
             return
-        snapshot = SessionSnapshot.from_db_session(session, computer=config.computer.name)
+        snapshot = await project_session_snapshot(db, session, computer=config.computer.name)
         close_failed = context.reason == LifecycleTransitionReason.CLOSE_FAILED
         if close_failed and self.cache:
             # The failed close restored the record; the snapshot below must carry that state.
@@ -385,7 +386,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         session = await db.get_session(session_id)
         if session is None:
             return []
-        snapshot = SessionSnapshot.from_db_session(session, computer=config.computer.name)
+        snapshot = await project_session_snapshot(db, session, computer=config.computer.name)
         return self._session_event_targets(snapshot)
 
     async def _handle_agent_activity_event(

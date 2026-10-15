@@ -22,6 +22,7 @@ from teleclaude.core.session_status import (
 )
 from teleclaude.cron_status import JobRunStatus
 from teleclaude.session_fields import SESSION_PRINCIPAL_FIELD, SessionDTOIdentityFields, SessionDTOTimestampFields
+from teleclaude.types.github_issue import GITHUB_ISSUE_FIELD, GitHubIssueReference
 from teleclaude.types.todo_kind import TODO_KIND_USAGE, TodoKind
 
 _TODO_KIND_FIELD = "kind"
@@ -207,6 +208,7 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
     person_chip: PersonChipDTO | None = None
     command: str | None = None
     working_slug: str | None = None
+    github_issue: GitHubIssueReference | None = None
     thinking_mode: str | None = None
     active_agent: str | None = None
     status: str
@@ -237,6 +239,7 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
                 _SESSION_SUBJECT_OWNER_FIELD: session.subject_owner,
                 "command": session.command,
                 "working_slug": session.working_slug,
+                GITHUB_ISSUE_FIELD: session.github_issue,
                 "thinking_mode": session.thinking_mode,
                 "active_agent": session.active_agent,
                 "status": session.status,
