@@ -383,6 +383,8 @@ def _decide_stamp(request: ActRequest, facts: _Facts, state: TodoState, reading:
 
 
 def _decide_release(request: ActRequest, facts: _Facts, state: TodoState, reading: PhaseReading) -> _Decision:
+    if reading.phase is None:
+        raise _refuse(Refusal.TASK_LANE, act=request.act.value)
     return _Decision(bound=facts.caller.session_id, effects=(_release_effect(facts.caller.session_id),))
 
 

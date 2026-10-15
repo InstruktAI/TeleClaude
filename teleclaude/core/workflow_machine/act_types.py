@@ -24,6 +24,7 @@ class Refusal(StrEnum):
     HOLDER_CHANGED = "{act}: the item's holder changed while the act was being decided; repeat the act"
     NOT_PERFORMED_HERE = "{act} is not performed through the act command"
     REVISION_MOVED = "{act}: the {artifact} is at {actual}, not at the {expected} the act names"
+    TASK_LANE = "{act} does not apply to a todo of the task lane, which the task procedures drive"
     STAMP_IN_FLIGHT = "{act}: another stamp is running its gates on this item; repeat once it has settled"
     STAMP_SLOT_LOST = "{act}: this invocation no longer owns the stamp slot; repeat the act"
     WAIT_REQUIRED = "{act}: name the wait this answers with --wait; the waiting act reported its key"
