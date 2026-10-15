@@ -109,6 +109,7 @@ from teleclaude.utils.transcript_discovery import discover_transcripts, extract_
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
 from teleclaude.types.commands import SystemCommand
 
 logger = get_logger(__name__)
@@ -724,6 +725,14 @@ PLATFORM_IDENTITY = CallerIdentity(
 PLATFORM_RUN_MISMATCH = "session {session} exists but is not the platform start of {command} in {project}"
 
 
+def platform_run_matches(existing: Session, request: RunSessionRequest) -> bool:
+    """Whether an existing session is the platform's own run of this request: same command, same project, no initiator."""
+    same_project = (
+        bool(existing.project_path) and Path(str(existing.project_path)).resolve() == Path(request.project).resolve()
+    )
+    return existing.command == request.command and not existing.initiator_session_id and same_project
+
+
 async def run_platform_session(request: RunSessionRequest, *, session_id: str) -> CreateSessionResponseDTO:
     """The platform's own idempotent session start, in process, under a session identity it chose.
 
@@ -735,10 +744,7 @@ async def run_platform_session(request: RunSessionRequest, *, session_id: str) -
         return await _run_session(
             request, PLATFORM_IDENTITY, entry_point=SessionEntryPoint.RUN_SESSION_API, fixed_session_id=session_id
         )
-    same_project = (
-        bool(existing.project_path) and Path(str(existing.project_path)).resolve() == Path(request.project).resolve()
-    )
-    if existing.command != request.command or existing.initiator_session_id or not same_project:
+    if not platform_run_matches(existing, request):
         raise RunSessionRefusal(
             status_code=409,
             detail=PLATFORM_RUN_MISMATCH.format(session=session_id, command=request.command, project=request.project),

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from teleclaude.core.db import db
 from teleclaude.events.envelope import occurrence_id
+from teleclaude.types.workflow_record import EffectKind, WorkflowRecord
 
 ORCHESTRATOR_IDENTITY = "creative-orchestrator"
 
@@ -37,6 +38,7 @@ def orchestrator_session_id(project_root: str, todo_id: str, effect_id: str) -> 
 async def start_orchestrator(spec: OrchestratorSpec, session_id: str) -> str:
     """Start the creative orchestrator under ``session_id`` unless that session already exists; return its identity."""
     from teleclaude.api.sessions_actions_routes import (  # noqa: PLC0415 - deferred cycle: the routes read this package
+        platform_run_matches,
         run_platform_session,
     )
     from teleclaude.api_models import RunSessionRequest  # noqa: PLC0415 - deferred cycle: the models read this package
@@ -45,6 +47,21 @@ async def start_orchestrator(spec: OrchestratorSpec, session_id: str) -> str:
     try:
         await run_platform_session(request, session_id=session_id)
     except Exception:
-        if await db.get_session(session_id) is None:
+        existing = await db.get_session(session_id)
+        if existing is None or not platform_run_matches(existing, request):
             raise
     return session_id
+
+
+def accepted_orchestrators(project_root: str, todo_id: str, record: WorkflowRecord) -> set[str]:
+    """The creative orchestrators the item's handoffs have accepted: the recorded ones and the ones about to be.
+
+    A pending dispatch effect already fixes the identity of the session it starts, so the orchestrator is known to the
+    item before the effect records it, and before the claim is released.
+    """
+    pending = {
+        orchestrator_session_id(project_root, todo_id, effect.id)
+        for effect in record.pending_effects
+        if effect.kind is EffectKind.CREATIVE_DISPATCH
+    }
+    return pending | set(record.dispatch_workers)
