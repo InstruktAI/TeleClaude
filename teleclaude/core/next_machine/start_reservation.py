@@ -40,12 +40,16 @@ def reservation_mark(session_id: str, prior: ReservedPrior) -> HoldAuditState:
     )
 
 
-def reserved_prior_of(audit: HoldAuditState, session_id: str) -> ReservedPrior | None:
-    """What the reservation for this session replaced, when the audit is still that reservation\'s mark."""
+def _prior_in_mark(audit: HoldAuditState) -> ReservedPrior | None:
     head, separator, body = audit.reason.partition(_REASON_SEPARATOR)
-    if head != START_RESERVED_REASON or not separator or audit.set_by_session_id != session_id:
+    if head != START_RESERVED_REASON or not separator:
         return None
     return ReservedPrior.model_validate_json(body)
+
+
+def reserved_prior_of(audit: HoldAuditState, session_id: str) -> ReservedPrior | None:
+    """What the reservation for this session replaced, when the audit is still that reservation\'s mark."""
+    return _prior_in_mark(audit) if audit.set_by_session_id == session_id else None
 
 
 def record_reservation(writer: StateWriter, session_id: str, *, clears_hold: bool, task_run: bool) -> None:
@@ -54,11 +58,30 @@ def record_reservation(writer: StateWriter, session_id: str, *, clears_hold: boo
     The same mutation records the prior values, so the reservation and its undo are one write.
     """
     state = writer.state
-    prior = ReservedPrior(
-        hold=state.hold,
-        audit=state.hold_audit.model_copy(deep=True),
-        phase=state.lifecycle_phase.value if task_run else "",
-    )
+    left_over = _prior_in_mark(state.hold_audit)
+    if left_over is not None:
+        # A mark an earlier start left behind (it died before settling): the row\'s true prior values are the ones the
+        # mark carries, so a new reservation records those rather than the mark itself.
+        prior = ReservedPrior(
+            hold=left_over.hold,
+            audit=left_over.audit,
+            phase=left_over.phase
+            or (
+                state.lifecycle_phase.value
+                if task_run and state.lifecycle_phase is not LifecyclePhase.TASK_RUNNING
+                else ""
+            ),
+        )
+        state.hold = left_over.hold
+        state.hold_audit = left_over.audit.model_copy(deep=True)
+        if left_over.phase and state.lifecycle_phase is LifecyclePhase.TASK_RUNNING:
+            state.lifecycle_phase = LifecyclePhase(left_over.phase)
+    else:
+        prior = ReservedPrior(
+            hold=state.hold,
+            audit=state.hold_audit.model_copy(deep=True),
+            phase=state.lifecycle_phase.value if task_run else "",
+        )
     restorable = (clears_hold and (state.hold or state.hold_audit != HoldAuditState())) or task_run
     if clears_hold:
         state.hold = False

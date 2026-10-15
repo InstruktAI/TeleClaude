@@ -62,7 +62,6 @@ from teleclaude.core.workflow_machine.single_claim import (
     event_facts,
     judge,
     read_item_facts,
-    session_is_single_claim,
 )
 from teleclaude.docs_subscriptions import (
     ProcedureDeliverySettings,
@@ -373,24 +372,6 @@ async def _item_for_home(folder: Path, facts: EventFacts) -> ItemFacts | None:
     return await read_item_facts(folder, facts.slug)
 
 
-async def _is_single_claim_activation(
-    cmd: ActivateProcedureCommand, home: ActivationHome, folder: Path, initialization: DriverInitialization
-) -> bool:
-    """Whether this activation is handled as a single-claim responsibility, by one captured initialization.
-
-    A new request is resolved by the one initialization captured for this activation, whatever mode an older session
-    bound to the item was initialized with; each session keeps its own recorded mode for its lifetime. A notice goes
-    to the session that holds the item, so it follows that session\'s recorded mode; with none open, the captured
-    initialization decides.
-    """
-    if event_facts(cmd.event_json).is_request:
-        return declares_single_claim(initialization.declarations)
-    open_session, _closed = await _find_bound_sessions(cmd.procedure_id, home, folder, _subject_token(cmd))
-    if open_session is not None:
-        return session_is_single_claim(open_session)
-    return declares_single_claim(initialization.declarations)
-
-
 async def _resolve_single_claim(
     cmd: ActivateProcedureCommand,
     activation: ProcedureEventRecord,
@@ -501,8 +482,8 @@ async def activate(cmd: ActivateProcedureCommand) -> ProcedureActivationResult:
         try:
             folder = _home_folder(home)
             initialization = driver_initialization(procedure_id)
-            single_claim = cmd.identity is SubscriptionIdentity.SUBJECT and await _is_single_claim_activation(
-                cmd, home, folder, initialization
+            single_claim = cmd.identity is SubscriptionIdentity.SUBJECT and declares_single_claim(
+                initialization.declarations
             )
             if single_claim:
                 decided = await _resolve_single_claim(cmd, activation, home, folder, initialization)
