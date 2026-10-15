@@ -68,6 +68,11 @@ def _read_remote_head(project_root: str, item: str) -> str:
     return parts[0] if parts else NO_HEAD
 
 
+def integration_head_sync(project_root: str, item: str) -> str:
+    """The same bounded read for a caller on a worker thread; raises ``RemoteReadFailed`` when the remote cannot be read."""
+    return _read_remote_head(project_root, item)
+
+
 async def integration_head(project_root: str, item: str) -> str:
     """The commit the item's integration ref carries now; empty when it does not exist.
 

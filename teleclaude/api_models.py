@@ -24,6 +24,7 @@ from teleclaude.cron_status import JobRunStatus
 from teleclaude.session_fields import SESSION_PRINCIPAL_FIELD, SessionDTOIdentityFields, SessionDTOTimestampFields
 from teleclaude.types.github_issue import GITHUB_ISSUE_FIELD, GitHubIssueReference
 from teleclaude.types.todo_kind import TODO_KIND_USAGE, TodoKind
+from teleclaude.types.todo_standing import TodoStandingDTO
 
 _TODO_KIND_FIELD = "kind"
 _SESSION_SUBJECT_OWNER_FIELD = "subject_owner"
@@ -371,6 +372,7 @@ class TodoDTO(BaseModel):
     human_involved: bool = False
     context: str | None = None
     person_chip: PersonChipDTO | None = None
+    standing: TodoStandingDTO | None = None
 
 
 class BugListEntryDTO(BaseModel):

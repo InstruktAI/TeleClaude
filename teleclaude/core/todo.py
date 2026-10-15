@@ -23,10 +23,11 @@ from teleclaude.core.next_machine.lifecycle import (
     prepare_review_verdict_from_state,
     require_lifecycle_phase,
 )
+from teleclaude.core.workflow_machine.held_standing import held_ready_standing
 from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.types.claim_change import workflow_record_of
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY, TodoState
+from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY, HoldAuditSource, TodoState
 
 logger = get_logger(__name__)
 
@@ -111,6 +112,16 @@ def parse_since_to_cutoff(value: str) -> str:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC).isoformat()
+
+
+def _public_hold_source(hold_audit: StateValue) -> str | None:
+    """What set the hold, as the audit records it; a start\'s reservation mark is internal and reports nothing."""
+    if not isinstance(hold_audit, dict):
+        return None
+    source = hold_audit.get(_ProjectionStateKey.HOLD_SOURCE)
+    if not isinstance(source, str) or source == HoldAuditSource.START_RESERVATION:
+        return None
+    return source
 
 
 def _non_empty_str(value: object) -> str | None:
@@ -594,11 +605,7 @@ def assemble_todo_from_db(
                 prepare_review_verdict=projection.prepare_review_verdict,
                 hold=bool(state.get(_ProjectionStateKey.HOLD)),
                 held=held,
-                hold_source=(
-                    str(hold_audit.get(_ProjectionStateKey.HOLD_SOURCE))
-                    if isinstance(hold_audit, dict) and isinstance(hold_audit.get(_ProjectionStateKey.HOLD_SOURCE), str)
-                    else None
-                ),
+                hold_source=_public_hold_source(hold_audit),
                 active_runner=(
                     str(state.get(_ProjectionStateKey.ACTIVE_RUNNER))
                     if isinstance(state.get(_ProjectionStateKey.ACTIVE_RUNNER), str)
@@ -618,6 +625,7 @@ def assemble_todo_from_db(
                 entry_point=item.entry_point,
                 human_involved=item.human_involved,
                 context=item.context,
+                standing=held_ready_standing(project_path, slug, state),
             )
         )
         todo_build_total_dt += time.perf_counter() - build_started_at
