@@ -23,6 +23,7 @@ from teleclaude.core.workflow_machine.act_types import ActRefused, ActRequest, A
 from teleclaude.core.workflow_machine.authority import configured_person, has_project_authority
 from teleclaude.core.workflow_machine.caller import CallerFacts, child_sessions_of, in_claiming_group, load_caller
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
+from teleclaude.core.workflow_machine.heads import observe_item_supervised
 from teleclaude.core.workflow_machine.phase_reading import PhaseReading, read_phase
 from teleclaude.core.workflow_machine.stamp import run_stamp
 from teleclaude.core.workflow_machine.vocabulary import ACT_PERFORMERS, Performer
@@ -510,6 +511,7 @@ async def perform_act(request: ActRequest) -> ActResult:
         raise _refuse(Refusal.NOT_PERFORMED_HERE, act=request.act.value)
     state = TodoState.model_validate(raw)
     facts = await _resolve_facts(store, request, state)
+    await observe_item_supervised(request.project_root, request.item)
     key = _act_key(request, facts.item_id)
     if key not in state.workflow.act_status:
         _authorize(request, facts)

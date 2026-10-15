@@ -54,7 +54,9 @@ class PhaseReading:
 def read_phase(state: TodoState, *, integration_head: str, creative_incomplete: bool) -> PhaseReading:
     """Read the item's phase.
 
-    ``integration_head`` is the commit the integration ref carries now, or empty when it is unknown.
+    ``integration_head`` is the commit the integration ref carries now, or empty when it is unknown. A stamp
+    whose commit is no longer the head is stale: the item reads as work again, and a stamp at the new head
+    is required (``local/projects/teleclaude/spec/feature/workflow/work-review-cycle``).
     ``creative_incomplete`` is the creative lane's answer for an item it has not finished.
     """
     stored = state.lifecycle_phase
@@ -66,6 +68,8 @@ def read_phase(state: TodoState, *, integration_head: str, creative_incomplete: 
         return PhaseReading(phase=Phase.DESIGN)
     if stored is LifecyclePhase.READY:
         stamp = state.workflow.stamp
+        if stamp is not None and integration_head and stamp.sha != integration_head:
+            return PhaseReading(phase=Phase.WORK)
         return PhaseReading(
             phase=Phase.READY,
             ready_sha=stamp.sha if stamp else "",

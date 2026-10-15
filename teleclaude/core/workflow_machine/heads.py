@@ -21,7 +21,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.roles import RoleName
 from teleclaude.core.workflow_machine.caller import in_claiming_group, load_caller
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
-from teleclaude.core.workflow_machine.stamp import integration_head
+from teleclaude.core.workflow_machine.stamp import NO_HEAD, RemoteReadFailed, integration_head
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.events.envelope import occurrence_id
@@ -62,6 +62,8 @@ DISCOVERY_FAILED_LOG: Final = "head discovery failed for an item"
 DISCOVERY_PROJECT_FAILED_LOG: Final = "head discovery failed for a project"
 DISCOVERY_ITEM_TIMEOUT_SECONDS: Final = 20
 DISCOVERY_CONCURRENCY: Final = 8
+HEAD_READ_FAILED_LOG: Final = "integration head could not be read for a phase reading"
+HEAD_COMPARED_PHASES: Final = frozenset({LifecyclePhase.READY, LifecyclePhase.REVIEW_APPROVED})
 
 
 @dataclass(frozen=True)
@@ -109,6 +111,22 @@ async def _may_report(store: WorkflowStore, request: IntentRequest, state: TodoS
     return await in_claiming_group(caller.session_id, holder) and (
         caller.session_id == holder or caller.role == RoleName.BUILDER
     )
+
+
+async def observed_head(project_root: str, item: str) -> str:
+    """The integration head for a phase reading; empty, with the failure logged, when it cannot be read."""
+    try:
+        return await integration_head(project_root, item)
+    except RemoteReadFailed:
+        logger.exception(HEAD_READ_FAILED_LOG, slug=item, project_root=project_root)
+        return NO_HEAD
+
+
+async def reading_head(project_root: str, item: str, state: TodoState) -> str:
+    """The integration head a phase reading needs: read only for the phases whose reading compares it."""
+    if state.lifecycle_phase not in HEAD_COMPARED_PHASES:
+        return NO_HEAD
+    return await observed_head(project_root, item)
 
 
 async def register_publish_intent(request: IntentRequest) -> str:
@@ -210,6 +228,14 @@ async def _discover_bounded(project_root: str, item: str, gate: asyncio.Semaphor
             await asyncio.wait_for(discover_item_head(project_root, item), DISCOVERY_ITEM_TIMEOUT_SECONDS)
         except Exception:  # supervision boundary: one unreadable or slow item must not stop the others or the daemon
             logger.exception(DISCOVERY_FAILED_LOG, slug=item, project_root=project_root)
+
+
+async def observe_item_supervised(project_root: str, item: str) -> None:
+    """Read one item's integration head when a machine call touches it; a failure is logged and never fails the call."""
+    try:
+        await asyncio.wait_for(discover_item_head(project_root, item), DISCOVERY_ITEM_TIMEOUT_SECONDS)
+    except Exception:  # supervision boundary: observation must never fail the call that triggered it
+        logger.exception(DISCOVERY_FAILED_LOG, slug=item, project_root=project_root)
 
 
 async def discover_project_heads(project_root: str) -> None:

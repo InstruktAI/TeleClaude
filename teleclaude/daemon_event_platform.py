@@ -23,7 +23,7 @@ from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.procedure_routing import build_procedure_activation_consumer
 from teleclaude.core.reconciliation import FleetCapabilityMap, contraction_answer_from_live_map
 from teleclaude.core.session_cleanup import terminate_session
-from teleclaude.core.workflow_machine.reconciler_consumer import build_effect_reconciler_consumer
+from teleclaude.core.workflow_machine.reconciler_consumer import build_effect_reconciler_consumer, observe_and_reconcile
 from teleclaude.events import (
     Consumer,
     ConsumerRuntime,
@@ -76,6 +76,7 @@ _RETIRED_GROUP_DESTROYED_EVENT = "Retired system pipeline consumer group destroy
 _RETIRED_GROUP_ABSENT_EVENT = "No stream yet; no retired system pipeline consumer group to destroy"
 _INTERNAL_EVENT_BUS_TASK_NAME = "internal-event-bus"
 _TASK_SCHEDULE_CLOCK_TASK_NAME = "task-schedule-clock"
+_STARTUP_OBSERVATION_TASK = "workflow-startup-observation"
 _EVENT_CONSUMERS_STARTED_EVENT = "Event consumer runtime started"
 _MEMORY_TRANSITION_TASK_NAME = "memory-transition"
 _MEMORY_TRANSITION_LOG_TASK_NAME = "memory_transition"
@@ -195,6 +196,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             computer=config.computer.name,
         )
         self._event_consumer_tasks = runtime.supervise(self.task_registry, self.shutdown_event)
+        self.task_registry.spawn(observe_and_reconcile(), name=_STARTUP_OBSERVATION_TASK)
         logger.info(_EVENT_CONSUMERS_STARTED_EVENT, consumers=[consumer.name for consumer in consumers])
 
     def _start_relay_delivery_consumer(self, dispatcher: HookDispatcher) -> None:

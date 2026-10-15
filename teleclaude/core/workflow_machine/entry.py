@@ -22,6 +22,7 @@ from teleclaude.core.db import db
 from teleclaude.core.workflow_machine.caller import child_sessions_of, load_caller
 from teleclaude.core.workflow_machine.dependencies import unmet_for_preparation, unmet_for_work
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
+from teleclaude.core.workflow_machine.heads import observe_item_supervised, reading_head
 from teleclaude.core.workflow_machine.instruction import InstructionFacts, render_instruction
 from teleclaude.core.workflow_machine.phase_reading import PhaseReading, read_phase
 from teleclaude.core.workflow_machine.publication import (
@@ -89,6 +90,7 @@ class EntryRequest:
     item: str
     verb: EntryVerb
     caller_session_id: str
+    integration_head: str = ""
 
 
 @dataclass(frozen=True)
@@ -213,7 +215,7 @@ def _apply_claim(
     if state_dict is None:
         raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
     state = TodoState.model_validate(state_dict)
-    reading = read_phase(state, integration_head=NO_SESSION, creative_incomplete=False)
+    reading = read_phase(state, integration_head=request.integration_head, creative_incomplete=False)
     phase = _check_drivable(request, state, reading)
     holder = state.active_runner or None
     if holder is not None:
@@ -233,6 +235,8 @@ def _apply_claim(
     )
     record.ledger.append(entry)
     record.launch = None
+    if state.lifecycle_phase is LifecyclePhase.READY:
+        record.stamp = None
     effects: list[PendingEffect] = []
     if phase in (Phase.PREPARED, Phase.WORK):
         effects.append(
@@ -249,7 +253,7 @@ def _apply_claim(
         WORKFLOW_STATE_KEY: record.to_state(),
         ACTIVE_RUNNER_STATE_KEY: request.caller_session_id,
     }
-    if phase is Phase.PREPARED:
+    if phase is Phase.PREPARED or state.lifecycle_phase is LifecyclePhase.READY:
         new_state[LIFECYCLE_PHASE_STATE_KEY] = LifecyclePhase.WORK.value
     return ItemChange(state=new_state, log_entry=_claim_log(entry, request.item))
 
@@ -272,7 +276,7 @@ def _apply_reservation(
     if state_dict is None:
         raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
     state = TodoState.model_validate(state_dict)
-    reading = read_phase(state, integration_head=NO_SESSION, creative_incomplete=False)
+    reading = read_phase(state, integration_head=request.integration_head, creative_incomplete=False)
     _check_drivable(request, state, reading)
     holder = state.active_runner or None
     if holder is not None:
@@ -385,7 +389,11 @@ async def enter(request: EntryRequest) -> EntryResult:
     holder = state.active_runner or None
     if holder is not None and holder != request.caller_session_id:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
-    phase = _check_drivable(request, state, read_phase(state, integration_head=NO_SESSION, creative_incomplete=False))
+    await observe_item_supervised(request.project_root, request.item)
+    request = replace(request, integration_head=await reading_head(request.project_root, request.item, state))
+    phase = _check_drivable(
+        request, state, read_phase(state, integration_head=request.integration_head, creative_incomplete=False)
+    )
     unmet = await _unmet_dependencies(store, request.item, request.verb)
     if unmet and holder is None:
         raise _refuse(EntryRefusal.UNMET_DEPENDENCIES, item=request.item, dependencies=DEPENDENCY_SEPARATOR.join(unmet))

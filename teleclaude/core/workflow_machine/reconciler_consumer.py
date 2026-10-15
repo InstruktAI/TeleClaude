@@ -21,7 +21,7 @@ EFFECT_RECONCILER_CONSUMER: Final = "workflow-effect-reconciler"
 RECONCILE_PAUSED_LOG: Final = "workflow effect reconciliation paused while draining"
 
 
-async def _on_tick(_event: ReceivedEvent) -> None:
+async def observe_and_reconcile() -> None:
     """Read the integration heads of items in work, then reconcile every local checkout; failures are contained per item."""
     if not get_shutdown_drain().is_open:
         logger.debug(RECONCILE_PAUSED_LOG)
@@ -29,6 +29,10 @@ async def _on_tick(_event: ReceivedEvent) -> None:
     for project_root in await local_checkout_paths():
         await discover_project_heads_supervised(project_root)
         await reconcile_project_supervised(project_root)
+
+
+async def _on_tick(_event: ReceivedEvent) -> None:
+    await observe_and_reconcile()
 
 
 def build_effect_reconciler_consumer() -> Consumer:
