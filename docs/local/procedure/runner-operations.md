@@ -26,9 +26,9 @@ Operate and maintain the self-hosted GitHub Actions runner on MozMini (Mac Mini)
   proof each run inside a disposable virtual machine created from it.
 - The runner executes those two jobs one at a time, so the host runs at most
   one such macOS machine, at the processor and memory allocation its workflow
-  declares. The Fleet's Linux guest partition, qualified under the release
-  execution steps below, leaves that allocation and the host's own reserve
-  free, because the macOS machine and the Fleet's guests run concurrently.
+  declares. That machine runs concurrently with the Fleet's Linux guests. The
+  Fleet's guest partition, qualified under the release execution steps below,
+  leaves that allocation and the host's own reserve free.
 
 <!-- /planned:full-acceptance-on-self-hosted-runner -->
 
