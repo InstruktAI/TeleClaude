@@ -327,6 +327,9 @@ def _decide_decision(request: ActRequest, facts: _Facts, state: TodoState, readi
 
 def _decide_kickback(request: ActRequest, facts: _Facts, state: TodoState, reading: PhaseReading) -> _Decision:
     _require_phase(request, reading, (Phase.WORK, Phase.READY))
+    admitted = state.workflow.admitted
+    if admitted is not None:
+        raise _refuse(Refusal.ADMITTED, act=request.act.value, sha=admitted.sha)
     reason = _require(request, request.text, ARGUMENT_TEXT)
 
     def record(current: WorkflowRecord) -> WorkflowRecord:

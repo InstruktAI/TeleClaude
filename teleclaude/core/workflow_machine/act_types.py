@@ -36,6 +36,7 @@ class Refusal(StrEnum):
     READY_HOLD = (
         "{act} cannot be performed while the item is held as ready: only kickback, release and note are admitted"
     )
+    ADMITTED = "{act}: the item is admitted by the integrator at {sha}; the integrator delivers or parks it"
     INSTRUCTION_REQUIRED = (
         "{act}: a held ready item is released with the key of the instruction you received; "
         "call `telec todo work {item}` for it and repeat with --instruction"
