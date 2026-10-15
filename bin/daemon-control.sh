@@ -33,6 +33,9 @@ fi
 source "$SCRIPT_DIR/init/install_services.sh"
 CRON_TIMER_UNIT="${CRON_LABEL}.timer"
 CRON_SERVICE_UNIT="${CRON_LABEL}.service"
+# The Linux config watcher the service installer deploys: it starts the daemon when config.yml changes, even
+# while the service unit is disabled, so stopping the service alone does not hold the daemon stopped.
+CONFIG_WATCHER_UNIT="${SERVICE_LABEL}-config.path"
 _SYSTEMD_ACTIVE_STATE="active"
 _SYSTEMD_INACTIVE_STATE="inactive"
 _SYSTEMD_FAILED_STATE="failed"
@@ -618,6 +621,10 @@ start_daemon() {
                 log_error "Failed to activate the periodic job timer: $CRON_TIMER_UNIT"
                 return 1
             fi
+            if ! restore_config_watcher; then
+                stop_startup_log_stream
+                return 1
+            fi
         fi
         stop_startup_log_stream
         if [ -f "$PID_FILE" ]; then
@@ -786,6 +793,51 @@ systemd_unit_active() {
     esac
 }
 
+# Whether the config watcher unit is installed on this machine; a machine without it owes no watcher action.
+config_watcher_installed() {
+    local load_state=""
+    load_state="$(systemctl show "$CONFIG_WATCHER_UNIT" --property=LoadState --value 2>/dev/null || true)"
+    [ "$load_state" = "loaded" ]
+}
+
+# Stops the installed config watcher and verifies it inactive. Installation and enablement are left unchanged.
+stop_config_watcher() {
+    local state_rc=0
+    if ! config_watcher_installed; then
+        return 0
+    fi
+    systemd_unit_active "$CONFIG_WATCHER_UNIT" || state_rc=$?
+    if [ "$state_rc" -eq 1 ]; then
+        return 0
+    fi
+    if ! _tc_sudo "stop the config watcher" systemctl stop "$CONFIG_WATCHER_UNIT"; then
+        log_error "The service manager refused to stop $CONFIG_WATCHER_UNIT"
+        return 1
+    fi
+    state_rc=0
+    systemd_unit_active "$CONFIG_WATCHER_UNIT" || state_rc=$?
+    if [ "$state_rc" -ne 1 ]; then
+        log_error "The config watcher $CONFIG_WATCHER_UNIT remains active after stop"
+        return 1
+    fi
+    return 0
+}
+
+# Restores an installed, enabled config watcher once the daemon is up; installation and enablement are not touched.
+restore_config_watcher() {
+    if ! config_watcher_installed; then
+        return 0
+    fi
+    if ! systemctl is-enabled --quiet "$CONFIG_WATCHER_UNIT"; then
+        return 0
+    fi
+    if ! _tc_sudo "restore the config watcher" systemctl start "$CONFIG_WATCHER_UNIT"; then
+        log_error "Failed to restore the config watcher: $CONFIG_WATCHER_UNIT"
+        return 1
+    fi
+    return 0
+}
+
 stop_systemd_periodic_units() {
     local timer_state=0
     local service_state=0
@@ -837,6 +889,7 @@ stop_daemon() {
     local entry
     local prepare_rc=0
     local periodic_cleanup_failed=0
+    local watcher_stop_failed=0
 
     prepare_daemon_for_shutdown || prepare_rc=$?
     if [ "$prepare_rc" -eq "$PREPARE_DEFERRED_RETURN" ]; then
@@ -854,6 +907,12 @@ stop_daemon() {
     if [ "$PLATFORM" != "macos" ] && ! stop_systemd_periodic_units; then
         log_error "Periodic job unit cleanup failed; continuing daemon shutdown"
         periodic_cleanup_failed=1
+    fi
+
+    # The watcher goes first: while it is active, a config change can start the daemon that is being stopped.
+    if [ "$PLATFORM" != "macos" ] && ! stop_config_watcher; then
+        log_error "Config watcher stop failed; continuing daemon shutdown, the stopped outcome is withheld"
+        watcher_stop_failed=1
     fi
 
     if [ "$PLATFORM" = "macos" ]; then
@@ -928,7 +987,7 @@ stop_daemon() {
         record_stop_outcome "$STOP_OUTCOME_WITHHELD"
         return 1
     fi
-    if [ "$stop_command_failed" -ne 0 ] || [ "$disable_command_failed" -ne 0 ]; then
+    if [ "$stop_command_failed" -ne 0 ] || [ "$disable_command_failed" -ne 0 ] || [ "$watcher_stop_failed" -ne 0 ]; then
         record_stop_outcome "$STOP_OUTCOME_WITHHELD"
         return 1
     fi
