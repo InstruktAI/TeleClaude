@@ -61,6 +61,7 @@ from teleclaude.core.next_machine.slug_resolution import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.todos_db._exceptions import (
     ClaimConflict,
     LaneCrossingRefused,
@@ -149,7 +150,7 @@ async def _reflect_claim_on_caller_session(
     A lifecycle state-machine claim/adoption that binds ``slug`` to this session
     backfills the session's ``working_slug`` (so the session is the slug's
     authoritative owner for dedup and the mutation gate), repairs its title to
-    the lane's command shape (so the adoption is visible in the Sessions view),
+    the lane's role and slug (so the adoption is visible in the Sessions view),
     and confers the lane's born-driver ``role`` (via
     :func:`role_for_lane`) so the session reaches exact parity with a
     directly-started driver of the same lane instead of falling through the
@@ -170,8 +171,8 @@ async def _reflect_claim_on_caller_session(
     if session.working_slug and session.working_slug != slug:
         return
     command, _ = command_for_lane(lane)
-    desired_title = f"{command} {slug}"
     role = role_for_lane(lane, Path(session.project_path) if session.project_path else Path.cwd())
+    desired_title = compose_command_session_title(command, slug, role=role)
     updates: dict[str, str] = {}
     if session.working_slug != slug:
         updates["working_slug"] = slug
