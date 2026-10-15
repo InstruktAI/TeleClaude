@@ -70,6 +70,7 @@ from teleclaude.core.operations._outcome import OperationCompletion
 from teleclaude.core.operations._receipt import recovery_command
 from teleclaude.core.operations._relayed_ownership import was_started_by_principal
 from teleclaude.core.operations._rename_payload import ensure_rename_target_matches, rename_payload
+from teleclaude.core.operations.item_verbs import format_manual_lifecycle_reason, run_item_verb
 from teleclaude.core.operations.job_run import JobRunRequest, job_project_path, job_run_payload, run_job_run_operation
 from teleclaude.core.operations.todo_identity import (
     operation_payload_abandon,
@@ -864,6 +865,9 @@ class OperationsService:
 
         if lane in _HOLDER_AWARE_LANES and await resolve_holder_children_db(todos_db, slug):
             return await state_machine(operation, cwd)
+        item_result = await run_item_verb(operation, lane, caller_session_id, str(project_root), todos_db)
+        if item_result is not None:
+            return item_result
 
         adoption = await adopt_manual_lifecycle_session(
             cwd,
@@ -877,7 +881,7 @@ class OperationsService:
         if adoption.status is ManualLifecycleStatus.ALREADY_DRIVEN:
             raise ClaimConflict(slug=slug, holder=adoption.session_id)
         if adoption.status is ManualLifecycleStatus.SKIPPED:
-            reason = self._format_manual_lifecycle_reason(adoption.reason)
+            reason = format_manual_lifecycle_reason(adoption.reason)
             return OperationCompletion(
                 _RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE.format(prefix=RUNNER_NOT_DISPATCHED, slug=slug, reason=reason),
                 work_feedback=adoption.work_feedback,
@@ -904,12 +908,6 @@ class OperationsService:
         finally:
             await client.close()
         return f"RUNNER_DISPATCHED: {slug} {intent.lane.value} {session_id}"
-
-    @staticmethod
-    def _format_manual_lifecycle_reason(reason: RunnerSkipReason | str | None) -> str:
-        if isinstance(reason, RunnerSkipReason):
-            return reason.value
-        return str(reason)
 
     async def _heartbeat_loop(self, operation_id: str, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
