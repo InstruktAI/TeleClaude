@@ -152,10 +152,16 @@ def todo_operation_submission(
         addressed_todo_operation_payload(payload, addressed_todo_id=addressed_todo_id),
         sort_keys=True,
     )
-    existing_match_ok, on_existing = addressed_todo_reattach_hooks(
+    identity_match_ok, on_existing = addressed_todo_reattach_hooks(
         addressed_todo_id=addressed_todo_id,
         client_request_id=client_request_id,
     )
+    stated = reason or ""
+
+    def existing_match_ok(existing: Operation) -> bool:
+        """Reattach only to a call that stated the same reason; another reason is new input that must be recorded."""
+        return identity_match_ok(existing) and operation_reason(existing) == stated
+
     return payload_json, existing_match_ok, on_existing
 
 

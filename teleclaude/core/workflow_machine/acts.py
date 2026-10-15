@@ -333,6 +333,7 @@ def _decide_kickback(request: ActRequest, facts: _Facts, state: TodoState, readi
         updated = current.model_copy(deep=True)
         updated.prepared = None
         updated.stamp = None
+        updated.instruction_offer = None
         return updated
 
     ends = tuple(
@@ -405,7 +406,12 @@ def _require_instruction_seen(request: ActRequest, state: TodoState) -> None:
     noted after the offer the key names has a higher ledger position than the offer recorded.
     """
     offer = state.workflow.instruction_offer
-    if not request.instruction or offer is None or offer.key != request.instruction:
+    if (
+        not request.instruction
+        or offer is None
+        or offer.key != request.instruction
+        or offer.epoch != state.workflow.claim_epoch
+    ):
         raise _refuse(Refusal.INSTRUCTION_REQUIRED, act=request.act.value, item=request.item)
     unseen = next((note for note in reason_notes(state.workflow) if note.seq > offer.upto_seq), None)
     if unseen is not None:

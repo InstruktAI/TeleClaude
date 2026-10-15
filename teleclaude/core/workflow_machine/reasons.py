@@ -40,6 +40,12 @@ def reason_notes(record: WorkflowRecord) -> list[LedgerEntry]:
     return [entry for entry in record.ledger if entry.note_kind is NoteKind.REASON and entry.seq > start]
 
 
+def context_notes(record: WorkflowRecord) -> list[LedgerEntry]:
+    """Every note of the current stamp cycle, reasons and ordinary context notes alike, in ledger order."""
+    start = cycle_start_seq(record)
+    return [entry for entry in record.ledger if entry.act is Act.NOTE and entry.seq > start]
+
+
 def record_reason(
     record: WorkflowRecord, *, project_root: str, item_id: str, session_id: str, role: str | None, text: str
 ) -> RecordedReason:
