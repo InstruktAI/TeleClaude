@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
@@ -77,3 +78,38 @@ def start_identity(pid: int) -> str:
     except psutil.Error:
         return NO_IDENTITY
     return repr(created)
+
+
+class ProcessState(StrEnum):
+    """What a probe of a recorded process found: the same process, positively ended or replaced, or not known."""
+
+    SAME = "same"
+    ENDED = "ended"
+    UNKNOWN = "unknown"
+
+
+def probe_process(pid: int, identity: str) -> ProcessState:
+    """Whether the process recorded as ``pid`` with start ``identity`` still runs.
+
+    ``ENDED`` is positive evidence: the system has no such process, or the pid now has another start identity. A probe
+    that could not read the process (access refused, an unreadable record) is ``UNKNOWN`` and proves nothing.
+    """
+    if sys.platform.startswith(LINUX):
+        try:
+            stat = Path(PROC_STAT_TEMPLATE.format(pid=pid)).read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return ProcessState.ENDED
+        except OSError:
+            return ProcessState.UNKNOWN
+        fields = stat[stat.rindex(")") + 1 :].split()
+        index = STAT_START_TIME_FIELD - STAT_AFTER_COMM_START_FIELD
+        if len(fields) <= index:
+            return ProcessState.UNKNOWN
+        return ProcessState.SAME if fields[index] == identity else ProcessState.ENDED
+    try:
+        created = repr(psutil.Process(pid).create_time())
+    except psutil.NoSuchProcess:
+        return ProcessState.ENDED
+    except psutil.Error:
+        return ProcessState.UNKNOWN
+    return ProcessState.SAME if created == identity else ProcessState.ENDED

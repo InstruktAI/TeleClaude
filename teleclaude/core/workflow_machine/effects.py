@@ -21,7 +21,7 @@ from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
-from teleclaude.core.process_identity import start_identity
+from teleclaude.core.process_identity import ProcessState, probe_process
 from teleclaude.core.workflow_machine.caller import group_sessions_of
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange, PendingEffectItem
@@ -268,10 +268,12 @@ def _starts_in_flight(record: WorkflowRecord) -> bool:
 
     Time is no evidence that a creation ended. The creation runs in the process that recorded the start, so only that
     process's end proves it can never produce a session; a start whose process is gone is settled, and a session it
-    created is found by the listing of the holder's group. A start whose process cannot be named is never settled.
+    created is found by the listing of the holder's group. Only positive evidence settles a start: a start whose
+    process cannot be named, or whose probe could not read it, stays pending.
     """
     return any(
-        not start.session_id and (not start.owner_identity or start_identity(start.owner_pid) == start.owner_identity)
+        not start.session_id
+        and (not start.owner_identity or probe_process(start.owner_pid, start.owner_identity) is not ProcessState.ENDED)
         for start in record.helper_starts
     )
 
