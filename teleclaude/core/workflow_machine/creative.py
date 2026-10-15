@@ -57,6 +57,10 @@ class CreativeRefusal(StrEnum):
         "{capability} is refused: {item} is in {phase}, and a creative write never moves a phase or its claim; "
         "start its driver with `telec todo work {item}`, which returns it to preparation with `kickback`"
     )
+    READY_UNHELD = (
+        "{capability} is refused: {item} is ready, and a creative write never moves a phase or its claim; "
+        "start its driver with `telec todo work {item} --reason <text>`, which returns it to preparation with `kickback`"
+    )
     HELD = "{capability} is refused: {item} is held by session {holder}"
     HOLDER = (
         "{capability} is refused: {item} is held by this session in preparation; "
@@ -104,7 +108,12 @@ def open_episode(
         waiting = state.workflow.waiting
         if stored is LifecyclePhase.WAITING and waiting is not None:
             raise _refuse(CreativeRefusal.WAITING, capability, item, person=waiting.person)
-        refusal = CreativeRefusal.CLOSED_HELD_BY_CALLER if holder else CreativeRefusal.CLOSED_UNHELD
+        if holder:
+            refusal = CreativeRefusal.CLOSED_HELD_BY_CALLER
+        elif stored is LifecyclePhase.READY:
+            refusal = CreativeRefusal.READY_UNHELD
+        else:
+            refusal = CreativeRefusal.CLOSED_UNHELD
         raise _refuse(refusal, capability, item, phase=stored.value)
     if holder and capability is not CreativeCapability.DESIGN:
         raise _refuse(CreativeRefusal.HOLDER, capability, item)

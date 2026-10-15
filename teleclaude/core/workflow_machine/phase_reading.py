@@ -16,7 +16,7 @@ from teleclaude.core.next_machine.kinds import KIND_TASK
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES, LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import FinalizeStatus, TodoState
-from teleclaude.types.workflow_record import Act, Phase
+from teleclaude.types.workflow_record import Act, Phase, StampSource
 
 PREPARATION_STORED_PHASES: frozenset[LifecyclePhase] = frozenset(
     {
@@ -113,7 +113,8 @@ def read_phase(state: TodoState, lane: LaneFacts) -> PhaseReading:
     if stored is LifecyclePhase.READY:
         stamp = state.workflow.stamp
         if stamp is not None and lane.integration_head and stamp.sha != lane.integration_head:
-            return PhaseReading(phase=Phase.WORK)
+            carried_unheld = stamp.source is not StampSource.PERFORMED and not state.active_runner
+            return PhaseReading(phase=Phase.PREPARATION if carried_unheld else Phase.WORK)
         return PhaseReading(
             phase=Phase.READY,
             ready_sha=stamp.sha if stamp else "",

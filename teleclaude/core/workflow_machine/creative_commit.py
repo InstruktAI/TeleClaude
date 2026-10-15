@@ -7,7 +7,7 @@ from collections.abc import Callable
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.workflow_machine.creative import CreativeCapability, open_episode
 from teleclaude.core.workflow_store.store import WorkflowStore
-from teleclaude.core.workflow_store.types import ItemChange
+from teleclaude.core.workflow_store.types import ConversionPath, ItemChange
 
 
 def episode_mutation(
@@ -27,7 +27,9 @@ def episode_mutation(
         state = apply(opening.state) if apply is not None else opening.state
         if state is current:
             return None
-        return ItemChange(state=state)
+        return ItemChange(
+            state=state, converted_from=opening.converted_from, conversion_path=ConversionPath.CAPABILITY.value
+        )
 
     return mutate
 

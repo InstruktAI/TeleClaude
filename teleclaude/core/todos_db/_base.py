@@ -21,6 +21,7 @@ from teleclaude.core.db.connection_factory import create_async_db_engine, create
 from teleclaude.docs_layout import registered_project_slugs
 from teleclaude.project_manifest import load_registered_roots
 
+from ._activation_schema import ensure_activation_schema
 from ._docs_local_rename import (
     ensure_local_snippet_identity_cutover_table,
     migrate_docs_local_rename,
@@ -638,6 +639,12 @@ def _bootstrap_todos_db(db_path: str) -> None:
         SQLModel.metadata.create_all(sync_engine, tables=TODOS_DB_TABLES)
     finally:
         sync_engine.dispose()
+
+    activation_conn = sqlite3.connect(db_path)
+    try:
+        ensure_activation_schema(activation_conn)
+    finally:
+        activation_conn.close()
 
     maybe_auto_import_legacy_markdown_todos(db_path)
 

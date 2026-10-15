@@ -10,6 +10,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.integration.ready_scan import ensure_integrator_for_ready_items
 from teleclaude.core.local_checkouts import local_checkout_paths
 from teleclaude.core.shutdown_drain import get_shutdown_drain
+from teleclaude.core.workflow_machine.activation import activate_project_supervised
 from teleclaude.core.workflow_machine.effects import reconcile_project_supervised
 from teleclaude.core.workflow_machine.heads import discover_project_heads_supervised
 from teleclaude.core.workflow_machine.launch_recovery import recover_stale_launches_supervised
@@ -46,11 +47,12 @@ async def observe_heads() -> None:
 
 
 async def reconcile_and_recover() -> None:
-    """Complete the pending effects of every local checkout, then release launch reservations with terminal evidence."""
+    """Activate each checkout's store, complete its pending effects, then release launch reservations with evidence."""
     if not get_shutdown_drain().is_open:
         logger.debug(PAUSED_LOG)
         return
     for project_root in await local_checkout_paths():
+        await activate_project_supervised(project_root)
         await reconcile_project_supervised(project_root)
         await recover_stale_launches_supervised(project_root)
         await ensure_integrator_for_ready_items(project_root)

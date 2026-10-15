@@ -362,7 +362,8 @@ def _apply_claim(
     record.instruction_offer = None
     record.episode = None
     stale_stamp = phase is Phase.WORK and state.lifecycle_phase is LifecyclePhase.READY
-    if stale_stamp:
+    carried_stale = phase is Phase.PREPARATION and state.lifecycle_phase is LifecyclePhase.READY
+    if stale_stamp or carried_stale:
         record.stamp = None
     effects: list[PendingEffect] = []
     if phase in (Phase.PREPARED, Phase.WORK):
@@ -382,7 +383,7 @@ def _apply_claim(
     }
     if phase is Phase.PREPARED or stale_stamp:
         new_state[LIFECYCLE_PHASE_STATE_KEY] = LifecyclePhase.WORK.value
-    elif phase is Phase.PREPARATION and state.lifecycle_phase in _HEAD_DEPENDENT_STORED:
+    elif phase is Phase.PREPARATION and (carried_stale or state.lifecycle_phase in _HEAD_DEPENDENT_STORED):
         new_state[LIFECYCLE_PHASE_STATE_KEY] = LifecyclePhase.PREPARATION.value
     return ItemChange(state=new_state, log_entry=_claim_log(entry, request.item))
 

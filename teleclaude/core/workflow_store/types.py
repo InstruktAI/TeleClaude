@@ -19,10 +19,51 @@ StoreAddress = NewType("StoreAddress", str)
 
 @dataclass(frozen=True)
 class ItemChange:
-    """The result of an atomic item change: the state to persist and the log entry to append with it."""
+    """The result of an atomic item change: the state to persist and the log entry to append with it.
+
+    ``converted_from`` is the legacy phase the change replaced when it converted the row, with the ``conversion_path``
+    that did it; the converted-row record is inserted in the same transaction.
+    """
 
     state: dict[str, StateValue]
     log_entry: str = ""
+    converted_from: str = ""
+    conversion_path: str = ""
+
+
+class ConversionPath(StrEnum):
+    """The path a row was converted by, as the converted-row record stores it."""
+
+    ACTIVATION = "activation"
+    RESTORE = "restore"
+    CAPABILITY = "capability"
+
+
+@dataclass(frozen=True)
+class ActivationRow:
+    """One item row as an activation pass reads it inside its transaction."""
+
+    row_id: str
+    slug: str
+    status: str
+    state: dict[str, StateValue]
+    has_input: bool
+    has_design_spec: bool
+    converted: bool
+
+
+@dataclass(frozen=True)
+class RowRewrite:
+    """The state an activation pass writes for one row, and the legacy phase it replaced when it converts the row."""
+
+    row_id: str
+    state: dict[str, StateValue]
+    converted_from: str = ""
+    path: ConversionPath = ConversionPath.ACTIVATION
+
+
+class ActivationRefused(Exception):
+    """The activation did not complete; nothing was written and the store stays unmarked."""
 
 
 @dataclass(frozen=True)

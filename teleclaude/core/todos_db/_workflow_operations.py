@@ -13,6 +13,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_LOG, TodoStatus
 from teleclaude.core.next_machine._types import StateValue
+from teleclaude.core.todos_db._converted_rows import insert_converted_row, is_converted_row
 from teleclaude.core.todos_db._models import TODO_STATE_TABLE, TODO_TABLE, Todo, TodoStateModel
 from teleclaude.core.workflow_store.types import (
     ArtifactRevisionMismatch,
@@ -41,7 +42,7 @@ class _SessionHost(Protocol):
 
 
 @asynccontextmanager
-async def _immediate_transaction(host: _SessionHost) -> AsyncIterator[SqlAsyncSession]:
+async def immediate_transaction(host: _SessionHost) -> AsyncIterator[SqlAsyncSession]:
     """One write transaction taken under the writer lock up front, committed on success and rolled back otherwise."""
     async with host._session() as session:
         connection = await session.connection()
@@ -60,6 +61,15 @@ async def _check_precondition(
     """Judge the state as read now, inside the transaction; the precondition raises to refuse."""
     if precondition is not None:
         precondition(await host.read_state_in_session(slug, session))
+
+
+async def _record_conversion(host: _CreateItemHost, slug: str, change: ItemChange, session: SqlAsyncSession) -> None:
+    """Insert the converted-row record of a change that converted the row, in the change's own transaction."""
+    if not change.converted_from:
+        return
+    row_id = await host._resolve_active_row_id(session, slug)
+    if row_id is not None:
+        await insert_converted_row(session, row_id, change.converted_from, change.conversion_path)
 
 
 def _after_item_commit(
@@ -124,6 +134,8 @@ class _CreateItemHost(Protocol):
     async def delete_artifact(self, slug: str, name: str, *, session: SqlAsyncSession) -> object: ...
 
     async def read_state_in_session(self, slug: str, session: SqlAsyncSession) -> dict[str, StateValue] | None: ...
+
+    async def _resolve_active_row_id(self, session: SqlAsyncSession, slug: str) -> str | None: ...
 
     async def read_artifact_in_session(self, slug: str, name: str, session: SqlAsyncSession) -> str: ...
 
@@ -316,17 +328,20 @@ class TodosDbWorkflowOperationsMixin:
         self: _CreateItemHost,
         slug: str,
         *,
-        decide: Callable[[dict[str, StateValue] | None], dict[str, StateValue]],
+        decide: Callable[[dict[str, StateValue] | None, bool], dict[str, StateValue]],
         replacement_input: str | None,
         deleted_artifacts: list[str],
     ) -> None:
         """Commit a kind migration's state and artifact changes together.
 
         ``decide`` derives the new state from the row read under the writer lock, so a claim or a hold that landed
-        meanwhile is carried and not overwritten; it may raise to write nothing.
+        meanwhile is carried and not overwritten, and learns whether the row was converted; it may raise to write
+        nothing.
         """
-        async with _immediate_transaction(self) as session:
-            state = decide(await self.read_state_in_session(slug, session))
+        async with immediate_transaction(self) as session:
+            row_id = await self._resolve_active_row_id(session, slug)
+            converted = row_id is not None and await is_converted_row(session, row_id)
+            state = decide(await self.read_state_in_session(slug, session), converted)
             if replacement_input is not None:
                 await self.write_artifact(slug, ARTIFACT_INPUT, replacement_input, updated_by=None, session=session)
             for artifact_name in deleted_artifacts:
@@ -340,7 +355,7 @@ class TodosDbWorkflowOperationsMixin:
 
         ``precondition`` judges the state read under the writer lock and may raise to write nothing.
         """
-        async with _immediate_transaction(self) as session:
+        async with immediate_transaction(self) as session:
             await _check_precondition(self, old_slug, session, precondition)
             if not await self.rename_state_slug(old_slug, new_slug, session=session):
                 raise RuntimeError(_STATE_RENAME_FAILURE.format(slug=old_slug))
@@ -379,6 +394,7 @@ class TodosDbWorkflowOperationsMixin:
                     await session.rollback()
                     return None
                 await self.write_state(slug, change.state, session=session, owns_workflow_record=True)
+                await _record_conversion(self, slug, change, session)
                 if change.log_entry:
                     existing = await self.read_artifact_in_session(slug, ARTIFACT_LOG, session)
                     await self.write_artifact(
@@ -404,12 +420,13 @@ class TodosDbWorkflowOperationsMixin:
 
         ``mutate`` may raise to write nothing; None writes the artifact alone.
         """
-        async with _immediate_transaction(self) as session:
+        async with immediate_transaction(self) as session:
             prior = await self.read_state_in_session(slug, session)
             change = mutate(prior)
             await self.write_artifact(slug, name, content, updated_by=updated_by, session=session)
             if change is not None:
                 await self.write_state(slug, change.state, session=session, owns_workflow_record=True)
+                await _record_conversion(self, slug, change, session)
         _after_item_commit(self, slug, prior, change)
         return change
 

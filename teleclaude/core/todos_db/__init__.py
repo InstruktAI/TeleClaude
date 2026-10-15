@@ -10,6 +10,7 @@ from teleclaude.core.todos_db_path import todos_db_path
 from teleclaude.core.workflow_store.types import IdentityResolution as TodoIdentityResolution
 from teleclaude.core.workflow_store.types import StoreCapabilities
 
+from ._activation import TodosDbActivationMixin
 from ._artifacts import TodosDbArtifactsMixin, malformed_digest_detail
 from ._base import TodosDbBase
 from ._errors import (
@@ -41,6 +42,7 @@ class TodosDb(
     TodosDbIntegrationMixin,
     TodosDbProjectionMixin,
     TodosDbWorkflowOperationsMixin,
+    TodosDbActivationMixin,
     TodosDbBase,
 ):
     """Database interface for todo lifecycle state and artifacts."""

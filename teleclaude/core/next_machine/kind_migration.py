@@ -17,6 +17,7 @@ from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, canonical_kind
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance
 from teleclaude.core.next_machine.started_build import refuse_if_build_started
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
+from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todo_kind import TodoKind
 
 if TYPE_CHECKING:
@@ -79,6 +80,7 @@ async def migrate_todo_kind(
         )
 
     entry_phase = KIND_ENTRY_PHASE[canonical_kind(target_kind)]
+    outcome_phase = entry_phase
 
     warnings: list[str] = []
     folded_artifact = ""
@@ -96,14 +98,22 @@ async def migrate_todo_kind(
         folded_artifact = ARTIFACT_IMPLEMENTATION_PLAN
         warnings.append("folded implementation-plan into input before permanently removing implementation-plan")
 
-    def decide(current: dict[str, StateValue] | None) -> dict[str, StateValue]:
-        """The migrated state, derived from the row as the transaction reads it, so no concurrent write is erased."""
+    def decide(current: dict[str, StateValue] | None, converted: bool) -> dict[str, StateValue]:
+        """The migrated state, derived from the row as the transaction reads it, so no concurrent write is erased.
+
+        A converted row stays in the item vocabulary: a non-task target stores ``preparation``; every other row, and
+        any task target, takes the target kind's entry phase.
+        """
+        nonlocal outcome_phase
         refuse_if_build_started(slug, current)
         if current is None:
             raise StateMutationError(f"slug {slug!r} not found in todo list")
         writer = StateWriter(current)
+        outcome_phase = (
+            LifecyclePhase.PREPARATION if converted and canonical_kind(target_kind) != TodoKind.TASK else entry_phase
+        )
         writer.state.kind = target_kind
-        writer.state.lifecycle_phase = entry_phase
+        writer.state.lifecycle_phase = outcome_phase
         for artifact_name in orphaned_artifacts:
             clear_artifact_provenance(writer, slug, artifact_name)
         return writer.to_dict()
@@ -121,7 +131,7 @@ async def migrate_todo_kind(
     result: KindMigrationResult = {
         "slug": slug,
         "kind": target_kind,
-        "lifecycle_phase": entry_phase.value,
+        "lifecycle_phase": outcome_phase.value,
         "orphaned_artifacts": orphaned_artifacts,
         "warnings": warnings,
     }

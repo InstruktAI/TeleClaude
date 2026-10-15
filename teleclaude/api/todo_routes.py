@@ -76,7 +76,9 @@ from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db import HolderReconciliationRefused, HolderTransitionRefused
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
+from teleclaude.core.workflow_machine.activation import restore_classifier
 from teleclaude.core.workflow_store.store import get_workflow_store
+from teleclaude.core.workflow_store.types import ActivationRefused
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.envelope_facts import home_for_project_path
 from teleclaude.events.producer import publish_event
@@ -493,6 +495,15 @@ async def _get_workflow_store_from_cwd(cwd: str) -> WorkflowStore:
     return await get_workflow_store(project_root)
 
 
+async def _reactivate_classified(todos_db: WorkflowStore, todo_id: str, cwd: str) -> str:
+    """Restore the row and, in the same transaction, classify it as the store's activation would."""
+    try:
+        classify = await restore_classifier(cwd, todo_id, todos_db)
+    except ActivationRefused as refusal:
+        raise HTTPException(status_code=409, detail=str(refusal)) from refusal
+    return await todos_db.reactivate_removed(todo_id, cwd=cwd, classify_restored=classify)
+
+
 def _refuse_started_build(slug: str, raw_state: dict[str, StateValue] | None) -> None:
     """Refuse a slug or kind update once the build has started, as a conflict."""
     try:
@@ -780,7 +791,7 @@ async def todo_reactivate(
 
     todo_id = matches[0]["id"]
     try:
-        await todos_db.reactivate_removed(todo_id, cwd=effective_cwd)
+        await _reactivate_classified(todos_db, todo_id, effective_cwd)
     except ReactivateRefused as exc:
         if exc.work_feedback is not None:
             raise DeclaredWorkRefusal(
@@ -803,7 +814,7 @@ async def todo_reactivate_by_id(
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_workflow_store_from_cwd(effective_cwd)
     try:
-        slug = await todos_db.reactivate_removed(todo_id, cwd=effective_cwd)
+        slug = await _reactivate_classified(todos_db, todo_id, effective_cwd)
     except ReactivateRefused as exc:
         if exc.work_feedback is not None:
             raise DeclaredWorkRefusal(

@@ -177,14 +177,27 @@ class PreparedRecord(BaseModel):
     at: str
 
 
+class StampSource(StrEnum):
+    """Where a stamp came from: the stamp act of a driver, or a legacy handoff or verdict the machine carried forward."""
+
+    PERFORMED = "performed"
+    CARRIED_HANDOFF = "carried_handoff"
+    CARRIED_VERDICT = "carried_verdict"
+
+
 class StampRecord(BaseModel):
-    """A stamp bound to a commit, and when the item became ready at it."""
+    """A stamp bound to a commit, and when the item became ready at it.
+
+    A carried stamp has an empty acting session: its legacy provenance is not a stamping driver of this machine. The
+    source is cleared with the stamp (``local/projects/teleclaude/design/architecture/workflow-machine``).
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     sha: str
     session_id: str
     ready_at: str
+    source: StampSource = StampSource.PERFORMED
 
 
 class StampInFlight(BaseModel):

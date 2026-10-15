@@ -20,6 +20,7 @@ from .local_store import (
 )
 from .selection import _require_local_adapter
 from .types import (
+    ActivationRow,
     ArtifactMetadata,
     ArtifactRemoval,
     ArtifactVersion,
@@ -30,6 +31,7 @@ from .types import (
     PendingEffectItem,
     PurgedItem,
     RemovalRequest,
+    RowRewrite,
     StoreCapabilities,
     TodoDiagnosticRecord,
     TodoProjectionSnapshot,
@@ -87,7 +89,7 @@ class WorkflowStore(Protocol):
         self,
         slug: str,
         *,
-        decide: Callable[[dict[str, StateValue] | None], dict[str, StateValue]],
+        decide: Callable[[dict[str, StateValue] | None, bool], dict[str, StateValue]],
         replacement_input: str | None,
         deleted_artifacts: list[str],
     ) -> None: ...
@@ -100,6 +102,14 @@ class WorkflowStore(Protocol):
         updated_by: str | None,
         mutate: Callable[[dict[str, StateValue] | None], ItemChange | None],
     ) -> ItemChange | None: ...
+    async def read_activation(self) -> tuple[bool, bool]: ...
+    async def run_activation(
+        self,
+        classify: Callable[[list[ActivationRow]], list[RowRewrite]],
+        verify: Callable[[list[ActivationRow]], None],
+        *,
+        mark: bool,
+    ) -> int: ...
     async def rename_item(
         self, old_slug: str, new_slug: str, precondition: Callable[[dict[str, StateValue] | None], None] | None = None
     ) -> None: ...
@@ -230,7 +240,13 @@ class WorkflowStore(Protocol):
     async def soft_remove_from_todo(
         self, slug: str, *, cwd: str, removal_context: RemovalRequest | None = None
     ) -> bool: ...
-    async def reactivate_removed(self, todo_id: str, *, cwd: str) -> str: ...
+    async def reactivate_removed(
+        self,
+        todo_id: str,
+        *,
+        cwd: str,
+        classify_restored: Callable[[ActivationRow], RowRewrite | None] | None = None,
+    ) -> str: ...
     async def list_expired_removed(self, cutoff_iso: str) -> list[ExpiredRemovedItem]: ...
     async def set_pending_purge_paths(self, row_id: str, paths: list[str]) -> None: ...
     async def clear_pending_purge_paths(self, row_id: str) -> None: ...
