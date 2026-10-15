@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import re
 import shutil
@@ -11,11 +12,14 @@ import tempfile
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
+from tools.ci import release_host_guard
+from tools.ci.release_host_guard import InstallerResult
 from tools.ci.terminal import CommandResult, PersistentTerminal
 
 from .probes import GUEST_TELEC_RELATIVE_PATH, ProbeFailure, run_role_and_identity_probes
@@ -35,6 +39,7 @@ _TART_RUN_COMMAND = "run"
 _TART_CLONE_COMMAND = "clone"
 _TART_STOP_COMMAND = "stop"
 _TART_DELETE_COMMAND = "delete"
+_TART_SET_COMMAND = "set"
 _TART_VERSION_OPTION = "--version"
 _TART_NO_GRAPHICS_OPTION = "--no-graphics"
 _TART_DIRECTORY_OPTION = "--dir"
@@ -71,10 +76,8 @@ _HOME_ENVIRONMENT_VARIABLE = "HOME"
 _ENVIRONMENT_ASSIGNMENT_FORMAT = "{key}={value}"
 _FILENAME_DASH = "-"
 _OUTPUT_SUFFIX = ".txt"
-_VM_NAME_SEPARATOR = "-"
 _VM_PREFIX_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
 _ERROR_REPLACE_MODE = "replace"
-_VM_NAME_FORMAT = "{prefix}{separator}{suffix}"
 _RUN_DIRECTORY_FORMAT = "{prefix}{suffix}"
 _CLEANUP_DETAIL_FORMAT = "{stop_output} {cleanup_detail}"
 _GUEST_READINESS_DETAIL_FORMAT = "{detail} {output}"
@@ -117,8 +120,6 @@ _GUEST_SHARED_FILES_ROOT = Path("/Volumes/My Shared Files")
 _BUNDLE_FILENAME = "repository.bundle"
 _RUN_DIRECTORY_PREFIX = "run-"
 _DEFAULT_OUTPUT_DIRECTORY = "teleclaude-bootstrap"
-_DEFAULT_BASE_IMAGE = "ghcr.io/cirruslabs/macos-tahoe-base:latest"
-_DEFAULT_VM_NAME_PREFIX = "teleclaude-bootstrap"
 _MINIMUM_TART_VERSION = (2, 38, 0)
 _MINIMUM_TART_VERSION_LABEL = "2.38"
 _VERSION_PATTERN = re.compile(r"\b(\d+)\.(\d+)(?:\.(\d+))?\b")
@@ -130,10 +131,17 @@ _STEP_LOG_FILENAME = "steps.log"
 _VM_RUN_LOG_FILENAME = "tart-run.log"
 _OUTPUT_DIRECTORY_ARG = "--output-dir"
 _BASE_IMAGE_ARG = "--base-image"
-_VM_NAME_PREFIX_ARG = "--vm-name-prefix"
+_VM_NAME_ARGUMENT = "--vm-name"
+_VM_CPU_ARGUMENT = "--vm-cpu"
+_VM_MEMORY_ARGUMENT = "--vm-memory-mib"
+_RUN_ID_ENV = "GITHUB_RUN_ID"
+_RUN_ATTEMPT_ENV = "GITHUB_RUN_ATTEMPT"
+_SUBPROCESS_FAILED = "The release host guard refused the proof lifecycle operation."
+_TART_CPU_OPTION = "--cpu"
+_TART_MEMORY_OPTION = "--memory"
+_STATUS_ADMISSION = "release host admission and proof ownership"
 _OUTPUT_DIRECTORY_ARGUMENT = _OUTPUT_DIRECTORY_ARG
 _BASE_IMAGE_ARGUMENT = _BASE_IMAGE_ARG
-_VM_NAME_PREFIX_ARGUMENT = _VM_NAME_PREFIX_ARG
 _OWNER_SEED_FILENAME = "owner.yaml"
 _OWNER_NAME_KEY = "name"
 _OWNER_EMAIL_KEY = "email"
@@ -259,15 +267,13 @@ class GuestTerminal(PersistentTerminal):
 class BootstrapHarness:
     """Drive the install sequence and preserve a bounded evidence bundle."""
 
-    def __init__(self, base_image: str, vm_name_prefix: str, output_root: Path) -> None:
-        if _VM_PREFIX_PATTERN.fullmatch(vm_name_prefix) is None:
+    def __init__(self, base_image: str, vm_name: str, vm_cpu: int, vm_memory_mib: int, output_root: Path) -> None:
+        if _VM_PREFIX_PATTERN.fullmatch(vm_name) is None:
             raise HarnessFailure(_VM_NAME_PREFIX_INVALID)
         self._base_image = base_image
-        self._vm_name = _VM_NAME_FORMAT.format(
-            prefix=vm_name_prefix,
-            separator=_VM_NAME_SEPARATOR,
-            suffix=uuid.uuid4().hex[:8],
-        )
+        self._vm_name = vm_name
+        self._vm_cpu = vm_cpu
+        self._vm_memory_mib = vm_memory_mib
         self._output_root = output_root.expanduser().resolve()
         run_directory_name = _RUN_DIRECTORY_FORMAT.format(prefix=_RUN_DIRECTORY_PREFIX, suffix=uuid.uuid4().hex)
         self._run_directory = self._output_root / run_directory_name
@@ -282,14 +288,18 @@ class BootstrapHarness:
         self._tart_path: str | None = None
         self._vm_process: subprocess.Popen[bytes] | None = None
         self._vm_created = False
+        self._proof_started = False
         self._step_number = 0
 
     def run(self) -> None:
         self._step(_STATUS_OUTPUT_DIRECTORY, self._prepare_output)
+        self._guard(lambda: release_host_guard.admit(self._vm_cpu, self._vm_memory_mib))
         self._verify_tart()
         self._resolve_repository()
         self._create_bundle()
+        self._begin_proof()
         self._clone_vm()
+        self._mark_proof_created()
         self._start_vm()
         self._wait_for_guest()
         self._prepare_guest_checkout()
@@ -318,22 +328,37 @@ class BootstrapHarness:
         """Return the guest's canonical checkout path."""
         return self._guest_project_root
 
-    def cleanup(self) -> bool:
-        if self._tart_path is None or not self._vm_created:
-            return True
-        stop = self._capture([self._tart_path, _TART_STOP_COMMAND, self._vm_name], _CLEANUP_TIMEOUT_SECONDS)
-        self._stop_tart_process()
-        delete = self._capture([self._tart_path, _TART_DELETE_COMMAND, self._vm_name], _CLEANUP_TIMEOUT_SECONDS)
-        detail = delete.output.strip()
-        succeeded = delete.returncode == 0
-        if not succeeded and stop.returncode != 0:
-            detail = _CLEANUP_DETAIL_FORMAT.format(
-                stop_output=stop.output.strip(),
-                cleanup_detail=_STEP_INFORMATION.format(name=_STATUS_CLEANUP, detail=detail),
-            )
-        self._record_verdict(_STATUS_CLEANUP, succeeded, detail)
-        self._vm_created = False if succeeded else True
-        return succeeded
+    def cleanup(self, installer_succeeded: bool) -> bool:
+        cleanup_succeeded = True
+        guard_succeeded = True
+        result = InstallerResult.SUCCESS if installer_succeeded else InstallerResult.FAILURE
+        if self._proof_started:
+            try:
+                self._guard(lambda: release_host_guard.record_installer_outcome(self._vm_name, result))
+            except HarnessFailure:
+                guard_succeeded = False
+        if self._tart_path is not None and self._vm_created:
+            stop = self._capture([self._tart_path, _TART_STOP_COMMAND, self._vm_name], _CLEANUP_TIMEOUT_SECONDS)
+            self._stop_tart_process()
+            delete = self._capture([self._tart_path, _TART_DELETE_COMMAND, self._vm_name], _CLEANUP_TIMEOUT_SECONDS)
+            detail = delete.output.strip()
+            cleanup_succeeded = delete.returncode == 0
+            if not cleanup_succeeded and stop.returncode != 0:
+                detail = _CLEANUP_DETAIL_FORMAT.format(
+                    stop_output=stop.output.strip(),
+                    cleanup_detail=_STEP_INFORMATION.format(name=_STATUS_CLEANUP, detail=detail),
+                )
+            self._record_verdict(_STATUS_CLEANUP, cleanup_succeeded, detail)
+            self._vm_created = not cleanup_succeeded
+        if self._proof_started:
+            try:
+                if cleanup_succeeded:
+                    self._guard(lambda: release_host_guard.settle_proof(self._vm_name, result))
+                else:
+                    self._guard(lambda: release_host_guard.record_cleanup_failure(self._vm_name))
+            except HarnessFailure:
+                guard_succeeded = False
+        return cleanup_succeeded and guard_succeeded
 
     def run_vm_command(
         self,
@@ -469,6 +494,49 @@ class BootstrapHarness:
             [self._tart_path, _TART_CLONE_COMMAND, self._base_image, self._vm_name],
             _VM_CLONE_TIMEOUT_SECONDS,
         )
+        self._run_step(
+            _TART_SET_COMMAND,
+            [
+                self._tart_path,
+                _TART_SET_COMMAND,
+                self._vm_name,
+                _TART_CPU_OPTION,
+                str(self._vm_cpu),
+                _TART_MEMORY_OPTION,
+                str(self._vm_memory_mib),
+            ],
+            _HOST_COMMAND_TIMEOUT_SECONDS,
+        )
+
+    def _begin_proof(self) -> None:
+        run_id = os.environ.get(_RUN_ID_ENV, _EMPTY_VALUE)
+        run_attempt = os.environ.get(_RUN_ATTEMPT_ENV, _EMPTY_VALUE)
+        if not run_id or not run_attempt:
+            raise HarnessFailure(_SUBPROCESS_FAILED)
+        self._guard(
+            lambda: release_host_guard.begin_proof(
+                run_id,
+                run_attempt,
+                self._vm_name,
+                self._base_image,
+                self._vm_cpu,
+                self._vm_memory_mib,
+            )
+        )
+        self._proof_started = True
+
+    def _mark_proof_created(self) -> None:
+        self._guard(lambda: release_host_guard.mark_created(self._vm_name))
+
+    def _guard(self, action: Callable[[], None]) -> None:
+        try:
+            with redirect_stdout(io.StringIO()):
+                action()
+        except (OSError, RuntimeError, ValueError) as exc:
+            detail = str(exc) or _SUBPROCESS_FAILED
+            self._record_verdict(_STATUS_ADMISSION, False, detail)
+            raise HarnessFailure(detail) from exc
+        self._record_verdict(_STATUS_ADMISSION, True)
 
     def _start_vm(self) -> None:
         assert self._tart_path is not None
@@ -752,8 +820,10 @@ class BootstrapHarness:
 
 def _build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(_BASE_IMAGE_ARGUMENT, default=_DEFAULT_BASE_IMAGE)
-    parser.add_argument(_VM_NAME_PREFIX_ARGUMENT, default=_DEFAULT_VM_NAME_PREFIX)
+    parser.add_argument(_BASE_IMAGE_ARGUMENT, required=True)
+    parser.add_argument(_VM_NAME_ARGUMENT, required=True)
+    parser.add_argument(_VM_CPU_ARGUMENT, type=int, required=True)
+    parser.add_argument(_VM_MEMORY_ARGUMENT, type=int, required=True)
     default_output = Path(tempfile.gettempdir()) / _DEFAULT_OUTPUT_DIRECTORY
     parser.add_argument(_OUTPUT_DIRECTORY_ARGUMENT, type=Path, default=default_output)
     return parser
@@ -761,14 +831,20 @@ def _build_argument_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _build_argument_parser().parse_args()
-    harness = BootstrapHarness(args.base_image, args.vm_name_prefix, args.output_dir)
-    exit_code = 0
+    harness = BootstrapHarness(args.base_image, args.vm_name, args.vm_cpu, args.vm_memory_mib, args.output_dir)
+    exit_code = 1
+    installer_succeeded = False
     try:
         harness.run()
+        installer_succeeded = True
+        exit_code = 0
     except HarnessFailure:
         exit_code = 1
     finally:
-        if not harness.cleanup():
+        try:
+            if not harness.cleanup(installer_succeeded=installer_succeeded):
+                exit_code = 1
+        except HarnessFailure:
             exit_code = 1
     print(_REPORT_DIRECTORY_LINE.format(path=harness.run_directory))
     return exit_code

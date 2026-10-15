@@ -1,6 +1,10 @@
-.PHONY: help install launchers launchers-renew-authority deepseek-stack link format lint test clean dev start stop restart kill status cron-smoke
+.PHONY: help install launchers launchers-renew-authority deepseek-stack link format lint test clean dev start stop restart kill status cron-smoke release-runner-install release-runner-start release-runner-start-observe release-runner-start-shadow release-runner-start-canary release-runner-stop release-runner-status
 
 CRON_SMOKE_SINCE ?= 15m
+RELEASE_RUNNER_MODE ?= authority
+RELEASE_RUNNER_CANARY_SCOPE ?=
+RELEASE_RUNNER_CANARY_PROFILE ?=
+export RELEASE_RUNNER_MODE RELEASE_RUNNER_CANARY_SCOPE RELEASE_RUNNER_CANARY_PROFILE
 LEGACY_ACTIVATION ?= 0
 STOP_OUTCOME_FILE ?=
 
@@ -56,3 +60,24 @@ status:
 
 cron-smoke:
 	@CRON_SMOKE_SINCE="$(CRON_SMOKE_SINCE)" tools/make/cron-smoke.sh
+
+release-runner-install:
+	@uv run python -m tools.ci.release_runner install
+
+release-runner-start:
+	@uv run python -m tools.ci.release_runner start --mode "$(RELEASE_RUNNER_MODE)"
+
+release-runner-start-observe:
+	@uv run python -m tools.ci.release_runner start --mode observe
+
+release-runner-start-shadow:
+	@uv run python -m tools.ci.release_runner start --mode shadow
+
+release-runner-start-canary:
+	@uv run python -m tools.ci.release_runner start --mode canary --canary-scope "$$RELEASE_RUNNER_CANARY_SCOPE" --canary-profile "$$RELEASE_RUNNER_CANARY_PROFILE"
+
+release-runner-stop:
+	@uv run python -m tools.ci.release_runner stop --mode "$(RELEASE_RUNNER_MODE)"
+
+release-runner-status:
+	@uv run python -m tools.ci.release_runner status --mode "$(RELEASE_RUNNER_MODE)"

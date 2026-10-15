@@ -30,7 +30,11 @@ concurrency:
 permissions: {}
 
 env:
-  RELEASE_PUBLICATION_ENABLED: 'true'
+  RELEASE_PUBLICATION_ENABLED: 'false'
+  RELEASE_RUNS_ON: ${{ vars.RELEASE_RUNS_ON }}
+  RELEASE_PROOF_BASE_IMAGE: ${{ vars.RELEASE_PROOF_BASE_IMAGE }}
+  RELEASE_PROOF_VM_CPU: ${{ vars.RELEASE_PROOF_VM_CPU }}
+  RELEASE_PROOF_VM_MEMORY_MIB: ${{ vars.RELEASE_PROOF_VM_MEMORY_MIB }}
   UV_VERSION: '0.13.0'
   UV_NO_SYNC: '1'
   PYTHON_VERSION: '3.12'
@@ -40,10 +44,43 @@ env:
   AGE_VERSION: 'v1.3.2'
 
 jobs:
+  host-admission:
+    name: Admit a release stage on the qualified host
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install pinned uv and the locked controller dependencies
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: false
+          download-from-astral-mirror: false
+      - name: Install locked controller dependencies
+        run: uv sync --frozen --group dev --no-install-project
+      - name: Require the qualified execution and proof inputs
+        run: >-
+          uv run python -m tools.ci.release_host_guard validate-inputs
+          --runner-destination "$RELEASE_RUNS_ON"
+          --base-image "$RELEASE_PROOF_BASE_IMAGE"
+          --cpu "$RELEASE_PROOF_VM_CPU"
+          --memory-mib "$RELEASE_PROOF_VM_MEMORY_MIB"
+      - name: Recover owned proof state and admit host capacity
+        run: uv run python -m tools.ci.release_host_guard admit --cpu "$RELEASE_PROOF_VM_CPU" --memory-mib "$RELEASE_PROOF_VM_MEMORY_MIB"
+
   recover-publication:
     name: Recover any partial proved publication
     if: ${{ github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-24.04
+    needs: [host-admission]
+    runs-on: ${{ vars.RELEASE_RUNS_ON }}
     timeout-minutes: 20
     permissions:
       contents: write
@@ -96,7 +133,7 @@ jobs:
         (inputs.operation == 'seed' || inputs.operation == 'reseed')
       }}
     needs: [recover-publication]
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RELEASE_RUNS_ON }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -164,7 +201,7 @@ jobs:
       }}
     needs:
       - recover-publication
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RELEASE_RUNS_ON }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -245,7 +282,7 @@ jobs:
     needs:
       - capture-release
     if: ${{ needs.capture-release.result == 'success' && needs.capture-release.outputs.capture_status == 'ready' }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RELEASE_RUNS_ON }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -376,7 +413,7 @@ jobs:
     if:
       ${{ always() && !cancelled() && needs.capture-release.result == 'success' && needs.capture-release.outputs.capture_status == 'ready' && (needs.inspect-codex.result != 'success'
       || needs.inspect-codex.outputs.codex_success != 'true' || needs.inspect-codex.outputs.artifact_id == '' || needs.inspect-codex.outputs.artifact_digest == '' || needs.inspect-codex.outputs.artifact_manifest_sha256 == '') }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RELEASE_RUNS_ON }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -452,7 +489,7 @@ jobs:
       - inspect-codex
       - inspect-claude
     if: ${{ always() && !cancelled() && needs.capture-release.result == 'success' }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RELEASE_RUNS_ON }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -541,7 +578,7 @@ jobs:
         )
       }}
     needs: [release-analysis]
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RELEASE_RUNS_ON }}
     timeout-minutes: 90
     permissions:
       contents: read
@@ -735,7 +772,7 @@ jobs:
   installer-proof:
     name: Prove the exact candidate in Tart
     if: ${{ !cancelled() && needs.candidate.result == 'success' }}
-    needs: [release-analysis, candidate]
+    needs: [host-admission, release-analysis, candidate]
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 30
     permissions:
@@ -764,6 +801,11 @@ jobs:
           uv python install --no-bin "$PYTHON_VERSION"
           uv sync --frozen --group dev --no-install-project
           uv run python tools/ci/export_env.py --path "$GITHUB_WORKSPACE/bin"
+      - name: Reconcile owned host state before the proof VM
+        run: >-
+          uv run python -m tools.ci.release_host_guard admit
+          --cpu "$RELEASE_PROOF_VM_CPU"
+          --memory-mib "$RELEASE_PROOF_VM_MEMORY_MIB"
       - name: Download exact candidate artifact
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -786,7 +828,13 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/harness"
           set +e
-          uv run python -m tools.ci.bootstrap --output-dir "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/harness" > "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/installer-harness.txt" 2>&1
+          uv run python -m tools.ci.bootstrap \
+            --base-image "$RELEASE_PROOF_BASE_IMAGE" \
+            --vm-name "teleclaude-release-proof-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --vm-cpu "$RELEASE_PROOF_VM_CPU" \
+            --vm-memory-mib "$RELEASE_PROOF_VM_MEMORY_MIB" \
+            --output-dir "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/harness" \
+            > "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/installer-harness.txt" 2>&1
           result=$?
           cat "$RUNNER_TEMP/release-proof-${{ github.run_id }}-${{ github.run_attempt }}/installer-harness.txt"
           echo "exit_code=$result" >> "$GITHUB_OUTPUT"
@@ -851,7 +899,7 @@ jobs:
         )
       }}
     needs: [release-analysis, candidate, installer-proof]
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RELEASE_RUNS_ON }}
     timeout-minutes: 20
     permissions:
       contents: write
@@ -927,12 +975,13 @@ jobs:
   release-summary:
     name: Report release outcome
     if: always()
-    needs: [recover-publication, seed-auth, release-analysis, candidate, installer-proof, publish]
-    runs-on: ubuntu-24.04
+    needs: [host-admission, recover-publication, seed-auth, release-analysis, candidate, installer-proof, publish]
+    runs-on: [self-hosted, macOS, ARM64]
     permissions: {}
     steps:
       - name: Summarize the visible stage outcome
         env:
+          HOST_ADMISSION_RESULT: ${{ needs.host-admission.result }}
           OPERATION: ${{ github.event_name == 'schedule' && 'scheduled' || inputs.operation }}
           RECOVERY_RESULT: ${{ needs.recover-publication.result }}
           RECOVERED: ${{ needs.recover-publication.outputs.recovered }}
@@ -951,41 +1000,10 @@ jobs:
           CANDIDATE_VERSION: ${{ needs.candidate.outputs.candidate_version }}
           CANDIDATE_SHA: ${{ needs.candidate.outputs.candidate_sha }}
           PROOF_DIGEST: ${{ needs.installer-proof.outputs.proof_evidence_sha256 }}
+          PROOF_ARTIFACT_ID: ${{ needs.installer-proof.outputs.artifact_id }}
+          PROOF_ARTIFACT_DIGEST: ${{ needs.installer-proof.outputs.artifact_digest }}
           PROOF_RESULT: ${{ needs.installer-proof.result }}
           PUBLISH_RESULT: ${{ needs.publish.result }}
           RELEASE_URL: ${{ needs.publish.outputs.release_url }}
-        run: |
-          if [ "$RECOVERY_RESULT" != 'success' ]; then
-            echo 'Publication recovery failed; no new source attempt was admitted.'
-          elif [ "$OPERATION" = 'seed' ] || [ "$OPERATION" = 'reseed' ]; then
-            echo "Codex auth $OPERATION result: $SEED_RESULT"
-          elif [ "$OPERATION" = 'retry' ]; then
-            echo "Publication retry result: recovered=$RECOVERED $RECOVERED_URL"
-          elif [ "$OPERATION" = 'cancel' ]; then
-            echo 'Attempt cancelled before source capture; no provider was invoked.'
-          elif [ "$OPERATION" = 'release' ] && [ -z "$REQUESTED_VERSION" ] && [ "$CHECKED_IN_PUBLICATION_ENABLED" != 'true' ]; then
-            echo 'Automatic publication is disabled; no new source attempt was started.'
-          elif [ "$CAPTURE_STATUS" = 'baseline_unavailable' ]; then
-            echo 'No completed release baseline with supported provenance is available for automatic assessment.'
-          elif [ "$CAPTURE_STATUS" = 'no_change' ]; then
-            echo 'No source change since the last completed release; no candidate was prepared.'
-          elif [ "$DECISION_MODE" = 'automatic' ] && [ "$SELECTED_CLASSIFICATION" = 'none' ]; then
-            echo "No release selected by $SELECTED_PROVIDER; no candidate was prepared."
-          elif [ "$ANALYSIS_RESULT" != 'success' ]; then
-            echo 'Inspection did not produce a complete valid assessment.'
-          elif [ "$CANDIDATE_RESULT" != 'success' ]; then
-            echo 'Candidate preparation or native lint failed; publication was not attempted.'
-          elif [ "$PROOF_RESULT" != 'success' ]; then
-            echo 'Full installer proof failed; proof logs were retained and publication was not attempted.'
-          elif [ "$PUBLISH_RESULT" = 'success' ]; then
-            echo "Published verified release: $RELEASE_URL"
-          elif [ "$DECISION_MODE" = 'manual' ] && [ "$OPERATION" = 'dry-run' ]; then
-            echo "Manual dry-run proof complete for $CANDIDATE_VERSION ($CANDIDATE_SHA); installer evidence SHA-256 $PROOF_DIGEST. No release was published."
-          elif [ "$OPERATION" = 'dry-run' ] || { [ "$DECISION_MODE" = 'automatic' ] && [ "$PUBLICATION_ENABLED" != 'true' ]; }; then
-            echo "Dry-run proof complete for $CANDIDATE_VERSION ($CANDIDATE_SHA); installer evidence SHA-256 $PROOF_DIGEST. Ordinary publication remains disabled."
-          else
-            echo 'Publication did not complete; a partial receipt was retained when available.'
-          fi
-          if [ -n "$CODEX_FAILURE" ] && [ "$SELECTED_PROVIDER" = 'claude' ]; then
-            echo "Claude fallback succeeded; Codex outcome ($CODEX_FAILURE) remains in retained evidence."
-          fi
+        run: >-
+          echo "Release summary: operation=$OPERATION host_admission=$HOST_ADMISSION_RESULT recovery=$RECOVERY_RESULT recovered=$RECOVERED recovered_url=$RECOVERED_URL seed=$SEED_RESULT capture=$CAPTURE_STATUS decision=$DECISION_MODE requested_version=$REQUESTED_VERSION analysis=$ANALYSIS_RESULT provider=$SELECTED_PROVIDER classification=$SELECTED_CLASSIFICATION codex_failure=$CODEX_FAILURE publication_enabled=$CHECKED_IN_PUBLICATION_ENABLED candidate=$CANDIDATE_RESULT candidate_version=$CANDIDATE_VERSION candidate_sha=$CANDIDATE_SHA proof=$PROOF_RESULT proof_sha256=$PROOF_DIGEST proof_artifact_id=$PROOF_ARTIFACT_ID proof_artifact_digest=$PROOF_ARTIFACT_DIGEST publish=$PUBLISH_RESULT release_url=$RELEASE_URL"

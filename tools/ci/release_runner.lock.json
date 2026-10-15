@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "fleet": {
+    "version": "v0.1.634+main.4105d3c7f0ec",
+    "commit": "4105d3c7f0ec42aef3a55451642393e9e8587b43",
+    "release_archive": {
+      "filename": "tart-runner-fleet-v0.1.634+main.4105d3c7f0ec-darwin-arm64.tar.gz",
+      "url": "https://github.com/vitalyiegorov/tart-runner-fleet/releases/download/v0.1.634%2Bmain.4105d3c7f0ec/tart-runner-fleet-v0.1.634%2Bmain.4105d3c7f0ec-darwin-arm64.tar.gz",
+      "sha256": "ac7ccaee106e8da1a92e2a7d9ef77f5a8527ce30525da0e0a1ab6af21750b4c6",
+      "size_bytes": 8661834
+    },
+    "checksums": {
+      "filename": "SHA256SUMS",
+      "url": "https://github.com/vitalyiegorov/tart-runner-fleet/releases/download/v0.1.634%2Bmain.4105d3c7f0ec/SHA256SUMS",
+      "sha256": "1f63e46033d8e0b943d59851fe4c95d8eae16509d2443d5088f8b5ebe3f1a914",
+      "size_bytes": 2832
+    },
+    "linux_bootstrap": {
+      "filename": "tart-runner-fleet-bootstrap-linux-arm64",
+      "url": "https://github.com/vitalyiegorov/tart-runner-fleet/releases/download/v0.1.634%2Bmain.4105d3c7f0ec/tart-runner-fleet-bootstrap-linux-arm64",
+      "sha256": "c8fb69f1336dbc791a6be0c0ed644fe43a29034f70b72f93614a220236f246bf",
+      "size_bytes": 2752674
+    }
+  },
+  "linux_base": {
+    "source_image": "ghcr.io/cirruslabs/ubuntu@sha256:ea337c9f1c3935929c04dc1de370425f65174a14f50087a192354a9dc3cfb521",
+    "architecture": "arm64",
+    "distribution": "Ubuntu 24.04",
+    "runner": {
+      "version": "2.338.0",
+      "url": "https://github.com/actions/runner/releases/download/v2.338.0/actions-runner-linux-arm64-2.338.0.tar.gz",
+      "sha256": "628b4a7258487b80c1d3c221095a7ded349f5ae0175fd3dfab708d07428f041b",
+      "size_bytes": 140012091
+    },
+    "fleet_bootstrap_path": "/usr/local/libexec/tart-runner-fleet-bootstrap",
+    "promotion": "Build and qualify a dated candidate before assigning the deployment-owned immutable Tart image identifier."
+  }
+}
