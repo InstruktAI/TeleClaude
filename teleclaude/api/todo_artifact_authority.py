@@ -201,11 +201,12 @@ async def session_ancestry(session_id: str) -> frozenset[str]:
 def intent_body_mutation(
     slug: str, ancestry: frozenset[str]
 ) -> Callable[[dict[str, StateValue] | None], ItemChange | None]:
-    """The authority over the intent body of an item outside the task lane, on the row the write's transaction reads.
+    """The authority of an agent session over the intent body of an item outside the task lane, on the row read.
 
-    Only the holder, or a session of its claiming group, edits the body; no role, terminal or principal alone grants
-    it. An unclaimed item, a caller with no session, a session with no claim and a session of an earlier claiming
-    group have none, and a held ready item admits no edit (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``, Helpers of a driver). The mutation
+    Only the holder, or a session of its claiming group, edits the body; no role alone grants it. An unclaimed item,
+    a session with no claim and a session of an earlier claiming group have none, and a held ready item admits no
+    edit; a person writing without a session is not an agent session and keeps the artifact-versioning contract\'s
+    write permissions (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``, Helpers of a driver). The mutation
     changes no state: it only refuses, before the body is written.
     """
 
