@@ -607,7 +607,8 @@ async def list_projects_with_todos() -> list[ProjectInfo]:
 async def list_todos(project_path: str) -> list[TodoDTO]:
     """List todos for a project.
 
-    Ephemeral request/response - no DB session required.
+    Ephemeral request/response - no DB session required. The projection reads the store and the remote for items
+    stored ``ready``, so it runs on a worker thread and never on the daemon\'s event loop.
 
     Args:
         project_path: Absolute path to project directory
@@ -615,7 +616,8 @@ async def list_todos(project_path: str) -> list[TodoDTO]:
     Returns:
         List of todo objects.
     """
-    return assemble_todo_from_db(
+    return await asyncio.to_thread(
+        assemble_todo_from_db,
         project_path,
         include_icebox=True,
         include_delivered=True,
