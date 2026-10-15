@@ -41,7 +41,14 @@ class _CreateItemHost(Protocol):
         session: SqlAsyncSession,
     ) -> bool: ...
 
-    async def write_state(self, slug: str, state: dict[str, StateValue], *, session: SqlAsyncSession) -> None: ...
+    async def write_state(
+        self,
+        slug: str,
+        state: dict[str, StateValue],
+        *,
+        session: SqlAsyncSession,
+        owns_workflow_record: bool = False,
+    ) -> None: ...
 
     async def write_artifact(
         self,
@@ -221,7 +228,7 @@ class TodosDbWorkflowOperationsMixin:
                     if digests[name] != expected:
                         raise ArtifactRevisionMismatch(name, expected, digests[name])
                 change = mutate(prior, digests)
-                await self.write_state(slug, change.state, session=session)
+                await self.write_state(slug, change.state, session=session, owns_workflow_record=True)
                 if change.log_entry:
                     existing = await self.read_artifact_in_session(slug, ARTIFACT_LOG, session)
                     await self.write_artifact(

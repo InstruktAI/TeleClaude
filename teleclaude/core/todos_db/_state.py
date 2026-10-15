@@ -18,7 +18,7 @@ from teleclaude.constants import ARTIFACT_DEFERRALS, WORKTREE_DIR, TodoStatus
 from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, KIND_BUG
 from teleclaude.core.next_machine.lifecycle import READY_BAND_PHASES, coerce_lifecycle_phase, is_ready_band_eligible
 from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
-from teleclaude.types.claim_change import stored_holder, with_claim_change
+from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, stored_holder, with_claim_change
 from teleclaude.types.state_value import StateValue
 
 from ._errors import HolderWriteRefused
@@ -93,6 +93,17 @@ class TodosDbStateMixin:
 
     def _payload_holder(self, payload: Mapping[str, StateValue]) -> str | None:
         return stored_holder(payload)
+
+    def _carry_workflow_record(
+        self, payload: dict[str, StateValue], state_model: TodoStateModel | None
+    ) -> dict[str, StateValue]:
+        """Keep the machine-owned workflow record the row already holds; only the machine's own commit replaces it."""
+        if state_model is None:
+            return payload
+        stored = cast(dict[str, StateValue], json.loads(state_model.state)).get(WORKFLOW_STATE_KEY)
+        if stored is None:
+            return payload
+        return {**payload, WORKFLOW_STATE_KEY: stored}
 
     def _payload_lifecycle_phase(self, payload: Mapping[str, StateValue]) -> str:
         phase = payload.get("lifecycle_phase")
@@ -392,7 +403,7 @@ class TodosDbStateMixin:
             # Upsert state model
             state_model = await db_session.get(TodoStateModel, todo_id)
             prior_holder = self._stored_holder(state_model)
-            canonical = with_claim_change(canonical, prior_holder)
+            canonical = with_claim_change(self._carry_workflow_record(canonical, state_model), prior_holder)
             if state_model is None:
                 state_model = TodoStateModel(
                     id=todo_id,
@@ -423,8 +434,13 @@ class TodosDbStateMixin:
         state: dict[str, StateValue],
         *,
         session: SqlAsyncSession | None = None,
+        owns_workflow_record: bool = False,
     ) -> None:
-        """Upsert state JSON for a slug."""
+        """Upsert state JSON for a slug.
+
+        The item's workflow record is carried forward from the stored row unless the caller is the
+        workflow machine's own commit (``owns_workflow_record``).
+        """
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
@@ -441,6 +457,8 @@ class TodosDbStateMixin:
             state_model = await db_session.get(TodoStateModel, row_id)
             prior_phase = self._stored_lifecycle_phase(state_model)
             prior_holder = self._stored_holder(state_model)
+            if not owns_workflow_record:
+                payload = self._carry_workflow_record(payload, state_model)
             payload = with_claim_change(payload, prior_holder)
             if state_model is None:
                 state_model = TodoStateModel(
@@ -658,7 +676,7 @@ class TodosDbStateMixin:
             state_model = session.get(TodoStateModel, str(row_id))
             prior_phase = self._stored_lifecycle_phase(state_model)
             prior_holder = self._stored_holder(state_model)
-            payload = with_claim_change(payload, prior_holder)
+            payload = with_claim_change(self._carry_workflow_record(payload, state_model), prior_holder)
             if state_model is None:
                 state_model = TodoStateModel(
                     id=str(row_id),
