@@ -24,6 +24,7 @@ from teleclaude.core.next_machine.lifecycle import (
     require_lifecycle_phase,
 )
 from teleclaude.core.workflow_store.store import get_workflow_store_sync
+from teleclaude.types.claim_change import workflow_record_of
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY, TodoState
 
@@ -114,6 +115,18 @@ def parse_since_to_cutoff(value: str) -> str:
 
 def _non_empty_str(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _prepared_session_id(state: dict[str, StateValue]) -> str | None:
+    """The session that completed the item's preparation.
+
+    The record of the lifecycle machine is the authority when it holds a prepared revision: the session that performed
+    the prepared act. Otherwise the value stored before that machine is published as it was.
+    """
+    prepared = workflow_record_of(state).prepared
+    if prepared is not None:
+        return _non_empty_str(prepared.session_id)
+    return _non_empty_str(state.get(PREPARED_SESSION_ID_STATE_KEY))
 
 
 def _artifact_digest(state: dict[str, StateValue] | None, artifact_key: str) -> str | None:
@@ -591,7 +604,7 @@ def assemble_todo_from_db(
                     if isinstance(state.get(_ProjectionStateKey.ACTIVE_RUNNER), str)
                     else None
                 ),
-                prepared_session_id=_non_empty_str(state.get(PREPARED_SESSION_ID_STATE_KEY)),
+                prepared_session_id=_prepared_session_id(state),
                 files=[artifact.name for artifact in item.artifact_files],
                 artifact_updated_at={
                     artifact.name: artifact.updated_at
