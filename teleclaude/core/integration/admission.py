@@ -46,6 +46,7 @@ class AdmissionRefusal(StrEnum):
 
     UNKNOWN_ITEM = "{item} is no longer a known item"
     HELD = "{item} is held or kicked back"
+    DRIVER = "{item} is held by a work driver or has one being started"
     NOT_READY = "{item} no longer reads ready at {sha}"
     CREATIVE_MOVED = "{item}'s creative design changed after the scan"
     HEAD_UNREADABLE = "the branch of {item} cannot be read on origin"
@@ -87,6 +88,8 @@ def _mutation(key: CandidateKey, lane: LaneFacts, snapshot: str, session_id: str
             raise AdmissionRefused(AdmissionRefusal.CREATIVE_MOVED.value.format(item=key.slug))
         if candidate_is_held(current, state, head):
             raise AdmissionRefused(AdmissionRefusal.HELD.value.format(item=key.slug))
+        if state.active_runner or state.workflow.launch is not None:
+            raise AdmissionRefused(AdmissionRefusal.DRIVER.value.format(item=key.slug))
         reading = read_phase(state, lane)
         if reading.phase is not Phase.READY or reading.ready_sha != key.sha:
             raise AdmissionRefused(AdmissionRefusal.NOT_READY.value.format(item=key.slug, sha=key.sha[:8]))

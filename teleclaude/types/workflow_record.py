@@ -77,6 +77,12 @@ class Act(StrEnum):
     DELIVERED = "delivered"
 
 
+class NoteKind(StrEnum):
+    """The kinds of note a verb marks structurally; the machine never reads a note's text to tell them apart."""
+
+    REASON = "reason"
+
+
 class ActStatus(StrEnum):
     """Whether every effect an act committed has finished."""
 
@@ -108,6 +114,7 @@ class LedgerEntry(BaseModel):
     session_id: str
     bound: str = ""
     text: str = ""
+    note_kind: NoteKind | None = None
 
 
 class PendingEffect(BaseModel):
@@ -237,6 +244,20 @@ class AdmittedCandidate(BaseModel):
     session_id: str
 
 
+class InstructionOffer(BaseModel):
+    """An instruction rendered for a held ready item: the key it printed and the reasons it listed.
+
+    ``upto_seq`` is the highest reason note the rendering transaction read. A release presents the key; it is refused
+    when a reason was noted after the offer the key names.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    key: str
+    upto_seq: int
+    epoch: int
+
+
 class WorkflowRecord(BaseModel):
     """Everything the workflow machine persists on an item beyond the lifecycle phase."""
 
@@ -255,6 +276,7 @@ class WorkflowRecord(BaseModel):
     publish_intents: list[PublishIntent] = Field(default_factory=list)
     offered_findings: list[OfferedFinding] = Field(default_factory=list)
     admitted: AdmittedCandidate | None = None
+    instruction_offer: InstructionOffer | None = None
 
     def with_effect(self, effect: PendingEffect) -> WorkflowRecord:
         """A copy with the effect appended to the pending list."""

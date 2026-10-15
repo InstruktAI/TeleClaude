@@ -25,7 +25,9 @@ from teleclaude.core.workflow_machine.caller import CallerFacts, child_sessions_
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.heads import observe_item_supervised
 from teleclaude.core.workflow_machine.lane import resolve_lane
+from teleclaude.core.workflow_machine.ledger_log import render_log_entry
 from teleclaude.core.workflow_machine.phase_reading import PhaseReading, creative_snapshot, read_phase
+from teleclaude.core.workflow_machine.reasons import reason_notes
 from teleclaude.core.workflow_machine.stamp_run import run_stamp
 from teleclaude.core.workflow_machine.vocabulary import ACT_PERFORMERS, Performer
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
@@ -53,9 +55,6 @@ from teleclaude.types.workflow_record import (
 
 logger = get_logger(__name__)
 
-LOG_HEADER_TEMPLATE: Final = "\n### {at} — {role} · {session} · {act}{bound}\n\n"
-LOG_BOUND_TEMPLATE: Final = " ({bound})"
-LOG_TEXT_TEMPLATE: Final = "{text}\n"
 EFFECT_ID_TEMPLATE: Final = "{key}:{name}"
 SESSION_PARAM: Final = "session_id"
 PERSON_PARAM: Final = "person"
@@ -127,6 +126,7 @@ def _content_digest(request: ActRequest) -> str:
         request.person,
         request.finding_key,
         request.wait,
+        request.instruction,
         request.text,
     )
     return _digest(BOUND_SEPARATOR.join(parts))
@@ -175,6 +175,8 @@ def _require(request: ActRequest, value: str, argument: str) -> str:
 
 def _require_phase(request: ActRequest, reading: PhaseReading, allowed: tuple[Phase, ...]) -> Phase:
     phase = reading.phase
+    if phase is Phase.READY and phase not in allowed:
+        raise _refuse(Refusal.READY_HOLD, act=request.act.value)
     if phase is None or phase not in allowed:
         shown = phase.value if phase is not None else LifecyclePhase.TASK_RUNNING.value
         raise _refuse(Refusal.WRONG_PHASE, act=request.act.value, phase=shown)
@@ -324,7 +326,7 @@ def _decide_decision(request: ActRequest, facts: _Facts, state: TodoState, readi
 
 
 def _decide_kickback(request: ActRequest, facts: _Facts, state: TodoState, reading: PhaseReading) -> _Decision:
-    _require_phase(request, reading, (Phase.WORK,))
+    _require_phase(request, reading, (Phase.WORK, Phase.READY))
     reason = _require(request, request.text, ARGUMENT_TEXT)
 
     def record(current: WorkflowRecord) -> WorkflowRecord:
@@ -385,7 +387,29 @@ def _decide_stamp(request: ActRequest, facts: _Facts, state: TodoState, reading:
 def _decide_release(request: ActRequest, facts: _Facts, state: TodoState, reading: PhaseReading) -> _Decision:
     if reading.phase is None:
         raise _refuse(Refusal.TASK_LANE, act=request.act.value)
-    return _Decision(bound=facts.caller.session_id, effects=(_release_effect(facts.caller.session_id),))
+    if reading.phase is Phase.READY:
+        _require_instruction_seen(request, state)
+
+    def record(current: WorkflowRecord) -> WorkflowRecord:
+        updated = current.model_copy(deep=True)
+        updated.instruction_offer = None
+        return updated
+
+    return _Decision(bound=facts.caller.session_id, record=record, effects=(_release_effect(facts.caller.session_id),))
+
+
+def _require_instruction_seen(request: ActRequest, state: TodoState) -> None:
+    """Refuse the release of a held ready item that did not receive every reason noted so far.
+
+    The key is printed only in the instruction, so a driver holds it only by having received the instruction; a reason
+    noted after the offer the key names has a higher ledger position than the offer recorded.
+    """
+    offer = state.workflow.instruction_offer
+    if not request.instruction or offer is None or offer.key != request.instruction:
+        raise _refuse(Refusal.INSTRUCTION_REQUIRED, act=request.act.value, item=request.item)
+    unseen = next((note for note in reason_notes(state.workflow) if note.seq > offer.upto_seq), None)
+    if unseen is not None:
+        raise _refuse(Refusal.UNSEEN_REASON, act=request.act.value, item=request.item, note=unseen.key)
 
 
 _DECIDERS: Final[Mapping[Act, Callable[[ActRequest, _Facts, TodoState, PhaseReading], _Decision]]] = {
@@ -420,14 +444,6 @@ def _authorize(request: ActRequest, facts: _Facts) -> None:
         raise _refuse(Refusal.NOT_PERFORMED_HERE, act=request.act.value)
     if not allowed:
         raise _refuse(Refusal.PERFORMER, act=request.act.value, performer=performer.value)
-
-
-def _log_entry(entry: LedgerEntry) -> str:
-    bound = LOG_BOUND_TEMPLATE.format(bound=entry.bound) if entry.bound else NO_SESSION
-    header = LOG_HEADER_TEMPLATE.format(
-        at=entry.at, role=entry.role or NO_SESSION, session=entry.session_id, act=entry.act.value, bound=bound
-    )
-    return header + (LOG_TEXT_TEMPLATE.format(text=entry.text) if entry.text else NO_SESSION)
 
 
 async def _resolve_facts(store: WorkflowStore, request: ActRequest, state: TodoState) -> _Facts:
@@ -512,7 +528,7 @@ def _apply(
     if decision.phase is not None:
         new_state[LIFECYCLE_PHASE_STATE_KEY] = decision.phase.value
     outcome.append(key)
-    return ItemChange(state=new_state, log_entry=_log_entry(entry))
+    return ItemChange(state=new_state, log_entry=render_log_entry(entry))
 
 
 async def perform_act(request: ActRequest) -> ActResult:

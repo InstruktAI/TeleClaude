@@ -301,6 +301,12 @@ FLAG_TODO_LIST_JSON = Flag(
     "--json", desc="Output as a sectioned JSON object (active/delivered/icebox/removed trees)", arity=SWITCH
 )
 
+FLAG_TODO_WORK_REASON = Flag(
+    "--reason",
+    desc="Why a ready item should not be delivered as it stands; required to work on a ready item, from a session",
+    arity=VALUE,
+)
+
 # =============================================================================
 # todo integrate
 # =============================================================================
@@ -385,6 +391,9 @@ FLAG_ACT_SHA = Flag("--sha", desc="The commit the act is bound to (reviewed, fin
 FLAG_ACT_REVISION = Flag("--revision", desc="The intent-body revision the prepared act judged", arity=VALUE)
 FLAG_ACT_PERSON = Flag("--person", desc="The person the item waits on, by slug (waiting)", arity=VALUE)
 FLAG_ACT_FINDING = Flag("--finding", desc="The key of the finding a reply answers", arity=VALUE)
+FLAG_ACT_INSTRUCTION = Flag(
+    "--instruction", desc="The key of the instruction a held ready item's release acknowledges", arity=VALUE
+)
 FLAG_ACT_WAIT = Flag(
     "--wait", desc="The key of the wait a decision answers, as the waiting act reported it", arity=VALUE
 )

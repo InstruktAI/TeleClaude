@@ -785,8 +785,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "work": CommandDef(
                 desc="Run the Phase B (work) state machine",
-                args="[<slug>]",
-                flags=[F.FLAG_HELP],
+                args="[<slug>] [--reason <text>]",
+                flags=[F.FLAG_HELP, F.FLAG_TODO_WORK_REASON],
                 notes=[_RECEIPT_RETURN_NOTE],
                 auth=CommandAuth(capability=Capability.TODO_ORCHESTRATION, human=_HR_MEMBER),
             ),
@@ -879,7 +879,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "act": CommandDef(
                 desc="Perform one act of an item's lifecycle as the session that holds or serves it",
                 args=(
-                    "<item> <act> [<text>] [--sha <commit>] [--revision <digest>] [--person <slug>] [--finding <key>] [--wait <key>]"
+                    "<item> <act> [<text>] [--sha <commit>] [--revision <digest>] [--person <slug>] [--finding <key>] [--wait <key>] [--instruction <key>]"
                 ),
                 flags=[
                     F.FLAG_HELP,
@@ -888,6 +888,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_ACT_PERSON,
                     F.FLAG_ACT_FINDING,
                     F.FLAG_ACT_WAIT,
+                    F.FLAG_ACT_INSTRUCTION,
                 ],
                 notes=[
                     "Acts: note, reviewed, finding, reply, prepared, waiting, decision, stamp, kickback, release.",

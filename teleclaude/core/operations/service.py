@@ -207,6 +207,7 @@ class OperationsService:
         caller_session_id: str,
         client_request_id: str | None,
         addressed_todo_id: str | None = None,
+        reason: str | None = None,
     ) -> SerializedOperation:
         """Create or reattach a receipt-backed manual-start operation.
 
@@ -222,6 +223,7 @@ class OperationsService:
             cwd=cwd,
             addressed_todo_id=addressed_todo_id,
             client_request_id=client_request_id,
+            reason=reason,
         )
         return await self._submit_operation(
             kind=operation_kind,

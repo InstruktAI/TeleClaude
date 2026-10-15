@@ -13,7 +13,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Final
+from typing import Final, NoReturn
 
 from instrukt_ai_logging import get_logger
 
@@ -25,12 +25,14 @@ from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.heads import observe_item_supervised
 from teleclaude.core.workflow_machine.instruction import InstructionFacts, render_instruction
 from teleclaude.core.workflow_machine.lane import resolve_lane
+from teleclaude.core.workflow_machine.ledger_log import render_log_entry
 from teleclaude.core.workflow_machine.phase_reading import LaneFacts, PhaseReading, creative_snapshot, read_phase
 from teleclaude.core.workflow_machine.publication import (
     PublicationError,
     WorkflowPublication,
     published_workflow_publication,
 )
+from teleclaude.core.workflow_machine.reasons import reason_notes, record_reason
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ArtifactRevisionMismatch, ItemChange
 from teleclaude.entry_declarations import EntryDeclarations, WorkflowDeclaration
@@ -48,6 +50,7 @@ from teleclaude.types.workflow_record import (
     DrivenPhase,
     EffectKind,
     EmittedEvent,
+    InstructionOffer,
     LaunchReservation,
     LedgerEntry,
     PendingEffect,
@@ -79,6 +82,13 @@ class EntryRefusal(StrEnum):
     NO_LAUNCH = "{item}: no driver start is awaiting a claim; the start this session was given was released"
     WRONG_RESERVATION = "{item}: this session was started for another request than the one awaiting a claim"
     NO_CHILD = "{item}: the phase {phase} dispatches no child"
+    REASON_REQUIRED = (
+        "{item} is ready: it is worked on only with a stated reason, from a session; "
+        "repeat with `telec todo work {item} --reason <text>`"
+    )
+    ADMITTED = "{item} is admitted by the integrator at {sha}; the integrator delivers or parks it"
+    READY_DOOR = "{item} is ready, which `telec todo work {item} --reason <text>` drives"
+    HELD_NOTED = "{item} is held by session {session}; your reason is recorded as note {note}"
 
 
 class EntryRefused(Exception):
@@ -102,6 +112,7 @@ class EntryRequest:
     verb: EntryVerb
     caller_session_id: str
     reservation: str = ""
+    reason: str = ""
     wait_for_claim: bool = True
     lane: LaneFacts | None = None
     creative_snapshot: str = ""
@@ -123,6 +134,7 @@ class EntryResult:
 
 
 REQUESTED_NOTE: Final = "{item}: a driver was requested."
+REASON_NOTED: Final = " Your reason is recorded as note {note}."
 LAUNCH_NOTE: Final = "{item}: a driver was requested; session {session} holds the claim."
 CLAIM_NOTE: Final = "claimed"
 NO_SESSION: Final = ""
@@ -132,6 +144,7 @@ ATTACH_POLL_SECONDS: Final = 0.5
 LAUNCH_PENDING_TEMPLATE: Final = (
     "{item}: the driver start (reservation {key}) has not claimed yet; repeat the verb to attach."
 )
+OFFER_ACT: Final = "offer"
 EFFECT_REQUEST: Final = "request"
 EFFECT_WORKTREE: Final = "worktree"
 EFFECT_ID_TEMPLATE: Final = "{key}:{name}"
@@ -143,22 +156,26 @@ _VERB_FOR_PHASE: Final[Mapping[Phase, EntryVerb]] = {
     Phase.PREPARATION: EntryVerb.PREPARE,
     Phase.PREPARED: EntryVerb.WORK,
     Phase.WORK: EntryVerb.WORK,
+    Phase.READY: EntryVerb.WORK,
 }
 _DRIVEN_PHASE: Final[Mapping[Phase, DrivenPhase]] = {
     Phase.PREPARATION: DrivenPhase.PREPARATION,
     Phase.PREPARED: DrivenPhase.PREPARED,
     Phase.WORK: DrivenPhase.WORK,
+    Phase.READY: DrivenPhase.READY,
 }
 _HELD_DRIVEN_PHASE: Final[Mapping[Phase, DrivenPhase]] = {
     Phase.PREPARATION: DrivenPhase.PREPARATION,
     Phase.PREPARED: DrivenPhase.WORK,
     Phase.WORK: DrivenPhase.WORK,
+    Phase.READY: DrivenPhase.READY,
 }
 """The driven phase whose scope governs the instruction: a prepared item is held as work from the claim."""
 _REQUEST_EVENT: Final[Mapping[Phase, EmittedEvent]] = {
     Phase.PREPARATION: EmittedEvent.PREPARATION_REQUESTED,
     Phase.PREPARED: EmittedEvent.WORK_REQUESTED,
     Phase.WORK: EmittedEvent.WORK_REQUESTED,
+    Phase.READY: EmittedEvent.WORK_REQUESTED,
 }
 
 
@@ -183,8 +200,11 @@ def _recheck_creative(request: EntryRequest, state_dict: Mapping[str, StateValue
         raise _refuse(EntryRefusal.CREATIVE_CHANGED, item=request.item)
 
 
-def _check_drivable(request: EntryRequest, state: TodoState, reading: PhaseReading) -> Phase:
-    """The phase the verb may drive, or the one named cause for refusing."""
+def _check_drivable(request: EntryRequest, state: TodoState, reading: PhaseReading, *, starting: bool = False) -> Phase:
+    """The phase the verb may drive, or the one named cause for refusing.
+
+    ``starting`` is the call that reserves a driver: on a ready item only that call states the reason.
+    """
     phase = reading.phase
     if phase is Phase.WAITING:
         waiting = state.workflow.waiting
@@ -192,6 +212,14 @@ def _check_drivable(request: EntryRequest, state: TodoState, reading: PhaseReadi
     if phase is None or phase not in _VERB_FOR_PHASE:
         shown = phase.value if phase is not None else TASK_LANE_LABEL
         raise _refuse(EntryRefusal.NOT_DRIVEN, item=request.item, phase=shown)
+    if phase is Phase.READY:
+        admitted = state.workflow.admitted
+        if admitted is not None:
+            raise _refuse(EntryRefusal.ADMITTED, item=request.item, sha=admitted.sha)
+        if request.verb is not EntryVerb.WORK:
+            raise _refuse(EntryRefusal.READY_DOOR, item=request.item)
+        if starting and (not request.reason.strip() or not request.caller_session_id):
+            raise _refuse(EntryRefusal.REASON_REQUIRED, item=request.item)
     if _VERB_FOR_PHASE[phase] is not request.verb:
         raise _refuse(EntryRefusal.DRIVEN_BY, item=request.item, phase=phase.value, verb=_VERB_FOR_PHASE[phase].value)
     return phase
@@ -289,7 +317,8 @@ def _apply_claim(
     )
     record.ledger.append(entry)
     record.launch = None
-    if state.lifecycle_phase is LifecyclePhase.READY:
+    stale_stamp = phase is Phase.WORK and state.lifecycle_phase is LifecyclePhase.READY
+    if stale_stamp:
         record.stamp = None
     effects: list[PendingEffect] = []
     if phase in (Phase.PREPARED, Phase.WORK):
@@ -307,7 +336,7 @@ def _apply_claim(
         WORKFLOW_STATE_KEY: record.to_state(),
         ACTIVE_RUNNER_STATE_KEY: request.caller_session_id,
     }
-    if phase is Phase.PREPARED or state.lifecycle_phase is LifecyclePhase.READY:
+    if phase is Phase.PREPARED or stale_stamp:
         new_state[LIFECYCLE_PHASE_STATE_KEY] = LifecyclePhase.WORK.value
     return ItemChange(state=new_state, log_entry=_claim_log(entry, request.item))
 
@@ -324,21 +353,45 @@ def _claim_log(entry: LedgerEntry, item: str) -> str:
 
 
 def _apply_reservation(
-    request: EntryRequest, item_id: str, phase: Phase, state_dict: dict[str, StateValue] | None
+    request: EntryRequest,
+    item_id: str,
+    phase: Phase,
+    role: str,
+    state_dict: dict[str, StateValue] | None,
+    noted: list[str],
 ) -> ItemChange:
-    """Record the launch reservation and the request notice in one write, or leave a pending one in place."""
+    """Record the launch reservation and the request notice in one write, or leave a pending one in place.
+
+    On a ready item the call's reason is recorded in the same write, attributed to the calling session; its note key is
+    reported through ``noted`` so the result names it.
+    """
     if state_dict is None:
         raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
     _recheck_creative(request, state_dict)
     state = TodoState.model_validate(state_dict)
     reading = read_phase(state, request.resolved_lane)
-    _check_drivable(request, state, reading)
+    _check_drivable(request, state, reading, starting=True)
     holder = state.active_runner or None
     if holder is not None:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
-    if state.workflow.launch is not None:
-        return ItemChange(state=state_dict)
     record = state.workflow.model_copy(deep=True)
+    log = NO_SESSION
+    if phase is Phase.READY:
+        recorded = record_reason(
+            record,
+            project_root=request.project_root,
+            item_id=item_id,
+            session_id=request.caller_session_id,
+            role=role,
+            text=request.reason.strip(),
+        )
+        record = recorded.record.model_copy(deep=True)
+        noted.append(recorded.note.key)
+        log = render_log_entry(recorded.note) if recorded.created else NO_SESSION
+    if state.workflow.launch is not None:
+        if not log:
+            return ItemChange(state=state_dict)
+        return ItemChange(state={**state_dict, WORKFLOW_STATE_KEY: record.to_state()}, log_entry=log)
     key = occurrence_id(request.project_root, item_id, EFFECT_REQUEST, str(record.claim_epoch), _now())
     record.launch = LaunchReservation(
         key=key,
@@ -357,7 +410,80 @@ def _apply_reservation(
         )
     )
     record.act_status[key] = ActStatus.IN_PROGRESS
-    return ItemChange(state={**state_dict, WORKFLOW_STATE_KEY: record.to_state()})
+    return ItemChange(state={**state_dict, WORKFLOW_STATE_KEY: record.to_state()}, log_entry=log)
+
+
+async def _note_reason(store: WorkflowStore, request: EntryRequest, item_id: str) -> str:
+    """Record the calling session's reason on an item that is held or being started; the key of its note."""
+    caller = await load_caller(request.caller_session_id)
+    role = (caller.role if caller is not None else None) or NO_SESSION
+    noted: list[str] = []
+
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
+        record = TodoState.model_validate(current).workflow
+        recorded = record_reason(
+            record,
+            project_root=request.project_root,
+            item_id=item_id,
+            session_id=request.caller_session_id,
+            role=role,
+            text=request.reason.strip(),
+        )
+        noted.append(recorded.note.key)
+        if not recorded.created:
+            return None
+        return ItemChange(
+            state={**current, WORKFLOW_STATE_KEY: recorded.record.to_state()}, log_entry=render_log_entry(recorded.note)
+        )
+
+    await store.commit_item_change(request.item, expect_digests={}, mutate=mutate, updated_by=request.caller_session_id)
+    return noted[-1]
+
+
+_STAMPED_STORED: Final = frozenset(
+    {LifecyclePhase.READY, LifecyclePhase.FINALIZE_READY, LifecyclePhase.REVIEW_APPROVED}
+)
+"""The stored phases whose reading depends on a stamp's commit being the integration head."""
+
+
+async def _refuse_held(
+    store: WorkflowStore, request: EntryRequest, item_id: str, state: TodoState, holder: str
+) -> NoReturn:
+    """Refuse a call on a held item; a reason stated for a ready item is recorded first and named in the refusal."""
+    reading = read_phase(state, request.resolved_lane)
+    if reading.phase is Phase.READY and request.reason.strip() and request.caller_session_id:
+        note = await _note_reason(store, request, item_id)
+        raise _refuse(EntryRefusal.HELD_NOTED, item=request.item, session=holder, note=note)
+    raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
+
+
+async def _clear_stale_stamp(store: WorkflowStore, request: EntryRequest) -> None:
+    """The holder's entry settles a stamp the head moved past: the stamp is cleared and work is stored, in one write."""
+
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
+        state = TodoState.model_validate(current)
+        if state.active_runner != request.caller_session_id:
+            raise _refuse(EntryRefusal.HELD, item=request.item, session=state.active_runner or NO_SESSION)
+        if (
+            read_phase(state, request.resolved_lane).phase is not Phase.WORK
+            or state.lifecycle_phase not in _STAMPED_STORED
+        ):
+            return None
+        record = state.workflow.model_copy(deep=True)
+        record.stamp = None
+        return ItemChange(
+            state={
+                **current,
+                WORKFLOW_STATE_KEY: record.to_state(),
+                LIFECYCLE_PHASE_STATE_KEY: LifecyclePhase.WORK.value,
+            }
+        )
+
+    await store.commit_item_change(request.item, expect_digests={}, mutate=mutate, updated_by=request.caller_session_id)
 
 
 async def _await_claim(store: WorkflowStore, request: EntryRequest) -> str:
@@ -396,21 +522,52 @@ async def _launch(
     store: WorkflowStore, request: EntryRequest, item_id: str, phase: Phase, expected: Mapping[str, str]
 ) -> EntryResult:
     """Record the launch reservation, then attach to the driver that claims for it."""
+    caller = await load_caller(request.caller_session_id)
+    role = (caller.role if caller is not None else None) or NO_SESSION
+    noted: list[str] = []
     await store.commit_item_change(
         request.item,
         expect_digests=expected,
-        mutate=lambda current, _digests: _apply_reservation(request, item_id, phase, current),
+        mutate=lambda current, _digests: _apply_reservation(request, item_id, phase, role, current, noted),
         updated_by=request.caller_session_id or None,
     )
     await reconcile_slug_supervised(request.project_root, request.item)
+    suffix = REASON_NOTED.format(note=noted[-1]) if noted else NO_SESSION
     if not request.wait_for_claim:
-        return EntryResult(text=REQUESTED_NOTE.format(item=request.item), driver_session_id=NO_SESSION)
+        return EntryResult(text=REQUESTED_NOTE.format(item=request.item) + suffix, driver_session_id=NO_SESSION)
     started = await _await_claim(store, request)
-    return EntryResult(text=LAUNCH_NOTE.format(item=request.item, session=started), driver_session_id=started)
+    return EntryResult(text=LAUNCH_NOTE.format(item=request.item, session=started) + suffix, driver_session_id=started)
+
+
+async def _offer_instruction(
+    store: WorkflowStore, request: EntryRequest, item_id: str
+) -> tuple[str, list[LedgerEntry]]:
+    """Record the offer an instruction for a held ready item prints, and the reason notes it lists, in one write.
+
+    The offer names the highest reason note this transaction read, so a reason noted afterwards has a higher position
+    than any offer already printed and the release presenting that offer's key is refused.
+    """
+    offered: list[tuple[str, list[LedgerEntry]]] = []
+
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
+        record = TodoState.model_validate(current).workflow.model_copy(deep=True)
+        notes = reason_notes(record)
+        upto = max((note.seq for note in notes), default=0)
+        key = occurrence_id(request.project_root, item_id, OFFER_ACT, str(record.claim_epoch), str(upto), _now())
+        record.instruction_offer = InstructionOffer(key=key, upto_seq=upto, epoch=record.claim_epoch)
+        offered.append((key, notes))
+        return ItemChange(state={**current, WORKFLOW_STATE_KEY: record.to_state()})
+
+    await store.commit_item_change(request.item, expect_digests={}, mutate=mutate, updated_by=request.caller_session_id)
+    return offered[-1]
 
 
 async def _instruct(
+    store: WorkflowStore,
     request: EntryRequest,
+    item_id: str,
     publication: WorkflowPublication,
     workflow: WorkflowDeclaration,
     phase: Phase,
@@ -418,6 +575,11 @@ async def _instruct(
 ) -> EntryResult:
     """The instruction for the holding driver of the phase."""
     children = await child_sessions_of(request.caller_session_id)
+    offer_key = NO_SESSION
+    reasons: list[tuple[str, str]] = []
+    if phase is Phase.READY:
+        offer_key, notes = await _offer_instruction(store, request, item_id)
+        reasons = [(note.session_id, note.text) for note in notes]
     worktree = (
         str(Path(request.project_root) / WORKTREE_DIR / request.item)
         if phase in (Phase.PREPARED, Phase.WORK)
@@ -433,6 +595,8 @@ async def _instruct(
             branch=branch,
             worktree=worktree,
             child_sessions=children,
+            reasons=reasons,
+            offer_key=offer_key,
         ),
         workflow,
         driven,
@@ -451,18 +615,20 @@ async def enter(request: EntryRequest) -> EntryResult:
         raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
     state = TodoState.model_validate(raw)
     holder = state.active_runner or None
-    if holder is not None and holder != request.caller_session_id:
-        raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
     request = replace(
         request,
         lane=await resolve_lane(store, request.project_root, request.item, raw, state),
         creative_snapshot=creative_snapshot(raw),
     )
-    phase = _check_drivable(
-        request,
-        state,
-        read_phase(state, request.resolved_lane),
-    )
+    if holder is not None and holder != request.caller_session_id:
+        await _refuse_held(store, request, item_id, state, holder)
+    reading = read_phase(state, request.resolved_lane)
+    if holder == request.caller_session_id and reading.phase is Phase.WORK and state.lifecycle_phase in _STAMPED_STORED:
+        await _clear_stale_stamp(store, request)
+        raw = await store.read_state(request.item) or raw
+        state = TodoState.model_validate(raw)
+        reading = read_phase(state, request.resolved_lane)
+    phase = _check_drivable(request, state, reading)
     unmet = await _unmet_dependencies(store, request.item, request.verb)
     if unmet and holder is None:
         raise _refuse(EntryRefusal.UNMET_DEPENDENCIES, item=request.item, dependencies=DEPENDENCY_SEPARATOR.join(unmet))
@@ -484,7 +650,7 @@ async def enter(request: EntryRequest) -> EntryResult:
                     EntryRefusal.REVISION_MOVED, item=request.item, actual=mismatch.actual, expected=mismatch.expected
                 ) from mismatch
             raise _refuse(EntryRefusal.CREATIVE_CHANGED, item=request.item) from mismatch
-    return await _instruct(request, publication, workflow, phase, branch)
+    return await _instruct(store, request, item_id, publication, workflow, phase, branch)
 
 
 @dataclass(frozen=True)

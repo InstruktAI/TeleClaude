@@ -229,6 +229,7 @@ async def todo_work(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
+    reason: Annotated[str | None, Body()] = None,
     identity: CallerIdentity = Depends(carried_caller),
 ) -> SerializedOperation:
     """Run the Phase B (work) state machine.
@@ -246,6 +247,7 @@ async def todo_work(  # pyright: ignore
         cwd=cwd,
         caller_session_id=identity.session_id,
         client_request_id=client_request_id,
+        reason=reason,
     )
 
 

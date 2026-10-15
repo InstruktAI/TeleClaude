@@ -48,6 +48,7 @@ class TodoOperationPayload(TypedDict, total=False):
     cwd: str
     force: bool
     addressed_todo_id: str
+    reason: str
 
 
 def operation_addressed_todo_id(operation: Operation) -> str | None:
@@ -61,6 +62,13 @@ def operation_addressed_todo_id(operation: Operation) -> str | None:
     if not isinstance(todo_id, str):
         raise ValueError(_ADDRESSED_TODO_ID_STRING_REQUIRED)
     return todo_id
+
+
+def operation_reason(operation: Operation) -> str:
+    """The reason a work call stated for a ready item, carried in the operation payload; empty when none was stated."""
+    payload = json.loads(operation.payload_json)
+    reason = payload.get("reason") if isinstance(payload, dict) else None
+    return reason if isinstance(reason, str) else ""
 
 
 def operation_payload_abandon(operation: Operation) -> bool:
@@ -131,12 +139,15 @@ def todo_operation_submission(
     addressed_todo_id: str | None,
     client_request_id: str | None,
     force: bool | None = None,
+    reason: str | None = None,
 ) -> tuple[str, Callable[[Operation], bool], Callable[[Operation], None]]:
     """Build the durable payload and both identity-safe reattachment checks."""
     if force is None:
         payload = TodoOperationPayload(kind=kind, slug=slug, cwd=cwd)
     else:
         payload = TodoOperationPayload(kind=kind, slug=slug, cwd=cwd, force=force)
+    if reason:
+        payload["reason"] = reason
     payload_json = json.dumps(
         addressed_todo_operation_payload(payload, addressed_todo_id=addressed_todo_id),
         sort_keys=True,

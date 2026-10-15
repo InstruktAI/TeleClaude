@@ -57,6 +57,7 @@ async def todo_act(
     person: Annotated[str, Body()] = "",
     finding: Annotated[str, Body()] = "",
     wait: Annotated[str, Body()] = "",
+    instruction: Annotated[str, Body()] = "",
     identity: CallerIdentity = Depends(carried_caller),
 ) -> TodoActResponse:
     """Perform one lifecycle act as the authenticated session."""
@@ -78,6 +79,7 @@ async def todo_act(
             person=person,
             finding_key=finding,
             wait=wait,
+            instruction=instruction,
         )
     except ValueError as exc:
         raise HTTPException(status_code=_STATUS_BAD_REQUEST, detail=str(exc)) from exc

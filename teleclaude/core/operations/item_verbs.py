@@ -15,6 +15,7 @@ from teleclaude.core.db import db
 from teleclaude.core.db_models import Operation, ProcedureEventDeliveryOutcome
 from teleclaude.core.next_machine.kinds import KIND_TASK
 from teleclaude.core.next_machine.runner_types import RunnerLane, RunnerSkipReason
+from teleclaude.core.operations.todo_identity import operation_reason
 from teleclaude.core.workflow_machine.entry import EntryRequest, EntryVerb, LaunchInProgress, enter
 from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.phase_reading import read_phase
@@ -91,6 +92,7 @@ async def run_item_verb(
                 verb=verb,
                 caller_session_id=caller_session_id,
                 reservation=await own_reservation(caller_session_id, slug, verb, project_root),
+                reason=operation_reason(operation),
             )
         )
     except LaunchInProgress as pending:

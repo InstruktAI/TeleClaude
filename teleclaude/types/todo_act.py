@@ -17,6 +17,7 @@ class TodoActRequestField(StrEnum):
     PERSON = "person"
     FINDING = "finding"
     WAIT = "wait"
+    INSTRUCTION = "instruction"
     CWD = "cwd"
     CLIENT_REQUEST_ID = "client_request_id"
 

@@ -33,6 +33,14 @@ class Refusal(StrEnum):
     NOT_RECORDED = "{act}: the item does not record this invocation; repeat the act"
     WAIT_CHANGED = "{act}: the question {person} was asked changed while the act was being decided; read the item and repeat the act"
     DECISION_OWNER = "{act}: the item waits on {person}, and only that person's own session may decide"
+    READY_HOLD = (
+        "{act} cannot be performed while the item is held as ready: only kickback, release and note are admitted"
+    )
+    INSTRUCTION_REQUIRED = (
+        "{act}: a held ready item is released with the key of the instruction you received; "
+        "call `telec todo work {item}` for it and repeat with --instruction"
+    )
+    UNSEEN_REASON = "{act}: a reason was noted after the instruction you hold (note {note}); call `telec todo work {item}` and judge again"
 
 
 class LaneNotResolved(Exception):
@@ -57,6 +65,7 @@ class ActRequest:
     person: str = ""
     finding_key: str = ""
     wait: str = ""
+    instruction: str = ""
     lane: LaneFacts | None = None
     creative_snapshot: str = ""
 

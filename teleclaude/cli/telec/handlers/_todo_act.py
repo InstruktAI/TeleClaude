@@ -22,7 +22,7 @@ from teleclaude.types.workflow_record import Act
 
 __all__ = ["_handle_todo_act", "_handle_todo_child"]
 
-_ACT_USAGE = "Usage: telec todo act <item> <act> [<text>] [--sha <commit>] [--revision <digest>] [--person <slug>] [--finding <key>] [--wait <key>]"
+_ACT_USAGE = "Usage: telec todo act <item> <act> [<text>] [--sha <commit>] [--revision <digest>] [--person <slug>] [--finding <key>] [--wait <key>] [--instruction <key>]"
 _UNKNOWN_ACT_TEMPLATE = "Unknown act {act!r}; the acts are: {acts}"
 _ACT_SEPARATOR = ", "
 _PERFORMED_TEMPLATE = "Performed {act} on {item}: act {act_key}, phase {phase}, {state}"
@@ -75,6 +75,7 @@ def _handle_todo_act(args: list[str]) -> None:
             TodoActRequestField.PERSON: parsed.value(F.FLAG_ACT_PERSON) or "",
             TodoActRequestField.FINDING: parsed.value(F.FLAG_ACT_FINDING) or "",
             TodoActRequestField.WAIT: parsed.value(F.FLAG_ACT_WAIT) or "",
+            TodoActRequestField.INSTRUCTION: parsed.value(F.FLAG_ACT_INSTRUCTION) or "",
             TodoActRequestField.CWD: project_reference(),
         },
     )
