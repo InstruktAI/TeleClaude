@@ -11,7 +11,7 @@ from pydantic import JsonValue
 from teleclaude.events.catalog import DeclaredEvent, EventData, PlatformEvent
 from teleclaude.events.envelope import EventHomeKind
 from teleclaude.events.references import ComputerRef, DeploymentRef, SessionRef, TodoRef
-from teleclaude.types.workflow_record import Phase, WaitedPhase
+from teleclaude.types.workflow_record import WaitedPhase
 
 _PROJECT_HOME = (EventHomeKind.PROJECT,)
 
@@ -95,8 +95,7 @@ class TodoReadyData(EventData):
     slug: str
 
 
-class TodoDriverRequestedData(EventData):
-    phase: Phase
+class TodoDriverRequestData(EventData):
     project_path: str
     requested_by: str
     reservation_key: str
@@ -295,9 +294,15 @@ class TodoReady(PlatformEvent[TodoRef, TodoReadyData]):
     HOME_KINDS = _PROJECT_HOME
 
 
-class TodoDriverRequested(PlatformEvent[TodoRef, TodoDriverRequestedData]):
-    NAME = "sdlc.todo.driver_requested"
-    DESCRIPTION = "A workflow todo's phase needs its driver session started"
+class TodoPreparationRequested(PlatformEvent[TodoRef, TodoDriverRequestData]):
+    NAME = "sdlc.todo.preparation_requested"
+    DESCRIPTION = "A workflow todo's preparation needs its driver session started"
+    HOME_KINDS = _PROJECT_HOME
+
+
+class TodoWorkRequested(PlatformEvent[TodoRef, TodoDriverRequestData]):
+    NAME = "sdlc.todo.work_requested"
+    DESCRIPTION = "A workflow todo's work needs its driver session started"
     HOME_KINDS = _PROJECT_HOME
 
 
@@ -503,7 +508,8 @@ DECLARED: tuple[DeclaredEvent, ...] = (
     TodoHeadAdvanced,
     TodoWaiting,
     TodoReady,
-    TodoDriverRequested,
+    TodoPreparationRequested,
+    TodoWorkRequested,
     DorAssessed,
     PrepareArtifactInvalidated,
     PrepareArtifactProduced,

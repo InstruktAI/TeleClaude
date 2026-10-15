@@ -53,7 +53,8 @@ class EmittedEvent(StrEnum):
     HEAD_ADVANCED = "head_advanced"
     WAITING = "waiting"
     READY = "ready"
-    DRIVER_REQUESTED = "driver_requested"
+    PREPARATION_REQUESTED = "preparation_requested"
+    WORK_REQUESTED = "work_requested"
 
 
 class Act(StrEnum):
