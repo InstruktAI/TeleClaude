@@ -8,7 +8,7 @@ parameters:
   - name: branch
     required: true
 dispatch:
-  agent: [codex, claude, gemini, deepseek]
+  agent: [claude]
   thinking_mode: med
 ---
 
