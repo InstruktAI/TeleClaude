@@ -25,7 +25,7 @@ from teleclaude.core.db import db
 from teleclaude.core.next_machine.git_ops import has_build_commits_beyond_main
 from teleclaude.core.process_group import UnitClass, classify_unit
 from teleclaude.core.process_identity import boot_session
-from teleclaude.core.workflow_machine.act_types import ActRefused, ActRequest, Refusal
+from teleclaude.core.workflow_machine.act_types import LANE_REPORT_ARGUMENT, ActRefused, ActRequest, Refusal
 from teleclaude.core.workflow_machine.gate_unit import (
     RunnerHandle,
     RunnerNotReady,
@@ -344,6 +344,8 @@ async def run_stamp(
     The running work is a task independent of the request that started it: a request that ends does not release the
     slot or stop the gates, and a repeat of the same invocation attaches until it records.
     """
+    if not request.text.strip():
+        raise ActRefused(Refusal.MISSING_ARGUMENT.value.format(act=request.act.value, argument=LANE_REPORT_ARGUMENT))
     loop = asyncio.get_running_loop()
     deadline = loop.time() + ATTACH_DEADLINE_SECONDS
     while True:

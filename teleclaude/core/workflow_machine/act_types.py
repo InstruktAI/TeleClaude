@@ -10,6 +10,7 @@ from teleclaude.core.workflow_machine.phase_reading import LaneFacts
 from teleclaude.types.workflow_record import Act, Phase
 
 BOUND_SEPARATOR: Final = ":"
+LANE_REPORT_ARGUMENT: Final = "the lane report (the text)"
 
 
 class Refusal(StrEnum):

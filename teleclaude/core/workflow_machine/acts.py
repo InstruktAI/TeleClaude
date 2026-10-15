@@ -19,7 +19,14 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ARTIFACT_INPUT
 from teleclaude.core.roles import RoleName
-from teleclaude.core.workflow_machine.act_types import BOUND_SEPARATOR, ActRefused, ActRequest, ActResult, Refusal
+from teleclaude.core.workflow_machine.act_types import (
+    BOUND_SEPARATOR,
+    LANE_REPORT_ARGUMENT,
+    ActRefused,
+    ActRequest,
+    ActResult,
+    Refusal,
+)
 from teleclaude.core.workflow_machine.authority import configured_person, has_project_authority
 from teleclaude.core.workflow_machine.caller import CallerFacts, child_sessions_of, in_claiming_group, load_caller
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
@@ -355,6 +362,7 @@ def _decide_kickback(request: ActRequest, facts: _Facts, state: TodoState, readi
 def _decide_stamp(request: ActRequest, facts: _Facts, state: TodoState, reading: PhaseReading) -> _Decision:
     _require_phase(request, reading, (Phase.WORK,))
     sha = _require(request, request.sha, ARGUMENT_SHA)
+    _require(request, request.text, LANE_REPORT_ARGUMENT)
     flight = state.workflow.stamp_in_flight
     if flight is None or flight.key != _act_key(request, facts.item_id, state.workflow):
         raise _refuse(Refusal.STAMP_SLOT_LOST, act=request.act.value)
