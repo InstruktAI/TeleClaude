@@ -9,9 +9,6 @@ project's native test target passes. The references are read again after the gat
 from __future__ import annotations
 
 import asyncio
-import os
-import subprocess
-import sys
 import threading
 import uuid
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
@@ -21,17 +18,23 @@ from functools import partial
 from pathlib import Path
 from typing import Final
 
-import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.next_machine.gate_runner import GateOutcome
 from teleclaude.core.next_machine.git_ops import (
     get_head_commit,
     has_build_commits_beyond_main,
     has_uncommitted_changes,
 )
 from teleclaude.core.workflow_machine.act_types import ActRefused, ActRequest, Refusal
+from teleclaude.core.workflow_machine.gate_unit import (
+    UNSETTLED_TEMPLATE,
+    is_group_alive,
+    is_process_alive,
+    is_token_alive,
+    run_in_runner,
+    settle_group,
+)
 from teleclaude.core.workflow_machine.phase_reading import read_phase
 from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.core.workflow_store.types import ItemChange
@@ -108,100 +111,61 @@ async def check_refs(project_root: str, item: str, sha: str) -> None:
         raise ActRefused(StampRefusal.UNCLEAN.value)
 
 
-def _runner_identity(pid: int) -> float:
-    """The start time of a process, which with its pid names it for as long as it lives."""
-    try:
-        created: float = psutil.Process(pid).create_time()
-    except psutil.Error:
-        return NO_START
-    return created
-
-
-def _is_runner_alive(pid: int, started: float) -> bool:
-    """Whether the recorded process still lives: the same pid with the same start time, and not a zombie."""
-    if not pid:
-        return False
-    try:
-        process = psutil.Process(pid)
-        created: float = process.create_time()
-        status: str = process.status()
-    except psutil.Error:
-        return False
-    return abs(created - started) < START_TOLERANCE and status != psutil.STATUS_ZOMBIE
-
-
-def _is_token_alive(key: str) -> bool:
-    """Whether any process carries the invocation's token in its environment: the runner or anything it started."""
-    for process in psutil.process_iter():
-        try:
-            if process.environ().get(GATE_TOKEN_ENV) == key and process.status() != psutil.STATUS_ZOMBIE:
-                return True
-        except psutil.Error:
-            continue
-    return False
-
-
-def _gate_thread(worktree: str, item: str, key: str, on_runner: Callable[[int, float], None]) -> GateOutcome:
-    """Run the gates in a runner process of their own and wait for it, marking the thread until it really ends."""
-    try:
-        runner = subprocess.Popen(
-            [sys.executable, "-m", GATE_RUNNER_MODULE, worktree, item],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            start_new_session=True,
-            # guard: direct-env-read - allowed: child-process environment construction
-            env={**os.environ, GATE_TOKEN_ENV: key},
-        )
-        on_runner(runner.pid, _runner_identity(runner.pid))
-        stdout, stderr = runner.communicate()
-        if runner.returncode != 0:
-            return GateOutcome(
-                passed=False, output=RUNNER_FAILED_TEMPLATE.format(code=runner.returncode, tail=stderr[-STDERR_TAIL:])
-            )
-        return GateOutcome.model_validate_json(stdout)
-    finally:
-        with _THREADS_LOCK:
-            _GATE_THREADS.discard(key)
+class GateUnsettled(Exception):
+    """The gate's processes could not be shown to have ended; the slot stays with them."""
 
 
 async def run_gates(
-    project_root: str, item: str, key: str, record_runner: Callable[[int, float], Coroutine[None, None, None]]
+    project_root: str,
+    item: str,
+    key: str,
+    record_runner: Callable[[int, float], Coroutine[None, None, None]],
+    record_unit: Callable[[int, float], Coroutine[None, None, None]],
 ) -> None:
     """Refuse unless the worktree carries build commits and the project's native test target passes.
 
-    The gates run in a process that enforces its own time limit and outlives this one. The invocation stays
-    marked as running until that process has ended, whatever happens to the task awaiting it.
+    The gates run in a runner process that enforces its own time limit. The invocation stays marked as
+    running until its gate unit has been observed settled, whatever happens to the task awaiting it, and a
+    unit that cannot be settled keeps the slot.
     """
     worktree = str(worktree_path(project_root, item))
     if not await asyncio.to_thread(has_build_commits_beyond_main, worktree):
         raise ActRefused(StampRefusal.NO_BUILD_COMMITS.value)
     loop = asyncio.get_running_loop()
 
-    def on_runner(pid: int, started: float) -> None:
-        try:
-            asyncio.run_coroutine_threadsafe(record_runner(pid, started), loop).result(RECORD_RUNNER_TIMEOUT_SECONDS)
-        except Exception:  # the token scan still finds the runner; recording its pid must never fail the gate
-            logger.warning(RECORD_RUNNER_FAILED_LOG, item=item, exc_info=True)
+    def reporter(record: Callable[[int, float], Coroutine[None, None, None]]) -> Callable[[int, float], None]:
+        def report(pid: int, started: float) -> None:
+            try:
+                asyncio.run_coroutine_threadsafe(record(pid, started), loop).result(RECORD_TIMEOUT_SECONDS)
+            except Exception:  # the probes still find the processes; recording must never fail the gate
+                logger.warning(RECORD_FAILED_LOG, item=item, exc_info=True)
+
+        return report
 
     with _THREADS_LOCK:
         _GATE_THREADS.add(key)
-    outcome = await asyncio.to_thread(_gate_thread, worktree, item, key, on_runner)
-    if not outcome.passed:
-        raise ActRefused(StampRefusal.GATE_FAILED.value.format(output=outcome.output))
+    try:
+        run = await asyncio.to_thread(
+            run_in_runner, worktree, item, key, reporter(record_runner), reporter(record_unit)
+        )
+    finally:
+        with _THREADS_LOCK:
+            _GATE_THREADS.discard(key)
+    if not run.settled:
+        raise GateUnsettled(UNSETTLED_TEMPLATE)
+    if not run.outcome.passed:
+        raise ActRefused(StampRefusal.GATE_FAILED.value.format(output=run.outcome.output))
 
 
 PROCESS_INSTANCE: Final = uuid.uuid4().hex
-GATE_RUNNER_MODULE: Final = "teleclaude.core.next_machine.gate_runner"
-GATE_TOKEN_ENV: Final = "TELECLAUDE_STAMP_GATE"
-NO_START: Final = 0.0
-START_TOLERANCE: Final = 0.5
-RUNNER_LIFETIME_BOUND_SECONDS: Final = 900
-STDERR_TAIL: Final = 500
-RECORD_RUNNER_TIMEOUT_SECONDS: Final = 10
-RECORD_RUNNER_FAILED_LOG: Final = "the gate runner's identity could not be recorded"
-RUNNER_FAILED_TEMPLATE: Final = "the gate runner ended with exit {code}: {tail}"
+GATE_CEILING_SECONDS: Final = 660
+UNRECORDED_BOUND_SECONDS: Final = 900
+RECORD_TIMEOUT_SECONDS: Final = 10
+RUNNER_PID_FIELD: Final = "runner_pid"
+RUNNER_STARTED_FIELD: Final = "runner_started"
+UNIT_PGID_FIELD: Final = "unit_pgid"
+UNIT_STARTED_FIELD: Final = "unit_started"
+RECORD_FAILED_LOG: Final = "the gate's process identity could not be recorded"
 ATTACH_DEADLINE_SECONDS: Final = 900
 ATTACH_POLL_SECONDS: Final = 1.0
 _RUNNING: dict[str, asyncio.Task[str]] = {}
@@ -228,21 +192,24 @@ def _forget(key: str, task: asyncio.Task[str]) -> None:
 def _is_live(flight: StampInFlight) -> bool:
     """Whether the flight's gates are known to be running.
 
-    The work itself says so: a task or gate thread of this process, the recorded runner process (the same pid
-    with the same start time), or any process still carrying the invocation's token (a scan that the host may
-    restrict, so it backs the recorded identity and never replaces it). A flight whose runner identity was
-    never recorded cannot be proven settled, so it counts as live for the lifetime the runner itself enforces,
-    after which the runner has ended whatever became of the record.
+    The work itself says so: a task or gate thread of this process, the recorded gate unit (a process in its
+    group), the recorded runner process (same pid, same start time), or a process showing the invocation's
+    token, which backs the recorded identities and never replaces them. A flight with no recorded identity
+    cannot be proven settled, so it counts as live for the lifetime the runner enforces over the gates.
     """
     task = _RUNNING.get(flight.key)
     if (task is not None and not task.done()) or flight.key in _GATE_THREADS:
         return True
-    if _is_runner_alive(flight.runner_pid, flight.runner_started) or _is_token_alive(flight.key):
+    if is_group_alive(flight.unit_pgid, flight.unit_started) or is_process_alive(
+        flight.runner_pid, flight.runner_started
+    ):
         return True
-    if flight.runner_pid:
+    if is_token_alive(flight.key):
+        return True
+    if flight.unit_pgid or flight.runner_pid:
         return False
     age = (datetime.now(UTC) - datetime.fromisoformat(flight.started_at)).total_seconds()
-    return age < RUNNER_LIFETIME_BOUND_SECONDS
+    return age < UNRECORDED_BOUND_SECONDS
 
 
 def _take(request: ActRequest, session_id: str, key: str, outcome: list[Slot]) -> Callable[..., ItemChange | None]:
@@ -290,8 +257,10 @@ def _release(key: str) -> Callable[..., ItemChange | None]:
     return mutate
 
 
-async def _record_runner(store: WorkflowStore, item: str, session_id: str, key: str, pid: int, started: float) -> None:
-    """Record the runner's identity on the flight, so a later process can tell whether the gates still run."""
+async def _record_identity(
+    store: WorkflowStore, item: str, session_id: str, key: str, update: Mapping[str, int | float]
+) -> None:
+    """Record a process identity of the gate on the flight, so a later process can tell whether it still runs."""
 
     def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
         if current is None:
@@ -301,10 +270,18 @@ async def _record_runner(store: WorkflowStore, item: str, session_id: str, key: 
         if flight is None or flight.key != key:
             return None
         updated = record.model_copy(deep=True)
-        updated.stamp_in_flight = flight.model_copy(update={"runner_pid": pid, "runner_started": started})
+        updated.stamp_in_flight = flight.model_copy(update=dict(update))
         return ItemChange(state={**current, WORKFLOW_STATE_KEY: updated.to_state()})
 
     await store.commit_item_change(item, expect_digests={}, mutate=mutate, updated_by=session_id)
+
+
+async def _record_runner(store: WorkflowStore, item: str, session_id: str, key: str, pid: int, started: float) -> None:
+    await _record_identity(store, item, session_id, key, {RUNNER_PID_FIELD: pid, RUNNER_STARTED_FIELD: started})
+
+
+async def _record_unit(store: WorkflowStore, item: str, session_id: str, key: str, pgid: int, started: float) -> None:
+    await _record_identity(store, item, session_id, key, {UNIT_PGID_FIELD: pgid, UNIT_STARTED_FIELD: started})
 
 
 def _now() -> str:
@@ -322,13 +299,44 @@ async def _settle(
     try:
         await check_refs(request.project_root, request.item, request.sha)
         await run_gates(
-            request.project_root, request.item, key, partial(_record_runner, store, request.item, session_id, key)
+            request.project_root,
+            request.item,
+            key,
+            partial(_record_runner, store, request.item, session_id, key),
+            partial(_record_unit, store, request.item, session_id, key),
         )
         await check_refs(request.project_root, request.item, request.sha)
         return await commit()
+    except GateUnsettled:
+        raise
     except Exception:
         await store.commit_item_change(request.item, expect_digests={}, mutate=_release(key), updated_by=session_id)
         raise
+
+
+def _settle_overdue(flight: StampInFlight) -> None:
+    """Kill the runner and the unit of a flight past the lifetime the gates are given, and wait until they are gone."""
+    if flight.runner_pid:
+        settle_group(flight.runner_pid, flight.runner_started)
+    if flight.unit_pgid:
+        settle_group(flight.unit_pgid, flight.unit_started)
+
+
+async def _enforce_ceiling(store: WorkflowStore, item: str) -> None:
+    """Enforce the lifetime the gates are given on a flight that no live task of this process runs.
+
+    The runner enforces it in the ordinary case; this is the backstop for a runner that died with its unit
+    still running. It only ends processes whose time is up, and the flight is replaced only once they are gone.
+    """
+    raw = await store.read_state(item)
+    flight = workflow_record_of(raw).stamp_in_flight if raw is not None else None
+    if flight is None:
+        return
+    task = _RUNNING.get(flight.key)
+    if (task is not None and not task.done()) or flight.key in _GATE_THREADS:
+        return
+    if (datetime.now(UTC) - datetime.fromisoformat(flight.started_at)).total_seconds() >= GATE_CEILING_SECONDS:
+        await asyncio.to_thread(_settle_overdue, flight)
 
 
 async def _acquire(
@@ -341,6 +349,7 @@ async def _acquire(
     """
     lock = _SLOT_LOCKS.setdefault(f"{request.project_root}:{request.item}", asyncio.Lock())
     async with lock:
+        await _enforce_ceiling(store, request.item)
         outcome: list[Slot] = []
         await store.commit_item_change(
             request.item,

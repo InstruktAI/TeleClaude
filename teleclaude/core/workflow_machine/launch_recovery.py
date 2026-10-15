@@ -11,33 +11,40 @@ refused at its claim, because a claim must present the reservation it was starte
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Final
 
 from instrukt_ai_logging import get_logger
+from pydantic import BaseModel, ConfigDict
 
 from teleclaude.core.db import db
 from teleclaude.core.operations._kinds import OperationKind
 from teleclaude.core.operations.service import TERMINAL_OPERATION_STATES
-from teleclaude.core.procedure_routing import activation_request_id
+from teleclaude.core.procedure_routing import PROCEDURE_ACTIVATION_CONSUMER
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange
-from teleclaude.docs_subscriptions import SubscriptionEntry, SubscriptionHomeKind, published_procedure_subscriptions
-from teleclaude.events.envelope import EventHomeRef, occurrence_id
-from teleclaude.events.envelope_facts import home_for_project_path
+from teleclaude.events.db import get_event_db
+from teleclaude.events.envelope import occurrence_id
 from teleclaude.events.references import TodoRef
-from teleclaude.events.schemas.sdlc import TodoPreparationRequested, TodoWorkRequested
-from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, workflow_record_of
 from teleclaude.types.procedure_delivery import BINDING_SECTION, BindingField
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY
-from teleclaude.types.workflow_record import ActStatus, LaunchReservation, Phase
+from teleclaude.types.workflow_record import ActStatus, LaunchReservation
 
 logger = get_logger(__name__)
+
+
+class ActivateProcedureCommandPayload(BaseModel):
+    """The two fields of a persisted procedure activation that name its recipient."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    procedure_id: str
+    home: str
+
 
 RECOVERY_FAILED_LOG: Final = "launch recovery failed for an item"
 RECOVERED_LOG: Final = "launch reservation released on terminal evidence"
@@ -45,28 +52,9 @@ RECOVERY_NOTE: Final = (
     "\n### {at} — platform · launch released\n\nThe driver start requested for {item} reached its end without a "
     "claim: every activation it caused is terminal and no session for it is open. The request was released.\n"
 )
-_WORK_PHASES: Final = frozenset({Phase.PREPARED, Phase.WORK})
 
 
-def _request_event_type(phase: Phase) -> str:
-    return TodoWorkRequested.type_name() if phase in _WORK_PHASES else TodoPreparationRequested.type_name()
-
-
-def _event_home(project_root: str) -> ActivationHome | None:
-    home = home_for_project_path(project_root)
-    if isinstance(home, EventHomeRef):
-        return ActivationHome(SubscriptionHomeKind(home.kind.value), home.instance)
-    return None
-
-
-async def _is_activation_terminal(request_id: str) -> bool:
-    operation = await db.get_operation_by_request(
-        kind=OperationKind.PROCEDURE_ACTIVATION.value, caller_session_id=None, client_request_id=request_id
-    )
-    return operation is not None and operation.state in TERMINAL_OPERATION_STATES
-
-
-async def _has_open_bound_session(item: str, entry: SubscriptionEntry, home: ActivationHome) -> bool:
+async def _has_open_bound_session(item: str, procedure_id: str, home: str) -> bool:
     """Whether an open session is bound to this item for exactly this procedure and home."""
     subject = TodoRef(item).to_ref().to_token()
     for session in await db.get_sessions_by_origin_metadata(BINDING_SECTION, BindingField.SUBJECT, subject):
@@ -75,34 +63,32 @@ async def _has_open_bound_session(item: str, entry: SubscriptionEntry, home: Act
         binding = (session.origin_metadata or {}).get(BINDING_SECTION)
         if (
             isinstance(binding, dict)
-            and binding.get(BindingField.PROCEDURE.value) == entry.procedure_id
-            and binding.get(BindingField.HOME.value) == home.to_token()
+            and binding.get(BindingField.PROCEDURE.value) == procedure_id
+            and binding.get(BindingField.HOME.value) == home
         ):
             return True
     return False
 
 
 async def has_terminal_evidence(project_root: str, item: str, item_id: str, launch: LaunchReservation) -> bool:
-    """Whether the reservation's request can no longer produce a driver, by the platform's durable outcomes.
+    """Whether the reservation's request can no longer produce a driver, by the platform's durable records of it.
 
-    Unknown is not terminal: an unreadable subscription set, an activation not yet recorded or one still
-    queued or running all leave the reservation in place.
+    The request event is one event with one id. The activation consumer's handled record says it has finished
+    submitting everything that event causes; the operations it accepted for that event, found by the event's
+    own id, are exactly the recipients, whatever the published headers say now. Every one of them must be
+    terminal, and none may have an open session bound to this item for its procedure and home. Anything not
+    yet recorded, or no longer recorded, is unknown and leaves the reservation in place.
     """
-    home = _event_home(project_root)
-    if home is None:
-        return False
-    publication = await asyncio.to_thread(published_procedure_subscriptions)
     event_id = occurrence_id(project_root, item_id, launch.effect_id)
-    matched = [
-        entry
-        for entry in publication.entries
-        if entry.matches_type(_request_event_type(launch.phase)) and entry.reaches(home.kind, home.slug)
-    ]
-    for entry in matched:
-        if not await _is_activation_terminal(activation_request_id(event_id, entry.procedure_id, home)):
-            return False
-    for entry in matched:
-        if await _has_open_bound_session(item, entry, home):
+    event_db = await get_event_db()
+    if not await event_db.has_handled_event(PROCEDURE_ACTIVATION_CONSUMER, event_id):
+        return False
+    operations = await db.list_operations_for_event(kind=OperationKind.PROCEDURE_ACTIVATION.value, event_id=event_id)
+    if any(operation.state not in TERMINAL_OPERATION_STATES for operation in operations):
+        return False
+    for operation in operations:
+        command = ActivateProcedureCommandPayload.model_validate_json(operation.payload_json)
+        if await _has_open_bound_session(item, command.procedure_id, command.home):
             return False
     return True
 

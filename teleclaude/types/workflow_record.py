@@ -176,6 +176,8 @@ class StampInFlight(BaseModel):
     owner: str
     runner_pid: int = 0
     runner_started: float = 0.0
+    unit_pgid: int = 0
+    unit_started: float = 0.0
 
 
 class ObservedHead(BaseModel):
