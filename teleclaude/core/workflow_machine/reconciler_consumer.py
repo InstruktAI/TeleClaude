@@ -10,6 +10,7 @@ from teleclaude.core.local_checkouts import local_checkout_paths
 from teleclaude.core.shutdown_drain import get_shutdown_drain
 from teleclaude.core.workflow_machine.effects import reconcile_project_supervised
 from teleclaude.core.workflow_machine.heads import discover_project_heads_supervised
+from teleclaude.core.workflow_machine.launch_recovery import recover_stale_launches_supervised
 from teleclaude.events.consumers import Consumer, Interest
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.events.schemas.sdlc import SchedulerTickMinute
@@ -29,6 +30,7 @@ async def observe_and_reconcile() -> None:
     for project_root in await local_checkout_paths():
         await discover_project_heads_supervised(project_root)
         await reconcile_project_supervised(project_root)
+        await recover_stale_launches_supervised(project_root)
 
 
 async def _on_tick(_event: ReceivedEvent) -> None:
