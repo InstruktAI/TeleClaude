@@ -19,10 +19,12 @@ from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict
 
 from teleclaude.core.db import db
+from teleclaude.core.db_models import ProcedureEventDeliveryOutcome
 from teleclaude.core.operations._kinds import OperationKind
 from teleclaude.core.operations.service import TERMINAL_OPERATION_STATES
 from teleclaude.core.procedure_routing import PROCEDURE_ACTIVATION_CONSUMER
 from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.workflow_machine.single_claim import entitled_to_request, event_facts
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.events.db import get_event_db
@@ -56,8 +58,11 @@ RECOVERY_NOTE: Final = (
 )
 
 
-async def _has_open_bound_session(item: str, procedure_id: str, home: str) -> bool:
-    """Whether an open session is bound to this item for exactly this procedure and home."""
+async def _has_open_entitled_session(item: str, procedure_id: str, home: str, key: str) -> bool:
+    """Whether an open session bound to this item for exactly this procedure and home is entitled to this request.
+
+    A session bound to the item but entitled only to an earlier request is not counted: it could not claim this one.
+    """
     subject = TodoRef(item).to_ref().to_token()
     for session in await db.get_sessions_by_origin_metadata(BINDING_SECTION, BindingField.SUBJECT, subject):
         if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
@@ -67,7 +72,21 @@ async def _has_open_bound_session(item: str, procedure_id: str, home: str) -> bo
             isinstance(binding, dict)
             and binding.get(BindingField.PROCEDURE.value) == procedure_id
             and binding.get(BindingField.HOME.value) == home
+            and await entitled_to_request(session.session_id, item, key)
         ):
+            return True
+    return False
+
+
+async def _has_unassigned_request(item: str, key: str, procedure_ids: tuple[str, ...]) -> bool:
+    """Whether a request row for exactly this request is still pending with no assigned session: unknown, so held."""
+    rows = await db.list_procedure_activations(
+        procedure_ids=procedure_ids,
+        outcomes=(ProcedureEventDeliveryOutcome.PENDING, ProcedureEventDeliveryOutcome.SUSPENDED),
+    )
+    for row in rows:
+        facts = event_facts(row.event_json)
+        if row.assigned_session_id is None and facts.slug == item and facts.request_key == key:
             return True
     return False
 
@@ -137,8 +156,10 @@ async def has_terminal_evidence(
         operation = await db.get_operation(recipient.operation_id)
         if operation is not None and operation.state not in TERMINAL_OPERATION_STATES:
             return False
+    if await _has_unassigned_request(item, launch.key, tuple({recipient.procedure_id for recipient in recipients})):
+        return False
     for recipient in recipients:
-        if await _has_open_bound_session(item, recipient.procedure_id, recipient.home):
+        if await _has_open_entitled_session(item, recipient.procedure_id, recipient.home, launch.key):
             return False
     return True
 

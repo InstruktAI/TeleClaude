@@ -411,6 +411,7 @@ class ProcedureEventDeliveryOutcome(StrEnum):
     DELIVERED = "delivered"
     FAILED = "failed"
     SUSPENDED = "suspended"
+    NOT_DELIVERED = "not_delivered"
 
 
 class ProcedureEventInbox(SQLModel, table=True):
