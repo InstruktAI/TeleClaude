@@ -10,16 +10,11 @@ produces: an operator's own hold or release leaves a different audit, and then n
 
 from __future__ import annotations
 
-from typing import Final
-
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.types.lifecycle import LifecyclePhase
-from teleclaude.types.todos import HoldAuditState
-
-START_RESERVED_REASON: Final = "driver start reserved"
-_REASON_SEPARATOR: Final = ":"
+from teleclaude.types.todos import HoldAuditSource, HoldAuditState
 
 
 class ReservedPrior(BaseModel):
@@ -35,16 +30,24 @@ class ReservedPrior(BaseModel):
 def reservation_mark(session_id: str, prior: ReservedPrior) -> HoldAuditState:
     """The hold audit a reservation leaves, carrying what it replaced."""
     return HoldAuditState(
+        source=HoldAuditSource.START_RESERVATION,
         set_by_session_id=session_id,
-        reason=f"{START_RESERVED_REASON}{_REASON_SEPARATOR}{prior.model_dump_json()}",
+        reason=prior.model_dump_json(),
     )
 
 
 def _prior_in_mark(audit: HoldAuditState) -> ReservedPrior | None:
-    head, separator, body = audit.reason.partition(_REASON_SEPARATOR)
-    if head != START_RESERVED_REASON or not separator:
+    """The prior values a reservation\'s mark carries, recognized by its own source and never by its reason prose.
+
+    An operator\'s hold reason is free text; only the reservation writes the ``start_reservation`` source, so no reason
+    an operator types can be read as rollback data.
+    """
+    if audit.source != HoldAuditSource.START_RESERVATION:
         return None
-    return ReservedPrior.model_validate_json(body)
+    try:
+        return ReservedPrior.model_validate_json(audit.reason)
+    except ValidationError:
+        return None
 
 
 def reserved_prior_of(audit: HoldAuditState, session_id: str) -> ReservedPrior | None:

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from pydantic import ValidationError
 
@@ -67,6 +67,17 @@ _DRIFT_REVIEW_CASCADE: dict[str, tuple[str, ...]] = {
 
 class StateMutationError(ValueError):
     """Raised when a mutation violates the validated state contract."""
+
+
+class StateConflict(StateMutationError):
+    """A writer changed the claim on a row whose claim is no longer the one it read; nothing was written."""
+
+
+_CLAIM_FIELD: Final = "active_runner"
+_CLAIM_CONFLICT: Final = (
+    "the claim changed while the write was deciding: it read the holder {read!r} and the row now records {now!r}; "
+    "repeat the call against the current state"
+)
 
 
 def _validate_full_state(state: dict[str, StateValue]) -> TodoState:
@@ -147,6 +158,20 @@ class StateWriter:
         validated = _validate_full_state(_dump_state(self._model))
         return _dump_state(validated)
 
+    def _merged_onto(self, stored: dict[str, StateValue], final: dict[str, StateValue]) -> dict[str, StateValue]:
+        """The stored state with this writer\'s changed fields applied.
+
+        A change of the claim holder is applied only to the holder the writer read: a writer that releases or moves a
+        claim it no longer holds would otherwise clear the claim of the session that took it since, so it is refused.
+        """
+        changes = changed_fields(self._baseline, final)
+        if any(change.path == (_CLAIM_FIELD,) for change in changes):
+            read_holder = self._baseline.get(_CLAIM_FIELD) or None
+            stored_holder = stored.get(_CLAIM_FIELD) or None
+            if read_holder != stored_holder:
+                raise StateConflict(_CLAIM_CONFLICT.format(read=read_holder, now=stored_holder))
+        return _dump_state(_validate_full_state(apply_changes(stored, changes)))
+
     async def commit(
         self,
         todos_db: WorkflowStore,
@@ -160,14 +185,13 @@ class StateWriter:
         from teleclaude.core.workflow_store.types import ItemChange  # noqa: PLC0415 - the store types read this package
 
         final = self.to_dict()
-        changes = changed_fields(self._baseline, final)
         merged: list[dict[str, StateValue]] = []
 
         def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
             if current is None:
                 merged.append(final)
                 return ItemChange(state=final)
-            combined = _dump_state(_validate_full_state(apply_changes(current, changes)))
+            combined = self._merged_onto(current, final)
             merged.append(combined)
             return ItemChange(state=combined) if combined != current else None
 
@@ -187,11 +211,10 @@ class StateWriter:
     def commit_sync(self, todos_db: WorkflowStore, slug: str) -> dict[str, StateValue]:
         """Validate the state and persist what this writer changed, merged onto the stored row inside the transaction."""
         final = self.to_dict()
-        changes = changed_fields(self._baseline, final)
         merged: list[dict[str, StateValue]] = []
 
         def merge(stored: dict[str, StateValue]) -> dict[str, StateValue]:
-            combined = _dump_state(_validate_full_state(apply_changes(stored, changes)))
+            combined = self._merged_onto(stored, final)
             merged.append(combined)
             return combined
 

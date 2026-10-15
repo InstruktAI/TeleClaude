@@ -431,11 +431,12 @@ class LinkSkipped(Exception):
 
 async def _clear_active_runner(
     todos_db: WorkflowStore, row: TodoRow, expected_runner: str, *, session_exists: bool
-) -> None:
+) -> TodoState | None:
     """Clear the dead driver's link, and only that link: a replacement that claimed the row meanwhile is left alone.
 
     A link whose session never came to exist was a reservation that no start accepted, so what it replaced goes back
-    with it; a session that exists was accepted, and only the reservation's mark is settled.
+    with it; a session that exists was accepted, and only the reservation's mark is settled. The state the clearing
+    left on the row is returned, so the caller reads the hold and phase the row now has, not the ones it loaded.
     """
 
     def change(writer: StateWriter) -> None:
@@ -446,14 +447,14 @@ async def _clear_active_runner(
         give_back(writer, expected_runner, accepted=session_exists)
 
     if row["status"] in _LIVE_ROW_STATUSES:
-        await commit_on_current(todos_db, row["slug"], change)
-        return
+        return await commit_on_current(todos_db, row["slug"], change)
     state = await todos_db.read_state_by_id(row["id"])
     if state is None:
-        return
+        return None
     writer = StateWriter(state)
     change(writer)
     await writer.commit_by_id(todos_db, row["id"])
+    return writer.state
 
 
 async def _set_active_runner(
@@ -583,11 +584,13 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                 )
                 todo = replace(todo, dependency_drift_pending_on=tuple(sorted(moved_dependencies)))
         if todo.active_runner and not await _is_live_runner(db, todo.active_runner):
-            await _clear_active_runner(
+            cleared = await _clear_active_runner(
                 todos_db, row, todo.active_runner, session_exists=await db.get_session(todo.active_runner) is not None
             )
             reconciled.append(todo.slug)
             todo = replace(todo, active_runner=None, manually_started=False)
+            if cleared is not None and cleared.active_runner is None:
+                todo = replace(todo, hold=cleared.hold, lifecycle_phase=cleared.lifecycle_phase.value)
         loaded[todo.slug] = todo
     return loaded, reconciled
 

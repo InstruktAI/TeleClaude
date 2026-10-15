@@ -190,6 +190,7 @@ class HoldAuditSource(StrEnum):
     CREATION = "creation"
     MANUAL = "manual"
     SESSION_CLOSE = "session_close"
+    START_RESERVATION = "start_reservation"
     TASK_ERROR = "task_error"
     DIAGNOSIS_UNRESOLVED = "diagnosis_unresolved"
     KIND_BACKFILL = "kind_backfill"
