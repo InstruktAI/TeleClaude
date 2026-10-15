@@ -68,15 +68,15 @@ A candidate the integrator has queued, has in progress or has parked keeps its c
 
 ### Procedure headers
 
-A v2 driver procedure declares the phase it drives, the child procedure it dispatches and each act that ends its phase with the phase that act leads to (`general/spec/snippet-authoring-schema`). The machine's steps come from those declarations: a driver that starts after a published change receives the instruction the change gives, and a driver that started before keeps the declarations it started under, together with the child it dispatches. Every phase a v2 procedure drives has exactly one driving procedure; documentation validation refuses a driver without its declaration, a value outside these vocabularies, two procedures driving one phase, and a driven phase with no procedure.
+A v2 driver procedure declares the phases it drives (preparation, prepared and work; an item waiting in a phase is driven by that phase's driver), the child procedure it dispatches and each act that ends its phase with the phase that act leads to (`general/spec/snippet-authoring-schema`). The machine's steps come from those declarations: a driver that starts after a published change receives the instruction the change gives, and a driver that started before keeps the declarations it started under, together with the child it dispatches. Every phase a v2 procedure drives has exactly one driving procedure; documentation validation refuses a driver without its declaration, a value outside these vocabularies, two procedures driving one phase, and a driven phase with no procedure.
 
 ### Entry verbs
 
-The machine is called through the verbs that prepare and work an item. Called by a session that does not hold the item, a verb starts the driver of the procedure the headers name for the item's phase and returns its session, or refuses naming the cause: held by a session, waiting on a person, the phase and the verb that drives it, unmet dependencies, or a body revision that no longer matches. Called by the holding driver, a verb returns the instruction for the phase: the phase and claim, the child procedure to dispatch with its arguments and launch defaults when no live child exists, the acts that end the phase with the phase each leads to, and the reminders and formatting the lifecycle already carries.
+The machine is called through the verbs that prepare and work an item. Called by a session that does not hold the item, a verb starts the driver of the procedure the headers name for the item's phase and returns its session, or refuses naming the cause: held by a session, waiting on a person, the phase and the verb that drives it, unmet dependencies, or a body revision that no longer matches. Called by the holding driver, a verb returns the instruction for the phase: the phase and claim, the child procedure to dispatch with its arguments and launch defaults when no live child exists, the acts that end the phase with the phase each leads to, and the reminders and formatting the lifecycle already carries. The commands that perform the acts, start the child and return these results are `local/projects/teleclaude/spec/feature/workflow/item-acts`.
 
 ### Notes
 
-Notes are appended to the item's log by the sealed verbs and read as prose a person can follow. The machine reads acts from the attribution the verbs record and never from note text; log text that looks like an act but was not written by a verb is no act.
+Notes are appended to the item's log by the sealed act command and read as prose a person can follow. The machine reads acts from the attribution the verbs record and never from note text; log text that looks like an act but was not written by a verb is no act.
 
 ### Use cases
 
@@ -95,7 +95,7 @@ And a driver that started before the publication receives the instruction its ow
 Given an unclaimed item in preparation whose dependencies are complete
 When any surface that starts preparation is used
 Then exactly one driver session holds the claim
-And that session's title is its role followed by its arguments
+And that session's title is its role followed by the item it works on
 And a claim note names the session
 ```
 

@@ -137,6 +137,12 @@ rule it relies on is stated by its owner:
   instructions Context composes from the published declaration. Domain work
   and lifecycle remain the loaded procedure's responsibility.
 
+<!-- planned:issue-128 -->
+
+- **A subject-identity procedure that declares parameters receives the subject as its arguments.** The activation passes the canonical item identifier that the event's subject carries as the argument text, through the existing parameter binder, so the procedure's first parameter binds it and the agent's session is titled with its role followed by that identifier. The binder refuses a parameter shape that cannot take that one token, and a procedure that declares no parameters is entered with no arguments.
+
+<!-- /planned:issue-128 -->
+
 - **Activation data enters through hooks.** Runtime records the initial event
   before bootstrap can offer its initial hook. The initial brief is the startup
   instruction, and its activation hook carries event data. Later idle deliveries
