@@ -511,10 +511,10 @@ async def perform_act(request: ActRequest) -> ActResult:
         raise _refuse(Refusal.NOT_PERFORMED_HERE, act=request.act.value)
     state = TodoState.model_validate(raw)
     facts = await _resolve_facts(store, request, state)
-    await observe_item_supervised(request.project_root, request.item)
     key = _act_key(request, facts.item_id)
     if key not in state.workflow.act_status:
         _authorize(request, facts)
+        await observe_item_supervised(request.project_root, request.item)
         if request.act is Act.STAMP:
             key = await run_stamp(store, request, facts.caller.session_id, key, partial(_commit, store, request, facts))
         else:

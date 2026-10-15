@@ -389,7 +389,6 @@ async def enter(request: EntryRequest) -> EntryResult:
     holder = state.active_runner or None
     if holder is not None and holder != request.caller_session_id:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
-    await observe_item_supervised(request.project_root, request.item)
     request = replace(request, integration_head=await reading_head(request.project_root, request.item, state))
     phase = _check_drivable(
         request, state, read_phase(state, integration_head=request.integration_head, creative_incomplete=False)
@@ -397,6 +396,7 @@ async def enter(request: EntryRequest) -> EntryResult:
     unmet = await _unmet_dependencies(store, request.item, request.verb)
     if unmet and holder is None:
         raise _refuse(EntryRefusal.UNMET_DEPENDENCIES, item=request.item, dependencies=DEPENDENCY_SEPARATOR.join(unmet))
+    await observe_item_supervised(request.project_root, request.item)
     publication, bound = await _publication_for(request, holder, phase)
     _, workflow = _driver_for(publication, phase, request.item)
     branch = request.item

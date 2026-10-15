@@ -9,6 +9,7 @@ project's native test target passes. The references are read again after the gat
 from __future__ import annotations
 
 import asyncio
+import threading
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
@@ -99,12 +100,26 @@ async def check_refs(project_root: str, item: str, sha: str) -> None:
         raise ActRefused(StampRefusal.UNCLEAN.value)
 
 
-async def run_gates(project_root: str, item: str) -> None:
-    """Refuse unless the worktree carries build commits and the project's native test target passes."""
+def _gate_thread(worktree: str, item: str, key: str) -> tuple[bool, str]:
+    """Run the build gates on a worker thread that marks itself running until the gates really end."""
+    try:
+        return run_build_gates(worktree, item)
+    finally:
+        with _THREADS_LOCK:
+            _GATE_THREADS.discard(key)
+
+
+async def run_gates(project_root: str, item: str, key: str) -> None:
+    """Refuse unless the worktree carries build commits and the project's native test target passes.
+
+    The invocation stays marked as running until its gate thread ends, whatever happens to the task awaiting it.
+    """
     worktree = str(worktree_path(project_root, item))
     if not await asyncio.to_thread(has_build_commits_beyond_main, worktree):
         raise ActRefused(StampRefusal.NO_BUILD_COMMITS.value)
-    passed, output = await asyncio.to_thread(run_build_gates, worktree, item)
+    with _THREADS_LOCK:
+        _GATE_THREADS.add(key)
+    passed, output = await asyncio.to_thread(_gate_thread, worktree, item, key)
     if not passed:
         raise ActRefused(StampRefusal.GATE_FAILED.value.format(output=output))
 
@@ -114,6 +129,9 @@ FOREIGN_FLIGHT_EXPIRY_SECONDS: Final = 900
 ATTACH_DEADLINE_SECONDS: Final = 900
 ATTACH_POLL_SECONDS: Final = 1.0
 _RUNNING: dict[str, asyncio.Task[str]] = {}
+_GATE_THREADS: set[str] = set()
+_THREADS_LOCK = threading.Lock()
+_SLOT_LOCKS: dict[str, asyncio.Lock] = {}
 
 
 class Slot(StrEnum):
@@ -135,7 +153,7 @@ def _is_live(flight: StampInFlight) -> bool:
     """Whether the flight's gates are known to be running: held by a live task here, or recent from another process."""
     if flight.owner == PROCESS_INSTANCE:
         task = _RUNNING.get(flight.key)
-        return task is not None and not task.done()
+        return (task is not None and not task.done()) or flight.key in _GATE_THREADS
     age = (datetime.now(UTC) - datetime.fromisoformat(flight.started_at)).total_seconds()
     return age < FOREIGN_FLIGHT_EXPIRY_SECONDS
 
@@ -199,12 +217,37 @@ async def _settle(
     """
     try:
         await check_refs(request.project_root, request.item, request.sha)
-        await run_gates(request.project_root, request.item)
+        await run_gates(request.project_root, request.item, key)
         await check_refs(request.project_root, request.item, request.sha)
         return await commit()
     except Exception:
         await store.commit_item_change(request.item, expect_digests={}, mutate=_release(key), updated_by=session_id)
         raise
+
+
+async def _acquire(
+    store: WorkflowStore, request: ActRequest, session_id: str, key: str, commit: Callable[[], Awaitable[str]]
+) -> tuple[Slot, asyncio.Task[str] | None]:
+    """Take the slot and, when owned, start the running task, with no other stamp of this item in between.
+
+    The lock makes the durable acquisition and the in-process registration one step for every stamp of the
+    item in this process, so no submission can find the slot owned here without finding it running.
+    """
+    lock = _SLOT_LOCKS.setdefault(f"{request.project_root}:{request.item}", asyncio.Lock())
+    async with lock:
+        outcome: list[Slot] = []
+        await store.commit_item_change(
+            request.item,
+            expect_digests={},
+            mutate=_take(request, session_id, key, outcome),
+            updated_by=session_id,
+        )
+        if outcome[-1] is not Slot.OWNED:
+            return outcome[-1], None
+        task = asyncio.ensure_future(_settle(store, request, session_id, key, commit))
+        _RUNNING[key] = task
+        task.add_done_callback(partial(_forget, key))
+        return Slot.OWNED, task
 
 
 async def run_stamp(
@@ -214,24 +257,16 @@ async def run_stamp(
 
     The slot is item-wide and re-checks the phase and the holder where it is taken. The running work is a
     task independent of the request that started it: a request that ends does not release the slot or stop
-    the gates, and a repeat of the same invocation attaches to the running one until it records.
+    the gates, and a repeat of the same invocation attaches to the running one until it records. An
+    invocation counts as running until its gate thread has ended, not only while its task is alive.
     """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + ATTACH_DEADLINE_SECONDS
     while True:
-        outcome: list[Slot] = []
-        await store.commit_item_change(
-            request.item,
-            expect_digests={},
-            mutate=_take(request, session_id, key, outcome),
-            updated_by=session_id,
-        )
-        if outcome[-1] is Slot.RECORDED:
+        slot, task = await _acquire(store, request, session_id, key, commit)
+        if slot is Slot.RECORDED:
             return key
-        if outcome[-1] is Slot.OWNED:
-            task = asyncio.ensure_future(_settle(store, request, session_id, key, commit))
-            _RUNNING[key] = task
-            task.add_done_callback(partial(_forget, key))
+        if task is not None:
             return await asyncio.shield(task)
         if loop.time() >= deadline:
             raise ActRefused(Refusal.STAMP_IN_FLIGHT.value.format(act=request.act.value))

@@ -41,8 +41,8 @@ class TodoActApiRoute:
 class TodoStampApiRoute:
     """The route of the stamp submission."""
 
-    ROUTER_PATH: Final = "/stamp"
-    PATH: Final = "/todos/stamp"
+    ROUTER_PATH: Final = "/act-stamp"
+    PATH: Final = "/todos/act-stamp"
 
 
 class TodoChildApiRoute:
