@@ -10,6 +10,7 @@ recorded unit is classified from the recorded identity and the processes, never 
 from __future__ import annotations
 
 import os
+import select
 import signal
 import time
 from collections.abc import Callable
@@ -96,6 +97,28 @@ def settle_members(
             return True, tuple(signalled)
         time.sleep(POLL_SECONDS)
     return not live_members(pgid, exclude=exclude), tuple(signalled)
+
+
+def read_line_by(fd: int, deadline: float) -> str | None:
+    """Read one line from a file descriptor, never past the monotonic deadline; None when it passes or the stream ends.
+
+    Reads a byte at a time so nothing beyond the line is consumed, and waits only for what is left of the deadline,
+    so a partial line cannot hold the caller past it.
+    """
+    received = bytearray()
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        readable, _, _ = select.select([fd], [], [], remaining)
+        if not readable:
+            return None
+        chunk = os.read(fd, 1)
+        if not chunk:
+            return None
+        if chunk == b"\n":
+            return received.decode("utf-8", errors="replace")
+        received.extend(chunk)
 
 
 def is_runner_alive(pid: int, identity: str) -> bool:

@@ -8,18 +8,19 @@ it has not itself spawned and still holds.
 
 from __future__ import annotations
 
-import select
 import subprocess
 import sys
+import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Final
 
 from instrukt_ai_logging import get_logger
+from pydantic import ValidationError
 
 from teleclaude.core.next_machine.gate_runner import GO_LINE, READY_LINE, GateOutcome
-from teleclaude.core.process_group import live_members
-from teleclaude.core.process_identity import NO_IDENTITY, start_identity
+from teleclaude.core.process_group import live_members, read_line_by
+from teleclaude.core.process_identity import start_identity
 
 logger = get_logger(__name__)
 
@@ -30,6 +31,7 @@ OUTCOME_PREFIX: Final = "{"
 OUTPUT_TAIL_LINES: Final = 20
 NOT_READY_TEMPLATE: Final = "the gate runner did not report ready: {reason}"
 RUNNER_FAILED_TEMPLATE: Final = "the gate runner ended without an outcome (exit {code}): {tail}"
+READ_FAILED_TEMPLATE: Final = "the runner's output could not be read: {reason}"
 GO_FAILED_TEMPLATE: Final = "the gate runner could not be told to go: {reason}"
 REAP_FAILED_LOG: Final = "a gate runner bootstrap could not be reaped"
 
@@ -70,6 +72,17 @@ def end_bootstrap(handle: RunnerHandle) -> None:
         logger.warning(REAP_FAILED_LOG, pid=handle.pid)
 
 
+def _wait_for_ready(fd: int) -> bool:
+    """Whether READY arrived within the whole bound; diagnostic lines before it are read and ignored."""
+    deadline = time.monotonic() + READY_WAIT_SECONDS
+    while True:
+        line = read_line_by(fd, deadline)
+        if line is None:
+            return False
+        if line.strip() == READY_LINE:
+            return True
+
+
 def start_runner(worktree: str, item: str) -> RunnerHandle:
     """Spawn the runner in a session of its own and wait, within a bound, for it to report ready.
 
@@ -88,10 +101,8 @@ def start_runner(worktree: str, item: str) -> RunnerHandle:
         if not handle.identity:
             raise RunnerNotReady(NOT_READY_TEMPLATE.format(reason="its identity could not be read"))
         assert process.stdout is not None  # the pipe was requested above
-        readable, _, _ = select.select([process.stdout], [], [], READY_WAIT_SECONDS)
-        line = process.stdout.readline().strip() if readable else NO_IDENTITY
-        if line != READY_LINE:
-            raise RunnerNotReady(NOT_READY_TEMPLATE.format(reason=line or "the wait ended"))
+        if not _wait_for_ready(process.stdout.fileno()):
+            raise RunnerNotReady(NOT_READY_TEMPLATE.format(reason="the wait ended"))
     except BaseException:
         end_bootstrap(handle)
         raise
@@ -109,17 +120,29 @@ def send_go(handle: RunnerHandle) -> None:
         raise RunnerNotReady(GO_FAILED_TEMPLATE.format(reason=str(failure))) from failure
 
 
+def _parse_outcome(line: str) -> GateOutcome | None:
+    """The outcome a line carries, or None when the line is some other output that begins with a brace."""
+    try:
+        return GateOutcome.model_validate_json(line)
+    except ValidationError:
+        return None
+
+
 def await_outcome(handle: RunnerHandle) -> RunnerResult:
     """Read the runner to its end and report how it ended; whether its group is empty is the caller's to observe."""
     outcome: GateOutcome | None = None
     tail: deque[str] = deque(maxlen=OUTPUT_TAIL_LINES)
     stdout = handle.process.stdout
     assert stdout is not None  # the pipe was requested at spawn
-    for line in stdout:
-        if line.startswith(OUTCOME_PREFIX):
-            outcome = GateOutcome.model_validate_json(line)
-        else:
-            tail.append(line.rstrip())
+    try:
+        for line in stdout:
+            parsed = _parse_outcome(line) if line.startswith(OUTCOME_PREFIX) else None
+            if parsed is not None:
+                outcome = parsed
+            else:
+                tail.append(line.rstrip())
+    except (OSError, ValueError) as read_error:  # an unreadable stream ends the reading, not the wait for the runner
+        tail.append(READ_FAILED_TEMPLATE.format(reason=str(read_error)))
     returncode = handle.process.wait()
     if handle.process.stdin is not None:
         try:

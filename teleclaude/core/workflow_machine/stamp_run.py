@@ -63,6 +63,7 @@ class _StartState:
     handle: RunnerHandle | None = None
     registered: bool = False
     go_may_have_been_sent: bool = False
+    ended: bool = False
 
 
 class Slot(StrEnum):
@@ -196,6 +197,9 @@ async def _start_unit(request: ActRequest, owner_key: str, key: str, state: _Sta
     ``state`` records how far the start got, so a failure or a cancellation is judged by it afterwards.
     """
     worktree = str(worktree_path(request.project_root, request.item))
+    boot = boot_session()
+    if not boot or not config.computer.name:
+        raise ActRefused(StampRefusal.NO_IDENTITY.value)
     await check_refs(request.project_root, request.item, request.sha)
     if not await asyncio.to_thread(has_build_commits_beyond_main, worktree):
         raise ActRefused(StampRefusal.NO_BUILD_COMMITS.value)
@@ -209,7 +213,7 @@ async def _start_unit(request: ActRequest, owner_key: str, key: str, state: _Sta
         lease_expires_at=(datetime.now(UTC) + timedelta(seconds=LEASE_SECONDS)).isoformat(),
         identity=state.handle.identity,
         host=config.computer.name,
-        boot=boot_session(),
+        boot=boot,
         generation=key,
     )
     if not state.registered:
@@ -257,6 +261,7 @@ async def _run_unit(
         result = await asyncio.to_thread(await_outcome, state.handle)
         if not result.ended:
             raise GateUnsettled(StampRefusal.UNSETTLED.value)
+        state.ended = True
         await db.delete_identified_registry_entry(owner=owner_key, generation=key)
         if not result.outcome.passed:
             raise ActRefused(StampRefusal.GATE_FAILED.value.format(output=result.outcome.output))
@@ -265,6 +270,8 @@ async def _run_unit(
     except GateUnsettled:
         raise
     except Exception:
+        if state.go_may_have_been_sent and not state.ended:
+            raise  # the unit may still run: the row and the slot stay until it is observed ended
         await _release_slot(store, request, session_id, key)
         raise
 

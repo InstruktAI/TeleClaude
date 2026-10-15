@@ -15,14 +15,14 @@ member of its group and only then prints the outcome as JSON; a failed write of 
 from __future__ import annotations
 
 import os
-import select
 import sys
+import time
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict
 
 from teleclaude.core.next_machine.build_gates import run_build_gates
-from teleclaude.core.process_group import settle_members
+from teleclaude.core.process_group import read_line_by, settle_members
 
 READY_LINE: Final = "READY"
 GO_LINE: Final = "GO"
@@ -44,9 +44,14 @@ class GateOutcome(BaseModel):
 
 
 def _wait_for_go() -> bool:
-    """Whether GO arrived on the input within the bound; the input closing, or the wait ending, is no."""
-    readable, _, _ = select.select([sys.stdin], [], [], GO_WAIT_SECONDS)
-    return bool(readable) and sys.stdin.readline().strip() == GO_LINE
+    """Whether GO arrived on the input within the whole bound; the input closing, or the wait ending, is no."""
+    deadline = time.monotonic() + GO_WAIT_SECONDS
+    while True:
+        line = read_line_by(sys.stdin.fileno(), deadline)
+        if line is None:
+            return False
+        if line.strip() == GO_LINE:
+            return True
 
 
 def _report(outcome: GateOutcome) -> None:

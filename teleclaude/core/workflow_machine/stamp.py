@@ -34,6 +34,7 @@ class StampRefusal(StrEnum):
     UNKNOWN_UNIT = "stamp: processes of an earlier stamp of this item may still run in group {pgid}; nothing was signalled or replaced"
     UNIT_STARTED_ELSEWHERE = "stamp: an earlier stamp of this item was started on {host}, which alone can classify it"
     ROW_EXISTS = "stamp: the registry already holds a unit for this item that has not been classified"
+    NO_IDENTITY = "stamp: this computer's name or boot identity cannot be read, so the gates cannot be owned"
     NOT_STARTED = "stamp: the gate runner could not be started: {reason}"
     UNSETTLED = "stamp: the gate's processes could not be shown to have ended"
     HEAD_UNKNOWN = "stamp: the integration head of {item} cannot be read"

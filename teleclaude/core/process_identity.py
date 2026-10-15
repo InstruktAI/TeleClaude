@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from functools import cache
 from pathlib import Path
 from typing import Final
 
@@ -27,9 +26,23 @@ SYSCTL_TIMEOUT_SECONDS: Final = 5
 NO_IDENTITY: Final = ""
 
 
-@cache
+_BOOT_SESSION: list[str] = []
+
+
 def boot_session() -> str:
-    """The identity of this boot of this computer; empty when the host offers none."""
+    """The identity of this boot of this computer; empty when the host offers none right now.
+
+    Only a successful read is remembered, because the identity is immutable; a failed or timed-out read is retried.
+    """
+    if _BOOT_SESSION:
+        return _BOOT_SESSION[0]
+    read = _read_boot_session()
+    if read:
+        _BOOT_SESSION.append(read)
+    return read
+
+
+def _read_boot_session() -> str:
     if sys.platform.startswith(LINUX):
         try:
             return BOOT_ID_PATH.read_text(encoding="utf-8").strip()
