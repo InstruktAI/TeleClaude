@@ -49,7 +49,7 @@ from teleclaude.core.next_machine.runtime.sessions import (
     start_in_flight,
 )
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
-from teleclaude.core.next_machine.state_mutation import StateWriter, commit_on_current
+from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter, commit_on_current
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db._rows import TodoRow
@@ -387,16 +387,31 @@ class LifecycleLinkLost(Exception):
         self.owner = owner
 
 
-async def _release_reserved_link(todos_db: WorkflowStore, slug: str, session_id: str) -> None:
-    """Withdraw the link reserved for a session that was never created, only while it is still that session\'s."""
+async def _release_reserved_link(
+    todos_db: WorkflowStore, slug: str, session_id: str, prior_phase: list[LifecyclePhase]
+) -> None:
+    """Withdraw the link reserved for a session that was never created, only while it is still that session\'s.
+
+    The phase the reservation replaced is restored with it, so a refused task start leaves the row as it found it.
+    """
 
     def change(writer: StateWriter) -> None:
         if writer.state.active_runner != session_id:
             return
         writer.state.active_runner = None
         writer.state.manually_started = False
+        if prior_phase and writer.state.lifecycle_phase is LifecyclePhase.TASK_RUNNING:
+            writer.state.lifecycle_phase = prior_phase[0]
 
     await commit_on_current(todos_db, slug, change)
+
+
+class LifecycleItemUnavailable(Exception):
+    """The item is missing, removed or delivered, so no driver link could be committed and no session was started."""
+
+    def __init__(self, slug: str) -> None:
+        super().__init__(slug)
+        self.slug = slug
 
 
 class LinkSkipped(Exception):
@@ -431,8 +446,14 @@ async def _set_active_runner(
     lane: RunnerLane,
     manually_started: bool,
     release_hold: bool,
+    prior_phase: list[LifecyclePhase] | None = None,
+    require_row: bool = False,
 ) -> str:
     """Write the driver link and its manual marker as one guarded mutation; the winning owner when the row has one.
+
+    ``prior_phase``, when given, receives the phase the same mutation replaced, so a withdrawal can restore it.
+    ``require_row`` makes a missing item an outcome of its own (``LifecycleItemUnavailable``) rather than an empty
+    answer a caller could read as linked: a start that must have its link committed before it begins needs the row.
 
     ``active_runner`` and ``manually_started`` are always written together so a
     todo never carries a driver link without its origin marker. ``release_hold``
@@ -440,6 +461,8 @@ async def _set_active_runner(
     claim/start of a held unclaimed todo, false for a live owner's continuation.
     """
     if await todos_db.read_state(slug) is None:
+        if require_row:
+            raise LifecycleItemUnavailable(slug)
         return ""
 
     def change(writer: StateWriter) -> None:
@@ -452,6 +475,8 @@ async def _set_active_runner(
             writer.state.hold = False
             writer.state.hold_audit = HoldAuditState()
         if lane is RunnerLane.TASK_RUN:
+            if prior_phase is not None:
+                prior_phase[:] = [writer.state.lifecycle_phase]
             writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING
 
     try:
@@ -460,6 +485,10 @@ async def _set_active_runner(
         winner = str(moved)
         logger.warning(LINK_SKIPPED_LOG, slug=slug, started=session_id, owner=winner)
         return winner
+    except StateMutationError as vanished:
+        if require_row:
+            raise LifecycleItemUnavailable(slug) from vanished
+        raise
     return ""
 
 
@@ -580,6 +609,7 @@ async def dispatch_lifecycle_session(
     from teleclaude.api_models import RunSessionRequest  # noqa: PLC0415 - deferred cycle: the models read this package
 
     session_id = str(uuid.uuid4())
+    prior_phase: list[LifecyclePhase] = []
     with start_in_flight(session_id):
         winner = await _set_active_runner(
             todos_db,
@@ -588,6 +618,8 @@ async def dispatch_lifecycle_session(
             lane=intent.lane,
             manually_started=origin.manually_started,
             release_hold=origin.manually_started,
+            prior_phase=prior_phase,
+            require_row=True,
         )
         if winner:
             raise LifecycleLinkLost(intent.slug, winner)
@@ -602,7 +634,7 @@ async def dispatch_lifecycle_session(
             await run_platform_session(request, session_id=session_id)
         except BaseException:
             if await runtime_db.get_session(session_id) is None:
-                await _release_reserved_link(todos_db, intent.slug, session_id)
+                await _release_reserved_link(todos_db, intent.slug, session_id, prior_phase)
             raise
     session = await runtime_db.get_session(session_id)
     if session is not None and is_session_terminal(
@@ -712,7 +744,7 @@ async def run_lifecycle_runner(
                 intent=intent,
                 origin=DispatchOrigin.RUNNER,
             )
-        except LifecycleLinkLost:
+        except (LifecycleLinkLost, LifecycleItemUnavailable):
             continue
         dispatched.append(intent)
 
@@ -761,6 +793,7 @@ set_active_runner = _set_active_runner
 __all__ = [
     "DispatchIntent",
     "DispatchOrigin",
+    "LifecycleItemUnavailable",
     "ManualLifecycleSessionResult",
     "ManualLifecycleStatus",
     "RunnerDecision",

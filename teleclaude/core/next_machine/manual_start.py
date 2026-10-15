@@ -23,6 +23,7 @@ from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATU
 from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES, WORK_LANE_ROLES
 from teleclaude.core.next_machine.lifecycle import pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
+    LifecycleItemUnavailable,
     LifecycleLinkLost,
     approval_from_state,
     artifact_digest_from_state,
@@ -49,6 +50,7 @@ from teleclaude.core.next_machine.runtime.sessions import (
     find_live_commit_reviewer_for_initiator,
     find_live_commit_reviewer_for_terminal_human,
     find_live_reviewer_for_slug,
+    is_start_in_flight,
     resolve_slug_holders,
 )
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
@@ -325,6 +327,25 @@ async def _guard_reviewer_start(
     raise ReviewerConflict(subject=subject, holder=holder, reuse_command=f"telec sessions send {holder}")
 
 
+async def _platform_start_discount(
+    todos_db: WorkflowStore, project_root: str, slug: str, session_id: str | None
+) -> str | None:
+    """The one session the duplicate-driver check discounts for a start under an identity the platform fixed.
+
+    Two starts qualify, each exactly: the start the platform is making right now whose link it has already reserved on
+    the item (the identity is in flight in this process and is the item\'s current link, so the check does not refuse the
+    link the start itself wrote), and the creative orchestrator a pending handoff fixed, which discounts the closing
+    holder. Any other identity, and every other live owner of the item, is checked as before.
+    """
+    if not session_id:
+        return None
+    if is_start_in_flight(session_id):
+        state = await todos_db.read_state(slug)
+        if state is not None and state.get("active_runner") == session_id:
+            return session_id
+    return await handoff_holder(project_root, slug, session_id) or None
+
+
 async def guard_driver_start(
     project_path: str | Path,
     slug: str | None,
@@ -389,9 +410,9 @@ async def guard_driver_start(
     if not slug:
         return DriverStartGuardResult()
     project_root = resolve_project_root(project_path)
-    closing_holder = await handoff_holder(str(project_root), slug, handoff_session_id) if handoff_session_id else ""
     runtime_db = db or await get_db()
     todos_db = await get_workflow_store(project_root)
+    ignored = await _platform_start_discount(todos_db, str(project_root), slug, handoff_session_id)
     effective_caller = None if launch_class is DriverLaunchClass.ORCHESTRATOR else caller_session_id
     todo, reason, holder = await _target_for_manual_start(
         todos_db,
@@ -401,7 +422,7 @@ async def guard_driver_start(
         project_root,
         check_dependencies=False,
         caller_session_id=effective_caller,
-        ignore_session_id=closing_holder or None,
+        ignore_session_id=ignored,
     )
     if reason is RunnerSkipReason.ALREADY_DRIVEN:
         raise ClaimConflict(slug=slug, holder=holder)
@@ -445,6 +466,10 @@ async def manual_start_lifecycle_session(
             status=ManualLifecycleStatus.ALREADY_DRIVEN,
             reason=RunnerSkipReason.ALREADY_DRIVEN,
             session_id=lost.owner,
+        )
+    except LifecycleItemUnavailable:
+        return ManualLifecycleSessionResult(
+            slug=slug, lane=lane, status=ManualLifecycleStatus.SKIPPED, reason=RunnerSkipReason.MISSING_STATE
         )
 
     return ManualLifecycleSessionResult(

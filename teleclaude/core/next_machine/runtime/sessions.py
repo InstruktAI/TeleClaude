@@ -122,6 +122,11 @@ def start_in_flight(session_id: str) -> Iterator[None]:
         _STARTS_IN_FLIGHT.discard(session_id)
 
 
+def is_start_in_flight(session_id: str) -> bool:
+    """Whether the platform is starting this session identity in this process."""
+    return session_id in _STARTS_IN_FLIGHT
+
+
 async def is_live_session_id(db: Db, session_id: str) -> bool:
     """Return whether a concrete TeleClaude session id still names a live session, or one being started."""
     if session_id in _STARTS_IN_FLIGHT:

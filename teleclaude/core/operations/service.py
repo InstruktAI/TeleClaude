@@ -32,6 +32,7 @@ from teleclaude.core.next_machine.create import next_create
 from teleclaude.core.next_machine.kinds import KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle_runner import (
     DispatchOrigin,
+    LifecycleItemUnavailable,
     LifecycleLinkLost,
     ManualLifecycleStatus,
     RunnerLane,
@@ -899,6 +900,11 @@ class OperationsService:
             )
         except LifecycleLinkLost as lost:
             raise ClaimConflict(slug=slug, holder=lost.owner) from lost
+        except LifecycleItemUnavailable:
+            return OperationCompletion(
+                not_dispatched_text(slug, RunnerSkipReason.MISSING_STATE.value),
+                work_feedback=work_feedback_for_manual_skip(RunnerSkipReason.MISSING_STATE),
+            )
         return f"RUNNER_DISPATCHED: {slug} {intent.lane.value} {session_id}"
 
     async def _heartbeat_loop(self, operation_id: str, stop_event: asyncio.Event) -> None:
