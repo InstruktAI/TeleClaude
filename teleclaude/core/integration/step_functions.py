@@ -293,7 +293,7 @@ def _do_merge(
         _write_checkpoint(checkpoint_path, checkpoint)
         return True, ""
 
-    rc, _, merge_stderr = _run_git(["merge", "--squash", key.branch], cwd=wt)
+    rc, _, merge_stderr = _run_git(["merge", "--squash", key.sha], cwd=wt)
 
     # Guard: squash merge produced no content changes — candidate already integrated.
     # Catches squash merges where ancestry check (above) doesn't fire because
@@ -349,7 +349,7 @@ def _do_merge(
     if rc == 0:
         # Read stats from integration worktree, context from repo root
         diff_stats = _get_diff_stats(wt)
-        branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
+        branch_log = _get_branch_log(wt, key.sha, base_ref="origin/main")
         requirements = _read_artifact_safe(cwd, key.slug, ARTIFACT_REQUIREMENTS)
         impl_plan = _read_artifact_safe(cwd, key.slug, ARTIFACT_IMPLEMENTATION_PLAN)
 
@@ -465,7 +465,7 @@ def _step_awaiting_commit(
     merge_type = (checkpoint.error_context or {}).get("merge_type", "conflicted")
     if merge_type == "clean":
         diff_stats = _get_diff_stats(wt)
-        branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
+        branch_log = _get_branch_log(wt, key.sha, base_ref="origin/main")
         requirements = _read_artifact_safe(cwd, key.slug, ARTIFACT_REQUIREMENTS)
         impl_plan = _read_artifact_safe(cwd, key.slug, ARTIFACT_IMPLEMENTATION_PLAN)
         return False, _format_commit_decision(

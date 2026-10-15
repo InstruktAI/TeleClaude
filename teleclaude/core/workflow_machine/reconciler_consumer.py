@@ -7,6 +7,7 @@ from typing import Final
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.integration.ready_scan import ensure_integrator_for_ready_items
 from teleclaude.core.local_checkouts import local_checkout_paths
 from teleclaude.core.shutdown_drain import get_shutdown_drain
 from teleclaude.core.workflow_machine.effects import reconcile_project_supervised
@@ -52,6 +53,7 @@ async def reconcile_and_recover() -> None:
     for project_root in await local_checkout_paths():
         await reconcile_project_supervised(project_root)
         await recover_stale_launches_supervised(project_root)
+        await ensure_integrator_for_ready_items(project_root)
 
 
 async def observe_and_reconcile() -> None:

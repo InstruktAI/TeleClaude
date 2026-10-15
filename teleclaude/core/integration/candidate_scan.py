@@ -13,9 +13,11 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import WORKTREE_DIR, TodoStatus
 from teleclaude.core.integration.git_ops import _run_git
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
+from teleclaude.core.workflow_machine.phase_reading import read_phase
 from teleclaude.core.workflow_store.store import get_workflow_store_sync
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import FinalizeField, FinalizeStatus
+from teleclaude.types.todos import TodoState
+from teleclaude.types.workflow_record import Phase
 
 logger = get_logger(__name__)
 
@@ -84,21 +86,42 @@ def _parked_candidate_closure(cwd: str, parked_slugs: set[str]) -> set[str]:
     return excluded
 
 
+def _candidate_from_state(cwd: str, slug: str, state: dict[str, StateValue]) -> ScannedCandidate | None:
+    """The candidate an item's canonical phase establishes, or None.
+
+    Readiness is the phase reading (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``): the item
+    reads ``ready`` at a commit that is the current head of its branch on origin. A stamp of the lifecycle machine, a
+    carried finalize handoff and a carried review approval at the head all read that way; an item that reads any other
+    phase is never a candidate, whatever events exist for it. The commit must not already be in main.
+    """
+    if _is_held_or_kicked_back(state):
+        return None
+    finalize = state.get("finalize")
+    branch_raw = finalize.get("branch", slug) if isinstance(finalize, dict) else slug
+    branch = branch_raw if isinstance(branch_raw, str) and branch_raw else slug
+    rc, stdout, _ = _run_git(["ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=cwd)
+    head = stdout.split()[0] if rc == 0 and stdout.split() else ""
+    if not head:
+        return None
+    reading = read_phase(TodoState.model_validate(state), integration_head=head, creative_incomplete=False)
+    if reading.phase is not Phase.READY or not reading.ready_at or reading.ready_sha != head:
+        return None
+    rc, _, _ = _run_git(["merge-base", "--is-ancestor", head, "HEAD"], cwd=cwd)
+    if rc == 0:
+        return None
+    return ScannedCandidate(key=CandidateKey(slug=slug, branch=branch, sha=head), ready_at=reading.ready_at)
+
+
 def _scan_finalize_ready_candidates(
     cwd: str,
     *,
     parked_slugs: set[str],
     exclude_slug: str | None = None,
 ) -> list[ScannedCandidate]:
-    """Scan store-projected todo states for finalize-ready worktree candidates.
+    """Scan the store's items for the ones whose canonical phase reads ready at the head of their branch.
 
-    The store supplies candidate identities and state. Existing worktree and
-    Git checks remain integrator-owned validation of those store candidates.
-
-    Each candidate is validated: branch must exist on origin and SHA must not
-    already be an ancestor of main.
-
-    Returns candidates sorted by ``(ready_at, slug)`` for stable FIFO ordering.
+    The store supplies candidate identities and state. Existing worktree and Git checks remain integrator-owned
+    validation of those store candidates. Returns candidates sorted by ``(ready_at, slug)`` for stable FIFO ordering.
     """
     todos_db = get_workflow_store_sync(cwd)
     excluded = _parked_candidate_closure(cwd, parked_slugs)
@@ -115,68 +138,29 @@ def _scan_finalize_ready_candidates(
             continue
         if not (trees_dir / slug).is_dir():
             continue
-
         try:
             state = todos_db.read_state_sync(slug)
         except Exception as exc:
             raise CandidateStateReadError(slug, exc) from exc
         if state is None:
             continue
-
-        finalize = state.get("finalize", {})
-        if not isinstance(finalize, dict):
-            continue
-
-        status = finalize.get(FinalizeField.STATUS)
-
-        if status != FinalizeStatus.READY.value:
-            continue
-
-        if _is_held_or_kicked_back(state):
-            continue
-
-        branch_raw = finalize.get("branch", slug)
-        sha_raw = finalize.get("sha", "")
-        ready_at_raw = finalize.get("ready_at", "")
-        if not isinstance(branch_raw, str) or not isinstance(sha_raw, str) or not isinstance(ready_at_raw, str):
-            continue
-        branch, sha, ready_at = branch_raw, sha_raw, ready_at_raw
-        if not sha or not ready_at:
-            continue
-
-        # Verify branch exists on origin
-        rc, _, _ = _run_git(["ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=cwd)
-        if rc != 0:
-            continue
-
-        # Verify SHA not already ancestor of main
-        rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
-        if rc == 0:
-            continue
-
-        candidates.append(
-            ScannedCandidate(
-                key=CandidateKey(slug=slug, branch=branch, sha=sha),
-                ready_at=ready_at,
-            )
-        )
+        candidate = _candidate_from_state(cwd, slug, state)
+        if candidate is not None:
+            candidates.append(candidate)
 
     candidates.sort(key=lambda c: (c.ready_at, c.key.slug))
     return candidates
 
 
 def _verify_slug_ready(cwd: str, slug: str, *, parked_slugs: set[str]) -> ScannedCandidate | None:
-    """Check if a specific slug's persisted todos.db state shows finalize-ready.
+    """Check whether a specific slug's canonical phase still reads ready at the head of its branch.
 
     Same validations as the scanner but targeted to a single slug.
     """
     if slug in _parked_candidate_closure(cwd, parked_slugs):
         return None
-
-    worktree_dir = Path(cwd) / WORKTREE_DIR / slug
-    if not worktree_dir.is_dir():
+    if not (Path(cwd) / WORKTREE_DIR / slug).is_dir():
         return None
-
     todos_db = get_workflow_store_sync(cwd)
     try:
         state = todos_db.read_state_sync(slug)
@@ -184,42 +168,7 @@ def _verify_slug_ready(cwd: str, slug: str, *, parked_slugs: set[str]) -> Scanne
         raise CandidateStateReadError(slug, exc) from exc
     if state is None:
         return None
-
-    finalize = state.get("finalize", {})
-    if not isinstance(finalize, dict):
-        return None
-
-    status = finalize.get(FinalizeField.STATUS)
-
-    if status != FinalizeStatus.READY.value:
-        return None
-
-    if _is_held_or_kicked_back(state):
-        return None
-
-    branch_raw = finalize.get("branch", slug)
-    sha_raw = finalize.get("sha", "")
-    ready_at_raw = finalize.get("ready_at", "")
-    if not isinstance(branch_raw, str) or not isinstance(sha_raw, str) or not isinstance(ready_at_raw, str):
-        return None
-    branch, sha, ready_at = branch_raw, sha_raw, ready_at_raw
-    if not sha or not ready_at:
-        return None
-
-    # Verify branch exists on origin
-    rc, _, _ = _run_git(["ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=cwd)
-    if rc != 0:
-        return None
-
-    # Verify SHA not already ancestor of main
-    rc, _, _ = _run_git(["merge-base", "--is-ancestor", sha, "HEAD"], cwd=cwd)
-    if rc == 0:
-        return None
-
-    return ScannedCandidate(
-        key=CandidateKey(slug=slug, branch=branch, sha=sha),
-        ready_at=ready_at,
-    )
+    return _candidate_from_state(cwd, slug, state)
 
 
 def _stamp_integration_started(cwd: str, slug: str) -> None:
