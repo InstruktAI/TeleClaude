@@ -191,6 +191,12 @@ _PROFILE_FULL = "full"
 _UNKNOWN_REVISION = "unknown"
 _EMPTY = ""
 _DIAGNOSTIC_LIMIT = 4096
+_INSTALLER_LOG_PATH = Path("install.log")
+_INSTALLER_LOG_LABEL = "Installer log (end): "
+_INSTALLER_LOG_UNAVAILABLE = "Installer log unavailable ({error_class})."
+_INSTALLER_LOG_TRUNCATION_MARKER = "[earlier installer log content omitted]\n"
+_DIAGNOSTIC_SEPARATOR = "\n"
+_BINARY_READ_MODE = "rb"
 _PROFILE_OPTION = "--profile"
 _REPORT_OPTION = "--report"
 _ROOT_OPTION = "--root"
@@ -1716,6 +1722,42 @@ def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[Comm
         environment=installer_environment,
         timeout_seconds=_INSTALL_COMMAND_TIMEOUT_SECONDS,
     )
+    diagnostics = _EMPTY
+    if install_result.exit_status != _PROCESS_SUCCESS or install_result.diagnostics:
+        max_process_diagnostic_chars = (
+            _DIAGNOSTIC_LIMIT - len(_INSTALLER_LOG_LABEL) - len(_INSTALLER_LOG_TRUNCATION_MARKER) - 1
+        )
+        process_diagnostics = resources.sanitize(install_result.diagnostics)[:max_process_diagnostic_chars]
+        diagnostic_prefix = f"{process_diagnostics}{_DIAGNOSTIC_SEPARATOR}" if process_diagnostics else _EMPTY
+        installer_log_diagnostic: str
+        try:
+            log_budget = max(
+                1,
+                _DIAGNOSTIC_LIMIT
+                - len(diagnostic_prefix)
+                - len(_INSTALLER_LOG_LABEL)
+                - len(_INSTALLER_LOG_TRUNCATION_MARKER),
+            )
+            with (resources.source_root / _INSTALLER_LOG_PATH).open(_BINARY_READ_MODE) as installer_log:
+                installer_log.seek(0, os.SEEK_END)
+                log_size = installer_log.tell()
+                log_start = max(0, log_size - log_budget)
+                installer_log.seek(log_start)
+                log_excerpt = installer_log.read(log_budget).decode(_UTF8, errors=_UTF8_REPLACEMENT)
+            truncation_marker = _INSTALLER_LOG_TRUNCATION_MARKER if log_start else _EMPTY
+            available_log_chars = max(
+                1,
+                _DIAGNOSTIC_LIMIT - len(diagnostic_prefix) - len(_INSTALLER_LOG_LABEL) - len(truncation_marker),
+            )
+            sanitized_log_excerpt = resources.sanitize(log_excerpt)
+            installer_log_diagnostic = (
+                f"{_INSTALLER_LOG_LABEL}{truncation_marker}{sanitized_log_excerpt[-available_log_chars:]}"
+            )
+        except OSError as error:
+            installer_log_diagnostic = _INSTALLER_LOG_UNAVAILABLE.format(error_class=type(error).__name__)[
+                : _DIAGNOSTIC_LIMIT - len(diagnostic_prefix)
+            ]
+        diagnostics = f"{diagnostic_prefix}{installer_log_diagnostic}"[:_DIAGNOSTIC_LIMIT]
     evidence.append(
         CommandEvidence(
             argv=tuple(resources.sanitize(value) for value in _INSTALLER_COMMAND),
@@ -1727,7 +1769,7 @@ def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[Comm
             stderr=resources.sanitize(install_result.stderr)[:_DIAGNOSTIC_LIMIT]
             if install_result.exit_status != _PROCESS_SUCCESS or install_result.diagnostics
             else _EMPTY,
-            diagnostics=install_result.diagnostics,
+            diagnostics=diagnostics,
         )
     )
     if install_result.exit_status != _PROCESS_SUCCESS or install_result.diagnostics:

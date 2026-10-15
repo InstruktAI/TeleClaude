@@ -11,8 +11,6 @@ Preparation and work of a project's item run on one machine driven by the four v
 
 This spec owns the closed vocabularies of phases and acts. A store adapter or renderer carries these values and adds none; the machine accepts only them.
 
-Creating an item outside the task lane stores `preparation` as its lifecycle phase.
-
 Facing: every actor below is an agent session unless a person is named. A person takes part by dropping in or by answering a question that is theirs.
 
 ## Canonical fields
