@@ -466,7 +466,11 @@ CREATE TABLE IF NOT EXISTS process_spawn_registry (
     owner TEXT PRIMARY KEY,
     pid INTEGER NOT NULL,
     lease_expires_at TEXT NOT NULL,
-    registered_at TEXT NOT NULL
+    registered_at TEXT NOT NULL,
+    identity TEXT,
+    host TEXT,
+    boot TEXT,
+    generation TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_process_spawn_registry_lease

@@ -241,6 +241,10 @@ class ProcessSpawnRegistryEntry(SQLModel, table=True):
     pid: int
     lease_expires_at: str
     registered_at: str
+    identity: str | None = None
+    host: str | None = None
+    boot: str | None = None
+    generation: str | None = None
 
 
 class HookOutbox(SQLModel, table=True):
