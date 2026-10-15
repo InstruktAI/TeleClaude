@@ -24,6 +24,11 @@ Operate and maintain the self-hosted GitHub Actions runner on MozMini (Mac Mini)
 - Tart installed on the runner host with the macOS base image the CI
   verification controllers clone; standalone CI acceptance and release installer
   proof each run inside a disposable virtual machine created from it.
+- The runner executes those two jobs one at a time, so the host runs at most
+  one such macOS machine, at the processor and memory allocation its workflow
+  declares. The Fleet's Linux guest partition, qualified under the release
+  execution steps below, leaves that allocation and the host's own reserve
+  free, because the macOS machine and the Fleet's guests run concurrently.
 
 <!-- /planned:full-acceptance-on-self-hosted-runner -->
 
