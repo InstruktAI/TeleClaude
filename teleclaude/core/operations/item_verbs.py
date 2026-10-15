@@ -9,7 +9,8 @@ does not read keeps the path it had.
 
 from __future__ import annotations
 
-from teleclaude.core.db_models import Operation
+from teleclaude.core.db import db
+from teleclaude.core.db_models import Operation, ProcedureEventDeliveryOutcome
 from teleclaude.core.next_machine.create import creative_incomplete
 from teleclaude.core.next_machine.kinds import KIND_TASK
 from teleclaude.core.next_machine.runner_types import RunnerLane, RunnerSkipReason
@@ -17,9 +18,37 @@ from teleclaude.core.workflow_machine.entry import EntryRequest, EntryVerb, Laun
 from teleclaude.core.workflow_machine.heads import reading_head
 from teleclaude.core.workflow_machine.phase_reading import read_phase
 from teleclaude.core.workflow_store.store import WorkflowStore
+from teleclaude.events.envelope import ReceivedEvent
+from teleclaude.events.schemas.sdlc import TodoDriverRequestData, TodoPreparationRequested, TodoWorkRequested
 from teleclaude.types.todos import TodoState
 
 _VERB_FOR_LANE = {RunnerLane.PREPARE: EntryVerb.PREPARE, RunnerLane.WORK: EntryVerb.WORK}
+_REQUEST_EVENT_FOR_VERB = {
+    EntryVerb.PREPARE: TodoPreparationRequested.type_name(),
+    EntryVerb.WORK: TodoWorkRequested.type_name(),
+}
+_OWN_ACTIVATION_OUTCOMES = (ProcedureEventDeliveryOutcome.PENDING, ProcedureEventDeliveryOutcome.DELIVERED)
+NO_RESERVATION = ""
+
+
+async def own_reservation(caller_session_id: str, slug: str, verb: EntryVerb) -> str:
+    """The reservation key of the driver request this session was started for on this item, or empty.
+
+    The key is read from the activation the platform accepted for the calling session, never from anything the
+    caller states: a driver names the request it was started for only by having been started for it.
+    """
+    activations = await db.list_session_procedure_activations(
+        session_id=caller_session_id, outcomes=_OWN_ACTIVATION_OUTCOMES
+    )
+    wanted = _REQUEST_EVENT_FOR_VERB[verb]
+    for activation in reversed(activations):
+        event = ReceivedEvent.model_validate_json(activation.event_json)
+        if event.type != wanted:
+            continue
+        data = TodoDriverRequestData.model_validate(event.data)
+        if data.slug == slug:
+            return data.reservation_key
+    return NO_RESERVATION
 
 
 def format_manual_lifecycle_reason(reason: RunnerSkipReason | str | None) -> str:
@@ -49,7 +78,13 @@ async def run_item_verb(
         return None
     try:
         result = await enter(
-            EntryRequest(project_root=project_root, item=slug, verb=verb, caller_session_id=caller_session_id)
+            EntryRequest(
+                project_root=project_root,
+                item=slug,
+                verb=verb,
+                caller_session_id=caller_session_id,
+                reservation=await own_reservation(caller_session_id, slug, verb),
+            )
         )
     except LaunchInProgress as pending:
         return str(pending)
