@@ -1,5 +1,5 @@
 ---
-description: 'Author and maintain feature specs as the behavioral regression fence: facing-typed actors, behavior-level Gherkin, immutable use-case identity, and scenario-volume discipline.'
+description: 'Author and maintain feature specs: prose contracts for behavior, Gherkin use cases only at user-goal level, stakeholder actors, immutable use-case identity, and scenario-volume discipline.'
 activation_trigger: 'Use before creating or editing any feature spec or its Gherkin use cases.'
 ---
 
@@ -7,14 +7,15 @@ activation_trigger: 'Use before creating or editing any feature spec or its Gher
 
 ## Goal
 
-Author feature specs whose Gherkin use cases form the platform's behavioral
-regression fence: agent-authored, agent-audited, stable enough to bind evidence
-against, and readable at the level of behavior rather than implementation.
+Author feature specs whose prose states each owner's behavioral contract and
+whose Gherkin use cases, at user-goal level only, form the product's acceptance
+fence: agent-authored, agent-audited, stable enough to bind evidence against,
+and readable at the level of behavior rather than implementation.
 
 ## Preconditions
 
-- The work is behavioral — it changes what an observer can experience of the
-  system. Non-behavioral work (refactor, migration, tooling with no contract
+- The work is behavioral — it changes a contract of the system that a test
+  could bind. Non-behavioral work (refactor, migration, tooling with no contract
   change) produces no feature spec.
 - The hub-and-spoke placement rules are loaded
   (`sdlc/principle/documentation-first-development`): a feature
@@ -28,11 +29,16 @@ against, and readable at the level of behavior rather than implementation.
 
 ## Steps
 
-1. **Classify.** Behavioral or not — one question. A change is behavioral when
-   a test could bind it: an observer (human or agent) can experience a
-   difference. Well-logged internals are observable by agents; "observable by
-   no one" is not a real category. Non-behavioral work stops here, with no
-   feature spec.
+1. **Classify, twice.** First, behavioral or not: a change is behavioral when
+   it alters a contract a test could bind. Non-behavioral work stops here, with
+   no feature spec. Second, does the change create or alter a user goal? A use
+   case exists only at user-goal level, as
+   `sdlc/principle/documentation-first-development` §3a defines it: a goal a
+   stakeholder of the product achieves, stated in the stakeholder's own terms,
+   that the product owner can accept or reject a release on. Subfunctions and
+   internal mechanics are written as the spec's prose contract (rules,
+   invariants, refusal conditions, tables) and get no use case. A failure or
+   refusal that threatens a goal is an extension of that goal's use case.
 
 1a. **Select the owning context.** Place the feature spec under the bounded
 context that owns the behavioral decision, as governed by
@@ -48,21 +54,17 @@ of every context whose outcome its `Then` clauses assert —
 `telec docs index --local --areas spec`, then `telec docs get <id>`, with
 `--target <slug>` when the owner is pending.
 
-2. **Type every actor by facing.** Each scenario names who experiences the
-   behavior, and the actor's kind is explicit from the scenario language: a
-   human actor (an operator reading Discord, a user at the TUI) or an agent
-   actor (a session consuming structured records, a peer receiving a message).
-   Facing identifies who experiences the behavior, so a scenario that leaves
-   its observer ambiguous is defective.
-   Users comprise humans and agents; when a behavior is specifically human-
-   facing, say so specifically.
+2. **Name the stakeholder as the actor.** Each use case names who pursues the
+   goal: a person (an operator at the TUI, a customer at the help desk) or an
+   agent acting for a named person. The platform's own sessions coordinating
+   with each other are machinery, never use-case actors. A use case whose actor
+   is ambiguous, or is the platform's own machinery, is defective.
 
 3. **Write at behavior level — the refactor-survival test.** Every scenario
    sentence must survive any behavior-preserving refactor unchanged. Function
    names, modules, schema fields, CLI internals, and event names do not appear
-   in scenario text. This holds for agent-facing scenarios exactly as
-   for human-facing ones: behavior language is what makes the fence, not who
-   reads it.
+   in scenario text, whoever the stakeholder is: behavior language is what
+   makes the fence.
 
 4. **Structure use cases for stable identity.** Scenarios live under a
    `### Use cases` heading. Each identified scenario is a `#### UC-<area><n>:`
@@ -109,7 +111,7 @@ of every context whose outcome its `Then` clauses assert —
 ## Outputs
 
 - A feature spec whose use cases are individually addressable
-  (`spec_id + UC-id`), facing-typed, and stated at behavior level.
+  (`spec_id + UC-id`), names its stakeholder, and is stated at behavior level.
 - A stable identity surface that project-sanctioned test bindings can
   reference without drift.
 

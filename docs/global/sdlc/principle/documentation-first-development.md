@@ -73,14 +73,21 @@ what an observer can experience of the system?
 | **Behavioral**     | Behavior an observer experiences. The observer may be a human (a delivered message, a rendered screen) or an agent (a CLI surface, an event, a structured decision record). | `docs/local/spec/feature/<context>/<concept-name>.md` | **YES**       |
 | **Non-behavioral** | Refactor, migration, tooling, infrastructure with no contract delta — nothing any observer experiences differently.                                                         | None — workflow.artifacts only                        | **NO**        |
 
-Users comprise humans and agents, and well-logged internals are observable by
-agents — so "observable by no one" is not a real classification, and
-agent-facing surface changes (new CLI verbs, new events, refined invariants)
-are behavioral work that gets use cases with agent-typed actors. The scenario's
-facing-typed actor (see
-`sdlc/procedure/feature-spec-authoring`) identifies who experiences the
-behavior. Silence on the classification
-question means unclassified — it is asked, never defaulted.
+A feature spec states its contract in prose: rules, invariants, refusal
+conditions and tables. Use cases are a separate, narrower question. A use case
+exists only at user-goal level: a goal a stakeholder of the product achieves in
+one sitting, stated as the stakeholder would state it, sized so the product
+owner can accept or reject a release on it. The stakeholder is a person, or an
+agent acting for a named person; the platform's own agents coordinating with
+each other are machinery, not stakeholders. Subfunctions (the steps inside a
+goal, such as setting a value, listing records or refusing invalid input) and
+internal mechanics get no use case, and a failure or refusal that threatens a
+goal is an extension of that goal's use case. Most behavioral changes therefore
+refine a spec's prose contract and add no use case. The reason is that a use
+case is what a product owner accepts: below goal level, scenarios restate
+mechanics, multiply with every change to the steps, and turn the specs into
+administration nobody reads. Silence on the classification question means
+unclassified — it is asked, never defaulted.
 
 A non-behavioral todo that produces a feature spec is a defect. The namespace
 becomes polluted with slug-named non-features, delivery reconciliation
