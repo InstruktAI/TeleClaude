@@ -8,6 +8,7 @@ writer lock, so a decision made on a stale read is refused rather than applied.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
@@ -23,11 +24,12 @@ from teleclaude.core.workflow_machine.authority import configured_person, has_pr
 from teleclaude.core.workflow_machine.caller import CallerFacts, child_sessions_of, in_claiming_group, load_caller
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.phase_reading import PhaseReading, read_phase
+from teleclaude.core.workflow_machine.stamp import check_refs, run_gates
 from teleclaude.core.workflow_machine.vocabulary import ACT_PERFORMERS, Performer
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ArtifactRevisionMismatch, ItemChange
 from teleclaude.events.envelope import occurrence_id
-from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
+from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, workflow_record_of
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import LIFECYCLE_PHASE_STATE_KEY, TodoState
@@ -41,6 +43,8 @@ from teleclaude.types.workflow_record import (
     PendingEffect,
     Phase,
     PreparedRecord,
+    StampInFlight,
+    StampRecord,
     WaitedPhase,
     WaitingRecord,
     WorkflowRecord,
@@ -59,6 +63,9 @@ RESERVATION_PARAM: Final = "reservation_key"
 EFFECT_RELEASE: Final = "release"
 EFFECT_END_CHILD: Final = "end-child"
 EFFECT_WAITING: Final = "waiting"
+EFFECT_READY: Final = "ready"
+SHA_PARAM: Final = "sha"
+READY_AT_PARAM: Final = "ready_at"
 EFFECT_REQUEST: Final = "request"
 NO_SESSION: Final = ""
 DIGEST_LENGTH: Final = 16
@@ -68,6 +75,8 @@ ARGUMENT_SHA: Final = "--sha"
 ARGUMENT_REVISION: Final = "--revision"
 ARGUMENT_PERSON: Final = "--person"
 ARGUMENT_FINDING: Final = "--finding"
+STAMP_FLIGHT_STALE_SECONDS: Final = 900
+STAMP_ATTACH_POLL_SECONDS: Final = 1.0
 ARTIFACT_INPUT_LABEL: Final = "intent body"
 
 
@@ -321,6 +330,39 @@ def _decide_kickback(request: ActRequest, facts: _Facts, state: TodoState, readi
     )
 
 
+def _decide_stamp(request: ActRequest, facts: _Facts, state: TodoState, reading: PhaseReading) -> _Decision:
+    _require_phase(request, reading, (Phase.WORK,))
+    sha = _require(request, request.sha, ARGUMENT_SHA)
+    stamp = StampRecord(sha=sha, session_id=facts.caller.session_id, ready_at=_now())
+
+    def record(current: WorkflowRecord) -> WorkflowRecord:
+        updated = current.model_copy(deep=True)
+        updated.stamp = stamp
+        updated.stamp_in_flight = None
+        return updated
+
+    ends = tuple(
+        _EffectSpec(f"{EFFECT_END_CHILD}-{child}", EffectKind.END_SESSION, params={SESSION_PARAM: child})
+        for child in facts.child_sessions
+    )
+    return _Decision(
+        bound=sha,
+        text=request.text,
+        phase=LifecyclePhase.READY,
+        record=record,
+        effects=(
+            _EffectSpec(
+                EFFECT_READY,
+                EffectKind.EMIT_EVENT,
+                EmittedEvent.READY,
+                {SHA_PARAM: sha, READY_AT_PARAM: stamp.ready_at, SESSION_PARAM: facts.caller.session_id},
+            ),
+            *ends,
+            _release_effect(facts.caller.session_id),
+        ),
+    )
+
+
 def _decide_release(request: ActRequest, facts: _Facts, state: TodoState, reading: PhaseReading) -> _Decision:
     return _Decision(bound=facts.caller.session_id, effects=(_release_effect(facts.caller.session_id),))
 
@@ -334,6 +376,7 @@ _DECIDERS: Final[Mapping[Act, Callable[[ActRequest, _Facts, TodoState, PhaseRead
     Act.WAITING: _decide_waiting,
     Act.DECISION: _decide_decision,
     Act.KICKBACK: _decide_kickback,
+    Act.STAMP: _decide_stamp,
     Act.RELEASE: _decide_release,
 }
 
@@ -387,7 +430,9 @@ async def _resolve_facts(store: WorkflowStore, request: ActRequest, state: TodoS
         item_id=item_id,
         holder=holder,
         in_group=in_group,
-        child_sessions=await child_sessions_of(holder) if holder is not None and request.act is Act.KICKBACK else (),
+        child_sessions=await child_sessions_of(holder)
+        if holder is not None and request.act in (Act.KICKBACK, Act.STAMP)
+        else (),
         person_slug=person_slug,
         person_email=person.email if person is not None else NO_SESSION,
         person_authorized=person is not None and has_project_authority(person, request.project_root),
@@ -464,9 +509,86 @@ async def perform_act(request: ActRequest) -> ActResult:
     key = _act_key(request, facts.item_id, state.workflow)
     if key not in state.workflow.act_status:
         _authorize(request, facts)
-        key = await _commit(store, request, facts, state)
+        key = await (
+            _stamp(store, request, facts, state, key)
+            if request.act is Act.STAMP
+            else _commit(store, request, facts, state)
+        )
     await reconcile_slug_supervised(request.project_root, request.item)
     return await _result(store, request, key)
+
+
+async def _take_stamp_slot(store: WorkflowStore, request: ActRequest, facts: _Facts, key: str) -> bool:
+    """Record that this invocation is running the stamp's gates; False when another live invocation already is."""
+    owned: list[bool] = []
+
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)
+        record = workflow_record_of(current)
+        flight = record.stamp_in_flight
+        if key in record.act_status or (flight is not None and flight.key == key and not _flight_is_stale(flight)):
+            owned.append(False)
+            return None
+        updated = record.model_copy(deep=True)
+        updated.stamp_in_flight = StampInFlight(
+            key=key, sha=request.sha, session_id=facts.caller.session_id, started_at=_now()
+        )
+        owned.append(True)
+        return ItemChange(state={**current, WORKFLOW_STATE_KEY: updated.to_state()})
+
+    await store.commit_item_change(request.item, expect_digests={}, mutate=mutate, updated_by=request.caller_session_id)
+    return owned[-1]
+
+
+def _flight_is_stale(flight: StampInFlight) -> bool:
+    started = datetime.fromisoformat(flight.started_at)
+    return (datetime.now(UTC) - started).total_seconds() > STAMP_FLIGHT_STALE_SECONDS
+
+
+async def _release_stamp_slot(store: WorkflowStore, request: ActRequest, key: str) -> None:
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            return None
+        record = workflow_record_of(current)
+        if record.stamp_in_flight is None or record.stamp_in_flight.key != key:
+            return None
+        updated = record.model_copy(deep=True)
+        updated.stamp_in_flight = None
+        return ItemChange(state={**current, WORKFLOW_STATE_KEY: updated.to_state()})
+
+    await store.commit_item_change(request.item, expect_digests={}, mutate=mutate, updated_by=request.caller_session_id)
+
+
+async def _attach_to_stamp(store: WorkflowStore, request: ActRequest, key: str) -> str:
+    """Wait for the running invocation of the same stamp to record it, or to end without doing so."""
+    deadline = asyncio.get_running_loop().time() + STAMP_FLIGHT_STALE_SECONDS
+    while asyncio.get_running_loop().time() < deadline:
+        raw = await store.read_state(request.item)
+        if raw is None:
+            break
+        record = workflow_record_of(raw)
+        if key in record.act_status:
+            return key
+        if record.stamp_in_flight is None or record.stamp_in_flight.key != key:
+            break
+        await asyncio.sleep(STAMP_ATTACH_POLL_SECONDS)
+    raise _refuse(Refusal.STAMP_IN_FLIGHT, act=request.act.value)
+
+
+async def _stamp(store: WorkflowStore, request: ActRequest, facts: _Facts, state: TodoState, key: str) -> str:
+    """Run the stamp once per invocation: take the slot, check the references, run the gates, check again, commit."""
+    if not await _take_stamp_slot(store, request, facts, key):
+        return await _attach_to_stamp(store, request, key)
+    try:
+        sha = _require(request, request.sha, ARGUMENT_SHA)
+        await check_refs(request.project_root, request.item, sha)
+        await run_gates(request.project_root, request.item)
+        await check_refs(request.project_root, request.item, sha)
+        return await _commit(store, request, facts, state)
+    except BaseException:
+        await _release_stamp_slot(store, request, key)
+        raise
 
 
 async def _commit(store: WorkflowStore, request: ActRequest, facts: _Facts, state: TodoState) -> str:

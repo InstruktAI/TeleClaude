@@ -30,6 +30,7 @@ _EXPOSED_ACTS = (
     Act.PREPARED,
     Act.WAITING,
     Act.DECISION,
+    Act.STAMP,
     Act.KICKBACK,
     Act.RELEASE,
 )

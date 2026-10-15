@@ -889,8 +889,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_ACT_FINDING,
                 ],
                 notes=[
-                    "Acts: note, reviewed, finding, reply, prepared, waiting, decision, kickback, release.",
-                    "reviewed and finding bind a commit (--sha); prepared binds the judged intent-body "
+                    "Acts: note, reviewed, finding, reply, prepared, waiting, decision, stamp, kickback, release.",
+                    "reviewed, finding and stamp bind a commit (--sha); prepared binds the judged intent-body "
                     "revision (--revision); waiting names the person (--person) and states the question as the "
                     "text; reply names the finding it answers (--finding).",
                     "Your role and session come from the authenticated session. A refusal names the act and "
@@ -902,6 +902,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec todo act my-item reviewed --sha 1a2b3c4",
                     'telec todo act my-item finding --sha 1a2b3c4 "the guard no longer runs on restart"',
                     'telec todo act my-item reply --finding <key> "fixed in 5d6e7f8"',
+                    "telec todo act my-item stamp --sha 5d6e7f8",
                     "telec todo act my-item prepared --revision <digest>",
                     'telec todo act my-item waiting --person <slug> "Which of these outcomes do you want?"',
                 ],

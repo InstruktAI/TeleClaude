@@ -33,6 +33,8 @@ from teleclaude.events.schemas.sdlc import (
     TodoClaimChangedData,
     TodoDriverRequestData,
     TodoPreparationRequested,
+    TodoReady,
+    TodoReadyData,
     TodoWaiting,
     TodoWaitingData,
     TodoWorkRequested,
@@ -49,6 +51,9 @@ SDLC_DOMAIN: Final = "sdlc"
 NONE_LABEL: Final = "none"
 CLAIM_CHANGED_DESCRIPTION: Final = "Claim on {slug} moved from {prior} to {holder}"
 WAITING_DESCRIPTION: Final = "{slug} waits on {person}"
+READY_DESCRIPTION: Final = "{slug} is ready at {sha}"
+SHA_PARAM: Final = "sha"
+READY_AT_PARAM: Final = "ready_at"
 REQUEST_DESCRIPTION: Final = "A driver is requested for {slug}"
 PERSON_PARAM: Final = "person"
 WAITED_PHASE_PARAM: Final = "waited_phase"
@@ -117,6 +122,23 @@ def _waiting(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
     return event, WAITING_DESCRIPTION.format(slug=context.item.slug, person=person)
 
 
+def _ready(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
+    event = TodoReady(
+        id=occurrence_id(context.project_root, context.item.todo_id, effect.id),
+        subject=TodoRef(context.item.slug),
+        home=home_for_project_path(context.project_root),
+        data=TodoReadyData(
+            slug=context.item.slug,
+            project_path=context.project_root,
+            branch=context.item.slug,
+            sha=effect.params[SHA_PARAM],
+            ready_at=effect.params[READY_AT_PARAM],
+            driver_session_id=effect.params[SESSION_PARAM],
+        ),
+    )
+    return event, READY_DESCRIPTION.format(slug=context.item.slug, sha=effect.params[SHA_PARAM])
+
+
 def _build_request(
     event_type: type[PlatformEvent[TodoRef, TodoDriverRequestData]], context: EffectContext, effect: PendingEffect
 ) -> BuiltEvent:
@@ -145,6 +167,7 @@ def _work_requested(context: EffectContext, effect: PendingEffect) -> BuiltEvent
 _EVENT_BUILDERS: Final[Mapping[EmittedEvent, Callable[[EffectContext, PendingEffect], BuiltEvent]]] = {
     EmittedEvent.CLAIM_CHANGED: _claim_changed,
     EmittedEvent.WAITING: _waiting,
+    EmittedEvent.READY: _ready,
     EmittedEvent.PREPARATION_REQUESTED: _preparation_requested,
     EmittedEvent.WORK_REQUESTED: _work_requested,
 }
