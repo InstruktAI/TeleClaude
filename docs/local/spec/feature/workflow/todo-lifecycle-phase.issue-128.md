@@ -20,10 +20,13 @@ writes the pointer in the same transaction as the act that moves the item (`loca
 the pointer is recorded by acts, never inferred from the artifacts present. Its values are the item phases of that spec -
 `preparation`, `waiting`, `prepared`, `work`, `ready` and `delivered` - and the task lane's `task_plan_drafting` and
 `task_running`. The creative lane adds one reading over these: while a todo's creative state is not complete, an undelivered todo that is
-not in the task lane reads as `design` whatever its stored phase. Once its design is complete, its stored phase is read
-by the reading table as usual (an ordinary pre-vocabulary value reads as `preparation`, and later work or readiness
-reads as it stands). `design` is a phase the creative lane's own machine drives, not one the lifecycle machine writes or
-stores.
+not in the task lane reads as `design` when it is stored in a pre-vocabulary phase, or stored as `preparation` while a
+creative episode is open. A todo stored as `waiting`, `work`, `ready` or `prepared` with its prepared record is never read as
+`design`, whatever its artifacts or files do afterwards. Once its design is complete, its stored phase is read
+by the reading table as usual (an ordinary pre-vocabulary value reads as `preparation`, a pre-vocabulary value with a deferred episode open reads
+`preparation`, and later work or readiness reads as it stands). The creative episode is recorded on the todo by the creative entry and closed by the first later claim
+of a driver (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`). `design` is a phase the creative lane's own
+machine drives, not one the lifecycle machine writes or stores.
 
 A todo of kind task belongs to the task lane whatever its stored phase and reads as no item phase. The task lane owns
 its phases, not the lifecycle machine. `task_plan_drafting` holds a kind=`task` todo from kind assignment or task
@@ -35,7 +38,9 @@ the release act included; the note act and the create verb stay available, and t
 its session ends is unchanged.
 
 A stored value from before this vocabulary is read as the phase the reading table of the item-lifecycle spec gives, and
-the stored value is replaced at the item's next phase write. A stored value that is empty or outside the enum is an error
+the stored value is replaced by store activation, a restore or a completed deferred conversion, and otherwise at the item's next phase write, except for a record whose creative state is not complete:
+store activation, a restore or a creative capability converts it to `preparation` and opens its creative episode. A complete pre-vocabulary record is normalized forward at activation or restore, and the stamp it carries records its source; the conversion, normalization and stale-stamp rules by source and holder are those of `local/projects/teleclaude/spec/feature/workflow/item-lifecycle`.
+A stored value that is empty or outside the enum is an error
 naming the todo and the offending raw value; the calling machine treats the todo as invalid rather than guessing a phase.
 The pointer is the single source of truth for where a todo is, right now.
 
@@ -85,9 +90,9 @@ And no reader derives a different phase from the artifacts present
 ```gherkin
 Given an undelivered todo outside the task lane whose creative state is not complete
 When any caller reads its phase
-Then it reads as design whatever phase is stored
+Then it reads as design when it is stored in a phase from before this vocabulary, or as preparation with a creative episode open
 And once the creative state is complete its stored phase is read by the reading table as usual
-And a delivered todo, and a todo in the task lane, never read as design
+And a todo stored as waiting, work, ready or prepared with its prepared record, a delivered todo, and a todo in the task lane, never read as design
 ```
 
 #### UC-TLP5: A phase from before the vocabulary is read in it
@@ -96,7 +101,7 @@ And a delivered todo, and a todo in the task lane, never read as design
 Given a persisted todo carries a lifecycle_phase value from before the item vocabulary
 When state is read
 Then the read returns the phase the reading table of the item-lifecycle spec gives
-And the persisted value stays unchanged until the next phase write replaces it
+And the read leaves the persisted value unchanged; activation, a restore or the next phase write replaces it
 ```
 
 #### UC-TLP6: An invalid persisted phase is an error
@@ -117,7 +122,7 @@ And the calling machine treats the todo as invalid rather than guessing a phase
 
 - The canonical lifecycle is forward under normal progression: preparation, prepared, work, ready, delivered. The
   bounded returns are acts: a kickback returns an item in work to preparation, a decision resumes the phase an item
-  waited in, and a stamp the integration head has moved past reads the item as work again.
+  waited in, and a stamp the integration head has moved past reads the item as work again under a Work driver's hold of the ready item or when it was performed, and as preparation when it is a carried stamp no driver holds.
 - An invalid persisted `lifecycle_phase` is a hard error, not a default. The platform refuses to guess a phase for a
   todo whose pointer is missing or unrecognized.
 
