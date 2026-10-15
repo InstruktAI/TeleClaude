@@ -383,10 +383,19 @@ def _approval_from_state(state: Mapping[str, StateValue], approval_key: str) -> 
 
 
 _LIVE_ROW_STATUSES: Final = frozenset({"active", "icebox"})
+LINK_SKIPPED_LOG: Final = "lifecycle runner: the started session was not linked, the row is held by another session"
 
 
-async def _clear_active_runner(todos_db: WorkflowStore, row: TodoRow) -> None:
+class LinkSkipped(Exception):
+    """The row was claimed by another session before the started driver could be linked; nothing was written."""
+
+
+async def _clear_active_runner(todos_db: WorkflowStore, row: TodoRow, expected_runner: str) -> None:
+    """Clear the dead driver's link, and only that link: a replacement that claimed the row meanwhile is left alone."""
+
     def change(writer: StateWriter) -> None:
+        if writer.state.active_runner != expected_runner:
+            return
         writer.state.active_runner = None
         writer.state.manually_started = False
 
@@ -421,6 +430,9 @@ async def _set_active_runner(
         return
 
     def change(writer: StateWriter) -> None:
+        owner = writer.state.active_runner
+        if owner and owner != session_id:
+            raise LinkSkipped(owner)
         writer.state.active_runner = session_id
         writer.state.manually_started = manually_started
         if release_hold:
@@ -429,7 +441,10 @@ async def _set_active_runner(
         if lane is RunnerLane.TASK_RUN:
             writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING
 
-    await commit_on_current(todos_db, slug, change)
+    try:
+        await commit_on_current(todos_db, slug, change)
+    except LinkSkipped as moved:
+        logger.warning(LINK_SKIPPED_LOG, slug=slug, started=session_id, owner=str(moved))
 
 
 async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, RunnerTodo], list[str]]:
@@ -503,7 +518,7 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                 )
                 todo = replace(todo, dependency_drift_pending_on=tuple(sorted(moved_dependencies)))
         if todo.active_runner and not await _is_live_runner(db, todo.active_runner):
-            await _clear_active_runner(todos_db, row)
+            await _clear_active_runner(todos_db, row, todo.active_runner)
             reconciled.append(todo.slug)
             todo = replace(todo, active_runner=None, manually_started=False)
         loaded[todo.slug] = todo

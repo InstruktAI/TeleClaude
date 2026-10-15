@@ -65,7 +65,14 @@ REFUSAL_TEMPLATE: Final = "{verb} is refused: {item} is in {phase}. Door: {door}
 REPLACEMENT_TEMPLATE: Final = " The act that replaces it is {act}, performed by {performer}."
 DOOR_HELD: Final = "the holding session {holder}"
 DOOR_HELD_KICKBACK: Final = "the holding session {holder}, whose `telec todo act {item} kickback` returns the item"
-DOOR_START: Final = "the driver start in progress, and the session it is starting; it was requested by {requester}"
+DOOR_START: Final = (
+    "the driver start in progress (reservation {reservation}, requested by {requester}); "
+    "the session it is starting claims it"
+)
+DELIVERED_REFUSAL: Final = (
+    "{verb} is refused: {item} is delivered. Door: none: the item was delivered at its commit; "
+    "follow-up work is a new item, `telec todo create`."
+)
 DOOR_ADMITTED: Final = (
     "the integrator's admission at {sha}; the integrator delivers or parks it, and a parked item is then reachable "
     "by the ready or work row"
@@ -96,7 +103,7 @@ def door_for(state: TodoState, phase: Phase, item: str) -> str:
         return template.format(holder=holder, item=item)
     launch = state.workflow.launch
     if launch is not None:
-        return DOOR_START.format(requester=launch.requested_by or UNKNOWN_REQUESTER)
+        return DOOR_START.format(reservation=launch.key[:8], requester=launch.requested_by or UNKNOWN_REQUESTER)
     admitted = state.workflow.admitted
     if admitted is not None:
         return DOOR_ADMITTED.format(sha=admitted.sha[:8])
@@ -126,6 +133,8 @@ async def refuse_previous_machine_act(project_root: str, slug: str, verb: str) -
     store = await get_workflow_store(project_root)
     raw = await store.read_state(slug)
     if raw is None:
+        if await store.read_state_delivered(slug) is not None:
+            raise PreviousActRefused(DELIVERED_REFUSAL.format(verb=verb, item=slug))
         return
     state = TodoState.model_validate(raw)
     reading = read_phase(state, await resolve_lane(store, project_root, slug, raw, state))
