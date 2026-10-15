@@ -107,7 +107,7 @@ def read_phase(state: TodoState, lane: LaneFacts) -> PhaseReading:
     admitted = state.workflow.admitted
     if admitted is not None:
         return PhaseReading(phase=Phase.READY, ready_sha=admitted.sha, ready_at=admitted.at)
-    if lane.creative_incomplete:
+    if lane.creative_incomplete and _creative_overlay_applies(state, stored):
         return PhaseReading(phase=Phase.DESIGN)
     if stored is LifecyclePhase.READY:
         stamp = state.workflow.stamp
@@ -130,6 +130,23 @@ def read_phase(state: TodoState, lane: LaneFacts) -> PhaseReading:
     if stored is LifecyclePhase.WORK:
         return PhaseReading(phase=Phase.WORK)
     return PhaseReading(phase=Phase.PREPARATION)
+
+
+CLOSED_STORED_PHASES: Final = frozenset(
+    {LifecyclePhase.PREPARATION, LifecyclePhase.WAITING, LifecyclePhase.WORK, LifecyclePhase.READY}
+)
+"""Phases this machine writes: a regression of the creative files never reads a record in one of them as design."""
+
+
+def _creative_overlay_applies(state: TodoState, stored: LifecyclePhase) -> bool:
+    """Whether the creative lane may read the item as design: only a record stored in a phase from before the item vocabulary.
+
+    A record stored as waiting, work, ready or preparation, or prepared with its prepared record, keeps its phase
+    whatever its artifacts or files do afterwards (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``).
+    """
+    if stored in CLOSED_STORED_PHASES:
+        return False
+    return not (stored is LifecyclePhase.PREPARED and state.workflow.prepared is not None)
 
 
 def _finalize_ready(state: TodoState, integration_head: str, held: bool) -> PhaseReading:
