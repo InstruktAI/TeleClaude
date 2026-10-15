@@ -18,26 +18,54 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict
+
 from teleclaude.core.db import db
 from teleclaude.core.db_models import ProcedureEventDeliveryOutcome
-from teleclaude.core.workflow_machine.publication import driver_initialization
+from teleclaude.core.models import Session
 from teleclaude.core.workflow_store.store import get_workflow_store
-from teleclaude.entry_declarations import SessionMode
+from teleclaude.entry_declarations import EntryDeclarations, SessionMode
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.types.claim_change import workflow_record_of
-from teleclaude.types.procedure_delivery import NotDeliveredReason
+from teleclaude.types.procedure_delivery import BINDING_SECTION, BindingField, NotDeliveredReason
 
 RESERVATION_KEY_FIELD = "reservation_key"
 SLUG_FIELD = "slug"
 PROJECT_FIELD = "project_path"
 
 
-def is_single_claim(procedure_id: str) -> bool:
-    """Whether the procedure's current published declaration is a single-claim driver."""
-    workflow = driver_initialization(procedure_id).declarations
+def declares_single_claim(declarations: EntryDeclarations | None) -> bool:
+    """Whether the declarations one initialization captured declare a single-claim driver."""
     return (
-        workflow is not None and workflow.workflow is not None and workflow.workflow.session is SessionMode.SINGLE_CLAIM
+        declarations is not None
+        and declarations.workflow is not None
+        and declarations.workflow.session is SessionMode.SINGLE_CLAIM
     )
+
+
+class RecordedBinding(BaseModel):
+    """The structured procedure binding persisted on a session when it was initialized."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    procedure: str = ""
+    session_mode: str = ""
+
+
+def recorded_binding(session: Session) -> RecordedBinding:
+    """The binding recorded on the session at initialization; an empty one when it has none."""
+    binding = (session.origin_metadata or {}).get(BINDING_SECTION)
+    if not isinstance(binding, dict):
+        return RecordedBinding()
+    return RecordedBinding(
+        procedure=str(binding.get(BindingField.PROCEDURE.value) or ""),
+        session_mode=str(binding.get(BindingField.SESSION_MODE.value) or ""),
+    )
+
+
+def session_is_single_claim(session: Session) -> bool:
+    """Whether the session was initialized in single-claim mode, by the mode recorded then and never reread."""
+    return recorded_binding(session).session_mode == SessionMode.SINGLE_CLAIM.value
 
 
 @dataclass(frozen=True)

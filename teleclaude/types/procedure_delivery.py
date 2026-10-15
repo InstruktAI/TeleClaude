@@ -18,6 +18,7 @@ class BindingField(StrEnum):
     PROCEDURE = "procedure"
     HOME = "home"
     SUBJECT = "subject"
+    SESSION_MODE = "session_mode"
 
 
 class ActivationOutcome(StrEnum):

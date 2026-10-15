@@ -42,6 +42,7 @@ from ._session_listing import (
 from ._session_retention import DbSessionRetentionMixin
 from ._sessions import DbSessionsMixin
 from ._settings import DbSettingsMixin
+from ._single_claim_delivery import DbSingleClaimDeliveryMixin
 from ._startup_handovers import DbStartupHandoversMixin
 from ._sync import (
     SessionIdentityError,
@@ -64,6 +65,7 @@ class Db(
     DbDiscordReflectionMixin,
     DbAgentStopsMixin,
     DbControlDeliveryMixin,
+    DbSingleClaimDeliveryMixin,
     DbRemindersMixin,
     DbConversationDeliveryMixin,
     DbLinksMixin,

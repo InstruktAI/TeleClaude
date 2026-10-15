@@ -269,69 +269,6 @@ class DbControlDeliveryMixin:
             await db_session.commit()
         return result.rowcount or 0
 
-    async def not_deliver_procedure_event(self, *, activation_id: str, reason: str) -> int:
-        """End one pending or suspended activation as ``not delivered``; its assignee, if any, is retained."""
-        async with self._session() as db_session:
-            result = await db_session.exec(
-                update(db_models.ProcedureEventInbox)
-                .where(db_models.ProcedureEventInbox.activation_id == activation_id)
-                .where(
-                    db_models.ProcedureEventInbox.outcome.in_(
-                        [
-                            db_models.ProcedureEventDeliveryOutcome.PENDING.value,
-                            db_models.ProcedureEventDeliveryOutcome.SUSPENDED.value,
-                        ]
-                    )
-                )
-                .values(
-                    outcome=db_models.ProcedureEventDeliveryOutcome.NOT_DELIVERED.value,
-                    outcome_reason=reason,
-                    terminal_at=datetime.now(UTC).isoformat(),
-                )
-            )
-            await db_session.commit()
-        return result.rowcount or 0
-
-    async def not_deliver_session_procedure_events(
-        self, *, session_id: str, procedure_ids: Sequence[str], reason: str
-    ) -> int:
-        """End a closed session's pending work of the named procedures as ``not delivered``, keeping its assignee."""
-        async with self._session() as db_session:
-            result = await db_session.exec(
-                update(db_models.ProcedureEventInbox)
-                .where(db_models.ProcedureEventInbox.assigned_session_id == session_id)
-                .where(db_models.ProcedureEventInbox.outcome == db_models.ProcedureEventDeliveryOutcome.PENDING.value)
-                .where(db_models.ProcedureEventInbox.procedure_id.in_(list(procedure_ids)))
-                .values(
-                    outcome=db_models.ProcedureEventDeliveryOutcome.NOT_DELIVERED.value,
-                    outcome_reason=reason,
-                    terminal_at=datetime.now(UTC).isoformat(),
-                )
-            )
-            await db_session.commit()
-        return result.rowcount or 0
-
-    async def list_unassigned_responsibility_events(self, *, responsibility_key: str) -> list[ProcedureEventRecord]:
-        """The pending or suspended activations of a responsibility that no session has been assigned."""
-        async with self._session() as db_session:
-            rows = (
-                await db_session.exec(
-                    select(db_models.ProcedureEventInbox)
-                    .where(db_models.ProcedureEventInbox.responsibility_key == responsibility_key)
-                    .where(db_models.ProcedureEventInbox.assigned_session_id.is_(None))  # type: ignore[union-attr]
-                    .where(
-                        db_models.ProcedureEventInbox.outcome.in_(
-                            [
-                                db_models.ProcedureEventDeliveryOutcome.PENDING.value,
-                                db_models.ProcedureEventDeliveryOutcome.SUSPENDED.value,
-                            ]
-                        )
-                    )
-                    .order_by(db_models.ProcedureEventInbox.enqueue_order)  # type: ignore[arg-type]
-                )
-            ).all()
-        return [_procedure_event_record(row) for row in rows]
-
     async def count_pending_procedure_events_for_session(self, *, session_id: str) -> int:
         """Count responsibility work that still needs this session to continue."""
         async with self._session() as db_session:

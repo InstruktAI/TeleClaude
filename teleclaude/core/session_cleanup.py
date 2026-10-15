@@ -38,7 +38,7 @@ from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_list
 from teleclaude.core.session_runtime_gate import clear_relaunch_awaiting_readiness
 from teleclaude.core.session_status import SessionLifecycleStatus, is_close_started
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
-from teleclaude.core.workflow_machine.single_claim import is_single_claim
+from teleclaude.core.workflow_machine.single_claim import recorded_binding, session_is_single_claim
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.paths import session_tmp_dir
 from teleclaude.types.procedure_delivery import NotDeliveredReason
@@ -147,14 +147,15 @@ async def _clear_session_reminders(session_id: str) -> None:
 
 async def _suspend_procedure_events_on_session_close(session_id: str, *, soft_delete: bool) -> None:
     """End a single-claim session's pending work as not delivered, suspend the rest, retaining only live state."""
-    pending = await db.get_assigned_procedure_events(session_id=session_id)
-    single_claim = sorted({event.procedure_id for event in pending if is_single_claim(event.procedure_id)})
-    if single_claim:
-        await db.not_deliver_session_procedure_events(
-            session_id=session_id,
-            procedure_ids=single_claim,
-            reason=NotDeliveredReason.SESSION_CLOSED.value,
-        )
+    closing = await db.get_session(session_id)
+    if closing is not None and session_is_single_claim(closing):
+        procedure = recorded_binding(closing).procedure
+        if procedure:
+            await db.not_deliver_session_procedure_events(
+                session_id=session_id,
+                procedure_ids=[procedure],
+                reason=NotDeliveredReason.SESSION_CLOSED.value,
+            )
     suspended_count = await db.suspend_procedure_events_for_session(
         session_id=session_id,
         reason=_PROCEDURE_EVENT_SESSION_CLOSED_REASON,
