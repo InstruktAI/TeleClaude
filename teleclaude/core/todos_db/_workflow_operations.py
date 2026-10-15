@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
-from contextlib import AbstractAsyncContextManager
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime
 from typing import Protocol
 
@@ -29,6 +29,37 @@ _PENDING_EFFECTS_MARKER = '%"pending_effects": [{%'  # the serialized form of a 
 _STATE_RENAME_FAILURE = "state rename failed for {slug!r}"
 _ARTIFACT_RENAME_FAILURE = "artifact rename failed for {slug!r}"
 _TODO_RENAME_FAILURE = "todo rename failed for {slug!r}"
+
+
+StatePrecondition = Callable[[dict[str, StateValue] | None], None]
+
+
+class _SessionHost(Protocol):
+    def _session(self) -> AbstractAsyncContextManager[SqlAsyncSession]: ...
+
+    async def read_state_in_session(self, slug: str, session: SqlAsyncSession) -> dict[str, StateValue] | None: ...
+
+
+@asynccontextmanager
+async def _immediate_transaction(host: _SessionHost) -> AsyncIterator[SqlAsyncSession]:
+    """One write transaction taken under the writer lock up front, committed on success and rolled back otherwise."""
+    async with host._session() as session:
+        connection = await session.connection()
+        await connection.exec_driver_sql(_BEGIN_IMMEDIATE_SQL)
+        try:
+            yield session
+            await session.commit()
+        except BaseException:
+            await session.rollback()
+            raise
+
+
+async def _check_precondition(
+    host: _SessionHost, slug: str, session: SqlAsyncSession, precondition: StatePrecondition | None
+) -> None:
+    """Judge the state as read now, inside the transaction; the precondition raises to refuse."""
+    if precondition is not None:
+        precondition(await host.read_state_in_session(slug, session))
 
 
 class _CreateItemHost(Protocol):
@@ -86,6 +117,8 @@ class _CreateItemHost(Protocol):
 
 class _RenameItemHost(Protocol):
     def _session(self) -> AbstractAsyncContextManager[SqlAsyncSession]: ...
+
+    async def read_state_in_session(self, slug: str, session: SqlAsyncSession) -> dict[str, StateValue] | None: ...
 
     async def rename_state_slug(self, old_slug: str, new_slug: str, *, session: SqlAsyncSession) -> bool: ...
 
@@ -266,26 +299,35 @@ class TodosDbWorkflowOperationsMixin:
         *,
         replacement_input: str | None,
         deleted_artifacts: list[str],
+        precondition: StatePrecondition | None = None,
     ) -> None:
-        """Commit a kind migration's state and artifact changes together."""
-        async with self._session() as session:
-            async with session.begin():
-                if replacement_input is not None:
-                    await self.write_artifact(slug, ARTIFACT_INPUT, replacement_input, updated_by=None, session=session)
-                for artifact_name in deleted_artifacts:
-                    await self.delete_artifact(slug, artifact_name, session=session)
-                await self.write_state(slug, state, session=session)
+        """Commit a kind migration's state and artifact changes together.
 
-    async def rename_item(self: _RenameItemHost, old_slug: str, new_slug: str) -> None:
-        """Rename persisted workflow rows in their existing shared transaction."""
-        async with self._session() as session:
-            async with session.begin():
-                if not await self.rename_state_slug(old_slug, new_slug, session=session):
-                    raise RuntimeError(_STATE_RENAME_FAILURE.format(slug=old_slug))
-                if not await self.rename_artifacts_slug(old_slug, new_slug, session=session):
-                    raise RuntimeError(_ARTIFACT_RENAME_FAILURE.format(slug=old_slug))
-                if not await self.rename_todo_slug(old_slug, new_slug, session=session):
-                    raise RuntimeError(_TODO_RENAME_FAILURE.format(slug=old_slug))
+        ``precondition`` judges the state read under the writer lock and may raise to write nothing.
+        """
+        async with _immediate_transaction(self) as session:
+            await _check_precondition(self, slug, session, precondition)
+            if replacement_input is not None:
+                await self.write_artifact(slug, ARTIFACT_INPUT, replacement_input, updated_by=None, session=session)
+            for artifact_name in deleted_artifacts:
+                await self.delete_artifact(slug, artifact_name, session=session)
+            await self.write_state(slug, state, session=session)
+
+    async def rename_item(
+        self: _RenameItemHost, old_slug: str, new_slug: str, precondition: StatePrecondition | None = None
+    ) -> None:
+        """Rename persisted workflow rows in their existing shared transaction.
+
+        ``precondition`` judges the state read under the writer lock and may raise to write nothing.
+        """
+        async with _immediate_transaction(self) as session:
+            await _check_precondition(self, old_slug, session, precondition)
+            if not await self.rename_state_slug(old_slug, new_slug, session=session):
+                raise RuntimeError(_STATE_RENAME_FAILURE.format(slug=old_slug))
+            if not await self.rename_artifacts_slug(old_slug, new_slug, session=session):
+                raise RuntimeError(_ARTIFACT_RENAME_FAILURE.format(slug=old_slug))
+            if not await self.rename_todo_slug(old_slug, new_slug, session=session):
+                raise RuntimeError(_TODO_RENAME_FAILURE.format(slug=old_slug))
 
     async def commit_item_change(
         self: _CreateItemHost,

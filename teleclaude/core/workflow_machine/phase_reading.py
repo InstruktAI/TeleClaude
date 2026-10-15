@@ -13,10 +13,10 @@ from dataclasses import dataclass
 from typing import Final
 
 from teleclaude.core.next_machine.kinds import KIND_TASK
-from teleclaude.types.lifecycle import LifecyclePhase
+from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES, LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import FinalizeStatus, TodoState
-from teleclaude.types.workflow_record import Phase
+from teleclaude.types.workflow_record import Act, Phase
 
 PREPARATION_STORED_PHASES: frozenset[LifecyclePhase] = frozenset(
     {
@@ -148,6 +148,24 @@ def awaits_readable_head(state: TodoState, lane: LaneFacts) -> bool:
         and not state.active_runner
         and state.workflow.admitted is None
     )
+
+
+def work_started(state: TodoState) -> bool:
+    """Whether the build of a todo has started, whichever machine began it.
+
+    The evidence is read from the item itself, so it holds after a kickback returned the item to preparation: work
+    already begun stays begun (``local/projects/teleclaude/spec/feature/workflow/todo-management``).
+    """
+    if state.build_start_base_sha or state.lifecycle_phase in WORK_LIFECYCLE_PHASES:
+        return True
+    if state.lifecycle_phase in (LifecyclePhase.WORK, LifecyclePhase.READY):
+        return True
+    record = state.workflow
+    if record.admitted is not None or record.stamp is not None:
+        return True
+    if record.observed_heads or record.publish_intents:
+        return True
+    return any(entry.act is Act.CLAIM and entry.bound for entry in record.ledger)
 
 
 CLOSED_STORED_PHASES: Final = frozenset(

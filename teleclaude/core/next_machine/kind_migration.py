@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 from teleclaude.constants import (
@@ -12,13 +13,20 @@ from teleclaude.constants import (
     ARTIFACT_PRD,
     ARTIFACT_TASK_PLAN,
 )
+from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.kinds import KIND_ENTRY_PHASE, canonical_kind
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance
+from teleclaude.core.next_machine.started_build import refuse_if_build_started
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
+from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todo_kind import TodoKind
+from teleclaude.types.todos import LIFECYCLE_PHASE_STATE_KEY
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
+
+_ITEM_VOCABULARY_PHASES = frozenset({LifecyclePhase.PREPARATION, LifecyclePhase.WAITING})
+PHASE_MOVED_REFUSAL = "the phase of '{slug}' changed while its kind was being updated; repeat the update"
 
 _ORPHAN_CHECK_ORDER = (
     ARTIFACT_PRD,
@@ -65,6 +73,7 @@ async def migrate_todo_kind(
     if raw_state is None:
         raise StateMutationError(f"slug {slug!r} not found in todo list")
 
+    refuse_if_build_started(slug, raw_state)
     writer = StateWriter(raw_state)
     current_kind = canonical_kind(writer.state.kind)
     present_artifacts = frozenset(await todos_db.list_artifacts(slug))
@@ -76,8 +85,9 @@ async def migrate_todo_kind(
             orphaned_artifacts=orphaned_artifacts,
         )
 
+    read_phase_value = writer.state.lifecycle_phase
     writer.state.kind = target_kind
-    writer.state.lifecycle_phase = KIND_ENTRY_PHASE[target_kind]
+    writer.state.lifecycle_phase = _phase_after_kind_change(read_phase_value, writer, target_kind)
 
     warnings: list[str] = []
     folded_artifact = ""
@@ -103,6 +113,7 @@ async def migrate_todo_kind(
         writer.to_dict(),
         replacement_input=replacement_input,
         deleted_artifacts=orphaned_artifacts,
+        precondition=partial(_refuse_if_changed, slug, read_phase_value),
     )
 
     if orphaned_artifacts and not seeded_plan_fold:
@@ -111,13 +122,36 @@ async def migrate_todo_kind(
     result: KindMigrationResult = {
         "slug": slug,
         "kind": target_kind,
-        "lifecycle_phase": KIND_ENTRY_PHASE[target_kind].value,
+        "lifecycle_phase": writer.state.lifecycle_phase.value,
         "orphaned_artifacts": orphaned_artifacts,
         "warnings": warnings,
     }
     if folded_artifact:
         result["folded_artifact"] = folded_artifact
     return result
+
+
+def _phase_after_kind_change(read_phase_value: LifecyclePhase, writer: StateWriter, target_kind: str) -> LifecyclePhase:
+    """The phase a kind change leaves the todo in.
+
+    A todo of the item vocabulary that has not built stays where it is for a non-task kind, since it enters
+    preparation whatever its kind; every other todo, and any change to the task kind, takes the target kind's entry
+    phase (``local/projects/teleclaude/spec/feature/workflow/todo-management``).
+    """
+    prepared_record = writer.state.workflow.prepared is not None
+    in_vocabulary = read_phase_value in _ITEM_VOCABULARY_PHASES or (
+        read_phase_value is LifecyclePhase.PREPARED and prepared_record
+    )
+    if in_vocabulary and target_kind != TodoKind.TASK:
+        return read_phase_value
+    return KIND_ENTRY_PHASE[canonical_kind(target_kind)]
+
+
+def _refuse_if_changed(slug: str, read_phase_value: LifecyclePhase, current: dict[str, StateValue] | None) -> None:
+    """Under the writer lock: refuse when the build has started or the phase moved since it was read."""
+    refuse_if_build_started(slug, current)
+    if current is not None and current.get(LIFECYCLE_PHASE_STATE_KEY) != read_phase_value.value:
+        raise StateMutationError(PHASE_MOVED_REFUSAL.format(slug=slug))
 
 
 def _orphaned_artifacts(present_artifacts: frozenset[str], target_kind: str) -> list[str]:

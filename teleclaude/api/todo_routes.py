@@ -50,7 +50,6 @@ from teleclaude.constants import (
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TASK_PLAN,
-    SLUG_NOT_FOUND_DETAIL,
     TodoStatus,
 )
 from teleclaude.core.db import db as runtime_db
@@ -59,6 +58,7 @@ from teleclaude.core.human_involvement import (
     HumanInvolvementSurface,
     resolve_human_involvement,
 )
+from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
@@ -68,6 +68,7 @@ from teleclaude.core.next_machine.kind_migration import (
 from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
 from teleclaude.core.next_machine.provenance import sync_artifact_provenance
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
+from teleclaude.core.next_machine.started_build import BuildAlreadyStarted, refuse_if_build_started
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
@@ -85,7 +86,6 @@ from teleclaude.events.wire import LegacyFacts
 from teleclaude.slug import validate_slug
 from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.creation_record import EntryPoint
-from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import HoldAuditSource
 
@@ -352,10 +352,8 @@ async def todo_update(  # pyright: ignore
     if requested_after and (normalized_schedule is not None or (existing_schedule and not clearing_schedule)):
         raise HTTPException(status_code=400, detail="clear schedule before setting dependencies")
 
-    if (new_slug is not None or kind is not None) and await _todo_build_started(todos_db, slug):
-        raise HTTPException(
-            status_code=409, detail=f"slug and kind updates are refused after build starts for '{slug}'"
-        )
+    if new_slug is not None or kind is not None:
+        _refuse_started_build(slug, raw_state)
 
     if group_present:
         await apply_group_membership_update(
@@ -370,7 +368,7 @@ async def todo_update(  # pyright: ignore
     if kind is not None:
         try:
             migration_result = await migrate_todo_kind(todos_db, slug, target_kind=kind, force=force)
-        except KindMigrationRequiresForce as exc:
+        except (KindMigrationRequiresForce, BuildAlreadyStarted) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except StateMutationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -476,17 +474,6 @@ def _validate_slug_for_create(slug: str, *, field_name: str) -> None:
         raise HTTPException(status_code=400, detail=f"invalid {field_name} '{slug}': {exc}") from exc
 
 
-async def _todo_build_started(todos_db: WorkflowStore, slug: str) -> bool:
-    raw_state = await todos_db.read_state(slug)
-    if raw_state is None:
-        raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
-    writer = StateWriter(raw_state)
-    phase = writer.state.lifecycle_phase
-    if writer.state.build_start_base_sha:
-        return True
-    return phase in {work_phase.value for work_phase in WORK_LIFECYCLE_PHASES}
-
-
 # ---------------------------------------------------------------------------
 # Shared todos.db helpers (artifact routes import these; see todo_artifact_routes)
 # ---------------------------------------------------------------------------
@@ -504,6 +491,14 @@ async def _get_workflow_store_from_cwd(cwd: str) -> WorkflowStore:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return await get_workflow_store(project_root)
+
+
+def _refuse_started_build(slug: str, raw_state: dict[str, StateValue] | None) -> None:
+    """Refuse a slug or kind update once the build has started, as a conflict."""
+    try:
+        refuse_if_build_started(slug, raw_state)
+    except BuildAlreadyStarted as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 async def _sync_artifact_provenance_state(
