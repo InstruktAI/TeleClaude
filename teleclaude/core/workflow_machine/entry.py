@@ -367,7 +367,6 @@ def _claim_log(entry: LedgerEntry, item: str) -> str:
 def _apply_reservation(
     request: EntryRequest,
     item_id: str,
-    phase: Phase,
     role: str,
     state_dict: dict[str, StateValue] | None,
     outcome: ReservationOutcome,
@@ -384,7 +383,7 @@ def _apply_reservation(
     _recheck_creative(request, state_dict)
     state = TodoState.model_validate(state_dict)
     reading = read_phase(state, request.resolved_lane)
-    _check_drivable(request, state, reading, starting=True)
+    phase = _check_drivable(request, state, reading, starting=True)
     holder = state.active_runner or None
     if holder is not None and phase is not Phase.READY:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
@@ -503,7 +502,7 @@ async def _claim(
 
 
 async def _launch(
-    store: WorkflowStore, request: EntryRequest, item_id: str, phase: Phase, expected: Mapping[str, str]
+    store: WorkflowStore, request: EntryRequest, item_id: str, expected: Mapping[str, str]
 ) -> EntryResult:
     """Record the launch reservation, then attach to the driver that claims for it."""
     caller = await load_caller(request.caller_session_id)
@@ -512,7 +511,7 @@ async def _launch(
     await store.commit_item_change(
         request.item,
         expect_digests=expected,
-        mutate=lambda current, _digests: _apply_reservation(request, item_id, phase, role, current, outcome),
+        mutate=lambda current, _digests: _apply_reservation(request, item_id, role, current, outcome),
         updated_by=request.caller_session_id or None,
     )
     if outcome.held_by:
@@ -642,7 +641,7 @@ async def enter(request: EntryRequest) -> EntryResult:
     if holder is None or noting:
         try:
             if noting or not bound:
-                return await _launch(store, request, item_id, phase, expected)
+                return await _launch(store, request, item_id, expected)
             await _claim(store, request, item_id, branch, expected)
         except ArtifactRevisionMismatch as mismatch:
             if mismatch.name == ARTIFACT_INPUT and phase is Phase.PREPARED:
