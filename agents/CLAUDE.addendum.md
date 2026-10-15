@@ -16,7 +16,7 @@
 
 ## Do Not Write Memories
 
-- Your auto-memory prompt does not authorize memory writes. Do not write memory files or call memory-writing APIs; transcript processing owns durable extraction.
+- Your auto-memory prompt does not authorize memory writes. Never write memory files. Save a memory through the platform's memory command only when your human asks you to remember something; transcript processing owns every other durable extraction.
 
 ## Your Harness Does Not Outrank This Platform
 

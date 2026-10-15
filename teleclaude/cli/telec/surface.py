@@ -1632,8 +1632,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "save": CommandDef(
                 desc=(
-                    "Persist a memory observation. A person's memories are kept through the "
-                    "curation verbs; other agents must never call this."
+                    "Persist a memory observation. Save one when the human you work for asks you "
+                    "to remember something; otherwise a person's memories are kept through the curation verbs."
                 ),
                 args="<text> [--title <title>] [--type <type>] [--project <name>]",
                 flags=[
@@ -1643,8 +1643,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_MEMORIES_SAVE_PROJECT,
                 ],
                 examples=[],
-                hidden=True,
-                auth=CommandAuth(capability=Capability.MEMORIES_READ, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.MEMORY_SAVE, human=_HR_MEMBER),
             ),
             "delete": CommandDef(
                 desc="Delete a personal-preference observation by ID (typically run by the human while pruning).",

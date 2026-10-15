@@ -82,6 +82,7 @@ own identity and is never a session role.
 | `mcp`                  | Listing and calling MCP tools.                                                                           |
 | `peer-talk`            | Sending to and tailing a peer session: the builder a reviewer reviews, the claimant that dispatched it.  |
 | `memories-read`        | Listing, searching, deleting and tracing a person's own memories outside an extraction.                  |
+| `memory-save`          | Saving a memory observation when the human the session works for asks it to; no role composes it.        |
 | `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                      |
 
 The command families are the catalog's vocabulary; which command declares

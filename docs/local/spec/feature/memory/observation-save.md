@@ -9,6 +9,8 @@ visibility: 'public'
 
 The save path is how a single memory observation enters durable storage, through `telec memories save` or the memory API. The caller supplies a `text` body plus optional `title`, `type`, `project`, and identity scope. The save path resolves project scoping (falling back to `teleclaude` when none is supplied), derives a title from the text when none is given, ensures a per-project manual session exists, and persists the observation. The persisted observation is identified by an id assigned at save and returned to the caller alongside its resolved title and project.
 
+An agent saves an observation when the human it works for asks it to remember something; otherwise a person's memories are kept through curation (`local/projects/teleclaude/spec/feature/memory/memory-curation`). The command's capability, `memory-save`, belongs to no role's focused set, so it appears in complete help and never in a role's focused help (`local/projects/teleclaude/spec/feature/presentation/cli-help`).
+
 ## Canonical fields
 
 ### Use cases
