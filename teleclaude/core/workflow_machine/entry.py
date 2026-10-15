@@ -699,7 +699,9 @@ async def enter(request: EntryRequest) -> EntryResult:
         creative_snapshot=creative_snapshot(raw),
     )
     if holder != request.caller_session_id:
-        earlier = await earlier_claim_sessions(state.workflow, holder or NO_SESSION)
+        earlier = await earlier_claim_sessions(
+            state.workflow, holder or NO_SESSION, request.item, request.caller_session_id
+        )
         if earlier:
             raise _refuse(EntryRefusal.EARLIER_CLAIM, item=request.item, session=earlier[0])
     reading = read_phase(state, request.resolved_lane)
