@@ -10,7 +10,7 @@ on:
 jobs:
   lint-test:
     name: Lint
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v7
