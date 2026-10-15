@@ -41,4 +41,3 @@ class RunSessionArgs(TypedDict, total=False):
     entry_point: NotRequired[str]
     company: NotRequired[str | None]
     job: NotRequired[str | None]
-    session_id: NotRequired[str]

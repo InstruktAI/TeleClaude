@@ -313,6 +313,22 @@ class HelperStart(BaseModel):
     owner_identity: str = ""
 
 
+class DispatchStart(BaseModel):
+    """The platform's start of a creative worker for one handoff: claimed before the session exists, then named.
+
+    ``owner_pid`` and ``owner_identity`` name the process that makes the start, so an interrupted one can be told from
+    one still running; ``supervised`` names the session registered to hear when the worker idles, once it is.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    started_at: str
+    owner_pid: int
+    owner_identity: str
+    session_id: str = ""
+    supervised: str = ""
+
+
 class WorkflowRecord(BaseModel):
     """Everything the workflow machine persists on an item beyond the lifecycle phase."""
 
@@ -340,6 +356,7 @@ class WorkflowRecord(BaseModel):
     dispatch_recipients: list[str] = Field(default_factory=list)
     dispatched_phase: str = ""
     dispatch_workers: list[str] = Field(default_factory=list)
+    dispatch_starts: dict[str, DispatchStart] = Field(default_factory=dict)
 
     def with_effect(self, effect: PendingEffect) -> WorkflowRecord:
         """A copy with the effect appended to the pending list."""

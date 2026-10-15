@@ -151,6 +151,7 @@ class EntryRequest:
     origin: StartOrigin = StartOrigin.EXPLICIT
     lane: LaneFacts | None = None
     creative_snapshot: str = ""
+    starts_seen: tuple[tuple[str, str], ...] = ()
 
     @property
     def resolved_lane(self) -> LaneFacts:
@@ -337,6 +338,22 @@ async def _publication_for(request: EntryRequest, holder: str | None, phase: Pha
     return published_workflow_publication(), False
 
 
+def _starts_snapshot(record: WorkflowRecord) -> tuple[tuple[str, str], ...]:
+    """The recorded helper starts as the entry saw them: each start's key and the session it names."""
+    return tuple((start.key, start.session_id) for start in record.helper_starts)
+
+
+def _check_starts(request: EntryRequest, record: WorkflowRecord) -> None:
+    """Refuse a reservation or claim beside an earlier helper start that has not settled or changed since the entry saw it.
+
+    The entry looked for the sessions of earlier claims before this write; a start accepted under an earlier claim may
+    since have named its session, and that session would be missed by the scan, so any change of the recorded starts
+    refuses the write and the verb is repeated.
+    """
+    if unsettled_helper_starts(record) or _starts_snapshot(record) != request.starts_seen:
+        raise _refuse(EntryRefusal.EARLIER_START, item=request.item)
+
+
 def _apply_claim(
     request: EntryRequest, item_id: str, branch: str, role: str, state_dict: dict[str, StateValue] | None
 ) -> ItemChange:
@@ -350,8 +367,7 @@ def _apply_claim(
     holder = state.active_runner or None
     if holder is not None:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
-    if unsettled_helper_starts(state.workflow):
-        raise _refuse(EntryRefusal.EARLIER_START, item=request.item)
+    _check_starts(request, state.workflow)
     launch = state.workflow.launch
     if launch is None:
         raise _refuse(EntryRefusal.NO_LAUNCH, item=request.item)
@@ -380,6 +396,7 @@ def _apply_claim(
     record.dispatch_recipients = []
     record.dispatched_phase = ""
     record.dispatch_workers = []
+    record.dispatch_starts = {}
     stale_stamp = phase is Phase.WORK and state.lifecycle_phase is LifecyclePhase.READY
     carried_stale = phase is Phase.PREPARATION and state.lifecycle_phase is LifecyclePhase.READY
     if stale_stamp or carried_stale:
@@ -441,8 +458,8 @@ def _apply_reservation(
     state = TodoState.model_validate(state_dict)
     reading = read_phase(state, request.resolved_lane)
     phase = _check_drivable(request, state, reading, starting=True)
-    if phase is not Phase.READY and unsettled_helper_starts(state.workflow):
-        raise _refuse(EntryRefusal.EARLIER_START, item=request.item)
+    if phase is not Phase.READY or not state.active_runner:
+        _check_starts(request, state.workflow)
     holder = state.active_runner or None
     if holder is not None and phase is not Phase.READY:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
@@ -708,6 +725,7 @@ async def enter(request: EntryRequest) -> EntryResult:
         request,
         lane=await resolve_lane(store, request.project_root, request.item, raw, state),
         creative_snapshot=creative_snapshot(raw),
+        starts_seen=_starts_snapshot(state.workflow),
     )
     reading = read_phase(state, request.resolved_lane)
     other_holder = holder is not None and holder != request.caller_session_id
