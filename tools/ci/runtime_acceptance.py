@@ -604,6 +604,7 @@ class CleanupResult:
 
     status: ScenarioStatus
     detail: str = _EMPTY
+    commands: tuple[CommandEvidence, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -629,7 +630,22 @@ class AcceptanceReport:
 
 
 ScenarioAction = Callable[[], ScenarioResult | None]
-CleanupAction = Callable[[], None]
+CleanupAction = Callable[[list[CommandEvidence]], None]
+
+
+def _bound_command_evidence(evidence: Sequence[CommandEvidence]) -> tuple[CommandEvidence, ...]:
+    """Copy command evidence with each diagnostic stream bounded for the report."""
+    return tuple(
+        CommandEvidence(
+            argv=command.argv,
+            exit_status=command.exit_status,
+            duration_seconds=command.duration_seconds,
+            stdout=command.stdout[:_DIAGNOSTIC_LIMIT],
+            stderr=command.stderr[:_DIAGNOSTIC_LIMIT],
+            diagnostics=command.diagnostics[:_DIAGNOSTIC_LIMIT],
+        )
+        for command in evidence
+    )
 
 
 def execute_profile(
@@ -665,21 +681,7 @@ def execute_profile(
                     scenario_id=scenario_id,
                     status=result.status if result is not None else ScenarioStatus.PASSED,
                     duration_seconds=time.monotonic() - scenario_started,
-                    commands=(
-                        tuple(
-                            CommandEvidence(
-                                argv=evidence.argv,
-                                exit_status=evidence.exit_status,
-                                duration_seconds=evidence.duration_seconds,
-                                stdout=evidence.stdout[:_DIAGNOSTIC_LIMIT],
-                                stderr=evidence.stderr[:_DIAGNOSTIC_LIMIT],
-                                diagnostics=evidence.diagnostics[:_DIAGNOSTIC_LIMIT],
-                            )
-                            for evidence in result.commands
-                        )
-                        if result is not None
-                        else ()
-                    ),
+                    commands=_bound_command_evidence(result.commands) if result is not None else (),
                     diagnostics=result.diagnostics[:_DIAGNOSTIC_LIMIT] if result is not None else _EMPTY,
                 )
             )
@@ -712,16 +714,22 @@ def execute_profile(
                     )
                 )
             break
+    cleanup_evidence: list[CommandEvidence] = []
     try:
-        cleanup_action()
+        cleanup_action(cleanup_evidence)
         cleanup = CleanupResult(status=ScenarioStatus.PASSED)
     except Exception as exc:
         cleanup = CleanupResult(
             status=ScenarioStatus.FAILED,
             detail=f"{type(exc).__name__}: {exc}"[:_DIAGNOSTIC_LIMIT],
+            commands=_bound_command_evidence(cleanup_evidence),
         )
     except KeyboardInterrupt:
-        cleanup = CleanupResult(status=ScenarioStatus.FAILED, detail=_INTERRUPTED)
+        cleanup = CleanupResult(
+            status=ScenarioStatus.FAILED,
+            detail=_INTERRUPTED,
+            commands=_bound_command_evidence(cleanup_evidence),
+        )
     return AcceptanceReport(
         schema_version=_REPORT_SCHEMA_VERSION,
         source_revision=source_revision,
@@ -1571,9 +1579,11 @@ def _restore_full_profile_changes(resources: FullRuntimeResources, evidence: lis
             raise RuntimeError(_FULL_CONFIG_RESTORE_ERROR) from exc
 
 
-def _close_full_profile_resources(resources: FullRuntimeResources) -> None:
+def _close_full_profile_resources(
+    resources: FullRuntimeResources,
+    cleanup_evidence: list[CommandEvidence],
+) -> None:
     """Stop the supported runtime, restore temporary declarations and remove owned resources."""
-    cleanup_evidence: list[CommandEvidence] = []
     failures: list[str] = []
     if resources.install_attempted:
         result = _record_external_command(
@@ -1611,7 +1621,7 @@ def _close_full_profile_resources(resources: FullRuntimeResources) -> None:
             failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
     if isinstance(resources.release_world, ReleaseWorld):
         try:
-            _close_release_world(resources.release_world)
+            _close_release_world(resources.release_world, cleanup_evidence)
         except Exception:
             failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
     try:
@@ -3958,14 +3968,21 @@ def _make_removable(root: Path) -> None:
         Path(directory).chmod(_RELEASE_WRITABLE_MODE)
 
 
-def _close_release_world(world: ReleaseWorld) -> None:
+def _close_release_world(world: ReleaseWorld, evidence: list[CommandEvidence]) -> None:
     """Sign the release owner out, close its terminal and make the disposable history removable."""
     terminal = world.terminal
     world.terminal = None
     try:
         if terminal is not None:
             try:
-                terminal.run((_release_python(world), "-m", _RELEASE_TELEC_MODULE, "auth", "logout"))
+                exit_status, _ = _record_terminal_command(
+                    world.resources,
+                    terminal,
+                    (_release_python(world), "-m", _RELEASE_TELEC_MODULE, "auth", "logout"),
+                    evidence,
+                )
+                if exit_status is None:
+                    raise RuntimeError(_FULL_TERMINAL_CLEANUP_ERROR)
             finally:
                 terminal.close()
     finally:
@@ -4182,7 +4199,8 @@ def run_profile(
         actions: dict[str, ScenarioAction] = {_SCENARIO_COLD: cold_action}
         inventory: Sequence[str] = _COLD_PROFILE_SCENARIOS
 
-        def cleanup_cold() -> None:
+        def cleanup_cold(evidence: list[CommandEvidence]) -> None:
+            del evidence
             shutil.rmtree(temporary_root)
 
         cleanup_action: CleanupAction = cleanup_cold
@@ -4272,8 +4290,8 @@ def run_profile(
             )
             inventory = _FULL_PROFILE_SCENARIOS
 
-            def cleanup_full() -> None:
-                _close_full_profile_resources(resources)
+            def cleanup_full(evidence: list[CommandEvidence]) -> None:
+                _close_full_profile_resources(resources, evidence)
 
             cleanup_action = cleanup_full
         return execute_profile(
@@ -4361,9 +4379,10 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
         cleanup = report["cleanup"]
         if (
             not isinstance(cleanup, dict)
-            or set(cleanup) != {"status", "detail"}
+            or set(cleanup) not in ({"status", "detail"}, {"status", "detail", "commands"})
             or cleanup["status"] != ScenarioStatus.PASSED.value
             or cleanup["detail"] != _EMPTY
+            or ("commands" in cleanup and cleanup["commands"] != [])
         ):
             raise ValueError
     except (json.JSONDecodeError, UnicodeDecodeError, KeyError, OverflowError, TypeError, ValueError):
