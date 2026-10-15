@@ -131,23 +131,32 @@ def _public_hold_source(hold_audit: StateValue) -> str | None:
 
 
 READING_WORKERS: Final = 8
+_LIVE_STATUSES: Final = (TodoStatus.ACTIVE.value, TodoStatus.ICEBOX.value)
 
 
 def _ready_readings(
     store: WorkflowStore, project_path: str, items: Sequence[TodoProjectionItem]
 ) -> dict[str, PhaseReading]:
-    """The machine\'s reading of every live item that is not a task, the remote reads taken together."""
-    live = [(str(item.item_id), item.state) for item in items if item.state is not None and item.state_error is None]
+    """The machine\'s reading of every live item that is not a task, the remote reads taken together.
+
+    Keyed by the row\'s durable store address, never by slug: a removed or delivered row may share its slug with a
+    live one, and only a live row has a reading (the resolver addresses the item by slug, which names the live row).
+    """
+    live = [
+        (str(item.store_address), str(item.item_id), item.state)
+        for item in items
+        if item.state is not None and item.state_error is None and item.status in _LIVE_STATUSES
+    ]
     if not live:
         return {}
 
-    def read(entry: tuple[str, dict[str, StateValue]]) -> tuple[str, PhaseReading | None]:
-        slug, state = entry
-        return slug, item_reading(store, project_path, slug, state)
+    def read(entry: tuple[str, str, dict[str, StateValue]]) -> tuple[str, PhaseReading | None]:
+        address, slug, state = entry
+        return address, item_reading(store, project_path, slug, state)
 
     with ThreadPoolExecutor(max_workers=READING_WORKERS) as pool:
         results = list(pool.map(read, live))
-    return {slug: reading for slug, reading in results if reading is not None}
+    return {address: reading for address, reading in results if reading is not None}
 
 
 def _read_phase_value(stored: LifecyclePhase, reading: PhaseReading | None) -> str:
@@ -607,7 +616,7 @@ def assemble_todo_from_db(
             for artifact in item.artifact_files
             if artifact.updated_at is not None
         }
-        reading = readings.get(slug)
+        reading = readings.get(row_id)
         projection = _derive_projection_fields(
             slug,
             raw_status,
