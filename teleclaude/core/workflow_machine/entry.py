@@ -8,7 +8,6 @@ for itself on its first call. A session that holds the item receives the instruc
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -26,7 +25,7 @@ from teleclaude.core.workflow_machine.dependencies import unmet_for_preparation,
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.heads import observe_item_supervised, reading_head
 from teleclaude.core.workflow_machine.instruction import InstructionFacts, render_instruction
-from teleclaude.core.workflow_machine.phase_reading import PhaseReading, read_phase
+from teleclaude.core.workflow_machine.phase_reading import PhaseReading, creative_snapshot, read_phase
 from teleclaude.core.workflow_machine.publication import (
     PublicationError,
     WorkflowPublication,
@@ -115,7 +114,6 @@ REQUESTED_NOTE: Final = "{item}: a driver was requested."
 LAUNCH_NOTE: Final = "{item}: a driver was requested; session {session} holds the claim."
 CLAIM_NOTE: Final = "claimed"
 NO_SESSION: Final = ""
-CREATIVE_STATE_KEY: Final = "creative"
 TASK_LANE_LABEL: Final = "the task lane"
 ATTACH_WAIT_SECONDS: Final = 120.0
 ATTACH_POLL_SECONDS: Final = 0.5
@@ -161,14 +159,9 @@ async def _unmet_dependencies(store: WorkflowStore, item: str, verb: EntryVerb) 
     return await unmet_for_work(store, item)
 
 
-def _creative_snapshot(state: Mapping[str, StateValue]) -> str:
-    """The creative section of the stored state, as read when the lane was resolved."""
-    return json.dumps(state.get(CREATIVE_STATE_KEY), sort_keys=True, default=str)
-
-
 def _recheck_creative(request: EntryRequest, state_dict: Mapping[str, StateValue]) -> None:
     """Refuse a claim or a reservation when the creative section moved after the lane was resolved."""
-    if _creative_snapshot(state_dict) != request.creative_snapshot:
+    if creative_snapshot(state_dict) != request.creative_snapshot:
         raise _refuse(EntryRefusal.CREATIVE_CHANGED, item=request.item)
 
 
@@ -434,7 +427,7 @@ async def enter(request: EntryRequest) -> EntryResult:
         request,
         integration_head=await reading_head(request.project_root, request.item, state),
         creative_incomplete=await creative_incomplete(store, request.project_root, request.item, raw),
-        creative_snapshot=_creative_snapshot(raw),
+        creative_snapshot=creative_snapshot(raw),
     )
     phase = _check_drivable(
         request,
@@ -485,7 +478,8 @@ async def plan_child(project_root: str, item: str, caller_session_id: str) -> Ch
     holder = state.active_runner or None
     if holder != caller_session_id:
         raise _refuse(EntryRefusal.HELD, item=item, session=holder or NO_SESSION)
-    phase = read_phase(state, integration_head=NO_SESSION, creative_incomplete=False).phase
+    creative = await creative_incomplete(store, project_root, item, raw)
+    phase = read_phase(state, integration_head=NO_SESSION, creative_incomplete=creative).phase
     if phase is None or phase not in _VERB_FOR_PHASE:
         raise _refuse(EntryRefusal.NOT_DRIVEN, item=item, phase=phase.value if phase else NO_SESSION)
     publication = await _own_publication(caller_session_id) or published_workflow_publication()

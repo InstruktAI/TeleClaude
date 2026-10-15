@@ -139,7 +139,8 @@ def _take(
         if key in record.act_status:
             outcome.append(Slot.RECORDED)
             return None
-        if read_phase(state, integration_head=NO_HEAD, creative_incomplete=False).phase is not Phase.WORK:
+        reading = read_phase(state, integration_head=NO_HEAD, creative_incomplete=request.creative_incomplete)
+        if reading.phase is not Phase.WORK:
             raise ActRefused(Refusal.WRONG_PHASE.value.format(act=request.act.value, phase=state.lifecycle_phase))
         if state.active_runner != session_id:
             raise ActRefused(Refusal.HOLDER_CHANGED.value.format(act=request.act.value))

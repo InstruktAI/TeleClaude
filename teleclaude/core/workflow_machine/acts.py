@@ -25,7 +25,7 @@ from teleclaude.core.workflow_machine.authority import configured_person, has_pr
 from teleclaude.core.workflow_machine.caller import CallerFacts, child_sessions_of, in_claiming_group, load_caller
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.heads import observe_item_supervised
-from teleclaude.core.workflow_machine.phase_reading import PhaseReading, read_phase
+from teleclaude.core.workflow_machine.phase_reading import PhaseReading, creative_snapshot, read_phase
 from teleclaude.core.workflow_machine.stamp_run import run_stamp
 from teleclaude.core.workflow_machine.vocabulary import ACT_PERFORMERS, Performer
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
@@ -470,6 +470,8 @@ def _apply(
     """
     if state_dict is None:
         raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)
+    if request.act is not Act.NOTE and creative_snapshot(state_dict) != request.creative_snapshot:
+        raise _refuse(Refusal.CREATIVE_CHANGED, act=request.act.value)
     state = TodoState.model_validate(state_dict)
     existing = _act_key(request, facts.item_id, state.workflow)
     if existing in state.workflow.act_status:
@@ -527,7 +529,9 @@ async def perform_act(request: ActRequest) -> ActResult:
         raise _refuse(Refusal.NOT_PERFORMED_HERE, act=request.act.value)
     state = TodoState.model_validate(raw)
     request = replace(
-        request, creative_incomplete=await creative_incomplete(store, request.project_root, request.item, raw)
+        request,
+        creative_incomplete=await creative_incomplete(store, request.project_root, request.item, raw),
+        creative_snapshot=creative_snapshot(raw),
     )
     facts = await _resolve_facts(store, request, state)
     key = _act_key(request, facts.item_id, state.workflow)

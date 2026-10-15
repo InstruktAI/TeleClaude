@@ -7,10 +7,14 @@ lifecycle phases, so no item is left in a phase that nothing drives.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Final
 
 from teleclaude.core.next_machine.kinds import KIND_TASK
 from teleclaude.types.lifecycle import LifecyclePhase
+from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import FinalizeStatus, TodoState
 from teleclaude.types.workflow_record import Phase
 
@@ -54,6 +58,14 @@ class PhaseReading:
     def task_lane(self) -> bool:
         """Whether the task lane drives the item (it has no phase in the item vocabulary)."""
         return self.phase is None
+
+
+CREATIVE_STATE_KEY: Final = "creative"
+
+
+def creative_snapshot(state: Mapping[str, StateValue]) -> str:
+    """The creative section of the stored state, as read when the lane was resolved, for a fence at the write."""
+    return json.dumps(state.get(CREATIVE_STATE_KEY), sort_keys=True, default=str)
 
 
 def read_phase(state: TodoState, *, integration_head: str, creative_incomplete: bool) -> PhaseReading:
