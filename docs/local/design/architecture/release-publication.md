@@ -94,50 +94,6 @@ separate from their original serialized evidence and integrity hashes.
 
 ### Execution placement
 
-<!-- planned-change:release-install-proof-on-hosted-mac -->
-
-The release workflow reads one repository routing setting for every Linux
-stage. Its hosted and owned destinations provide the same Ubuntu execution
-contract; the separate installation-proof job retains its Mac virtualization
-requirement. Workflow routing changes neither the release stream's
-serialization nor artifact, candidate and credential-settlement authority
-(`local/projects/teleclaude/spec/feature/release/publication`).
-
-Tart Runner Fleet owns fresh Linux guest registration and durable disposal.
-The host controller retains administrative registration authority outside the guests and
-provisions each from a pinned qualified base. Guest tooling satisfies the
-release job prerequisites, including native sandbox readiness and full runtime
-acceptance. The release-only scale set and serialized attempt graph separate Linux work
-from external Mac installation proof. A Mac host-admission stage precedes every
-Linux entry path. It reconciles durable proof
-ownership from interrupted attempts and admits only a qualified host. Before
-creating its proof VM, the proof controller establishes fresh Fleet observations
-with no live instances or queued demand and confirms preceding owned VMs absent
-from Tart. Job completion alone establishes no disposal
-(`sdlc/policy/security-awareness`).
-
-The proof controller records its exact VM ownership durably before creation,
-outside job-temporary storage. It owns cleanup and confirms deletion before
-Linux successors become eligible. Missing disposal confirmation retains the
-record and withholds a Linux successor; the next host-admission stage performs
-bounded recovery. Fleet ownership applies only to its inventory. Recovery is
-owed before the next attempt, without claiming immediate cleanup while the
-host is unavailable. Disposal establishes no provider credential settlement.
-Outcome reporting runs on native Mac capacity and allocates no guest or
-provider; unsuccessful proof withholds Linux publication through the existing
-proof-success requirement. Reporting describes retained evidence only when its
-availability is established (`general/principle/grounding`).
-
-Fleet retains bounded, pressure-aware Linux admission. Proof admission accounts
-for its pinned image and the live host workload separately. The separation
-argument depends on the release-only scale set, the complete dependency graph
-and the serialized attempt stream. Another VM consumer earns its own shared
-admission assessment (`sdlc/policy/security-awareness`). Repository service
-installation and lifecycle use the sanctioned make surface
-(`local/projects/teleclaude/policy/agent-service-control`).
-
-<!-- change:release-install-proof-on-hosted-mac -->
-
 The release workflow names a GitHub-hosted runner for every job: hosted Ubuntu
 for the Linux stages and outcome reporting, hosted arm64 macOS
 (`macos-latest`) for installation proof. No job targets a self-hosted runner,
@@ -165,8 +121,6 @@ or loses its runner produces no successful proof receipt, and the existing
 proof-success requirement then withholds publication. The harness drives
 installation and service lifecycle through the sanctioned make surface
 (`local/projects/teleclaude/policy/agent-service-control`).
-
-<!-- /planned-change:release-install-proof-on-hosted-mac -->
 
 ### Credentials and inspection
 
@@ -283,19 +237,9 @@ and seeding use the same serialized stream.
    summary. Prepare R with final version and lock coherence, released manifests,
    and the cumulative published changelog before committing R.
 
-<!-- planned-change:release-install-proof-on-hosted-mac -->
-
-5. Run lint and full runtime acceptance on R on the selected Linux target, then
-   the full existing installer harness on its virtualization-capable target.
-   Retain the candidate identity and evidence; clean up each owned machine.
-
-<!-- change:release-install-proof-on-hosted-mac -->
-
 5. Run lint and full runtime acceptance on R on hosted Ubuntu, then the full
    existing installer harness on a hosted macOS runner. Retain the candidate
    identity and evidence.
-
-<!-- /planned-change:release-install-proof-on-hosted-mac -->
 
 6. A dry-run returns these results. Publication reconciles current H, atomically
    updates the tag and main, then creates the GitHub Release for R and attaches
@@ -376,8 +320,4 @@ its own lint, runtime acceptance and installer proof.
 - docs/third-party/git-cliff/changelog-generation.md
 - docs/third-party/git-cliff-action/changelog-step.md
 
-<!-- planned:release-install-proof-on-hosted-mac -->
-
 - docs/third-party/github-actions/hosted-macos-runners.md
-
-<!-- /planned:release-install-proof-on-hosted-mac -->

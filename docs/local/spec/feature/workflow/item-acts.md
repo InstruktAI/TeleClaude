@@ -19,20 +19,20 @@ Facing: every actor is an agent session. The person reads the result through the
 
 `telec todo act <item> <act> [<text>]` performs one act on the item named by its identity. The caller's role and session come from the authenticated session. The `<act>` argument is a value of the closed act vocabulary that the command validates, and `<item>` and `--person` name identities that the command resolves and checks. Prose the caller writes, including text shaped like a header or an envelope, supplies no role, session or act.
 
-| Act        | Required              | Text                | Records                                                             |
-| ---------- | --------------------- | ------------------- | ------------------------------------------------------------------- |
-| `note`     | the text              | the note            | a note in the log; moves nothing                                    |
-| `reviewed` | `--sha <commit>`      | optional summary    | the commit as examined by the driver                                |
-| `finding`  | `--sha <commit>`      | the finding         | a finding bound to the commit; the result names its finding key     |
-| `reply`    | `--finding <key>`     | the reply           | an answer to that finding                                           |
-| `prepared` | `--revision <digest>` | optional summary    | the item prepared at that body revision                             |
-| `waiting`  | `--person <slug>`     | the question        | the item waiting on that person; the result names the wait key      |
-| `decision` | `--wait <key>`        | the person's answer | the person's answer to that wait; the waiting clears                |
-| `stamp`    | `--sha <commit>`      | optional summary    | a stamp bound to that commit; submitted as an operation (see below) |
-| `kickback` | the text              | the reason          | the item returned to preparation                                    |
-| `release`  | none                  | none                | the holder's claim released                                         |
+| Act        | Required                                                     | Text                | Records                                                                                            |
+| ---------- | ------------------------------------------------------------ | ------------------- | -------------------------------------------------------------------------------------------------- |
+| `note`     | the text                                                     | the note            | a note in the log; moves nothing                                                                   |
+| `reviewed` | `--sha <commit>`                                             | optional summary    | the commit as examined by the driver                                                               |
+| `finding`  | `--sha <commit>`                                             | the finding         | a finding bound to the commit; the result names its finding key                                    |
+| `reply`    | `--finding <key>`                                            | the reply           | an answer to that finding                                                                          |
+| `prepared` | `--revision <digest>`                                        | optional summary    | the item prepared at that body revision                                                            |
+| `waiting`  | `--person <slug>`                                            | the question        | the item waiting on that person; the result names the wait key                                     |
+| `decision` | `--wait <key>`                                               | the person's answer | the person's answer to that wait; the waiting clears                                               |
+| `stamp`    | `--sha <commit>`, the text                                   | the lane report     | a stamp bound to that commit, with the driver's lane report; submitted as an operation (see below) |
+| `kickback` | the text                                                     | the reason          | the item returned to preparation, from work or from a held `ready` item                            |
+| `release`  | `--instruction <key>` on a held `ready` item, otherwise none | none                | the holder's claim released; on a held `ready` item the item stays `ready`                         |
 
-The acts `create`, `claim`, the intent-body edit and `delivered` are performed through their own surfaces: the create verb, the entry verbs, the artifact write verb under the claiming group's authority, and the integrator.
+The intent-body edit is admitted only from the holder or a session in its claiming group, decided inside the artifact write's or removal's own transaction against the holder and phase read there. The acts `create`, `claim`, the intent-body edit and `delivered` are performed through their own surfaces: the create verb, the entry verbs, the artifact write verb under the claiming group's authority, and the integrator.
 
 A successful act prints its act key, the item's phase afterwards and whether every effect of the act finished; a `waiting` act also prints its wait key. A refused act prints the act and the performer it requires, or the precondition that failed - the two revisions that differ, the refs that disagree, the failing gate, the person with no authority over the project, the wait that is no longer the open one - and writes nothing.
 
@@ -40,7 +40,7 @@ An invocation is identified by the item, the act, the session that performed it,
 
 A decision is accepted only from the person's own session and only for the wait it names: a decision that names another wait than the open one, or whose person or question changed while it was decided, is refused and clears nothing.
 
-The stamp is submitted as an operation because its gates take minutes. The command prints a receipt, the outcome is delivered to the calling session, and the same request submitted again attaches to the same operation. The gates run once per invocation; a stamp that asks for something else while one runs is refused and does not displace it (`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`).
+A stamp whose text is empty is refused naming the missing lane report; the machine checks that a report was recorded and grades none of its text. The stamp is submitted as an operation because its gates take minutes. The command prints a receipt, the outcome is delivered to the calling session, and the same request submitted again attaches to the same operation. The gates run once per invocation; a stamp that asks for something else while one runs is refused and does not displace it (`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`).
 
 Every act is appended to the item's log as prose that a person can follow, with the time, the role, the session and the act.
 
@@ -48,13 +48,19 @@ Every act is appended to the item's log as prose that a person can follow, with 
 
 `telec todo prepare <item>` and `telec todo work <item>` call the machine. Called by a session that does not hold the item, a verb completes with the session of the driver it started, or refuses with one cause: held by a session, waiting on a person, the phase and the verb that drives it, unmet dependencies, or a body revision that no longer matches. A caller that stops waiting leaves the start running, and repeating the verb attaches to it. Called by the holding driver, a verb returns the instruction for the phase.
 
+`telec todo work <item> --reason <text>` is the verb on a `ready` item the integrator has not admitted (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`, Returning a ready item to preparation). Without a reason on a `ready` item the verb is refused naming the reason it needs, and writes nothing; so is a call that carries no session. Each call's reason is recorded as a reason note attributed to the calling session, with the start when the call starts the driver and on its own when the item is already held or starting, and the result names the note. The instruction of a held `ready` item lists every reason note since the stamp and carries a key that `release` presents. `telec todo prepare` on a `ready` item is refused naming the work verb with a reason.
+
+An entry verb that starts a driver on an unclaimed held item in preparation, prepared or work clears the hold in the same write as the start, with a note naming the verb and the calling session. On a `ready` item the hold stays set. A refused call leaves the hold as it is.
+
+`telec todo show` and the todo projection report a held `ready` item as `ready` at its commit, held by a session since a time, with its reasons, and report a running session left by an earlier claim with the overseer as the door.
+
 The start of a driver is a reservation. The driver the start activates claims by presenting the reservation it was started for; a claim that presents none, or another, is refused naming that cause and writes nothing, so a driver whose start was released or replaced cannot claim. A claim by a driver bound to the item under the procedures it started with is judged under those procedures.
 
 Dependencies gate by lane: a parent prepared (or delivered) clears the preparation of its dependents, a delivered parent clears their work, a task parent must be delivered for both, and a holder counts through its children. A parent whose stored phase reads as preparation does not clear a dependent's preparation.
 
 ### The child command
 
-`telec todo child <item>` starts the child procedure the holding driver's declarations name, with the role, parameters and launch defaults those declarations give, as a session in the driver's claiming group. It refuses a caller that does not hold the item. The declarations a driver started under are carried by the platform from its own record, never supplied by the caller.
+`telec todo child <item>` starts the child procedure the holding driver's declarations name, with the role, parameters and launch defaults those declarations give, as a session in the driver's claiming group. It refuses a caller that does not hold the item, or that is releasing it. The start is recorded on the item before the session is created, so the act that releases the claim accounts for it. The declarations a driver started under are carried by the platform from its own record, never supplied by the caller. The child is that of the phase's scope: a scope that names none, as the work procedure's `ready` scope, is refused naming that none exists.
 
 ### Use cases
 

@@ -38,6 +38,11 @@ _ATTENTION_GUTTER_WIDTH = 1
 # Textual injects the content (column, row) of a click into the click's style
 # meta under this key; the row maps it to the title line's sub-regions.
 _CLICK_OFFSET_META = "offset"
+_ISSUE_LABEL_TEMPLATE = "#{number}"
+_TITLE_FIELD = "title"
+_SPACE = " "
+_EMPTY = ""
+_UNTITLED = "(untitled)"
 
 
 class SessionRow(TelecMixin, Widget):
@@ -87,6 +92,8 @@ class SessionRow(TelecMixin, Widget):
         self._chip_region: tuple[int, int] | None = None
         self._chip_email: str | None = None
         self._slug_region: tuple[int, int] | None = None
+        self._issue_region: tuple[int, int] | None = None
+        self._issue_url: str | None = None
         # The active shared human filter, pushed by the view; the matching
         # person's chip renders inverted.
         self._active_human_filter: str | None = None
@@ -213,19 +220,41 @@ class SessionRow(TelecMixin, Widget):
 
         working_slug = getattr(self.session, "working_slug", None)
         self._slug_region = None
+        self._issue_region = None
+        self._issue_url = None
+        github_issue = self.session.github_issue
+        issue_label = _ISSUE_LABEL_TEMPLATE.format(number=github_issue.number) if github_issue is not None else _EMPTY
+        issue_subject = None
+        display_session = self.session
+        if github_issue is not None and self.session.role is not None:
+            display_session = self.session.model_copy(update={_TITLE_FIELD: self.session.role})
+            issue_subject = github_issue.subject
 
         # Title with the work-slug token removed (no quotes), then truncate to
         # fit. session_display_title applies the universal [HEADLESS] marker.
-        title = session_display_title(self.session, fallback="(untitled)").splitlines()[0]
+        title = session_display_title(display_session, fallback=_UNTITLED).splitlines()[0]
         title_text = strip_slug_token(title, working_slug)
         content_w = self._content_width
         slug_reserved = len(working_slug) + 1 if working_slug else 0
-        avail = content_w - line.cell_len - slug_reserved - 1
+        issue_reserved = len(issue_label) + 1 if issue_label else 0
+        avail = content_w - line.cell_len - slug_reserved - issue_reserved - 1
         if 0 < avail < len(title_text):
             title_text = title_text[: max(1, avail - 1)] + "\u2026"
         if title_text:
             line.append(" ", style=style)
             line.append(title_text, style=style)
+
+        if github_issue is not None:
+            line.append(_SPACE, style=style)
+            issue_start = line.cell_len
+            line.append(issue_label, style=style + Style(underline=True))
+            self._issue_region = (issue_start, line.cell_len)
+            self._issue_url = str(github_issue.url)
+            if issue_subject and not working_slug:
+                subject_width = content_w - line.cell_len - 1
+                if subject_width > 0:
+                    line.append(_SPACE, style=style)
+                    line.append(truncate_text(issue_subject, subject_width), style=style)
 
         # The work slug rendered once as a single distinguished span. A
         # background belongs to the row's selection state, never to the slug:
@@ -402,9 +431,9 @@ class SessionRow(TelecMixin, Widget):
         return result
 
     def on_click(self, event: Click) -> None:
-        """Jump to the matching todo when the work-slug span is clicked.
+        """Open an issue link or jump to the matching todo from its own span.
 
-        A click on the highlighted slug span (title line, row 0) jumps to that
+        The issue number opens GitHub and the highlighted slug jumps to its
         todo; any other click selects the row.
         """
         event.stop()
@@ -415,6 +444,9 @@ class SessionRow(TelecMixin, Widget):
         if isinstance(offset, tuple) and len(offset) == 2:
             column, row = int(offset[0]), int(offset[1])
             if row == 0:
+                if self._issue_url and self._issue_region and self._issue_region[0] <= column < self._issue_region[1]:
+                    self.app.open_url(self._issue_url)
+                    return
                 working_slug = getattr(self.session, "working_slug", None)
                 if working_slug and self._slug_region and self._slug_region[0] <= column < self._slug_region[1]:
                     self.post_message(JumpToTodo(str(working_slug)))

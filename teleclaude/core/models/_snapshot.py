@@ -24,6 +24,7 @@ from teleclaude.session_fields import (
     SessionSnapshotTimestampFields,
 )
 from teleclaude.types import SystemStats
+from teleclaude.types.github_issue import GITHUB_ISSUE_FIELD, GitHubIssueReference
 
 # re-export for spec test access (tests import MessageMetadata from _snapshot)
 from ._session import MessageMetadata as MessageMetadata
@@ -40,6 +41,7 @@ _CONFIG_SUBJECT_FIELD = "config_subject"
 _SUBJECT_OWNER_FIELD = "subject_owner"
 _PROJECT_SUBJECT_FIELD = "subject"
 _PROJECT_OWNER_FIELD = "owner"
+_JSON_SERIALIZATION_MODE = "json"
 logger = get_logger(__name__)
 
 
@@ -123,6 +125,7 @@ class SessionSnapshot(
     subject_owner: str | None = None
     command: str | None = None
     working_slug: str | None = None
+    github_issue: GitHubIssueReference | None = None
     visibility: str | None = "private"
     role: str | None = None
     # Older-reader projection of ``role``, kept populated for nodes that predate the role catalog; read for display only.
@@ -155,6 +158,9 @@ class SessionSnapshot(
             _SUBJECT_OWNER_FIELD: self.subject_owner,
             "command": self.command,
             "working_slug": self.working_slug,
+            GITHUB_ISSUE_FIELD: (
+                self.github_issue.model_dump(mode=_JSON_SERIALIZATION_MODE) if self.github_issue is not None else None
+            ),
             "thinking_mode": self.thinking_mode,
             "active_agent": self.active_agent,
             "status": self.status,
@@ -293,6 +299,11 @@ class SessionSnapshot(
             subject_owner=(str(data.get(_SUBJECT_OWNER_FIELD)) if data.get(_SUBJECT_OWNER_FIELD) is not None else None),
             command=str(data.get("command")) if data.get("command") else None,
             working_slug=str(data.get("working_slug")) if data.get("working_slug") else None,
+            github_issue=(
+                GitHubIssueReference.model_validate(data[GITHUB_ISSUE_FIELD])
+                if data.get(GITHUB_ISSUE_FIELD) is not None
+                else None
+            ),
             thinking_mode=str(data["thinking_mode"]) if data.get("thinking_mode") is not None else None,
             active_agent=str(data.get("active_agent")) if data.get("active_agent") else None,
             status=str(data["status"]),

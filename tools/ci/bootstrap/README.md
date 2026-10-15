@@ -1,19 +1,7 @@
 # Fresh machine bootstrap harness
 
-This harness launches a disposable macOS VM with Tart, installs the checkout
-from its committed Git bundle, checks startup and documentation publication,
-then reports role and identity probes. It records exact VM ownership before
-creation, confirms disposal before settling that record, and leaves unfinished
-ownership for the next host-admission recovery when interrupted.
+This harness runs the complete installation proof directly on a fresh GitHub-hosted macOS runner. Before creating any output or starting installation, it requires the GitHub Actions hosted-runner environment, macOS, and the absence of the platform home, daemon socket, and canonical checkout path. A machine that fails any condition is refused.
 
-The runner requires a macOS host, the Tart version checked by the command, and
-the documented platform prerequisites in the base image. The release workflow
-must provide an immutable `--base-image`, exact `--vm-name`, `--vm-cpu`,
-`--vm-memory-mib`, and `--output-dir`. The host must have the qualified Fleet
-controller and its private configuration installed; invoke the harness through
-the release workflow so the host guard and workflow run identity are present.
+The candidate checkout is transferred as a Git bundle into the runner user's canonical checkout path. Installation commands run with a small login environment containing the runner user's home, identity, shell, temporary directory, locale, and the system login path. The job process environment, including its repository token, is not passed into those commands. The harness checks startup, published documentation, configuration, role and identity probes, repeat installation, service stop and start, post-restart installation, unchanged configuration files, and collected logs.
 
-The seed files contain only `.invalid` addresses. The owner seed is supplied
-to the guest install through the install-only environment inputs. The people
-seed drives the configuration and access-scope probes after the guest is
-healthy.
+The seed files contain only `.invalid` addresses. The owner seed is supplied to the installation command through the install-only environment inputs. The people seed drives the configuration and access-scope probes after the service is healthy.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import fcntl
 import hashlib
 import http.client
@@ -67,8 +68,12 @@ _NO_COLOR_VARIABLE = "NO_COLOR"
 _CONFIG_FILENAME = "config.yml"
 _PROCEDURE_DELIVERY_FIXTURE = Path("tools/ci/fixtures/procedure_event_delivery.json")
 _PROCEDURE_FIXTURE_DIRECTORY = Path("docs/global/general/procedure/runtime-acceptance-event-delivery")
+_PROCEDURE_DEPENDENCY_FIXTURE_DIRECTORY = Path("docs/global/general/procedure/runtime-acceptance-event-handling")
+_PROCEDURE_FIXTURE_HOME_PLACEHOLDER = "<HOME>"
 _PROCEDURE_FIXTURE_INSTALL_MODULE = "teleclaude.entrypoints.install_publication"
-_PROCEDURE_FIXTURE_MISSING_DEPENDENCY_ERROR = "Unable to read eligible required-read snippet"
+_PROCEDURE_FIXTURE_MISSING_DEPENDENCY_ERROR = (
+    "Entry procedure required read does not resolve to a readable published document:"
+)
 _PROCEDURE_FIXTURE_COMMIT_MESSAGE = "test: publish disposable runtime acceptance procedure fixtures"
 _PROCEDURE_FIXTURE_GIT_AUTHOR = "Runtime Acceptance Fixture"
 _PROCEDURE_FIXTURE_GIT_EMAIL = "runtime-acceptance@example.invalid"
@@ -89,6 +94,14 @@ _CLI_SNIPPET_BLOCK_SEPARATOR = "\n---\nid: "
 _CLI_SNIPPET_ID_PREFIX = "id: "
 _PROCEDURE_CLOSURE_SEQUENTIAL = "sequential"
 _PROCEDURE_CLOSURE_BATCHED = "batched"
+_PROCEDURE_CLOSURE_SNAPSHOT_DIFF_LIMIT = 2048
+_PROCEDURE_CLOSURE_SNAPSHOT_DIFF_CONTEXT = 3
+_PROCEDURE_CLOSURE_SNAPSHOT_DIFF_EXPECTED = "fixture-snapshot"
+_PROCEDURE_CLOSURE_SNAPSHOT_DIFF_ACTUAL = "public-response"
+_PROCEDURE_CLOSURE_SNAPSHOT_DIFF_TRUNCATION = "[snapshot diff truncated]"
+_PROCEDURE_CLOSURE_SNAPSHOT_MISMATCH = "The normalized public response snapshot differs for {snippet_id}."
+_PROCEDURE_REQUIRED_READS_HEADER = "## Required reads"
+_PROCEDURE_MARKDOWN_H2_PREFIX = "## "
 _OWNER_ESTABLISHMENT_MODULE = "teleclaude.entrypoints.macos_setup"
 _CLI_EXECUTABLE = Path("bin") / "telec"
 _CLI_HELP_ARGUMENTS = ("--help",)
@@ -2196,13 +2209,20 @@ def _write_procedure_fixture_sources(
     for relative_path, content in sources.items():
         if not isinstance(content, str):
             raise ValueError("The procedure event acceptance fixture contains an invalid source.")
-        if not include_interruptible and relative_path.endswith("/event-handling/interruptible.md"):
+        if not include_interruptible and relative_path == str(
+            _PROCEDURE_DEPENDENCY_FIXTURE_DIRECTORY / "interruptible.md"
+        ):
             continue
         if not include_invalid and "/invalid-" in relative_path:
             continue
         destination = checkout / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(content, encoding=_UTF8)
+        destination.write_text(_expand_procedure_fixture_home(content), encoding=_UTF8)
+
+
+def _expand_procedure_fixture_home(content: str) -> str:
+    """Resolve portable fixture home markers before publishing synthetic sources."""
+    return content.replace(_PROCEDURE_FIXTURE_HOME_PLACEHOLDER, str(Path.home()))
 
 
 def _commit_procedure_fixture(checkout: Path, resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -2210,7 +2230,12 @@ def _commit_procedure_fixture(checkout: Path, resources: FullRuntimeResources, e
     _procedure_fixture_success(
         resources,
         evidence,
-        (_GIT_EXECUTABLE, "add", str(_PROCEDURE_FIXTURE_DIRECTORY), "docs/global/general/procedure/event-handling"),
+        (
+            _GIT_EXECUTABLE,
+            "add",
+            str(_PROCEDURE_FIXTURE_DIRECTORY),
+            str(_PROCEDURE_DEPENDENCY_FIXTURE_DIRECTORY),
+        ),
         cwd=checkout,
     )
     _procedure_fixture_success(
@@ -2262,7 +2287,40 @@ def _closure_block_ids(output: str) -> list[str]:
     return identifiers
 
 
+def _procedure_closure_snapshot_diff(expected: str, actual: str, resources: FullRuntimeResources) -> str:
+    """Return a bounded, sanitized unified diff for a mismatched public closure body."""
+    diff = "".join(
+        difflib.unified_diff(
+            resources.sanitize(expected).splitlines(keepends=True),
+            resources.sanitize(actual).splitlines(keepends=True),
+            fromfile=_PROCEDURE_CLOSURE_SNAPSHOT_DIFF_EXPECTED,
+            tofile=_PROCEDURE_CLOSURE_SNAPSHOT_DIFF_ACTUAL,
+            n=_PROCEDURE_CLOSURE_SNAPSHOT_DIFF_CONTEXT,
+        )
+    )
+    if len(diff) <= _PROCEDURE_CLOSURE_SNAPSHOT_DIFF_LIMIT:
+        return diff
+    return diff[:_PROCEDURE_CLOSURE_SNAPSHOT_DIFF_LIMIT] + _LINE_BREAK + _PROCEDURE_CLOSURE_SNAPSHOT_DIFF_TRUNCATION
+
+
+def _normalize_procedure_closure_snapshot_body(body: str) -> str:
+    """Drop only the Required reads directive and trailing blank lines from an expected source body."""
+    normalized_lines: list[str] = []
+    in_required_reads = False
+    for line in body.splitlines(keepends=True):
+        stripped_line = line.strip()
+        if stripped_line == _PROCEDURE_REQUIRED_READS_HEADER:
+            in_required_reads = True
+            continue
+        if in_required_reads and stripped_line.startswith(_PROCEDURE_MARKDOWN_H2_PREFIX):
+            in_required_reads = False
+        if not in_required_reads:
+            normalized_lines.append(line)
+    return "".join(normalized_lines).rstrip(_LINE_BREAK)
+
+
 def _check_procedure_closure_snapshot(
+    resources: FullRuntimeResources,
     output: str,
     snapshot: Mapping[str, object],
     fixture: Mapping[str, object],
@@ -2285,6 +2343,7 @@ def _check_procedure_closure_snapshot(
             or not relative_path.endswith(".md")
         ):
             continue
+        content = _expand_procedure_fixture_home(content)
         frontmatter = content.split("---\n", 2)
         if len(frontmatter) != 3:
             raise ValueError(f"The authored response snapshot has malformed frontmatter: {relative_path}")
@@ -2304,9 +2363,13 @@ def _check_procedure_closure_snapshot(
             f"id: {snippet_id}\ntype: procedure\ndomain: general\nscope: global\n"
             f"description: {description}\n---\n{frontmatter[2]}"
         )
+        expected_blocks[snippet_id] = _normalize_procedure_closure_snapshot_body(expected_blocks[snippet_id])
     for snippet_id, block in zip(actual_ids, blocks, strict=True):
-        if block.rstrip() != expected_blocks.get(snippet_id, "").rstrip():
-            raise ValueError(f"The normalized public response snapshot differs for {snippet_id}.")
+        expected = expected_blocks.get(snippet_id, _EMPTY)
+        if block.rstrip(_LINE_BREAK) != expected:
+            detail = _PROCEDURE_CLOSURE_SNAPSHOT_MISMATCH.format(snippet_id=snippet_id)
+            diff = _procedure_closure_snapshot_diff(expected, block, resources)
+            raise ValueError(detail + _LINE_BREAK + diff)
 
 
 def _restore_procedure_fixture_publication(
@@ -2359,12 +2422,12 @@ def _full_procedure_closure(resources: FullRuntimeResources, evidence: list[Comm
                 ),
                 cwd=checkout,
             )
-            _check_procedure_closure_snapshot(result.stdout, snapshot, fixture)
+            _check_procedure_closure_snapshot(resources, result.stdout, snapshot, fixture)
 
         missing_id = fixture.get("missing_dependency")
         if not isinstance(missing_id, str):
             raise ValueError("The procedure event acceptance fixture has no missing dependency identity.")
-        (checkout / "docs/global/general/procedure/event-handling/interruptible.md").unlink()
+        (checkout / _PROCEDURE_DEPENDENCY_FIXTURE_DIRECTORY / "interruptible.md").unlink()
         _commit_procedure_fixture(checkout, resources, evidence)
         publication = _publish_procedure_fixture(checkout, resources, evidence)
         if publication.exit_status != _PROCESS_SUCCESS or publication.diagnostics:
@@ -2689,6 +2752,7 @@ _RELEASE_DEVELOPMENT_FILE = "dev.txt"
 _RELEASE_PYPROJECT = "pyproject.toml"
 _RELEASE_DECLARATION = "teleclaude.yml"
 _RELEASE_PROJECTS_REGISTRY = "projects.yaml"
+_RELEASE_AGENT_HOME_DIRECTORY = ".claude"
 _RELEASE_PENDING_RECORD = Path("state") / "self_update_pending.json"
 _RELEASE_CONFIG_FILE = "config.yml"
 _RELEASE_VENV = ".venv"
@@ -2721,7 +2785,7 @@ _RELEASE_OUTPUT_MISSING_ERROR = "A deployed output of the installed release is m
 _RELEASE_OUTPUT_SOURCE_ERROR = "A deployed output does not come from the installed release commit: {output}"
 _RELEASE_PROBE_DOCUMENT = Path("docs/local/concept/release-probe.md")
 _RELEASE_PROBE_BASELINES = (Path("docs/local/baseline.md"), Path("docs/local/baseline-progressive.md"))
-_RELEASE_PROBE_COMMAND = Path("agents/global/commands/general/release-probe.md")
+_RELEASE_PROBE_SKILL = Path("agents/local/skills/release-probe/SKILL.md")
 _RELEASE_PROBE_SKILLS_MASTER = Path("agents/global/skills/AGENTS.master.md")
 _RELEASE_MASTER_NAME = "AGENTS.master.md"
 _RELEASE_PROBE_LABEL = "Release probe {version}"
@@ -2730,13 +2794,13 @@ _RELEASE_PROBE_DOCUMENT_TEXT = (
     "---\ndescription: {label}\n---\n\n# Release Probe — Concept\n\n## What\n\n{label}\n\n## Why\n\n"
     "It lets the release journeys tell which commit was published.\n"
 )
-_RELEASE_PROBE_COMMAND_TEXT = (
-    "---\ndescription: {label}\n---\n\n# Release Probe\n\nYou are now the release probe.\n\n## Purpose\n\n"
-    "{label}\n\n## Steps\n\n1. Report the label above.\n\n## Discipline\n\nPerform nothing else.\n"
+_RELEASE_PROBE_SKILL_TEXT = (
+    "---\nname: release-probe\ndescription: Report the installed release identity.\n---\n\n"
+    "# Release Probe Skill\n\n{label}\n\n## Steps\n\n1. Report the label above.\n"
 )
 _RELEASE_PROBE_MASTER_TEXT = "# Release probe master\n\n{label}\n"
 _RELEASE_PROBE_SKILLS_TEXT = "# Release probe skills\n"
-_RELEASE_DEPLOYED_COMMAND = Path("commands") / "general" / "release-probe.md"
+_RELEASE_DEPLOYED_SKILL = Path(".claude") / "skills" / "release-probe" / "SKILL.md"
 _RELEASE_DEPLOYED_MASTER = Path("AGENTS.md")
 _RELEASE_DEPLOYED_INDEX = Path("docs") / "local" / "index.yaml"
 _RELEASE_PUBLISHED_DOMAIN = "general"
@@ -3041,15 +3105,15 @@ def _write_probe_sources(origin: Path, label: str) -> None:
     """Write the bounded documentation and agent-artifact sources whose label names the commit they belong to."""
     for relative in (
         _RELEASE_PROBE_DOCUMENT,
-        _RELEASE_PROBE_COMMAND,
+        _RELEASE_PROBE_SKILL,
         _RELEASE_PROBE_SKILLS_MASTER,
         *_RELEASE_PROBE_BASELINES,
     ):
         (origin / relative).parent.mkdir(parents=True, exist_ok=True)
     (origin / _RELEASE_PROBE_DOCUMENT).write_text(_RELEASE_PROBE_DOCUMENT_TEXT.format(label=label), encoding=_UTF8)
-    (origin / _RELEASE_PROBE_COMMAND).write_text(_RELEASE_PROBE_COMMAND_TEXT.format(label=label), encoding=_UTF8)
-    (origin / _RELEASE_MASTER_NAME).write_text(_RELEASE_PROBE_MASTER_TEXT.format(label=label), encoding=_UTF8)
+    (origin / _RELEASE_PROBE_SKILL).write_text(_RELEASE_PROBE_SKILL_TEXT.format(label=label), encoding=_UTF8)
     (origin / _RELEASE_PROBE_SKILLS_MASTER).write_text(_RELEASE_PROBE_SKILLS_TEXT, encoding=_UTF8)
+    (origin / _RELEASE_MASTER_NAME).write_text(_RELEASE_PROBE_MASTER_TEXT.format(label=label), encoding=_UTF8)
     for baseline in _RELEASE_PROBE_BASELINES:
         (origin / baseline).write_text(_EMPTY, encoding=_UTF8)
 
@@ -3225,6 +3289,7 @@ def _release_install(
     (base / _SYNTHETIC_HOME_DIRECTORY / _RELEASE_DECLARATION).write_text(
         _RELEASE_GLOBAL_TEXT.format(email=_RELEASE_PERSON_EMAIL, schema_version=world.schema_version), encoding=_UTF8
     )
+    (base / _SYNTHETIC_HOME_DIRECTORY / _RELEASE_AGENT_HOME_DIRECTORY).mkdir(parents=True, exist_ok=True)
     clone = ["clone", "--quiet", *(["--single-branch", "--branch", _RELEASE_BRANCH] if single_branch else [])]
     _release_git(world, evidence, base, *clone, f"file://{world.origin}", str(checkout))
     _release_git(world, evidence, checkout, "checkout", "--quiet", revision)
@@ -3871,9 +3936,9 @@ def _release_version(world: ReleaseWorld, evidence: list[CommandEvidence], insta
 
 
 def _deployed_outputs(install: ReleaseInstall) -> tuple[Path, ...]:
-    """The deployed agent artifact, compiled instruction file and documentation catalog of the installed home."""
+    """The installed commit's deployed skill, compiled instructions and documentation catalog."""
     return (
-        install.home / _RELEASE_DEPLOYED_COMMAND,
+        install.checkout / _RELEASE_DEPLOYED_SKILL,
         install.checkout / _RELEASE_DEPLOYED_MASTER,
         install.checkout / _RELEASE_DEPLOYED_INDEX,
     )
@@ -3919,15 +3984,15 @@ def _committed(
 def _require_published(world: ReleaseWorld, evidence: list[CommandEvidence], install: ReleaseInstall) -> None:
     """The deployed outputs are the installed commit's sources, while local main names different ones.
 
-    The deployed command and compiled instructions equal their sources at the installed commit and
+    The deployed skill and compiled instructions equal their sources at the installed commit and
     differ from the sources at local main; the catalog entry carries the installed commit's document
     description, path and identity.
     """
-    command, master, catalog = _deployed_outputs(install)
-    for output in (command, master, catalog):
+    skill, master, catalog = _deployed_outputs(install)
+    for output in (skill, master, catalog):
         if not output.is_file() or not output.read_text(encoding=_UTF8).strip():
             raise ValueError(_RELEASE_OUTPUT_MISSING_ERROR.format(output=output.name))
-    for output, source in ((command, _RELEASE_PROBE_COMMAND), (master, Path(_RELEASE_MASTER_NAME))):
+    for output, source in ((skill, _RELEASE_PROBE_SKILL), (master, Path(_RELEASE_MASTER_NAME))):
         installed = _committed(world, evidence, install, "HEAD", source)
         if output.read_text(encoding=_UTF8).strip() != installed or installed == _committed(
             world, evidence, install, _RELEASE_BRANCH, source
@@ -3981,7 +4046,7 @@ def _release_publication(resources: FullRuntimeResources, evidence: list[Command
     )
     _require_published(world, evidence, install)
 
-    previous = (install.home / _RELEASE_DEPLOYED_COMMAND).read_text(encoding=_UTF8)
+    previous = (install.checkout / _RELEASE_DEPLOYED_SKILL).read_text(encoding=_UTF8)
     protected = install.home / _RELEASE_PROTECTED_DIRECTORY
     protected.chmod(_RELEASE_WRITE_PROTECTED_MODE)
     try:
@@ -3989,7 +4054,7 @@ def _release_publication(resources: FullRuntimeResources, evidence: list[Command
         _release_module(world, evidence, install, _RELEASE_MODULE_DRAIN, expect_success=False)
     finally:
         _make_removable(install.home)
-    if (install.home / _RELEASE_DEPLOYED_COMMAND).read_text(encoding=_UTF8) != previous:
+    if (install.checkout / _RELEASE_DEPLOYED_SKILL).read_text(encoding=_UTF8) != previous:
         raise ValueError(_RELEASE_REPLAY_PRESERVE_ERROR)
     failed = _head(world, evidence, install)
     command = (_RELEASE_AFTER_OPTION, failed, "--action", _RELEASE_REPLAY_ACTION)

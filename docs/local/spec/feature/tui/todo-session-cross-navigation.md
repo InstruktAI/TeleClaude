@@ -56,6 +56,19 @@ autonomous-creation marker when present, the owner chip, and the hold glyph.
 
 ## Canonical fields
 
+### GitHub issue navigation
+
+A session assigned to a GitHub issue shows its issue number as a separate
+clickable span beside its work subject. Clicking that number opens the assigned
+issue in the default browser. The slug retains its existing styling, click
+region, and navigation behavior. The issue link consumes only clicks inside
+the number's own span.
+
+Issue identity comes from the session's structured assignment, carried by its
+owning computer in the session snapshot. Digits in a title or slug do not
+establish a GitHub assignment. A session without a GitHub issue reference shows
+no issue-number link.
+
 ### Use cases
 
 #### UC-XNAV-1: Chip color resolves with theme-default fallback
@@ -389,6 +402,15 @@ And that session closed before `CLOSED_SESSION_LISTING_WINDOW` but is still reta
 When the detail row is rendered
 Then the row offers revive as for any retained closed session
 And the TUI resolves the provenance sessions of its rendered todos by their session ids, never by reading the closed-session listing
+```
+
+#### UC-XNAV-32: Open the assigned GitHub issue from a session row
+
+```gherkin
+Given a human operator views a session assigned to a GitHub issue
+When the operator clicks the session's displayed issue number
+Then the assigned issue opens in the default browser
+And the slug retains its existing navigation behavior
 ```
 
 ## Known caveats

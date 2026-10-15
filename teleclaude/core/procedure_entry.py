@@ -37,8 +37,9 @@ from teleclaude.docs_subscriptions import (
 )
 from teleclaude.entry_declarations import EntryDeclarations, ProcedureParameter
 from teleclaude.helpers.agent_types import ThinkingMode
+from teleclaude.types.work_subject import WorkSubjectParameter
 
-SLUG_PARAMETER: Final = "slug"
+SLUG_PARAMETER: Final = WorkSubjectParameter.SLUG.value
 FACT_JOB: Final = "job"
 FACT_HOME: Final = "home"
 FACT_SUBJECT: Final = "subject"

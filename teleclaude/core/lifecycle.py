@@ -23,7 +23,6 @@ from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import ProjectRefreshTrigger, ProjectsChangedContext, TeleClaudeEvents
-from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
 from teleclaude.core.operations import OperationsService, get_operations_service, set_operations_service
 from teleclaude.core.restart_budget import RestartBudget
@@ -32,6 +31,7 @@ from teleclaude.core.session_config_subject import (
     backfill_session_config_subjects,
     backfill_session_subject_owners,
 )
+from teleclaude.core.session_snapshot import project_session_snapshot
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
 from teleclaude.core.workflow_store.store import close_workflow_stores
 from teleclaude.events.envelope import EventVisibility
@@ -309,7 +309,7 @@ class DaemonLifecycle:
         cache_update_total_dt = 0.0
         for idx, session in enumerate(sessions, start=1):
             snapshot_started_at = time.perf_counter()
-            snapshot = SessionSnapshot.from_db_session(session, computer=config.computer.name)
+            snapshot = await project_session_snapshot(db, session, computer=config.computer.name)
             snapshot_dt = time.perf_counter() - snapshot_started_at
             snapshot_total_dt += snapshot_dt
             cache_update_started_at = time.perf_counter()

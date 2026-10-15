@@ -60,6 +60,7 @@ from teleclaude.core.session_cleanup import host_pane_name, terminate_session
 from teleclaude.core.session_company import record_session_company_resolved
 from teleclaude.core.session_listeners import establish_supervision
 from teleclaude.core.session_listing import SessionListingSelection
+from teleclaude.core.session_snapshot import project_session_snapshot
 from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.session_utils import WorkingDirectoryUnavailableError, resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
@@ -389,7 +390,14 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     if cmd.entry_point is SessionEntryPoint.CRON and cmd.job is not None:
         title_args = cmd.job
     title = cmd.title or (
-        compose_command_session_title(cmd.command, title_args, role=cmd.role) if cmd.command is not None else ""
+        compose_command_session_title(
+            cmd.command,
+            title_args,
+            role=cmd.role,
+            invocation=launch.invocation if launch is not None else None,
+        )
+        if cmd.command is not None
+        else ""
     )
 
     # A desk session records its confinement in the creating write, so no
@@ -540,7 +548,7 @@ async def list_sessions(*, selection: SessionListingSelection) -> list[SessionSn
     )
 
     local_name = config.computer.name
-    snapshots = [SessionSnapshot.from_db_session(session, computer=local_name) for session in sessions]
+    snapshots = [await project_session_snapshot(db, session, computer=local_name) for session in sessions]
     for session, snapshot in zip(sessions, snapshots, strict=True):
         address = resolve_session_conversation_url(session)
         snapshot.conversation_url = address.url if isinstance(address, SessionAddressResolved) else None
