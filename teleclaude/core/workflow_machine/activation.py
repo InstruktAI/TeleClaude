@@ -333,9 +333,34 @@ async def activate_project(project_root: str) -> None:
         logger.info(CONVERGED_LOG, project_root=project_root, rows_changed=changed)
 
 
+_LAST_FAILURE: dict[str, str] = {}
+NOT_ACTIVATED: Final = "the store of {project} is not activated yet: {cause}"
+NOT_ACTIVATED_YET: Final = "the next tick of the daemon activates it"
+
+
+class StoreNotActivated(Exception):
+    """The machine's read, act or scan was refused because the store carries no completion mark."""
+
+
 async def activate_project_supervised(project_root: str) -> None:
     """Activate one project, containing and logging a failure so every other store proceeds."""
     try:
         await activate_project(project_root)
-    except Exception:  # supervision boundary: one store's failure leaves it unmarked and affects no other store
+    except Exception as failure:  # supervision boundary: one store's failure leaves it unmarked, no other store
+        _LAST_FAILURE[project_root] = str(failure) or type(failure).__name__
         logger.exception(ACTIVATION_FAILED_LOG, project_root=project_root)
+    else:
+        _LAST_FAILURE.pop(project_root, None)
+
+
+async def require_activated(store: WorkflowStore) -> None:
+    """Refuse the machine's read, act or scan on a store the activation has not marked, naming the cause.
+
+    The integrator's own entry stays outside this refusal so that the recovery the cause names can run.
+    """
+    in_place, marked = await store.read_activation()
+    if in_place and marked:
+        return
+    project_root = str(store.project_root)
+    cause = _LAST_FAILURE.get(project_root, NOT_ACTIVATED_YET if in_place else "its activation schema is not in place")
+    raise StoreNotActivated(NOT_ACTIVATED.format(project=project_root, cause=cause))

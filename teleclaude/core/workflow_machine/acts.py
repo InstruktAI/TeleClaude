@@ -27,6 +27,7 @@ from teleclaude.core.workflow_machine.act_types import (
     ActResult,
     Refusal,
 )
+from teleclaude.core.workflow_machine.activation import StoreNotActivated, require_activated
 from teleclaude.core.workflow_machine.authority import configured_person, has_project_authority
 from teleclaude.core.workflow_machine.caller import CallerFacts, child_sessions_of, in_claiming_group, load_caller
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
@@ -555,6 +556,10 @@ async def perform_act(request: ActRequest) -> ActResult:
     """
     store = await get_workflow_store(request.project_root)
     request = replace(request, project_root=str(store.project_root))
+    try:
+        await require_activated(store)
+    except StoreNotActivated as refusal:
+        raise ActRefused(str(refusal)) from refusal
     raw = await store.read_state(request.item)
     if raw is None:
         raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)

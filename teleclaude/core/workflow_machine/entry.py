@@ -19,6 +19,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ARTIFACT_INPUT, WORKTREE_DIR
 from teleclaude.core.db import db
+from teleclaude.core.workflow_machine.activation import StoreNotActivated, require_activated
 from teleclaude.core.workflow_machine.caller import child_sessions_of, load_caller
 from teleclaude.core.workflow_machine.dependencies import unmet_for_preparation, unmet_for_work
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
@@ -673,6 +674,10 @@ async def enter(request: EntryRequest) -> EntryResult:
     """Run one entry verb for an item."""
     store = await get_workflow_store(request.project_root)
     request = replace(request, project_root=str(store.project_root))
+    try:
+        await require_activated(store)
+    except StoreNotActivated as refusal:
+        raise EntryRefused(str(refusal)) from refusal
     raw = await store.read_state(request.item)
     item_id = store.resolve_store_address_sync(request.item)
     if raw is None or item_id is None:
