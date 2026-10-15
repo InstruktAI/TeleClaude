@@ -173,6 +173,8 @@ class StampInFlight(BaseModel):
     session_id: str
     started_at: str
     owner: str
+    runner_pid: int = 0
+    runner_started: float = 0.0
 
 
 class ObservedHead(BaseModel):
