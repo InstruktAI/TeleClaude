@@ -3,7 +3,7 @@ description: 'Drive the delivery of one prepared item: derive the invariants, di
 visibility: 'internal'
 role: work-orchestrator
 parameters:
-  - name: item
+  - name: slug
     required: true
 dispatch:
   agent: [codex, claude, gemini, deepseek]

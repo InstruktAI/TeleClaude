@@ -1,7 +1,6 @@
 ---
 description: The closed vocabularies of item phases and acts, who may perform each act, and how a backend-blind machine drives preparation and work from procedure headers through claim, spec, readiness, waiting and the owner's decision.
-delivered_by:
-  - issue-128
+delivered_by: [issue-128]
 ---
 
 # Item Lifecycle — Spec
@@ -42,7 +41,7 @@ An item in the icebox keeps its phase; the icebox is a status. The task lane's p
 | `reviewed` (bound to a commit), `finding` (bound to a commit) | the work driver                                                 | yes, holder only                                       |
 | `reply` (naming a finding)                                    | a session with the builder role in the holder's claiming group  | yes                                                    |
 | `prepared`, `waiting`, `stamp`, `kickback`                    | the driver of the item's phase                                  | yes, holder only                                       |
-| `decision`                                                    | the session of the person the item waits on                     | no: the item is unclaimed; checked against that person |
+| `decision` (naming the wait it answers)                       | the session of the person the item waits on                     | no: the item is unclaimed; checked against that person |
 | `delivered`                                                   | the integrator under its lease, for a candidate it admitted     | no: checked against the lease and the candidate        |
 
 The admissible roles are the catalog roles (`local/projects/teleclaude/spec/feature/identity/agent-roles`) that the four v2 procedures declare. Role, session and act come from the authenticated session and the sealed verb, never from text an agent types. A refusal names the act and the performer it requires and changes nothing.
@@ -60,11 +59,12 @@ A stored phase value from before this vocabulary is read as a phase of it, and t
 | `draft` through `plan_review`, `diagnose`, `blocked`, `prepared`, `build_started`, `build_complete`, `review_changes_requested` | `preparation`; existing artifacts are the input and an existing branch and worktree are kept             |
 | `finalize_ready`                                                                                                                | `ready` at the finalize handoff's commit, with the carried review approval as the stamp                  |
 | `review_approved`                                                                                                               | `ready` at the carried review's commit when that commit is the integration head; otherwise `preparation` |
+| `ready` with a stamp of this machine                                                                                            | `ready` at the stamp's commit; `work` when the integration head is known and is another commit           |
 | `delivered`                                                                                                                     | `delivered`                                                                                              |
 | `task_plan_drafting`, `task_running`                                                                                            | unchanged                                                                                                |
 | any phase, while the creative state is not complete                                                                             | `design`                                                                                                 |
 
-A candidate the integrator has queued, has in progress or has parked keeps its checkpoint and candidate key. Reading a phase never withdraws one.
+A stamp bound to a commit that is no longer the integration head is stale: the item reads as `work` again, the next entry verb for work claims it and clears the stale stamp, and the driver stamps the new head. An integration head that cannot be read leaves a stamp as it is. A candidate the integrator has queued, has in progress or has parked keeps its checkpoint and candidate key. Reading a phase never withdraws one.
 
 ### Procedure headers
 
@@ -72,7 +72,7 @@ A v2 driver procedure declares the phases it drives (preparation, prepared and w
 
 ### Entry verbs
 
-The machine is called through the verbs that prepare and work an item. Called by a session that does not hold the item, a verb starts the driver of the procedure the headers name for the item's phase and returns its session, or refuses naming the cause: held by a session, waiting on a person, the phase and the verb that drives it, unmet dependencies, or a body revision that no longer matches. Called by the holding driver, a verb returns the instruction for the phase: the phase and claim, the child procedure to dispatch with its arguments and launch defaults when no live child exists, the acts that end the phase with the phase each leads to, and the reminders and formatting the lifecycle already carries. The commands that perform the acts, start the child and return these results are `local/projects/teleclaude/spec/feature/workflow/item-acts`.
+The machine is called through the verbs that prepare and work an item. Called by a session that does not hold the item, a verb starts the driver of the procedure the headers name for the item's phase and returns its session, or refuses naming the cause: held by a session, waiting on a person, the phase and the verb that drives it, unmet dependencies, or a body revision that no longer matches. The driver a verb starts claims by presenting the reservation it was started for; a claim without it, or with another, is refused. Called by the holding driver, a verb returns the instruction for the phase: the phase and claim, the child procedure to dispatch with its arguments and launch defaults when no live child exists, the acts that end the phase with the phase each leads to, and the reminders and formatting the lifecycle already carries. The commands that perform the acts, start the child and return these results are `local/projects/teleclaude/spec/feature/workflow/item-acts`.
 
 ### Notes
 
@@ -132,10 +132,11 @@ But naming a person with no authority over the project is refused
 
 ```gherkin
 Given an item waiting on a person
-When that person's own session performs the decision act with their answer
+When that person's own session performs the decision act with their answer, naming the wait it answers
 Then the answer is in the log as theirs and the waiting clears
 And the driver of the waited phase starts exactly once and reads the answer as the person's input
 But the decision act from any other session, including one dispatched from the person's session, is refused and clears nothing
+And a decision naming a wait that is not the open one is refused and clears nothing
 And a note from that session stays in the log and the next driver reads it as context
 ```
 

@@ -3,7 +3,7 @@ description: 'Drive the preparation of one item to a fleshed-out spec: derive th
 visibility: 'internal'
 role: prepare-orchestrator
 parameters:
-  - name: item
+  - name: slug
     required: true
 dispatch:
   agent: [claude, codex, gemini, deepseek]

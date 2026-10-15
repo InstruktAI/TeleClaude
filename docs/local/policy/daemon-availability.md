@@ -22,7 +22,16 @@ visibility: 'public'
 - Daemon health (API socket, API health/read endpoints, adapters, preparation phase) is verified by `make status`, a separate invocation that is never part of `make restart`. A daemon whose admission is closed is reported as draining — its phase, when preparation began, and the accepted work it still holds — and never as healthy. `make status` also names the reason, and the time, a maintenance run last refused to open its window or left the daemon without a verified start, until a later run verifies one. After a canonical-main activation, the standing integrator's log judgment establishes whether the runtime behaves correctly after the maintenance run.
 
 - If Redis is configured for the event platform, startup must expose Redis reachability and pending recovery progress through daemon state or structured logs before continuing degraded; a silent healthy-but-no-Streams state is forbidden.
+
+<!-- planned-change:issue-128 -->
+
 - `make stop` and `make restart` bring down the daemon and its managed launchd units only; they never signal an agent session, the tmux server, or a spawn-registry lease-holder. Sessions and leased detached workers (e.g. the chiptunes worker) outlive the daemon by design: sessions end only through the caller-driven path (see `general/principle/session-lifecycle`); leased workers are re-adopted via adopt-or-kill on the next start (see `local/projects/teleclaude/design/process-lifecycle`).
+
+<!-- change:issue-128 -->
+
+- `make stop` and `make restart` bring down the daemon and its managed launchd units only; they never signal an agent session, the tmux server, or a spawn-registry lease-holder. Sessions and leased detached workers (e.g. the chiptunes worker, a stamp's gate runner) outlive the daemon by design: sessions end only through the caller-driven path (see `general/principle/session-lifecycle`); leased workers are re-adopted via adopt-or-kill on the next start (see `local/projects/teleclaude/design/process-lifecycle`). A gate runner is re-classified, not adopted blindly, per the design above.
+
+<!-- /planned-change:issue-128 -->
 
 - `make stop` prepares the running daemon before stopping it. A preparation that does not complete within its observation window is reported and leaves the daemon running and draining; it is never forcibly terminated by that stop, and once its accepted work settles the daemon completes its own shutdown and the service manager relaunches it. Once the daemon is prepared, the stop is bounded and verified: SIGTERM the daemon, confirm exit within 30 seconds, then SIGKILL it if it has not exited. Termination targets the daemon and managed-unit pids only, never a process-group sweep.
 

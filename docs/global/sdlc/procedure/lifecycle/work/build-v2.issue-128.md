@@ -3,7 +3,7 @@ description: "Build the spec of a prepared item on its branch, commit as you go,
 visibility: 'internal'
 role: builder
 parameters:
-  - name: item
+  - name: slug
     required: true
 dispatch:
   agent: [codex, claude, gemini, deepseek]

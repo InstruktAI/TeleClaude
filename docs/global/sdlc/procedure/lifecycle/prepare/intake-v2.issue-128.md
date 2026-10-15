@@ -3,7 +3,7 @@ description: 'Write the fleshed-out spec of one item into its body from the inte
 visibility: 'internal'
 role: intaker
 parameters:
-  - name: item
+  - name: slug
     required: true
 dispatch:
   agent: [claude, codex, gemini, deepseek]
