@@ -18,6 +18,11 @@ Three operations form the surface: create-session, list-sessions, and end-sessio
 
 Termination accepted by the service is a request, not a finished close: the end-session call is accepted asynchronously and delegates the actual cleanup to the cleanup module (see `session-cleanup-and-reaping`). The `agent_runtime.session.started` event is emitted when the session has booted; consumers subscribe to that to learn when the new session is live.
 
+<!-- planned:issue-128 -->
+
+Closing a session of a single-claim procedure follows the responsibility inbox contract in `local/projects/teleclaude/design/architecture/procedure-activation`: its pending activations end as `not delivered` with reason `session closed`, retaining their assignee. The session carries this property from its initialization publication; closing does not reread the current declaration. Every other session keeps its existing pending-event behavior.
+<!-- /planned:issue-128 -->
+
 ## Canonical fields
 
 ### Use cases

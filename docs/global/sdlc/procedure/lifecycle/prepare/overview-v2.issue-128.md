@@ -21,6 +21,7 @@ workflow:
       leads_to: prepared
     - act: waiting
       leads_to: waiting
+  session: single-claim
 ---
 
 # Prepare Overview — Procedure
@@ -72,6 +73,21 @@ time and is waited on only when a fork is genuinely theirs.
    Re-challenge what changed. Readiness is your judgment against the contract,
    the evidence and the material consequence of what remains, never a count of
    open items; record every limit left open in a note.
+   - **A bug item** is ready only when its spec carries its cause: the causal
+     mechanism with its evidence, an occurrence or a dangerous path in the terms
+     of `sdlc/concept/defect-evidence`. You judge that evidence, not the author.
+     A cause the filer supplied is input and you accept it only on your own
+     judgment of its evidence. When the cause is not established, the item stays
+     in preparation with what is missing as a note, or waits on the person who
+     holds the missing evidence.
+   - **A spec that changes a domain rule** is ready only when it names the single
+     bounded context that owns the rule and the layer used inside it
+     (`sdlc/policy/domain-ownership`).
+   - **A project whose testing ruling opts into test authorship**
+     (`sdlc/policy/testing`): before you perform the prepared act, reserve on the
+     shared branch every scenario the spec's use cases will bind, as rule 8 of
+     that policy requires, through the existing reservation check. A project
+     whose ruling does not opt in has no such step.
 6. **Human-owned forks.** A product outcome the domain cannot settle, a
    material exposure, or an external commitment belongs to the person who owns
    it. Perform the waiting act naming that person and stating the question in
