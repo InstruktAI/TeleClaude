@@ -295,18 +295,18 @@ class TodosDbWorkflowOperationsMixin:
     async def replace_item_state_and_artifacts(
         self: _CreateItemHost,
         slug: str,
-        state: dict[str, StateValue],
         *,
+        decide: Callable[[dict[str, StateValue] | None], dict[str, StateValue]],
         replacement_input: str | None,
         deleted_artifacts: list[str],
-        precondition: StatePrecondition | None = None,
     ) -> None:
         """Commit a kind migration's state and artifact changes together.
 
-        ``precondition`` judges the state read under the writer lock and may raise to write nothing.
+        ``decide`` derives the new state from the row read under the writer lock, so a claim or a hold that landed
+        meanwhile is carried and not overwritten; it may raise to write nothing.
         """
         async with _immediate_transaction(self) as session:
-            await _check_precondition(self, slug, session, precondition)
+            state = decide(await self.read_state_in_session(slug, session))
             if replacement_input is not None:
                 await self.write_artifact(slug, ARTIFACT_INPUT, replacement_input, updated_by=None, session=session)
             for artifact_name in deleted_artifacts:

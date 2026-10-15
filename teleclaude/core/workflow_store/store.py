@@ -86,11 +86,10 @@ class WorkflowStore(Protocol):
     async def replace_item_state_and_artifacts(
         self,
         slug: str,
-        state: dict[str, StateValue],
         *,
+        decide: Callable[[dict[str, StateValue] | None], dict[str, StateValue]],
         replacement_input: str | None,
         deleted_artifacts: list[str],
-        precondition: Callable[[dict[str, StateValue] | None], None] | None = None,
     ) -> None: ...
     async def rename_item(
         self, old_slug: str, new_slug: str, precondition: Callable[[dict[str, StateValue] | None], None] | None = None
