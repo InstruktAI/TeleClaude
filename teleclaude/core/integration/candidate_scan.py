@@ -145,6 +145,14 @@ def _candidate_from_state(
     return ScannedCandidate(key=CandidateKey(slug=slug, branch=branch, sha=head), ready_at=reading.ready_at)
 
 
+def _store_activated(cwd: str, todos_db: WorkflowStore) -> bool:
+    """Whether the store carries the activation mark; a scan of an unmarked store finds nothing and says so."""
+    in_place, marked = todos_db.read_activation_sync()
+    if not (in_place and marked):
+        logger.warning(UNMARKED_STORE_LOG, project_root=cwd)
+    return in_place and marked
+
+
 def _scan_finalize_ready_candidates(
     cwd: str,
     *,
@@ -157,9 +165,7 @@ def _scan_finalize_ready_candidates(
     validation of those store candidates. Returns candidates sorted by ``(ready_at, slug)`` for stable FIFO ordering.
     """
     todos_db = get_workflow_store_sync(cwd)
-    in_place, marked = todos_db.read_activation_sync()
-    if not (in_place and marked):
-        logger.warning(UNMARKED_STORE_LOG, project_root=cwd)
+    if not _store_activated(cwd, todos_db):
         return []
     excluded = _parked_candidate_closure(cwd, parked_slugs)
 
@@ -199,6 +205,8 @@ def _verify_slug_ready(cwd: str, slug: str, *, parked_slugs: set[str]) -> Scanne
     if not (Path(cwd) / WORKTREE_DIR / slug).is_dir():
         return None
     todos_db = get_workflow_store_sync(cwd)
+    if not _store_activated(cwd, todos_db):
+        return None
     try:
         state = todos_db.read_state_sync(slug)
     except Exception as exc:

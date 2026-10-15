@@ -51,6 +51,7 @@ from teleclaude.core.next_machine.review_evidence import (
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store_sync
+from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import BreakdownState, FinalizeModel, FinalizeStatus
 
@@ -63,7 +64,7 @@ def initial_todo_state_for_kind(kind: TodoKind) -> dict[str, StateValue]:
     canonical = canonical_kind(kind)
     state["kind"] = canonical
     entry_phase = KIND_ENTRY_PHASE[canonical]
-    state["lifecycle_phase"] = entry_phase.value
+    state["lifecycle_phase"] = (entry_phase if canonical == TodoKind.TASK else LifecyclePhase.PREPARATION).value
     return state
 
 

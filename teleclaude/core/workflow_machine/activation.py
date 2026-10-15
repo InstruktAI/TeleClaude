@@ -9,10 +9,9 @@ the integration heads read before it, so a verification pass can ask it again an
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
@@ -84,7 +83,6 @@ class ActivationFacts:
     candidate: ActiveCandidate | None
     heads: Mapping[str, str | None]
     now: str
-    convergence: bool = False
 
 
 def read_checkpoint_strictly(project_root: str) -> ActiveCandidate | None:
@@ -245,38 +243,33 @@ def classify_row(row: ActivationRow, facts: ActivationFacts) -> RowRewrite | Non
         return _classify_admitted(row, state, admission, backfilled, facts)
     if not stored_in_legacy_phase(state):
         return None
-    if facts.convergence and state.workflow.episode is None and stored is not LifecyclePhase.REVIEW_APPROVED:
-        return None
     return _classify_legacy(row, state, facts)
 
 
-def plan_for(facts: ActivationFacts) -> ClassifyFn:
-    """The classification of every row under one set of facts, as the store's transaction calls it."""
+class _InTransaction:
+    """The facts of one pass, with the checkpoint read at the moment the transaction classifies, never before it."""
 
-    def classify(rows: list[ActivationRow]) -> list[RowRewrite]:
-        return [rewrite for row in rows if (rewrite := classify_row(row, facts)) is not None]
+    def __init__(self, facts: ActivationFacts) -> None:
+        self._facts = facts
+        self.facts = facts
 
-    return classify
+    def classify(self, rows: list[ActivationRow]) -> list[RowRewrite]:
+        """The rewrites for the rows, under the checkpoint as it is now."""
+        self.facts = replace(self._facts, candidate=read_checkpoint_strictly(self._facts.project_root))
+        return [rewrite for row in rows if (rewrite := classify_row(row, self.facts)) is not None]
 
-
-def verifier_for(facts: ActivationFacts) -> VerifyFn:
-    """The verification pass: nothing may be left to convert once the rewrites have been applied."""
-
-    def verify(rows: list[ActivationRow]) -> None:
+    def verify(self, rows: list[ActivationRow]) -> None:
+        """Nothing may be left to convert once the rewrites have been applied."""
         for row in rows:
-            if classify_row(row, facts) is not None:
+            if classify_row(row, self.facts) is not None:
                 phase = str(row.state.get(LIFECYCLE_PHASE_STATE_KEY))
                 raise ActivationRefused(LEFT_TO_CONVERT.format(item=row.slug, phase=phase))
-
-    return verify
 
 
 async def _prefetch_heads(store: WorkflowStore, project_root: str) -> dict[str, str | None]:
     """The integration heads of the legacy review verdicts, read before the transaction; None when a read failed."""
     heads: dict[str, str | None] = {}
-    for slug, state in await asyncio.to_thread(store.list_active_states_sync):
-        if state.get(LIFECYCLE_PHASE_STATE_KEY) != LifecyclePhase.REVIEW_APPROVED.value:
-            continue
+    for slug in await store.slugs_stored_in_phase(LifecyclePhase.REVIEW_APPROVED.value):
         observed = await observed_head(project_root, slug)
         heads[slug] = None if observed.unreadable else observed.head
     return heads
@@ -287,27 +280,26 @@ async def restore_classifier(
 ) -> Callable[[ActivationRow], RowRewrite | None] | None:
     """The classification a restored row passes through in the restore's own transaction; None for an unmarked store.
 
-    The heads and the checkpoint are read here, before the restore's transaction, as the activation reads them: an
-    unreadable checkpoint refuses the restore naming the recovery. A store the activation has not marked classifies the
-    row itself when it first runs, so a restore there owes nothing.
+    The head is read here, before the restore's transaction, as the activation reads heads; the checkpoint is read
+    inside it, when the row is classified, and an unreadable one refuses the restore naming the recovery. A store the
+    activation has not marked classifies the row itself when it first runs, so a restore there owes nothing.
     """
     _, marked = await store.read_activation()
     if not marked:
         return None
     raw = await store.read_state_by_id(todo_id)
+    slug = await store.slug_for_row_id(todo_id)
     heads: dict[str, str | None] = {}
-    if raw is not None and raw.get(LIFECYCLE_PHASE_STATE_KEY) == LifecyclePhase.REVIEW_APPROVED.value:
-        slug = str(raw.get("slug") or "")
-        if slug:
-            observed = await observed_head(project_root, slug)
-            heads[slug] = None if observed.unreadable else observed.head
-    candidate = await asyncio.to_thread(read_checkpoint_strictly, project_root)
-    facts = ActivationFacts(
-        project_root=project_root, candidate=candidate, heads=heads, now=datetime.now(UTC).isoformat()
+    if raw is not None and slug and raw.get(LIFECYCLE_PHASE_STATE_KEY) == LifecyclePhase.REVIEW_APPROVED.value:
+        observed = await observed_head(project_root, slug)
+        heads[slug] = None if observed.unreadable else observed.head
+    pass_ = _InTransaction(
+        ActivationFacts(project_root=project_root, candidate=None, heads=heads, now=datetime.now(UTC).isoformat())
     )
 
     def classify(row: ActivationRow) -> RowRewrite | None:
-        return classify_row(row, facts)
+        rewrites = pass_.classify([row])
+        return rewrites[0] if rewrites else None
 
     return classify
 
@@ -324,9 +316,8 @@ async def activate_project(project_root: str) -> None:
         raise ActivationRefused("the activation schema is not in place")
     now = datetime.now(UTC).isoformat()
     heads = await _prefetch_heads(store, project_root)
-    candidate = await asyncio.to_thread(read_checkpoint_strictly, project_root)
-    facts = ActivationFacts(project_root=project_root, candidate=candidate, heads=heads, now=now, convergence=marked)
-    changed = await store.run_activation(plan_for(facts), verifier_for(facts), mark=not marked)
+    pass_ = _InTransaction(ActivationFacts(project_root=project_root, candidate=None, heads=heads, now=now))
+    changed = await store.run_activation(pass_.classify, pass_.verify, mark=not marked)
     if not marked:
         logger.info(ACTIVATION_DONE_LOG, project_root=project_root, rows_changed=changed)
     elif changed:

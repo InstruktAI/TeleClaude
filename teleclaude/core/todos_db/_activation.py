@@ -27,7 +27,7 @@ from teleclaude.core.todos_db._activation_schema import (
 )
 from teleclaude.core.todos_db._converted_rows import insert_converted_row
 from teleclaude.core.todos_db._models import Todo, TodoStateModel
-from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
+from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage, upcycle_state_dict
 from teleclaude.core.todos_db._workflow_operations import immediate_transaction
 from teleclaude.core.workflow_store.types import ActivationRefused, ActivationRow, RowRewrite
 
@@ -78,7 +78,7 @@ async def fetch_activation_rows(
                 row_id=str(todo.id),
                 slug=slug,
                 status=str(todo.status),
-                state=json.loads(state_model.state),
+                state=upcycle_state_dict(json.loads(state_model.state)),
                 has_input=bool(await host.artifact_digest_in_session(slug, ARTIFACT_INPUT, session)),
                 has_design_spec=bool(await host.artifact_digest_in_session(slug, ARTIFACT_DESIGN_SPEC, session)),
                 converted=str(todo.id) in converted,
@@ -102,6 +102,22 @@ async def apply_rewrite(session: SqlAsyncSession, rewrite: RowRewrite, now: str)
 
 class TodosDbActivationMixin:
     """The activation mark and the transaction that records it."""
+
+    async def slugs_stored_in_phase(self: _ActivationHost, phase: str) -> list[str]:
+        """The slugs of the active and icebox rows whose stored phase is ``phase``, for a pass that reads their heads."""
+        async with self._session() as session:
+            statement = select(Todo.slug, TodoStateModel.state).where(
+                Todo.id == TodoStateModel.id,
+                Todo.status.in_(ACTIVE_STATUSES),  # type: ignore[attr-defined]
+            )
+            rows = (await session.exec(statement)).all()
+        return [str(slug) for slug, state in rows if json.loads(state).get("lifecycle_phase") == phase]
+
+    async def slug_for_row_id(self: _ActivationHost, row_id: str) -> str:
+        """The slug a durable row id carries, whatever the row's status; empty when there is no such row."""
+        async with self._session() as session:
+            todo = await session.get(Todo, row_id)
+            return str(todo.slug) if todo is not None else ""
 
     def read_activation_sync(self: _ActivationHost) -> tuple[bool, bool]:
         """The same reading for a caller on a worker thread."""

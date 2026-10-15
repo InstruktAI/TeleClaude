@@ -52,6 +52,7 @@ class AdmissionRefusal(StrEnum):
     HEAD_UNREADABLE = "the branch of {item} cannot be read on origin"
     HEAD_MOVED = "the branch of {item} moved to {head} after the scan read {sha}"
     OTHER_ADMISSION = "{item} already holds an admission at {sha}"
+    UNMARKED_STORE = "{item} is not admitted: the store is not activated yet, the next tick of the daemon activates it"
     EPISODE_OPEN = "{item} has a creative episode open; the next pass applies its conversion first"
 
 
@@ -123,6 +124,9 @@ def admit_candidate(cwd: str, key: CandidateKey, session_id: str, loop: asyncio.
     artifacts the lane reads are fenced at the commit by their digests, the creative section by its snapshot.
     """
     store = get_workflow_store_sync(cwd)
+    in_place, marked = store.read_activation_sync()
+    if not (in_place and marked):
+        return Admission(AdmissionRefusal.UNMARKED_STORE.value.format(item=key.slug))
     raw = store.read_state_sync(key.slug)
     if raw is None:
         return Admission(AdmissionRefusal.UNKNOWN_ITEM.value.format(item=key.slug))
