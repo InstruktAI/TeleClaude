@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from teleclaude.core.next_machine.kinds import KIND_TASK
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import FinalizeStatus, TodoState
 from teleclaude.types.workflow_record import Phase
@@ -39,7 +40,11 @@ TASK_LANE_STORED_PHASES: frozenset[LifecyclePhase] = frozenset(
 
 @dataclass(frozen=True)
 class PhaseReading:
-    """An item's phase, and the commit it is ready at when that phase is ``ready``."""
+    """An item's phase, and the commit it is ready at when that phase is ``ready``.
+
+    A todo of kind task has no phase in the item vocabulary whatever its stored phase: the task procedures drive it,
+    including while its plan awaits authorization, when the stored phase is the shared ``prepared``.
+    """
 
     phase: Phase | None
     ready_sha: str = ""
@@ -60,7 +65,7 @@ def read_phase(state: TodoState, *, integration_head: str, creative_incomplete: 
     ``creative_incomplete`` is the creative lane's answer for an item it has not finished.
     """
     stored = state.lifecycle_phase
-    if stored in TASK_LANE_STORED_PHASES:
+    if stored in TASK_LANE_STORED_PHASES or state.kind == KIND_TASK:
         return PhaseReading(phase=None)
     if stored is LifecyclePhase.DELIVERED:
         return PhaseReading(phase=Phase.DELIVERED)

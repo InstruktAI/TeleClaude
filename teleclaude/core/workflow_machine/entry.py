@@ -110,6 +110,7 @@ REQUESTED_NOTE: Final = "{item}: a driver was requested."
 LAUNCH_NOTE: Final = "{item}: a driver was requested; session {session} holds the claim."
 CLAIM_NOTE: Final = "claimed"
 NO_SESSION: Final = ""
+TASK_LANE_LABEL: Final = "the task lane"
 ATTACH_WAIT_SECONDS: Final = 120.0
 ATTACH_POLL_SECONDS: Final = 0.5
 LAUNCH_PENDING_TEMPLATE: Final = (
@@ -161,7 +162,7 @@ def _check_drivable(request: EntryRequest, state: TodoState, reading: PhaseReadi
         waiting = state.workflow.waiting
         raise _refuse(EntryRefusal.WAITING, item=request.item, person=waiting.person if waiting else NO_SESSION)
     if phase is None or phase not in _VERB_FOR_PHASE:
-        shown = phase.value if phase is not None else LifecyclePhase.TASK_RUNNING.value
+        shown = phase.value if phase is not None else TASK_LANE_LABEL
         raise _refuse(EntryRefusal.NOT_DRIVEN, item=request.item, phase=shown)
     if _VERB_FOR_PHASE[phase] is not request.verb:
         raise _refuse(EntryRefusal.DRIVEN_BY, item=request.item, phase=phase.value, verb=_VERB_FOR_PHASE[phase].value)
