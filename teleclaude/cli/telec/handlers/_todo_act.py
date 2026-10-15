@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from http import HTTPMethod
 
 from teleclaude.cli.telec import flags as F
@@ -9,7 +10,14 @@ from teleclaude.cli.telec.addressing import project_reference
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.surface import TODO_ACT, TODO_CHILD
 from teleclaude.cli.tool_client import print_json, tool_api_call
-from teleclaude.types.todo_act import TodoActApiRoute, TodoActRequestField, TodoActResponseField, TodoChildApiRoute
+from teleclaude.cli.tool_commands._receipt import render_receipt
+from teleclaude.types.todo_act import (
+    TodoActApiRoute,
+    TodoActRequestField,
+    TodoActResponseField,
+    TodoChildApiRoute,
+    TodoStampApiRoute,
+)
 from teleclaude.types.workflow_record import Act
 
 __all__ = ["_handle_todo_act", "_handle_todo_child"]
@@ -52,6 +60,9 @@ def _handle_todo_act(args: list[str]) -> None:
     if act is None or act not in _EXPOSED_ACTS:
         print(_UNKNOWN_ACT_TEMPLATE.format(act=raw_act, acts=_ACT_SEPARATOR.join(a.value for a in _EXPOSED_ACTS)))
         raise SystemExit(1)
+    if act is Act.STAMP:
+        _submit_stamp(item, parsed.value(F.FLAG_ACT_SHA) or "", positionals[2] if len(positionals) == 3 else "")
+        return
     response = tool_api_call(
         HTTPMethod.POST,
         TodoActApiRoute.PATH,
@@ -85,6 +96,23 @@ def _handle_todo_act(args: list[str]) -> None:
         print(_FINDING_TEMPLATE.format(key=finding_key))
     if act is Act.WAITING:
         print(_WAIT_TEMPLATE.format(key=response.get(TodoActResponseField.ACT_KEY)))
+
+
+def _submit_stamp(item: str, sha: str, text: str) -> None:
+    """Submit the stamp as an operation and print its receipt; the outcome is delivered to this session."""
+    render_receipt(
+        tool_api_call(
+            HTTPMethod.POST,
+            TodoStampApiRoute.PATH,
+            json_body={
+                TodoActRequestField.ITEM: item,
+                TodoActRequestField.SHA: sha,
+                TodoActRequestField.TEXT: text,
+                TodoActRequestField.CWD: project_reference(),
+                TodoActRequestField.CLIENT_REQUEST_ID: str(uuid.uuid4()),
+            },
+        )
+    )
 
 
 _CHILD_USAGE = "Usage: telec todo child <item>"

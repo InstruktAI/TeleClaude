@@ -16,6 +16,7 @@ class OperationKind(StrEnum):
     TODO_INTEGRATE = "todo_integrate"
     TODO_CREATE = "todo_create"
     TODO_PREPARE = "todo_prepare"
+    TODO_STAMP = "todo_stamp"
     TODO_RENAME = "todo_rename"
     TODO_REMOVE = "todo_remove"
     SESSION_CLOSE = "session_close"
@@ -31,6 +32,7 @@ _OUTCOME_EVENTS: dict[OperationKind, tuple[EventType, EventType]] = {
     OperationKind.TODO_INTEGRATE: ("operation.todo_integrate.completed", "operation.todo_integrate.failed"),
     OperationKind.TODO_CREATE: ("operation.todo_create.completed", "operation.todo_create.failed"),
     OperationKind.TODO_PREPARE: ("operation.todo_prepare.completed", "operation.todo_prepare.failed"),
+    OperationKind.TODO_STAMP: ("operation.todo_stamp.completed", "operation.todo_stamp.failed"),
     OperationKind.TODO_RENAME: ("operation.todo_rename.completed", "operation.todo_rename.failed"),
     OperationKind.TODO_REMOVE: ("operation.todo_remove.completed", "operation.todo_remove.failed"),
     OperationKind.SESSION_CLOSE: ("session.close.completed", "session.close.failed"),

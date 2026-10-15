@@ -172,6 +172,7 @@ class StampInFlight(BaseModel):
     sha: str
     session_id: str
     started_at: str
+    owner: str
 
 
 class ObservedHead(BaseModel):

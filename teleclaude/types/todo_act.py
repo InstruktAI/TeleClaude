@@ -18,6 +18,7 @@ class TodoActRequestField(StrEnum):
     FINDING = "finding"
     WAIT = "wait"
     CWD = "cwd"
+    CLIENT_REQUEST_ID = "client_request_id"
 
 
 class TodoActResponseField(StrEnum):
@@ -35,6 +36,13 @@ class TodoActApiRoute:
 
     ROUTER_PATH: Final = "/act"
     PATH: Final = "/todos/act"
+
+
+class TodoStampApiRoute:
+    """The route of the stamp submission."""
+
+    ROUTER_PATH: Final = "/stamp"
+    PATH: Final = "/todos/stamp"
 
 
 class TodoChildApiRoute:

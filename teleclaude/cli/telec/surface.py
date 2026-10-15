@@ -879,7 +879,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "act": CommandDef(
                 desc="Perform one act of an item's lifecycle as the session that holds or serves it",
                 args=(
-                    "<item> <act> [<text>] [--sha <commit>] [--revision <digest>] [--person <slug>] [--finding <key>]"
+                    "<item> <act> [<text>] [--sha <commit>] [--revision <digest>] [--person <slug>] [--finding <key>] [--wait <key>]"
                 ),
                 flags=[
                     F.FLAG_HELP,

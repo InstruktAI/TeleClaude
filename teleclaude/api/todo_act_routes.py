@@ -15,10 +15,13 @@ from pydantic import BaseModel
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.sessions_actions_routes import run_pinned_session
 from teleclaude.api_models import RunSessionRequest
+from teleclaude.api_models_operations import OperationStatusDTO
+from teleclaude.core.operations.service import SerializedOperation, get_operations_service
+from teleclaude.core.operations.todo_stamp import StampSubmission
 from teleclaude.core.workflow_machine.act_types import ActRefused, ActRequest
 from teleclaude.core.workflow_machine.acts import perform_act
 from teleclaude.core.workflow_machine.entry import EntryRefused, plan_child
-from teleclaude.types.todo_act import TodoActApiRoute, TodoChildApiRoute
+from teleclaude.types.todo_act import TodoActApiRoute, TodoChildApiRoute, TodoStampApiRoute
 from teleclaude.types.workflow_record import Act
 
 
@@ -39,6 +42,8 @@ _STATUS_OK = "ok"
 _STATUS_REFUSED = 409
 _STATUS_BAD_REQUEST = 400
 _STATUS_FORBIDDEN = 403
+_STATUS_ACCEPTED = 202
+_STAMP_AS_OPERATION = "stamp runs the build gates and is submitted as an operation; use telec todo act <item> stamp"
 
 
 @router.post(TodoActApiRoute.ROUTER_PATH)
@@ -59,6 +64,8 @@ async def todo_act(
         raise HTTPException(status_code=_STATUS_BAD_REQUEST, detail=_CWD_REQUIRED)
     if not identity.session_id:
         raise HTTPException(status_code=_STATUS_FORBIDDEN, detail=_SESSION_REQUIRED)
+    if act == Act.STAMP.value:
+        raise HTTPException(status_code=_STATUS_BAD_REQUEST, detail=_STAMP_AS_OPERATION)
     try:
         request = ActRequest(
             project_root=cwd,
@@ -84,6 +91,31 @@ async def todo_act(
         phase=result.phase.value if result.phase is not None else None,
         complete=result.complete,
         finding_key=result.finding_key,
+    )
+
+
+@router.post(
+    TodoStampApiRoute.ROUTER_PATH,
+    status_code=_STATUS_ACCEPTED,
+    response_model=OperationStatusDTO,
+    response_model_exclude_none=True,
+)
+async def todo_stamp(
+    item: Annotated[str, Body()],
+    sha: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+    text: Annotated[str, Body()] = "",
+    client_request_id: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(carried_caller),
+) -> SerializedOperation:
+    """Submit a stamp as a receipt-backed operation; its outcome is delivered to the calling session."""
+    if not cwd:
+        raise HTTPException(status_code=_STATUS_BAD_REQUEST, detail=_CWD_REQUIRED)
+    if not identity.session_id:
+        raise HTTPException(status_code=_STATUS_FORBIDDEN, detail=_SESSION_REQUIRED)
+    return await get_operations_service().submit_todo_stamp(
+        StampSubmission(slug=item, cwd=cwd, sha=sha, text=text, client_request_id=client_request_id),
+        identity.session_id,
     )
 
 

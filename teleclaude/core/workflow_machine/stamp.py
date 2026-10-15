@@ -9,7 +9,11 @@ project's native test target passes. The references are read again after the gat
 from __future__ import annotations
 
 import asyncio
+import uuid
+from collections.abc import Awaitable, Callable, Mapping
+from datetime import UTC, datetime
 from enum import StrEnum
+from functools import partial
 from pathlib import Path
 from typing import Final
 
@@ -20,8 +24,15 @@ from teleclaude.core.next_machine.git_ops import (
     has_build_commits_beyond_main,
     has_uncommitted_changes,
 )
-from teleclaude.core.workflow_machine.act_types import ActRefused
+from teleclaude.core.workflow_machine.act_types import ActRefused, ActRequest, Refusal
+from teleclaude.core.workflow_machine.phase_reading import read_phase
+from teleclaude.core.workflow_store.store import WorkflowStore
+from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, workflow_record_of
+from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import TodoState
+from teleclaude.types.workflow_record import Phase, StampInFlight
 
 
 class StampRefusal(StrEnum):
@@ -85,3 +96,132 @@ async def run_gates(project_root: str, item: str) -> None:
     passed, output = await asyncio.to_thread(run_build_gates, worktree, item)
     if not passed:
         raise ActRefused(StampRefusal.GATE_FAILED.value.format(output=output))
+
+
+PROCESS_INSTANCE: Final = uuid.uuid4().hex
+FOREIGN_FLIGHT_EXPIRY_SECONDS: Final = 900
+ATTACH_DEADLINE_SECONDS: Final = 900
+ATTACH_POLL_SECONDS: Final = 1.0
+_RUNNING: dict[str, asyncio.Task[str]] = {}
+
+
+class Slot(StrEnum):
+    """What taking the stamp slot found."""
+
+    RECORDED = "recorded"
+    OWNED = "owned"
+    ATTACH = "attach"
+
+
+def _forget(key: str, task: asyncio.Task[str]) -> None:
+    """Drop a settled gate task from the running set, retrieving its outcome so none goes unobserved."""
+    _RUNNING.pop(key, None)
+    if not task.cancelled():
+        task.exception()
+
+
+def _is_live(flight: StampInFlight) -> bool:
+    """Whether the flight's gates are known to be running: held by a live task here, or recent from another process."""
+    if flight.owner == PROCESS_INSTANCE:
+        task = _RUNNING.get(flight.key)
+        return task is not None and not task.done()
+    age = (datetime.now(UTC) - datetime.fromisoformat(flight.started_at)).total_seconds()
+    return age < FOREIGN_FLIGHT_EXPIRY_SECONDS
+
+
+def _take(request: ActRequest, session_id: str, key: str, outcome: list[Slot]) -> Callable[..., ItemChange | None]:
+    """The change that takes the slot, decided against the state read inside the commit."""
+
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            raise ActRefused(Refusal.UNKNOWN_ITEM.value.format(act=request.act.value, item=request.item))
+        state = TodoState.model_validate(current)
+        record = state.workflow
+        if key in record.act_status:
+            outcome.append(Slot.RECORDED)
+            return None
+        if read_phase(state, integration_head=NO_HEAD, creative_incomplete=False).phase is not Phase.WORK:
+            raise ActRefused(Refusal.WRONG_PHASE.value.format(act=request.act.value, phase=state.lifecycle_phase))
+        if state.active_runner != session_id:
+            raise ActRefused(Refusal.HOLDER_CHANGED.value.format(act=request.act.value))
+        flight = record.stamp_in_flight
+        if flight is not None and _is_live(flight):
+            if flight.key == key:
+                outcome.append(Slot.ATTACH)
+                return None
+            raise ActRefused(Refusal.STAMP_IN_FLIGHT.value.format(act=request.act.value))
+        updated = record.model_copy(deep=True)
+        updated.stamp_in_flight = StampInFlight(
+            key=key, sha=request.sha, session_id=session_id, started_at=_now(), owner=PROCESS_INSTANCE
+        )
+        outcome.append(Slot.OWNED)
+        return ItemChange(state={**current, WORKFLOW_STATE_KEY: updated.to_state()})
+
+    return mutate
+
+
+def _release(key: str) -> Callable[..., ItemChange | None]:
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            return None
+        record = workflow_record_of(current)
+        if record.stamp_in_flight is None or record.stamp_in_flight.key != key:
+            return None
+        updated = record.model_copy(deep=True)
+        updated.stamp_in_flight = None
+        return ItemChange(state={**current, WORKFLOW_STATE_KEY: updated.to_state()})
+
+    return mutate
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+async def _settle(
+    store: WorkflowStore, request: ActRequest, session_id: str, key: str, commit: Callable[[], Awaitable[str]]
+) -> str:
+    """Check the references, run the gates, check again and commit, as one task that owns the slot until it settles.
+
+    A gate that ends without recording the stamp releases the slot; a cancelled task leaves it for its
+    expiry, because its gate thread may still be running.
+    """
+    try:
+        await check_refs(request.project_root, request.item, request.sha)
+        await run_gates(request.project_root, request.item)
+        await check_refs(request.project_root, request.item, request.sha)
+        return await commit()
+    except Exception:
+        await store.commit_item_change(request.item, expect_digests={}, mutate=_release(key), updated_by=session_id)
+        raise
+
+
+async def run_stamp(
+    store: WorkflowStore, request: ActRequest, session_id: str, key: str, commit: Callable[[], Awaitable[str]]
+) -> str:
+    """Perform a stamp so that at most one stamp's gates run on an item, and every repeat observes its result.
+
+    The slot is item-wide and re-checks the phase and the holder where it is taken. The running work is a
+    task independent of the request that started it: a request that ends does not release the slot or stop
+    the gates, and a repeat of the same invocation attaches to the running one until it records.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + ATTACH_DEADLINE_SECONDS
+    while True:
+        outcome: list[Slot] = []
+        await store.commit_item_change(
+            request.item,
+            expect_digests={},
+            mutate=_take(request, session_id, key, outcome),
+            updated_by=session_id,
+        )
+        if outcome[-1] is Slot.RECORDED:
+            return key
+        if outcome[-1] is Slot.OWNED:
+            task = asyncio.ensure_future(_settle(store, request, session_id, key, commit))
+            _RUNNING[key] = task
+            task.add_done_callback(partial(_forget, key))
+            return await asyncio.shield(task)
+        if loop.time() >= deadline:
+            raise ActRefused(Refusal.STAMP_IN_FLIGHT.value.format(act=request.act.value))
+        await asyncio.sleep(ATTACH_POLL_SECONDS)

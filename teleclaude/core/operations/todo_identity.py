@@ -63,6 +63,12 @@ def operation_addressed_todo_id(operation: Operation) -> str | None:
     return todo_id
 
 
+def operation_payload_abandon(operation: Operation) -> bool:
+    """Read the ``abandon`` discriminator from a todo-integrate operation's payload; absent reads False."""
+    payload = json.loads(operation.payload_json)
+    return isinstance(payload, dict) and payload.get("abandon") is True
+
+
 def operation_matches_todo_identity(operation: Operation, *, requested_todo_id: str | None) -> bool:
     """Match identity-addressed and slug-addressed submissions in both directions."""
     return operation_addressed_todo_id(operation) == requested_todo_id

@@ -36,6 +36,8 @@ EventType = Literal[
     "operation.todo_integrate.failed",
     "operation.todo_prepare.completed",
     "operation.todo_prepare.failed",
+    "operation.todo_stamp.completed",
+    "operation.todo_stamp.failed",
     "operation.todo_rename.completed",
     "operation.todo_rename.failed",
     "operation.todo_remove.completed",

@@ -72,11 +72,18 @@ from teleclaude.core.operations._relayed_ownership import was_started_by_princip
 from teleclaude.core.operations._rename_payload import ensure_rename_target_matches, rename_payload
 from teleclaude.core.operations.job_run import JobRunRequest, job_project_path, job_run_payload, run_job_run_operation
 from teleclaude.core.operations.todo_identity import (
+    operation_payload_abandon,
     pin_operation_todo_identity,
     todo_operation_context,
     todo_operation_submission,
 )
 from teleclaude.core.operations.todo_removal import run_todo_remove_operation
+from teleclaude.core.operations.todo_stamp import (
+    StampSubmission,
+    continue_task_run_in_place,
+    run_todo_stamp_operation,
+    todo_stamp_submission,
+)
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.shutdown_drain import OwnedUnit, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
@@ -120,12 +127,6 @@ _FOLLOW_THROUGH_WORK = "operation-follow-through"
 _RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE = "{prefix}: {slug} {reason}"
 _LEASE_TOUCH_FAILED_EVENT = "operation_lease_touch_failed"
 _OPERATION_HEARTBEAT_CLEANUP_COMPONENT = "operation_heartbeat"
-
-
-def _operation_payload_abandon(operation: Operation) -> bool:
-    """Read the ``abandon`` discriminator from a todo-integrate operation's payload; absent reads False."""
-    payload = json.loads(operation.payload_json)
-    return isinstance(payload, dict) and payload.get("abandon") is True
 
 
 _operations_service: OperationsService | None = None
@@ -298,7 +299,7 @@ class OperationsService:
             client_request_id=client_request_id,
             payload_json=payload_json,
             abandon=abandon,
-            existing_match_ok=lambda op: _operation_payload_abandon(op) == abandon,
+            existing_match_ok=lambda op: operation_payload_abandon(op) == abandon,
         )
 
     async def submit_todo_create(
@@ -377,6 +378,20 @@ class OperationsService:
             cwd=cwd,
             slug=slug,
             client_request_id=client_request_id,
+            payload_json=payload_json,
+            existing_match_ok=existing_match_ok,
+            on_existing=on_existing,
+        )
+
+    async def submit_todo_stamp(self, request: StampSubmission, caller_session_id: str) -> SerializedOperation:
+        """Create or reattach a receipt-backed todo-stamp operation."""
+        payload_json, existing_match_ok, on_existing = todo_stamp_submission(request)
+        return await self._submit_operation(
+            kind=OperationKind.TODO_STAMP,
+            caller_session_id=caller_session_id,
+            cwd=request.cwd,
+            slug=request.slug,
+            client_request_id=request.client_request_id,
             payload_json=payload_json,
             existing_match_ok=existing_match_ok,
             on_existing=on_existing,
@@ -629,12 +644,13 @@ class OperationsService:
             OperationKind.TODO_WORK: self._run_todo_work,
             OperationKind.TASK_RUN: self._run_task_run,
             OperationKind.TODO_INTEGRATE: lambda op: next_integrate(
-                self._db, op.slug, todo_operation_context(op)[0], abandon=_operation_payload_abandon(op)
+                self._db, op.slug, todo_operation_context(op)[0], abandon=operation_payload_abandon(op)
             ),
             OperationKind.TODO_CREATE: lambda op: next_create(self._db, op.slug, todo_operation_context(op)[0]),
             OperationKind.TODO_PREPARE: self._run_todo_prepare,
             OperationKind.TODO_RENAME: self._run_todo_rename,
             OperationKind.TODO_REMOVE: lambda op: run_todo_remove_operation(self._db, op),
+            OperationKind.TODO_STAMP: run_todo_stamp_operation,
             OperationKind.SESSION_CLOSE: self._run_command_backed_operation,
             OperationKind.AGENT_RESTART: self._run_command_backed_operation,
             OperationKind.AGENT_HANDOFF: self._run_command_backed_operation,
@@ -828,24 +844,7 @@ class OperationsService:
         return await self._run_todo_lifecycle_operation(
             operation,
             lane=RunnerLane.TASK_RUN,
-            state_machine=lambda op, _cwd: self._continue_task_run_in_place(op),
-        )
-
-    @staticmethod
-    async def _continue_task_run_in_place(operation: Operation) -> str:
-        """In-place continuation for a caller already bound to the task slug.
-
-        A task is normally executed by a dedicated ``/run-task`` worker the
-        bridge dispatches; an operator START is unbound and takes that path. This
-        fallback only fires when the caller session already drives the slug, so it
-        returns the run-task continuation rather than the SDLC work machine.
-        """
-        slug = operation.slug or "<auto>"
-        return (
-            f"TASK_RUNNING: {slug} — execute the next firing from the current task-plan, "
-            "record the result in the log, and stamp the firing's outcome: a success ends "
-            "this session (delivered if one-shot, recorded and resting if recurring); an "
-            "error stays alive as the human-inspection beacon."
+            state_machine=lambda op, _cwd: continue_task_run_in_place(op),
         )
 
     async def _run_todo_lifecycle_operation(
