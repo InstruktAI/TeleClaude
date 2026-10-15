@@ -104,9 +104,9 @@ class _PublishedSubscriptions:
         return self._entries
 
 
-def _activation_request_id(event: ReceivedEvent, procedure_id: str, home: ActivationHome) -> str:
+def activation_request_id(event_id: str, procedure_id: str, home: ActivationHome) -> str:
     """The identity of one activation: the same event, procedure and home always yield the same id."""
-    return occurrence_id(event.id, procedure_id, home.to_token())
+    return occurrence_id(event_id, procedure_id, home.to_token())
 
 
 async def _submit(event: ReceivedEvent, entry: SubscriptionEntry, home: ActivationHome) -> None:
@@ -118,7 +118,7 @@ async def _submit(event: ReceivedEvent, entry: SubscriptionEntry, home: Activati
         attendance=entry.attendance,
         event_delivery=entry.delivery.event_delivery,
         interruptible=entry.delivery.interruptible,
-        request_id=_activation_request_id(event, entry.procedure_id, home),
+        request_id=activation_request_id(event.id, entry.procedure_id, home),
     )
     receipt = await run_local_command(command)
     operation_id = receipt.get(_OPERATION_ID_KEY) if isinstance(receipt, dict) else None

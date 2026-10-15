@@ -34,6 +34,7 @@ from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_sto
 from teleclaude.core.workflow_store.types import ArtifactRevisionMismatch, ItemChange
 from teleclaude.entry_declarations import EntryDeclarations, WorkflowDeclaration
 from teleclaude.events.envelope import occurrence_id
+from teleclaude.events.references import TodoRef
 from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.procedure_delivery import BINDING_SECTION, BindingField
@@ -72,6 +73,8 @@ class EntryRefusal(StrEnum):
     REVISION_MOVED = "{item}: the intent body is at {actual}, not at the {expected} it was prepared at"
     UNKNOWN_ITEM = "no item {item} in this project"
     NO_DRIVER = "{item}: {reason}"
+    NO_LAUNCH = "{item}: no driver start is awaiting a claim; the start this session was given was released"
+    WRONG_RESERVATION = "{item}: this session was started for another request than the one awaiting a claim"
 
 
 class EntryRefused(Exception):
@@ -91,6 +94,7 @@ class EntryRequest:
     verb: EntryVerb
     caller_session_id: str
     integration_head: str = ""
+    reservation: str = ""
 
 
 @dataclass(frozen=True)
@@ -170,7 +174,7 @@ async def _is_bound_driver(session_id: str, item: str, procedure_id: str) -> boo
     if session is None or session.job != procedure_id:
         return False
     binding = (session.origin_metadata or {}).get(BINDING_SECTION)
-    return isinstance(binding, dict) and binding.get(BindingField.SUBJECT.value) == item
+    return isinstance(binding, dict) and binding.get(BindingField.SUBJECT.value) == TodoRef(item).to_ref().to_token()
 
 
 def _driver_for(publication: WorkflowPublication, phase: Phase, item: str) -> tuple[str, WorkflowDeclaration]:
@@ -220,6 +224,11 @@ def _apply_claim(
     holder = state.active_runner or None
     if holder is not None:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
+    launch = state.workflow.launch
+    if launch is None:
+        raise _refuse(EntryRefusal.NO_LAUNCH, item=request.item)
+    if launch.key != request.reservation:
+        raise _refuse(EntryRefusal.WRONG_RESERVATION, item=request.item)
     record = state.workflow.model_copy(deep=True)
     key = occurrence_id(request.project_root, item_id, Act.CLAIM.value, str(record.claim_epoch + 1))
     entry = LedgerEntry(
@@ -286,7 +295,11 @@ def _apply_reservation(
     record = state.workflow.model_copy(deep=True)
     key = occurrence_id(request.project_root, item_id, EFFECT_REQUEST, str(record.claim_epoch), _now())
     record.launch = LaunchReservation(
-        key=key, phase=phase, requested_at=_now(), requested_by=request.caller_session_id or NO_SESSION
+        key=key,
+        phase=phase,
+        requested_at=_now(),
+        requested_by=request.caller_session_id or NO_SESSION,
+        effect_id=EFFECT_ID_TEMPLATE.format(key=key, name=EFFECT_REQUEST),
     )
     record.pending_effects.append(
         PendingEffect(

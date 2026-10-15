@@ -197,6 +197,7 @@ GATE_RUNNER_MODULE: Final = "teleclaude.core.next_machine.gate_runner"
 GATE_TOKEN_ENV: Final = "TELECLAUDE_STAMP_GATE"
 NO_START: Final = 0.0
 START_TOLERANCE: Final = 0.5
+RUNNER_LIFETIME_BOUND_SECONDS: Final = 900
 STDERR_TAIL: Final = 500
 RECORD_RUNNER_TIMEOUT_SECONDS: Final = 10
 RECORD_RUNNER_FAILED_LOG: Final = "the gate runner's identity could not be recorded"
@@ -227,14 +228,21 @@ def _forget(key: str, task: asyncio.Task[str]) -> None:
 def _is_live(flight: StampInFlight) -> bool:
     """Whether the flight's gates are known to be running.
 
-    Only the work itself says so, never a clock: a task or gate thread of this process, the recorded runner
-    process (the same pid with the same start time), or any process still carrying the invocation's token.
-    The runner enforces its own time limit, so a flight whose owner died is settled by the runner ending.
+    The work itself says so: a task or gate thread of this process, the recorded runner process (the same pid
+    with the same start time), or any process still carrying the invocation's token (a scan that the host may
+    restrict, so it backs the recorded identity and never replaces it). A flight whose runner identity was
+    never recorded cannot be proven settled, so it counts as live for the lifetime the runner itself enforces,
+    after which the runner has ended whatever became of the record.
     """
     task = _RUNNING.get(flight.key)
     if (task is not None and not task.done()) or flight.key in _GATE_THREADS:
         return True
-    return _is_runner_alive(flight.runner_pid, flight.runner_started) or _is_token_alive(flight.key)
+    if _is_runner_alive(flight.runner_pid, flight.runner_started) or _is_token_alive(flight.key):
+        return True
+    if flight.runner_pid:
+        return False
+    age = (datetime.now(UTC) - datetime.fromisoformat(flight.started_at)).total_seconds()
+    return age < RUNNER_LIFETIME_BOUND_SECONDS
 
 
 def _take(request: ActRequest, session_id: str, key: str, outcome: list[Slot]) -> Callable[..., ItemChange | None]:

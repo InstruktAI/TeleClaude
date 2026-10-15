@@ -297,6 +297,7 @@ def _decide_decision(request: ActRequest, facts: _Facts, state: TodoState, readi
         phase=Phase(waiting.waited_phase.value),
         requested_at=_now(),
         requested_by=facts.caller.session_id,
+        effect_id=EFFECT_ID_TEMPLATE.format(key=_act_key(request, facts.item_id, state.workflow), name=EFFECT_REQUEST),
     )
 
     def record(current: WorkflowRecord) -> WorkflowRecord:

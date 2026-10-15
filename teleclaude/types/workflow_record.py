@@ -130,6 +130,7 @@ class LaunchReservation(BaseModel):
     phase: Phase
     requested_at: str
     requested_by: str
+    effect_id: str
 
 
 class WaitingRecord(BaseModel):
