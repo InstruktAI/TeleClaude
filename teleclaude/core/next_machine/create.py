@@ -23,7 +23,7 @@ from teleclaude.core.next_machine.output_formatting import (
 )
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
 from teleclaude.core.workflow_machine.creative import CreativeCapability, open_episode
-from teleclaude.core.workflow_machine.creative_commit import hand_off_to_creative, open_creative_episode
+from teleclaude.core.workflow_machine.creative_commit import Handoff, hand_off_to_creative, open_creative_episode
 from teleclaude.types.claim_change import workflow_record_of
 
 if TYPE_CHECKING:
@@ -35,6 +35,26 @@ from teleclaude.core.workflow_store.store import get_workflow_store
 logger = get_logger(__name__)
 
 _IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".svg"})
+
+
+_WORKER_FOR_PHASE: dict[CreativePhase, LifecycleProcedure] = {
+    CreativePhase.ART_GENERATION_REQUIRED: LifecycleProcedure.CREATE_ART,
+    CreativePhase.VISUAL_DRAFTS_REQUIRED: LifecycleProcedure.CREATE_HTML,
+}
+
+
+def _handoff_for(phase: CreativePhase, slug: str, cwd: str, instruction: str) -> Handoff:
+    """The dispatch of a phase: the worker it starts, when it starts one, and the instruction for every other case."""
+    worker = _WORKER_FOR_PHASE.get(phase)
+    if worker is None:
+        return Handoff(instruction=instruction, creative_phase=phase.value)
+    return Handoff(
+        instruction=instruction,
+        creative_phase=phase.value,
+        worker_command=worker.value,
+        worker_args=slug,
+        worker_project=cwd,
+    )
 
 
 def _committed_dispatch(state: Mapping[str, StateValue], caller_session_id: str, phase: CreativePhase) -> str | None:
@@ -377,7 +397,9 @@ async def next_create(db: Db, slug: str | None, cwd: str, caller_session_id: str
         return replayed
     if caller_session_id and state.get("active_runner") == caller_session_id:
         instruction = await _creative_instruction(db, resolved_slug, cwd, phase)
-        dispatched = await hand_off_to_creative(todos_db, resolved_slug, caller_session_id, instruction, phase.value)
+        dispatched = await hand_off_to_creative(
+            todos_db, resolved_slug, caller_session_id, _handoff_for(phase, resolved_slug, cwd, instruction)
+        )
         return dispatched if dispatched is not None else _CLAIM_CLOSING.format(slug=resolved_slug)
     if phase == CreativePhase.CREATIVE_COMPLETE:
         open_episode(resolved_slug, state, capability=CreativeCapability.DESIGN, caller_session_id=caller_session_id)

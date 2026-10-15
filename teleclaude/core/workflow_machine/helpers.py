@@ -17,7 +17,6 @@ from pathlib import Path
 
 from teleclaude.core.db import db
 from teleclaude.core.next_machine._types import StateValue
-from teleclaude.core.next_machine.lanes import LifecycleProcedure
 from teleclaude.core.process_identity import start_identity
 from teleclaude.core.workflow_machine.caller import group_sessions_of, in_claiming_group
 from teleclaude.core.workflow_store.store import get_workflow_store
@@ -33,7 +32,6 @@ EARLIER_GROUP = (
     "{item}: session {session} belongs to an earlier claim, so it starts no session; it is the overseer's to resolve"
 )
 ANCESTOR_WALK_CAP = 32
-CREATIVE_WORKER_COMMANDS = frozenset({LifecycleProcedure.CREATE_ART.value, LifecycleProcedure.CREATE_HTML.value})
 NO_IDENTITY = "{item}: the creating process cannot be named, so a helper start cannot be recorded"
 UNKNOWN_ITEM = "no item {item} in this project"
 START_ACT = "helper-start"
@@ -181,7 +179,7 @@ class HelperFence:
 
 @asynccontextmanager
 async def helper_start_fence(
-    project_root: str, working_slug: str | None, initiator_session_id: str | None, command: str = ""
+    project_root: str, working_slug: str | None, initiator_session_id: str | None
 ) -> AsyncIterator[HelperFence]:
     """Record a session creation as a helper start of every item whose holder's group the creator belongs to.
 
@@ -197,7 +195,7 @@ async def helper_start_fence(
     try:
         if initiator_session_id:
             for root, item in await _governing_items(project_root, working_slug, initiator_session_id):
-                key = await _register_for_group(root, item, initiator_session_id, command)
+                key = await _register_for_group(root, item, initiator_session_id)
                 if key:
                     keys.append((root, item, key))
         yield fence
@@ -229,15 +227,7 @@ async def _governing_items(
     return pairs
 
 
-async def _is_dispatch_recipient(record: WorkflowRecord, session_id: str) -> bool:
-    """Whether the session, or one it descends from, is a session the creative dispatch was given to."""
-    for recipient in record.dispatch_recipients:
-        if session_id == recipient or await in_claiming_group(session_id, recipient):
-            return True
-    return False
-
-
-async def _register_for_group(project_root: str, item: str, initiator_session_id: str, command: str) -> str:
+async def _register_for_group(project_root: str, item: str, initiator_session_id: str) -> str:
     """Register the start when the creator is in the item's holder's group; refuse it when in an earlier group's."""
     try:
         store = await get_workflow_store(project_root)
@@ -250,12 +240,6 @@ async def _register_for_group(project_root: str, item: str, initiator_session_id
     holder = state.active_runner or ""
     if holder and await in_claiming_group(initiator_session_id, holder):
         return await register_helper_start(project_root, item, holder)
-    if (
-        command in CREATIVE_WORKER_COMMANDS
-        and state.workflow.episode is not None
-        and await _is_dispatch_recipient(state.workflow, initiator_session_id)
-    ):
-        return ""
     if initiator_session_id in await earlier_claim_sessions(state.workflow, holder, item, project_root):
         raise HelperStartRefused(EARLIER_GROUP.format(item=item, session=initiator_session_id))
     return ""

@@ -76,6 +76,14 @@ REQUESTED_BY_PARAM: Final = "requested_by"
 SESSION_PARAM: Final = "session_id"
 INSTRUCTION_PARAM: Final = "instruction"
 PHASE_PARAM: Final = "creative_phase"
+WORKER_COMMAND_PARAM: Final = "worker_command"
+WORKER_ARGS_PARAM: Final = "worker_args"
+WORKER_PROJECT_PARAM: Final = "worker_project"
+DISPATCHED_TEMPLATE: Final = (
+    "CREATIVE_DISPATCHED: {slug}\n\n"
+    "The platform started the creative worker session {session} for this phase. When the worker idles, call\n"
+    "`telec todo design {slug}`; the state machine emits the next action."
+)
 
 EFFECT_FAILED_LOG: Final = "workflow effect failed; the reconciler retries it with the same identity"
 ITEM_FAILED_LOG: Final = "workflow effect reconciliation failed for an item"
@@ -303,14 +311,59 @@ async def _ensure_worktree(context: EffectContext, effect: PendingEffect) -> Non
     await ensure_worktree_with_policy_async(context.project_root, context.item.slug)
 
 
-async def _creative_dispatch(context: EffectContext, effect: PendingEffect) -> None:
-    """The creative dispatch: record the instruction committed with the handoff as the dispatch's outcome.
+async def _started_worker(context: EffectContext, effect: PendingEffect) -> str:
+    """The creative worker session the dispatch runs, or empty when the phase starts none.
 
-    It runs only after the sweep has found nothing, so an instruction is never given while old helpers remain. The
-    outcome is written once, keyed by the act, with the session it was given to, and the caller reads it from the item:
-    a lost response, a repeated call or a restart returns the same committed instruction. The recipient may start the
-    creative lane's workers after its claim is released. Repeating the effect changes nothing.
+    A live session of the same command on the item's creative workspace is adopted instead of starting a second, so a
+    retry after a crash between the start and the record starts nothing twice. The worker is started by the platform with
+    the daemon's own credential, as the lifecycle runner starts a driver, so it is the creative lane's session and
+    not a helper of the holder's claim.
     """
+    from teleclaude.core.next_machine.lifecycle_runner import (  # noqa: PLC0415 - deferred cycle: the runner reads this package
+        default_session_runner,
+    )
+    from teleclaude.core.next_machine.runtime.sessions import (  # noqa: PLC0415 - deferred cycle: sessions read the store
+        find_live_session_for_slug,
+    )
+
+    command = effect.params.get(WORKER_COMMAND_PARAM, "")
+    if not command:
+        return ""
+    slug = context.item.slug
+    existing = await find_live_session_for_slug(db, slug, command, subdir_override=f"workspace/{slug}")
+    if existing is not None:
+        return existing
+    client = default_session_runner()
+    await client.connect()
+    try:
+        created = await client.run_session(
+            command=command,
+            project_path=effect.params[WORKER_PROJECT_PARAM],
+            args=effect.params[WORKER_ARGS_PARAM],
+            detach=True,
+        )
+    finally:
+        await client.close()
+    return str(created.session_id)
+
+
+async def _creative_dispatch(context: EffectContext, effect: PendingEffect) -> None:
+    """The creative dispatch of the holder's handoff, performed by the platform after the sweep and before the release.
+
+    For a phase that starts a worker, the worker is started here; for every other phase the instruction committed with
+    the handoff is the dispatch. The outcome is written once, keyed by the act, and the caller reads it from the item: a
+    lost response, a repeated call or a restart returns the same committed outcome. Repeating the effect starts and
+    writes nothing twice.
+    """
+    state = await context.store.read_state_by_id(context.item.todo_id)
+    if state is not None and effect.act_key in workflow_record_of(state).dispatched:
+        return
+    worker_session = await _started_worker(context, effect)
+    outcome = (
+        DISPATCHED_TEMPLATE.format(slug=context.item.slug, session=worker_session)
+        if worker_session
+        else effect.params[INSTRUCTION_PARAM]
+    )
 
     def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
         if current is None:
@@ -318,7 +371,7 @@ async def _creative_dispatch(context: EffectContext, effect: PendingEffect) -> N
         record = workflow_record_of(current).model_copy(deep=True)
         if effect.act_key in record.dispatched:
             return None
-        record.dispatched[effect.act_key] = effect.params[INSTRUCTION_PARAM]
+        record.dispatched[effect.act_key] = outcome
         recipient = effect.params[SESSION_PARAM]
         if recipient not in record.dispatch_recipients:
             record.dispatch_recipients.append(recipient)
