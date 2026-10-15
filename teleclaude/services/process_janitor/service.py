@@ -17,7 +17,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config.machine import config
 from teleclaude.core import db_models
 from teleclaude.core.db import Db
-from teleclaude.core.process_group import is_runner_alive, live_members, settle_members
+from teleclaude.core.process_group import UnitClass, classify_unit, is_runner_alive, live_members, settle_members
 from teleclaude.core.process_identity import boot_session
 from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility, occurrence_id
 from teleclaude.events.producer import publish_event
@@ -46,6 +46,7 @@ _REAP_PRODUCER = "process-janitor"
 RUNNER_EXIT_GRACE_SECONDS = 3.0
 RUNNER_EXIT_POLL_SECONDS = 0.1
 _SCAN_FAILED_MESSAGE = "Process janitor scan failed; retrying at the next interval"
+_START_CLASSIFICATION_FAILED_MESSAGE = "Process janitor could not classify the identified registry rows at start"
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,10 @@ class ProcessJanitorService:
     async def scan_loop(self) -> None:
         """Run scans until the daemon shutdown event is set."""
         await self.seed_default_policies()
+        try:
+            await self.classify_identified_rows()
+        except Exception:
+            logger.exception(_START_CLASSIFICATION_FAILED_MESSAGE)
         while not self._shutdown_event.is_set():
             try:
                 await self.scan_once()
@@ -109,6 +114,33 @@ class ProcessJanitorService:
                 await asyncio.wait_for(self._shutdown_event.wait(), timeout=self._settings.scan_interval_seconds)
             except TimeoutError:
                 continue
+
+    async def classify_identified_rows(self) -> int:
+        """Classify every registry row that carries a process identity at daemon start; remove the dead ones.
+
+        Only rows this computer wrote, in this boot or an earlier one, are acted on. A row whose unit is dead is removed;
+        a live unit is left to its runner and its lease, and an unknown one is left as it is: nothing is signalled here.
+        Returns the number of rows removed.
+        """
+        removed = 0
+        local_boot = boot_session()
+        for entry in await self._db.list_identified_registry_entries():
+            if entry.host != config.computer.name or not entry.generation:
+                continue
+            unit = await asyncio.to_thread(
+                classify_unit,
+                host=entry.host or "",
+                boot=entry.boot or "",
+                pid=int(entry.pid),
+                identity=entry.identity or "",
+                local_host=config.computer.name,
+                local_boot=local_boot,
+            )
+            if unit is UnitClass.DEAD:
+                removed += int(
+                    await self._db.delete_identified_registry_entry(owner=entry.owner, generation=entry.generation)
+                )
+        return removed
 
     async def seed_default_policies(self) -> None:
         """Ensure the default leak signatures exist as policy rows."""

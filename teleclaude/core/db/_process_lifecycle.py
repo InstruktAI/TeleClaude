@@ -135,6 +135,15 @@ class DbProcessLifecycleMixin:
             await db_session.commit()
             return bool(result.rowcount)
 
+    async def list_identified_registry_entries(self) -> list[db_models.ProcessSpawnRegistryEntry]:
+        """Return the registry rows that carry a process identity, whatever their lease."""
+        stmt = select(db_models.ProcessSpawnRegistryEntry).where(
+            db_models.ProcessSpawnRegistryEntry.identity.is_not(None)  # type: ignore[union-attr]
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            return list(result.all())
+
     async def delete_identified_registry_entry(self, *, owner: str, generation: str) -> bool:
         """Delete the row only if it is still the one that generation registered."""
         async with self._session() as db_session:
