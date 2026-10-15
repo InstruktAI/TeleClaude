@@ -9,7 +9,6 @@ helpers; ``lifecycle_runner`` never imports this module.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,11 +24,9 @@ from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES, WORK_LANE_R
 from teleclaude.core.next_machine.lifecycle import pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
     LifecycleLinkLost,
-    SessionRunner,
     approval_from_state,
     artifact_digest_from_state,
     command_for_lane,
-    default_session_runner,
     dispatch_lifecycle_session,
     load_runner_todos,
     make_intent,
@@ -69,7 +66,7 @@ from teleclaude.core.todos_db._exceptions import (
     ReviewerConflict,
     ReviewerIdentityUnresolved,
 )
-from teleclaude.core.workflow_machine.dispatch import holds_handoff_authority
+from teleclaude.core.workflow_machine.dispatch import handoff_holder
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
@@ -232,6 +229,7 @@ async def _target_for_manual_start(
     *,
     check_dependencies: bool = True,
     caller_session_id: str | None = None,
+    ignore_session_id: str | None = None,
 ) -> tuple[RunnerTodo | None, RunnerSkipReason | None, str | None]:
     todos, _ = await load_runner_todos(todos_db, runtime_db)
     todo = todos.get(slug)
@@ -249,9 +247,10 @@ async def _target_for_manual_start(
     # own slug is not self-blocked. The active_runner check is caller-independent
     # so a live task runner refuses a duplicate even for the dispatching caller.
     holders = await resolve_slug_holders(runtime_db, project_path, slug, todo.active_runner)
-    if holders.orchestrator_owner is not None and holders.orchestrator_owner != caller_session_id:
-        return todo, RunnerSkipReason.ALREADY_DRIVEN, holders.orchestrator_owner
-    if holders.live_runner is not None:
+    owner = holders.orchestrator_owner
+    if owner is not None and owner != caller_session_id and owner != ignore_session_id:
+        return todo, RunnerSkipReason.ALREADY_DRIVEN, owner
+    if holders.live_runner is not None and holders.live_runner != ignore_session_id:
         return todo, RunnerSkipReason.ALREADY_DRIVEN, holders.live_runner
     if not check_dependencies:
         return todo, None, None
@@ -361,8 +360,9 @@ async def guard_driver_start(
       review subject (see :func:`_guard_reviewer_start`), reached even when
       ``slug`` is ``None`` — commit review carries no todo slug at all.
 
-    ``handoff_session_id`` is set only by the platform's own start of a handoff's creative orchestrator; it is exempt
-    only when a pending handoff of the item's current holder fixed exactly that session's identity.
+    ``handoff_session_id`` is set only by the platform's own start of a handoff's creative orchestrator; when a pending
+    handoff of the item's current holder fixed exactly that session's identity, the check discounts that closing holder
+    alone and every other live owner of the item still refuses.
 
     Raises :class:`ClaimConflict` (carrying the holder) when a live driver already
     holds the slug, :class:`ReviewerConflict` when a live reviewer already holds
@@ -389,8 +389,7 @@ async def guard_driver_start(
     if not slug:
         return DriverStartGuardResult()
     project_root = resolve_project_root(project_path)
-    if handoff_session_id and await holds_handoff_authority(str(project_root), slug, handoff_session_id):
-        return DriverStartGuardResult()
+    closing_holder = await handoff_holder(str(project_root), slug, handoff_session_id) if handoff_session_id else ""
     runtime_db = db or await get_db()
     todos_db = await get_workflow_store(project_root)
     effective_caller = None if launch_class is DriverLaunchClass.ORCHESTRATOR else caller_session_id
@@ -402,6 +401,7 @@ async def guard_driver_start(
         project_root,
         check_dependencies=False,
         caller_session_id=effective_caller,
+        ignore_session_id=closing_holder or None,
     )
     if reason is RunnerSkipReason.ALREADY_DRIVEN:
         raise ClaimConflict(slug=slug, holder=holder)
@@ -414,7 +414,6 @@ async def manual_start_lifecycle_session(
     *,
     lane: RunnerLane,
     db: Db | None = None,
-    client_factory: Callable[[], SessionRunner] = default_session_runner,
 ) -> ManualLifecycleSessionResult:
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
@@ -431,11 +430,8 @@ async def manual_start_lifecycle_session(
             reason=reason,
         )
 
-    client = client_factory()
-    await client.connect()
     try:
         session_id = await dispatch_lifecycle_session(
-            client=client,
             runtime_db=runtime_db,
             todos_db=todos_db,
             project_path=str(project_root),
@@ -450,8 +446,6 @@ async def manual_start_lifecycle_session(
             reason=RunnerSkipReason.ALREADY_DRIVEN,
             session_id=lost.owner,
         )
-    finally:
-        await client.close()
 
     return ManualLifecycleSessionResult(
         slug=slug,

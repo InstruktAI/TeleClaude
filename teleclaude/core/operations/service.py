@@ -36,8 +36,6 @@ from teleclaude.core.next_machine.lifecycle_runner import (
     ManualLifecycleStatus,
     RunnerLane,
     RunnerSkipReason,
-    SessionRunner,
-    default_session_runner,
     dispatch_lifecycle_session,
 )
 from teleclaude.core.next_machine.manual_start import (
@@ -157,7 +155,6 @@ class OperationsService:
         poll_after_ms: int = 250,
         heartbeat_interval_s: float = 2.0,
         stale_after_s: float = 30.0,
-        lifecycle_client_factory: Callable[[], SessionRunner] = default_session_runner,
     ) -> None:
         self._db = db
         self._task_registry = task_registry
@@ -168,7 +165,6 @@ class OperationsService:
         self._submit_guard = asyncio.Lock()
         self._live_tasks: dict[str, asyncio.Task[None]] = {}
         self._live_guard = asyncio.Lock()
-        self._lifecycle_client_factory = lifecycle_client_factory
         self._pending_startup_recovery: list[Operation] = []
 
     async def start(self) -> None:
@@ -893,11 +889,8 @@ class OperationsService:
             return OperationCompletion(
                 not_dispatched_text(slug, reason), work_feedback=work_feedback_for_manual_skip(skip_reason)
             )
-        client = self._lifecycle_client_factory()
-        await client.connect()
         try:
             session_id = await dispatch_lifecycle_session(
-                client=client,
                 runtime_db=self._db,
                 todos_db=todos_db,
                 project_path=str(project_root),
@@ -906,8 +899,6 @@ class OperationsService:
             )
         except LifecycleLinkLost as lost:
             raise ClaimConflict(slug=slug, holder=lost.owner) from lost
-        finally:
-            await client.close()
         return f"RUNNER_DISPATCHED: {slug} {intent.lane.value} {session_id}"
 
     async def _heartbeat_loop(self, operation_id: str, stop_event: asyncio.Event) -> None:

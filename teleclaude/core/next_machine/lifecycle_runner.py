@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+import uuid
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from typing import Final, NamedTuple, Protocol, Unpack
+from typing import Final, NamedTuple
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api_models import CreateSessionResponseDTO
-from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.cli.api_session_args import RunSessionArgs
 from teleclaude.config._models import WorkflowRunnerMode
 from teleclaude.config.machine import config
 from teleclaude.constants import TodoStatus
@@ -45,7 +43,11 @@ from teleclaude.core.next_machine.runner_types import (
     RunnerSkipReason,
     RunnerTodo,
 )
-from teleclaude.core.next_machine.runtime.sessions import is_live_session_id, live_orchestrator_owned_slugs
+from teleclaude.core.next_machine.runtime.sessions import (
+    is_live_session_id,
+    live_orchestrator_owned_slugs,
+    start_in_flight,
+)
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
 from teleclaude.core.next_machine.state_mutation import StateWriter, commit_on_current
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
@@ -61,7 +63,7 @@ from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import HoldAuditState, TodoState
-from teleclaude.types.workflow_record import EffectKind, PendingEffect, Phase
+from teleclaude.types.workflow_record import Phase
 
 logger = get_logger(__name__)
 
@@ -90,16 +92,6 @@ class _RunnerTodoRead(NamedTuple):
     todo: RunnerTodo | None
     current_status: str | None
     is_holder: bool
-
-
-class SessionRunner(Protocol):
-    async def connect(self) -> None: ...
-    async def close(self) -> None: ...
-    async def run_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO: ...
-
-
-def default_session_runner() -> SessionRunner:
-    return TelecAPIClient(daemon_credential=True)
 
 
 def _command_for_lane(lane: RunnerLane) -> tuple[str, str]:
@@ -387,41 +379,24 @@ LINK_SKIPPED_LOG: Final = "lifecycle runner: the started session was not linked,
 
 
 class LifecycleLinkLost(Exception):
-    """The started driver could not be linked because the row has another owner; the started session was ended."""
+    """The row has another owner, so no driver was started; the winning owner is named."""
 
-    def __init__(self, slug: str, session_id: str, owner: str) -> None:
-        super().__init__(slug, session_id, owner)
+    def __init__(self, slug: str, owner: str) -> None:
+        super().__init__(slug, owner)
         self.slug = slug
-        self.session_id = session_id
         self.owner = owner
 
 
-UNLINKED_START_EFFECT: Final = "unlinked-start:{session_id}"
-SESSION_PARAM: Final = "session_id"
+async def _release_reserved_link(todos_db: WorkflowStore, slug: str, session_id: str) -> None:
+    """Withdraw the link reserved for a session that was never created, only while it is still that session\'s."""
 
+    def change(writer: StateWriter) -> None:
+        if writer.state.active_runner != session_id:
+            return
+        writer.state.active_runner = None
+        writer.state.manually_started = False
 
-async def _end_unlinked_start(todos_db: WorkflowStore, slug: str, session_id: str) -> None:
-    """End the session this dispatch started and could not link, so no second driver runs beside the owner.
-
-    The ending is recorded on the item first, as a pending effect with a stable identity, and then completed: the
-    reconciler ends the session and acknowledges only once its lifecycle shows it closed, and repeats the effect after
-    a failure or a restart, so an interrupted cleanup is never forgotten.
-    """
-    from teleclaude.core.workflow_machine.effects import (  # noqa: PLC0415 - deferred cycle: effects read this package
-        reconcile_slug_supervised,
-    )
-
-    effect_id = UNLINKED_START_EFFECT.format(session_id=session_id)
-
-    def record(writer: StateWriter) -> None:
-        pending = writer.state.workflow.pending_effects
-        if all(effect.id != effect_id for effect in pending):
-            pending.append(
-                PendingEffect(id=effect_id, act_key="", kind=EffectKind.END_SESSION, params={SESSION_PARAM: session_id})
-            )
-
-    await commit_on_current(todos_db, slug, record)
-    await reconcile_slug_supervised(str(todos_db.project_root), slug)
+    await commit_on_current(todos_db, slug, change)
 
 
 class LinkSkipped(Exception):
@@ -586,46 +561,61 @@ async def _live_active_runners(db: Db, todos: Mapping[str, RunnerTodo]) -> tuple
 
 async def dispatch_lifecycle_session(
     *,
-    client: SessionRunner,
     runtime_db: Db,
     todos_db: WorkflowStore,
     project_path: str,
     intent: DispatchIntent,
     origin: DispatchOrigin,
 ) -> str:
-    """Start a lifecycle driver and record its ownership directly."""
-    kwargs: RunSessionArgs = {
-        "command": intent.command,
-        "project_path": project_path,
-        "args": intent.slug,
-        "detach": True,
-    }
-    if intent.additional_context:
-        kwargs["additional_context"] = intent.additional_context
-    response = await client.run_session(**kwargs)
-    winner = await _set_active_runner(
-        todos_db,
-        intent.slug,
-        response.session_id,
-        lane=intent.lane,
-        manually_started=origin.manually_started,
-        release_hold=origin.manually_started,
+    """Start a lifecycle driver under a session identity chosen first and linked before the session is created.
+
+    The link is reserved on the item before the session exists, in the one conditional write that decides who owns the
+    row: the loser starts nothing and learns the winner, so no accepted start can be left unlinked, and a crash after
+    the reservation leaves a link to a session that never was, which the next pass clears like any dead driver link. The
+    session is then started in process under that identity through the platform\'s one session-run path.
+    """
+    from teleclaude.api.sessions_actions_routes import (  # noqa: PLC0415 - deferred cycle: the routes read this package
+        run_platform_session,
     )
-    if winner:
-        await _end_unlinked_start(todos_db, intent.slug, response.session_id)
-        raise LifecycleLinkLost(intent.slug, response.session_id, winner)
-    session = await runtime_db.get_session(response.session_id)
+    from teleclaude.api_models import RunSessionRequest  # noqa: PLC0415 - deferred cycle: the models read this package
+
+    session_id = str(uuid.uuid4())
+    with start_in_flight(session_id):
+        winner = await _set_active_runner(
+            todos_db,
+            intent.slug,
+            session_id,
+            lane=intent.lane,
+            manually_started=origin.manually_started,
+            release_hold=origin.manually_started,
+        )
+        if winner:
+            raise LifecycleLinkLost(intent.slug, winner)
+        request = RunSessionRequest(
+            command=intent.command,
+            args=intent.slug,
+            project=project_path,
+            detach=True,
+            additional_context=intent.additional_context,
+        )
+        try:
+            await run_platform_session(request, session_id=session_id)
+        except BaseException:
+            if await runtime_db.get_session(session_id) is None:
+                await _release_reserved_link(todos_db, intent.slug, session_id)
+            raise
+    session = await runtime_db.get_session(session_id)
     if session is not None and is_session_terminal(
         lifecycle_status=session.lifecycle_status,
         closed_at=session.closed_at,
     ):
-        reconciliation = await reconcile_driver_ownership_for_session(todos_db, response.session_id)
+        reconciliation = await reconcile_driver_ownership_for_session(todos_db, session_id)
         logger.info(
             "terminal lifecycle spawn reconciled",
-            session_id=response.session_id,
+            session_id=session_id,
             cleared_slugs=",".join(reconciliation.cleared_slugs),
         )
-    return response.session_id
+    return session_id
 
 
 _ITEM_LANES: Final = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
@@ -672,7 +662,6 @@ async def run_lifecycle_runner(
     *,
     trigger: str = "manual",
     db: Db | None = None,
-    client_factory: Callable[[], SessionRunner] = default_session_runner,
 ) -> RunnerResult:
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
@@ -710,28 +699,22 @@ async def run_lifecycle_runner(
     )
 
     dispatched: list[DispatchIntent] = []
-    client = client_factory()
-    await client.connect()
-    try:
-        for intent in decision.intents:
-            if intent.lane in _ITEM_LANES:
-                if await _request_item_driver(str(project_root), intent):
-                    dispatched.append(intent)
-                continue
-            try:
-                await dispatch_lifecycle_session(
-                    client=client,
-                    runtime_db=runtime_db,
-                    todos_db=todos_db,
-                    project_path=str(project_root),
-                    intent=intent,
-                    origin=DispatchOrigin.RUNNER,
-                )
-            except LifecycleLinkLost:
-                continue
-            dispatched.append(intent)
-    finally:
-        await client.close()
+    for intent in decision.intents:
+        if intent.lane in _ITEM_LANES:
+            if await _request_item_driver(str(project_root), intent):
+                dispatched.append(intent)
+            continue
+        try:
+            await dispatch_lifecycle_session(
+                runtime_db=runtime_db,
+                todos_db=todos_db,
+                project_path=str(project_root),
+                intent=intent,
+                origin=DispatchOrigin.RUNNER,
+            )
+        except LifecycleLinkLost:
+            continue
+        dispatched.append(intent)
 
     result = RunnerResult(
         project_path=str(project_root),
@@ -789,7 +772,6 @@ __all__ = [
     "artifact_digest_from_state",
     "command_for_lane",
     "decide_dispatches",
-    "default_session_runner",
     "dispatch_lifecycle_session",
     "load_runner_todos",
     "make_intent",

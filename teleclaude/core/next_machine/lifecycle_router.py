@@ -14,7 +14,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.local_checkouts import local_checkout_paths
 from teleclaude.core.next_machine.lifecycle_runner import (
-    default_session_runner,
     project_path_from_event_payload,
     run_lifecycle_runner,
 )
@@ -61,7 +60,7 @@ _ENDED_OUTSIDE_CHECKOUT_EVENT = "Session-ended wake-up skipped: the session did 
 async def _wake_every_local_checkout(trigger: str) -> None:
     """Wake the lifecycle runner for each project checkout on this computer."""
     for project_path in await local_checkout_paths():
-        await run_lifecycle_runner(project_path, trigger=trigger, client_factory=default_session_runner)
+        await run_lifecycle_runner(project_path, trigger=trigger)
 
 
 def _checkout_of_ended_session(project_path: str | None) -> str | None:
@@ -95,7 +94,7 @@ async def _route(event: ReceivedEvent) -> None:
     if not project_path:
         logger.warning(_MISSING_PROJECT_EVENT, event=event.type)
         return
-    await run_lifecycle_runner(project_path, trigger=event.type, client_factory=default_session_runner)
+    await run_lifecycle_runner(project_path, trigger=event.type)
 
 
 def build_lifecycle_router_consumer() -> Consumer:

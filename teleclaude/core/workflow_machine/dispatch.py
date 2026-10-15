@@ -69,13 +69,13 @@ def accepted_orchestrators(project_root: str, todo_id: str, record: WorkflowReco
     return pending | set(record.dispatch_workers)
 
 
-async def holds_handoff_authority(project_root: str, slug: str, session_id: str) -> bool:
-    """Whether ``session_id`` is the creative orchestrator a pending handoff of the item's current holder will start.
+async def handoff_holder(project_root: str, slug: str, session_id: str) -> str:
+    """The closing holder whose pending handoff will start ``session_id``, or empty when there is no such handoff.
 
     The authority is exact and durable: a pending ``creative_dispatch`` effect of the item fixes the identity of the one
-    session it starts, and was committed by the holder\'s own handoff, so the holder is the effect\'s recipient. Only that
-    session, started while that holder still holds the item, is exempt from the duplicate-driver refusal; any other
-    creative orchestrator for the item is refused as before.
+    session it starts, and was committed by the holder\'s own handoff, so the holder is the effect\'s recipient. For that
+    session, started while that holder still holds the item, the duplicate-driver check discounts that holder alone; every
+    other live owner of the item still refuses it.
     """
     from teleclaude.core.workflow_store.store import get_workflow_store  # noqa: PLC0415 - the store reads this package
 
@@ -83,7 +83,7 @@ async def holds_handoff_authority(project_root: str, slug: str, session_id: str)
     todo_id = store.resolve_store_address_sync(slug)
     raw = await store.read_state(slug)
     if todo_id is None or raw is None:
-        return False
+        return ""
     record = workflow_record_of(raw)
     holder = str(raw.get("active_runner") or "")
     for effect in record.pending_effects:
@@ -92,5 +92,5 @@ async def holds_handoff_authority(project_root: str, slug: str, session_id: str)
             and effect.params.get(RECIPIENT_PARAM) == holder
             and orchestrator_session_id(str(store.project_root), todo_id, effect.id) == session_id
         ):
-            return True
-    return False
+            return holder
+    return ""
