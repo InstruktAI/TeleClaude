@@ -20,7 +20,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.roles import RoleName
 from teleclaude.core.workflow_machine.caller import in_claiming_group, load_caller
-from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
+from teleclaude.core.workflow_machine.effects import reconcile_head_notices_supervised
 from teleclaude.core.workflow_machine.stamp import NO_HEAD, RemoteReadFailed, integration_head
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange
@@ -194,7 +194,7 @@ async def complete_publish_intent(project_root: str, item: str, key: str, sessio
         return ItemChange(state={**current, WORKFLOW_STATE_KEY: updated.to_state()})
 
     await store.commit_item_change(item, expect_digests={}, mutate=mutate, updated_by=session_id)
-    await reconcile_slug_supervised(str(store.project_root), item)
+    await reconcile_head_notices_supervised(str(store.project_root), item)
 
 
 async def discover_item_head(project_root: str, item: str) -> None:
@@ -204,8 +204,11 @@ async def discover_item_head(project_root: str, item: str) -> None:
     if raw is None or raw.get(LIFECYCLE_PHASE_STATE_KEY) != LifecyclePhase.WORK.value:
         return
     root = str(store.project_root)
+    record = workflow_record_of(raw)
+    if any(effect.event is EmittedEvent.HEAD_ADVANCED for effect in record.pending_effects):
+        await reconcile_head_notices_supervised(root, item)
     tip = await integration_head(root, item)
-    if not tip or any(head.sha == tip for head in workflow_record_of(raw).observed_heads):
+    if not tip or any(head.sha == tip for head in record.observed_heads):
         return
 
     def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
@@ -218,7 +221,7 @@ async def discover_item_head(project_root: str, item: str) -> None:
         return ItemChange(state={**current, WORKFLOW_STATE_KEY: updated.to_state()})
 
     await store.commit_item_change(item, expect_digests={}, mutate=mutate, updated_by=None)
-    await reconcile_slug_supervised(root, item)
+    await reconcile_head_notices_supervised(root, item)
 
 
 async def _discover_bounded(project_root: str, item: str, gate: asyncio.Semaphore) -> None:
@@ -238,11 +241,21 @@ async def observe_item_supervised(project_root: str, item: str) -> None:
         logger.exception(DISCOVERY_FAILED_LOG, slug=item, project_root=project_root)
 
 
+async def _items_in_work(store: WorkflowStore) -> list[str]:
+    """The slugs of the project's items that are in work, read from local state; only these are read on the remote."""
+    slugs: list[str] = []
+    for entry in await store.list_todo():
+        raw = await store.read_state(entry["slug"])
+        if raw is not None and raw.get(LIFECYCLE_PHASE_STATE_KEY) == LifecyclePhase.WORK.value:
+            slugs.append(entry["slug"])
+    return slugs
+
+
 async def discover_project_heads(project_root: str) -> None:
     """Read the integration head of every item in work, concurrently and each within its bound."""
     store = await get_workflow_store(project_root)
     gate = asyncio.Semaphore(DISCOVERY_CONCURRENCY)
-    await asyncio.gather(*(_discover_bounded(project_root, entry["slug"], gate) for entry in await store.list_todo()))
+    await asyncio.gather(*(_discover_bounded(project_root, slug, gate) for slug in await _items_in_work(store)))
 
 
 async def discover_project_heads_supervised(project_root: str) -> None:

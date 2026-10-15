@@ -261,13 +261,23 @@ _HANDLERS: Final = {
 }
 
 
-async def reconcile_item(store: WorkflowStore, project_root: str, item: PendingEffectItem) -> None:
-    """Run every pending effect of one item row to completion, clearing each as it finishes."""
+async def reconcile_item(
+    store: WorkflowStore,
+    project_root: str,
+    item: PendingEffectItem,
+    selected: Callable[[PendingEffect], bool] | None = None,
+) -> None:
+    """Run the pending effects of one item row to completion, clearing each as it finishes.
+
+    All of them, in order, unless ``selected`` names the ones to run; the others are left exactly as they are.
+    """
     state = await store.read_state_by_id(item.todo_id)
     if state is None:
         return
     context = EffectContext(store, project_root, item)
     for effect in workflow_record_of(state).pending_effects:
+        if selected is not None and not selected(effect):
+            continue
         handler = _HANDLERS.get(effect.kind)
         if handler is None:
             logger.error(NO_HANDLER_LOG, slug=item.slug, effect=effect.id, kind=effect.kind.value)
@@ -304,6 +314,28 @@ async def reconcile_project_supervised(project_root: str) -> None:
         await reconcile_project(project_root)
     except Exception:  # supervision boundary: an unavailable project must not starve the others
         logger.exception(PROJECT_FAILED_LOG, project_root=project_root)
+
+
+def _is_head_notice(effect: PendingEffect) -> bool:
+    return effect.kind is EffectKind.EMIT_EVENT and effect.event is EmittedEvent.HEAD_ADVANCED
+
+
+async def reconcile_head_notices_supervised(project_root: str, slug: str) -> None:
+    """Send the pending head notices of an item and nothing else.
+
+    A head notice is independent of the item's acts: an earlier act whose worktree or session effect is slow or
+    failing neither delays it nor is run by it, and the acts' own effects keep their order and their release last.
+    """
+    try:
+        store = await get_workflow_store(project_root)
+        for item in await store.list_items_with_pending_effects():
+            if item.slug == slug:
+                try:
+                    await reconcile_item(store, project_root, item, _is_head_notice)
+                except Exception:  # supervision boundary: a failing notice must not stop the observation pass
+                    logger.exception(ITEM_FAILED_LOG, slug=item.slug, item=item.todo_id, project_root=project_root)
+    except Exception:  # supervision boundary: the reconciler consumer completes it on its next tick
+        logger.exception(PROJECT_FAILED_LOG, project_root=project_root, slug=slug)
 
 
 async def reconcile_slug_supervised(project_root: str, slug: str) -> None:
