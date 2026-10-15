@@ -71,14 +71,19 @@ def settle_members(
     grace: float = GRACE_SECONDS,
     bound: float = SETTLE_BOUND_SECONDS,
     before_signal: Callable[[int], None] | None = None,
+    leader_alive: Callable[[], bool] | None = None,
 ) -> tuple[bool, tuple[int, ...]]:
     """End every live member of the group except ``exclude``: terminate, give a grace, kill, then observe.
 
     Returns whether none remains within the bound, and the pids that were signalled. Only the group's leader being
-    positively known to be the caller's own makes this safe to call; the callers establish that.
+    positively known to be the caller's own makes this safe to call; the callers establish that. A caller that is not
+    itself the leader passes ``leader_alive``, checked before each signalling round: once the leader is gone the group
+    is no longer positively attributed, so no further signal is sent and the unit is left unknown.
     """
     signalled: list[int] = []
     deadline = time.monotonic() + bound
+    if leader_alive is not None and not leader_alive():
+        return False, ()
     for pid in live_members(pgid, exclude=exclude):
         if before_signal is not None:
             before_signal(pid)
@@ -87,6 +92,8 @@ def settle_members(
     grace_end = time.monotonic() + grace
     while time.monotonic() < grace_end and live_members(pgid, exclude=exclude):
         time.sleep(POLL_SECONDS)
+    if leader_alive is not None and not leader_alive():
+        return False, tuple(signalled)
     for pid in live_members(pgid, exclude=exclude):
         if before_signal is not None:
             before_signal(pid)

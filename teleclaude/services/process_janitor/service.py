@@ -322,7 +322,9 @@ def _end_unit(pgid: int, identity: str) -> list[ProcessDescriptor]:
     def remember(pid: int) -> None:
         seen.setdefault(pid, descriptor_of(pid))
 
-    _, members = settle_members(pgid, exclude=pgid, before_signal=remember)
+    _, members = settle_members(
+        pgid, exclude=pgid, before_signal=remember, leader_alive=lambda: is_runner_alive(pgid, identity)
+    )
     ended = [seen[pid] for pid in members if pid in seen]
     if is_runner_alive(pgid, identity):
         leader = descriptor_of(pgid)
