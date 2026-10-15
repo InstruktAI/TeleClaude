@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -341,8 +342,32 @@ def _is_ancestor(repo: Repo, ancestor: str, descendant: str) -> bool:
     return True
 
 
+_ENSURE_LOCKS: dict[tuple[str, str], threading.Lock] = {}
+_ENSURE_LOCKS_GUARD = threading.Lock()
+
+
+def _ensure_lock(cwd: str, slug: str) -> threading.Lock:
+    """The one lock of a (project root, slug) pair; other pairs never wait on it."""
+    key = (str(Path(cwd).resolve()), slug)
+    with _ENSURE_LOCKS_GUARD:
+        lock = _ENSURE_LOCKS.get(key)
+        if lock is None:
+            lock = _ENSURE_LOCKS[key] = threading.Lock()
+        return lock
+
+
 def ensure_worktree_with_policy(cwd: str, slug: str, *, build_start_sha: str = _EMPTY_SHA) -> EnsureWorktreeResult:
-    """Ensure worktree exists and run prep only when policy says it's stale."""
+    """Ensure worktree exists and run prep only when policy says it's stale.
+
+    One preparation runs per (project root, slug) at a time, whoever asks: the work machine's effect, the previous work
+    path and a rename's re-preparation serialize here, and the later caller finds the earlier one's result and its prep
+    marker (``local/projects/teleclaude/spec/feature/workflow/worktree-prep-lifecycle``).
+    """
+    with _ensure_lock(cwd, slug):
+        return _ensure_worktree_locked(cwd, slug, build_start_sha=build_start_sha)
+
+
+def _ensure_worktree_locked(cwd: str, slug: str, *, build_start_sha: str) -> EnsureWorktreeResult:
     created = _create_or_attach_worktree(cwd, slug, build_start_sha=build_start_sha)
     worktree_root = Path(cwd) / WORKTREE_DIR / slug
     add_worktree_trust(Path(cwd), worktree_root)
