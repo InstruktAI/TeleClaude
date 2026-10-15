@@ -235,20 +235,6 @@ And its result retains the original outcome and any cleanup failure
 And a required scenario that did not run is never reported as passed
 ```
 
-<!-- planned-change:owned-release-execution -->
-
-#### UC-RA10: Candidate verification uses the same full profile as hosted CI
-
-```gherkin
-Given a release operator has a final immutable candidate
-When hosted runtime acceptance runs
-Then the full journey set executes against that exact candidate
-And a failure prevents publication even if an earlier source revision passed
-And success leaves the full installation proof required
-```
-
-<!-- change:owned-release-execution -->
-
 #### UC-RA10: Candidate verification uses the same full profile as CI
 
 ```gherkin
@@ -258,8 +244,6 @@ Then the full journey set executes against that exact candidate
 And a failure prevents publication even if an earlier source revision passed
 And success leaves the full installation proof required
 ```
-
-<!-- /planned-change:owned-release-execution -->
 
 #### UC-RA11: Invalid configuration input is refused without changing state
 

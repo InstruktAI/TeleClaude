@@ -64,8 +64,6 @@ published evidence retains its original decision and immutable candidate under
 `sdlc/policy/backward-compatibility-hygiene`. Candidate proof and publication
 requirements apply unchanged to every selected tier.
 
-<!-- planned:owned-release-execution -->
-
 ### Execution target
 
 One repository setting selects the execution target for the Linux release
@@ -88,8 +86,6 @@ and controller restart (`sdlc/policy/security-awareness`). Disposal does not
 establish provider credential settlement. The installation proof keeps its
 separate virtualization-capable execution target.
 
-<!-- /planned:owned-release-execution -->
-
 ### Inspector
 
 For automatic assessment, one inspector role assesses actual source and contract changes against the
@@ -107,18 +103,6 @@ attempt remains visible but does not prevent the explicit-version path from
 using deterministic notes. A first release can summarize its captured history
 without requiring a previous release baseline.
 
-<!-- planned-change:owned-release-execution -->
-
-Source, baseline and bounded evidence are frozen once before inspection. Codex
-and its fallback run on separate fresh GitHub-hosted Ubuntu jobs, each installing
-only its pinned native client and owning its cleanup. A primary job failure or
-missing artifact permits independent fallback without claiming a client exit or
-credential settlement that was not observed. Automatic no-change attempts
-bypass both providers. Eligible Codex success requires a complete report
-and confirmed durable post-run auth; runner loss leaves auth uncertainty intact.
-
-<!-- change:owned-release-execution -->
-
 Source, baseline and bounded evidence are frozen once before inspection. Codex
 and its fallback run on separate fresh Ubuntu jobs, each installing
 only its pinned native client and owning its cleanup. A primary job failure or
@@ -126,8 +110,6 @@ missing artifact permits independent fallback without claiming a client exit or
 credential settlement that was not observed. Automatic no-change attempts
 bypass both providers. Eligible Codex success requires a complete report
 and confirmed durable post-run auth; runner loss leaves auth uncertainty intact.
-
-<!-- /planned-change:owned-release-execution -->
 
 Native clients run under the runner identity with explicit clean environments
 and private auth/controller state outside immutable evidence. Native filesystem,
@@ -235,18 +217,6 @@ documentation and configuration readiness, the harness's access probes, repeat
 installation, and restart/reinstallation. Evidence is retained on success and
 failure, and the disposable machine is cleaned up.
 
-<!-- planned-change:owned-release-execution -->
-
-### Hosted runtime acceptance
-
-The final candidate passes the full GitHub-hosted runtime profile defined by
-`local/projects/teleclaude/spec/feature/agent_runtime/runtime-acceptance`
-before full installation proof. Publication requires both results for that
-candidate. The bounded journey allowance and its verification purpose are owned
-by `local/projects/teleclaude/policy/test-moratorium`.
-
-<!-- change:owned-release-execution -->
-
 ### Runtime acceptance
 
 The final candidate passes the full runtime profile defined by
@@ -254,8 +224,6 @@ The final candidate passes the full runtime profile defined by
 run on the selected Linux execution target before full installation proof. Publication requires both results for that candidate. The
 bounded journey allowance and its verification purpose are owned by
 `local/projects/teleclaude/policy/test-moratorium`.
-
-<!-- /planned-change:owned-release-execution -->
 
 Acceptance evidence identifies the exact candidate and tree, the full profile,
 all required journey outcomes and cleanup. Its digest travels in the durable
@@ -403,8 +371,6 @@ And unsuccessful summary attempts remain visible
 And no automatic version assessment is fabricated
 ```
 
-<!-- planned:owned-release-execution -->
-
 #### UC-RP11: One setting selects release execution
 
 ```gherkin
@@ -415,10 +381,6 @@ And changing back requires no workflow rewrite
 And an unavailable selected target produces a visible failure
 ```
 
-<!-- /planned:owned-release-execution -->
-
-<!-- planned:owned-release-execution -->
-
 #### UC-RP12: Unfinished proof cleanup withholds further guest work
 
 ```gherkin
@@ -428,8 +390,6 @@ Then subsequent Linux release work is withheld
 And the next attempt recovers the recorded proof machine before admitting Linux work
 And uncertain recovery remains visible as unsuccessful admission
 ```
-
-<!-- /planned:owned-release-execution -->
 
 ### Cross-context references
 

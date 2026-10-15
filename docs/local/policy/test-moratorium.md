@@ -45,37 +45,6 @@ This repository only. Satellite projects keep their own testing contract, declar
 
 ## Exceptions
 
-<!-- planned-change:owned-release-execution -->
-
-- One black-box CLI acceptance harness may be authored and maintained under
-  `local/projects/teleclaude/spec/feature/agent_runtime/runtime-acceptance`.
-  It drives real public entry points in fresh subprocesses and, for the full
-  profile, a disposable runtime with real daemon, socket and persistent storage.
-  Its controller imports no application modules and substitutes no application
-  collaborators or authentication decisions. Synthetic input and disposable
-  operating environments provide isolation; no live user configuration,
-  credentials, daemon or storage is used.
-- Python is preferred for harness orchestration, health observations, timeouts,
-  cleanup and report handling, keeping shell orchestration from accumulating.
-  Real CLI journeys invoke the public executables as subprocesses.
-  Public command-line tools, including `curl`, are permitted when they serve the
-  boundary being verified; supporting HTTP reads may use a Python client.
-  Tool choice preserves real invocation fidelity and bounded, diagnosable
-  execution. The Python preference is not a categorical subprocess-tool ban.
-- The allowance includes only the harness, its scenario data, essential execution
-  dependencies, and its fast commit/full hosted-CI/release wiring. General-purpose
-  test corpora, the generic `test` binding, unit tests, per-module checks and markup
-  snapshots are outside that allowance. Full installation proof is required by
-  the release contract.
-- Scenario assertions derive from the public contracts and are independently
-  reviewed before implementation. Any unexpected error or wrong observable
-  result fails its journey, regardless of error class. Coverage claims name the
-  journeys exercised; passing cannot imply that every command works.
-- Other verification needs require changes to this policy rather than one-off
-  additions to the corpus.
-
-<!-- change:owned-release-execution -->
-
 - One black-box CLI acceptance harness may be authored and maintained under
   `local/projects/teleclaude/spec/feature/agent_runtime/runtime-acceptance`.
   It drives real public entry points in fresh subprocesses and, for the full
@@ -102,8 +71,6 @@ This repository only. Satellite projects keep their own testing contract, declar
   journeys exercised; passing cannot imply that every command works.
 - Other verification needs require changes to this policy rather than one-off
   additions to the corpus.
-
-<!-- /planned-change:owned-release-execution -->
 
 ## See Also
 

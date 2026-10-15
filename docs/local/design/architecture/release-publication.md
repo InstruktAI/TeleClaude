@@ -14,26 +14,6 @@ consumes the installer and update contracts through their existing boundaries.
 
 ## Inputs/Outputs
 
-<!-- planned-change:owned-release-execution -->
-
-- An attempt captures canonical main and the previous completed publication
-  after acquiring the release stream's serialization.
-- Inspection consumes the captured source, released public-contract baseline,
-  and bounded repository evidence. It produces a complete assessment or a
-  provider failure, with every attempted provider's outcome retained.
-- Preparation produces a final candidate and an incremental Git bundle, together
-  with source, baseline, tree, version, and artifact identities.
-- Verification produces lint, hosted runtime acceptance and disposable-machine installation proof bound to the candidate.
-- Publication produces the exact candidate tag, its GitHub Release, retained
-  evidence, and a mainline metadata reconciliation when main has advanced.
-- A manually supplied version produces an operator-decided candidate through
-  the same candidate and proof boundary, with deterministic commit notes and no
-  version assessment. The same isolated provider order attempts an optional
-  summary; unavailable summaries retain their outcomes and leave deterministic
-  notes publishable. A first manual publication establishes a baseline.
-
-<!-- change:owned-release-execution -->
-
 - An attempt captures canonical main and the previous completed publication
   after acquiring the release stream's serialization.
 - Inspection consumes the captured source, released public-contract baseline,
@@ -49,8 +29,6 @@ consumes the installer and update contracts through their existing boundaries.
   version assessment. The same isolated provider order attempts an optional
   summary; unavailable summaries retain their outcomes and leave deterministic
   notes publishable. A first manual publication establishes a baseline.
-
-<!-- /planned-change:owned-release-execution -->
 
 ## Invariants
 
@@ -114,8 +92,6 @@ neither a new inspection nor authority to recreate a retired execution path.
 Published Git objects and tags stay immutable; in-memory normalization is
 separate from their original serialized evidence and integrity hashes.
 
-<!-- planned:owned-release-execution -->
-
 ### Execution placement
 
 The release workflow reads one repository routing setting for every Linux
@@ -158,35 +134,7 @@ admission assessment (`sdlc/policy/security-awareness`). Repository service
 installation and lifecycle use the sanctioned make surface
 (`local/projects/teleclaude/policy/agent-service-control`).
 
-<!-- /planned:owned-release-execution -->
-
 ### Credentials and inspection
-
-<!-- planned-change:owned-release-execution -->
-
-Capture freezes one source/baseline attempt and bounded evidence artifact before
-inspection. A fresh GitHub-hosted Ubuntu job runs Codex; a separate fresh Ubuntu
-job runs Claude only when Codex has no eligible complete report with confirmed
-credential settlement. Selection consumes exact artifact identities, digests and
-inventories. Explicit versions request a distinct summary report; unchanged
-automatic source bypasses provider jobs. Missing,
-failed, skipped or cancelled primary job evidence remains an observed failure,
-with no invented client exit or settled-auth claim. Claude does not depend on a
-cleanup signal from another machine.
-
-Each provider runs its pinned native CLI as the ordinary hosted runner UID. Its
-job installs only its own client. Private controller and client configuration
-live outside immutable model-readable evidence in ordinary job temporary
-storage; existing checkout and home permissions are unchanged. There is no
-cross-provider UID switching, privileged filesystem transfer, copied interpreter,
-shared public namespace, ownership claim or staged launcher. Child environments
-contain only the adapter's explicit allowlist; prompts travel byte-exact through
-stdin and credentials never enter argv. Owned private directories/files retain
-private permissions and configuration is read-only. Their declarations and owned
-filesystem checks belong to `tools/release/isolated_inspection.py` and the
-provider configuration adapters.
-
-<!-- change:owned-release-execution -->
 
 Capture freezes one source/baseline attempt and bounded evidence artifact before
 inspection. A fresh Ubuntu job runs Codex; a separate fresh Ubuntu
@@ -209,8 +157,6 @@ stdin and credentials never enter argv. Owned private directories/files retain
 private permissions and configuration is read-only. Their declarations and owned
 filesystem checks belong to `tools/release/isolated_inspection.py` and the
 provider configuration adapters.
-
-<!-- /planned-change:owned-release-execution -->
 
 The Codex job installs compatible distribution bubblewrap and Ubuntu's scoped
 AppArmor user-namespace profile using the vendor-supported setup, without
@@ -292,26 +238,6 @@ and seeding use the same serialized stream.
 
 ### Automatically assessed attempt
 
-<!-- planned-change:owned-release-execution -->
-
-1. Resolve any incomplete owned publication before capturing another baseline.
-2. Capture S and B. An unchanged normalized source finishes successfully.
-3. Prepare and retain the compact inventory and public-contract comparison once.
-   Run Codex on its fresh hosted job, then Claude on a separate fresh job only if
-   Codex's inspection or credential settlement is unsuccessful. Select their
-   exact artifact-bound outcomes, retaining runner failure as unsuccessful evidence.
-   A valid complete no-release result finishes successfully.
-4. Generate complete commit notes with git-cliff and add the selected assessment's
-   summary. Prepare R with final version and lock coherence, released manifests,
-   and the cumulative published changelog before committing R.
-5. Run hosted lint and full hosted runtime acceptance on R, then the full
-   existing installer harness in a disposable machine. Retain the candidate identity and evidence; clean up the machine.
-6. A dry-run returns these results. Publication reconciles current H, atomically
-   updates the tag and main, then creates the GitHub Release for R and attaches
-   its provenance and proof references.
-
-<!-- change:owned-release-execution -->
-
 1. Resolve any incomplete owned publication before capturing another baseline.
 2. Capture S and B. An unchanged normalized source finishes successfully.
 3. Prepare and retain the compact inventory and public-contract comparison once.
@@ -329,24 +255,7 @@ and seeding use the same serialized stream.
    updates the tag and main, then creates the GitHub Release for R and attaches
    its provenance and proof references.
 
-<!-- /planned-change:owned-release-execution -->
-
 ### Explicit-version attempt
-
-<!-- planned-change:owned-release-execution -->
-
-A manual dispatch with an explicit valid newer version captures S and the
-completed baseline when present. It records the operator decision and generates
-the commit notes through the same git-cliff configuration. Frozen evidence feeds
-the native Codex-first/Claude-fallback jobs with a summary-only task, including
-captured reachable history when no baseline exists. A valid settled summary is
-added before the complete notes; unsuccessful summary attempts remain visible
-and the deterministic notes remain usable. Candidate preparation, lint, hosted runtime acceptance, full installer
-proof and publication consume the same identities as the automatic flow. A
-manual dry-run finishes at proof. Automatic publication activation does not
-supply or withhold authority for an explicit-version publication.
-
-<!-- change:owned-release-execution -->
 
 A manual dispatch with an explicit valid newer version captures S and the
 completed baseline when present. It records the operator decision and generates
@@ -359,8 +268,6 @@ proof and publication consume the same identities as the automatic flow. A
 manual dry-run finishes at proof. Automatic publication activation does not
 supply or withhold authority for an explicit-version publication.
 
-<!-- /planned-change:owned-release-execution -->
-
 ### Publication recovery
 
 Remote references may have advanced before a release API response is received.
@@ -370,25 +277,12 @@ version nor interprets an unpublished tag as the completed baseline.
 
 ### Automatic publication activation
 
-<!-- planned-change:owned-release-execution -->
-
-The checked-in automatic-publication setting gates automatically assessed
-publication. Scheduled attempts remain dry-runs until the release maintainer
-records a successful complete automatic-path validation over a real releasable
-interval. Manual version selection and no-change outcomes do not establish that
-validation. Every published candidate, from either decision path, still earns
-its own lint, hosted runtime acceptance and installer proof.
-
-<!-- change:owned-release-execution -->
-
 The checked-in automatic-publication setting gates automatically assessed
 publication. Scheduled attempts remain dry-runs until the release maintainer
 records a successful complete automatic-path validation over a real releasable
 interval. Manual version selection and no-change outcomes do not establish that
 validation. Every published candidate, from either decision path, still earns
 its own lint, runtime acceptance and installer proof.
-
-<!-- /planned-change:owned-release-execution -->
 
 ## Failure modes
 
