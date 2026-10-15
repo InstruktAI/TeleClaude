@@ -50,7 +50,7 @@ The stamp is submitted as a receipt-backed operation: the caller receives a rece
 
 The build gates run in a detached runner process that the stamp owns through the platform's spawn registry (`local/projects/teleclaude/design/process-lifecycle`, gate runner ownership). The runner starts no test workload until the daemon has durably recorded the runner's identity, enforces the gates' time limit and ends every other process of its group before it reports, so the limit holds when the daemon ends. While the runner or any non-zombie member of its group may still run, the item's stamp slot is held: a second stamp is refused, nothing is replaced, and no process is signalled on a group number alone. A unit whose ownership cannot be shown is unknown, and the governing agent investigates it with the capabilities it already has and ends only processes it positively attributes to the gate; no act clears it.
 
-Candidate selection takes an item only in `ready`, with a stamp bound to the current integration head. When the head moves past the stamped commit before the integrator admits it, the item reads as work again: it is not a candidate and a stamp at the new head is required. The next entry verb for work claims it, clears the stale stamp, and the driver stamps the new head. A head that cannot be read leaves a stamp as it is. Once the integrator admitted H, later commits are not part of that delivery.
+Candidate selection takes an item only in `ready`, with a stamp bound to the current integration head. When the head moves past the stamped commit before the integrator admits it, the item reads as work again: it is not a candidate and a stamp at the new head is required. The next entry verb for work claims it, clears the stale stamp, and the driver stamps the new head. A head that cannot be read leaves a stamp as it is. Once the integrator has recorded an active admission at H, the item reads as ready at H until the integrator retires the admission; later commits, a later stamp and the creative state do not reopen it and are not part of that delivery. Delivery leaves the item delivered; parking retires the attempt for that drain and permits the ordinary phase reading again.
 
 The integrator admits every `ready` item whose stamp is at the integration head whether or not a notice for it was ever raised or consumed. Candidates are ordered by ready time; an item read as `ready` from before this vocabulary uses the ready time its carried handoff or review recorded.
 
@@ -129,6 +129,17 @@ And the next entry verb for work claims the item and the driver stamps H′
 Given the integrator admitted the candidate at H
 When the branch later advances to H′
 Then the item is delivered at H and the commits past H are not part of that delivery
+And while the admission is active the item reads as ready at H, no driver is reserved or claimed for it, and a new stamp is refused
+```
+
+#### UC-RC8b: A push after admission does not reopen the item
+
+```gherkin
+Given the integrator has recorded an active admission for the candidate at H
+And the branch then advances to H′
+When an entry verb for work or a new stamp at H′ is attempted
+Then it is refused because the item is ready at H
+And the delivery completes at H under the integrator
 ```
 
 #### UC-RC9: A ready item is admitted without its notice
