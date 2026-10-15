@@ -38,7 +38,7 @@ The evidence is read from the item itself, so it holds after a kickback has retu
 
 **The mutation boundary.** The refusal is decided inside the update's own row transaction, against the state read there, so a work claim that lands while an update is deciding refuses the update, and the claim and the ledger are unchanged.
 
-**A kind change of a converted todo stays inside the item vocabulary.** For a todo converted to the workflow machine's vocabulary and not yet built, a kind change to a non-task kind leaves `lifecycle_phase` as `preparation`, and a change to the task kind sets the task lane's entry phase.
+**A kind change of a converted todo stays inside the item vocabulary.** For a todo converted to the workflow machine's vocabulary and not yet built, a kind change to a non-task kind leaves `lifecycle_phase` as `preparation`, and a change to the task kind sets the task lane's entry phase. A todo that has not been converted is written as before.
 <!-- /planned:issue-128 -->
 
 ## Canonical fields
