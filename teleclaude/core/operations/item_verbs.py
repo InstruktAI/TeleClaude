@@ -10,6 +10,7 @@ does not read keeps the path it had.
 from __future__ import annotations
 
 from teleclaude.core.db_models import Operation
+from teleclaude.core.next_machine.create import creative_incomplete
 from teleclaude.core.next_machine.kinds import KIND_TASK
 from teleclaude.core.next_machine.runner_types import RunnerLane, RunnerSkipReason
 from teleclaude.core.workflow_machine.entry import EntryRequest, EntryVerb, LaunchInProgress, enter
@@ -43,7 +44,8 @@ async def run_item_verb(
         return None
     state = TodoState.model_validate(raw)
     head = await reading_head(project_root, slug, state)
-    if state.kind == KIND_TASK or read_phase(state, integration_head=head, creative_incomplete=False).phase is None:
+    creative = await creative_incomplete(store, project_root, slug, raw)
+    if state.kind == KIND_TASK or read_phase(state, integration_head=head, creative_incomplete=creative).phase is None:
         return None
     try:
         result = await enter(

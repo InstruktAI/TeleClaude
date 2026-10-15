@@ -18,6 +18,7 @@ from typing import Final
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ARTIFACT_INPUT
+from teleclaude.core.next_machine.create import creative_incomplete
 from teleclaude.core.roles import RoleName
 from teleclaude.core.workflow_machine.act_types import BOUND_SEPARATOR, ActRefused, ActRequest, ActResult, Refusal
 from teleclaude.core.workflow_machine.authority import configured_person, has_project_authority
@@ -475,7 +476,7 @@ def _apply(
     holder_now = state.active_runner or None
     if holder_now != facts.holder:
         raise _refuse(Refusal.HOLDER_CHANGED, act=request.act.value)
-    reading = read_phase(state, integration_head=NO_SESSION, creative_incomplete=False)
+    reading = read_phase(state, integration_head=NO_SESSION, creative_incomplete=request.creative_incomplete)
     decision = _DECIDERS[request.act](request, facts, state, reading)
     record = state.workflow
     key = existing
@@ -523,6 +524,9 @@ async def perform_act(request: ActRequest) -> ActResult:
     if request.act not in _DECIDERS:
         raise _refuse(Refusal.NOT_PERFORMED_HERE, act=request.act.value)
     state = TodoState.model_validate(raw)
+    request = replace(
+        request, creative_incomplete=await creative_incomplete(store, request.project_root, request.item, raw)
+    )
     facts = await _resolve_facts(store, request, state)
     key = _act_key(request, facts.item_id, state.workflow)
     if key not in state.workflow.act_status:
@@ -545,7 +549,10 @@ async def _commit(store: WorkflowStore, request: ActRequest, facts: _Facts) -> s
         raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)
     current = TodoState.model_validate(raw)
     expected = _DECIDERS[request.act](
-        request, facts, current, read_phase(current, integration_head=NO_SESSION, creative_incomplete=False)
+        request,
+        facts,
+        current,
+        read_phase(current, integration_head=NO_SESSION, creative_incomplete=request.creative_incomplete),
     ).expect_digests
 
     recorded: list[str] = []
@@ -579,7 +586,7 @@ async def _result(store: WorkflowStore, request: ActRequest, key: str) -> ActRes
         raise _refuse(Refusal.NOT_RECORDED, act=request.act.value)
     return ActResult(
         act_key=key,
-        phase=read_phase(state, integration_head=NO_SESSION, creative_incomplete=False).phase,
+        phase=read_phase(state, integration_head=NO_SESSION, creative_incomplete=request.creative_incomplete).phase,
         complete=status is ActStatus.COMPLETE,
         finding_key=key if request.act is Act.FINDING else NO_SESSION,
     )

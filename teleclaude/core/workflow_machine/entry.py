@@ -8,6 +8,7 @@ for itself on its first call. A session that holds the item receives the instruc
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ARTIFACT_INPUT, WORKTREE_DIR
 from teleclaude.core.db import db
+from teleclaude.core.next_machine.create import creative_incomplete
 from teleclaude.core.workflow_machine.caller import child_sessions_of, load_caller
 from teleclaude.core.workflow_machine.dependencies import unmet_for_preparation, unmet_for_work
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
@@ -73,6 +75,7 @@ class EntryRefusal(StrEnum):
     REVISION_MOVED = "{item}: the intent body is at {actual}, not at the {expected} it was prepared at"
     UNKNOWN_ITEM = "no item {item} in this project"
     NO_DRIVER = "{item}: {reason}"
+    CREATIVE_CHANGED = "{item}: its creative state changed while the verb ran; repeat the verb"
     NO_LAUNCH = "{item}: no driver start is awaiting a claim; the start this session was given was released"
     WRONG_RESERVATION = "{item}: this session was started for another request than the one awaiting a claim"
 
@@ -96,6 +99,8 @@ class EntryRequest:
     integration_head: str = ""
     reservation: str = ""
     wait_for_claim: bool = True
+    creative_incomplete: bool = False
+    creative_snapshot: str = ""
 
 
 @dataclass(frozen=True)
@@ -110,6 +115,7 @@ REQUESTED_NOTE: Final = "{item}: a driver was requested."
 LAUNCH_NOTE: Final = "{item}: a driver was requested; session {session} holds the claim."
 CLAIM_NOTE: Final = "claimed"
 NO_SESSION: Final = ""
+CREATIVE_STATE_KEY: Final = "creative"
 TASK_LANE_LABEL: Final = "the task lane"
 ATTACH_WAIT_SECONDS: Final = 120.0
 ATTACH_POLL_SECONDS: Final = 0.5
@@ -153,6 +159,17 @@ async def _unmet_dependencies(store: WorkflowStore, item: str, verb: EntryVerb) 
     if verb is EntryVerb.PREPARE:
         return await unmet_for_preparation(store, item)
     return await unmet_for_work(store, item)
+
+
+def _creative_snapshot(state: Mapping[str, StateValue]) -> str:
+    """The creative section of the stored state, as read when the lane was resolved."""
+    return json.dumps(state.get(CREATIVE_STATE_KEY), sort_keys=True, default=str)
+
+
+def _recheck_creative(request: EntryRequest, state_dict: Mapping[str, StateValue]) -> None:
+    """Refuse a claim or a reservation when the creative section moved after the lane was resolved."""
+    if _creative_snapshot(state_dict) != request.creative_snapshot:
+        raise _refuse(EntryRefusal.CREATIVE_CHANGED, item=request.item)
 
 
 def _check_drivable(request: EntryRequest, state: TodoState, reading: PhaseReading) -> Phase:
@@ -221,8 +238,11 @@ def _apply_claim(
     """Claim the item for the calling driver inside the commit, or refuse."""
     if state_dict is None:
         raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
+    _recheck_creative(request, state_dict)
     state = TodoState.model_validate(state_dict)
-    reading = read_phase(state, integration_head=request.integration_head, creative_incomplete=False)
+    reading = read_phase(
+        state, integration_head=request.integration_head, creative_incomplete=request.creative_incomplete
+    )
     phase = _check_drivable(request, state, reading)
     holder = state.active_runner or None
     if holder is not None:
@@ -287,8 +307,11 @@ def _apply_reservation(
     """Record the launch reservation and the request notice in one write, or leave a pending one in place."""
     if state_dict is None:
         raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
+    _recheck_creative(request, state_dict)
     state = TodoState.model_validate(state_dict)
-    reading = read_phase(state, integration_head=request.integration_head, creative_incomplete=False)
+    reading = read_phase(
+        state, integration_head=request.integration_head, creative_incomplete=request.creative_incomplete
+    )
     _check_drivable(request, state, reading)
     holder = state.active_runner or None
     if holder is not None:
@@ -407,9 +430,16 @@ async def enter(request: EntryRequest) -> EntryResult:
     holder = state.active_runner or None
     if holder is not None and holder != request.caller_session_id:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
-    request = replace(request, integration_head=await reading_head(request.project_root, request.item, state))
+    request = replace(
+        request,
+        integration_head=await reading_head(request.project_root, request.item, state),
+        creative_incomplete=await creative_incomplete(store, request.project_root, request.item, raw),
+        creative_snapshot=_creative_snapshot(raw),
+    )
     phase = _check_drivable(
-        request, state, read_phase(state, integration_head=request.integration_head, creative_incomplete=False)
+        request,
+        state,
+        read_phase(state, integration_head=request.integration_head, creative_incomplete=request.creative_incomplete),
     )
     unmet = await _unmet_dependencies(store, request.item, request.verb)
     if unmet and holder is None:

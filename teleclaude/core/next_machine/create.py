@@ -6,6 +6,7 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -151,12 +152,28 @@ def _derive_creative_phase(
     return phase
 
 
+async def creative_incomplete(todos_db: WorkflowStore, cwd: str, slug: str, state: Mapping[str, StateValue]) -> bool:
+    """Whether the todo is on the creative lane with its design not complete.
+
+    The phase is never cached: it is re-derived from the workspace artifacts and the stored flags.
+    """
+    if not await todos_db.artifact_exists(slug, ARTIFACT_INPUT):
+        return False
+    creative = state.get("creative")
+    creative_state = creative if isinstance(creative, dict) else {}
+    has_design_spec = await todos_db.artifact_exists(slug, ARTIFACT_DESIGN_SPEC)
+    if not creative_state and not has_design_spec:
+        return False
+    workspace_dir = Path(cwd) / "workspace" / slug
+    phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
+    return phase != CreativePhase.CREATIVE_COMPLETE
+
+
 async def _find_next_creative_slug(todos_db: WorkflowStore, cwd: str) -> str | None:
     """Find the next active slug that needs creative work from DB.
 
-    Phase is never cached — each candidate is re-derived from workspace
-    artifacts and DB flags so that CREATIVE_COMPLETE slugs are skipped
-    without trusting stale state.
+    Phase is never cached - each candidate is re-derived from workspace artifacts and DB flags so that
+    CREATIVE_COMPLETE slugs are skipped without trusting stale state.
     """
     entries = await todos_db.list_todo()
     delivered = await todos_db.delivered_slugs()
@@ -165,25 +182,10 @@ async def _find_next_creative_slug(todos_db: WorkflowStore, cwd: str) -> str | N
         slug = entry["slug"]
         if slug in delivered:
             continue
-
-        has_input = await todos_db.artifact_exists(slug, ARTIFACT_INPUT)
-        if not has_input:
-            continue
-
         state = await todos_db.read_state(slug)
         if state is None:
             continue
-
-        creative = state.get("creative")
-        creative_state = creative if isinstance(creative, dict) else {}
-
-        has_design_spec = await todos_db.artifact_exists(slug, ARTIFACT_DESIGN_SPEC)
-        workspace_dir = Path(cwd) / "workspace" / slug
-        phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
-        if phase == CreativePhase.CREATIVE_COMPLETE:
-            continue
-
-        if creative_state or has_design_spec:
+        if await creative_incomplete(todos_db, cwd, slug, state):
             return slug
 
     return None

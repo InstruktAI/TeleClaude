@@ -19,6 +19,7 @@ from teleclaude.constants import TodoStatus
 from teleclaude.context_selector import resolve_snippet_meta
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
+from teleclaude.core.next_machine.create import creative_incomplete
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
     build_dependency_artifact_snapshot,
@@ -28,6 +29,7 @@ from teleclaude.core.next_machine.git_ops import (
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lanes import LANE_ENTRY_PROCEDURES
 from teleclaude.core.next_machine.lifecycle import (
+    ApprovalGate,
     effective_hold,
     pending_approval_gate,
     plan_review_current,
@@ -327,6 +329,12 @@ def _read_runner_todo(row: TodoRow, status_read: TodoStatusStateRead) -> _Runner
     )
 
 
+def _creative_approval_pending(model: TodoState) -> bool:
+    """Whether a creative approval is pending; the retired PRD human approval gate no longer holds an item back."""
+    gate = pending_approval_gate(model)
+    return gate is not None and gate is not ApprovalGate.PRD
+
+
 def _todo_from_state(row: TodoRow, status: str, state: Mapping[str, StateValue]) -> RunnerTodo:
     model = TodoState.model_validate(state)
     active_runner = state.get("active_runner")
@@ -339,7 +347,7 @@ def _todo_from_state(row: TodoRow, status: str, state: Mapping[str, StateValue])
         kind=model.kind,
         lifecycle_phase=model.lifecycle_phase.value,
         item_phase=reading.phase.value if reading.phase is not None else None,
-        human_approval_pending=pending_approval_gate(model) is not None,
+        human_approval_pending=_creative_approval_pending(model),
         hold=state.get("hold") is True,
         active_runner=active_runner if isinstance(active_runner, str) and active_runner else None,
         manually_started=state.get("manually_started") is True,
@@ -462,10 +470,17 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
             continue
         todo = replace(todo, after=tuple(deps.get(todo.slug, [])))
         state = states_by_slug.get(todo.slug)
-        if state is not None and state.lifecycle_phase is LifecyclePhase.READY:
-            head = await observed_head(str(todos_db.project_root), todo.slug)
-            ready_reading = read_phase(state, integration_head=head, creative_incomplete=False)
-            todo = replace(todo, item_phase=ready_reading.phase.value if ready_reading.phase is not None else None)
+        if state is not None and todo.kind in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
+            head = (
+                await observed_head(str(todos_db.project_root), todo.slug)
+                if state.lifecycle_phase is LifecyclePhase.READY
+                else NO_HEAD
+            )
+            creative = await creative_incomplete(
+                todos_db, str(todos_db.project_root), todo.slug, status_reads[row["id"]].state or {}
+            )
+            reading = read_phase(state, integration_head=head, creative_incomplete=creative)
+            todo = replace(todo, item_phase=reading.phase.value if reading.phase is not None else None)
         if state is not None and todo.kind in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
             dependency_snapshot = build_dependency_artifact_snapshot(
                 [

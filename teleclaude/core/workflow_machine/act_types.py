@@ -50,6 +50,7 @@ class ActRequest:
     person: str = ""
     finding_key: str = ""
     wait: str = ""
+    creative_incomplete: bool = False
 
 
 @dataclass(frozen=True)
