@@ -378,9 +378,13 @@ async def _is_single_claim_activation(
 ) -> bool:
     """Whether this activation is handled as a single-claim responsibility, by one captured initialization.
 
-    A session already bound to the item keeps the mode it was initialized with, recorded on its binding and never
-    reread from the current publication; with none, the one initialization captured for this activation decides.
+    A new request is resolved by the one initialization captured for this activation, whatever mode an older session
+    bound to the item was initialized with; each session keeps its own recorded mode for its lifetime. A notice goes
+    to the session that holds the item, so it follows that session\'s recorded mode; with none open, the captured
+    initialization decides.
     """
+    if event_facts(cmd.event_json).is_request:
+        return declares_single_claim(initialization.declarations)
     open_session, _closed = await _find_bound_sessions(cmd.procedure_id, home, folder, _subject_token(cmd))
     if open_session is not None:
         return session_is_single_claim(open_session)

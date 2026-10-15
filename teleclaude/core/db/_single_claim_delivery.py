@@ -5,11 +5,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import case, func, update
+from sqlalchemy import case, func, or_, update
 from sqlmodel import select
 
 from .. import db_models
+from ..session_status import SessionLifecycleStatus
 from ._control_delivery import ProcedureEventRecord, _procedure_event_record
+
+_CLOSE_STARTED_STATUSES = (SessionLifecycleStatus.CLOSING.value, SessionLifecycleStatus.CLOSED.value)
 
 
 class DbSingleClaimDeliveryMixin:
@@ -95,7 +98,12 @@ class DbSingleClaimDeliveryMixin:
             .select_from(db_models.Session)
             .where(db_models.Session.session_id == session_id)
             .where(db_models.Session.closed_at.is_(None))  # type: ignore[union-attr]
-            .where(db_models.Session.lifecycle_status != "closed")
+            .where(
+                or_(
+                    db_models.Session.lifecycle_status.is_(None),  # type: ignore[union-attr]
+                    db_models.Session.lifecycle_status.notin_(_CLOSE_STARTED_STATUSES),  # type: ignore[union-attr]
+                )
+            )
             .scalar_subquery()
         )
         pending = db_models.ProcedureEventDeliveryOutcome.PENDING.value
@@ -119,4 +127,4 @@ class DbSingleClaimDeliveryMixin:
         async with self._session() as db_session:
             rows = (await db_session.exec(statement)).all()
             await db_session.commit()
-        return [db_models.ProcedureEventDeliveryOutcome(row[0] if isinstance(row, tuple) else row) for row in rows]
+        return [db_models.ProcedureEventDeliveryOutcome(row[0]) for row in rows]
