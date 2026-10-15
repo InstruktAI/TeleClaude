@@ -16,7 +16,6 @@ import os
 import re
 import signal
 import subprocess
-from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
@@ -48,12 +47,12 @@ def _has_make_test_target(worktree_root: Path) -> bool:
     return re.search(r"^test\s*:", content, re.MULTILINE) is not None
 
 
-def _run_make_test(
-    worktree_root: Path, *, timeout_seconds: int, on_started: Callable[[int], None] | None = None
-) -> _TestRunResult:
+def _run_make_test(worktree_root: Path, *, timeout_seconds: int, own_session: bool = True) -> _TestRunResult:
     """Run `make test` in the worktree's own environment and capture the result.
 
-    ``on_started`` receives the process id of ``make``, which leads its own process group, as soon as it runs.
+    By default ``make`` leads a session of its own and its whole group is killed at the limit. A caller that
+    already leads the group it supervises passes ``own_session=False``: ``make`` then joins that group and only
+    ``make`` is killed at the limit, the caller settling the rest of its group itself.
     """
     # Strip platform-environment leakage so the project resolves its own
     # interpreter and packages exactly as it would standalone.
@@ -73,16 +72,17 @@ def _run_make_test(
         stderr=subprocess.PIPE,
         stdin=subprocess.DEVNULL,
         text=True,
-        start_new_session=True,
+        start_new_session=own_session,
         env=env,
     )
-    if on_started is not None:
-        on_started(process.pid)
     try:
         stdout, stderr = process.communicate(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         try:
-            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            if own_session:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            else:
+                process.kill()
         except (ProcessLookupError, PermissionError):
             pass
         stdout, stderr = _drain_after_kill(process)
@@ -111,7 +111,7 @@ def _drain_after_kill(process: subprocess.Popen[str]) -> tuple[str, str]:
     return stdout or "", stderr or ""
 
 
-def run_build_gates(worktree_cwd: str, slug: str, on_started: Callable[[int], None] | None = None) -> tuple[bool, str]:
+def run_build_gates(worktree_cwd: str, slug: str, *, own_session: bool = True) -> tuple[bool, str]:
     """Run build gates in the worktree.
 
     Returns (all_passed, output_details).
@@ -130,7 +130,7 @@ def run_build_gates(worktree_cwd: str, slug: str, on_started: Callable[[int], No
 
     logger.info("build_gate_make_test", slug=slug, worktree=str(worktree_root))
     try:
-        test_result = _run_make_test(worktree_root, timeout_seconds=_TEST_GATE_TIMEOUT_SECONDS, on_started=on_started)
+        test_result = _run_make_test(worktree_root, timeout_seconds=_TEST_GATE_TIMEOUT_SECONDS, own_session=own_session)
     except OSError as exc:
         return False, f"GATE FAILED: native tests (error: {exc})"
 

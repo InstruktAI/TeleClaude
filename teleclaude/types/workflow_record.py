@@ -188,11 +188,8 @@ class StampInFlight(BaseModel):
     sha: str
     session_id: str
     started_at: str
-    owner: str
-    runner_pid: int = 0
-    runner_started: float = 0.0
-    unit_pgid: int = 0
-    unit_started: float = 0.0
+    host: str
+    owner_key: str
 
 
 class ObservedHead(BaseModel):

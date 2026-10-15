@@ -25,7 +25,7 @@ from teleclaude.core.workflow_machine.caller import CallerFacts, child_sessions_
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.heads import observe_item_supervised
 from teleclaude.core.workflow_machine.phase_reading import PhaseReading, read_phase
-from teleclaude.core.workflow_machine.stamp import run_stamp
+from teleclaude.core.workflow_machine.stamp_run import run_stamp
 from teleclaude.core.workflow_machine.vocabulary import ACT_PERFORMERS, Performer
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ArtifactRevisionMismatch, ItemChange
@@ -529,7 +529,9 @@ async def perform_act(request: ActRequest) -> ActResult:
         _authorize(request, facts)
         await observe_item_supervised(request.project_root, request.item)
         if request.act is Act.STAMP:
-            key = await run_stamp(store, request, facts.caller.session_id, key, partial(_commit, store, request, facts))
+            key = await run_stamp(
+                store, request, facts.caller.session_id, facts.item_id, key, partial(_commit, store, request, facts)
+            )
         else:
             key = await _commit(store, request, facts)
     await reconcile_slug_supervised(request.project_root, request.item)

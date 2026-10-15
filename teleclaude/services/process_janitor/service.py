@@ -6,6 +6,7 @@ import asyncio
 import os
 import signal
 import socket
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,7 +15,10 @@ from typing import Protocol
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.machine import config
+from teleclaude.core import db_models
 from teleclaude.core.db import Db
+from teleclaude.core.process_group import is_runner_alive, live_members, settle_members
+from teleclaude.core.process_identity import boot_session
 from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility, occurrence_id
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import ComputerRef
@@ -39,6 +43,8 @@ logger = get_logger(__name__)
 
 _REAP_EVENT_DESCRIPTION = "Process janitor reaped a matched process"
 _REAP_PRODUCER = "process-janitor"
+RUNNER_EXIT_GRACE_SECONDS = 3.0
+RUNNER_EXIT_POLL_SECONDS = 0.1
 _SCAN_FAILED_MESSAGE = "Process janitor scan failed; retrying at the next interval"
 
 
@@ -132,6 +138,9 @@ class ProcessJanitorService:
             result = await self._handle_match(match, processes=processes, now=now)
             emitted += int(result.event_emitted)
         for entry in await self._db.list_expired_process_spawn_registry_entries(now_str):
+            if entry.identity is not None:
+                emitted += await self._reap_identified_lease(entry, processes=processes, now=now)
+                continue
             descriptor = _descriptor_for_pid(processes, int(entry.pid))
             if descriptor is None:
                 await self._db.delete_process_spawn_registry_entry(entry.owner)
@@ -161,6 +170,60 @@ class ProcessJanitorService:
             emitted += int(result.event_emitted)
             if result.process_terminated:
                 await self._db.delete_process_spawn_registry_entry(entry.owner)
+        return emitted
+
+    async def _reap_identified_lease(
+        self, entry: db_models.ProcessSpawnRegistryEntry, *, processes: list[ProcessDescriptor], now: datetime
+    ) -> int:
+        """Enforce the lease of a unit whose row carries a process identity, and return the reap events emitted.
+
+        Only the computer and boot session that wrote the row act on it. A different boot session proves every earlier
+        process gone, so the row is removed without a signal. On the owner's boot, a runner whose recorded identity
+        still matches is the unit's positively known leader: its other live members are ended first, then the
+        runner, and each process ended is one reap event. A runner that is gone leaves the row as it is while members
+        remain (unknown, never signalled), and removes it when none does. A row is removed only after the unit is
+        observed dead.
+        """
+        pgid = int(entry.pid)
+        local_boot = boot_session()
+        if entry.host != config.computer.name or not local_boot or not entry.generation:
+            return 0
+        if entry.boot != local_boot:
+            await self._db.delete_identified_registry_entry(owner=entry.owner, generation=entry.generation)
+            return 0
+        if not is_runner_alive(pgid, entry.identity or ""):
+            if not live_members(pgid):
+                await self._db.delete_identified_registry_entry(owner=entry.owner, generation=entry.generation)
+            return 0
+        dry_run = self._settings.dry_run_default
+        ended = list(live_members(pgid)) if dry_run else await asyncio.to_thread(_end_unit, pgid, entry.identity or "")
+        emitted = 0
+        for pid in ended:
+            descriptor = _descriptor_for_pid(processes, pid)
+            if descriptor is None:
+                continue
+            policy = ProcessJanitorPolicy(
+                signature_id="expired-gate-lease",
+                name="expired gate runner lease",
+                matcher_kind=MatcherKind.PROCESS_SIGNATURE,
+                matcher_params={},
+                ttl_seconds=0,
+                dry_run=dry_run,
+            )
+            await self._emit_reap_event(
+                ProcessMatch(
+                    process=descriptor,
+                    policy=policy,
+                    reason=MatchReason.EXPIRED_LEASE,
+                    owner=entry.owner,
+                    lease_expires_at=entry.lease_expires_at,
+                ),
+                observe_only=dry_run,
+                now=now,
+            )
+            emitted += 1
+        if not dry_run and not live_members(pgid):
+            await self._db.delete_identified_registry_entry(owner=entry.owner, generation=entry.generation)
         return emitted
 
     async def _handle_match(
@@ -212,6 +275,25 @@ class ProcessJanitorService:
                 idempotency_key=idempotency_key,
             ),
         )
+
+
+def _end_unit(pgid: int, identity: str) -> list[int]:
+    """End a unit whose leader is positively known: its other live members first, then the leader, observing each step."""
+    _, members = settle_members(pgid, exclude=pgid)
+    ended = list(members)
+    if is_runner_alive(pgid, identity):
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.kill(pgid, sig)
+            except (ProcessLookupError, PermissionError):
+                break
+            deadline = time.monotonic() + RUNNER_EXIT_GRACE_SECONDS
+            while time.monotonic() < deadline and is_runner_alive(pgid, identity):
+                time.sleep(RUNNER_EXIT_POLL_SECONDS)
+            if not is_runner_alive(pgid, identity):
+                break
+        ended.append(pgid)
+    return ended
 
 
 def _descriptor_for_pid(processes: list[ProcessDescriptor], pid: int) -> ProcessDescriptor | None:

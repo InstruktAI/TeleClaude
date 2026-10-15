@@ -1,171 +1,132 @@
-"""The gate unit: the process group that holds one stamp's build gates, and what is known about it.
+"""The daemon's side of the gate runner: starting it, handing it GO, and reading how it ended.
 
-The gates run in a runner process of their own (``teleclaude.core.next_machine.gate_runner``), which supervises
-``make test`` with a time limit. The owned unit is the process group ``make`` leads, announced by the runner as
-soon as it exists and recorded on the stamp's flight, together with the runner itself. Both are observed
-positively, by process-group probe and by pid with start time, from spawn through abnormal exit, cleanup and
-replacement. A release or a replacement waits for the unit to settle, and settling kills the groups and checks
-that they are gone within a bound.
-
-Known limit: a descendant that leaves the group by starting a session of its own is outside the unit.
+The protocol is ``local/projects/teleclaude/design/process-lifecycle`` (gate runner ownership). Spawning, the wait
+for READY, the hand-off of GO and the wait for the outcome are blocking and run on worker threads. Nothing here
+records or classifies a unit: the registry row and the classifier do that, and this module never signals a process
+it has not itself spawned and still holds.
 """
 
 from __future__ import annotations
 
-import os
-import signal
+import select
 import subprocess
 import sys
-import time
 from collections import deque
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 
-import psutil
+from instrukt_ai_logging import get_logger
 
-from teleclaude.core.next_machine.gate_runner import UNIT_LINE_TEMPLATE, GateOutcome
+from teleclaude.core.next_machine.gate_runner import GO_LINE, READY_LINE, GateOutcome
+from teleclaude.core.process_group import live_members
+from teleclaude.core.process_identity import NO_IDENTITY, start_identity
+
+logger = get_logger(__name__)
 
 GATE_RUNNER_MODULE: Final = "teleclaude.core.next_machine.gate_runner"
-GATE_TOKEN_ENV: Final = "TELECLAUDE_STAMP_GATE"
-UNIT_PREFIX: Final = UNIT_LINE_TEMPLATE.split("{", 1)[0]
+READY_WAIT_SECONDS: Final = 30.0
+REAP_WAIT_SECONDS: Final = 10.0
 OUTCOME_PREFIX: Final = "{"
-NO_START: Final = 0.0
-START_TOLERANCE: Final = 0.5
-SETTLE_TIMEOUT_SECONDS: Final = 10.0
-SETTLE_POLL_SECONDS: Final = 0.1
 OUTPUT_TAIL_LINES: Final = 20
+NOT_READY_TEMPLATE: Final = "the gate runner did not report ready: {reason}"
 RUNNER_FAILED_TEMPLATE: Final = "the gate runner ended without an outcome (exit {code}): {tail}"
-UNSETTLED_TEMPLATE: Final = "the gate unit could not be settled; its processes may still run"
+GO_FAILED_TEMPLATE: Final = "the gate runner could not be told to go: {reason}"
+REAP_FAILED_LOG: Final = "a gate runner bootstrap could not be reaped"
+
+
+class RunnerNotReady(Exception):
+    """The runner could not be started or told to go; no workload was started."""
 
 
 @dataclass(frozen=True)
-class GateRun:
-    """How one gate run ended: its outcome, and whether every process of the unit has ended."""
+class RunnerHandle:
+    """A spawned runner: the process this daemon holds, and the start identity read when it was spawned."""
+
+    process: subprocess.Popen[str]
+    pid: int
+    identity: str
+
+
+@dataclass(frozen=True)
+class RunnerResult:
+    """How the runner ended: its outcome if it reported one, its exit status, and the last of its output."""
 
     outcome: GateOutcome
-    settled: bool
+    ended: bool
 
 
-def identity_of(pid: int) -> float:
-    """The start time of a process, which with its pid names it for as long as it lives."""
+def end_bootstrap(handle: RunnerHandle) -> None:
+    """End a runner that has started no workload, by the handle held from its spawn, and reap it."""
+    for stream in (handle.process.stdin, handle.process.stdout):
+        if stream is not None:
+            try:
+                stream.close()
+            except OSError:
+                pass
+    handle.process.kill()
     try:
-        created: float = psutil.Process(pid).create_time()
-    except psutil.Error:
-        return NO_START
-    return created
+        handle.process.wait(timeout=REAP_WAIT_SECONDS)
+    except subprocess.TimeoutExpired:
+        logger.warning(REAP_FAILED_LOG, pid=handle.pid)
 
 
-def is_process_alive(pid: int, started: float) -> bool:
-    """Whether the recorded process still lives: the same pid with the same start time, and not a zombie."""
-    if not pid:
-        return False
-    try:
-        process = psutil.Process(pid)
-        created: float = process.create_time()
-        status: str = process.status()
-    except psutil.Error:
-        return False
-    return abs(created - started) < START_TOLERANCE and status != psutil.STATUS_ZOMBIE
+def start_runner(worktree: str, item: str) -> RunnerHandle:
+    """Spawn the runner in a session of its own and wait, within a bound, for it to report ready.
 
-
-def is_group_alive(pgid: int, leader_started: float) -> bool:
-    """Whether any process of the recorded group lives.
-
-    A group id cannot be reused while the group has members, so a leader that is gone with members left is
-    still this group; a leader with another start time means the id was reused after the group ended.
+    On any failure the bootstrap is ended and reaped before the failure is raised: nothing was started.
     """
-    if not pgid:
-        return False
-    try:
-        os.killpg(pgid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return False
-    try:
-        created: float = psutil.Process(pgid).create_time()
-    except psutil.NoSuchProcess:
-        return True
-    except psutil.Error:
-        return True
-    return abs(created - leader_started) < START_TOLERANCE
-
-
-def is_token_alive(key: str) -> bool:
-    """Whether any process shows the invocation's token in its environment.
-
-    Backs the recorded identities only: a host may hide environments (macOS does for system binaries), so an
-    absent token proves nothing.
-    """
-    for process in psutil.process_iter():
-        try:
-            if process.environ().get(GATE_TOKEN_ENV) == key and process.status() != psutil.STATUS_ZOMBIE:
-                return True
-        except psutil.Error:
-            continue
-    return False
-
-
-def settle_group(pgid: int, leader_started: float) -> bool:
-    """Kill the group and wait, within a bound, until none of it remains; True when it is gone."""
-    if not is_group_alive(pgid, leader_started):
-        return True
-    try:
-        os.killpg(pgid, signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        pass
-    deadline = time.monotonic() + SETTLE_TIMEOUT_SECONDS
-    while time.monotonic() < deadline:
-        if not is_group_alive(pgid, leader_started):
-            return True
-        time.sleep(SETTLE_POLL_SECONDS)
-    return not is_group_alive(pgid, leader_started)
-
-
-def run_in_runner(
-    worktree: str,
-    item: str,
-    key: str,
-    on_runner: Callable[[int, float], None],
-    on_unit: Callable[[int, float], None],
-) -> GateRun:
-    """Run the gates in a runner process of their own and wait for it, settling the unit before returning.
-
-    The runner reports its unit as soon as ``make`` runs; when the runner ends without an outcome, whether
-    killed or crashed, the unit it left is killed and observed gone before the run is reported as failed.
-    """
-    runner = subprocess.Popen(
+    process = subprocess.Popen(
         [sys.executable, "-m", GATE_RUNNER_MODULE, worktree, item],
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         start_new_session=True,
-        # guard: direct-env-read - allowed: child-process environment construction
-        env={**os.environ, GATE_TOKEN_ENV: key},
     )
-    runner_started = identity_of(runner.pid)
-    on_runner(runner.pid, runner_started)
-    unit_pgid = 0
-    unit_started = NO_START
+    handle = RunnerHandle(process=process, pid=process.pid, identity=start_identity(process.pid))
+    try:
+        if not handle.identity:
+            raise RunnerNotReady(NOT_READY_TEMPLATE.format(reason="its identity could not be read"))
+        assert process.stdout is not None  # the pipe was requested above
+        readable, _, _ = select.select([process.stdout], [], [], READY_WAIT_SECONDS)
+        line = process.stdout.readline().strip() if readable else NO_IDENTITY
+        if line != READY_LINE:
+            raise RunnerNotReady(NOT_READY_TEMPLATE.format(reason=line or "the wait ended"))
+    except BaseException:
+        end_bootstrap(handle)
+        raise
+    return handle
+
+
+def send_go(handle: RunnerHandle) -> None:
+    """Tell the runner to start the workload; its identity is durable by now."""
+    stdin = handle.process.stdin
+    assert stdin is not None  # the pipe was requested at spawn
+    try:
+        stdin.write(GO_LINE + "\n")
+        stdin.flush()
+    except (BrokenPipeError, OSError) as failure:
+        raise RunnerNotReady(GO_FAILED_TEMPLATE.format(reason=str(failure))) from failure
+
+
+def await_outcome(handle: RunnerHandle) -> RunnerResult:
+    """Read the runner to its end and report how it ended; whether its group is empty is the caller's to observe."""
     outcome: GateOutcome | None = None
     tail: deque[str] = deque(maxlen=OUTPUT_TAIL_LINES)
-    assert runner.stdout is not None  # the pipe was requested above
-    for line in runner.stdout:
-        if line.startswith(UNIT_PREFIX):
-            unit_pgid = int(line.removeprefix(UNIT_PREFIX).strip())
-            unit_started = identity_of(unit_pgid)
-            on_unit(unit_pgid, unit_started)
-        elif line.startswith(OUTCOME_PREFIX):
+    stdout = handle.process.stdout
+    assert stdout is not None  # the pipe was requested at spawn
+    for line in stdout:
+        if line.startswith(OUTCOME_PREFIX):
             outcome = GateOutcome.model_validate_json(line)
         else:
             tail.append(line.rstrip())
-    returncode = runner.wait()
-    settled = settle_group(runner.pid, runner_started)
-    if unit_pgid:
-        settled = settle_group(unit_pgid, unit_started) and settled
+    returncode = handle.process.wait()
+    if handle.process.stdin is not None:
+        try:
+            handle.process.stdin.close()
+        except OSError:
+            pass
     if outcome is not None and returncode == 0:
-        return GateRun(outcome=outcome, settled=settled)
+        return RunnerResult(outcome=outcome, ended=not live_members(handle.pid))
     failure = GateOutcome(passed=False, output=RUNNER_FAILED_TEMPLATE.format(code=returncode, tail=" | ".join(tail)))
-    return GateRun(outcome=failure, settled=settled)
+    return RunnerResult(outcome=failure, ended=not live_members(handle.pid))
