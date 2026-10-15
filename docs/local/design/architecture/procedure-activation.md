@@ -280,6 +280,8 @@ Two inputs reach such a procedure, and the platform tells them apart by the decl
 - closing the session ends its pending rows as `not delivered` with the reason `session closed` and keeps their assignee, instead of suspending and unassigning them;
 - launch recovery reads a request row that is pending with no assigned session as unknown, so the reservation is held, and a request row that is terminal with a retained assignee whose session is closed as proof that the entitled session ended before it claimed.
 
+The inbox terminal result `not delivered` is returned by a completed activation operation. The durable operation retains its existing completed or failed outcomes; an expected decision to deliver nothing is not an operation failure (`local/projects/teleclaude/spec/feature/agent_runtime/durable-operation-outcomes`).
+
 **A reservation is released on terminal evidence for exactly its request.** The request's notice went out, every activation it caused is terminal, and no open session entitled to that request remains that could still claim. An open session bound to the item but entitled only to an earlier request is not counted, signalled or ended. A clock decides nothing: activations never captured, or whose assigned session is not recorded, leave the reservation held and unknown.
 <!-- /planned:issue-128 -->
 

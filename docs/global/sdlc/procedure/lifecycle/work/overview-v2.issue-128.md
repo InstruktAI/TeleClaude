@@ -92,8 +92,8 @@ and as findings in the item's log where it does not.
    finding at the commit with the contract it contradicts and the condition that
    reaches it. A notice for a commit you already recorded adds nothing. On a
    bug item hold the build to its cause: no change beyond what the cause
-   requires (`sdlc/procedure/debugging`). Report a temporary suppression's
-   removal that the builder defers to you and decide it under
+   requires (`sdlc/procedure/debugging`). Decide the removal of a temporary
+   suppression the builder reports as deferred under
    `sdlc/policy/todo-creation-discipline`.
 6. **Hold the builder to the contract, not to the plan.** The builder replies to
    each finding and may change the mechanism freely; it stops only for a finding

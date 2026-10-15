@@ -101,25 +101,32 @@ description: Decide whether a todo should exist, audit that decision at preparat
 
 The terms below are defined in `sdlc/concept/defect-evidence`.
 
+<!-- planned-change:issue-128 -->
+
 - **A worker's observation is decided by the session that governs it.** A
   worker is a session executing one job for a governing session it reports back to: a
   builder, reviewer, diagnosis peer, fixer, or finalizer. What it notices
   outside that job reaches the governing session as an observation — what it
   saw, where, and how it came to see it — through the channel its own
   procedure names, or else in its final report. The governing session decides
+  each observation under this standard. A build's entries are decided by the
+  deferral worker the work orchestrator dispatches: deciding them, and
+  creating or filing what this policy admits, is that worker's job
+  (`sdlc/procedure/lifecycle/work/deferrals`).
 
-<!-- planned-change:issue-128 -->
-
-each observation under this standard. A build's entries are decided by the
-deferral worker the work orchestrator dispatches: deciding them, and
-creating or filing what this policy admits, is that worker's job
-(`sdlc/procedure/lifecycle/work/deferrals`).
 <!-- change:issue-128 -->
 
-each observation under this standard. A build's entries are decided by the
-work driver that governs the builder: deciding them, and creating or filing
-what this policy admits, is that driver's job
-(`sdlc/procedure/lifecycle/work/overview-v2`).
+- **A worker's observation is decided by the session that governs it.** A
+  worker is a session executing one job for a governing session it reports back to: a
+  builder, reviewer, diagnosis peer, fixer, or finalizer. What it notices
+  outside that job reaches the governing session as an observation — what it
+  saw, where, and how it came to see it — through the channel its own
+  procedure names, or else in its final report. The governing session decides
+  each observation under this standard. A build's entries are decided by the
+  work driver that governs the builder: deciding them, and creating or filing
+  what this policy admits, is that driver's job
+  (`sdlc/procedure/lifecycle/work/overview-v2`).
+
 <!-- /planned-change:issue-128 -->
 
 - **A defect contradicts a current contract.** A defect is observed behavior

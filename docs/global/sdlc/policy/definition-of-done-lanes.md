@@ -22,11 +22,10 @@ the requirement contract). They are defined once here and consumed by:
 
 <!-- planned-change:issue-128 -->
 
-- `sdlc/procedure/lifecycle/work/review` — the build reviewer, which **executes** the applicable lanes.
+- `sdlc/procedure/lifecycle/work/review-build` — the build reviewer, which **executes** the applicable lanes.
 
 <!-- change:issue-128 -->
 
-- `sdlc/procedure/lifecycle/work/review` — the build reviewer, which **executes** the applicable lanes.
 - `sdlc/procedure/lifecycle/work/overview-v2` — the work driver, which executes the applicable lanes against the item's whole delta before it stamps, and records one line per lane in the stamp's text. It qualifies as the independent reviewer because it did not write the code. It stamps only when no Requirement-Violation, Critical or Important finding is unresolved.
 
 <!-- /planned-change:issue-128 -->

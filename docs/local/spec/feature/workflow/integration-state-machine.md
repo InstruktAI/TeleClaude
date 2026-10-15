@@ -219,9 +219,9 @@ And a human kickback or hold pulls a candidate out of integration without waitin
 <!-- change:issue-128 -->
 
 ```gherkin
-Given an item that carries a ready stamp and is held, is held by a work driver for a stated reason, has a work driver being started, or was returned to preparation
+Given an item that was ready and is now held, is held by a work driver for a stated reason, has a work driver being started, or was returned to preparation
 When the idle step scans for ready candidates
-Then that item is excluded from the integration pool despite its stamp
+Then that candidate is excluded from the integration pool
 And a hold, or the start of a work driver, pulls a candidate out of integration without waiting for it to be dequeued
 ```
 
@@ -266,7 +266,7 @@ Then the candidate is excluded from integration — no candidate is dequeued, th
 <!-- change:issue-128 -->
 
 ```gherkin
-Given a held item, an item a work driver holds or is being started for, or an item that was ready and has been returned to preparation, each carrying a ready stamp
+Given an item that was ready and is now held, held by a work driver, being started, or returned to preparation
 When "telec todo integrate" is invoked with that candidate's explicit slug
 Then the candidate is excluded from integration — no candidate is dequeued, the checkpoint stays IDLE with items_processed zero, and its branch is never squash-merged
 ```
