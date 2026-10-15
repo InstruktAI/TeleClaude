@@ -165,6 +165,15 @@ def _lane_incomplete(cwd: str, slug: str, creative_state: dict[str, StateValue],
     return _derive_creative_phase(workspace_dir, has_design_spec, creative_state) != CreativePhase.CREATIVE_COMPLETE
 
 
+def creative_incomplete_observed(
+    cwd: str, slug: str, state: Mapping[str, StateValue], *, has_input: bool, has_design_spec: bool
+) -> bool:
+    """The creative answer derived from artifact presence the caller observed once, for a caller that fences on it."""
+    if not has_input:
+        return False
+    return _lane_incomplete(cwd, slug, _creative_state_of(state), has_design_spec)
+
+
 async def creative_incomplete(todos_db: WorkflowStore, cwd: str, slug: str, state: Mapping[str, StateValue]) -> bool:
     """Whether the todo is on the creative lane with its design not complete.
 
