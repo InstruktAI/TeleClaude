@@ -50,7 +50,7 @@ class Capability(StrEnum):
     MCP = "mcp"
     PEER_TALK = "peer-talk"
     MEMORIES_READ = "memories-read"
-    MEMORY_SAVE = "memory-save"
+    MEMORIES_SAVE = "memories-save"
     DISPATCH_WORKER = "dispatch-worker"
 
 

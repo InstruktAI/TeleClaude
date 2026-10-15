@@ -60,7 +60,7 @@ Capabilities keep an agent inside its brief; they are focus, not integrity (`gen
 | `code`                 | `code format`, `code add`, `code commit`, `sync`                                                                                                                                                        |
 | `mcp`                  | `mcp list-tools`, `mcp call`                                                                                                                                                                            |
 | `memories-read`        | `memories list`, `memories search`, `memories timeline`, `memories delete`                                                                                                                              |
-| `memory-save`          | `memories save`                                                                                                                                                                                         |
+| `memories-save`        | `memories save`                                                                                                                                                                                         |
 
 The schema's declaration is the authority for every command's exact capability; this table is its grouped reading and is corrected to the schema, never the reverse.
 

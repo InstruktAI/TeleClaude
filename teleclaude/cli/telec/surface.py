@@ -1643,7 +1643,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_MEMORIES_SAVE_PROJECT,
                 ],
                 examples=[],
-                auth=CommandAuth(capability=Capability.MEMORY_SAVE, human=_HR_MEMBER),
+                auth=CommandAuth(capability=Capability.MEMORIES_SAVE, human=_HR_MEMBER),
             ),
             "delete": CommandDef(
                 desc="Delete a personal-preference observation by ID (typically run by the human while pruning).",
