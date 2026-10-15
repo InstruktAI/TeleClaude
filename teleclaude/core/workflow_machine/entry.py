@@ -34,7 +34,8 @@ from teleclaude.core.workflow_machine.publication import (
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ArtifactRevisionMismatch, ItemChange
 from teleclaude.entry_declarations import EntryDeclarations, WorkflowDeclaration
-from teleclaude.events.envelope import occurrence_id
+from teleclaude.events.envelope import EventHomeRef, occurrence_id
+from teleclaude.events.envelope_facts import home_for_project_path
 from teleclaude.events.references import TodoRef
 from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
 from teleclaude.types.lifecycle import LifecyclePhase
@@ -179,15 +180,26 @@ def _check_drivable(request: EntryRequest, state: TodoState, reading: PhaseReadi
     return phase
 
 
-async def _is_bound_driver(session_id: str, item: str, procedure_id: str) -> bool:
-    """Whether the session is the agent procedure activation bound to this item for the driver procedure."""
+async def _is_bound_driver(session_id: str, item: str, procedure_id: str, project_root: str) -> bool:
+    """Whether the session is the agent procedure activation bound to this item of this project for the driver procedure.
+
+    The binding names the subject, the procedure and the home it was activated under. An item of the same name in
+    another project is a different item, so the home the binding records must be the home of this project.
+    """
     if not session_id:
         return False
     session = await db.get_session(session_id)
     if session is None or session.job != procedure_id:
         return False
     binding = (session.origin_metadata or {}).get(BINDING_SECTION)
-    return isinstance(binding, dict) and binding.get(BindingField.SUBJECT.value) == TodoRef(item).to_ref().to_token()
+    if not isinstance(binding, dict):
+        return False
+    home = home_for_project_path(project_root)
+    return (
+        isinstance(home, EventHomeRef)
+        and binding.get(BindingField.SUBJECT.value) == TodoRef(item).to_ref().to_token()
+        and binding.get(BindingField.HOME.value) == home.to_token()
+    )
 
 
 def _driver_for(publication: WorkflowPublication, phase: Phase, item: str) -> tuple[str, WorkflowDeclaration]:
@@ -219,7 +231,9 @@ async def _publication_for(request: EntryRequest, holder: str | None, phase: Pha
             procedure_id, _ = _driver_for(own, phase, request.item)
         except EntryRefused:
             procedure_id = NO_SESSION
-        bound = bool(procedure_id) and await _is_bound_driver(request.caller_session_id, request.item, procedure_id)
+        bound = bool(procedure_id) and await _is_bound_driver(
+            request.caller_session_id, request.item, procedure_id, request.project_root
+        )
         if holder == request.caller_session_id or bound:
             return own, bound
     return published_workflow_publication(), False

@@ -121,6 +121,11 @@ def admit_candidate(cwd: str, key: CandidateKey, session_id: str, loop: asyncio.
     raw = store.read_state_sync(key.slug)
     if raw is None:
         return Admission(AdmissionRefusal.UNKNOWN_ITEM.value.format(item=key.slug))
+    admitted = workflow_record_of(raw).admitted
+    if admitted is not None:
+        if admitted.sha == key.sha:
+            return Admission()
+        return Admission(AdmissionRefusal.OTHER_ADMISSION.value.format(item=key.slug, sha=admitted.sha[:8]))
     head = _branch_head(cwd, key.branch)
     if not head:
         return Admission(AdmissionRefusal.HEAD_UNREADABLE.value.format(item=key.slug))
