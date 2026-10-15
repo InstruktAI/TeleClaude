@@ -156,9 +156,14 @@ record, disposal confirmation or guest routing, and an interrupted attempt
 leaves nothing for its successor to recover. Job ordering, the serialized
 attempt stream and exact-artifact binding carry every guarantee between jobs.
 
-The installed candidate shares its machine with the runner agent, so the step
-that runs the harness receives no repository token; artifact download and
-upload run as separate steps that hold the job's token. A proof job that is
+Because the harness installs onto the machine it runs on, it refuses to start
+unless that machine is a GitHub-hosted runner with no TeleClaude platform home,
+daemon socket or canonical checkout present, so it never installs over a live
+platform. The installed candidate shares its machine with the runner agent, so
+the step that runs the harness receives no repository token, and every
+installation and probe command runs with the runner user's login environment
+rather than the job's; artifact download and upload run as separate steps that
+hold the job's token. A proof job that is
 never assigned, times out or loses its runner produces no successful proof
 receipt, which withholds publication through the existing proof-success
 requirement. The harness drives installation and service lifecycle through
