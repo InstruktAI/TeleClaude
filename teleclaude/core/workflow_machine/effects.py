@@ -75,6 +75,7 @@ RESERVATION_PARAM: Final = "reservation_key"
 REQUESTED_BY_PARAM: Final = "requested_by"
 SESSION_PARAM: Final = "session_id"
 INSTRUCTION_PARAM: Final = "instruction"
+PHASE_PARAM: Final = "creative_phase"
 
 EFFECT_FAILED_LOG: Final = "workflow effect failed; the reconciler retries it with the same identity"
 ITEM_FAILED_LOG: Final = "workflow effect reconciliation failed for an item"
@@ -321,6 +322,7 @@ async def _creative_dispatch(context: EffectContext, effect: PendingEffect) -> N
         recipient = effect.params[SESSION_PARAM]
         if recipient not in record.dispatch_recipients:
             record.dispatch_recipients.append(recipient)
+        record.dispatched_phase = effect.params[PHASE_PARAM]
         return ItemChange(state={**current, WORKFLOW_STATE_KEY: record.to_state()})
 
     await context.store.commit_item_change(context.item.slug, expect_digests={}, mutate=mutate, updated_by=None)

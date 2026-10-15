@@ -372,6 +372,7 @@ def _apply_claim(
     record.helper_starts = []
     record.dispatched = {}
     record.dispatch_recipients = []
+    record.dispatched_phase = ""
     stale_stamp = phase is Phase.WORK and state.lifecycle_phase is LifecyclePhase.READY
     carried_stale = phase is Phase.PREPARATION and state.lifecycle_phase is LifecyclePhase.READY
     if stale_stamp or carried_stale:

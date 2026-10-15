@@ -37,10 +37,19 @@ logger = get_logger(__name__)
 _IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".svg"})
 
 
-def _committed_dispatch(state: Mapping[str, StateValue], caller_session_id: str) -> str | None:
-    """The instruction already committed for this caller's handoff, so a repeat after the release returns the same one."""
+def _committed_dispatch(state: Mapping[str, StateValue], caller_session_id: str, phase: CreativePhase) -> str | None:
+    """The instruction already committed for this caller's handoff when the call repeats it at the same creative phase.
+
+    A repeat of the call that made the handoff, even after the release, returns the committed outcome. A call made at
+    a later creative phase is the next call of the lane and gets its own instruction.
+    """
     record = workflow_record_of(state)
-    if caller_session_id and caller_session_id in record.dispatch_recipients and record.dispatched:
+    if (
+        caller_session_id
+        and caller_session_id in record.dispatch_recipients
+        and record.dispatched
+        and record.dispatched_phase == phase.value
+    ):
         return list(record.dispatched.values())[-1]
     return None
 
@@ -363,12 +372,12 @@ async def next_create(db: Db, slug: str | None, cwd: str, caller_session_id: str
     phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
 
     logger.info("NEXT_CREATE_PHASE slug=%s phase=%s", resolved_slug, phase.value)
-    replayed = _committed_dispatch(state, caller_session_id)
+    replayed = _committed_dispatch(state, caller_session_id, phase)
     if replayed is not None:
         return replayed
     if caller_session_id and state.get("active_runner") == caller_session_id:
         instruction = await _creative_instruction(db, resolved_slug, cwd, phase)
-        dispatched = await hand_off_to_creative(todos_db, resolved_slug, caller_session_id, instruction)
+        dispatched = await hand_off_to_creative(todos_db, resolved_slug, caller_session_id, instruction, phase.value)
         return dispatched if dispatched is not None else _CLAIM_CLOSING.format(slug=resolved_slug)
     if phase == CreativePhase.CREATIVE_COMPLETE:
         open_episode(resolved_slug, state, capability=CreativeCapability.DESIGN, caller_session_id=caller_session_id)

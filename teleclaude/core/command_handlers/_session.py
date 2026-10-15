@@ -417,7 +417,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
 
     # Create session atomically with all known fields — the SESSION_STARTED
     # event must carry complete data so downstream consumers never see partial state.
-    async with helper_start_fence(project_path, working_slug, initiator_session_id) as helper_fence:
+    async with helper_start_fence(project_path, working_slug, initiator_session_id, cmd.command or "") as helper_fence:
         session = await db.create_session(
             computer_name=computer_name,
             tmux_session_name=_UNBOUND_TMUX_NAME,
