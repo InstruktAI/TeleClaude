@@ -8,6 +8,7 @@ core.py (circular-import guard).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -165,10 +166,16 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     return raw
 
 
-def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
-    """Write state to todos.db."""
+def write_phase_state(
+    cwd: str,
+    slug: str,
+    state: dict[str, StateValue],
+    *,
+    merge: Callable[[dict[str, StateValue]], dict[str, StateValue]] | None = None,
+) -> None:
+    """Write state to todos.db; ``merge`` derives the written state from the stored one inside the write transaction."""
     db = get_workflow_store_sync(cwd)
-    db.write_state_sync(slug, state)
+    db.write_state_sync(slug, state, merge=merge)
 
 
 # ---------------------------------------------------------------------------

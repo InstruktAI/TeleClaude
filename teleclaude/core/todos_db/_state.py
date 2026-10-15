@@ -28,6 +28,7 @@ from ._models import TODO_DEPS_TABLE, TODO_STATE_TABLE, TODO_TABLE, Todo, TodoDe
 from ._upcycle import _detect_schema_version, canonicalize_state_for_storage, upcycle_state_dict
 
 logger = get_logger(__name__)
+_BEGIN_IMMEDIATE_SQL = "BEGIN IMMEDIATE"
 
 _V2_PREPARE_PHASES = {
     "draft",
@@ -643,10 +644,22 @@ class TodosDbStateMixin:
                 self._on_mutation("todo_updated", None)
             return payload
 
-    def write_state_sync(self, slug: str, state: dict[str, StateValue]) -> None:
-        """Sync version of write_state for use from worker threads."""
-        payload = canonicalize_state_for_storage(state)
+    def write_state_sync(
+        self,
+        slug: str,
+        state: dict[str, StateValue],
+        *,
+        merge: Callable[[dict[str, StateValue]], dict[str, StateValue]] | None = None,
+    ) -> None:
+        """Sync version of write_state for use from worker threads.
+
+        ``merge``, when given, turns the stored state into the state to write, inside the same write transaction that
+        reads it (taken up front, so no other writer commits between the read and the write); ``state`` is written
+        as it is when the row has no stored state yet.
+        """
         with self._sync_session() as session:  # type: ignore[attr-defined]
+            if merge is not None:
+                session.connection().exec_driver_sql(_BEGIN_IMMEDIATE_SQL)
             row_id = session.exec(
                 apply_todo_identity_pin(
                     select(Todo.id).where(TODO_TABLE.c.slug == slug),
@@ -674,6 +687,9 @@ class TodosDbStateMixin:
 
             now = datetime.now(UTC).isoformat()
             state_model = session.get(TodoStateModel, str(row_id))
+            if merge is not None and state_model is not None:
+                state = merge(upcycle_state_dict(cast(dict[str, StateValue], json.loads(state_model.state))))
+            payload = canonicalize_state_for_storage(state)
             prior_phase = self._stored_lifecycle_phase(state_model)
             prior_holder = self._stored_holder(state_model)
             payload = with_claim_change(self._carry_workflow_record(payload, state_model), prior_holder)

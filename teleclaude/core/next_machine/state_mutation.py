@@ -185,10 +185,18 @@ class StateWriter:
         return payload
 
     def commit_sync(self, todos_db: WorkflowStore, slug: str) -> dict[str, StateValue]:
-        """Validate and persist the current state via the sync DB path."""
-        payload = self.to_dict()
-        todos_db.write_state_sync(slug, payload)
-        return payload
+        """Validate the state and persist what this writer changed, merged onto the stored row inside the transaction."""
+        final = self.to_dict()
+        changes = changed_fields(self._baseline, final)
+        merged: list[dict[str, StateValue]] = []
+
+        def merge(stored: dict[str, StateValue]) -> dict[str, StateValue]:
+            combined = _dump_state(_validate_full_state(apply_changes(stored, changes)))
+            merged.append(combined)
+            return combined
+
+        todos_db.write_state_sync(slug, final, merge=merge)
+        return merged[-1] if merged else final
 
 
 async def commit_on_current(

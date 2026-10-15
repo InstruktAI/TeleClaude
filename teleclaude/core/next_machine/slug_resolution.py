@@ -5,6 +5,7 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.core.workflow_store.store import get_workflow_store_sync
+from teleclaude.core.workflow_store.types import ItemChange
 
 
 class HolderResolutionMode(StrEnum):
@@ -264,11 +266,14 @@ def _is_prepare_runnable_lifecycle(state: dict[str, StateValue] | None) -> bool:
 
 async def set_item_phase_db(todos_db: WorkflowStore, slug: str, phase: str) -> None:
     """Set phase for a work item in todos.db."""
-    state = await todos_db.read_state(slug)
-    if state is None:
-        state = {}
-    state["phase"] = phase
-    await todos_db.write_state(slug, state)
+
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        stored = current or {}
+        if stored.get("phase") == phase:
+            return None
+        return ItemChange(state={**stored, "phase": phase})
+
+    await todos_db.commit_item_change(slug, expect_digests={}, mutate=mutate, updated_by=None)
 
 
 async def resolve_holder_children_db(todos_db: WorkflowStore, holder_slug: str) -> list[str]:
@@ -385,7 +390,11 @@ def set_item_phase(cwd: str, slug: str, phase: str) -> None:
     """Sync legacy: set item phase on filesystem. Use set_item_phase_db for new code."""
     state = read_phase_state(cwd, slug)
     state["phase"] = phase
-    write_phase_state(cwd, slug, state)
+
+    def merge(stored: dict[str, StateValue]) -> dict[str, StateValue]:
+        return {**stored, "phase": phase}
+
+    write_phase_state(cwd, slug, state, merge=merge)
 
 
 __all__ = [
