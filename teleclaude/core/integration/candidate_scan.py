@@ -127,7 +127,7 @@ def _candidate_from_state(
     admitted = _admitted_candidate(slug, typed)
     if admitted is not None:
         return admitted
-    if typed.active_runner or typed.workflow.launch is not None:
+    if typed.active_runner or typed.workflow.launch is not None or typed.workflow.episode is not None:
         return None
     finalize = state.get("finalize")
     branch_raw = finalize.get("branch", slug) if isinstance(finalize, dict) else slug

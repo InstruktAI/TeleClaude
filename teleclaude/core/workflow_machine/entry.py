@@ -356,6 +356,7 @@ def _apply_claim(
     record.ledger.append(entry)
     record.launch = None
     record.instruction_offer = None
+    record.episode = None
     stale_stamp = phase is Phase.WORK and state.lifecycle_phase is LifecyclePhase.READY
     if stale_stamp:
         record.stamp = None

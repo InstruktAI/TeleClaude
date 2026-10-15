@@ -119,6 +119,8 @@ def read_phase(state: TodoState, lane: LaneFacts) -> PhaseReading:
             ready_sha=stamp.sha if stamp else "",
             ready_at=stamp.ready_at if stamp else "",
         )
+    if _legacy_with_episode(state, stored):
+        return PhaseReading(phase=Phase.PREPARATION)
     held = bool(state.active_runner)
     if stored is LifecyclePhase.FINALIZE_READY:
         return _finalize_ready(state, lane.integration_head, held)
@@ -180,7 +182,19 @@ def _creative_overlay_applies(state: TodoState, stored: LifecyclePhase) -> bool:
     A record stored as waiting, work, ready or preparation, or prepared with its prepared record, keeps its phase
     whatever its artifacts or files do afterwards (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``).
     """
+    if stored is LifecyclePhase.PREPARATION:
+        return state.workflow.episode is not None
     if stored in CLOSED_STORED_PHASES:
+        return False
+    return not (stored is LifecyclePhase.PREPARED and state.workflow.prepared is not None)
+
+
+def _legacy_with_episode(state: TodoState, stored: LifecyclePhase) -> bool:
+    """A legacy stored phase with a creative episode open reads preparation once the design is complete.
+
+    A record that has had an episode is never read as ready from a legacy value it carried before.
+    """
+    if state.workflow.episode is None or stored in CLOSED_STORED_PHASES:
         return False
     return not (stored is LifecyclePhase.PREPARED and state.workflow.prepared is not None)
 

@@ -258,6 +258,28 @@ class InstructionOffer(BaseModel):
     epoch: int
 
 
+class EpisodePath(StrEnum):
+    """How a creative episode was opened."""
+
+    CONVERSION = "conversion"
+    CAPABILITY = "capability"
+
+
+class CreativeEpisode(BaseModel):
+    """The creative lane's current work on an item, open until the first later claim of a driver closes it.
+
+    ``deferred`` marks a conversion that activation observed while the integrator's admission held the item: it is
+    applied by the first pass that finds the item without an admission
+    (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    opened_at: str
+    path: EpisodePath
+    deferred: bool = False
+
+
 class WorkflowRecord(BaseModel):
     """Everything the workflow machine persists on an item beyond the lifecycle phase."""
 
@@ -277,6 +299,7 @@ class WorkflowRecord(BaseModel):
     offered_findings: list[OfferedFinding] = Field(default_factory=list)
     admitted: AdmittedCandidate | None = None
     instruction_offer: InstructionOffer | None = None
+    episode: CreativeEpisode | None = None
 
     def with_effect(self, effect: PendingEffect) -> WorkflowRecord:
         """A copy with the effect appended to the pending list."""

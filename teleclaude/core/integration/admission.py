@@ -52,6 +52,7 @@ class AdmissionRefusal(StrEnum):
     HEAD_UNREADABLE = "the branch of {item} cannot be read on origin"
     HEAD_MOVED = "the branch of {item} moved to {head} after the scan read {sha}"
     OTHER_ADMISSION = "{item} already holds an admission at {sha}"
+    EPISODE_OPEN = "{item} has a creative episode open; the next pass applies its conversion first"
 
 
 class AdmissionRefused(Exception):
@@ -79,6 +80,8 @@ def _mutation(key: CandidateKey, lane: LaneFacts, snapshot: str, session_id: str
             return None
         if admitted is not None:
             raise AdmissionRefused(AdmissionRefusal.OTHER_ADMISSION.value.format(item=key.slug, sha=admitted.sha[:8]))
+        if state.workflow.episode is not None:
+            raise AdmissionRefused(AdmissionRefusal.EPISODE_OPEN.value.format(item=key.slug))
         head = lane.integration_head
         if head != key.sha:
             raise AdmissionRefused(
