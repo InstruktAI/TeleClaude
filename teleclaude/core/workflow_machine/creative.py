@@ -45,9 +45,17 @@ class CreativeRefusal(StrEnum):
         "{capability} is refused: {item} is admitted by the integrator at {sha}; "
         "the integrator's delivery or park retires the admission"
     )
-    CLOSED_PHASE = (
+    WAITING = (
+        "{capability} is refused: {item} waits on {person}, and a creative write never moves a phase; "
+        "{person}'s decision (`telec todo act {item} decision`) resumes the phase it waited in"
+    )
+    CLOSED_HELD_BY_CALLER = (
+        "{capability} is refused: {item} is in {phase} under this session's claim, and a creative write never moves "
+        "a phase or its claim; return it to preparation with `telec todo act {item} kickback`"
+    )
+    CLOSED_UNHELD = (
         "{capability} is refused: {item} is in {phase}, and a creative write never moves a phase or its claim; "
-        "return it to preparation with `telec todo act {item} kickback` first"
+        "start its driver with `telec todo work {item}`, which returns it to preparation with `kickback`"
     )
     HELD = "{capability} is refused: {item} is held by session {holder}"
     HOLDER = (
@@ -93,7 +101,11 @@ def open_episode(
     if holder and holder != caller_session_id:
         raise _refuse(CreativeRefusal.HELD, capability, item, holder=holder)
     if _closed_phase(state, stored):
-        raise _refuse(CreativeRefusal.CLOSED_PHASE, capability, item, phase=stored.value)
+        waiting = state.workflow.waiting
+        if stored is LifecyclePhase.WAITING and waiting is not None:
+            raise _refuse(CreativeRefusal.WAITING, capability, item, person=waiting.person)
+        refusal = CreativeRefusal.CLOSED_HELD_BY_CALLER if holder else CreativeRefusal.CLOSED_UNHELD
+        raise _refuse(refusal, capability, item, phase=stored.value)
     if holder and capability is not CreativeCapability.DESIGN:
         raise _refuse(CreativeRefusal.HOLDER, capability, item)
     if state.workflow.episode is not None:
