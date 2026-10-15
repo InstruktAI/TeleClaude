@@ -18,12 +18,11 @@ from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.session_utils import session_in_claiming_group
-from teleclaude.core.workflow_machine.phase_reading import TASK_LANE_STORED_PHASES
+from teleclaude.core.workflow_machine.phase_reading import in_task_lane
 from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX, Lineage
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
@@ -217,10 +216,10 @@ def intent_body_mutation(
         if current is None:
             raise IntentBodyRefused(INTENT_UNCLAIMED.format(slug=slug))
         state = TodoState.model_validate(current)
-        in_task_lane = state.kind == TodoKind.TASK or state.lifecycle_phase in TASK_LANE_STORED_PHASES
-        if in_task_lane != expect_task:
+        task_lane = in_task_lane(state)
+        if task_lane != expect_task:
             raise IntentBodyRefused(INTENT_KIND_CHANGED.format(slug=slug))
-        if in_task_lane:
+        if task_lane:
             return None
         holder = state.active_runner
         if not holder:

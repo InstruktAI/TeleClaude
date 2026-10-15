@@ -43,8 +43,9 @@ from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todos_db import HolderWriteRefused, malformed_digest_detail
 from teleclaude.core.workflow_machine.creative import CreativeCapability, CreativeRefused
 from teleclaude.core.workflow_machine.creative_commit import episode_mutation
+from teleclaude.core.workflow_machine.phase_reading import in_task_lane as task_lane_of
 from teleclaude.project_root import resolve_project_root
-from teleclaude.types.todo_kind import TodoKind
+from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -171,7 +172,7 @@ async def write_artifact(
     await _refuse_holder_mutation(todos_db, slug)
     await require_slug_in_todo(todos_db, slug)
     raw_for_lane = await todos_db.read_state(slug) if name == ARTIFACT_INPUT else None
-    in_task_lane = raw_for_lane is not None and raw_for_lane.get("kind") == TodoKind.TASK
+    in_task_lane = raw_for_lane is not None and task_lane_of(TodoState.model_validate(raw_for_lane))
     intent_body_write = name == ARTIFACT_INPUT and bool(identity.session_id)
     if not intent_body_write or in_task_lane:
         await refuse_foreign_claim(todos_db, identity, slug)

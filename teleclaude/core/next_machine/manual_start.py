@@ -69,6 +69,7 @@ from teleclaude.core.todos_db._exceptions import (
     ReviewerConflict,
     ReviewerIdentityUnresolved,
 )
+from teleclaude.core.workflow_machine.dispatch import holds_handoff_authority
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
@@ -335,6 +336,7 @@ async def guard_driver_start(
     command: str | None = None,
     thinking_mode: str,
     db: Db | None = None,
+    handoff_session_id: str | None = None,
 ) -> DriverStartGuardResult:
     """Refuse a create-door driver start that would duplicate a live driver.
 
@@ -358,6 +360,9 @@ async def guard_driver_start(
     - ``REVIEWER`` → refuse against a live reviewer already open for the same
       review subject (see :func:`_guard_reviewer_start`), reached even when
       ``slug`` is ``None`` — commit review carries no todo slug at all.
+
+    ``handoff_session_id`` is set only by the platform's own start of a handoff's creative orchestrator; it is exempt
+    only when a pending handoff of the item's current holder fixed exactly that session's identity.
 
     Raises :class:`ClaimConflict` (carrying the holder) when a live driver already
     holds the slug, :class:`ReviewerConflict` when a live reviewer already holds
@@ -384,6 +389,8 @@ async def guard_driver_start(
     if not slug:
         return DriverStartGuardResult()
     project_root = resolve_project_root(project_path)
+    if handoff_session_id and await holds_handoff_authority(str(project_root), slug, handoff_session_id):
+        return DriverStartGuardResult()
     runtime_db = db or await get_db()
     todos_db = await get_workflow_store(project_root)
     effective_caller = None if launch_class is DriverLaunchClass.ORCHESTRATOR else caller_session_id

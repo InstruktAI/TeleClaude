@@ -647,6 +647,7 @@ async def _run_session(
             caller_session_id=plan.initiator_session_id,
             caller_human_email=terminal_driver_email(identity),
             thinking_mode=plan.launch_intent.thinking_mode if plan.launch_intent else "",
+            handoff_session_id=fixed_session_id,
         )
     except RunSessionRefusal as exc:
         emit_run_outcome(

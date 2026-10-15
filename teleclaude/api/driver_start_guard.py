@@ -41,6 +41,7 @@ async def enforce_driver_start_guard(
     caller_session_id: str | None,
     caller_human_email: str | None,
     thinking_mode: str,
+    handoff_session_id: str | None = None,
 ) -> DriverStartGuardResult:
     """Refuse a create-door driver start that would duplicate a live driver.
 
@@ -62,6 +63,7 @@ async def enforce_driver_start_guard(
             caller_human_email=caller_human_email,
             command=procedure_id,
             thinking_mode=thinking_mode,
+            handoff_session_id=handoff_session_id,
         )
     except ReviewerConflict as conflict:
         raise RunSessionRefusal(

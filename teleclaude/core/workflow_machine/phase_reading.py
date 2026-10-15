@@ -89,6 +89,11 @@ def creative_snapshot(state: Mapping[str, StateValue]) -> str:
     return json.dumps(state.get(CREATIVE_STATE_KEY), sort_keys=True, default=str)
 
 
+def in_task_lane(state: TodoState) -> bool:
+    """Whether the task procedures drive the todo: the task kind, or a stored phase of the task lane."""
+    return state.kind == KIND_TASK or state.lifecycle_phase in TASK_LANE_STORED_PHASES
+
+
 def read_phase(state: TodoState, lane: LaneFacts) -> PhaseReading:
     """Read the item's phase.
 
