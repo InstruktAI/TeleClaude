@@ -36,7 +36,8 @@ every commit and places findings against commits; you answer each of them.
    invariants you commit to, including behavior on failure midway, concurrent
    actors and restart. Report and stop your turn; the delivering session
    challenges the note. Dispose each item in a note: changed, or rejected with
-   evidence. Coding may start in parallel.
+   evidence. Once the affected pending snippets are authored and applied,
+   coding may proceed alongside the challenge.
 2. **Contracts first.** Write the documentation snippets the spec changes as
    complete files before the code that realizes them, and hand them to the
    delivering session with their absolute paths and target repository paths;
