@@ -443,17 +443,6 @@ And uncertain recovery remains visible as unsuccessful admission
 
 <!-- change:release-install-proof-on-hosted-mac -->
 
-#### UC-RP13: A release needs no owned machine
-
-```gherkin
-Given a release operator has a prepared candidate and no owned runner is available
-When the release attempt runs
-Then every release stage runs on a fresh GitHub-hosted machine
-And installation proof installs that exact candidate on hosted macOS
-And publication still requires successful lint, runtime acceptance and installation proof of that candidate
-And an interrupted proof leaves nothing for the next attempt to recover
-```
-
 <!-- /planned-change:release-install-proof-on-hosted-mac -->
 
 ### Cross-context references
