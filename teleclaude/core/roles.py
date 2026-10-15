@@ -172,12 +172,7 @@ _WORKER_BASELINE: frozenset[Capability] = frozenset(
         Capability.MCP,
         Capability.PEER_TALK,
         Capability.SELF_ACTS,
-        Capability.JOBS_READ,
-        Capability.JOB_REPORT,
         Capability.OPERATION_READ,
-        Capability.MESSAGING,
-        Capability.MEMORIES_READ,
-        Capability.CONFIG_READ,
     }
 )
 

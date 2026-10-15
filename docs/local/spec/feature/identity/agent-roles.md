@@ -240,9 +240,9 @@ And its permitted reach includes capabilities outside that set
 
 ```gherkin
 Given an agent session whose role is `artist`
-When it runs `telec todo stamp`, `telec sessions result` or `telec config project get`
+When it runs `telec todo stamp`, `telec sessions result` or `telec code commit`
 Then each command is admitted
-But `telec computers list` and `telec sessions start` are refused with the not-permitted failure naming `artist` and the verb
+But `telec computers list`, `telec sessions start` and `telec message` are refused with the not-permitted failure naming `artist` and the verb
 ```
 
 ## Known caveats
