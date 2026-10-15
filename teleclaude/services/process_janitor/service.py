@@ -17,7 +17,16 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config.machine import config
 from teleclaude.core import db_models
 from teleclaude.core.db import Db
-from teleclaude.core.process_group import UnitClass, classify_unit, is_runner_alive, live_members, settle_members
+from teleclaude.core.process_group import (
+    GroupAnswer,
+    UnitClass,
+    classify_unit,
+    group_answer,
+    is_runner_alive,
+    live_members,
+    settle_members,
+    wait_for_absence,
+)
 from teleclaude.core.process_identity import boot_session
 from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibility, occurrence_id
 from teleclaude.events.producer import publish_event
@@ -225,7 +234,7 @@ class ProcessJanitorService:
             await self._db.delete_identified_registry_entry(owner=entry.owner, generation=entry.generation)
             return 0
         if not is_runner_alive(pgid, entry.identity or ""):
-            if not live_members(pgid):
+            if group_answer(pgid) is GroupAnswer.ABSENT:
                 await self._db.delete_identified_registry_entry(owner=entry.owner, generation=entry.generation)
             return 0
         dry_run = self._settings.dry_run_default
@@ -256,7 +265,7 @@ class ProcessJanitorService:
                 now=now,
             )
             emitted += 1
-        if not dry_run and not live_members(pgid):
+        if not dry_run and await asyncio.to_thread(wait_for_absence, pgid):
             await self._db.delete_identified_registry_entry(owner=entry.owner, generation=entry.generation)
         return emitted
 

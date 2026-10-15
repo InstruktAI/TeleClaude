@@ -19,7 +19,7 @@ from instrukt_ai_logging import get_logger
 from pydantic import ValidationError
 
 from teleclaude.core.next_machine.gate_runner import GO_LINE, READY_LINE, GateOutcome
-from teleclaude.core.process_group import live_members, read_line_by
+from teleclaude.core.process_group import read_line_by, wait_for_absence
 from teleclaude.core.process_identity import start_identity
 
 logger = get_logger(__name__)
@@ -150,6 +150,6 @@ def await_outcome(handle: RunnerHandle) -> RunnerResult:
         except OSError:
             pass
     if outcome is not None and returncode == 0:
-        return RunnerResult(outcome=outcome, ended=not live_members(handle.pid))
+        return RunnerResult(outcome=outcome, ended=wait_for_absence(handle.pid))
     failure = GateOutcome(passed=False, output=RUNNER_FAILED_TEMPLATE.format(code=returncode, tail=" | ".join(tail)))
-    return RunnerResult(outcome=failure, ended=not live_members(handle.pid))
+    return RunnerResult(outcome=failure, ended=wait_for_absence(handle.pid))

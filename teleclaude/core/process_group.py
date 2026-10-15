@@ -24,7 +24,16 @@ from teleclaude.core.process_identity import NO_IDENTITY, start_identity
 GRACE_SECONDS: Final = 3.0
 SETTLE_BOUND_SECONDS: Final = 10.0
 POLL_SECONDS: Final = 0.1
+ABSENCE_BOUND_SECONDS: Final = 5.0
 MIN_SIGNALLABLE_PID: Final = 1  # pid 0 reads as the caller's own group and pid 1 is the init process
+
+
+class GroupAnswer(StrEnum):
+    """The kernel's answer to whether a process group exists: absent only when it says there is no such process."""
+
+    ABSENT = "absent"
+    PRESENT = "present"
+    UNKNOWN = "unknown"
 
 
 class UnitClass(StrEnum):
@@ -33,6 +42,37 @@ class UnitClass(StrEnum):
     LIVE = "live"
     DEAD = "dead"
     UNKNOWN = "unknown"
+
+
+def group_answer(pgid: int) -> GroupAnswer:
+    """Ask the kernel whether any process, zombie or not, is in the group, by sending it signal zero.
+
+    Success, or being refused permission to signal a process in it, means the group is present. Failing with no such
+    process, and nothing else, means it is absent. Every other failure is unknown. A listing of the process table is
+    never a substitute: a process forked between two reads is in no listing, and a zombie hides it from every read.
+    """
+    if pgid <= MIN_SIGNALLABLE_PID:
+        return GroupAnswer.UNKNOWN
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return GroupAnswer.ABSENT
+    except PermissionError:
+        return GroupAnswer.PRESENT
+    except OSError:
+        return GroupAnswer.UNKNOWN
+    return GroupAnswer.PRESENT
+
+
+def wait_for_absence(pgid: int, *, bound: float = ABSENCE_BOUND_SECONDS) -> bool:
+    """Whether the kernel reports the group absent within a short bound; a zombie holding it is reaped by its parent."""
+    deadline = time.monotonic() + bound
+    while True:
+        if group_answer(pgid) is GroupAnswer.ABSENT:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(POLL_SECONDS)
 
 
 def live_members(pgid: int, *, exclude: int = 0) -> list[int]:
@@ -162,4 +202,4 @@ def classify_unit(*, host: str, boot: str, pid: int, identity: str, local_host: 
         return UnitClass.UNKNOWN
     if is_runner_alive(pid, identity):
         return UnitClass.LIVE
-    return UnitClass.UNKNOWN if live_members(pid) else UnitClass.DEAD
+    return UnitClass.DEAD if group_answer(pid) is GroupAnswer.ABSENT else UnitClass.UNKNOWN
