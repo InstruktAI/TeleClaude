@@ -87,6 +87,13 @@ def _forget(key: str, task: asyncio.Task[str]) -> None:
         task.exception()
 
 
+def _end_unwanted_start(spawned: asyncio.Future[RunnerHandle]) -> None:
+    """End and reap a runner that a cancelled start went on to spawn; it was never told to go, so it holds no workload."""
+    if spawned.cancelled() or spawned.exception() is not None:
+        return
+    threading.Thread(target=end_bootstrap, args=(spawned.result(),), daemon=True).start()
+
+
 def _flight_of(raw: dict[str, StateValue] | None) -> StampInFlight | None:
     return workflow_record_of(raw).stamp_in_flight if raw is not None else None
 
@@ -205,15 +212,20 @@ async def _start_unit(request: ActRequest, owner_key: str, key: str, state: _Sta
     await check_refs(request.project_root, request.item, request.sha)
     if not await asyncio.to_thread(has_build_commits_beyond_main, worktree):
         raise ActRefused(StampRefusal.NO_BUILD_COMMITS.value)
+    spawning = asyncio.get_running_loop().run_in_executor(None, start_runner, worktree, request.item)
     try:
-        state.handle = await asyncio.to_thread(start_runner, worktree, request.item)
+        handle = await asyncio.shield(spawning)
+    except asyncio.CancelledError:
+        spawning.add_done_callback(_end_unwanted_start)  # the spawn goes on; a runner it yields is never told to go
+        raise
     except RunnerNotReady as failure:
         raise ActRefused(StampRefusal.NOT_STARTED.value.format(reason=str(failure))) from failure
+    state.handle = handle
     state.registered = await db.insert_identified_registry_entry(
         owner=owner_key,
-        pid=state.handle.pid,
+        pid=handle.pid,
         lease_expires_at=(datetime.now(UTC) + timedelta(seconds=LEASE_SECONDS)).isoformat(),
-        identity=state.handle.identity,
+        identity=handle.identity,
         host=config.computer.name,
         boot=boot,
         generation=key,
@@ -221,8 +233,8 @@ async def _start_unit(request: ActRequest, owner_key: str, key: str, state: _Sta
     if not state.registered:
         raise ActRefused(StampRefusal.ROW_EXISTS.value)
     state.go_may_have_been_sent = True
-    await asyncio.to_thread(send_go, state.handle)
-    return state.handle
+    await asyncio.to_thread(send_go, handle)
+    return handle
 
 
 async def _undo_before_go(owner_key: str, key: str, state: _StartState) -> None:
@@ -260,8 +272,9 @@ async def _run_unit(
                     await _undo_before_go(owner_key, key, state)
                     raise
         assert state.handle is not None  # a start that got past GO holds its handle
-        state.waiting = True
-        result = await asyncio.to_thread(await_outcome, state.handle)
+        waiting = asyncio.get_running_loop().run_in_executor(None, await_outcome, state.handle)
+        state.waiting = True  # submitted: the job reaps the runner whatever happens to this await
+        result = await asyncio.shield(waiting)
         if not result.ended:
             raise GateUnsettled(StampRefusal.UNSETTLED.value)
         state.ended = True
