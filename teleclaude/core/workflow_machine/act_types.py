@@ -21,6 +21,7 @@ class Refusal(StrEnum):
     HOLDER_CHANGED = "{act}: the item's holder changed while the act was being decided; repeat the act"
     NOT_PERFORMED_HERE = "{act} is not performed through the act command"
     REVISION_MOVED = "{act}: the {artifact} is at {actual}, not at the {expected} the act names"
+    WAIT_CHANGED = "{act}: the question {person} was asked changed while the act was being decided; read the item and repeat the act"
     DECISION_OWNER = "{act}: the item waits on {person}, and only that person's own session may decide"
 
 

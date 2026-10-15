@@ -100,9 +100,9 @@ class WorkflowStore(Protocol):
         slug: str,
         *,
         expect_digests: Mapping[str, str],
-        mutate: Callable[[dict[str, StateValue] | None, Mapping[str, str]], ItemChange],
+        mutate: Callable[[dict[str, StateValue] | None, Mapping[str, str]], ItemChange | None],
         updated_by: str | None,
-    ) -> ItemChange: ...
+    ) -> ItemChange | None: ...
     async def update_state_with_artifact_evidence(
         self,
         slug: str,

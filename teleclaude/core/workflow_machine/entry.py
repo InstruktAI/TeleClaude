@@ -17,9 +17,10 @@ from typing import Final
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import ARTIFACT_INPUT, WORKTREE_DIR, TodoStatus
+from teleclaude.constants import ARTIFACT_INPUT, WORKTREE_DIR
 from teleclaude.core.db import db
-from teleclaude.core.workflow_machine.caller import child_sessions_of
+from teleclaude.core.workflow_machine.caller import child_sessions_of, load_caller
+from teleclaude.core.workflow_machine.dependencies import unmet_for_preparation, unmet_for_work
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.instruction import InstructionFacts, render_instruction
 from teleclaude.core.workflow_machine.phase_reading import PhaseReading, read_phase
@@ -30,7 +31,7 @@ from teleclaude.core.workflow_machine.publication import (
 )
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ArtifactRevisionMismatch, ItemChange
-from teleclaude.entry_declarations import WorkflowDeclaration
+from teleclaude.entry_declarations import EntryDeclarations, WorkflowDeclaration
 from teleclaude.events.envelope import occurrence_id
 from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
 from teleclaude.types.lifecycle import LifecyclePhase
@@ -138,10 +139,11 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-async def _unmet_dependencies(store: WorkflowStore, item: str) -> list[str]:
-    return [
-        entry.dep_slug for entry in await store.get_deps_with_status(item) if entry.todo_status != TodoStatus.DELIVERED
-    ]
+async def _unmet_dependencies(store: WorkflowStore, item: str, verb: EntryVerb) -> list[str]:
+    """The dependencies the verb's gate has not cleared: prepared for preparation, delivered for work."""
+    if verb is EntryVerb.PREPARE:
+        return await unmet_for_preparation(store, item)
+    return await unmet_for_work(store, item)
 
 
 def _check_drivable(request: EntryRequest, state: TodoState, reading: PhaseReading) -> Phase:
@@ -177,17 +179,35 @@ def _driver_for(publication: WorkflowPublication, phase: Phase, item: str) -> tu
     return declared.procedure_id, workflow
 
 
-async def _governing_publication(session_id: str) -> WorkflowPublication:
-    """The publication a holding driver was initialized under; the current one for any other caller."""
+async def _own_publication(session_id: str) -> WorkflowPublication | None:
+    """The publication a driver was initialized under, from its session's stored invocation; None without one."""
     handover = await db.get_startup_handover(session_id) if session_id else None
     invocation = handover.intent.invocation if handover is not None else None
     if invocation is not None and invocation.workflow_publication:
         return WorkflowPublication.from_json(invocation.workflow_publication)
-    return published_workflow_publication()
+    return None
+
+
+async def _publication_for(request: EntryRequest, holder: str | None, phase: Phase) -> tuple[WorkflowPublication, bool]:
+    """The governing publication and whether the caller is the driver bound to this item under it.
+
+    The holding driver, and the bound driver making its first claiming call, work under the publication they
+    were initialized under; any other caller uses the current one.
+    """
+    own = await _own_publication(request.caller_session_id)
+    if own is not None:
+        try:
+            procedure_id, _ = _driver_for(own, phase, request.item)
+        except EntryRefused:
+            procedure_id = NO_SESSION
+        bound = bool(procedure_id) and await _is_bound_driver(request.caller_session_id, request.item, procedure_id)
+        if holder == request.caller_session_id or bound:
+            return own, bound
+    return published_workflow_publication(), False
 
 
 def _apply_claim(
-    request: EntryRequest, item_id: str, branch: str, state_dict: dict[str, StateValue] | None
+    request: EntryRequest, item_id: str, branch: str, role: str, state_dict: dict[str, StateValue] | None
 ) -> ItemChange:
     """Claim the item for the calling driver inside the commit, or refuse."""
     if state_dict is None:
@@ -206,12 +226,13 @@ def _apply_claim(
         key=key,
         epoch=record.claim_epoch + 1,
         at=_now(),
-        role=NO_SESSION,
+        role=role,
         session_id=request.caller_session_id,
         bound=branch if phase in (Phase.PREPARED, Phase.WORK) else NO_SESSION,
         text=CLAIM_NOTE,
     )
     record.ledger.append(entry)
+    record.driver_cycle += 1
     record.launch = None
     effects: list[PendingEffect] = []
     if phase in (Phase.PREPARED, Phase.WORK):
@@ -234,13 +255,15 @@ def _apply_claim(
     return ItemChange(state=new_state, log_entry=_claim_log(entry, request.item))
 
 
-CLAIM_LOG_TEMPLATE: Final = "\n### {at} — claim · {session}\n\n{item} claimed by session {session}{branch}.\n"
+CLAIM_LOG_TEMPLATE: Final = (
+    "\n### {at} — {role} · {session} · claim\n\n{item} claimed by {role} session {session}{branch}.\n"
+)
 CLAIM_LOG_BRANCH: Final = " on branch {branch}"
 
 
 def _claim_log(entry: LedgerEntry, item: str) -> str:
     branch = CLAIM_LOG_BRANCH.format(branch=entry.bound) if entry.bound else NO_SESSION
-    return CLAIM_LOG_TEMPLATE.format(at=entry.at, session=entry.session_id, item=item, branch=branch)
+    return CLAIM_LOG_TEMPLATE.format(at=entry.at, role=entry.role, session=entry.session_id, item=item, branch=branch)
 
 
 def _apply_reservation(
@@ -292,60 +315,45 @@ async def _await_claim(store: WorkflowStore, request: EntryRequest) -> str:
         await asyncio.sleep(ATTACH_POLL_SECONDS)
 
 
-async def enter(request: EntryRequest) -> EntryResult:
-    """Run one entry verb for an item."""
-    store = await get_workflow_store(request.project_root)
-    request = replace(request, project_root=str(store.project_root))
-    raw = await store.read_state(request.item)
-    item_id = store.resolve_store_address_sync(request.item)
-    if raw is None or item_id is None:
-        raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
-    state = TodoState.model_validate(raw)
-    reading = read_phase(state, integration_head=NO_SESSION, creative_incomplete=False)
-    holder = state.active_runner or None
-    if holder is not None and holder != request.caller_session_id:
-        raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
-    phase = _check_drivable(request, state, reading)
-    unmet = await _unmet_dependencies(store, request.item)
-    if unmet and holder is None:
-        raise _refuse(EntryRefusal.UNMET_DEPENDENCIES, item=request.item, dependencies=DEPENDENCY_SEPARATOR.join(unmet))
-    publication = await _governing_publication(request.caller_session_id if holder else NO_SESSION)
-    procedure_id, workflow = _driver_for(publication, phase, request.item)
-    branch = request.item
-    expected = (
-        {ARTIFACT_INPUT: state.workflow.prepared.revision}
-        if phase is Phase.PREPARED and state.workflow.prepared is not None
-        else {}
+async def _claim(
+    store: WorkflowStore, request: EntryRequest, item_id: str, branch: str, expected: Mapping[str, str]
+) -> None:
+    """The bound driver claims for itself, with the role the platform recorded for its session."""
+    caller = await load_caller(request.caller_session_id)
+    role = (caller.role if caller is not None else None) or NO_SESSION
+    await store.commit_item_change(
+        request.item,
+        expect_digests=expected,
+        mutate=lambda current, _digests: _apply_claim(request, item_id, branch, role, current),
+        updated_by=request.caller_session_id,
     )
-    if holder is None:
-        try:
-            if await _is_bound_driver(request.caller_session_id, request.item, procedure_id):
-                await store.commit_item_change(
-                    request.item,
-                    expect_digests=expected,
-                    mutate=lambda current, _digests: _apply_claim(request, item_id, branch, current),
-                    updated_by=request.caller_session_id,
-                )
-                await reconcile_slug_supervised(request.project_root, request.item)
-                holder = request.caller_session_id
-            else:
-                await store.commit_item_change(
-                    request.item,
-                    expect_digests=expected,
-                    mutate=lambda current, _digests: _apply_reservation(request, item_id, phase, current),
-                    updated_by=request.caller_session_id or None,
-                )
-                await reconcile_slug_supervised(request.project_root, request.item)
-                started = await _await_claim(store, request)
-                return EntryResult(
-                    text=LAUNCH_NOTE.format(item=request.item, session=started), driver_session_id=started
-                )
-        except ArtifactRevisionMismatch as mismatch:
-            raise _refuse(
-                EntryRefusal.REVISION_MOVED, item=request.item, actual=mismatch.actual, expected=mismatch.expected
-            ) from mismatch
+    await reconcile_slug_supervised(request.project_root, request.item)
+
+
+async def _launch(
+    store: WorkflowStore, request: EntryRequest, item_id: str, phase: Phase, expected: Mapping[str, str]
+) -> EntryResult:
+    """Record the launch reservation, then attach to the driver that claims for it."""
+    await store.commit_item_change(
+        request.item,
+        expect_digests=expected,
+        mutate=lambda current, _digests: _apply_reservation(request, item_id, phase, current),
+        updated_by=request.caller_session_id or None,
+    )
+    await reconcile_slug_supervised(request.project_root, request.item)
+    started = await _await_claim(store, request)
+    return EntryResult(text=LAUNCH_NOTE.format(item=request.item, session=started), driver_session_id=started)
+
+
+async def _instruct(
+    request: EntryRequest,
+    publication: WorkflowPublication,
+    workflow: WorkflowDeclaration,
+    phase: Phase,
+    branch: str,
+) -> EntryResult:
+    """The instruction for the holding driver of the phase."""
     children = await child_sessions_of(request.caller_session_id)
-    child_declared = publication.child_of(workflow)
     worktree = (
         str(Path(request.project_root) / WORKTREE_DIR / request.item)
         if phase in (Phase.PREPARED, Phase.WORK)
@@ -361,9 +369,45 @@ async def enter(request: EntryRequest) -> EntryResult:
             child_sessions=children,
         ),
         workflow,
-        child_declared.declarations,
+        publication.child_of(workflow).declarations,
     )
-    return EntryResult(text=text, driver_session_id=holder or request.caller_session_id)
+    return EntryResult(text=text, driver_session_id=request.caller_session_id)
+
+
+async def enter(request: EntryRequest) -> EntryResult:
+    """Run one entry verb for an item."""
+    store = await get_workflow_store(request.project_root)
+    request = replace(request, project_root=str(store.project_root))
+    raw = await store.read_state(request.item)
+    item_id = store.resolve_store_address_sync(request.item)
+    if raw is None or item_id is None:
+        raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
+    state = TodoState.model_validate(raw)
+    holder = state.active_runner or None
+    if holder is not None and holder != request.caller_session_id:
+        raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
+    phase = _check_drivable(request, state, read_phase(state, integration_head=NO_SESSION, creative_incomplete=False))
+    unmet = await _unmet_dependencies(store, request.item, request.verb)
+    if unmet and holder is None:
+        raise _refuse(EntryRefusal.UNMET_DEPENDENCIES, item=request.item, dependencies=DEPENDENCY_SEPARATOR.join(unmet))
+    publication, bound = await _publication_for(request, holder, phase)
+    _, workflow = _driver_for(publication, phase, request.item)
+    branch = request.item
+    expected = (
+        {ARTIFACT_INPUT: state.workflow.prepared.revision}
+        if phase is Phase.PREPARED and state.workflow.prepared is not None
+        else {}
+    )
+    if holder is None:
+        try:
+            if not bound:
+                return await _launch(store, request, item_id, phase, expected)
+            await _claim(store, request, item_id, branch, expected)
+        except ArtifactRevisionMismatch as mismatch:
+            raise _refuse(
+                EntryRefusal.REVISION_MOVED, item=request.item, actual=mismatch.actual, expected=mismatch.expected
+            ) from mismatch
+    return await _instruct(request, publication, workflow, phase, branch)
 
 
 @dataclass(frozen=True)
@@ -372,7 +416,7 @@ class ChildPlan:
 
     procedure_id: str
     arguments: str
-    snapshot: str
+    declarations: EntryDeclarations
     subfolder: str
 
 
@@ -389,7 +433,12 @@ async def plan_child(project_root: str, item: str, caller_session_id: str) -> Ch
     phase = read_phase(state, integration_head=NO_SESSION, creative_incomplete=False).phase
     if phase is None or phase not in _VERB_FOR_PHASE:
         raise _refuse(EntryRefusal.NOT_DRIVEN, item=item, phase=phase.value if phase else NO_SESSION)
-    publication = await _governing_publication(caller_session_id)
+    publication = await _own_publication(caller_session_id) or published_workflow_publication()
     _, workflow = _driver_for(publication, phase, item)
     subfolder = f"{WORKTREE_DIR}/{item}" if phase in (Phase.PREPARED, Phase.WORK) else NO_SESSION
-    return ChildPlan(procedure_id=workflow.child, arguments=item, snapshot=publication.to_json(), subfolder=subfolder)
+    return ChildPlan(
+        procedure_id=workflow.child,
+        arguments=item,
+        declarations=publication.child_of(workflow).declarations,
+        subfolder=subfolder,
+    )

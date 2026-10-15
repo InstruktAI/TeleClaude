@@ -292,10 +292,12 @@ class TodosDbWorkflowOperationsMixin:
         slug: str,
         *,
         expect_digests: Mapping[str, str],
-        mutate: Callable[[dict[str, StateValue] | None, Mapping[str, str]], ItemChange],
+        mutate: Callable[[dict[str, StateValue] | None, Mapping[str, str]], ItemChange | None],
         updated_by: str | None,
-    ) -> ItemChange:
+    ) -> ItemChange | None:
         """Apply one change to an item under the writer lock, or write nothing.
+
+        A mutation that returns None decided there is nothing to write.
 
         The artifact revisions, the state read, the mutation, the state write and the log append
         share one write transaction. A revision that differs from the expected one raises before any
@@ -311,6 +313,9 @@ class TodosDbWorkflowOperationsMixin:
                     if digests[name] != expected:
                         raise ArtifactRevisionMismatch(name, expected, digests[name])
                 change = mutate(prior, digests)
+                if change is None:
+                    await session.rollback()
+                    return None
                 await self.write_state(slug, change.state, session=session, owns_workflow_record=True)
                 if change.log_entry:
                     existing = await self.read_artifact_in_session(slug, ARTIFACT_LOG, session)

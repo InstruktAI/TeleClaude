@@ -13,7 +13,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
-from teleclaude.api.sessions_actions_routes import run_session
+from teleclaude.api.sessions_actions_routes import run_pinned_session
 from teleclaude.api_models import RunSessionRequest
 from teleclaude.core.workflow_machine.act_types import ActRefused, ActRequest
 from teleclaude.core.workflow_machine.acts import perform_act
@@ -108,14 +108,9 @@ async def todo_child(
         plan = await plan_child(cwd, item, identity.session_id)
     except EntryRefused as refusal:
         raise HTTPException(status_code=_STATUS_REFUSED, detail=str(refusal)) from refusal
-    created = await run_session(
-        RunSessionRequest(
-            command=plan.procedure_id,
-            args=plan.arguments,
-            project=cwd,
-            subfolder=plan.subfolder,
-            workflow_snapshot=plan.snapshot,
-        ),
+    created = await run_pinned_session(
+        RunSessionRequest(command=plan.procedure_id, args=plan.arguments, project=cwd, subfolder=plan.subfolder),
         identity,
+        plan.declarations,
     )
     return TodoChildResponse(status=_STATUS_OK, session_id=str(created.session_id), procedure=plan.procedure_id)

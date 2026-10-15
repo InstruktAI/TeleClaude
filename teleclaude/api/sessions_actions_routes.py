@@ -85,7 +85,6 @@ from teleclaude.core.procedure_entry import (
     EntryContext,
     EntryRefusal,
     job_entry,
-    normalize_procedure_id,
     resolve_entry,
     with_additional_context,
 )
@@ -95,7 +94,7 @@ from teleclaude.core.session_message_projection import (
     build_session_messages_dto,
 )
 from teleclaude.core.session_utils import split_project_path_and_subdir
-from teleclaude.core.workflow_machine.publication import pinned_declarations
+from teleclaude.entry_declarations import EntryDeclarations
 from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.project_manifest_runtime import load_registered_entries
 from teleclaude.types.commands import (
@@ -253,6 +252,7 @@ def _prepare_run_session(
     request: RunSessionRequest,
     identity: CallerIdentity,
     entry_point: SessionEntryPoint,
+    pinned: EntryDeclarations | None = None,
 ) -> RunSessionPlan:
     """Resolve a run-session request through the procedure entry into a create-session plan."""
     effective_agent = resolve_run_session_agent(request)
@@ -280,7 +280,7 @@ def _prepare_run_session(
             entry=entry,
             caller_mode=caller_mode,
             additional_context=request.additional_context,
-            pinned=pinned_declarations(request.workflow_snapshot, normalize_procedure_id(procedure_token)),
+            pinned=pinned,
         )
     except EntryRefusal as exc:
         raise RunSessionRefusal(status_code=exc.status_code, detail=exc.detail, reason=exc.reason) from exc
@@ -538,8 +538,12 @@ async def _run_session(
     identity: CallerIdentity,
     *,
     entry_point: SessionEntryPoint,
+    pinned: EntryDeclarations | None = None,
 ) -> CreateSessionResponseDTO:
-    """Run a published entry procedure on a new agent session."""
+    """Run a published entry procedure on a new agent session.
+
+    ``pinned`` is set only by a daemon-side caller that resolved it from the authenticated holder's own record.
+    """
     request_id = str(uuid.uuid4())
     command_kind = request.command.lstrip(COMMAND_PREFIX) or None
     request_entry_point = SessionEntryPoint.CRON if request.job is not None else entry_point
@@ -575,7 +579,7 @@ async def _run_session(
                 status_code=400, detail="project required", reason=AgentDispatchReason.PROJECT_REQUIRED
             )
         request = _with_project_folder(request)
-        plan = _prepare_run_session(request, identity, request_entry_point)
+        plan = _prepare_run_session(request, identity, request_entry_point, pinned)
     except RunSessionRefusal as exc:
         emit_run_outcome(
             selected_agent=None,
@@ -708,6 +712,13 @@ async def _run_session(
             raise refusal from e
         logger.error("run_session failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to run session: {e}") from e
+
+
+async def run_pinned_session(
+    request: RunSessionRequest, identity: CallerIdentity, pinned: EntryDeclarations
+) -> CreateSessionResponseDTO:
+    """Run a published entry procedure with declarations a daemon-side caller resolved from the holder's record."""
+    return await _run_session(request, identity, entry_point=SessionEntryPoint.RUN_SESSION_API, pinned=pinned)
 
 
 @router.post("/sessions/run", response_model_exclude_none=True)

@@ -27,7 +27,7 @@ from teleclaude.core.workflow_machine.vocabulary import ACT_PERFORMERS, Performe
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ArtifactRevisionMismatch, ItemChange
 from teleclaude.events.envelope import occurrence_id
-from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, workflow_record_of
+from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import LIFECYCLE_PHASE_STATE_KEY, TodoState
@@ -80,8 +80,10 @@ class _Facts:
     holder: str | None
     in_group: bool
     child_sessions: tuple[str, ...]
+    person_slug: str
     person_email: str
     person_authorized: bool
+    waiting_digest: str
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,29 @@ class _Decision:
 
 def _digest(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:DIGEST_LENGTH]
+
+
+def _content_digest(request: ActRequest) -> str:
+    """The identity of what one invocation asks for, from the request alone.
+
+    Together with the item and the driver cycle it names the invocation, so repeating it after an
+    interruption finds the original whatever the item's phase or holder has become since.
+    """
+    parts = (
+        request.caller_session_id,
+        request.sha,
+        request.revision,
+        request.person,
+        request.finding_key,
+        request.text,
+    )
+    return _digest(BOUND_SEPARATOR.join(parts))
+
+
+def _act_key(request: ActRequest, item_id: str, record: WorkflowRecord) -> str:
+    return occurrence_id(
+        request.project_root, item_id, request.act.value, _content_digest(request), str(record.driver_cycle)
+    )
 
 
 def _now() -> str:
@@ -228,6 +253,8 @@ def _decide_decision(request: ActRequest, facts: _Facts, state: TodoState, readi
     if waiting is None or not facts.caller.is_persons_own_session(facts.person_email):
         person = waiting.person if waiting is not None else NO_SESSION
         raise _refuse(Refusal.DECISION_OWNER, act=request.act.value, person=person)
+    if waiting.person != facts.person_slug or waiting.question_digest != facts.waiting_digest:
+        raise _refuse(Refusal.WAIT_CHANGED, act=request.act.value, person=waiting.person)
     answer = _require(request, request.text, ARGUMENT_TEXT)
     reservation = LaunchReservation(
         key=_digest(f"{waiting.person}{BOUND_SEPARATOR}{waiting.question_digest}{BOUND_SEPARATOR}{_now()}"),
@@ -336,7 +363,11 @@ async def _resolve_facts(store: WorkflowStore, request: ActRequest, state: TodoS
         raise _refuse(Refusal.UNKNOWN_CALLER, act=request.act.value)
     holder = state.active_runner or None
     in_group = holder is not None and await in_claiming_group(caller.session_id, holder)
-    person_slug = request.person or (state.workflow.waiting.person if state.workflow.waiting is not None else "")
+    waiting = state.workflow.waiting
+    if request.act is Act.DECISION:
+        person_slug = waiting.person if waiting is not None else NO_SESSION
+    else:
+        person_slug = request.person
     person = configured_person(person_slug) if person_slug else None
     return _Facts(
         caller=caller,
@@ -344,30 +375,33 @@ async def _resolve_facts(store: WorkflowStore, request: ActRequest, state: TodoS
         holder=holder,
         in_group=in_group,
         child_sessions=await child_sessions_of(holder) if holder is not None and request.act is Act.KICKBACK else (),
+        person_slug=person_slug,
         person_email=person.email if person is not None else NO_SESSION,
         person_authorized=person is not None and has_project_authority(person, request.project_root),
+        waiting_digest=waiting.question_digest if waiting is not None else NO_SESSION,
     )
 
 
 def _apply(
     request: ActRequest, facts: _Facts, state_dict: dict[str, StateValue] | None, outcome: list[ActResult]
-) -> ItemChange:
-    """Decide the act against the state read inside the commit and build the change, or refuse."""
+) -> ItemChange | None:
+    """Decide the act against the state read inside the commit and build the change, or refuse.
+
+    An invocation the item already recorded writes nothing: it resumes through its pending effects.
+    """
     if state_dict is None:
         raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)
     state = TodoState.model_validate(state_dict)
+    existing = _act_key(request, facts.item_id, state.workflow)
+    if existing in state.workflow.act_status:
+        return None
     holder_now = state.active_runner or None
     if holder_now != facts.holder:
         raise _refuse(Refusal.HOLDER_CHANGED, act=request.act.value)
     reading = read_phase(state, integration_head=NO_SESSION, creative_incomplete=False)
     decision = _DECIDERS[request.act](request, facts, state, reading)
     record = state.workflow
-    key = occurrence_id(request.project_root, facts.item_id, request.act.value, decision.bound, str(record.claim_epoch))
-    if key in record.act_status:
-        outcome.append(
-            ActResult(act_key=key, phase=reading.phase, complete=record.act_status[key] is ActStatus.COMPLETE)
-        )
-        return ItemChange(state=state_dict)
+    key = existing
     entry = LedgerEntry(
         seq=len(record.ledger) + 1,
         act=request.act,
@@ -401,31 +435,38 @@ def _apply(
 
 
 async def perform_act(request: ActRequest) -> ActResult:
-    """Perform one act: authorize it, commit it atomically with its pending effects, then run the effects."""
+    """Perform one act: authorize it, commit it atomically with its pending effects, then run the effects.
+
+    An invocation the item already recorded is not decided again: it resumes through its pending effects.
+    """
     store = await get_workflow_store(request.project_root)
     request = replace(request, project_root=str(store.project_root))
     raw = await store.read_state(request.item)
     if raw is None:
         raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)
-    state = TodoState.model_validate(raw)
     if request.act not in _DECIDERS:
         raise _refuse(Refusal.NOT_PERFORMED_HERE, act=request.act.value)
+    state = TodoState.model_validate(raw)
     facts = await _resolve_facts(store, request, state)
-    _authorize(request, facts)
-    outcome: list[ActResult] = []
+    key = _act_key(request, facts.item_id, state.workflow)
+    if key not in state.workflow.act_status:
+        _authorize(request, facts)
+        await _commit(store, request, facts, state)
+    await reconcile_slug_supervised(request.project_root, request.item)
+    return await _result(store, request, key)
+
+
+async def _commit(store: WorkflowStore, request: ActRequest, facts: _Facts, state: TodoState) -> None:
     expected = _DECIDERS[request.act](
         request, facts, state, read_phase(state, integration_head=NO_SESSION, creative_incomplete=False)
     ).expect_digests
 
-    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange:
-        return _apply(request, facts, current, outcome)
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        return _apply(request, facts, current, [])
 
     try:
         await store.commit_item_change(
-            request.item,
-            expect_digests=expected or {},
-            mutate=mutate,
-            updated_by=request.caller_session_id,
+            request.item, expect_digests=expected or {}, mutate=mutate, updated_by=request.caller_session_id
         )
     except ArtifactRevisionMismatch as mismatch:
         raise _refuse(
@@ -435,15 +476,18 @@ async def perform_act(request: ActRequest) -> ActResult:
             actual=mismatch.actual,
             expected=mismatch.expected,
         ) from mismatch
-    await reconcile_slug_supervised(request.project_root, request.item)
-    result = outcome[-1]
+
+
+async def _result(store: WorkflowStore, request: ActRequest, key: str) -> ActResult:
+    """What the item now records for the invocation: the phase afterwards and whether its effects finished."""
     refreshed = await store.read_state(request.item)
     if refreshed is None:
-        return result
-    status = workflow_record_of(refreshed).act_status.get(result.act_key)
+        raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)
+    state = TodoState.model_validate(refreshed)
+    status = state.workflow.act_status.get(key)
     return ActResult(
-        act_key=result.act_key,
-        phase=result.phase,
+        act_key=key,
+        phase=read_phase(state, integration_head=NO_SESSION, creative_incomplete=False).phase,
         complete=status is not ActStatus.IN_PROGRESS,
-        finding_key=result.act_key if request.act is Act.FINDING else NO_SESSION,
+        finding_key=key if request.act is Act.FINDING else NO_SESSION,
     )

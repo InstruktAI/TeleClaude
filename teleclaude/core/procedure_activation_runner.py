@@ -52,7 +52,7 @@ from teleclaude.core.procedure_event_delivery import (
 )
 from teleclaude.core.session_revival import revive_session, session_is_resumable
 from teleclaude.core.session_status import is_session_terminal
-from teleclaude.core.workflow_machine.publication import driver_publication_snapshot
+from teleclaude.core.workflow_machine.publication import driver_initialization
 from teleclaude.docs_subscriptions import (
     ProcedureDeliverySettings,
     SubscriptionAttendance,
@@ -215,6 +215,7 @@ async def _create_agent(
     """
     procedure_id = cmd.procedure_id
     session_id = str(uuid.uuid4())
+    initialization = driver_initialization(procedure_id)
     try:
         resolved = resolve_entry(
             procedure_token=procedure_id,
@@ -227,8 +228,9 @@ async def _create_agent(
                 subject=subject,
                 attendance=attendance,
                 delivery=ProcedureDeliverySettings(event_delivery=cmd.event_delivery, interruptible=cmd.interruptible),
-                workflow_publication=driver_publication_snapshot(procedure_id, folder),
+                workflow_publication=initialization.snapshot,
             ),
+            pinned=initialization.declarations,
             caller_mode=None,
         )
     except EntryRefusal as exc:

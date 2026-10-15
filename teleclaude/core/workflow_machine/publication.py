@@ -13,14 +13,12 @@ import hashlib
 import json
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
 from typing import Final
 
 import yaml
 
 from teleclaude.core.models import JsonDict
 from teleclaude.core.models._session import NO_WORKFLOW_PUBLICATION
-from teleclaude.core.procedure_entry import published_entry_declarations
 from teleclaude.docs_subscriptions import IndexKey
 from teleclaude.entry_declarations import (
     EntryDeclarations,
@@ -141,12 +139,27 @@ def published_workflow_publication() -> WorkflowPublication:
     return WorkflowPublication(procedures=tuple(procedures), digest=_digest_of(procedures))
 
 
-def driver_publication_snapshot(procedure_id: str, project_root: Path) -> str:
-    """The serialized publication a lifecycle driver is initialized under; empty for any other procedure."""
-    declarations = published_entry_declarations(procedure_id, project_root)
-    if declarations.workflow is None:
-        return NO_WORKFLOW_PUBLICATION
-    return published_workflow_publication().to_json()
+@dataclass(frozen=True)
+class DriverInitialization:
+    """What a lifecycle driver is initialized under: its snapshot and the declarations read from that same snapshot."""
+
+    snapshot: str
+    declarations: EntryDeclarations | None
+
+
+def driver_initialization(procedure_id: str) -> DriverInitialization:
+    """Read the publication once and derive both the snapshot and the driver's declarations from it.
+
+    A procedure that is not a lifecycle driver has neither.
+    """
+    publication = published_workflow_publication()
+    try:
+        declared = publication.declared(procedure_id)
+    except PublicationError:
+        return DriverInitialization(NO_WORKFLOW_PUBLICATION, None)
+    if declared.declarations.workflow is None:
+        return DriverInitialization(NO_WORKFLOW_PUBLICATION, None)
+    return DriverInitialization(publication.to_json(), declared.declarations)
 
 
 def pinned_declarations(snapshot: str, procedure_id: str) -> EntryDeclarations | None:
