@@ -16,13 +16,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from teleclaude.core.db import db
+from teleclaude.core.models import Session
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.process_identity import ProcessState, probe_process, start_identity
 from teleclaude.core.workflow_machine.caller import group_sessions_of, in_claiming_group
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.events.envelope import occurrence_id
+from teleclaude.events.references import EventRef, ReferenceKind
 from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
+from teleclaude.types.procedure_delivery import BINDING_SECTION, BindingField
 from teleclaude.types.todos import TodoState
 from teleclaude.types.workflow_record import Act, HelperStart, WorkflowRecord
 
@@ -235,12 +238,35 @@ async def _governing_items(
         if session is None:
             break
         seen.add(current)
-        if session.working_slug and session.project_path:
-            pair = (str(session.project_path), str(session.working_slug))
+        for pair in _session_items(session):
             if pair not in pairs:
                 pairs.append(pair)
         current = session.initiator_session_id or ""
     return pairs
+
+
+def _session_items(session: Session) -> list[tuple[str, str]]:
+    """The items a session is persistently about: its working slug, and the item its procedure binding names.
+
+    A driver the platform activated for an item has no working slug; the item is the structured binding\'s subject, and
+    the project is the folder the session works in, which is the folder of the home the binding names. Raw command or
+    title text is never read as evidence.
+    """
+    if not session.project_path:
+        return []
+    items: list[tuple[str, str]] = []
+    if session.working_slug:
+        items.append((str(session.project_path), str(session.working_slug)))
+    binding = (session.origin_metadata or {}).get(BINDING_SECTION)
+    subject = binding.get(BindingField.SUBJECT.value) if isinstance(binding, dict) else None
+    if isinstance(subject, str) and subject:
+        try:
+            ref = EventRef.from_token(subject)
+        except ValueError:
+            return items
+        if ref.kind == ReferenceKind.TODO.value:
+            items.append((str(session.project_path), ref.identity))
+    return items
 
 
 async def _register_for_group(project_root: str, item: str, initiator_session_id: str) -> str:
