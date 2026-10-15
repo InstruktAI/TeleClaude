@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Final
 
 from instrukt_ai_logging import get_logger
@@ -20,6 +21,8 @@ logger = get_logger(__name__)
 
 EFFECT_RECONCILER_CONSUMER: Final = "workflow-effect-reconciler"
 HEAD_OBSERVER_CONSUMER: Final = "workflow-head-observer"
+INVENTORY_TIMEOUT_SECONDS: Final = 10
+INVENTORY_FAILED_LOG: Final = "the project inventory could not be read for the head observation pass"
 PAUSED_LOG: Final = "workflow observation and reconciliation paused while draining"
 
 
@@ -32,7 +35,12 @@ async def observe_heads() -> None:
     if not get_shutdown_drain().is_open:
         logger.debug(PAUSED_LOG)
         return
-    for project_root in await local_checkout_paths():
+    try:
+        projects = await asyncio.wait_for(local_checkout_paths(), INVENTORY_TIMEOUT_SECONDS)
+    except Exception:  # supervision boundary: an unreadable inventory costs this pass, not the daemon
+        logger.exception(INVENTORY_FAILED_LOG)
+        return
+    for project_root in projects:
         await discover_project_heads_supervised(project_root)
 
 

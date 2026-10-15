@@ -62,6 +62,7 @@ DISCOVERY_FAILED_LOG: Final = "head discovery failed for an item"
 DISCOVERY_PROJECT_FAILED_LOG: Final = "head discovery failed for a project"
 DISCOVERY_ITEM_TIMEOUT_SECONDS: Final = 20
 DISCOVERY_CONCURRENCY: Final = 8
+PASS_SETUP_TIMEOUT_SECONDS: Final = 10
 HEAD_READ_FAILED_LOG: Final = "integration head could not be read for a phase reading"
 HEAD_COMPARED_PHASES: Final = frozenset({LifecyclePhase.READY, LifecyclePhase.REVIEW_APPROVED})
 
@@ -251,11 +252,19 @@ async def _items_in_work(store: WorkflowStore) -> list[str]:
     return slugs
 
 
-async def discover_project_heads(project_root: str) -> None:
-    """Read the integration head of every item in work, concurrently and each within its bound."""
+async def _scheduled_items(project_root: str) -> list[str]:
     store = await get_workflow_store(project_root)
+    return await _items_in_work(store)
+
+
+async def discover_project_heads(project_root: str) -> None:
+    """Read the integration head of every item in work, concurrently and each within its bound.
+
+    Finding the items in work is local but not free; it has a bound of its own, outside the items' limits.
+    """
+    scheduled = await asyncio.wait_for(_scheduled_items(project_root), PASS_SETUP_TIMEOUT_SECONDS)
     gate = asyncio.Semaphore(DISCOVERY_CONCURRENCY)
-    await asyncio.gather(*(_discover_bounded(project_root, slug, gate) for slug in await _items_in_work(store)))
+    await asyncio.gather(*(_discover_bounded(project_root, slug, gate) for slug in scheduled))
 
 
 async def discover_project_heads_supervised(project_root: str) -> None:
