@@ -26,11 +26,11 @@ from teleclaude.core.next_machine.lifecycle import (
     prepare_review_verdict_from_state,
     require_lifecycle_phase,
 )
-from teleclaude.core.workflow_machine.held_standing import held_ready_standing, stored_ready_reading
+from teleclaude.core.workflow_machine.held_standing import held_ready_standing, item_reading
 from teleclaude.core.workflow_machine.phase_reading import PhaseReading
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store_sync
 from teleclaude.core.workflow_store.types import TodoProjectionItem
-from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, workflow_record_of
+from teleclaude.types.claim_change import workflow_record_of
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY, HoldAuditSource, TodoState
 from teleclaude.types.workflow_record import Phase
@@ -130,52 +130,35 @@ def _public_hold_source(hold_audit: StateValue) -> str | None:
     return source
 
 
-_READ_TO_STORED: dict[Phase | None, LifecyclePhase] = {
-    Phase.WORK: LifecyclePhase.WORK,
-    Phase.PREPARATION: LifecyclePhase.PREPARATION,
-}
-
-
 READING_WORKERS: Final = 8
-
-
-def _may_read_ready(state: dict[str, StateValue]) -> bool:
-    """Whether the item is stored ``ready`` or carries an admission, the only items whose reading compares the head."""
-    workflow = state.get(WORKFLOW_STATE_KEY)
-    admitted = isinstance(workflow, dict) and bool(workflow.get("admitted"))
-    return state.get("lifecycle_phase") == LifecyclePhase.READY.value or admitted
 
 
 def _ready_readings(
     store: WorkflowStore, project_path: str, items: Sequence[TodoProjectionItem]
 ) -> dict[str, PhaseReading]:
-    """The machine\'s reading of every item stored ``ready``, the remote reads taken together rather than one by one."""
-    ready = [
-        (str(item.item_id), item.state)
-        for item in items
-        if item.state is not None and item.state_error is None and _may_read_ready(item.state)
-    ]
-    if not ready:
+    """The machine\'s reading of every live item that is not a task, the remote reads taken together."""
+    live = [(str(item.item_id), item.state) for item in items if item.state is not None and item.state_error is None]
+    if not live:
         return {}
 
     def read(entry: tuple[str, dict[str, StateValue]]) -> tuple[str, PhaseReading | None]:
         slug, state = entry
-        return slug, stored_ready_reading(store, project_path, slug, state)
+        return slug, item_reading(store, project_path, slug, state)
 
     with ThreadPoolExecutor(max_workers=READING_WORKERS) as pool:
-        results = list(pool.map(read, ready))
+        results = list(pool.map(read, live))
     return {slug: reading for slug, reading in results if reading is not None}
 
 
-def _read_lifecycle(stored: LifecyclePhase, reading: PhaseReading | None) -> LifecyclePhase:
-    """The phase the item reads, in the stored vocabulary, when the machine\'s reading moved a stored ``ready``.
+def _read_phase_value(stored: LifecyclePhase, reading: PhaseReading | None) -> str:
+    """The phase the item reads, as the machine\'s reading gives it; the stored value for an item it does not read.
 
-    A stamp the integration head has moved past reads ``work`` (or ``preparation`` for a carried stamp nobody holds);
-    the projection reports that, not the stored value, so the list and the item\'s detail say the same thing.
+    The list and the item\'s detail say the same thing: a stamp the head moved past reads ``work`` (``preparation``
+    for a carried stamp nobody holds), and an item whose creative episode is open reads ``design``.
     """
-    if reading is None or stored is not LifecyclePhase.READY:
-        return stored
-    return _READ_TO_STORED.get(reading.phase, stored)
+    if reading is None or reading.phase is None or reading.phase is Phase.DELIVERED:
+        return stored.value
+    return reading.phase.value
 
 
 def _non_empty_str(value: object) -> str | None:
@@ -444,8 +427,7 @@ def _derive_projection_fields(
         state.get("lifecycle_phase"),
         context=f"assemble_todo_from_db({slug})",
     )
-    lifecycle = _read_lifecycle(lifecycle, reading)
-    current_value = lifecycle.value
+    current_value = _read_phase_value(lifecycle, reading)
     is_draft_lifecycle = lifecycle == LifecyclePhase.DRAFT
 
     state_phase = state.get("phase", "")

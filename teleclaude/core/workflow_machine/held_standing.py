@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.next_machine.kinds import KIND_TASK
+from teleclaude.core.workflow_machine.heads import HEAD_COMPARED_PHASES
 from teleclaude.core.workflow_machine.lane import resolve_lane_sync
 from teleclaude.core.workflow_machine.phase_reading import PhaseReading, read_phase
 from teleclaude.core.workflow_machine.reasons import reason_notes
@@ -27,22 +29,25 @@ logger = get_logger(__name__)
 HEAD_UNREADABLE_LOG = "held standing read without the integration head"
 
 
-def stored_ready_reading(
+def item_reading(
     store: WorkflowStore, project_path: str, slug: str, state: dict[str, StateValue]
 ) -> PhaseReading | None:
-    """The machine\'s reading of an item stored ``ready`` (or admitted), by the common resolver; None for any other item.
+    """The machine\'s reading of a live item that is not a task, by the common resolver; None for any other item.
 
-    The one reading the projection uses for the item\'s phase fields and for its standing. The integration head is read
-    once, for these items alone; a head that cannot be read leaves the stamp as it is.
+    The one reading the projection uses for the item\'s phase fields and for its standing, so a creative episode that
+    reads ``design`` and a stamp the head moved past are seen by every consumer alike. The integration head is read
+    only for the stored phases whose reading compares it, and for an admitted item; a head that cannot be read leaves
+    the stamp as it is.
     """
     model = TodoState.model_validate(state)
-    if model.lifecycle_phase is not LifecyclePhase.READY and model.workflow.admitted is None:
+    if model.kind == KIND_TASK or model.lifecycle_phase is LifecyclePhase.DELIVERED:
         return None
-    try:
-        head = integration_head_sync(project_path, slug)
-    except RemoteReadFailed:
-        head = ""
-        logger.warning(HEAD_UNREADABLE_LOG, slug=slug, project_path=project_path)
+    head = ""
+    if model.lifecycle_phase in HEAD_COMPARED_PHASES or model.workflow.admitted is not None:
+        try:
+            head = integration_head_sync(project_path, slug)
+        except RemoteReadFailed:
+            logger.warning(HEAD_UNREADABLE_LOG, slug=slug, project_path=project_path)
     return read_phase(model, resolve_lane_sync(store, project_path, slug, state, head))
 
 
