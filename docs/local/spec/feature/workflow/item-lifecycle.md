@@ -17,15 +17,15 @@ Facing: every actor below is an agent session unless a person is named. A person
 
 ### Phases
 
-| Phase         | Meaning                                                                                                                                             |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `preparation` | The item's spec is being written and challenged. Driven by the preparation driver.                                                                  |
-| `waiting`     | A question only a named person can answer is open. It names the phase waited in (`preparation` or `work`) and the person. No driver holds the item. |
-| `prepared`    | The spec is judged ready and names the exact body revision that is the spec.                                                                        |
-| `work`        | The item is claimed for delivery. Driven by the work driver.                                                                                        |
-| `ready`       | A stamp bound to a commit exists. The integrator takes the item as a candidate at that commit.                                                      |
-| `delivered`   | The integrator recorded delivery at the confirmed final commit of the shared branch.                                                                |
-| `design`      | The creative lane's own machine drives the item. It reads as `preparation` once its design is complete.                                             |
+| Phase         | Meaning                                                                                                                                                                                                              |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preparation` | The item's spec is being written and challenged. Driven by the preparation driver.                                                                                                                                   |
+| `waiting`     | A question only a named person can answer is open. It names the phase waited in (`preparation` or `work`) and the person. No driver holds the item.                                                                  |
+| `prepared`    | The spec is judged ready and names the exact body revision that is the spec.                                                                                                                                         |
+| `work`        | The item is claimed for delivery. Driven by the work driver.                                                                                                                                                         |
+| `ready`       | A stamp bound to a commit exists. The integrator takes the item as a candidate at that commit.                                                                                                                       |
+| `delivered`   | The integrator recorded delivery at the confirmed final commit of the shared branch.                                                                                                                                 |
+| `design`      | The creative lane's own machine drives an undelivered item outside the task lane while its design is not complete. Once the design is complete the item reads as its stored phase gives, by the reading table below. |
 
 An item in the icebox keeps its phase; the icebox is a status. The task lane's phases stay outside this vocabulary and are driven by the task procedures.
 
@@ -62,7 +62,7 @@ A stored phase value from before this vocabulary is read as a phase of it, and t
 | `ready` with a stamp of this machine                                                                                            | `ready` at the stamp's commit; `work` when the integration head is known and is another commit           |
 | `delivered`                                                                                                                     | `delivered`                                                                                              |
 | `task_plan_drafting`, `task_running`                                                                                            | unchanged                                                                                                |
-| any phase, while the creative state is not complete                                                                             | `design`                                                                                                 |
+| any phase except `delivered` and the task lane's phases, while the creative state is not complete                               | `design`; once it is complete, the stored phase is read by this table                                    |
 
 A stamp bound to a commit that is no longer the integration head is stale: the item reads as `work` again, the next entry verb for work claims it and clears the stale stamp, and the driver stamps the new head. An integration head that cannot be read leaves a stamp as it is. A candidate the integrator has queued, has in progress or has parked keeps its checkpoint and candidate key. Reading a phase never withdraws one.
 
