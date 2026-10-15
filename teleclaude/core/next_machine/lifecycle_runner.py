@@ -50,7 +50,12 @@ from teleclaude.core.next_machine.runtime.sessions import (
     start_in_flight,
 )
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
-from teleclaude.core.next_machine.start_reservation import give_back, record_reservation
+from teleclaude.core.next_machine.start_reservation import (
+    give_back,
+    mark_session_id,
+    record_reservation,
+    settle_mark_on_any_row,
+)
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter, commit_on_current
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
@@ -413,8 +418,11 @@ async def _confirm_reserved_start(todos_db: WorkflowStore, slug: str, session_id
     def change(writer: StateWriter) -> None:
         give_back(writer, session_id, accepted=True)
 
-    with suppress(StateMutationError):  # the item left the store: there is no mark left to clear
+    try:
         await commit_on_current(todos_db, slug, change)
+    except StateMutationError:
+        # The item left the live rows while the start was being accepted: settle the mark on the row wherever it is.
+        await settle_mark_on_any_row(todos_db, slug, session_id)
 
 
 class LifecycleItemUnavailable(Exception):
@@ -480,10 +488,13 @@ async def _set_active_runner(
     is the caller-owned intent to clear a stored hold: true only for a fresh
     claim/start of a held unclaimed todo, false for a live owner's continuation.
     """
-    if await todos_db.read_state(slug) is None:
+    stored = await todos_db.read_state(slug)
+    if stored is None:
         if require_row:
             raise LifecycleItemUnavailable(slug)
         return ""
+    left_over = mark_session_id(TodoState.model_validate(stored).hold_audit) if reserve else ""
+    left_over_accepted = bool(left_over) and await (await get_db()).get_session(left_over) is not None
 
     def change(writer: StateWriter) -> None:
         owner = writer.state.active_runner
@@ -492,7 +503,13 @@ async def _set_active_runner(
         writer.state.active_runner = session_id
         writer.state.manually_started = manually_started
         if reserve:
-            record_reservation(writer, session_id, clears_hold=release_hold, task_run=lane is RunnerLane.TASK_RUN)
+            record_reservation(
+                writer,
+                session_id,
+                clears_hold=release_hold,
+                task_run=lane is RunnerLane.TASK_RUN,
+                left_over_accepted=left_over_accepted,
+            )
             return
         if release_hold:
             writer.state.hold = False

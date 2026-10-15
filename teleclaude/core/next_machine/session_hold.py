@@ -203,6 +203,7 @@ async def reconcile_driver_ownership_for_session(
             writer = StateWriter(state)
             writer.state.active_runner = None
             writer.state.manually_started = False
+            give_back(writer, session_id, accepted=True)
             await writer.commit_by_id(todos_db, row["id"])
         cleared_slugs.append(row["slug"])
     return DriverOwnershipReconciliation(cleared_slugs=tuple(cleared_slugs))

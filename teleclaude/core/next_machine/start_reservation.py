@@ -13,6 +13,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
 
@@ -55,36 +56,30 @@ def reserved_prior_of(audit: HoldAuditState, session_id: str) -> ReservedPrior |
     return _prior_in_mark(audit) if audit.set_by_session_id == session_id else None
 
 
-def record_reservation(writer: StateWriter, session_id: str, *, clears_hold: bool, task_run: bool) -> None:
+def mark_session_id(audit: HoldAuditState) -> str:
+    """The session id a reservation mark in the audit names; empty when the audit is not a reservation mark."""
+    return audit.set_by_session_id if _prior_in_mark(audit) is not None else ""
+
+
+def record_reservation(
+    writer: StateWriter, session_id: str, *, clears_hold: bool, task_run: bool, left_over_accepted: bool
+) -> None:
     """Reserve on the row: clear the hold when asked, move a task to running, and leave the mark when either happened.
 
-    The same mutation records the prior values, so the reservation and its undo are one write.
+    The same mutation records the prior values, so the reservation and its undo are one write. A mark an earlier start
+    left behind is settled first, as that start ended: ``left_over_accepted`` says whether its session came to exist, so
+    an accepted start keeps what it did and one that never began gives back what it replaced. The new reservation then
+    records the row as that settlement left it.
     """
     state = writer.state
-    left_over = _prior_in_mark(state.hold_audit)
-    if left_over is not None:
-        # A mark an earlier start left behind (it died before settling): the row\'s true prior values are the ones the
-        # mark carries, so a new reservation records those rather than the mark itself.
-        prior = ReservedPrior(
-            hold=left_over.hold,
-            audit=left_over.audit,
-            phase=left_over.phase
-            or (
-                state.lifecycle_phase.value
-                if task_run and state.lifecycle_phase is not LifecyclePhase.TASK_RUNNING
-                else ""
-            ),
-        )
-        state.hold = left_over.hold
-        state.hold_audit = left_over.audit.model_copy(deep=True)
-        if left_over.phase and state.lifecycle_phase is LifecyclePhase.TASK_RUNNING:
-            state.lifecycle_phase = LifecyclePhase(left_over.phase)
-    else:
-        prior = ReservedPrior(
-            hold=state.hold,
-            audit=state.hold_audit.model_copy(deep=True),
-            phase=state.lifecycle_phase.value if task_run else "",
-        )
+    left_over = mark_session_id(state.hold_audit)
+    if left_over:
+        give_back(writer, left_over, accepted=left_over_accepted)
+    prior = ReservedPrior(
+        hold=state.hold,
+        audit=state.hold_audit.model_copy(deep=True),
+        phase=state.lifecycle_phase.value if task_run else "",
+    )
     restorable = (clears_hold and (state.hold or state.hold_audit != HoldAuditState())) or task_run
     if clears_hold:
         state.hold = False
@@ -112,3 +107,22 @@ def give_back(writer: StateWriter, session_id: str, *, accepted: bool) -> None:
     state.hold_audit = prior.audit
     if prior.phase and state.lifecycle_phase is LifecyclePhase.TASK_RUNNING:
         state.lifecycle_phase = LifecyclePhase(prior.phase)
+
+
+async def settle_mark_on_any_row(todos_db: WorkflowStore, slug: str, session_id: str) -> None:
+    """Settle an accepted start\'s mark on the item\'s row whatever its status, by the row\'s durable id.
+
+    The live-row path cannot address a row that was removed or delivered while its start was being accepted; the mark
+    must still be settled there, or a later reservation would read it as an unaccepted start.
+    """
+    for row in await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True):
+        if row["slug"] != slug:
+            continue
+        state = await todos_db.read_state_by_id(row["id"])
+        if state is None:
+            continue
+        writer = StateWriter(state)
+        before = writer.state.hold_audit.model_copy(deep=True)
+        give_back(writer, session_id, accepted=True)
+        if writer.state.hold_audit != before:
+            await writer.commit_by_id(todos_db, row["id"])
