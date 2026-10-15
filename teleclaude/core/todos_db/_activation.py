@@ -111,7 +111,9 @@ class TodosDbActivationMixin:
                 Todo.status.in_(ACTIVE_STATUSES),  # type: ignore[attr-defined]
             )
             rows = (await session.exec(statement)).all()
-        return [str(slug) for slug, state in rows if json.loads(state).get("lifecycle_phase") == phase]
+        return [
+            str(slug) for slug, state in rows if upcycle_state_dict(json.loads(state)).get("lifecycle_phase") == phase
+        ]
 
     async def slug_for_row_id(self: _ActivationHost, row_id: str) -> str:
         """The slug a durable row id carries, whatever the row's status; empty when there is no such row."""
