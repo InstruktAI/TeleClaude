@@ -16,15 +16,18 @@ from typing import Final
 
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.kinds import KIND_TASK
+from teleclaude.core.workflow_machine.doors import door_for
 from teleclaude.core.workflow_machine.phase_reading import (
     CLOSED_STORED_PHASES,
     TASK_LANE_STORED_PHASES,
+    LaneFacts,
+    read_phase,
     stored_in_legacy_phase,
 )
 from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import LIFECYCLE_PHASE_STATE_KEY, TodoState
-from teleclaude.types.workflow_record import CreativeEpisode, EpisodePath
+from teleclaude.types.workflow_record import CreativeEpisode, EpisodePath, Phase
 
 NO_CONVERSION: Final = ""
 
@@ -38,30 +41,15 @@ class CreativeCapability(StrEnum):
 
 
 class CreativeRefusal(StrEnum):
-    """The causes a creative capability is refused with; each names the door that exists."""
+    """The causes a creative capability is refused with; each names the door the contract's table gives for the state."""
 
     DONE = "{capability} is refused: {item} is delivered, so the item is done"
-    ADMITTED = (
-        "{capability} is refused: {item} is admitted by the integrator at {sha}; "
-        "the integrator's delivery or park retires the admission"
+    ADMITTED = "{capability} is refused: {item} is admitted by the integrator at {sha}. Door: {door}."
+    CLOSED = (
+        "{capability} is refused: {item} is in {phase}, and a creative write never moves a phase or its claim. "
+        "Door: {door}."
     )
-    WAITING = (
-        "{capability} is refused: {item} waits on {person}, and a creative write never moves a phase; "
-        "{person}'s decision (`telec todo act {item} decision`) resumes the phase it waited in"
-    )
-    CLOSED_HELD_BY_CALLER = (
-        "{capability} is refused: {item} is in {phase} under this session's claim, and a creative write never moves "
-        "a phase or its claim; return it to preparation with `telec todo act {item} kickback`"
-    )
-    CLOSED_UNHELD = (
-        "{capability} is refused: {item} is in {phase}, and a creative write never moves a phase or its claim; "
-        "start its driver with `telec todo work {item}`, which returns it to preparation with `kickback`"
-    )
-    READY_UNHELD = (
-        "{capability} is refused: {item} is ready, and a creative write never moves a phase or its claim; "
-        "start its driver with `telec todo work {item} --reason <text>`, which returns it to preparation with `kickback`"
-    )
-    HELD = "{capability} is refused: {item} is held by session {holder}"
+    HELD = "{capability} is refused: {item} is held by session {holder}. Door: {door}."
     HOLDER = (
         "{capability} is refused: {item} is held by this session in preparation; "
         "its creative handoff is `telec todo design {item}`"
@@ -86,10 +74,36 @@ def _refuse(refusal: CreativeRefusal, capability: CreativeCapability, item: str,
     return CreativeRefused(refusal.value.format(capability=capability.value, item=item, **fields))
 
 
+def _door_refusal(
+    refusal: CreativeRefusal,
+    capability: CreativeCapability,
+    item: str,
+    state: TodoState,
+    lane: LaneFacts,
+    **fields: str,
+) -> CreativeRefused:
+    """A refusal that names the door of the first matching row of the contract's table for the state as the machine reads it.
+
+    The phase is the reading, not the stored value: a stored ``ready`` whose stamp the integration head has moved past
+    reads ``work`` and gets that row's door.
+    """
+    phase = read_phase(state, lane).phase or Phase.PREPARATION
+    return _refuse(refusal, capability, item, phase=phase.value, door=door_for(state, phase, item), **fields)
+
+
 def open_episode(
-    item: str, current: dict[str, StateValue] | None, *, capability: CreativeCapability, caller_session_id: str
+    item: str,
+    current: dict[str, StateValue] | None,
+    *,
+    capability: CreativeCapability,
+    caller_session_id: str,
+    lane: LaneFacts,
 ) -> EpisodeOpening:
-    """Decide the capability against the state read in its own transaction, or refuse naming the cause."""
+    """Decide the capability against the state read in its own transaction, or refuse naming the cause.
+
+    ``lane`` is the lane facts the caller resolved before the transaction; the refusals that name a door read the
+    item's phase through them.
+    """
     if current is None:
         raise _refuse(CreativeRefusal.UNKNOWN, capability, item)
     state = TodoState.model_validate(current)
@@ -100,21 +114,12 @@ def open_episode(
         raise _refuse(CreativeRefusal.DONE, capability, item)
     admitted = state.workflow.admitted
     if admitted is not None:
-        raise _refuse(CreativeRefusal.ADMITTED, capability, item, sha=admitted.sha)
+        raise _door_refusal(CreativeRefusal.ADMITTED, capability, item, state, lane, sha=admitted.sha)
     holder = state.active_runner or ""
     if holder and holder != caller_session_id:
-        raise _refuse(CreativeRefusal.HELD, capability, item, holder=holder)
+        raise _door_refusal(CreativeRefusal.HELD, capability, item, state, lane, holder=holder)
     if _closed_phase(state, stored):
-        waiting = state.workflow.waiting
-        if stored is LifecyclePhase.WAITING and waiting is not None:
-            raise _refuse(CreativeRefusal.WAITING, capability, item, person=waiting.person)
-        if holder:
-            refusal = CreativeRefusal.CLOSED_HELD_BY_CALLER
-        elif stored is LifecyclePhase.READY:
-            refusal = CreativeRefusal.READY_UNHELD
-        else:
-            refusal = CreativeRefusal.CLOSED_UNHELD
-        raise _refuse(refusal, capability, item, phase=stored.value)
+        raise _door_refusal(CreativeRefusal.CLOSED, capability, item, state, lane)
     if holder and capability is not CreativeCapability.DESIGN:
         raise _refuse(CreativeRefusal.HOLDER, capability, item)
     if state.workflow.episode is not None:

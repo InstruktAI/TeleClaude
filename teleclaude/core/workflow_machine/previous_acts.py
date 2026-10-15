@@ -10,6 +10,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Final
 
+from teleclaude.core.workflow_machine.doors import door_for
 from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.phase_reading import read_phase
 from teleclaude.core.workflow_store.store import get_workflow_store
@@ -63,61 +64,15 @@ _PERFORMER: Final[dict[str, str]] = {
 }
 REFUSAL_TEMPLATE: Final = "{verb} is refused: {item} is in {phase}. Door: {door}.{replacement}"
 REPLACEMENT_TEMPLATE: Final = " The act that replaces it is {act}, performed by {performer}."
-DOOR_HELD: Final = "the holding session {holder}"
-DOOR_HELD_KICKBACK: Final = "the holding session {holder}, whose `telec todo act {item} kickback` returns the item"
-DOOR_START: Final = (
-    "the driver start in progress (reservation {reservation}, requested by {requester}); "
-    "the session it is starting claims it"
-)
 DELIVERED_REFUSAL: Final = (
     "{verb} is refused: {item} is delivered. Door: none: the item was delivered at its commit; "
     "follow-up work is a new item, `telec todo create`."
 )
-DOOR_ADMITTED: Final = (
-    "the integrator's admission at {sha}; the integrator delivers or parks it, and a parked item is then reachable "
-    "by the ready or work row"
-)
-DOOR_WAITING: Final = (
-    "{person}'s decision (`telec todo act {item} decision`), which starts the waited phase's driver; from work, "
-    "that driver may kick back"
-)
-DOOR_READY: Final = "`telec todo work {item} --reason <text>`"
-DOOR_WORK: Final = "`telec todo work {item}`, whose driver may kick back"
-DOOR_PREPARATION: Final = "none needed: the item is in preparation, which `telec todo prepare {item}` drives"
-DOOR_DESIGN: Final = (
-    "the creative lane, `telec todo design {item}`; the item reaches preparation when its design completes"
-)
-UNKNOWN_REQUESTER: Final = "the lifecycle runner or a person at a terminal"
 NOT_DRIVEN_PHASES: Final = frozenset({Phase.DELIVERED})
 
 
 class PreviousActRefused(Exception):
     """A verb that only the previous machine knew was refused for an item this machine drives; nothing was written."""
-
-
-def door_for(state: TodoState, phase: Phase, item: str) -> str:
-    """The door the first matching row of the contract's table names for the item's state."""
-    holder = state.active_runner
-    if holder:
-        template = DOOR_HELD_KICKBACK if phase in (Phase.WORK, Phase.READY) else DOOR_HELD
-        return template.format(holder=holder, item=item)
-    launch = state.workflow.launch
-    if launch is not None:
-        return DOOR_START.format(reservation=launch.key[:8], requester=launch.requested_by or UNKNOWN_REQUESTER)
-    admitted = state.workflow.admitted
-    if admitted is not None:
-        return DOOR_ADMITTED.format(sha=admitted.sha[:8])
-    waiting = state.workflow.waiting
-    if phase is Phase.WAITING and waiting is not None:
-        return DOOR_WAITING.format(person=waiting.person, item=item)
-    doors = {
-        Phase.READY: DOOR_READY,
-        Phase.WORK: DOOR_WORK,
-        Phase.PREPARED: DOOR_WORK,
-        Phase.PREPARATION: DOOR_PREPARATION,
-        Phase.DESIGN: DOOR_DESIGN,
-    }
-    return doors.get(phase, DOOR_PREPARATION).format(item=item)
 
 
 async def refuse_previous_machine_act(project_root: str, slug: str, verb: str) -> None:

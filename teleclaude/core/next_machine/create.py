@@ -23,7 +23,12 @@ from teleclaude.core.next_machine.output_formatting import (
 )
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
 from teleclaude.core.workflow_machine.creative import CreativeCapability, open_episode
-from teleclaude.core.workflow_machine.creative_commit import Handoff, hand_off_to_creative, open_creative_episode
+from teleclaude.core.workflow_machine.creative_commit import (
+    Handoff,
+    creative_lane,
+    hand_off_to_creative,
+    open_creative_episode,
+)
 from teleclaude.core.workflow_machine.dispatch import accepted_orchestrators
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.phase_reading import in_task_lane
@@ -440,7 +445,13 @@ async def next_create(db: Db, slug: str | None, cwd: str, caller_session_id: str
         )
         return dispatched if dispatched is not None else _CLAIM_CLOSING.format(slug=resolved_slug)
     if phase == CreativePhase.CREATIVE_COMPLETE:
-        open_episode(resolved_slug, state, capability=CreativeCapability.DESIGN, caller_session_id=caller_session_id)
+        open_episode(
+            resolved_slug,
+            state,
+            capability=CreativeCapability.DESIGN,
+            caller_session_id=caller_session_id,
+            lane=await creative_lane(todos_db, resolved_slug),
+        )
     else:
         await open_creative_episode(todos_db, resolved_slug, CreativeCapability.DESIGN, caller_session_id)
 
