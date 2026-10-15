@@ -34,6 +34,8 @@ Operate and maintain the self-hosted GitHub Actions runner on MozMini (Mac Mini)
 
 ## Steps
 
+<!-- planned-change:release-install-proof-on-hosted-mac -->
+
 ### Release execution destination
 
 1. Inspect the repository routing setting named by the release workflow and the
@@ -55,6 +57,9 @@ Operate and maintain the self-hosted GitHub Actions runner on MozMini (Mac Mini)
    when hosted execution is desired. The release verification and authentication
    contracts remain owned by
    `local/projects/teleclaude/spec/feature/release/publication`.
+
+<!-- change:release-install-proof-on-hosted-mac -->
+<!-- /planned-change:release-install-proof-on-hosted-mac -->
 
 ### Check runner status
 
@@ -154,8 +159,13 @@ Before diagnosing runner issues, verify the host is healthy:
 
 <!-- /planned:full-acceptance-on-self-hosted-runner -->
 
+<!-- planned-change:release-install-proof-on-hosted-mac -->
+
 ## See Also
 
 - https://github.com/vitalyiegorov/tart-runner-fleet/blob/main/INSTALL.md
 - https://github.com/vitalyiegorov/tart-runner-fleet/blob/main/docs/LINUX_BASE_IMAGE.md
 - https://github.com/vitalyiegorov/tart-runner-fleet/blob/main/docs/OPERATIONS.md
+
+<!-- change:release-install-proof-on-hosted-mac -->
+<!-- /planned-change:release-install-proof-on-hosted-mac -->
