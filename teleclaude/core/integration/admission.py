@@ -18,7 +18,6 @@ from typing import Final
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import ARTIFACT_DESIGN_SPEC, ARTIFACT_INPUT
 from teleclaude.core.integration.candidate_scan import CandidateKey, candidate_is_held
 from teleclaude.core.integration.git_ops import _run_git
 from teleclaude.core.workflow_machine.lane import resolve_lane_sync
@@ -36,7 +35,6 @@ RETIRE_FAILED_LOG: Final = "retiring an integration admission failed"
 INTEGRATION_PHASE_STATE_KEY: Final = "integration_phase"
 STARTED_PHASE: Final = "started"
 ADMISSION_TIMEOUT_SECONDS: Final = 30
-FENCED_ARTIFACTS: Final = (ARTIFACT_INPUT, ARTIFACT_DESIGN_SPEC)
 ORIGIN: Final = "origin"
 BRANCH_REF_TEMPLATE: Final = "refs/heads/{branch}"
 
@@ -130,8 +128,8 @@ def admit_candidate(cwd: str, key: CandidateKey, session_id: str, loop: asyncio.
     head = _branch_head(cwd, key.branch)
     if not head:
         return Admission(AdmissionRefusal.HEAD_UNREADABLE.value.format(item=key.slug))
-    expected = {name: store.artifact_digest_sync(key.slug, name) for name in FENCED_ARTIFACTS}
     lane = resolve_lane_sync(store, cwd, key.slug, raw, head)
+    expected = lane.expected_digests
     if lane.creative_incomplete:
         return Admission(AdmissionRefusal.CREATIVE_MOVED.value.format(item=key.slug))
     mutation = _mutation(key, lane, creative_snapshot(raw), session_id)

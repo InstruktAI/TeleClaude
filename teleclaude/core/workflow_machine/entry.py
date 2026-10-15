@@ -470,20 +470,20 @@ async def enter(request: EntryRequest) -> EntryResult:
     publication, bound = await _publication_for(request, holder, phase)
     _, workflow = _driver_for(publication, phase, request.item)
     branch = request.item
-    expected = (
-        {ARTIFACT_INPUT: state.workflow.prepared.revision}
-        if phase is Phase.PREPARED and state.workflow.prepared is not None
-        else {}
-    )
+    expected = request.resolved_lane.expected_digests
+    if phase is Phase.PREPARED and state.workflow.prepared is not None:
+        expected = {**expected, ARTIFACT_INPUT: state.workflow.prepared.revision}
     if holder is None:
         try:
             if not bound:
                 return await _launch(store, request, item_id, phase, expected)
             await _claim(store, request, item_id, branch, expected)
         except ArtifactRevisionMismatch as mismatch:
-            raise _refuse(
-                EntryRefusal.REVISION_MOVED, item=request.item, actual=mismatch.actual, expected=mismatch.expected
-            ) from mismatch
+            if mismatch.name == ARTIFACT_INPUT and phase is Phase.PREPARED:
+                raise _refuse(
+                    EntryRefusal.REVISION_MOVED, item=request.item, actual=mismatch.actual, expected=mismatch.expected
+                ) from mismatch
+            raise _refuse(EntryRefusal.CREATIVE_CHANGED, item=request.item) from mismatch
     return await _instruct(request, publication, workflow, phase, branch)
 
 

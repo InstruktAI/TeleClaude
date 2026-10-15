@@ -554,12 +554,15 @@ async def _commit(store: WorkflowStore, request: ActRequest, facts: _Facts) -> s
     if raw is None:
         raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)
     current = TodoState.model_validate(raw)
-    expected = _DECIDERS[request.act](
+    decided = _DECIDERS[request.act](
         request,
         facts,
         current,
         read_phase(current, request.resolved_lane),
     ).expect_digests
+    expected = dict(decided or {})
+    if request.act is not Act.NOTE:
+        expected = {**request.resolved_lane.expected_digests, **expected}
 
     recorded: list[str] = []
 
@@ -568,9 +571,11 @@ async def _commit(store: WorkflowStore, request: ActRequest, facts: _Facts) -> s
 
     try:
         await store.commit_item_change(
-            request.item, expect_digests=expected or {}, mutate=mutate, updated_by=request.caller_session_id
+            request.item, expect_digests=expected, mutate=mutate, updated_by=request.caller_session_id
         )
     except ArtifactRevisionMismatch as mismatch:
+        if request.act is not Act.PREPARED or mismatch.name != ARTIFACT_INPUT:
+            raise _refuse(Refusal.CREATIVE_CHANGED, act=request.act.value) from mismatch
         raise _refuse(
             Refusal.REVISION_MOVED,
             act=request.act.value,
