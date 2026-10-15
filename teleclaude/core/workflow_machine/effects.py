@@ -21,10 +21,10 @@ from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
-from teleclaude.core.process_identity import boot_session
+from teleclaude.core.process_identity import start_identity
 from teleclaude.core.workflow_machine.caller import group_sessions_of
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
-from teleclaude.core.workflow_store.types import PendingEffectItem
+from teleclaude.core.workflow_store.types import ItemChange, PendingEffectItem
 from teleclaude.events.catalog import PlatformEvent
 from teleclaude.events.envelope import EventLevel, EventVisibility, occurrence_id
 from teleclaude.events.envelope_facts import home_for_project_path
@@ -44,8 +44,15 @@ from teleclaude.events.schemas.sdlc import (
     TodoWorkRequested,
 )
 from teleclaude.events.wire import LegacyFacts
-from teleclaude.types.claim_change import HOLDER_PARAM, NO_HOLDER, PRIOR_HOLDER_PARAM, workflow_record_of
+from teleclaude.types.claim_change import (
+    HOLDER_PARAM,
+    NO_HOLDER,
+    PRIOR_HOLDER_PARAM,
+    WORKFLOW_STATE_KEY,
+    workflow_record_of,
+)
 from teleclaude.types.commands import CloseSessionCommand
+from teleclaude.types.state_value import StateValue
 from teleclaude.types.workflow_record import EffectKind, EmittedEvent, PendingEffect, WaitedPhase, WorkflowRecord
 
 logger = get_logger(__name__)
@@ -67,6 +74,7 @@ WAITED_PHASE_PARAM: Final = "waited_phase"
 RESERVATION_PARAM: Final = "reservation_key"
 REQUESTED_BY_PARAM: Final = "requested_by"
 SESSION_PARAM: Final = "session_id"
+INSTRUCTION_PARAM: Final = "instruction"
 
 EFFECT_FAILED_LOG: Final = "workflow effect failed; the reconciler retries it with the same identity"
 ITEM_FAILED_LOG: Final = "workflow effect reconciliation failed for an item"
@@ -256,14 +264,16 @@ async def _end_session(context: EffectContext, effect: PendingEffect) -> None:
 
 
 def _starts_in_flight(record: WorkflowRecord) -> bool:
-    """Whether a helper start was recorded by this daemon boot and no session has been named or withdrawn for it.
+    """Whether a helper start names no session and the process that creates it may still be running.
 
     Time is no evidence that a creation ended. The creation runs in the process that recorded the start, so only that
-    process's end proves it can never produce a session; a start of an earlier boot is settled, and a session it
-    created is found by the listing of the holder's group.
+    process's end proves it can never produce a session; a start whose process is gone is settled, and a session it
+    created is found by the listing of the holder's group. A start whose process cannot be named is never settled.
     """
-    boot = boot_session()
-    return any(not start.session_id and start.boot == boot for start in record.helper_starts)
+    return any(
+        not start.session_id and (not start.owner_identity or start_identity(start.owner_pid) == start.owner_identity)
+        for start in record.helper_starts
+    )
 
 
 async def _sweep_helpers(context: EffectContext, effect: PendingEffect) -> None:
@@ -291,12 +301,23 @@ async def _ensure_worktree(context: EffectContext, effect: PendingEffect) -> Non
 
 
 async def _creative_dispatch(context: EffectContext, effect: PendingEffect) -> None:
-    """The creative dispatch: its instruction was committed with the handoff and is given once this effect completes.
+    """The creative dispatch: record the instruction committed with the handoff as the dispatch's outcome.
 
-    It runs only after the sweep has found nothing, so an instruction is never given while old helpers remain; the
-    effect has nothing else to do, and repeating it is safe.
+    It runs only after the sweep has found nothing, so an instruction is never given while old helpers remain. The
+    outcome is written once, keyed by the act, and the caller reads it from the item: a lost response, a repeated call
+    or a restart returns the same committed instruction. Repeating the effect changes nothing.
     """
-    _ = context, effect
+
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            return None
+        record = workflow_record_of(current).model_copy(deep=True)
+        if effect.act_key in record.dispatched:
+            return None
+        record.dispatched[effect.act_key] = effect.params[INSTRUCTION_PARAM]
+        return ItemChange(state={**current, WORKFLOW_STATE_KEY: record.to_state()})
+
+    await context.store.commit_item_change(context.item.slug, expect_digests={}, mutate=mutate, updated_by=None)
 
 
 _HANDLERS: Final = {

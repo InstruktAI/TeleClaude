@@ -92,12 +92,12 @@ async def open_creative_episode(
     )
 
 
-async def hand_off_to_creative(store: WorkflowStore, item: str, holder: str, instruction: str) -> bool:
+async def hand_off_to_creative(store: WorkflowStore, item: str, holder: str, instruction: str) -> str | None:
     """The holder's creative handoff: one commit, then the sweep, the dispatch and the release in that order.
 
     The commit opens the episode, converts a legacy phase, records the dispatch as a durable intent and marks the claim
-    closing. Whether the effects have all run is reported; when one cannot finish yet the instruction is not given, and
-    repeating the call after the sweep has settled completes the same handoff.
+    closing. The instruction returned is the dispatch's committed outcome, read from the item; None while an effect
+    cannot finish yet, and repeating the call after the sweep has settled completes the same handoff.
     """
     mutate = episode_mutation(item, CreativeCapability.DESIGN, holder, dispatch=instruction)
     await store.commit_item_change(
@@ -106,7 +106,12 @@ async def hand_off_to_creative(store: WorkflowStore, item: str, holder: str, ins
     await reconcile_slug_supervised(str(store.project_root), item)
     raw = await store.read_state(item)
     if raw is None:
-        return False
+        return None
     state = TodoState.model_validate(raw)
     owed = {EffectKind.SWEEP_HELPERS, EffectKind.CREATIVE_DISPATCH, EffectKind.RELEASE_CLAIM}
-    return state.active_runner != holder and not any(effect.kind in owed for effect in state.workflow.pending_effects)
+    finished = state.active_runner != holder and not any(
+        effect.kind in owed for effect in state.workflow.pending_effects
+    )
+    if not finished or not state.workflow.dispatched:
+        return None
+    return list(state.workflow.dispatched.values())[-1]

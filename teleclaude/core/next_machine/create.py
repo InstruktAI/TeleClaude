@@ -356,9 +356,8 @@ async def next_create(db: Db, slug: str | None, cwd: str, caller_session_id: str
     logger.info("NEXT_CREATE_PHASE slug=%s phase=%s", resolved_slug, phase.value)
     if caller_session_id and state.get("active_runner") == caller_session_id:
         instruction = await _creative_instruction(db, resolved_slug, cwd, phase)
-        if await hand_off_to_creative(todos_db, resolved_slug, caller_session_id, instruction):
-            return instruction
-        return _CLAIM_CLOSING.format(slug=resolved_slug)
+        dispatched = await hand_off_to_creative(todos_db, resolved_slug, caller_session_id, instruction)
+        return dispatched if dispatched is not None else _CLAIM_CLOSING.format(slug=resolved_slug)
     if phase == CreativePhase.CREATIVE_COMPLETE:
         open_episode(resolved_slug, state, capability=CreativeCapability.DESIGN, caller_session_id=caller_session_id)
     else:

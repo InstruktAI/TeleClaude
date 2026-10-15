@@ -298,8 +298,9 @@ class CreativeEpisode(BaseModel):
 class HelperStart(BaseModel):
     """A helper start a holder recorded before it created the session; it names the session once that exists.
 
-    ``boot`` is the daemon boot that recorded it: the creation runs inside that process, so a start no session names
-    after that boot has ended can never produce one.
+    ``owner_pid`` and ``owner_identity`` name the process that creates the session: the creation runs inside it, so a
+    start that no session names after that process has ended can never produce one. A start whose owner cannot be
+    named is never proven ended.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -308,7 +309,8 @@ class HelperStart(BaseModel):
     epoch: int
     requested_at: str
     session_id: str = ""
-    boot: str = ""
+    owner_pid: int = 0
+    owner_identity: str = ""
 
 
 class WorkflowRecord(BaseModel):
@@ -334,6 +336,7 @@ class WorkflowRecord(BaseModel):
     closing: bool = False
     helper_starts: list[HelperStart] = Field(default_factory=list)
     claimers: list[str] = Field(default_factory=list)
+    dispatched: dict[str, str] = Field(default_factory=dict)
 
     def with_effect(self, effect: PendingEffect) -> WorkflowRecord:
         """A copy with the effect appended to the pending list."""

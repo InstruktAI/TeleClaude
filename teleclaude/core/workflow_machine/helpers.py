@@ -9,13 +9,14 @@ on a start that cannot finish.
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from teleclaude.core.db import db
 from teleclaude.core.next_machine._types import StateValue
-from teleclaude.core.process_identity import boot_session
+from teleclaude.core.process_identity import start_identity
 from teleclaude.core.workflow_machine.caller import group_sessions_of, in_claiming_group
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange
@@ -26,6 +27,7 @@ from teleclaude.types.workflow_record import Act, HelperStart, WorkflowRecord
 
 NOT_HOLDER = "{item}: only the session that holds it starts a helper"
 CLOSING = "{item}: its claim is closing, so no helper is started"
+NO_IDENTITY = "{item}: the creating process cannot be named, so a helper start cannot be recorded"
 UNKNOWN_ITEM = "no item {item} in this project"
 START_ACT = "helper-start"
 
@@ -63,6 +65,9 @@ async def register_helper_start(project_root: str, item: str, caller_session_id:
     store = await get_workflow_store(project_root)
     item_id = store.resolve_store_address_sync(item)
     keys: list[str] = []
+    owner_identity = start_identity(os.getpid())
+    if not owner_identity:
+        raise HelperStartRefused(NO_IDENTITY.format(item=item))
 
     def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
         if current is None or item_id is None:
@@ -77,7 +82,13 @@ async def register_helper_start(project_root: str, item: str, caller_session_id:
             project_root, item_id, START_ACT, str(record.claim_epoch), str(len(record.helper_starts)), _now()
         )
         record.helper_starts.append(
-            HelperStart(key=key, epoch=record.claim_epoch, requested_at=_now(), boot=boot_session())
+            HelperStart(
+                key=key,
+                epoch=record.claim_epoch,
+                requested_at=_now(),
+                owner_pid=os.getpid(),
+                owner_identity=owner_identity,
+            )
         )
         keys.append(key)
         return ItemChange(state={**current, WORKFLOW_STATE_KEY: record.to_state()})
