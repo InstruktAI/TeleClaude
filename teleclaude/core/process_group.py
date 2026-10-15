@@ -77,7 +77,7 @@ def settle_members(
 
     Returns whether none remains within the bound, and the pids that were signalled. Only the group's leader being
     positively known to be the caller's own makes this safe to call; the callers establish that. A caller that is not
-    itself the leader passes ``leader_alive``, checked before each signalling round: once the leader is gone the group
+    itself the leader passes ``leader_alive``, checked before every signal sent: once the leader is gone the group
     is no longer positively attributed, so no further signal is sent and the unit is left unknown.
     """
     signalled: list[int] = []
@@ -85,6 +85,8 @@ def settle_members(
     if leader_alive is not None and not leader_alive():
         return False, ()
     for pid in live_members(pgid, exclude=exclude):
+        if leader_alive is not None and not leader_alive():
+            return False, tuple(signalled)
         if before_signal is not None:
             before_signal(pid)
         if _signal_member(pid, pgid, signal.SIGTERM):
@@ -95,6 +97,8 @@ def settle_members(
     if leader_alive is not None and not leader_alive():
         return False, tuple(signalled)
     for pid in live_members(pgid, exclude=exclude):
+        if leader_alive is not None and not leader_alive():
+            return False, tuple(signalled)
         if before_signal is not None:
             before_signal(pid)
         if _signal_member(pid, pgid, signal.SIGKILL) and pid not in signalled:

@@ -314,8 +314,9 @@ class ProcessJanitorService:
 def _end_unit(pgid: int, identity: str) -> list[ProcessDescriptor]:
     """End a unit whose leader is positively known: its other live members first, then the leader.
 
-    Returns a descriptor for each process actually signalled, read at the moment before it was signalled, so every
-    process ended has its observable event whether or not an earlier snapshot of the process table held it.
+    Returns a descriptor for each process a signal was delivered to, read at the moment before it was signalled, so every
+    process signalled has its event whether or not an earlier snapshot of the process table held it. An event records
+    a delivered signal, never an attempted one and never an observed exit: the exit is what removes the row.
     """
     seen: dict[int, ProcessDescriptor] = {}
 
@@ -328,17 +329,22 @@ def _end_unit(pgid: int, identity: str) -> list[ProcessDescriptor]:
     ended = [seen[pid] for pid in members if pid in seen]
     if is_runner_alive(pgid, identity):
         leader = descriptor_of(pgid)
+        delivered = False
         for sig in (signal.SIGTERM, signal.SIGKILL):
+            if not is_runner_alive(pgid, identity):
+                break
             try:
                 os.kill(pgid, sig)
             except (ProcessLookupError, PermissionError):
                 break
+            delivered = True
             deadline = time.monotonic() + RUNNER_EXIT_GRACE_SECONDS
             while time.monotonic() < deadline and is_runner_alive(pgid, identity):
                 time.sleep(RUNNER_EXIT_POLL_SECONDS)
             if not is_runner_alive(pgid, identity):
                 break
-        ended.append(leader)
+        if delivered:
+            ended.append(leader)
     return ended
 
 
