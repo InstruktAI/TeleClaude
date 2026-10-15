@@ -254,17 +254,31 @@ daemon is gone) is ignored after settlement.
 and whenever the daemon starts, the row is classified, on the computer and in the
 boot session that wrote it:
 
-| The row's runner      | Its group                         | Class          | What follows                                           |
-| --------------------- | --------------------------------- | -------------- | ------------------------------------------------------ |
-| alive, identity equal | any                               | owned and live | the same invocation attaches; another stamp is refused |
-| gone                  | no non-zombie member              | dead           | the row is removed and the slot may be replaced        |
-| gone                  | non-zombie members remain         | unknown        | nothing is signalled and nothing is replaced           |
-| any                   | any, but a different boot session | dead           | the row is removed; every earlier process is gone      |
-| any                   | any, but a different computer     | unknown        | only the owner's computer classifies or signals it     |
+| The row's runner      | Its group                                                                                              | Class          | What follows                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------ | -------------- | ------------------------------------------------------ |
+| alive, identity equal | any                                                                                                    | owned and live | the same invocation attaches; another stamp is refused |
+| gone                  | the kernel reports no process in the group (a zombie is a process, so a group holding one is reported) | dead           | the row is removed and the slot may be replaced        |
+| gone                  | the kernel reports the group, or the kernel's answer cannot be read, whatever the process table shows  | unknown        | nothing is signalled and nothing is replaced           |
+| any                   | any, but a different boot session                                                                      | dead           | the row is removed; every earlier process is gone      |
+| any                   | any, but a different computer                                                                          | unknown        | only the owner's computer classifies or signals it     |
 
-The daemon records the unit as ended only after it has seen the runner exit and no other non-zombie member of the group; that record, not the runner's own settlement, removes the row. A mismatch of identity never removes a row by itself: after any reap, the row is removed only when the unit is then observed dead, and a row is also removed when the boot session differs. No clock and no numeric group id ever decides a class
-or authorizes a signal, and a group id with no positively identified leader is
-never signalled: it cannot be told from an unrelated group that reused the number.
+The daemon records the unit as ended only after it has seen the runner exit and the kernel reports no process in the
+group; that record, not the runner's own settlement, removes the row. A mismatch of identity never removes a row by
+itself: after any reap, the row is removed only when the unit is then observed dead, and a row is also removed when the
+boot session differs. No clock and no numeric group id ever decides a class or authorizes a signal, and a group id with
+no positively identified leader is never signalled: it cannot be told from an unrelated group that reused the number.
+
+**Absence is the kernel's answer, not a listing's.** The answer is a signal of zero sent to the group. It succeeding, or
+failing because the caller may not signal a process in it, means the group is present. Failing with no such process, and
+nothing else, means it is absent. Every other failure is unknown. A listing of the process table is diagnostic and proves
+nothing by being empty or by showing only zombies, because a process forked between two reads of the table is in no
+listing, and a zombie that stays in the group hides it from every read. A group the kernel reports is unknown for as long
+as it is reported. The runner and the janitor still treat a zombie as not running work when they choose which members to
+signal, since a zombie cannot be signalled to any effect; only the release waits for the kernel. A group held only by an
+unreaped zombie is reported until the zombie's parent reaps it, or the init process does after its parent ends; an
+unreaped zombie may persist indefinitely, and the item's stamp is then held. After a runner exit the daemon looks for the
+kernel's answer for a short bounded time before it leaves the unit unknown. The daemon reaps every runner it spawned on
+every exit path, so a runner it started is never left as a zombie of its own.
 
 **Unknown is an investigation, owned by the governing agent.** The machine does
 not recover an unknown unit by signalling it. The agent investigates and ends,
@@ -281,7 +295,15 @@ the bounded drain, the settlement and the runner's exit, with a margin: 30 secon
 is a daemon-side backstop for a runner that outlives its lease; only the runner's
 own bounds survive the daemon's absence. At expiry the janitor, on the owner's
 computer and boot session, rechecks the runner's identity, ends the group's other
-live members within a bound, then ends the runner and observes the result. Ending
+live members within a bound, then ends the runner and observes the result.
+
+Each signal to a member of the group is sent in this order: the member's descriptor is read for its event, its group is
+read, the runner's recorded identity is checked, and the signal is sent, with no other read or callback between that
+check and the signal. When the check fails, nothing more is signalled and what remains is unknown. The time between the
+check and the kernel call remains a limit: a process id can in principle be reused in it, and no mechanism of the
+supported platforms is relied on to close it.
+
+Ending
 only the runner would leave the workload without its supervisor. Each process
 ended is one process-reaped event with the owner, the pid and the lease, as for
 every reap. Ownership evidence is never deleted to make an expiry simpler: a row whose runner identity no longer matches is classified by the table above, and it is removed, and the flight replaced, only when that classification is dead, the unit is recorded as ended, or the boot session differs. A row whose group still has non-zombie members stays, as unknown, and nothing is signalled for it.
@@ -296,6 +318,11 @@ not seen. A group that remains after its runner, with no positively identified
 member, stays unknown and holds the item's stamp until its processes end or the
 agent has ended the ones it can attribute. A row recorded on another computer is
 unknown to this one.
+
+- A stable zombie in the group holds an item's stamp until its parent reaps it, which may be never; the agent
+  investigates it with the capabilities it already has, as for any unknown unit.
+- A process that starts a session of its own leaves the group; the kernel's answer says nothing about it.
+- The check-to-signal window cannot be closed by anything this design relies on.
 
 ## Failure modes
 
