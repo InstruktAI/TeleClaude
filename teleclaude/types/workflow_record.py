@@ -225,6 +225,17 @@ class OfferedFinding(BaseModel):
     finding_key: str
 
 
+class AdmittedCandidate(BaseModel):
+    """The commit the integrator admitted for an item: committed on the item before the integrator's own checkpoint."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    branch: str
+    sha: str
+    at: str
+    session_id: str
+
+
 class WorkflowRecord(BaseModel):
     """Everything the workflow machine persists on an item beyond the lifecycle phase."""
 
@@ -242,6 +253,7 @@ class WorkflowRecord(BaseModel):
     observed_heads: list[ObservedHead] = Field(default_factory=list)
     publish_intents: list[PublishIntent] = Field(default_factory=list)
     offered_findings: list[OfferedFinding] = Field(default_factory=list)
+    admitted: AdmittedCandidate | None = None
 
     def with_effect(self, effect: PendingEffect) -> WorkflowRecord:
         """A copy with the effect appended to the pending list."""

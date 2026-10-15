@@ -12,9 +12,10 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR, TodoStatus
 from teleclaude.core.integration.git_ops import _run_git
+from teleclaude.core.next_machine.create import creative_incomplete_sync
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.workflow_machine.phase_reading import read_phase
-from teleclaude.core.workflow_store.store import get_workflow_store_sync
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store_sync
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 from teleclaude.types.workflow_record import Phase
@@ -54,19 +55,21 @@ class ScannedCandidate:
 
     key: CandidateKey
     ready_at: str
+    admitted: bool = False
 
 
-def _is_held_or_kicked_back(state: dict[str, StateValue]) -> bool:
-    """True when persisted state shows the candidate held or kicked back.
+def candidate_is_held(state: dict[str, StateValue], typed: TodoState, head: str) -> bool:
+    """True when the item is explicitly held, or kicked back by evidence a stamp at the current head supersedes.
 
-    A human ``--kickback``/``--hold`` stamp is meant to retract a candidate from
-    the integration pool, but leaves ``finalize.status`` at ``FinalizeStatus.READY`` — these
-    are the real signals that must additionally gate eligibility (exact
-    ``TodoState`` field paths: ``hold: bool``,
-    ``plan_review.cleared_by_substantive_drift: bool``).
+    An explicit ``hold`` retracts a candidate whatever else is recorded. Substantive-drift evidence belongs to the
+    retired review flow: a stamp of the lifecycle machine at the current head is a later, complete judgment of the
+    commit, so only a stale evidence of that kind is read for an item that carries no such stamp.
     """
     if bool(state.get("hold")):
         return True
+    stamp = typed.workflow.stamp
+    if stamp is not None and head and stamp.sha == head:
+        return False
     plan_review = state.get("plan_review")
     return isinstance(plan_review, dict) and bool(plan_review.get("cleared_by_substantive_drift"))
 
@@ -86,24 +89,56 @@ def _parked_candidate_closure(cwd: str, parked_slugs: set[str]) -> set[str]:
     return excluded
 
 
-def _candidate_from_state(cwd: str, slug: str, state: dict[str, StateValue]) -> ScannedCandidate | None:
+def _remote_head(cwd: str, branch: str) -> str:
+    rc, stdout, _ = _run_git(["ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=cwd)
+    parts = stdout.split()
+    return parts[0] if rc == 0 and parts else ""
+
+
+def _admitted_candidate(slug: str, typed: TodoState, cwd: str) -> ScannedCandidate | None:
+    """The commit the integrator admitted for the item, while the item still reads ready at it.
+
+    An admission whose commit the item no longer reads ready at was superseded by a later stamp or a kickback.
+    """
+    admitted = typed.workflow.admitted
+    if admitted is None:
+        return None
+    reading = read_phase(typed, integration_head=admitted.sha, creative_incomplete=False)
+    if reading.phase is not Phase.READY or reading.ready_sha != admitted.sha:
+        return None
+    rc, _, _ = _run_git(["merge-base", "--is-ancestor", admitted.sha, "HEAD"], cwd=cwd)
+    if rc == 0:
+        return None
+    return ScannedCandidate(
+        key=CandidateKey(slug=slug, branch=admitted.branch, sha=admitted.sha), ready_at=admitted.at, admitted=True
+    )
+
+
+def _candidate_from_state(
+    cwd: str, slug: str, state: dict[str, StateValue], todos_db: WorkflowStore
+) -> ScannedCandidate | None:
     """The candidate an item's canonical phase establishes, or None.
 
     Readiness is the phase reading (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``): the item
-    reads ``ready`` at a commit that is the current head of its branch on origin. A stamp of the lifecycle machine, a
-    carried finalize handoff and a carried review approval at the head all read that way; an item that reads any other
-    phase is never a candidate, whatever events exist for it. The commit must not already be in main.
+    reads ``ready`` at a commit that is the current head of its branch on origin, with the creative lane complete. A
+    stamp of the lifecycle machine, a carried finalize handoff and a carried review approval at the head all read that
+    way; an item that reads any other phase is never a candidate, whatever events exist for it. The commit must not
+    already be in main. A commit the integrator admitted stays the candidate until a later stamp supersedes it.
     """
-    if _is_held_or_kicked_back(state):
+    typed = TodoState.model_validate(state)
+    if bool(state.get("hold")):
         return None
+    admitted = _admitted_candidate(slug, typed, cwd)
+    if admitted is not None:
+        return admitted
     finalize = state.get("finalize")
     branch_raw = finalize.get("branch", slug) if isinstance(finalize, dict) else slug
     branch = branch_raw if isinstance(branch_raw, str) and branch_raw else slug
-    rc, stdout, _ = _run_git(["ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=cwd)
-    head = stdout.split()[0] if rc == 0 and stdout.split() else ""
-    if not head:
+    head = _remote_head(cwd, branch)
+    if not head or candidate_is_held(state, typed, head):
         return None
-    reading = read_phase(TodoState.model_validate(state), integration_head=head, creative_incomplete=False)
+    incomplete = creative_incomplete_sync(todos_db, cwd, slug, state)
+    reading = read_phase(typed, integration_head=head, creative_incomplete=incomplete)
     if reading.phase is not Phase.READY or not reading.ready_at or reading.ready_sha != head:
         return None
     rc, _, _ = _run_git(["merge-base", "--is-ancestor", head, "HEAD"], cwd=cwd)
@@ -144,11 +179,11 @@ def _scan_finalize_ready_candidates(
             raise CandidateStateReadError(slug, exc) from exc
         if state is None:
             continue
-        candidate = _candidate_from_state(cwd, slug, state)
+        candidate = _candidate_from_state(cwd, slug, state, todos_db)
         if candidate is not None:
             candidates.append(candidate)
 
-    candidates.sort(key=lambda c: (c.ready_at, c.key.slug))
+    candidates.sort(key=lambda c: (not c.admitted, c.ready_at, c.key.slug))
     return candidates
 
 
@@ -168,25 +203,7 @@ def _verify_slug_ready(cwd: str, slug: str, *, parked_slugs: set[str]) -> Scanne
         raise CandidateStateReadError(slug, exc) from exc
     if state is None:
         return None
-    return _candidate_from_state(cwd, slug, state)
-
-
-def _stamp_integration_started(cwd: str, slug: str) -> None:
-    """Stamp integration_phase='started' on an active slug's todo state.
-
-    Best-effort: failures are logged but do not block the integration flow.
-    Only called at candidate dequeue when the slug is still active.
-    The 'delivered' stamp is handled by deliver_sync.
-    """
-    try:
-        todos_db = get_workflow_store_sync(cwd)
-        state = todos_db.read_state_sync(slug)
-        if state is None:
-            return
-        state["integration_phase"] = "started"
-        todos_db.write_state_sync(slug, state)
-    except Exception as exc:
-        logger.warning("_stamp_integration_started failed for %s: %s", slug, exc)
+    return _candidate_from_state(cwd, slug, state, todos_db)
 
 
 def _sweep_stale_artifacts(cwd: str) -> list[str]:
@@ -224,7 +241,7 @@ __all__ = [
     "CandidateStateReadError",
     "ScannedCandidate",
     "_scan_finalize_ready_candidates",
-    "_stamp_integration_started",
     "_sweep_stale_artifacts",
     "_verify_slug_ready",
+    "candidate_is_held",
 ]

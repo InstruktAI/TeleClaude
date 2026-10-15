@@ -20,11 +20,11 @@ from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_REQUIREMENTS,
 )
+from teleclaude.core.integration.admission import admit_candidate
 from teleclaude.core.integration.candidate_scan import (
     CandidateKey,
     CandidateStateReadError,
     _scan_finalize_ready_candidates,
-    _stamp_integration_started,
     _sweep_stale_artifacts,
     _verify_slug_ready,
 )
@@ -65,6 +65,7 @@ from teleclaude.core.integration.lease import UNKNOWN_LEASE_HOLDER, IntegrationL
 from teleclaude.core.integration.lifecycle_events import (
     _EVENT_INTEGRATION_DRAIN_COMPLETED,
     _emit_lifecycle_event,
+    _tls,
     _workflow_home_for_path,
 )
 from teleclaude.core.integration.park import (
@@ -87,6 +88,7 @@ from teleclaude.runtime.environment import resolve_runtime_environment
 logger = get_logger(__name__)
 
 _INTEGRATION_LEASE_KEY = "integration/main"
+_ADMISSION_RETRY = "\nThe item changed after the scan; call the integration step again to rescan."
 _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 _GIT_DIFF_UNMERGED_ARGS = ("diff", "--name-only", "--diff-filter=U")
@@ -232,6 +234,10 @@ def _step_idle(
     lease_token = acquire_result.lease.lease_token
     key = candidates[0].key
     now = _now_iso()
+    admission = admit_candidate(cwd, key, session_id, getattr(_tls, "loop", None))
+    if admission.refused:
+        _try_release_lease(lease_store, session_id, lease_token)
+        return False, _format_error("CANDIDATE_ADMISSION_REFUSED", admission.refused + _ADMISSION_RETRY)
     checkpoint.phase = IntegrationPhase.CANDIDATE_DEQUEUED.value
     checkpoint.candidate_slug = key.slug
     checkpoint.candidate_branch = key.branch
@@ -239,7 +245,6 @@ def _step_idle(
     checkpoint.lease_token = lease_token
     checkpoint.started_at = now
     _write_checkpoint(checkpoint_path, checkpoint)
-    _stamp_integration_started(cwd, key.slug)
 
     logger.info("%s slug=%s phase=CANDIDATE_DEQUEUED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
     _emit_lifecycle_event(

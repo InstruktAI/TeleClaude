@@ -152,6 +152,19 @@ def _derive_creative_phase(
     return phase
 
 
+def _creative_state_of(state: Mapping[str, StateValue]) -> dict[str, StateValue]:
+    creative = state.get("creative")
+    return creative if isinstance(creative, dict) else {}
+
+
+def _lane_incomplete(cwd: str, slug: str, creative_state: dict[str, StateValue], has_design_spec: bool) -> bool:
+    """Whether the derivation reads the design as not complete, for a todo that has an input artifact."""
+    if not creative_state and not has_design_spec:
+        return False
+    workspace_dir = Path(cwd) / "workspace" / slug
+    return _derive_creative_phase(workspace_dir, has_design_spec, creative_state) != CreativePhase.CREATIVE_COMPLETE
+
+
 async def creative_incomplete(todos_db: WorkflowStore, cwd: str, slug: str, state: Mapping[str, StateValue]) -> bool:
     """Whether the todo is on the creative lane with its design not complete.
 
@@ -159,14 +172,17 @@ async def creative_incomplete(todos_db: WorkflowStore, cwd: str, slug: str, stat
     """
     if not await todos_db.artifact_exists(slug, ARTIFACT_INPUT):
         return False
-    creative = state.get("creative")
-    creative_state = creative if isinstance(creative, dict) else {}
     has_design_spec = await todos_db.artifact_exists(slug, ARTIFACT_DESIGN_SPEC)
-    if not creative_state and not has_design_spec:
+    return await asyncio.to_thread(_lane_incomplete, cwd, slug, _creative_state_of(state), has_design_spec)
+
+
+def creative_incomplete_sync(todos_db: WorkflowStore, cwd: str, slug: str, state: Mapping[str, StateValue]) -> bool:
+    """The same answer for a caller on a worker thread: one derivation, read through the store's synchronous reads."""
+    if not todos_db.artifact_exists_sync(slug, ARTIFACT_INPUT):
         return False
-    workspace_dir = Path(cwd) / "workspace" / slug
-    phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
-    return phase != CreativePhase.CREATIVE_COMPLETE
+    return _lane_incomplete(
+        cwd, slug, _creative_state_of(state), todos_db.artifact_exists_sync(slug, ARTIFACT_DESIGN_SPEC)
+    )
 
 
 async def _find_next_creative_slug(todos_db: WorkflowStore, cwd: str) -> str | None:
