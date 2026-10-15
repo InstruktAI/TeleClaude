@@ -131,16 +131,29 @@ def _content_digest(request: ActRequest) -> str:
     return _digest(BOUND_SEPARATOR.join(parts))
 
 
-def _act_key(request: ActRequest, item_id: str) -> str:
-    """The identity of one invocation, stable across the item's later phases, holders and claims.
+def _callers_claim(request: ActRequest, record: WorkflowRecord) -> str:
+    """The epoch of the latest claim the calling session itself made; none for a session that never claimed."""
+    epochs = [
+        entry.epoch
+        for entry in record.ledger
+        if entry.act is Act.CLAIM and entry.session_id == request.caller_session_id
+    ]
+    return str(max(epochs, default=0))
 
-    The calling session plus the request content names the invocation for as long as it can be repeated;
-    a decision's content names the wait it answers, so a repeat never binds to a later wait.
+
+def _act_key(request: ActRequest, item_id: str, record: WorkflowRecord) -> str:
+    """The identity of one invocation, stable across the item's later phases and other sessions' claims.
+
+    The calling session, the claim it made and the request content name the invocation for as long as it can
+    be repeated. A successor's claim leaves it unchanged; a session that claims again, as a revived driver
+    does, starts a new one, so its repeated act is not swallowed as the earlier one. A decision's content
+    names the wait it answers, so a repeat never binds to a later wait.
     """
     return occurrence_id(
         request.project_root,
         item_id,
         request.act.value,
+        _callers_claim(request, record),
         _content_digest(request),
     )
 
@@ -226,7 +239,7 @@ def _decide_waiting(request: ActRequest, facts: _Facts, state: TodoState, readin
         raise _refuse(Refusal.NO_AUTHORITY, act=request.act.value, person=person)
     waited_phase = WaitedPhase(waited.value)
     waiting = WaitingRecord(
-        key=_act_key(request, facts.item_id),
+        key=_act_key(request, facts.item_id, state.workflow),
         waited_phase=waited_phase,
         person=person,
         question_digest=_digest(question),
@@ -335,7 +348,7 @@ def _decide_stamp(request: ActRequest, facts: _Facts, state: TodoState, reading:
     _require_phase(request, reading, (Phase.WORK,))
     sha = _require(request, request.sha, ARGUMENT_SHA)
     flight = state.workflow.stamp_in_flight
-    if flight is None or flight.key != _act_key(request, facts.item_id):
+    if flight is None or flight.key != _act_key(request, facts.item_id, state.workflow):
         raise _refuse(Refusal.STAMP_SLOT_LOST, act=request.act.value)
     stamp = StampRecord(sha=sha, session_id=facts.caller.session_id, ready_at=_now())
 
@@ -454,7 +467,7 @@ def _apply(
     if state_dict is None:
         raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)
     state = TodoState.model_validate(state_dict)
-    existing = _act_key(request, facts.item_id)
+    existing = _act_key(request, facts.item_id, state.workflow)
     if existing in state.workflow.act_status:
         outcome.append(existing)
         return None
@@ -510,7 +523,7 @@ async def perform_act(request: ActRequest) -> ActResult:
         raise _refuse(Refusal.NOT_PERFORMED_HERE, act=request.act.value)
     state = TodoState.model_validate(raw)
     facts = await _resolve_facts(store, request, state)
-    key = _act_key(request, facts.item_id)
+    key = _act_key(request, facts.item_id, state.workflow)
     if key not in state.workflow.act_status:
         _authorize(request, facts)
         await observe_item_supervised(request.project_root, request.item)
