@@ -109,6 +109,7 @@ class TodoShowPayload(TypedDict, total=False):
     audit: dict[str, StateValue]
     events: list[dict[str, StateValue]] | dict[str, StateValue]
     next_commands: dict[str, str]
+    standing: dict[str, StateValue]
     artifacts: list[str]
     artifact_content: dict[str, str]
 
