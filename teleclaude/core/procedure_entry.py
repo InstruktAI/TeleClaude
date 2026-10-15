@@ -24,7 +24,12 @@ from teleclaude.context_selector import (
 )
 from teleclaude.core.agent_dispatch import AgentDispatchReason
 from teleclaude.core.injected_text import render_reference_loader
-from teleclaude.core.models._session import NO_ADDITIONAL_CONTEXT, ProcedureEntryKind, ProcedureInvocation
+from teleclaude.core.models._session import (
+    NO_ADDITIONAL_CONTEXT,
+    NO_WORKFLOW_PUBLICATION,
+    ProcedureEntryKind,
+    ProcedureInvocation,
+)
 from teleclaude.core.roles import Role, UnknownRole, may_dispatch
 from teleclaude.docs_subscriptions import (
     ProcedureDeliverySettings,
@@ -88,6 +93,7 @@ class EntryContext:
     agents: tuple[str, ...] | None = None
     thinking_mode: ThinkingMode | None = None
     facts: tuple[tuple[str, str], ...] = ()
+    workflow_publication: str = NO_WORKFLOW_PUBLICATION
 
 
 def job_entry(job_name: str, agents: tuple[str, ...], thinking_mode: ThinkingMode) -> EntryContext:
@@ -108,8 +114,12 @@ def activation_entry(
     subject: str | None,
     attendance: SubscriptionAttendance,
     delivery: ProcedureDeliverySettings,
+    workflow_publication: str = NO_WORKFLOW_PUBLICATION,
 ) -> EntryContext:
-    """The entry context of an activation: the home, subject, attendance and delivery facts it carries."""
+    """The entry context of an activation: the home, subject, attendance and delivery facts it carries.
+
+    A lifecycle driver's activation also carries the workflow publication the driver is initialized under.
+    """
     facts = [(FACT_HOME, home)]
     if subject is not None:
         facts.append((FACT_SUBJECT, subject))
@@ -124,6 +134,7 @@ def activation_entry(
         kind=ProcedureEntryKind.ACTIVATION,
         job=procedure_id,
         facts=tuple(facts),
+        workflow_publication=workflow_publication,
     )
 
 
@@ -165,6 +176,7 @@ class ResolvedInvocation:
             entry_job=self.entry.job,
             entry_facts=self.entry.facts,
             additional_context=self.additional_context,
+            workflow_publication=self.entry.workflow_publication,
         )
 
 

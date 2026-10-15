@@ -52,6 +52,7 @@ from teleclaude.core.procedure_event_delivery import (
 )
 from teleclaude.core.session_revival import revive_session, session_is_resumable
 from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.workflow_machine.publication import driver_publication_snapshot
 from teleclaude.docs_subscriptions import (
     ProcedureDeliverySettings,
     SubscriptionAttendance,
@@ -226,6 +227,7 @@ async def _create_agent(
                 subject=subject,
                 attendance=attendance,
                 delivery=ProcedureDeliverySettings(event_delivery=cmd.event_delivery, interruptible=cmd.interruptible),
+                workflow_publication=driver_publication_snapshot(procedure_id, folder),
             ),
             caller_mode=None,
         )
