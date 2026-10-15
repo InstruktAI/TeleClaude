@@ -68,15 +68,25 @@ async def _prepared_parents(store: WorkflowStore, delivered: set[str], entries: 
     return _with_holder_rollup(prepared, entries)
 
 
-async def unmet_for_preparation(store: WorkflowStore, item: str) -> list[str]:
-    """The dependencies of the item that have not been prepared."""
+async def prepared_slugs(store: WorkflowStore) -> set[str]:
+    """The slugs that count as prepared parents: delivered, or read as prepared or beyond, with holders rolled up."""
     delivered = await effective_delivered_slugs_for_dependencies(store)
     entries = await store.list_todo(include_delivered=True, include_holders=True)
-    prepared = await _prepared_parents(store, delivered, entries)
+    return await _prepared_parents(store, delivered, entries)
+
+
+async def delivered_slugs(store: WorkflowStore) -> set[str]:
+    """The slugs that count as delivered parents."""
+    return await effective_delivered_slugs_for_dependencies(store)
+
+
+async def unmet_for_preparation(store: WorkflowStore, item: str) -> list[str]:
+    """The dependencies of the item that have not been prepared."""
+    prepared = await prepared_slugs(store)
     return [dep for dep in (await store.load_deps()).get(item, []) if dep not in prepared]
 
 
 async def unmet_for_work(store: WorkflowStore, item: str) -> list[str]:
     """The dependencies of the item that have not been delivered."""
-    delivered = await effective_delivered_slugs_for_dependencies(store)
+    delivered = await delivered_slugs(store)
     return [dep for dep in (await store.load_deps()).get(item, []) if dep not in delivered]

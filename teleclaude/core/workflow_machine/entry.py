@@ -95,6 +95,7 @@ class EntryRequest:
     caller_session_id: str
     integration_head: str = ""
     reservation: str = ""
+    wait_for_claim: bool = True
 
 
 @dataclass(frozen=True)
@@ -105,6 +106,7 @@ class EntryResult:
     driver_session_id: str
 
 
+REQUESTED_NOTE: Final = "{item}: a driver was requested."
 LAUNCH_NOTE: Final = "{item}: a driver was requested; session {session} holds the claim."
 CLAIM_NOTE: Final = "claimed"
 NO_SESSION: Final = ""
@@ -357,6 +359,8 @@ async def _launch(
         updated_by=request.caller_session_id or None,
     )
     await reconcile_slug_supervised(request.project_root, request.item)
+    if not request.wait_for_claim:
+        return EntryResult(text=REQUESTED_NOTE.format(item=request.item), driver_session_id=NO_SESSION)
     started = await _await_claim(store, request)
     return EntryResult(text=LAUNCH_NOTE.format(item=request.item, session=started), driver_session_id=started)
 

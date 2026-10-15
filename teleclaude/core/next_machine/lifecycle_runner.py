@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple, Protocol, Unpack
+from typing import Final, NamedTuple, Protocol, Unpack
 
 from instrukt_ai_logging import get_logger
 
@@ -27,9 +28,7 @@ from teleclaude.core.next_machine.git_ops import (
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lanes import LANE_ENTRY_PROCEDURES
 from teleclaude.core.next_machine.lifecycle import (
-    coerce_lifecycle_phase,
     effective_hold,
-    lifecycle_phase_index,
     pending_approval_gate,
     plan_review_current,
 )
@@ -47,20 +46,22 @@ from teleclaude.core.next_machine.runner_types import (
 )
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id, live_orchestrator_owned_slugs
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
-from teleclaude.core.next_machine.slug_resolution import (
-    effective_delivered_slugs_for_dependencies,
-    effective_prepared_slugs_for_dependencies,
-)
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db._rows import TodoRow
+from teleclaude.core.workflow_machine.dependencies import delivered_slugs as delivered_slugs_of
+from teleclaude.core.workflow_machine.dependencies import prepared_slugs as prepared_slugs_of
+from teleclaude.core.workflow_machine.heads import observed_head
+from teleclaude.core.workflow_machine.phase_reading import read_phase
+from teleclaude.core.workflow_machine.stamp import NO_HEAD
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import HoldAuditState, TodoState
+from teleclaude.types.workflow_record import Phase
 
 logger = get_logger(__name__)
 
@@ -167,30 +168,33 @@ def _resolve_kinded_dispatch(
         return RunnerLane.TASK_RUN, None
     if kind not in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
         return None, RunnerSkipReason.INVALID_KIND
-    phase = coerce_lifecycle_phase(todo.lifecycle_phase)
-    if phase is None:
+    if todo.item_phase is None:
         return None, RunnerSkipReason.UNKNOWN_PHASE
-    if phase == LifecyclePhase.FINALIZE_READY and todo.plan_review_current:
-        return None, RunnerSkipReason.FINALIZE_READY
-    if lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED) and todo.plan_review_current:
-        if todo.dependency_drift_pending_on:
-            # Re-derive a prepared dependent before its work runtime resumes.
-            unmet = [dep for dep in todo.after if dep not in prepared_slugs]
-            lane = RunnerLane.PREPARE
-        else:
-            # Work lane — entering the execution runtime. Autostart gates this only.
-            if not _autostart_enabled(kind, autostart):
-                return None, RunnerSkipReason.POLICY_DISABLED
-            unmet = [dep for dep in todo.after if dep not in delivered_slugs]
-            lane = RunnerLane.WORK
-    else:
-        # Prepare lane — preparation always runs regardless of autostart; agents
-        # park at the human approval gates (PRD) at the right moments anyway.
-        unmet = [dep for dep in todo.after if dep not in prepared_slugs]
+    phase = Phase(todo.item_phase)
+    skipped = _PHASE_SKIPS.get(phase)
+    if skipped is not None:
+        return None, skipped
+    if phase is Phase.PREPARATION:
+        # Preparation always runs regardless of autostart; agents park at the human gates themselves.
         lane = RunnerLane.PREPARE
+        unmet = [dep for dep in todo.after if dep not in prepared_slugs]
+    else:
+        # A prepared item, or one in work (a stale stamp reads as work), enters the execution runtime.
+        if not _autostart_enabled(kind, autostart):
+            return None, RunnerSkipReason.POLICY_DISABLED
+        lane = RunnerLane.WORK
+        unmet = [dep for dep in todo.after if dep not in delivered_slugs]
     if unmet:
         return None, RunnerSkipReason.DEPENDENCY_BLOCKED
     return lane, None
+
+
+_PHASE_SKIPS: Final[Mapping[Phase, RunnerSkipReason]] = {
+    Phase.WAITING: RunnerSkipReason.WAITING,
+    Phase.READY: RunnerSkipReason.READY,
+    Phase.DESIGN: RunnerSkipReason.DESIGN,
+    Phase.DELIVERED: RunnerSkipReason.DELIVERED,
+}
 
 
 def decide_dispatches(
@@ -268,29 +272,6 @@ def decide_dispatches(
         if _at_capacity():
             decision.skip(RunnerSkipReason.AT_CAPACITY, slug)
             continue
-        if lane is RunnerLane.PREPARE and todo.dependency_drift_pending_on:
-            logger.info(
-                _RUNNER_REPREPARE_MESSAGE,
-                event=_RUNNER_REPREPARE_EVENT,
-                outcome=_RUNNER_REPREPARE_OUTCOME,
-                reason=_RUNNER_DEPENDENCY_ARTIFACT_DRIFT_REASON,
-                slug=slug,
-                lifecycle_phase=todo.lifecycle_phase or "",
-                dependencies=sorted(todo.dependency_drift_pending_on),
-            )
-        elif (
-            lane is RunnerLane.PREPARE and coerce_lifecycle_phase(todo.lifecycle_phase) is LifecyclePhase.FINALIZE_READY
-        ):
-            logger.info(
-                _RUNNER_REPREPARE_MESSAGE,
-                event=_RUNNER_REPREPARE_EVENT,
-                outcome=_RUNNER_REPREPARE_OUTCOME,
-                reason=_RUNNER_REPREPARE_REASON,
-                slug=slug,
-                lifecycle_phase=LifecyclePhase.FINALIZE_READY.value,
-                current_plan_digest=todo.current_plan_digest,
-                reviewed_plan_digest=todo.reviewed_plan_digest,
-            )
         decision.intents.append(_intent(slug, lane))
     return decision
 
@@ -351,11 +332,13 @@ def _todo_from_state(row: TodoRow, status: str, state: Mapping[str, StateValue])
     active_runner = state.get("active_runner")
     task_plan_digest = _artifact_digest_from_state(state, "task_plan")
     task_approval = _approval_from_state(state, "task_approved")
+    reading = read_phase(model, integration_head=NO_HEAD, creative_incomplete=False)
     return RunnerTodo(
         slug=row["slug"],
         status=status,
         kind=model.kind,
         lifecycle_phase=model.lifecycle_phase.value,
+        item_phase=reading.phase.value if reading.phase is not None else None,
         human_approval_pending=pending_approval_gate(model) is not None,
         hold=state.get("hold") is True,
         active_runner=active_runner if isinstance(active_runner, str) and active_runner else None,
@@ -477,26 +460,12 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                     current_status=read.current_status,
                 )
             continue
-        todo = RunnerTodo(
-            slug=todo.slug,
-            status=todo.status,
-            kind=todo.kind,
-            lifecycle_phase=todo.lifecycle_phase,
-            human_approval_pending=todo.human_approval_pending,
-            hold=todo.hold,
-            active_runner=todo.active_runner,
-            manually_started=todo.manually_started,
-            after=tuple(deps.get(todo.slug, [])),
-            schedule=todo.schedule,
-            task_plan_digest=todo.task_plan_digest,
-            task_approved=todo.task_approved,
-            task_approved_digest=todo.task_approved_digest,
-            plan_review_current=todo.plan_review_current,
-            current_plan_digest=todo.current_plan_digest,
-            reviewed_plan_digest=todo.reviewed_plan_digest,
-            dependency_drift_pending_on=todo.dependency_drift_pending_on,
-        )
+        todo = replace(todo, after=tuple(deps.get(todo.slug, [])))
         state = states_by_slug.get(todo.slug)
+        if state is not None and state.lifecycle_phase is LifecyclePhase.READY:
+            head = await observed_head(str(todos_db.project_root), todo.slug)
+            ready_reading = read_phase(state, integration_head=head, creative_incomplete=False)
+            todo = replace(todo, item_phase=ready_reading.phase.value if ready_reading.phase is not None else None)
         if state is not None and todo.kind in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
             dependency_snapshot = build_dependency_artifact_snapshot(
                 [
@@ -511,47 +480,11 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                     state.artifacts.implementation_plan.dependency_artifact_digests,
                     dependency_snapshot,
                 )
-                todo = RunnerTodo(
-                    slug=todo.slug,
-                    status=todo.status,
-                    kind=todo.kind,
-                    lifecycle_phase=todo.lifecycle_phase,
-                    human_approval_pending=todo.human_approval_pending,
-                    hold=todo.hold,
-                    active_runner=todo.active_runner,
-                    manually_started=todo.manually_started,
-                    after=todo.after,
-                    schedule=todo.schedule,
-                    task_plan_digest=todo.task_plan_digest,
-                    task_approved=todo.task_approved,
-                    task_approved_digest=todo.task_approved_digest,
-                    plan_review_current=todo.plan_review_current,
-                    current_plan_digest=todo.current_plan_digest,
-                    reviewed_plan_digest=todo.reviewed_plan_digest,
-                    dependency_drift_pending_on=tuple(sorted(moved_dependencies)),
-                )
+                todo = replace(todo, dependency_drift_pending_on=tuple(sorted(moved_dependencies)))
         if todo.active_runner and not await _is_live_runner(db, todo.active_runner):
             await _clear_active_runner(todos_db, row)
             reconciled.append(todo.slug)
-            todo = RunnerTodo(
-                slug=todo.slug,
-                status=todo.status,
-                kind=todo.kind,
-                lifecycle_phase=todo.lifecycle_phase,
-                human_approval_pending=todo.human_approval_pending,
-                hold=todo.hold,
-                active_runner=None,
-                manually_started=False,
-                after=todo.after,
-                schedule=todo.schedule,
-                task_plan_digest=todo.task_plan_digest,
-                task_approved=todo.task_approved,
-                task_approved_digest=todo.task_approved_digest,
-                plan_review_current=todo.plan_review_current,
-                current_plan_digest=todo.current_plan_digest,
-                reviewed_plan_digest=todo.reviewed_plan_digest,
-                dependency_drift_pending_on=todo.dependency_drift_pending_on,
-            )
+            todo = replace(todo, active_runner=None, manually_started=False)
         loaded[todo.slug] = todo
     return loaded, reconciled
 
@@ -615,6 +548,43 @@ async def dispatch_lifecycle_session(
     return response.session_id
 
 
+_ITEM_LANES: Final = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
+_REFUSED_LOG: Final = "lifecycle runner: the driver request was refused"
+_REQUEST_FAILED_LOG: Final = "lifecycle runner: the driver request failed"
+
+
+async def _request_item_driver(project_path: str, intent: DispatchIntent) -> bool:
+    """Ask the lifecycle machine to start the driver of a prepare or work intent; False when it refuses or fails.
+
+    The request is recorded and returns without waiting for the driver to claim; the driver claims for itself.
+    """
+    from teleclaude.core.workflow_machine.entry import (  # noqa: PLC0415 - deferred cycle: the machine reads this package
+        EntryRefused,
+        EntryRequest,
+        EntryVerb,
+        enter,
+    )
+
+    verb = EntryVerb.PREPARE if intent.lane is RunnerLane.PREPARE else EntryVerb.WORK
+    try:
+        await enter(
+            EntryRequest(
+                project_root=project_path,
+                item=intent.slug,
+                verb=verb,
+                caller_session_id="",
+                wait_for_claim=False,
+            )
+        )
+    except EntryRefused as refusal:
+        logger.info(_REFUSED_LOG, slug=intent.slug, lane=intent.lane.value, reason=str(refusal))
+        return False
+    except Exception:  # supervision boundary: one failing request must not stop the pass
+        logger.exception(_REQUEST_FAILED_LOG, slug=intent.slug, lane=intent.lane.value)
+        return False
+    return True
+
+
 async def run_lifecycle_runner(
     project_path: str | Path,
     *,
@@ -626,8 +596,8 @@ async def run_lifecycle_runner(
     runtime_db = db or await get_db()
     todos_db = await get_workflow_store(project_root)
     todos, reconciled = await _load_todos(todos_db, runtime_db)
-    prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
-    delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
+    prepared_slugs = await prepared_slugs_of(todos_db)
+    delivered_slugs = await delivered_slugs_of(todos_db)
     workflow = config.workflow
     autostart = {
         KIND_FEATURE: workflow.autostart.feature,
@@ -662,6 +632,10 @@ async def run_lifecycle_runner(
     await client.connect()
     try:
         for intent in decision.intents:
+            if intent.lane in _ITEM_LANES:
+                if await _request_item_driver(str(project_root), intent):
+                    dispatched.append(intent)
+                continue
             await dispatch_lifecycle_session(
                 client=client,
                 runtime_db=runtime_db,
