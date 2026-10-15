@@ -13,11 +13,10 @@ from pathlib import Path
 
 from teleclaude.core.db import db
 from teleclaude.core.db_models import Operation, ProcedureEventDeliveryOutcome
-from teleclaude.core.next_machine.create import creative_incomplete
 from teleclaude.core.next_machine.kinds import KIND_TASK
 from teleclaude.core.next_machine.runner_types import RunnerLane, RunnerSkipReason
 from teleclaude.core.workflow_machine.entry import EntryRequest, EntryVerb, LaunchInProgress, enter
-from teleclaude.core.workflow_machine.heads import reading_head
+from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.phase_reading import read_phase
 from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.events.envelope import ReceivedEvent
@@ -79,9 +78,10 @@ async def run_item_verb(
     if raw is None:
         return None
     state = TodoState.model_validate(raw)
-    head = await reading_head(project_root, slug, state)
-    creative = await creative_incomplete(store, project_root, slug, raw)
-    if state.kind == KIND_TASK or read_phase(state, integration_head=head, creative_incomplete=creative).phase is None:
+    if (
+        state.kind == KIND_TASK
+        or read_phase(state, await resolve_lane(store, project_root, slug, raw, state)).phase is None
+    ):
         return None
     try:
         result = await enter(

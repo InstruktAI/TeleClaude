@@ -21,8 +21,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import ARTIFACT_DESIGN_SPEC, ARTIFACT_INPUT
 from teleclaude.core.integration.candidate_scan import CandidateKey, candidate_is_held
 from teleclaude.core.integration.git_ops import _run_git
-from teleclaude.core.next_machine.create import creative_incomplete_sync
-from teleclaude.core.workflow_machine.phase_reading import creative_snapshot, read_phase
+from teleclaude.core.workflow_machine.lane import resolve_lane_sync
+from teleclaude.core.workflow_machine.phase_reading import LaneFacts, creative_snapshot, read_phase
 from teleclaude.core.workflow_store.store import get_workflow_store, get_workflow_store_sync
 from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, workflow_record_of
@@ -70,7 +70,7 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _mutation(key: CandidateKey, head: str, snapshot: str, session_id: str) -> ItemMutation:
+def _mutation(key: CandidateKey, lane: LaneFacts, snapshot: str, session_id: str) -> ItemMutation:
     def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
         if current is None:
             raise AdmissionRefused(AdmissionRefusal.UNKNOWN_ITEM.value.format(item=key.slug))
@@ -80,6 +80,7 @@ def _mutation(key: CandidateKey, head: str, snapshot: str, session_id: str) -> I
             return None
         if admitted is not None:
             raise AdmissionRefused(AdmissionRefusal.OTHER_ADMISSION.value.format(item=key.slug, sha=admitted.sha[:8]))
+        head = lane.integration_head
         if head != key.sha:
             raise AdmissionRefused(
                 AdmissionRefusal.HEAD_MOVED.value.format(item=key.slug, head=head[:8], sha=key.sha[:8])
@@ -88,7 +89,7 @@ def _mutation(key: CandidateKey, head: str, snapshot: str, session_id: str) -> I
             raise AdmissionRefused(AdmissionRefusal.CREATIVE_MOVED.value.format(item=key.slug))
         if candidate_is_held(current, state, head):
             raise AdmissionRefused(AdmissionRefusal.HELD.value.format(item=key.slug))
-        reading = read_phase(state, integration_head=head, creative_incomplete=False)
+        reading = read_phase(state, lane)
         if reading.phase is not Phase.READY or reading.ready_sha != key.sha:
             raise AdmissionRefused(AdmissionRefusal.NOT_READY.value.format(item=key.slug, sha=key.sha[:8]))
         record = workflow_record_of(current).model_copy(deep=True)
@@ -130,9 +131,10 @@ def admit_candidate(cwd: str, key: CandidateKey, session_id: str, loop: asyncio.
     if not head:
         return Admission(AdmissionRefusal.HEAD_UNREADABLE.value.format(item=key.slug))
     expected = {name: store.artifact_digest_sync(key.slug, name) for name in FENCED_ARTIFACTS}
-    if creative_incomplete_sync(store, cwd, key.slug, raw):
+    lane = resolve_lane_sync(store, cwd, key.slug, raw, head)
+    if lane.creative_incomplete:
         return Admission(AdmissionRefusal.CREATIVE_MOVED.value.format(item=key.slug))
-    mutation = _mutation(key, head, creative_snapshot(raw), session_id)
+    mutation = _mutation(key, lane, creative_snapshot(raw), session_id)
     commit = _commit(cwd, key, mutation, expected)
     try:
         if loop is not None and loop.is_running():

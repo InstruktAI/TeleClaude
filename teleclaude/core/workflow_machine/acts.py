@@ -18,13 +18,13 @@ from typing import Final
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ARTIFACT_INPUT
-from teleclaude.core.next_machine.create import creative_incomplete
 from teleclaude.core.roles import RoleName
 from teleclaude.core.workflow_machine.act_types import BOUND_SEPARATOR, ActRefused, ActRequest, ActResult, Refusal
 from teleclaude.core.workflow_machine.authority import configured_person, has_project_authority
 from teleclaude.core.workflow_machine.caller import CallerFacts, child_sessions_of, in_claiming_group, load_caller
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.heads import observe_item_supervised
+from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.phase_reading import PhaseReading, creative_snapshot, read_phase
 from teleclaude.core.workflow_machine.stamp_run import run_stamp
 from teleclaude.core.workflow_machine.vocabulary import ACT_PERFORMERS, Performer
@@ -480,7 +480,7 @@ def _apply(
     holder_now = state.active_runner or None
     if holder_now != facts.holder:
         raise _refuse(Refusal.HOLDER_CHANGED, act=request.act.value)
-    reading = read_phase(state, integration_head=NO_SESSION, creative_incomplete=request.creative_incomplete)
+    reading = read_phase(state, request.resolved_lane)
     decision = _DECIDERS[request.act](request, facts, state, reading)
     record = state.workflow
     key = existing
@@ -530,7 +530,7 @@ async def perform_act(request: ActRequest) -> ActResult:
     state = TodoState.model_validate(raw)
     request = replace(
         request,
-        creative_incomplete=await creative_incomplete(store, request.project_root, request.item, raw),
+        lane=await resolve_lane(store, request.project_root, request.item, raw, state),
         creative_snapshot=creative_snapshot(raw),
     )
     facts = await _resolve_facts(store, request, state)
@@ -558,7 +558,7 @@ async def _commit(store: WorkflowStore, request: ActRequest, facts: _Facts) -> s
         request,
         facts,
         current,
-        read_phase(current, integration_head=NO_SESSION, creative_incomplete=request.creative_incomplete),
+        read_phase(current, request.resolved_lane),
     ).expect_digests
 
     recorded: list[str] = []
@@ -592,7 +592,7 @@ async def _result(store: WorkflowStore, request: ActRequest, key: str) -> ActRes
         raise _refuse(Refusal.NOT_RECORDED, act=request.act.value)
     return ActResult(
         act_key=key,
-        phase=read_phase(state, integration_head=NO_SESSION, creative_incomplete=request.creative_incomplete).phase,
+        phase=read_phase(state, request.resolved_lane).phase,
         complete=status is ActStatus.COMPLETE,
         finding_key=key if request.act is Act.FINDING else NO_SESSION,
     )

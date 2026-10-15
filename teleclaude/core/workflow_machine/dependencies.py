@@ -9,15 +9,12 @@ does not clear a dependent's preparation.
 
 from __future__ import annotations
 
-from teleclaude.core.next_machine.create import creative_incomplete
 from teleclaude.core.next_machine.kinds import KIND_TASK
 from teleclaude.core.next_machine.slug_resolution import effective_delivered_slugs_for_dependencies
-from teleclaude.core.workflow_machine.heads import observed_head
+from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.phase_reading import read_phase
-from teleclaude.core.workflow_machine.stamp import NO_HEAD
 from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.core.workflow_store.types import WorkItem
-from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.todos import TodoState
 from teleclaude.types.workflow_record import Phase
 
@@ -59,13 +56,8 @@ async def _prepared_parents(store: WorkflowStore, delivered: set[str], entries: 
         state = TodoState.model_validate(raw)
         if state.kind == KIND_TASK:
             continue
-        head = (
-            await observed_head(str(store.project_root), slug)
-            if state.lifecycle_phase is LifecyclePhase.REVIEW_APPROVED
-            else NO_HEAD
-        )
-        creative = await creative_incomplete(store, str(store.project_root), slug, raw)
-        if read_phase(state, integration_head=head, creative_incomplete=creative).phase in PREPARED_PARENT_PHASES:
+        lane = await resolve_lane(store, str(store.project_root), slug, raw, state)
+        if read_phase(state, lane).phase in PREPARED_PARENT_PHASES:
             prepared.add(slug)
     return _with_holder_rollup(prepared, entries)
 

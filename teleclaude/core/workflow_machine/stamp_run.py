@@ -35,7 +35,7 @@ from teleclaude.core.workflow_machine.gate_unit import (
     start_runner,
 )
 from teleclaude.core.workflow_machine.phase_reading import read_phase
-from teleclaude.core.workflow_machine.stamp import NO_HEAD, StampRefusal, check_refs, worktree_path
+from teleclaude.core.workflow_machine.stamp import StampRefusal, check_refs, worktree_path
 from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, workflow_record_of
@@ -139,7 +139,7 @@ def _take(
         if key in record.act_status:
             outcome.append(Slot.RECORDED)
             return None
-        reading = read_phase(state, integration_head=NO_HEAD, creative_incomplete=request.creative_incomplete)
+        reading = read_phase(state, request.resolved_lane)
         if reading.phase is not Phase.WORK:
             raise ActRefused(Refusal.WRONG_PHASE.value.format(act=request.act.value, phase=state.lifecycle_phase))
         if state.active_runner != session_id:

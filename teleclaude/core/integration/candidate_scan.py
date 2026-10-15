@@ -12,8 +12,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR, TodoStatus
 from teleclaude.core.integration.git_ops import _run_git
-from teleclaude.core.next_machine.create import creative_incomplete_sync
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
+from teleclaude.core.workflow_machine.lane import resolve_lane_sync
 from teleclaude.core.workflow_machine.phase_reading import read_phase
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store_sync
 from teleclaude.types.state_value import StateValue
@@ -133,8 +133,7 @@ def _candidate_from_state(
     head = _remote_head(cwd, branch)
     if not head or candidate_is_held(state, typed, head):
         return None
-    incomplete = creative_incomplete_sync(todos_db, cwd, slug, state)
-    reading = read_phase(typed, integration_head=head, creative_incomplete=incomplete)
+    reading = read_phase(typed, resolve_lane_sync(todos_db, cwd, slug, state, head))
     if reading.phase is not Phase.READY or not reading.ready_at or reading.ready_sha != head:
         return None
     rc, _, _ = _run_git(["merge-base", "--is-ancestor", head, "HEAD"], cwd=cwd)

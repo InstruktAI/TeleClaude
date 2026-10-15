@@ -43,6 +43,20 @@ TASK_LANE_STORED_PHASES: frozenset[LifecyclePhase] = frozenset(
 
 
 @dataclass(frozen=True)
+class LaneFacts:
+    """The creative lane's answer and the integration head, resolved together for one reading of an item.
+
+    Every consumer that reads a phase obtains these from the resolver (``lane.py``) or reuses the ones a caller
+    resolved before its transaction. They are never supplied as constants, so a reader added later cannot read an
+    item as ordinary preparation while the creative lane drives it
+    (``local/projects/teleclaude/design/architecture/workflow-machine``).
+    """
+
+    creative_incomplete: bool
+    integration_head: str
+
+
+@dataclass(frozen=True)
 class PhaseReading:
     """An item's phase, and the commit it is ready at when that phase is ``ready``.
 
@@ -68,13 +82,13 @@ def creative_snapshot(state: Mapping[str, StateValue]) -> str:
     return json.dumps(state.get(CREATIVE_STATE_KEY), sort_keys=True, default=str)
 
 
-def read_phase(state: TodoState, *, integration_head: str, creative_incomplete: bool) -> PhaseReading:
+def read_phase(state: TodoState, lane: LaneFacts) -> PhaseReading:
     """Read the item's phase.
 
-    ``integration_head`` is the commit the integration ref carries now, or empty when it is unknown. A stamp
+    ``lane.integration_head`` is the commit the integration ref carries now, or empty when it is unknown. A stamp
     whose commit is no longer the head is stale: the item reads as work again, and a stamp at the new head
     is required (``local/projects/teleclaude/spec/feature/workflow/work-review-cycle``).
-    ``creative_incomplete`` is the creative lane's answer for an item it has not finished.
+    ``lane.creative_incomplete`` is the creative lane's answer for an item it has not finished.
     An item the integrator admitted reads ``ready`` at the admitted commit until the integrator retires the
     admission, whatever its head, its stamp or its creative state: the integrator owns the item's posture, so no
     driver is reserved or started for it and nothing under the integrator's merge is reopened.
@@ -87,11 +101,11 @@ def read_phase(state: TodoState, *, integration_head: str, creative_incomplete: 
     admitted = state.workflow.admitted
     if admitted is not None:
         return PhaseReading(phase=Phase.READY, ready_sha=admitted.sha, ready_at=admitted.at)
-    if creative_incomplete:
+    if lane.creative_incomplete:
         return PhaseReading(phase=Phase.DESIGN)
     if stored is LifecyclePhase.READY:
         stamp = state.workflow.stamp
-        if stamp is not None and integration_head and stamp.sha != integration_head:
+        if stamp is not None and lane.integration_head and stamp.sha != lane.integration_head:
             return PhaseReading(phase=Phase.WORK)
         return PhaseReading(
             phase=Phase.READY,
@@ -101,7 +115,7 @@ def read_phase(state: TodoState, *, integration_head: str, creative_incomplete: 
     if stored is LifecyclePhase.FINALIZE_READY:
         return _finalize_ready(state)
     if stored is LifecyclePhase.REVIEW_APPROVED:
-        return _review_approved(state, integration_head)
+        return _review_approved(state, lane.integration_head)
     if stored is LifecyclePhase.PREPARED:
         return PhaseReading(phase=Phase.PREPARED if state.workflow.prepared else Phase.PREPARATION)
     if stored is LifecyclePhase.WAITING:

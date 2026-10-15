@@ -64,7 +64,9 @@ DISCOVERY_ITEM_TIMEOUT_SECONDS: Final = 20
 DISCOVERY_CONCURRENCY: Final = 8
 PASS_SETUP_TIMEOUT_SECONDS: Final = 10
 HEAD_READ_FAILED_LOG: Final = "integration head could not be read for a phase reading"
-HEAD_COMPARED_PHASES: Final = frozenset({LifecyclePhase.READY, LifecyclePhase.REVIEW_APPROVED})
+HEAD_COMPARED_PHASES: Final = frozenset(
+    {LifecyclePhase.READY, LifecyclePhase.REVIEW_APPROVED, LifecyclePhase.FINALIZE_READY}
+)
 
 
 @dataclass(frozen=True)

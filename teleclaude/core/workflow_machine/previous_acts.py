@@ -10,6 +10,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Final
 
+from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.phase_reading import read_phase
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.types.todos import TodoState
@@ -74,7 +75,8 @@ async def refuse_previous_machine_act(project_root: str, slug: str, verb: str) -
     raw = await store.read_state(slug)
     if raw is None:
         return
-    reading = read_phase(TodoState.model_validate(raw), integration_head="", creative_incomplete=False)
+    state = TodoState.model_validate(raw)
+    reading = read_phase(state, await resolve_lane(store, project_root, slug, raw, state))
     if reading.phase is None or reading.phase in NOT_DRIVEN_PHASES:
         return
     raise PreviousActRefused(REFUSAL_TEMPLATE.format(verb=verb, item=slug, phase=reading.phase.value, act=replacing))

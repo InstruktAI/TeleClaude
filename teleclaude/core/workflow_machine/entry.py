@@ -19,13 +19,13 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ARTIFACT_INPUT, WORKTREE_DIR
 from teleclaude.core.db import db
-from teleclaude.core.next_machine.create import creative_incomplete
 from teleclaude.core.workflow_machine.caller import child_sessions_of, load_caller
 from teleclaude.core.workflow_machine.dependencies import unmet_for_preparation, unmet_for_work
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
-from teleclaude.core.workflow_machine.heads import observe_item_supervised, reading_head
+from teleclaude.core.workflow_machine.heads import observe_item_supervised
 from teleclaude.core.workflow_machine.instruction import InstructionFacts, render_instruction
-from teleclaude.core.workflow_machine.phase_reading import PhaseReading, creative_snapshot, read_phase
+from teleclaude.core.workflow_machine.lane import resolve_lane
+from teleclaude.core.workflow_machine.phase_reading import LaneFacts, PhaseReading, creative_snapshot, read_phase
 from teleclaude.core.workflow_machine.publication import (
     PublicationError,
     WorkflowPublication,
@@ -85,6 +85,10 @@ class EntryRefused(Exception):
     """An entry verb was refused for one named cause; nothing was written."""
 
 
+class LaneNotResolved(Exception):
+    """A phase was read before the entry resolved the creative lane and the integration head."""
+
+
 class LaunchInProgress(Exception):
     """The driver start was requested and has not claimed yet; repeating the verb attaches to it."""
 
@@ -97,11 +101,17 @@ class EntryRequest:
     item: str
     verb: EntryVerb
     caller_session_id: str
-    integration_head: str = ""
     reservation: str = ""
     wait_for_claim: bool = True
-    creative_incomplete: bool = False
+    lane: LaneFacts | None = None
     creative_snapshot: str = ""
+
+    @property
+    def resolved_lane(self) -> LaneFacts:
+        """The lane facts the entry resolved before it decided; reading them earlier is a defect."""
+        if self.lane is None:
+            raise LaneNotResolved(self.item)
+        return self.lane
 
 
 @dataclass(frozen=True)
@@ -254,9 +264,7 @@ def _apply_claim(
         raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
     _recheck_creative(request, state_dict)
     state = TodoState.model_validate(state_dict)
-    reading = read_phase(
-        state, integration_head=request.integration_head, creative_incomplete=request.creative_incomplete
-    )
+    reading = read_phase(state, request.resolved_lane)
     phase = _check_drivable(request, state, reading)
     holder = state.active_runner or None
     if holder is not None:
@@ -323,9 +331,7 @@ def _apply_reservation(
         raise _refuse(EntryRefusal.UNKNOWN_ITEM, item=request.item)
     _recheck_creative(request, state_dict)
     state = TodoState.model_validate(state_dict)
-    reading = read_phase(
-        state, integration_head=request.integration_head, creative_incomplete=request.creative_incomplete
-    )
+    reading = read_phase(state, request.resolved_lane)
     _check_drivable(request, state, reading)
     holder = state.active_runner or None
     if holder is not None:
@@ -449,14 +455,13 @@ async def enter(request: EntryRequest) -> EntryResult:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
     request = replace(
         request,
-        integration_head=await reading_head(request.project_root, request.item, state),
-        creative_incomplete=await creative_incomplete(store, request.project_root, request.item, raw),
+        lane=await resolve_lane(store, request.project_root, request.item, raw, state),
         creative_snapshot=creative_snapshot(raw),
     )
     phase = _check_drivable(
         request,
         state,
-        read_phase(state, integration_head=request.integration_head, creative_incomplete=request.creative_incomplete),
+        read_phase(state, request.resolved_lane),
     )
     unmet = await _unmet_dependencies(store, request.item, request.verb)
     if unmet and holder is None:
@@ -502,8 +507,7 @@ async def plan_child(project_root: str, item: str, caller_session_id: str) -> Ch
     holder = state.active_runner or None
     if holder != caller_session_id:
         raise _refuse(EntryRefusal.HELD, item=item, session=holder or NO_SESSION)
-    creative = await creative_incomplete(store, project_root, item, raw)
-    phase = read_phase(state, integration_head=NO_SESSION, creative_incomplete=creative).phase
+    phase = read_phase(state, await resolve_lane(store, project_root, item, raw, state)).phase
     if phase is None or phase not in _VERB_FOR_PHASE:
         raise _refuse(EntryRefusal.NOT_DRIVEN, item=item, phase=phase.value if phase else NO_SESSION)
     publication = await _own_publication(caller_session_id) or published_workflow_publication()

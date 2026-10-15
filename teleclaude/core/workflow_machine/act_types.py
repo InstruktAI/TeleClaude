@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
+from teleclaude.core.workflow_machine.phase_reading import LaneFacts
 from teleclaude.types.workflow_record import Act, Phase
 
 BOUND_SEPARATOR: Final = ":"
@@ -34,6 +35,10 @@ class Refusal(StrEnum):
     DECISION_OWNER = "{act}: the item waits on {person}, and only that person's own session may decide"
 
 
+class LaneNotResolved(Exception):
+    """A phase was read before the act resolved the creative lane and the integration head."""
+
+
 class ActRefused(Exception):
     """An act was refused; nothing was written."""
 
@@ -52,8 +57,15 @@ class ActRequest:
     person: str = ""
     finding_key: str = ""
     wait: str = ""
-    creative_incomplete: bool = False
+    lane: LaneFacts | None = None
     creative_snapshot: str = ""
+
+    @property
+    def resolved_lane(self) -> LaneFacts:
+        """The lane facts the act resolved before it decided; reading them earlier is a defect."""
+        if self.lane is None:
+            raise LaneNotResolved(self.item)
+        return self.lane
 
 
 @dataclass(frozen=True)
