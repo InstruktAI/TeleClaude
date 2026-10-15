@@ -29,8 +29,6 @@ and authentication paths. It does not inherit live host credentials or adapters.
 Terminal authentication uses a real terminal. Runtime isolation belongs to the
 harness; agents invoking it do not redirect their own home or platform home.
 
-<!-- planned-change:full-acceptance-on-self-hosted-runner -->
-
 The fast profile covers cold CLI startup, version/help entry paths and the
 installer's safe entry path. It runs once against the materialized prospective
 commit tree at the sealed commit gate, separately from routine lint. The full
@@ -38,37 +36,6 @@ profile runs on GitHub-hosted Ubuntu for normal CI and on the final immutable
 release candidate before the existing full installation proof. Both profiles
 use one scenario definition and result format. The full profile includes the
 cold-entry scenarios and adds the runtime journeys below.
-
-<!-- change:full-acceptance-on-self-hosted-runner -->
-
-The fast profile covers cold CLI startup, version/help entry paths and the
-installer's safe entry path. It runs once against the materialized prospective
-commit tree at the sealed commit gate, separately from routine lint. The full
-profile runs in CI for every push and pull request to main and on the final
-immutable release candidate before the existing full installation proof. Both
-profiles use one scenario definition and result format. The full profile includes the
-cold-entry scenarios and adds the runtime journeys below.
-
-Standalone push and pull-request CI runs the full profile on the self-hosted
-runner inside a fresh disposable
-macOS virtual machine that the run creates from a base image and deletes when
-it ends. The checked revision enters the machine as a Git bundle,
-and the result leaves it through the run's own shared directory. The runner
-host's own installation — its platform home, services, daemon socket and
-registered projects — is neither read nor changed by the run; on the host the
-run executes only the virtual-machine lifecycle, the bundle and its own
-temporary files. After the profile, the run verifies inside the machine that
-the checked candidate's revision, tree and working copy are unchanged. Beside
-the unchanged result format, the run retains the machine's identity and base
-image, every command it executed on the host, that in-machine identity check
-and the machine's deletion outcome. A machine left behind by an interrupted
-run is deleted by the run's final cleanup step or, failing that, by the next
-run before it starts. The full profile refuses to start, before any scenario,
-where a TeleClaude platform home or daemon socket already exists, so it never
-runs against a live installation. Release candidate execution placement is
-owned by `local/projects/teleclaude/spec/feature/release/publication`.
-
-<!-- /planned-change:full-acceptance-on-self-hosted-runner -->
 
 A result identifies the checked revision or materialized tree, selected profile,
 executed scenarios, duration and outcome. Failure evidence contains the failing
@@ -321,29 +288,9 @@ And a fresh authorized memory listing reports no memory added by those attempts
 
 ## Known caveats
 
-<!-- planned-change:full-acceptance-on-self-hosted-runner -->
-
 - These journeys establish their named observable behavior, not exhaustive CLI,
   integration, provider, or platform coverage.
 - Hosted runtime acceptance does not replace full operating-system installation
   proof, and it uses no live subscription credentials or external messaging.
 - Existing installation proof and target-specific worktree help checks retain
   their own contracts.
-
-<!-- change:full-acceptance-on-self-hosted-runner -->
-
-- These journeys establish their named observable behavior, not exhaustive CLI,
-  integration, provider, or platform coverage.
-- Runtime acceptance does not replace full operating-system installation
-  proof, and it uses no live subscription credentials or external messaging.
-- Existing installation proof and target-specific worktree help checks retain
-  their own contracts.
-- Each full-profile run establishes installation and service behavior only on
-  the operating system it actually exercises. Standalone CI uses macOS; release
-  candidate acceptance uses the release workflow's selected Linux target.
-- The self-hosted runner executes one job at a time, so full-profile runs for
-  closely spaced pushes and pull requests wait for one another instead of
-  running in parallel; their completion order is not guaranteed to follow push
-  order.
-
-<!-- /planned-change:full-acceptance-on-self-hosted-runner -->

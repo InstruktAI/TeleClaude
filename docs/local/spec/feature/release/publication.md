@@ -66,6 +66,8 @@ requirements apply unchanged to every selected tier.
 
 ### Execution target
 
+<!-- planned-change:release-install-proof-on-hosted-mac -->
+
 One repository setting selects the execution target for the Linux release
 stages. The release workflow owns its name and supported runner destinations.
 An operator can select owned execution or GitHub-hosted execution by changing
@@ -85,6 +87,22 @@ external lifecycle owner retains unfinished cleanup across job cancellation
 and controller restart (`sdlc/policy/security-awareness`). Disposal does not
 establish provider credential settlement. The installation proof keeps its
 separate virtualization-capable execution target.
+
+<!-- change:release-install-proof-on-hosted-mac -->
+
+Every release stage runs on a GitHub-hosted runner that the release workflow
+names: the Linux stages on hosted Ubuntu, and the installation proof on hosted
+arm64 macOS. No release stage runs on owned infrastructure. Each job runs on a
+machine the hosting provider creates for that job and decommissions after it;
+release tooling holds no machine lifecycle, cleanup record or host admission of
+its own. Hosted placement changes neither the release stream's serialization nor its
+artifact, candidate and credential-settlement authority, and publication
+retains its full verification requirements
+(`sdlc/policy/process-change-authority`). A runner that is never assigned or is
+lost during its job produces a visible failure, and a missing proof withholds
+publication.
+
+<!-- /planned-change:release-install-proof-on-hosted-mac -->
 
 ### Inspector
 
@@ -206,6 +224,9 @@ configuration own the pinned implementation and rendering template.
 Candidate preparation produces the final version metadata, coherent package lock,
 released manifests, and cumulative changelog before verification. Candidate
 identity and its source and baseline travel with the artifacts between jobs.
+
+<!-- planned-change:release-install-proof-on-hosted-mac -->
+
 Read-only hosted inspection and candidate checks are separate from publication's
 write authority; installation runs in a disposable machine on the runner that
 provides the required virtualization capability.
@@ -217,13 +238,40 @@ documentation and configuration readiness, the harness's access probes, repeat
 installation, and restart/reinstallation. Evidence is retained on success and
 failure, and the disposable machine is cleaned up.
 
+<!-- change:release-install-proof-on-hosted-mac -->
+
+Read-only hosted inspection and candidate checks are separate from publication's
+write authority; installation runs directly on a fresh hosted macOS runner that
+exists only for the proof job.
+
+The candidate passes release lint and the existing full installation harness.
+That harness consumes the fresh-machine installation contract rather than a
+reduced CI installation mode. Installer proof includes startup, published
+documentation and configuration readiness, the harness's access probes, repeat
+installation, and a full stop and start of the installed services followed by
+reinstallation. Evidence is retained on success and failure.
+
+<!-- /planned-change:release-install-proof-on-hosted-mac -->
+
 ### Runtime acceptance
+
+<!-- planned-change:release-install-proof-on-hosted-mac -->
 
 The final candidate passes the full runtime profile defined by
 `local/projects/teleclaude/spec/feature/agent_runtime/runtime-acceptance`,
 run on the selected Linux execution target before full installation proof. Publication requires both results for that candidate. The
 bounded journey allowance and its verification purpose are owned by
 `local/projects/teleclaude/policy/test-moratorium`.
+
+<!-- change:release-install-proof-on-hosted-mac -->
+
+The final candidate passes the full runtime profile defined by
+`local/projects/teleclaude/spec/feature/agent_runtime/runtime-acceptance`,
+run on hosted Ubuntu before full installation proof. Publication requires both
+results for that candidate. The bounded journey allowance and its verification
+purpose are owned by `local/projects/teleclaude/policy/test-moratorium`.
+
+<!-- /planned-change:release-install-proof-on-hosted-mac -->
 
 Acceptance evidence identifies the exact candidate and tree, the full profile,
 all required journey outcomes and cleanup. Its digest travels in the durable
@@ -371,6 +419,8 @@ And unsuccessful summary attempts remain visible
 And no automatic version assessment is fabricated
 ```
 
+<!-- planned-change:release-install-proof-on-hosted-mac -->
+
 #### UC-RP11: One setting selects release execution
 
 ```gherkin
@@ -390,6 +440,10 @@ Then subsequent Linux release work is withheld
 And the next attempt recovers the recorded proof machine before admitting Linux work
 And uncertain recovery remains visible as unsuccessful admission
 ```
+
+<!-- change:release-install-proof-on-hosted-mac -->
+
+<!-- /planned-change:release-install-proof-on-hosted-mac -->
 
 ### Cross-context references
 
@@ -411,6 +465,17 @@ And uncertain recovery remains visible as unsuccessful admission
   `run_claude_inspection` in `tools/release/claude_inspector.py`.
 - A fresh-machine proof on one operating system establishes neither another
   operating system's installation nor an upgrade from an earlier release.
+
+<!-- planned:release-install-proof-on-hosted-mac -->
+
+- Installation proof stops and starts the installed services and does not
+  restart the machine; service loading at machine startup is not proved.
+- Installation proof runs on the hosted macOS image with its preinstalled
+  developer tooling and does not establish installation on a macOS machine
+  without that tooling.
+
+<!-- /planned:release-install-proof-on-hosted-mac -->
+
 - A no-change dry-run establishes the no-release path; exercising later stages
   requires a candidate with releasable changes.
 - Subscription credential readiness and refreshed credential persistence are
@@ -418,3 +483,11 @@ And uncertain recovery remains visible as unsuccessful admission
 - Published candidate and proof evidence remains interpretable across owned
   record migrations; the published commit and tag are immutable. Migration
   behavior is owned by `sdlc/policy/backward-compatibility-hygiene`.
+
+<!-- planned:release-install-proof-on-hosted-mac -->
+
+## See Also
+
+- docs/third-party/github-actions/hosted-macos-runners.md
+
+<!-- /planned:release-install-proof-on-hosted-mac -->

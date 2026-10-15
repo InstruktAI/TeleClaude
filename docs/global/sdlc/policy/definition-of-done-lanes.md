@@ -20,7 +20,16 @@ The review lanes are the focus areas a code review runs. Each lane is the
 **review-time enforcement of a Definition of Done gate** (or, for the scope lane,
 the requirement contract). They are defined once here and consumed by:
 
-- `sdlc/procedure/lifecycle/work/review` — the build reviewer, which **executes** the applicable lanes.
+<!-- planned-change:issue-128 -->
+
+- `sdlc/procedure/lifecycle/work/review-build` — the build reviewer, which **executes** the applicable lanes.
+
+<!-- change:issue-128 -->
+
+- `sdlc/procedure/lifecycle/work/overview-v2` — the work driver, which executes the applicable lanes against the item's whole delta before it stamps, and records one line per lane in the stamp's text. It qualifies as the independent reviewer because it did not write the code. It stamps only when no Requirement-Violation, Critical or Important finding is unresolved.
+
+<!-- /planned-change:issue-128 -->
+
 - `sdlc/procedure/lifecycle/work/review-commits` — the commit reviewer, which executes the same lanes; that procedure resolves the scope lane's intent basis.
 - `sdlc/procedure/lifecycle/prepare/plan-draft` and `.../prepare/review-plan` — the planner and plan reviewer, which **anticipate** the lanes (the plan must pre-satisfy what build-review will check).
 

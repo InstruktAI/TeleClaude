@@ -94,6 +94,8 @@ separate from their original serialized evidence and integrity hashes.
 
 ### Execution placement
 
+<!-- planned-change:release-install-proof-on-hosted-mac -->
+
 The release workflow reads one repository routing setting for every Linux
 stage. Its hosted and owned destinations provide the same Ubuntu execution
 contract; the separate installation-proof job retains its Mac virtualization
@@ -133,6 +135,38 @@ and the serialized attempt stream. Another VM consumer earns its own shared
 admission assessment (`sdlc/policy/security-awareness`). Repository service
 installation and lifecycle use the sanctioned make surface
 (`local/projects/teleclaude/policy/agent-service-control`).
+
+<!-- change:release-install-proof-on-hosted-mac -->
+
+The release workflow names a GitHub-hosted runner for every job: hosted Ubuntu
+for the Linux stages and outcome reporting, hosted arm64 macOS
+(`macos-latest`) for installation proof. No job targets a self-hosted runner,
+and no repository setting selects a destination. Placement changes neither the
+release stream's serialization nor artifact, candidate and credential-settlement
+authority (`local/projects/teleclaude/spec/feature/release/publication`).
+
+Each hosted runner is a virtual machine the provider creates for one job and
+decommissions after it; hosted arm64 macOS runners provide no nested
+virtualization.
+The proof harness installs the candidate directly on its own runner, as the
+runner's user, from a repository bundle it builds locally. Release tooling
+keeps no host admission, machine ownership record, disposal confirmation or
+guest routing; an interrupted attempt leaves its successor nothing to recover.
+Job ordering, the serialized attempt stream and exact-artifact binding carry
+every guarantee between jobs.
+
+The harness refuses to start unless `RUNNER_ENVIRONMENT` is `github-hosted`
+and no TeleClaude platform home, daemon socket or canonical checkout exists on
+the machine. The step that runs the harness receives no repository token, and
+every installation and probe command runs with the runner user's login
+environment, never the job's. Artifact download and upload run as separate
+steps that hold the job's token. A proof job that is never assigned, times out
+or loses its runner produces no successful proof receipt, and the existing
+proof-success requirement then withholds publication. The harness drives
+installation and service lifecycle through the sanctioned make surface
+(`local/projects/teleclaude/policy/agent-service-control`).
+
+<!-- /planned-change:release-install-proof-on-hosted-mac -->
 
 ### Credentials and inspection
 
@@ -248,9 +282,21 @@ and seeding use the same serialized stream.
 4. Generate complete commit notes with git-cliff and add the selected assessment's
    summary. Prepare R with final version and lock coherence, released manifests,
    and the cumulative published changelog before committing R.
+
+<!-- planned-change:release-install-proof-on-hosted-mac -->
+
 5. Run lint and full runtime acceptance on R on the selected Linux target, then
    the full existing installer harness on its virtualization-capable target.
    Retain the candidate identity and evidence; clean up each owned machine.
+
+<!-- change:release-install-proof-on-hosted-mac -->
+
+5. Run lint and full runtime acceptance on R on hosted Ubuntu, then the full
+   existing installer harness on a hosted macOS runner. Retain the candidate
+   identity and evidence.
+
+<!-- /planned-change:release-install-proof-on-hosted-mac -->
+
 6. A dry-run returns these results. Publication reconciles current H, atomically
    updates the tag and main, then creates the GitHub Release for R and attaches
    its provenance and proof references.
@@ -329,3 +375,9 @@ its own lint, runtime acceptance and installer proof.
 - docs/third-party/uv/project-version-updates.md
 - docs/third-party/git-cliff/changelog-generation.md
 - docs/third-party/git-cliff-action/changelog-step.md
+
+<!-- planned:release-install-proof-on-hosted-mac -->
+
+- docs/third-party/github-actions/hosted-macos-runners.md
+
+<!-- /planned:release-install-proof-on-hosted-mac -->

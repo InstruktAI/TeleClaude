@@ -6,6 +6,10 @@ WORKDIR /app
 COPY docker/sandbox-runner/pyproject.toml /app/pyproject.toml
 COPY teleclaude/events/ /app/teleclaude/events/
 
+# pip fetches the git-pinned logger dependency, so the slim base needs git
+RUN apt-get update
+RUN apt-get install --yes --no-install-recommends git
+
 # Install teleclaude.events and its minimal dependencies only
 RUN pip install --no-cache-dir -e /app
 

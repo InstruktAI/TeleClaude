@@ -137,6 +137,12 @@ rule it relies on is stated by its owner:
   instructions Context composes from the published declaration. Domain work
   and lifecycle remain the loaded procedure's responsibility.
 
+<!-- planned:issue-128 -->
+
+- **A subject-identity procedure that declares parameters receives the subject as its arguments.** The activation passes the canonical item identifier that the event's subject carries as the argument text, through the existing parameter binder, so the procedure's first parameter binds it and the agent's session is titled with its role followed by that identifier. The binder refuses a parameter shape that cannot take that one token, and a procedure that declares no parameters is entered with no arguments.
+
+<!-- /planned:issue-128 -->
+
 - **Activation data enters through hooks.** Runtime records the initial event
   before bootstrap can offer its initial hook. The initial brief is the startup
   instruction, and its activation hook carries event data. Later idle deliveries
@@ -255,6 +261,30 @@ flowchart TD
     C -- none, or none can resume --> N[Start a session bound to the subject] --> D
 ```
 
+<!-- planned:issue-128 -->
+
+### Single-claim responsibilities
+
+A driver procedure of the item lifecycle declares `session: single-claim` in its `workflow` mapping: each of its sessions serves one claim of one item. The resolve step reads the declaration from the procedure's current published declaration (no session exists yet to have persisted one) and reads the item through the store port of the project the event's home names, never by backend name or procedure identity. A procedure without the declaration resolves exactly as in the previous section.
+
+Two inputs reach such a procedure, and the platform tells them apart by the declared data of the event's type: an event whose data carries a reservation key is a **request**; every other event about the item is a **notice**. Item, project and home are matched in every lookup below.
+
+- **A request** starts or wakes a driver only when its key is the item's current launch reservation and the item has no holder. A request whose key is not the current reservation starts nothing: its activation reaches the terminal outcome `not delivered` with the reason `stale request`. An open session bound to the item for the procedure and home is woken for a request only when it is entitled to that request: an activation assigned to it carries a request event for this item with this key. A closed session is never revived. Otherwise a fresh session is started and bound to the item; it persists the publication current at its start, which governs every claim and act of that session, and it claims by presenting the reservation read from its own accepted activation.
+- **A notice** goes only to the open session bound to the item for the procedure and home whose session is the item's holder. It never starts a session, never revives one, and is not given to a session that has only been started for a reservation and has not claimed. With no such holder it ends with the terminal outcome `not delivered` and the reason `no holder`; the platform's evidence of the head, which is recorded on the item and retained, is untouched, and the next driver, which a request starts, resumes from the store alone.
+
+**The inbox of a single-claim responsibility.** Acceptance keeps every activation as a durable inbox row. For such a responsibility only:
+
+- the outcome `not delivered` is a terminal outcome with the closed reasons `stale request`, `no holder` and `session closed`; it is accepted for pending and for suspended rows and sets the row's terminal time;
+- a start or a wake takes only the row of the activation that qualified it; it does not take the responsibility's whole backlog. A row already assigned to a session is not touched: a holder keeps every valid undelivered notice, in their durable order, and two valid head notices for a holder that has not yet reached an eligible hook are both offered there, each published commit once;
+- a row that is unassigned and still pending or suspended when a start looks at the responsibility is judged by the same two rules applied to its own event; a request for the current reservation is the start's own, a request for another key is `stale request`, a notice with no holder yet is `no holder`. No row is ended as a blanket supersession of a backlog;
+- closing the session ends its pending rows as `not delivered` with the reason `session closed` and keeps their assignee, instead of suspending and unassigning them;
+- launch recovery reads a request row that is pending with no assigned session as unknown, so the reservation is held, and a request row that is terminal with a retained assignee whose session is closed as proof that the entitled session ended before it claimed.
+
+The inbox terminal result `not delivered` is returned by a completed activation operation. The durable operation retains its existing completed or failed outcomes; an expected decision to deliver nothing is not an operation failure (`local/projects/teleclaude/spec/feature/agent_runtime/durable-operation-outcomes`).
+
+**A reservation is released on terminal evidence for exactly its request.** The request's notice went out, every activation it caused is terminal, and no open session entitled to that request remains that could still claim. An open session bound to the item but entitled only to an earlier request is not counted, signalled or ended. A clock decides nothing: activations never captured, or whose assigned session is not recorded, leave the reservation held and unknown.
+<!-- /planned:issue-128 -->
+
 ### Company on a human-directed session
 
 A session created with `--company` operates for that company once
@@ -341,6 +371,13 @@ work is owned without being offered it.
   its transcript is succeeded by a new session bound to the same subject. A
   revival that is attempted and fails fails the activation's operation with its
   reason.
+
+<!-- planned:issue-128 -->
+
+- **A single-claim driver's session has closed** — it is not revived. A request for the item's current reservation starts a fresh session; a notice with no open holder ends as `not delivered`.
+
+<!-- /planned:issue-128 -->
+
 - **A subject-bound session's record has been purged** — nothing binds the
   subject any more, and the next event about it starts a new bound agent
   without the earlier context.

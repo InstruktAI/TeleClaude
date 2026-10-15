@@ -34,6 +34,8 @@ separately governed replacement program.
 
 ### Maintenance and authority
 
+<!-- planned-change:issue-128 -->
+
 - **v1 appliance:** this Python repository and its running daemon, the operating
   platform until a vNext cut adopts a journey.
 - **Maintenance stance:** v1 receives bug fixes and the changes its operators need
@@ -51,6 +53,27 @@ separately governed replacement program.
   runtime service; deployment topology does not weaken ownership.
 - **Replacement authority:** the TeleClaudeNext repository named by ADR-0069;
   no vNext architecture in this repository is authoritative.
+
+<!-- change:issue-128 -->
+
+- **v1 appliance:** this Python repository and its running daemon, the operating
+  platform until a vNext cut adopts a journey.
+- **Maintenance stance:** v1 receives bug fixes and the changes its operators need
+  to keep working. It does not acquire new architecture that vNext is designed to
+  replace; design authority for the replacement stays in TeleClaudeNext. Domain
+  anchors reference this stance rather than restating it, so it is revised in one
+  place. The workflow domain is the one exception: the backend-blind lifecycle machine (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`) is the first slice of replacement architecture delivered into v1. It is built here, on the local store, replaces the v1 prepare and work machines for items, and is carried by the replacement's second acceptance journey. No other domain acquires replacement architecture on this exception.
+- **Current contract:** a snippet without pending ownership that describes
+  observable v1 behavior.
+- **Feature inventory:** the current-behavior specs under
+  `docs/local/spec/feature/`.
+- **Domain anchor:** a stable v1 documentation ID that declares the semantic
+  ownership boundary for its feature inventory. The boundary is enforced even
+  when several contexts share one process, package tree, database host, or
+  runtime service; deployment topology does not weaken ownership.
+- **Replacement authority:** the TeleClaudeNext repository named by ADR-0069. Design authority for the replacement is there, and no vNext architecture in this repository is authoritative, except the lifecycle machine that the maintenance stance names for the workflow domain, which this repository delivers and owns.
+
+<!-- /planned-change:issue-128 -->
 
 ## See Also
 

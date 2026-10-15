@@ -19,20 +19,9 @@ Operate and maintain the self-hosted GitHub Actions runner on MozMini (Mac Mini)
 - Runner installed at `~/Apps/actions-runner/`.
 - Runner registered with the InstruktAI GitHub org with labels `[self-hosted, macOS, ARM64]`.
 
-<!-- planned:full-acceptance-on-self-hosted-runner -->
-
-- Tart installed on the runner host with the macOS base image the CI
-  verification controllers clone; standalone CI acceptance and release installer
-  proof each run inside a disposable virtual machine created from it.
-- The runner executes those two jobs one at a time, so the host runs at most
-  one such macOS machine, at the processor and memory allocation its workflow
-  declares. That machine runs concurrently with the Fleet's Linux guests. The
-  Fleet's guest partition, qualified under the release execution steps below,
-  leaves that allocation and the host's own reserve free.
-
-<!-- /planned:full-acceptance-on-self-hosted-runner -->
-
 ## Steps
+
+<!-- planned-change:release-install-proof-on-hosted-mac -->
 
 ### Release execution destination
 
@@ -55,6 +44,9 @@ Operate and maintain the self-hosted GitHub Actions runner on MozMini (Mac Mini)
    when hosted execution is desired. The release verification and authentication
    contracts remain owned by
    `local/projects/teleclaude/spec/feature/release/publication`.
+
+<!-- change:release-install-proof-on-hosted-mac -->
+<!-- /planned-change:release-install-proof-on-hosted-mac -->
 
 ### Check runner status
 
@@ -144,18 +136,13 @@ Before diagnosing runner issues, verify the host is healthy:
 - Runner picking up wrong jobs: check org-level runner assignment and repository access settings.
 - Jobs queued indefinitely: verify labels match (see label table above). Single-concurrency runner processes one job at a time — other jobs queue behind it.
 
-<!-- planned:full-acceptance-on-self-hosted-runner -->
-
-- Disposable verification machine left behind after a cancelled or crashed run:
-  the full runtime acceptance run deletes its own leftovers in its final cleanup
-  step and again before its next start. `tart list` on the runner host shows
-  any remaining machine; delete only machines the CI controllers created, never
-  another machine on the host.
-
-<!-- /planned:full-acceptance-on-self-hosted-runner -->
+<!-- planned-change:release-install-proof-on-hosted-mac -->
 
 ## See Also
 
 - https://github.com/vitalyiegorov/tart-runner-fleet/blob/main/INSTALL.md
 - https://github.com/vitalyiegorov/tart-runner-fleet/blob/main/docs/LINUX_BASE_IMAGE.md
 - https://github.com/vitalyiegorov/tart-runner-fleet/blob/main/docs/OPERATIONS.md
+
+<!-- change:release-install-proof-on-hosted-mac -->
+<!-- /planned-change:release-install-proof-on-hosted-mac -->

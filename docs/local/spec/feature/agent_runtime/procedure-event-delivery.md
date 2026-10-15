@@ -70,6 +70,8 @@ instructions when they are not loaded. It names no handling instructions of its
 own: the procedure's declared reads supply them, applied to the settings it
 states (`general/spec/snippet-authoring-schema`).
 
+<!-- planned-change:issue-128 -->
+
 Pending events belong to the continuing procedure responsibility. An explicit
 session close suspends their delivery without itself causing a revival. The
 next eligible continuation, including an ordinary revival or a later activation
@@ -77,6 +79,20 @@ resolving a successor, reconciles retained events before newer work. Automatic
 idle cleanup accounts for pending procedure events so ordinary run completion
 still wakes deferred work without requiring another activation
 (`general/principle/trust-and-guardrails`).
+
+<!-- change:issue-128 -->
+
+Pending events belong to the continuing procedure responsibility. For a procedure without a single-claim declaration, an explicit
+session close suspends their delivery without itself causing a revival. The
+next eligible continuation, including an ordinary revival or a later activation
+resolving a successor, reconciles retained events before newer work. Automatic
+idle cleanup accounts for pending procedure events so ordinary run completion
+still wakes deferred work without requiring another activation
+(`general/principle/trust-and-guardrails`).
+
+For a single-claim procedure, closing the session ends its pending activation rows as `not delivered` with reason `session closed` and retains their assignee. They are not suspended for a successor or revival. The session records this property from its initialization publication; closing does not reread the declaration. A completed activation operation carries the inbox result, while operation failures remain failures (`local/projects/teleclaude/design/architecture/procedure-activation`).
+
+<!-- /planned-change:issue-128 -->
 
 ## Canonical fields
 
@@ -158,6 +174,8 @@ And the event has not been consumed by an agent lacking its brief
 And any retained work remains distinguishable from delivered work
 ```
 
+<!-- planned-change:issue-128 -->
+
 #### UC-PED8:
 
 ```gherkin
@@ -167,6 +185,22 @@ Then the pending work remains durably accounted for
 And eligible continuation delivers it under the existing home, subject, and attendance rules
 And a terminal inability to continue is visible as a failure rather than silent disposal
 ```
+
+<!-- change:issue-128 -->
+
+#### UC-PED8:
+
+```gherkin
+Given pending activation events belong to a continuing procedure responsibility
+When its session closes or is replaced before those events are handed off
+Then the pending work remains durably accounted for
+And for a procedure without a single-claim declaration, eligible continuation delivers it under the existing home, subject, and attendance rules
+And a terminal inability to continue is visible as a failure rather than silent disposal
+But closing a single-claim procedure session ends its pending events as not delivered with reason session closed, retaining their assignee
+And those terminal inbox rows are not resumed by a later session
+```
+
+<!-- /planned-change:issue-128 -->
 
 #### UC-PED9:
 
@@ -228,6 +262,17 @@ And the agent loads that handling before processing events
   these declarations govern procedure activation events.
 - Published delivery-setting edits configure newly initialized agents; live
   reconfiguration of an existing agent is outside this contract.
+
+<!-- planned-change:issue-128 -->
+
 - Explicitly closing a session can leave accepted work pending until its next
   eligible continuation. Retained work remains visible and is not a delivery
   failure merely because continuation has not yet occurred.
+
+<!-- change:issue-128 -->
+
+- Explicitly closing a session of a procedure without a single-claim declaration can leave accepted work pending until its next
+  eligible continuation. Retained work remains visible and is not a delivery
+  failure merely because continuation has not yet occurred.
+
+<!-- /planned-change:issue-128 -->

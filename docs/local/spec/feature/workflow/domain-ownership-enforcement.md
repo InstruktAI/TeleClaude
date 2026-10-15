@@ -22,6 +22,8 @@ never establish ownership.
 
 ### Use cases
 
+<!-- planned-change:issue-128 -->
+
 #### UC-WDOE-1: A plan identifies owner and layer independently
 
 ```gherkin
@@ -33,6 +35,23 @@ And every cross-context consumer uses an explicit published contract
 And correct layer placement does not excuse placement in a different context
 ```
 
+<!-- change:issue-128 -->
+
+#### UC-WDOE-1: A spec identifies owner and layer independently
+
+```gherkin
+Given an agent prepares work that changes a domain rule
+When the preparing session challenges the spec
+Then the spec names the single bounded context that owns the rule
+And the spec names the architectural layer used inside that context
+And every cross-context consumer uses an explicit published contract
+And correct layer placement does not excuse placement in a different context
+```
+
+<!-- /planned-change:issue-128 -->
+
+<!-- planned-change:issue-128 -->
+
 #### UC-WDOE-2: Wrong-owner implementation is refused despite local consistency
 
 ```gherkin
@@ -42,6 +61,20 @@ Then the review reports the wrong-context placement as Critical
 And the review does not treat current placement or adjacent consistency as ownership evidence
 And the change is not approved until the rule is implemented by its owner and consumers use the owner's contract
 ```
+
+<!-- change:issue-128 -->
+
+#### UC-WDOE-2: Wrong-owner implementation is refused despite local consistency
+
+```gherkin
+Given the work driver executes the ownership lane against a change that implements a domain rule outside its owning context
+When the changed code matches the surrounding module's patterns or runs in the expected technical layer
+Then the lane reports the wrong-context placement as Critical
+And the lane does not treat current placement or adjacent consistency as ownership evidence
+And the item is not stamped until the rule is implemented by its owner and consumers use the owner's contract
+```
+
+<!-- /planned-change:issue-128 -->
 
 #### UC-WDOE-3: Adjacent deficiencies remain separately owned
 
