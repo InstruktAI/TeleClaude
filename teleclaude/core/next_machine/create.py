@@ -26,7 +26,9 @@ from teleclaude.core.workflow_machine.creative import CreativeCapability, open_e
 from teleclaude.core.workflow_machine.creative_commit import Handoff, hand_off_to_creative, open_creative_episode
 from teleclaude.core.workflow_machine.dispatch import accepted_orchestrators
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
+from teleclaude.core.workflow_machine.phase_reading import in_task_lane
 from teleclaude.types.claim_change import workflow_record_of
+from teleclaude.types.todos import TodoState
 from teleclaude.types.workflow_record import EffectKind
 
 if TYPE_CHECKING:
@@ -427,7 +429,11 @@ async def next_create(db: Db, slug: str | None, cwd: str, caller_session_id: str
         return replayed
     if await _awaiting_handoff_release(todos_db, resolved_slug, state, caller_session_id):
         return _CLAIM_CLOSING.format(slug=resolved_slug)
-    if caller_session_id and state.get("active_runner") == caller_session_id:
+    if (
+        caller_session_id
+        and state.get("active_runner") == caller_session_id
+        and not in_task_lane(TodoState.model_validate(state))
+    ):
         instruction = await _creative_instruction(db, resolved_slug, cwd, phase)
         dispatched = await hand_off_to_creative(
             todos_db, resolved_slug, caller_session_id, _handoff_for(phase, resolved_slug, cwd, instruction)

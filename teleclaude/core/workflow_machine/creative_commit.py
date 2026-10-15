@@ -9,6 +9,7 @@ from typing import Final
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.workflow_machine.creative import CreativeCapability, open_episode
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
+from teleclaude.core.workflow_machine.phase_reading import in_task_lane
 from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.core.workflow_store.types import ConversionPath, ItemChange
 from teleclaude.events.envelope import occurrence_id
@@ -89,13 +90,19 @@ def episode_mutation(
     """The change that decides the capability against the row it reads, opens the episode and applies the write's state.
 
     ``apply`` carries the stamp's own state change onto the opened state. A refusal raises before anything is written;
-    None means the capability changes no state.
+    None means the capability changes no state. A task is never handed off: the handoff controls decide on the row read
+    here by the common task classification, so a task holder's design keeps the task behavior whoever calls.
     """
 
     def mutate(current: dict[str, StateValue] | None) -> ItemChange | None:
         opening = open_episode(item, current, capability=capability, caller_session_id=caller_session_id)
         state = apply(opening.state) if apply is not None else opening.state
-        if dispatch is not None and caller_session_id and state.get(ACTIVE_RUNNER_STATE_KEY) == caller_session_id:
+        if (
+            dispatch is not None
+            and caller_session_id
+            and state.get(ACTIVE_RUNNER_STATE_KEY) == caller_session_id
+            and not in_task_lane(TodoState.model_validate(state))
+        ):
             state = _closing_state(item, state, caller_session_id, dispatch)
         if state is current:
             return None
