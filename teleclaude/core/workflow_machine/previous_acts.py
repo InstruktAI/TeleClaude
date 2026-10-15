@@ -78,9 +78,13 @@ class PreviousActRefused(Exception):
 
 
 async def _delivered_commit(store: WorkflowStore, slug: str) -> str:
-    """The commit the item was delivered at, as the store records it; a plain statement when none is recorded."""
-    record = await store.read_todo_diagnostic_record(slug)
-    commit = record["delivered_commit"] if record is not None else None
+    """The commit the item was last delivered at, from the same delivered row the refusal read; a plain statement if none.
+
+    A slug can be delivered more than once; the latest delivery is the row ``read_state_delivered`` reads.
+    """
+    delivered = [row for row in await store.list_todo(delivered_only=True) if row["slug"] == slug]
+    delivered.sort(key=lambda row: row["delivered_at"] or "", reverse=True)
+    commit = delivered[0]["delivered_commit"] if delivered else None
     return commit[:12] if commit else NO_DELIVERED_COMMIT
 
 

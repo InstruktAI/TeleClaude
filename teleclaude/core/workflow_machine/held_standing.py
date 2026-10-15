@@ -10,9 +10,11 @@ from __future__ import annotations
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.workflow_machine.phase_reading import LaneFacts, read_phase
+from teleclaude.core.workflow_machine.lane import resolve_lane_sync
+from teleclaude.core.workflow_machine.phase_reading import PhaseReading, read_phase
 from teleclaude.core.workflow_machine.reasons import reason_notes
 from teleclaude.core.workflow_machine.stamp import RemoteReadFailed, integration_head_sync
+from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.types.claim_change import workflow_record_of
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
@@ -25,25 +27,29 @@ logger = get_logger(__name__)
 HEAD_UNREADABLE_LOG = "held standing read without the integration head"
 
 
-def held_ready_standing(project_path: str, slug: str, state: dict[str, StateValue]) -> TodoStandingDTO | None:
-    """The held standing of the item, or None when it is not a held item that reads ``ready``."""
+def stored_ready_reading(
+    store: WorkflowStore, project_path: str, slug: str, state: dict[str, StateValue]
+) -> PhaseReading | None:
+    """The machine\'s reading of an item stored ``ready`` (or admitted), by the common resolver; None for any other item.
+
+    The one reading the projection uses for the item\'s phase fields and for its standing. The integration head is read
+    once, for these items alone; a head that cannot be read leaves the stamp as it is.
+    """
     model = TodoState.model_validate(state)
-    if not model.active_runner:
-        return None
     if model.lifecycle_phase is not LifecyclePhase.READY and model.workflow.admitted is None:
         return None
-    head = ""
-    unreadable = False
     try:
         head = integration_head_sync(project_path, slug)
     except RemoteReadFailed:
-        unreadable = True
+        head = ""
         logger.warning(HEAD_UNREADABLE_LOG, slug=slug, project_path=project_path)
-    reading = read_phase(
-        model,
-        LaneFacts(creative_incomplete=False, integration_head=head, artifact_digests=(), head_unreadable=unreadable),
-    )
-    if reading.phase is not Phase.READY:
+    return read_phase(model, resolve_lane_sync(store, project_path, slug, state, head))
+
+
+def held_ready_standing(state: dict[str, StateValue], reading: PhaseReading | None) -> TodoStandingDTO | None:
+    """The held standing of the item, or None when it is not a held item that reads ``ready``."""
+    model = TodoState.model_validate(state)
+    if reading is None or reading.phase is not Phase.READY or not model.active_runner:
         return None
     record = workflow_record_of(state)
     claims = [entry.at for entry in record.ledger if entry.act is Act.CLAIM]

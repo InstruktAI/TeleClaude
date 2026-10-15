@@ -4,9 +4,12 @@ DB-backed todo list assembly for CLI, API, and TUI.
 """
 
 import time
+from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from typing import Final
 
 from instrukt_ai_logging import get_logger
 
@@ -23,11 +26,14 @@ from teleclaude.core.next_machine.lifecycle import (
     prepare_review_verdict_from_state,
     require_lifecycle_phase,
 )
-from teleclaude.core.workflow_machine.held_standing import held_ready_standing
-from teleclaude.core.workflow_store.store import get_workflow_store_sync
-from teleclaude.types.claim_change import workflow_record_of
+from teleclaude.core.workflow_machine.held_standing import held_ready_standing, stored_ready_reading
+from teleclaude.core.workflow_machine.phase_reading import PhaseReading
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store_sync
+from teleclaude.core.workflow_store.types import TodoProjectionItem
+from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, workflow_record_of
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY, HoldAuditSource, TodoState
+from teleclaude.types.workflow_record import Phase
 
 logger = get_logger(__name__)
 
@@ -122,6 +128,54 @@ def _public_hold_source(hold_audit: StateValue) -> str | None:
     if not isinstance(source, str) or source == HoldAuditSource.START_RESERVATION:
         return None
     return source
+
+
+_READ_TO_STORED: dict[Phase | None, LifecyclePhase] = {
+    Phase.WORK: LifecyclePhase.WORK,
+    Phase.PREPARATION: LifecyclePhase.PREPARATION,
+}
+
+
+READING_WORKERS: Final = 8
+
+
+def _may_read_ready(state: dict[str, StateValue]) -> bool:
+    """Whether the item is stored ``ready`` or carries an admission, the only items whose reading compares the head."""
+    workflow = state.get(WORKFLOW_STATE_KEY)
+    admitted = isinstance(workflow, dict) and bool(workflow.get("admitted"))
+    return state.get("lifecycle_phase") == LifecyclePhase.READY.value or admitted
+
+
+def _ready_readings(
+    store: WorkflowStore, project_path: str, items: Sequence[TodoProjectionItem]
+) -> dict[str, PhaseReading]:
+    """The machine\'s reading of every item stored ``ready``, the remote reads taken together rather than one by one."""
+    ready = [
+        (str(item.item_id), item.state)
+        for item in items
+        if item.state is not None and item.state_error is None and _may_read_ready(item.state)
+    ]
+    if not ready:
+        return {}
+
+    def read(entry: tuple[str, dict[str, StateValue]]) -> tuple[str, PhaseReading | None]:
+        slug, state = entry
+        return slug, stored_ready_reading(store, project_path, slug, state)
+
+    with ThreadPoolExecutor(max_workers=READING_WORKERS) as pool:
+        results = list(pool.map(read, ready))
+    return {slug: reading for slug, reading in results if reading is not None}
+
+
+def _read_lifecycle(stored: LifecyclePhase, reading: PhaseReading | None) -> LifecyclePhase:
+    """The phase the item reads, in the stored vocabulary, when the machine\'s reading moved a stored ``ready``.
+
+    A stamp the integration head has moved past reads ``work`` (or ``preparation`` for a carried stamp nobody holds);
+    the projection reports that, not the stored value, so the list and the item\'s detail say the same thing.
+    """
+    if reading is None or stored is not LifecyclePhase.READY:
+        return stored
+    return _READ_TO_STORED.get(reading.phase, stored)
 
 
 def _non_empty_str(value: object) -> str | None:
@@ -366,6 +420,7 @@ def _derive_projection_fields(
     state: dict[str, StateValue] | None,
     *,
     artifact_write_timestamps: dict[str, str],
+    reading: PhaseReading | None = None,
 ) -> _ProjectionFields:
     if state is None:
         return _ProjectionFields(
@@ -389,6 +444,7 @@ def _derive_projection_fields(
         state.get("lifecycle_phase"),
         context=f"assemble_todo_from_db({slug})",
     )
+    lifecycle = _read_lifecycle(lifecycle, reading)
     current_value = lifecycle.value
     is_draft_lifecycle = lifecycle == LifecyclePhase.DRAFT
 
@@ -528,6 +584,7 @@ def assemble_todo_from_db(
     deps_map = {str(item_id): [str(dep) for dep in deps] for item_id, deps in snapshot.dependencies.items()}
     holder_slug_by_id = {str(address): str(slug) for address, slug in snapshot.structural_group_slugs.items()}
 
+    readings = _ready_readings(store, project_path, snapshot.items)
     todos: list[TodoDTO] = []
     raw_status_by_id: dict[str, str] = {}
     todo_build_total_dt = 0.0
@@ -568,11 +625,13 @@ def assemble_todo_from_db(
             for artifact in item.artifact_files
             if artifact.updated_at is not None
         }
+        reading = readings.get(slug)
         projection = _derive_projection_fields(
             slug,
             raw_status,
             state,
             artifact_write_timestamps=artifact_write_timestamps,
+            reading=reading,
         )
         hold_audit = state.get(_ProjectionStateKey.HOLD_AUDIT)
         held = effective_hold(hold=bool(state.get(_ProjectionStateKey.HOLD)))
@@ -625,7 +684,7 @@ def assemble_todo_from_db(
                 entry_point=item.entry_point,
                 human_involved=item.human_involved,
                 context=item.context,
-                standing=held_ready_standing(project_path, slug, state),
+                standing=held_ready_standing(state, reading),
             )
         )
         todo_build_total_dt += time.perf_counter() - build_started_at
