@@ -16,6 +16,7 @@ class TodoActRequestField(StrEnum):
     REVISION = "revision"
     PERSON = "person"
     FINDING = "finding"
+    WAIT = "wait"
     CWD = "cwd"
 
 

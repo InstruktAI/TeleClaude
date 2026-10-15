@@ -14,11 +14,12 @@ from teleclaude.types.workflow_record import Act
 
 __all__ = ["_handle_todo_act", "_handle_todo_child"]
 
-_ACT_USAGE = "Usage: telec todo act <item> <act> [<text>] [--sha <commit>] [--revision <digest>] [--person <slug>] [--finding <key>]"
+_ACT_USAGE = "Usage: telec todo act <item> <act> [<text>] [--sha <commit>] [--revision <digest>] [--person <slug>] [--finding <key>] [--wait <key>]"
 _UNKNOWN_ACT_TEMPLATE = "Unknown act {act!r}; the acts are: {acts}"
 _ACT_SEPARATOR = ", "
 _PERFORMED_TEMPLATE = "Performed {act} on {item}: act {act_key}, phase {phase}, {state}"
 _FINDING_TEMPLATE = "finding key: {key}"
+_WAIT_TEMPLATE = "wait key: {key} (the decision names it with --wait)"
 _COMPLETE_STATE = "complete"
 _IN_PROGRESS_STATE = "effects still running; repeat the act to complete them"
 _NO_PHASE = "unknown"
@@ -62,6 +63,7 @@ def _handle_todo_act(args: list[str]) -> None:
             TodoActRequestField.REVISION: parsed.value(F.FLAG_ACT_REVISION) or "",
             TodoActRequestField.PERSON: parsed.value(F.FLAG_ACT_PERSON) or "",
             TodoActRequestField.FINDING: parsed.value(F.FLAG_ACT_FINDING) or "",
+            TodoActRequestField.WAIT: parsed.value(F.FLAG_ACT_WAIT) or "",
             TodoActRequestField.CWD: project_reference(),
         },
     )
@@ -81,6 +83,8 @@ def _handle_todo_act(args: list[str]) -> None:
     finding_key = response.get(TodoActResponseField.FINDING_KEY)
     if finding_key:
         print(_FINDING_TEMPLATE.format(key=finding_key))
+    if act is Act.WAITING:
+        print(_WAIT_TEMPLATE.format(key=response.get(TodoActResponseField.ACT_KEY)))
 
 
 _CHILD_USAGE = "Usage: telec todo child <item>"

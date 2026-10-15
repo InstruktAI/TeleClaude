@@ -56,6 +56,7 @@ WAITING_DESCRIPTION: Final = "{slug} waits on {person}"
 READY_DESCRIPTION: Final = "{slug} is ready at {sha}"
 HEAD_DESCRIPTION: Final = "{slug} advanced to {sha}"
 BRANCH_PARAM: Final = "branch"
+WAIT_PARAM: Final = "wait"
 SHA_PARAM: Final = "sha"
 READY_AT_PARAM: Final = "ready_at"
 REQUEST_DESCRIPTION: Final = "A driver is requested for {slug}"
@@ -121,6 +122,7 @@ def _waiting(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
             project_path=context.project_root,
             person=person,
             waited_phase=WaitedPhase(effect.params[WAITED_PHASE_PARAM]),
+            wait=effect.params[WAIT_PARAM],
         ),
     )
     return event, WAITING_DESCRIPTION.format(slug=context.item.slug, person=person)

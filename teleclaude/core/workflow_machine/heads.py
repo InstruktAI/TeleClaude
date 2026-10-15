@@ -9,6 +9,7 @@ its commit. The platform's own reading raises the notice for the commit the ref 
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -58,6 +59,9 @@ SHA_PARAM: Final = "sha"
 BRANCH_PARAM: Final = "branch"
 NO_ACT_KEY: Final = ""
 DISCOVERY_FAILED_LOG: Final = "head discovery failed for an item"
+DISCOVERY_PROJECT_FAILED_LOG: Final = "head discovery failed for a project"
+DISCOVERY_ITEM_TIMEOUT_SECONDS: Final = 20
+DISCOVERY_CONCURRENCY: Final = 8
 
 
 @dataclass(frozen=True)
@@ -199,11 +203,25 @@ async def discover_item_head(project_root: str, item: str) -> None:
     await reconcile_slug_supervised(root, item)
 
 
-async def discover_project_heads(project_root: str) -> None:
-    """Read the integration head of every item in work; one failing item does not stop the others."""
-    store = await get_workflow_store(project_root)
-    for entry in await store.list_todo():
+async def _discover_bounded(project_root: str, item: str, gate: asyncio.Semaphore) -> None:
+    """One item's discovery under the concurrency and time bounds, contained so no item stops the others."""
+    async with gate:
         try:
-            await discover_item_head(project_root, entry["slug"])
-        except Exception:  # supervision boundary: one unreadable item must not stop the others or the daemon
-            logger.exception(DISCOVERY_FAILED_LOG, slug=entry["slug"], project_root=project_root)
+            await asyncio.wait_for(discover_item_head(project_root, item), DISCOVERY_ITEM_TIMEOUT_SECONDS)
+        except Exception:  # supervision boundary: one unreadable or slow item must not stop the others or the daemon
+            logger.exception(DISCOVERY_FAILED_LOG, slug=item, project_root=project_root)
+
+
+async def discover_project_heads(project_root: str) -> None:
+    """Read the integration head of every item in work, concurrently and each within its bound."""
+    store = await get_workflow_store(project_root)
+    gate = asyncio.Semaphore(DISCOVERY_CONCURRENCY)
+    await asyncio.gather(*(_discover_bounded(project_root, entry["slug"], gate) for entry in await store.list_todo()))
+
+
+async def discover_project_heads_supervised(project_root: str) -> None:
+    """Discovery for one project, contained so a broken project stops neither the others nor its own reconciliation."""
+    try:
+        await discover_project_heads(project_root)
+    except Exception:  # supervision boundary: one broken project must not starve the others
+        logger.exception(DISCOVERY_PROJECT_FAILED_LOG, project_root=project_root)

@@ -22,6 +22,7 @@ class Refusal(StrEnum):
     NOT_PERFORMED_HERE = "{act} is not performed through the act command"
     REVISION_MOVED = "{act}: the {artifact} is at {actual}, not at the {expected} the act names"
     STAMP_IN_FLIGHT = "{act}: another invocation of this stamp is running its gates; repeat to attach"
+    WAIT_REQUIRED = "{act}: name the wait this answers with --wait; the waiting act reported its key"
     NOT_RECORDED = "{act}: the item does not record this invocation; repeat the act"
     WAIT_CHANGED = "{act}: the question {person} was asked changed while the act was being decided; read the item and repeat the act"
     DECISION_OWNER = "{act}: the item waits on {person}, and only that person's own session may decide"
@@ -44,6 +45,7 @@ class ActRequest:
     revision: str = ""
     person: str = ""
     finding_key: str = ""
+    wait: str = ""
 
 
 @dataclass(frozen=True)

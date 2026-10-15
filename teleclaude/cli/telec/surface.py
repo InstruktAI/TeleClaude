@@ -887,12 +887,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_ACT_REVISION,
                     F.FLAG_ACT_PERSON,
                     F.FLAG_ACT_FINDING,
+                    F.FLAG_ACT_WAIT,
                 ],
                 notes=[
                     "Acts: note, reviewed, finding, reply, prepared, waiting, decision, stamp, kickback, release.",
                     "reviewed, finding and stamp bind a commit (--sha); prepared binds the judged intent-body "
                     "revision (--revision); waiting names the person (--person) and states the question as the "
-                    "text; reply names the finding it answers (--finding).",
+                    "text and reports the wait key; decision names that wait (--wait) and answers it; reply names the "
+                    "finding it answers (--finding).",
                     "Your role and session come from the authenticated session. A refusal names the act and "
                     "the performer it requires, and writes nothing.",
                     "Repeating an interrupted act completes what is missing and writes nothing twice.",

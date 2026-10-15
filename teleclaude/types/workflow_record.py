@@ -138,6 +138,7 @@ class WaitingRecord(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     waited_phase: WaitedPhase
+    key: str
     person: str
     question_digest: str
 

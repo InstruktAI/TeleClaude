@@ -9,7 +9,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.local_checkouts import local_checkout_paths
 from teleclaude.core.shutdown_drain import get_shutdown_drain
 from teleclaude.core.workflow_machine.effects import reconcile_project_supervised
-from teleclaude.core.workflow_machine.heads import discover_project_heads
+from teleclaude.core.workflow_machine.heads import discover_project_heads_supervised
 from teleclaude.events.consumers import Consumer, Interest
 from teleclaude.events.envelope import ReceivedEvent
 from teleclaude.events.schemas.sdlc import SchedulerTickMinute
@@ -27,7 +27,7 @@ async def _on_tick(_event: ReceivedEvent) -> None:
         logger.debug(RECONCILE_PAUSED_LOG)
         return
     for project_root in await local_checkout_paths():
-        await discover_project_heads(project_root)
+        await discover_project_heads_supervised(project_root)
         await reconcile_project_supervised(project_root)
 
 

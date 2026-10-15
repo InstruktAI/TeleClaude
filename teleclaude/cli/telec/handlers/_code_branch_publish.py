@@ -30,16 +30,39 @@ _GIT_PUSH_PORCELAIN = "--porcelain"
 _ORIGIN = "origin"
 _LEASE_TEMPLATE = "--force-with-lease=refs/heads/{branch}:{tip}"
 _SHA_REF_TEMPLATE = "{sha}:refs/heads/{branch}"
-_BRANCH_HEAD_TEMPLATE = "refs/heads/{branch}"
+_TRACKING_REF_TEMPLATE = "refs/remotes/origin/{branch}"
+_GIT_VERIFY = "--verify"
+_GIT_IS_ANCESTOR = "--is-ancestor"
+_UNINCORPORATED_MESSAGE = (
+    "Commit recorded; the todo branch was not published because origin carries work this clone has not "
+    "incorporated. Fetch and integrate it, then commit again."
+)
 NO_TIP = ""
 _STATUS_SEPARATOR = "\n"
 
 
-def _remote_tip(repo: Repo, branch: str) -> str:
-    """The commit the branch carries on origin now; empty when the branch does not exist there."""
-    output = repo.git.ls_remote(_ORIGIN, _BRANCH_HEAD_TEMPLATE.format(branch=branch)).strip()
-    parts = output.split()
-    return parts[0] if parts else NO_TIP
+def _known_remote_tip(repo: Repo, branch: str) -> str | None:
+    """The tip of the branch as this clone last observed it; empty when it never saw one, None when unreadable.
+
+    The tracking reference is the earned base of the overwrite: an update leased on it is refused when
+    the remote moved since this clone last saw it.
+    """
+    try:
+        tip: str = repo.git.rev_parse(_TRACKING_REF_TEMPLATE.format(branch=branch), _GIT_VERIFY)
+        return tip.strip()
+    except GitCommandError:
+        return NO_TIP
+
+
+def _incorporates(repo: Repo, tip: str, head_sha: str) -> bool:
+    """Whether the commit to push contains the known remote tip, so the update loses no observed work."""
+    if not tip:
+        return True
+    try:
+        repo.git.merge_base(_GIT_IS_ANCESTOR, tip, head_sha)
+    except GitCommandError:
+        return False
+    return True
 
 
 def _report(path: str, body: Mapping[str, str | bool]) -> object | None:
@@ -103,7 +126,13 @@ def publish_todo_branch(repository_root: Path) -> None:
         return
 
     head_sha = repo.git.rev_parse(_GIT_HEAD).strip()
-    expected_tip = _remote_tip(repo, expected_branch)
+    expected_tip = _known_remote_tip(repo, expected_branch)
+    if expected_tip is None or not _incorporates(repo, expected_tip, head_sha):
+        print(_UNINCORPORATED_MESSAGE, file=sys.stderr)
+        logger.warning(
+            "code_commit.branch_publish_refused", branch=expected_branch, sha=head_sha, reason="unincorporated"
+        )
+        return
     key = _register_intent(repository_root, expected_branch, head_sha, expected_tip)
     args = [
         GIT_EXECUTABLE,

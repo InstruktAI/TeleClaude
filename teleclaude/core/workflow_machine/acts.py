@@ -63,6 +63,7 @@ RESERVATION_PARAM: Final = "reservation_key"
 EFFECT_RELEASE: Final = "release"
 EFFECT_END_CHILD: Final = "end-child"
 EFFECT_WAITING: Final = "waiting"
+WAIT_PARAM: Final = "wait"
 EFFECT_READY: Final = "ready"
 SHA_PARAM: Final = "sha"
 READY_AT_PARAM: Final = "ready_at"
@@ -127,31 +128,23 @@ def _content_digest(request: ActRequest) -> str:
         request.revision,
         request.person,
         request.finding_key,
+        request.wait,
         request.text,
     )
     return _digest(BOUND_SEPARATOR.join(parts))
 
 
-def _instance_anchor(request: ActRequest, record: WorkflowRecord) -> str:
-    """The instance an invocation answers: a decision answers the latest wait, whatever has been cleared since."""
-    if request.act is not Act.DECISION:
-        return NO_SESSION
-    waits = [entry.key for entry in record.ledger if entry.act is Act.WAITING]
-    return waits[-1] if waits else NO_SESSION
-
-
-def _act_key(request: ActRequest, item_id: str, record: WorkflowRecord) -> str:
+def _act_key(request: ActRequest, item_id: str) -> str:
     """The identity of one invocation, stable across the item's later phases, holders and claims.
 
-    A session claims or is dispatched once, so the calling session plus the request content names the
-    invocation for as long as it can be repeated; a decision also names the wait it answers.
+    The calling session plus the request content names the invocation for as long as it can be repeated;
+    a decision's content names the wait it answers, so a repeat never binds to a later wait.
     """
     return occurrence_id(
         request.project_root,
         item_id,
         request.act.value,
         _content_digest(request),
-        _instance_anchor(request, record),
     )
 
 
@@ -235,7 +228,12 @@ def _decide_waiting(request: ActRequest, facts: _Facts, state: TodoState, readin
     if not facts.person_authorized:
         raise _refuse(Refusal.NO_AUTHORITY, act=request.act.value, person=person)
     waited_phase = WaitedPhase(waited.value)
-    waiting = WaitingRecord(waited_phase=waited_phase, person=person, question_digest=_digest(question))
+    waiting = WaitingRecord(
+        key=_act_key(request, facts.item_id),
+        waited_phase=waited_phase,
+        person=person,
+        question_digest=_digest(question),
+    )
 
     def record(current: WorkflowRecord) -> WorkflowRecord:
         updated = current.model_copy(deep=True)
@@ -252,7 +250,7 @@ def _decide_waiting(request: ActRequest, facts: _Facts, state: TodoState, readin
                 EFFECT_WAITING,
                 EffectKind.EMIT_EVENT,
                 EmittedEvent.WAITING,
-                {PERSON_PARAM: person, WAITED_PHASE_PARAM: waited_phase.value},
+                {PERSON_PARAM: person, WAITED_PHASE_PARAM: waited_phase.value, WAIT_PARAM: waiting.key},
             ),
             _release_effect(facts.caller.session_id),
         ),
@@ -275,7 +273,13 @@ def _decide_decision(request: ActRequest, facts: _Facts, state: TodoState, readi
     if waiting is None or not facts.caller.is_persons_own_session(facts.person_email):
         person = waiting.person if waiting is not None else NO_SESSION
         raise _refuse(Refusal.DECISION_OWNER, act=request.act.value, person=person)
-    if waiting.person != facts.person_slug or waiting.question_digest != facts.waiting_digest:
+    if not request.wait:
+        raise _refuse(Refusal.WAIT_REQUIRED, act=request.act.value)
+    if (
+        waiting.key != request.wait
+        or waiting.person != facts.person_slug
+        or waiting.question_digest != facts.waiting_digest
+    ):
         raise _refuse(Refusal.WAIT_CHANGED, act=request.act.value, person=waiting.person)
     answer = _require(request, request.text, ARGUMENT_TEXT)
     reservation = LaunchReservation(
@@ -450,7 +454,7 @@ def _apply(
     if state_dict is None:
         raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)
     state = TodoState.model_validate(state_dict)
-    existing = _act_key(request, facts.item_id, state.workflow)
+    existing = _act_key(request, facts.item_id)
     if existing in state.workflow.act_status:
         outcome.append(existing)
         return None
@@ -506,7 +510,7 @@ async def perform_act(request: ActRequest) -> ActResult:
         raise _refuse(Refusal.NOT_PERFORMED_HERE, act=request.act.value)
     state = TodoState.model_validate(raw)
     facts = await _resolve_facts(store, request, state)
-    key = _act_key(request, facts.item_id, state.workflow)
+    key = _act_key(request, facts.item_id)
     if key not in state.workflow.act_status:
         _authorize(request, facts)
         key = await (

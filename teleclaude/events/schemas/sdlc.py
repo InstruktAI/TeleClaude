@@ -83,6 +83,7 @@ class TodoWaitingData(EventData):
     person: str
     project_path: str
     slug: str
+    wait: str
     waited_phase: WaitedPhase
 
 
