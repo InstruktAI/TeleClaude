@@ -86,9 +86,9 @@ class DbSingleClaimDeliveryMixin:
     ) -> list[db_models.ProcedureEventDeliveryOutcome]:
         """Assign retained work to a session in one statement that reads the session\'s lifecycle in the same write.
 
-        A target that is still open takes the rows as pending. A target that has closed takes them too, but as
+        A target that is still open takes the rows as pending. A target whose close has started takes them too, but as
         ``not delivered`` with the reason, so the assignee is retained and no row stays pending on a closed session. The
-        close persists the session\'s closed state before it sweeps its rows, so whichever order the two interleave in,
+        close persists the started state (``closing``) before it sweeps its rows, so whichever order the two interleave in,
         every row ends either swept by the close or settled here. The outcome each row ended in is returned.
         """
         if not activation_ids:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from contextlib import suppress
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Final, NamedTuple
@@ -50,6 +50,7 @@ from teleclaude.core.next_machine.runtime.sessions import (
     start_in_flight,
 )
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
+from teleclaude.core.next_machine.start_reservation import give_back, record_reservation
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter, commit_on_current
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
@@ -388,32 +389,11 @@ class LifecycleLinkLost(Exception):
         self.owner = owner
 
 
-START_RESERVED_REASON: Final = "driver start reserved"
-
-
-@dataclass
-class ReservationDelta:
-    """What a start\'s reservation replaced on the row, so a start that is never accepted can give it back.
-
-    The hold is cleared by a manual start. While the start is not yet accepted the audit carries the reservation\'s own
-    mark, which no other writer produces, so a withdrawal restores the hold only if that mark is still there: a hold or a
-    release an operator made in between leaves a different audit and stands.
-    """
-
-    phase: LifecyclePhase | None = None
-    hold_cleared: bool = False
-    hold_audit: HoldAuditState = field(default_factory=HoldAuditState)
-
-
-def _reservation_mark(session_id: str) -> HoldAuditState:
-    return HoldAuditState(set_by_session_id=session_id, reason=START_RESERVED_REASON)
-
-
-async def _release_reserved_link(todos_db: WorkflowStore, slug: str, session_id: str, delta: ReservationDelta) -> None:
+async def _release_reserved_link(todos_db: WorkflowStore, slug: str, session_id: str) -> None:
     """Withdraw the link reserved for a session that was never created, only while it is still that session\'s.
 
-    The phase and the hold the reservation replaced are restored with it, each only while it is still the
-    reservation\'s own, so a refused start leaves the row as it found it and a later operator change stands.
+    What the reservation replaced (a cleared hold, the task phase) goes back with it, each only while the row still
+    carries the reservation\'s mark, so a refused start leaves the row as it found it and a later operator change stands.
     """
 
     def change(writer: StateWriter) -> None:
@@ -421,22 +401,17 @@ async def _release_reserved_link(todos_db: WorkflowStore, slug: str, session_id:
             return
         writer.state.active_runner = None
         writer.state.manually_started = False
-        if delta.phase is not None and writer.state.lifecycle_phase is LifecyclePhase.TASK_RUNNING:
-            writer.state.lifecycle_phase = delta.phase
-        if delta.hold_cleared and not writer.state.hold and writer.state.hold_audit == _reservation_mark(session_id):
-            writer.state.hold = True
-            writer.state.hold_audit = delta.hold_audit
+        give_back(writer, session_id, accepted=False)
 
     with suppress(StateMutationError):  # the item left the store: there is no row to give anything back to
         await commit_on_current(todos_db, slug, change)
 
 
 async def _confirm_reserved_start(todos_db: WorkflowStore, slug: str, session_id: str) -> None:
-    """Clear the reservation\'s mark from the hold audit once the start is accepted; any other audit is left alone."""
+    """Settle the reservation\'s mark once the start is accepted; any other audit is left alone."""
 
     def change(writer: StateWriter) -> None:
-        if writer.state.hold_audit == _reservation_mark(session_id):
-            writer.state.hold_audit = HoldAuditState()
+        give_back(writer, session_id, accepted=True)
 
     with suppress(StateMutationError):  # the item left the store: there is no mark left to clear
         await commit_on_current(todos_db, slug, change)
@@ -454,14 +429,21 @@ class LinkSkipped(Exception):
     """The row was claimed by another session before the started driver could be linked; nothing was written."""
 
 
-async def _clear_active_runner(todos_db: WorkflowStore, row: TodoRow, expected_runner: str) -> None:
-    """Clear the dead driver's link, and only that link: a replacement that claimed the row meanwhile is left alone."""
+async def _clear_active_runner(
+    todos_db: WorkflowStore, row: TodoRow, expected_runner: str, *, session_exists: bool
+) -> None:
+    """Clear the dead driver's link, and only that link: a replacement that claimed the row meanwhile is left alone.
+
+    A link whose session never came to exist was a reservation that no start accepted, so what it replaced goes back
+    with it; a session that exists was accepted, and only the reservation's mark is settled.
+    """
 
     def change(writer: StateWriter) -> None:
         if writer.state.active_runner != expected_runner:
             return
         writer.state.active_runner = None
         writer.state.manually_started = False
+        give_back(writer, expected_runner, accepted=session_exists)
 
     if row["status"] in _LIVE_ROW_STATUSES:
         await commit_on_current(todos_db, row["slug"], change)
@@ -482,12 +464,13 @@ async def _set_active_runner(
     lane: RunnerLane,
     manually_started: bool,
     release_hold: bool,
-    delta: ReservationDelta | None = None,
+    reserve: bool = False,
     require_row: bool = False,
 ) -> str:
     """Write the driver link and its manual marker as one guarded mutation; the winning owner when the row has one.
 
-    ``delta``, when given, receives what the same mutation replaced (the phase, a cleared hold), so a withdrawal can restore it.
+    ``reserve`` records what the same mutation replaced (a cleared hold, the task phase) on the row, so a start that is
+    never accepted can give it back, also after a crash.
     ``require_row`` makes a missing item an outcome of its own (``LifecycleItemUnavailable``) rather than an empty
     answer a caller could read as linked: a start that must have its link committed before it begins needs the row.
 
@@ -507,17 +490,13 @@ async def _set_active_runner(
             raise LinkSkipped(owner)
         writer.state.active_runner = session_id
         writer.state.manually_started = manually_started
+        if reserve:
+            record_reservation(writer, session_id, clears_hold=release_hold, task_run=lane is RunnerLane.TASK_RUN)
+            return
         if release_hold:
-            if delta is not None and (writer.state.hold or writer.state.hold_audit != HoldAuditState()):
-                delta.hold_cleared = True
-                delta.hold_audit = writer.state.hold_audit.model_copy(deep=True)
-                writer.state.hold_audit = _reservation_mark(session_id)
-            else:
-                writer.state.hold_audit = HoldAuditState()
             writer.state.hold = False
+            writer.state.hold_audit = HoldAuditState()
         if lane is RunnerLane.TASK_RUN:
-            if delta is not None:
-                delta.phase = writer.state.lifecycle_phase
             writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING
 
     try:
@@ -604,7 +583,9 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
                 )
                 todo = replace(todo, dependency_drift_pending_on=tuple(sorted(moved_dependencies)))
         if todo.active_runner and not await _is_live_runner(db, todo.active_runner):
-            await _clear_active_runner(todos_db, row, todo.active_runner)
+            await _clear_active_runner(
+                todos_db, row, todo.active_runner, session_exists=await db.get_session(todo.active_runner) is not None
+            )
             reconciled.append(todo.slug)
             todo = replace(todo, active_runner=None, manually_started=False)
         loaded[todo.slug] = todo
@@ -650,7 +631,6 @@ async def dispatch_lifecycle_session(
     from teleclaude.api_models import RunSessionRequest  # noqa: PLC0415 - deferred cycle: the models read this package
 
     session_id = str(uuid.uuid4())
-    delta = ReservationDelta()
     with start_in_flight(session_id):
         winner = await _set_active_runner(
             todos_db,
@@ -659,7 +639,7 @@ async def dispatch_lifecycle_session(
             lane=intent.lane,
             manually_started=origin.manually_started,
             release_hold=origin.manually_started,
-            delta=delta,
+            reserve=True,
             require_row=True,
         )
         if winner:
@@ -675,7 +655,7 @@ async def dispatch_lifecycle_session(
             await run_platform_session(request, session_id=session_id)
         except BaseException:
             if await runtime_db.get_session(session_id) is None:
-                await _release_reserved_link(todos_db, intent.slug, session_id, delta)
+                await _release_reserved_link(todos_db, intent.slug, session_id)
             else:
                 await _confirm_reserved_start(todos_db, intent.slug, session_id)
             raise

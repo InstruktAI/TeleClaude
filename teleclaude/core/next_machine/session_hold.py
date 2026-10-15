@@ -10,6 +10,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import Db
+from teleclaude.core.next_machine.start_reservation import give_back
 from teleclaude.core.next_machine.state_mutation import StateWriter, commit_on_current
 from teleclaude.core.session_listeners import notify_gate_approved
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
@@ -218,6 +219,7 @@ async def _release_if_still_held(todos_db: WorkflowStore, slug: str, session_id:
             return
         writer.state.active_runner = None
         writer.state.manually_started = False
+        give_back(writer, session_id, accepted=True)
 
     await commit_on_current(todos_db, slug, change)
 
