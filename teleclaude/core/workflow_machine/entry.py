@@ -371,6 +371,7 @@ def _apply_claim(
     record.closing = False
     record.helper_starts = []
     record.dispatched = {}
+    record.dispatch_recipients = []
     stale_stamp = phase is Phase.WORK and state.lifecycle_phase is LifecyclePhase.READY
     carried_stale = phase is Phase.PREPARATION and state.lifecycle_phase is LifecyclePhase.READY
     if stale_stamp or carried_stale:
@@ -698,12 +699,6 @@ async def enter(request: EntryRequest) -> EntryResult:
         lane=await resolve_lane(store, request.project_root, request.item, raw, state),
         creative_snapshot=creative_snapshot(raw),
     )
-    if holder != request.caller_session_id:
-        earlier = await earlier_claim_sessions(
-            state.workflow, holder or NO_SESSION, request.item, request.caller_session_id
-        )
-        if earlier:
-            raise _refuse(EntryRefusal.EARLIER_CLAIM, item=request.item, session=earlier[0])
     reading = read_phase(state, request.resolved_lane)
     other_holder = holder is not None and holder != request.caller_session_id
     noting = (
@@ -725,6 +720,11 @@ async def enter(request: EntryRequest) -> EntryResult:
         raise _refuse(EntryRefusal.UNMET_DEPENDENCIES, item=request.item, dependencies=DEPENDENCY_SEPARATOR.join(unmet))
     await observe_item_supervised(request.project_root, request.item)
     publication, bound = await _publication_for(request, holder, phase)
+    if holder != request.caller_session_id:
+        earlier = await earlier_claim_sessions(state.workflow, holder or NO_SESSION, request.item, request.project_root)
+        left = [session for session in earlier if not (bound and session == request.caller_session_id)]
+        if left:
+            raise _refuse(EntryRefusal.EARLIER_CLAIM, item=request.item, session=left[0])
     _, workflow = _driver_for(publication, phase, request.item)
     branch = request.item
     expected = request.resolved_lane.expected_digests

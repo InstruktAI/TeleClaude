@@ -306,8 +306,9 @@ async def _creative_dispatch(context: EffectContext, effect: PendingEffect) -> N
     """The creative dispatch: record the instruction committed with the handoff as the dispatch's outcome.
 
     It runs only after the sweep has found nothing, so an instruction is never given while old helpers remain. The
-    outcome is written once, keyed by the act, and the caller reads it from the item: a lost response, a repeated call
-    or a restart returns the same committed instruction. Repeating the effect changes nothing.
+    outcome is written once, keyed by the act, with the session it was given to, and the caller reads it from the item:
+    a lost response, a repeated call or a restart returns the same committed instruction. The recipient may start the
+    creative lane's workers after its claim is released. Repeating the effect changes nothing.
     """
 
     def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
@@ -317,6 +318,9 @@ async def _creative_dispatch(context: EffectContext, effect: PendingEffect) -> N
         if effect.act_key in record.dispatched:
             return None
         record.dispatched[effect.act_key] = effect.params[INSTRUCTION_PARAM]
+        recipient = effect.params[SESSION_PARAM]
+        if recipient not in record.dispatch_recipients:
+            record.dispatch_recipients.append(recipient)
         return ItemChange(state={**current, WORKFLOW_STATE_KEY: record.to_state()})
 
     await context.store.commit_item_change(context.item.slug, expect_digests={}, mutate=mutate, updated_by=None)

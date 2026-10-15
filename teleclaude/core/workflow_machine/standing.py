@@ -72,7 +72,7 @@ async def assemble_item_show(
     if reading.phase is None:
         return payload
     standing = standing_of(state, reading.ready_sha, reading.ready_at, reading.phase, state.workflow)
-    earlier = await earlier_claim_sessions(state.workflow, state.active_runner or "", slug)
+    earlier = await earlier_claim_sessions(state.workflow, state.active_runner or "", slug, str(store.project_root))
     if earlier:
         standing["running_sessions_of_earlier_claims"] = cast(StateValue, list(earlier))
         standing["door"] = OVERSEER_DOOR

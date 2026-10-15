@@ -24,6 +24,7 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
 from teleclaude.core.workflow_machine.creative import CreativeCapability, open_episode
 from teleclaude.core.workflow_machine.creative_commit import hand_off_to_creative, open_creative_episode
+from teleclaude.types.claim_change import workflow_record_of
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -34,6 +35,14 @@ from teleclaude.core.workflow_store.store import get_workflow_store
 logger = get_logger(__name__)
 
 _IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".svg"})
+
+
+def _committed_dispatch(state: Mapping[str, StateValue], caller_session_id: str) -> str | None:
+    """The instruction already committed for this caller's handoff, so a repeat after the release returns the same one."""
+    record = workflow_record_of(state)
+    if caller_session_id and caller_session_id in record.dispatch_recipients and record.dispatched:
+        return list(record.dispatched.values())[-1]
+    return None
 
 
 _CLAIM_CLOSING = (
@@ -354,6 +363,9 @@ async def next_create(db: Db, slug: str | None, cwd: str, caller_session_id: str
     phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
 
     logger.info("NEXT_CREATE_PHASE slug=%s phase=%s", resolved_slug, phase.value)
+    replayed = _committed_dispatch(state, caller_session_id)
+    if replayed is not None:
+        return replayed
     if caller_session_id and state.get("active_runner") == caller_session_id:
         instruction = await _creative_instruction(db, resolved_slug, cwd, phase)
         dispatched = await hand_off_to_creative(todos_db, resolved_slug, caller_session_id, instruction)

@@ -13,6 +13,7 @@ import os
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 
 from teleclaude.core.db import db
 from teleclaude.core.next_machine._types import StateValue
@@ -44,47 +45,52 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-async def _ancestor_works_on(session_id: str, item: str) -> bool:
-    """Whether a session this one descends from worked on the item, read from the sessions' persisted working slugs."""
+def _same_project(session_project: str | None, project_root: str) -> bool:
+    """Whether a session's project path is the project root, compared as resolved paths."""
+    return bool(session_project) and Path(str(session_project)).resolve() == Path(project_root).resolve()
+
+
+async def _works_on(session_id: str, item: str, project_root: str) -> bool:
+    """Whether the session, or a session it descends from, works on the item of this project (persisted slug and path)."""
     current = session_id
     for _ in range(ANCESTOR_WALK_CAP):
         session = await db.get_session(current)
-        if session is None or not session.initiator_session_id:
+        if session is None:
+            return False
+        if session.working_slug == item and _same_project(session.project_path, project_root):
+            return True
+        if not session.initiator_session_id:
             return False
         current = session.initiator_session_id
-        parent = await db.get_session(current)
-        if parent is not None and parent.working_slug == item:
-            return True
     return False
 
 
-async def _previous_machine_helpers(item: str, current: set[str], exclude: str) -> list[str]:
-    """Live helper sessions of a claim the previous machine made, found by their persisted working slug.
+async def _previous_machine_helpers(item: str, project_root: str, current: set[str]) -> list[str]:
+    """Live sessions a claim the previous machine made left running, found by their persisted working slug and path.
 
-    A claim recorded before this vocabulary left no ledger act. A session working on the item that a session working on
-    it started, outside the current holder's group, is what such a claim left running.
+    A claim recorded before this vocabulary left no ledger act. A session that something started, outside the current
+    holder's group, and that works on this project's item or descends from a session that does, is what such a claim
+    left running. A session a person opened themselves is not among them.
     """
     found: list[str] = []
     for session in await db.list_sessions(all_open=True):
-        if session.working_slug != item or not session.initiator_session_id:
+        if session.session_id in current or not session.initiator_session_id:
             continue
-        if session.session_id in current or session.session_id == exclude:
-            continue
-        if await _ancestor_works_on(session.session_id, item):
+        if await _works_on(session.session_id, item, project_root):
             found.append(session.session_id)
     return found
 
 
 async def earlier_claim_sessions(
-    record: WorkflowRecord, holder: str, item: str = "", exclude: str = ""
+    record: WorkflowRecord, holder: str, item: str = "", project_root: str = ""
 ) -> tuple[str, ...]:
     """The live sessions of every earlier claiming group the item records, outside the current holder's group.
 
     A claiming group is the claimer and every session started from it, transitively. The earlier claims are the ones
     the item's ledger records and the holders its claim changes have displaced, which includes a claim the previous
-    machine made without any ledger act, and (with the item named) the helpers such a claim left running, found by their
-    persisted working slug; the current holder, the sessions it started, ``exclude`` and sessions already closed are not
-    among them.
+    machine made without any ledger act, and (with the item and its project named) the sessions such a claim left
+    running, found by their persisted working slug and project; the current holder, the sessions it started and sessions
+    already closed are not among them.
     """
     current = {holder, *await group_sessions_of(holder)} if holder else set()
     found: list[str] = []
@@ -95,8 +101,8 @@ async def earlier_claim_sessions(
         session = await db.get_session(claimer)
         members = [*(await group_sessions_of(claimer)), *([claimer] if session and session.closed_at is None else [])]
         found.extend(member for member in members if member not in current and member not in found)
-    if item:
-        legacy = await _previous_machine_helpers(item, current, exclude)
+    if item and project_root:
+        legacy = await _previous_machine_helpers(item, project_root, current)
         found.extend(member for member in legacy if member not in found)
     return tuple(found)
 
@@ -175,45 +181,66 @@ class HelperFence:
 async def helper_start_fence(
     project_root: str, working_slug: str | None, initiator_session_id: str | None
 ) -> AsyncIterator[HelperFence]:
-    """Record a session creation as a helper start when it is made from the group of an item's holder.
+    """Record a session creation as a helper start of every item whose holder's group the creator belongs to.
 
-    This is the common creation boundary, so it covers every session started from the holder, transitively, not only
-    the declared child: the item named by the new session's working slug is read, and when the resolved initiator is
-    the holder or descends from it, the start is recorded on the item in a conditional write before the session is
-    created. A closing claim or a holder who changed refuses the creation. The record names the created session, or is
-    withdrawn when none was created.
+    This is the common creation boundary, so it covers every session started from a holder, transitively. The governing
+    items come from authoritative evidence of the initiator's own chain (each ancestor's persisted working slug and
+    project), not only from the directory the new session asks for, and the new session's own slug is one more
+    candidate. For each item whose holder the creator is, or descends from, the start is recorded in a conditional write
+    before the session exists; a closing claim or a changed holder refuses the creation. A creator in the group of an
+    earlier claim is refused. The records name the created session, or are withdrawn when none was created.
     """
     fence = HelperFence()
-    item = await _item_of(working_slug, initiator_session_id)
-    key = await _register_for_group(project_root, item, initiator_session_id) if item and initiator_session_id else ""
+    keys: list[tuple[str, str, str]] = []
+    if initiator_session_id:
+        for root, item in await _governing_items(project_root, working_slug, initiator_session_id):
+            key = await _register_for_group(root, item, initiator_session_id)
+            if key:
+                keys.append((root, item, key))
     try:
         yield fence
     except BaseException:
-        if key:
-            await settle_helper_start(project_root, item, key, "")
+        for root, item, key in keys:
+            await settle_helper_start(root, item, key, "")
         raise
-    if key:
-        await settle_helper_start(project_root, item, key, fence.session_id)
+    for root, item, key in keys:
+        await settle_helper_start(root, item, key, fence.session_id)
 
 
-async def _item_of(working_slug: str | None, initiator_session_id: str | None) -> str:
-    """The item a creation concerns: the new session's working slug, else the first one on its initiator's chain."""
-    if working_slug:
-        return working_slug
-    current = initiator_session_id or ""
+async def _governing_items(
+    project_root: str, working_slug: str | None, initiator_session_id: str
+) -> list[tuple[str, str]]:
+    """The (project root, item) pairs a creation may concern: the new session's slug, then each ancestor's own."""
+    pairs: list[tuple[str, str]] = [(project_root, working_slug)] if working_slug else []
+    current = initiator_session_id
+    seen: set[str] = set()
     for _ in range(ANCESTOR_WALK_CAP):
-        session = await db.get_session(current) if current else None
+        session = await db.get_session(current) if current and current not in seen else None
         if session is None:
-            return ""
-        if session.working_slug:
-            return str(session.working_slug)
+            break
+        seen.add(current)
+        if session.working_slug and session.project_path:
+            pair = (str(session.project_path), str(session.working_slug))
+            if pair not in pairs:
+                pairs.append(pair)
         current = session.initiator_session_id or ""
-    return ""
+    return pairs
+
+
+async def _is_dispatch_recipient(record: WorkflowRecord, session_id: str) -> bool:
+    """Whether the session, or one it descends from, is a session the creative dispatch was given to."""
+    for recipient in record.dispatch_recipients:
+        if session_id == recipient or await in_claiming_group(session_id, recipient):
+            return True
+    return False
 
 
 async def _register_for_group(project_root: str, item: str, initiator_session_id: str) -> str:
-    """Register the start when the creator is in the holder's group; refuse it when it is in an earlier group's."""
-    store = await get_workflow_store(project_root)
+    """Register the start when the creator is in the item's holder's group; refuse it when in an earlier group's."""
+    try:
+        store = await get_workflow_store(project_root)
+    except (OSError, ValueError):
+        return ""
     raw = await store.read_state(item)
     if raw is None:
         return ""
@@ -221,6 +248,8 @@ async def _register_for_group(project_root: str, item: str, initiator_session_id
     holder = state.active_runner or ""
     if holder and await in_claiming_group(initiator_session_id, holder):
         return await register_helper_start(project_root, item, holder)
-    if initiator_session_id in await earlier_claim_sessions(state.workflow, holder, item):
+    if state.workflow.episode is not None and await _is_dispatch_recipient(state.workflow, initiator_session_id):
+        return ""
+    if initiator_session_id in await earlier_claim_sessions(state.workflow, holder, item, project_root):
         raise HelperStartRefused(EARLIER_GROUP.format(item=item, session=initiator_session_id))
     return ""

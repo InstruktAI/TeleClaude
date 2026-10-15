@@ -337,6 +337,7 @@ class WorkflowRecord(BaseModel):
     helper_starts: list[HelperStart] = Field(default_factory=list)
     claimers: list[str] = Field(default_factory=list)
     dispatched: dict[str, str] = Field(default_factory=dict)
+    dispatch_recipients: list[str] = Field(default_factory=list)
 
     def with_effect(self, effect: PendingEffect) -> WorkflowRecord:
         """A copy with the effect appended to the pending list."""
