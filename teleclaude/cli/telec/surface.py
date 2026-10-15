@@ -1592,12 +1592,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
     "memories": CommandDef(
         desc=(
-            "Read or remove durable observations about people. "
+            "Read, save or remove durable observations about people. "
             "Memories capture meta-level things about who a person is — their relational stance, "
             "values, communication style, vision — never coding norms, architectural decisions, "
             "or operational gotchas (those live in policies, principles, and addenda). "
             "Memories are kept current by the memory agents a conversation session's end starts; "
-            "other agents must never create them."
+            "any other agent saves one only when its human asks it to remember something."
         ),
         subcommands={
             "list": CommandDef(
