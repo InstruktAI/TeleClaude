@@ -21,33 +21,6 @@ Operate and maintain the self-hosted GitHub Actions runner on MozMini (Mac Mini)
 
 ## Steps
 
-<!-- planned-change:release-install-proof-on-hosted-mac -->
-
-### Release execution destination
-
-1. Inspect the repository routing setting named by the release workflow and the
-   selected runner destination. Discover the runner host through
-   `telec computers list` and its project through `telec projects list`.
-2. Qualify the Ubuntu guest base, scoped runner registration, resource partition,
-   toolchain and credential-free native confinement before selecting owned
-   execution for a controlled dry-run. Use the pinned Fleet release's validation
-   and status surfaces; upstream operations are described in its guides.
-3. Through the existing release workflow, retain a complete owned dry-run's
-   provider and encrypted-settlement results, exact-candidate lint and full
-   runtime acceptance, installer proof, and interrupted-run cleanup/recovery
-   evidence before enabling unattended owned publication
-   (`local/projects/teleclaude/spec/feature/release/publication`).
-4. Operate controller installation and lifecycle through the project's make
-   targets (`local/projects/teleclaude/policy/agent-service-control`). Inspect
-   durable guest and cleanup state before considering a failed run settled.
-5. Change the single routing setting to select the compatible hosted destination
-   when hosted execution is desired. The release verification and authentication
-   contracts remain owned by
-   `local/projects/teleclaude/spec/feature/release/publication`.
-
-<!-- change:release-install-proof-on-hosted-mac -->
-<!-- /planned-change:release-install-proof-on-hosted-mac -->
-
 ### Check runner status
 
 1. Verify service is running:
@@ -135,14 +108,3 @@ Before diagnosing runner issues, verify the host is healthy:
 - Runner offline but service running: likely network issue on host. Fix network first, then restart runner.
 - Runner picking up wrong jobs: check org-level runner assignment and repository access settings.
 - Jobs queued indefinitely: verify labels match (see label table above). Single-concurrency runner processes one job at a time — other jobs queue behind it.
-
-<!-- planned-change:release-install-proof-on-hosted-mac -->
-
-## See Also
-
-- https://github.com/vitalyiegorov/tart-runner-fleet/blob/main/INSTALL.md
-- https://github.com/vitalyiegorov/tart-runner-fleet/blob/main/docs/LINUX_BASE_IMAGE.md
-- https://github.com/vitalyiegorov/tart-runner-fleet/blob/main/docs/OPERATIONS.md
-
-<!-- change:release-install-proof-on-hosted-mac -->
-<!-- /planned-change:release-install-proof-on-hosted-mac -->
