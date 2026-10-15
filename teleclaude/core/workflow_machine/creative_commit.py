@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from typing import Final
 
 from teleclaude.core.next_machine._types import StateValue
-from teleclaude.core.workflow_machine.creative import CreativeCapability, open_episode
+from teleclaude.core.workflow_machine.creative import CreativeCapability, ObjectFacts, open_episode
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.phase_reading import LaneFacts, in_task_lane
+from teleclaude.core.workflow_machine.single_claim import started_session_for
 from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.core.workflow_store.types import ConversionPath, ItemChange
 from teleclaude.events.envelope import occurrence_id
@@ -85,7 +86,7 @@ def episode_mutation(
     caller_session_id: str,
     apply: Callable[[dict[str, StateValue]], dict[str, StateValue]] | None = None,
     *,
-    lane: LaneFacts,
+    facts: ObjectFacts,
     dispatch: Handoff | None = None,
 ) -> Callable[[dict[str, StateValue] | None], ItemChange | None]:
     """The change that decides the capability against the row it reads, opens the episode and applies the write's state.
@@ -96,7 +97,7 @@ def episode_mutation(
     """
 
     def mutate(current: dict[str, StateValue] | None) -> ItemChange | None:
-        opening = open_episode(item, current, capability=capability, caller_session_id=caller_session_id, lane=lane)
+        opening = open_episode(item, current, capability=capability, caller_session_id=caller_session_id, facts=facts)
         state = apply(opening.state) if apply is not None else opening.state
         if (
             dispatch is not None
@@ -114,21 +115,24 @@ def episode_mutation(
     return mutate
 
 
-async def creative_lane(store: WorkflowStore, item: str) -> LaneFacts:
-    """The lane facts of the item, resolved now and before the transaction that will decide the capability on them."""
+async def creative_facts(store: WorkflowStore, item: str) -> ObjectFacts:
+    """The facts a refusal reads, resolved now and before the transaction that will decide the capability on them."""
     from teleclaude.core.workflow_machine.lane import resolve_lane  # noqa: PLC0415 - deferred cycle: lane reads create
 
     raw = await store.read_state(item)
     if raw is None:
-        return LaneFacts(creative_incomplete=False, integration_head="", artifact_digests=())
-    return await resolve_lane(store, str(store.project_root), item, raw, TodoState.model_validate(raw))
+        return ObjectFacts(LaneFacts(creative_incomplete=False, integration_head="", artifact_digests=()))
+    state = TodoState.model_validate(raw)
+    lane = await resolve_lane(store, str(store.project_root), item, raw, state)
+    launch = state.workflow.launch
+    return ObjectFacts(lane, await started_session_for(item, launch.key) if launch is not None else "")
 
 
 async def open_creative_episode(
     store: WorkflowStore, item: str, capability: CreativeCapability, caller_session_id: str
 ) -> None:
     """Open the item's creative episode for a capability that has no artifact or stamp of its own."""
-    mutate = episode_mutation(item, capability, caller_session_id, lane=await creative_lane(store, item))
+    mutate = episode_mutation(item, capability, caller_session_id, facts=await creative_facts(store, item))
     await store.commit_item_change(
         item,
         expect_digests={},
@@ -145,7 +149,7 @@ async def hand_off_to_creative(store: WorkflowStore, item: str, holder: str, han
     cannot finish yet, and repeating the call after the sweep has settled completes the same handoff.
     """
     mutate = episode_mutation(
-        item, CreativeCapability.DESIGN, holder, lane=await creative_lane(store, item), dispatch=handoff
+        item, CreativeCapability.DESIGN, holder, facts=await creative_facts(store, item), dispatch=handoff
     )
     await store.commit_item_change(
         item, expect_digests={}, mutate=lambda current, _digests: mutate(current), updated_by=holder

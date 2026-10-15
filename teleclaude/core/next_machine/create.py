@@ -25,7 +25,7 @@ from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions
 from teleclaude.core.workflow_machine.creative import CreativeCapability, open_episode
 from teleclaude.core.workflow_machine.creative_commit import (
     Handoff,
-    creative_lane,
+    creative_facts,
     hand_off_to_creative,
     open_creative_episode,
 )
@@ -450,7 +450,7 @@ async def next_create(db: Db, slug: str | None, cwd: str, caller_session_id: str
             state,
             capability=CreativeCapability.DESIGN,
             caller_session_id=caller_session_id,
-            lane=await creative_lane(todos_db, resolved_slug),
+            facts=await creative_facts(todos_db, resolved_slug),
         )
     else:
         await open_creative_episode(todos_db, resolved_slug, CreativeCapability.DESIGN, caller_session_id)

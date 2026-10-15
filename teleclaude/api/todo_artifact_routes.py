@@ -42,7 +42,7 @@ from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFAC
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todos_db import HolderWriteRefused, malformed_digest_detail
 from teleclaude.core.workflow_machine.creative import CreativeCapability, CreativeRefused
-from teleclaude.core.workflow_machine.creative_commit import creative_lane, episode_mutation
+from teleclaude.core.workflow_machine.creative_commit import creative_facts, episode_mutation
 from teleclaude.core.workflow_machine.phase_reading import in_task_lane as task_lane_of
 from teleclaude.project_root import resolve_project_root
 from teleclaude.types.todos import TodoState
@@ -200,7 +200,7 @@ async def write_artifact(
                     slug,
                     CreativeCapability.DESIGN_SPEC_WRITE,
                     identity.session_id or "",
-                    lane=await creative_lane(todos_db, slug),
+                    facts=await creative_facts(todos_db, slug),
                 ),
             )
         else:

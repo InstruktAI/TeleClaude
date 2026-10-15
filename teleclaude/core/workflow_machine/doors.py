@@ -13,10 +13,9 @@ from teleclaude.types.workflow_record import Phase
 
 DOOR_HELD: Final = "the holding session {holder}"
 DOOR_HELD_KICKBACK: Final = "the holding session {holder}, whose `telec todo act {item} kickback` returns the item"
-DOOR_START: Final = (
-    "the driver start in progress (reservation {reservation}, requested by {requester}); "
-    "the session it is starting claims it"
-)
+DOOR_START: Final = "the driver start in progress (reservation {reservation}, requested by {requester}); {starting}"
+STARTING_SESSION: Final = "the session it is starting, {session}, claims it"
+STARTING_NO_SESSION: Final = "no session is open for it yet; the session it starts claims it"
 DOOR_ADMITTED: Final = (
     "the integrator's admission at {sha}; the integrator delivers or parks it, and a parked item is then reachable "
     "by the ready or work row"
@@ -34,7 +33,7 @@ DOOR_DESIGN: Final = (
 UNKNOWN_REQUESTER: Final = "the lifecycle runner or a person at a terminal"
 
 
-def door_for(state: TodoState, phase: Phase, item: str) -> str:
+def door_for(state: TodoState, phase: Phase, item: str, *, started_session: str = "") -> str:
     """The door the first matching row of the contract's table names for the item's state."""
     holder = state.active_runner
     if holder:
@@ -42,7 +41,10 @@ def door_for(state: TodoState, phase: Phase, item: str) -> str:
         return template.format(holder=holder, item=item)
     launch = state.workflow.launch
     if launch is not None:
-        return DOOR_START.format(reservation=launch.key[:8], requester=launch.requested_by or UNKNOWN_REQUESTER)
+        starting = STARTING_SESSION.format(session=started_session) if started_session else STARTING_NO_SESSION
+        return DOOR_START.format(
+            reservation=launch.key[:8], requester=launch.requested_by or UNKNOWN_REQUESTER, starting=starting
+        )
     admitted = state.workflow.admitted
     if admitted is not None:
         return DOOR_ADMITTED.format(sha=admitted.sha[:8])

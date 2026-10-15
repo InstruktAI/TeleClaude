@@ -62,6 +62,14 @@ class CreativeRefused(Exception):
 
 
 @dataclass(frozen=True)
+class ObjectFacts:
+    """What a creative capability\'s refusal reads besides the row: the lane facts, and the session a start in progress is starting."""
+
+    lane: LaneFacts
+    started_session: str = ""
+
+
+@dataclass(frozen=True)
 class EpisodeOpening:
     """The state a creative capability commits: the legacy phase it converted (empty when none) and whether it opened."""
 
@@ -79,7 +87,7 @@ def _door_refusal(
     capability: CreativeCapability,
     item: str,
     state: TodoState,
-    lane: LaneFacts,
+    facts: ObjectFacts,
     **fields: str,
 ) -> CreativeRefused:
     """A refusal that names the door of the first matching row of the contract's table for the state as the machine reads it.
@@ -87,8 +95,15 @@ def _door_refusal(
     The phase is the reading, not the stored value: a stored ``ready`` whose stamp the integration head has moved past
     reads ``work`` and gets that row's door.
     """
-    phase = read_phase(state, lane).phase or Phase.PREPARATION
-    return _refuse(refusal, capability, item, phase=phase.value, door=door_for(state, phase, item), **fields)
+    phase = read_phase(state, facts.lane).phase or Phase.PREPARATION
+    return _refuse(
+        refusal,
+        capability,
+        item,
+        phase=phase.value,
+        door=door_for(state, phase, item, started_session=facts.started_session),
+        **fields,
+    )
 
 
 def open_episode(
@@ -97,7 +112,7 @@ def open_episode(
     *,
     capability: CreativeCapability,
     caller_session_id: str,
-    lane: LaneFacts,
+    facts: ObjectFacts,
 ) -> EpisodeOpening:
     """Decide the capability against the state read in its own transaction, or refuse naming the cause.
 
@@ -114,12 +129,12 @@ def open_episode(
         raise _refuse(CreativeRefusal.DONE, capability, item)
     admitted = state.workflow.admitted
     if admitted is not None:
-        raise _door_refusal(CreativeRefusal.ADMITTED, capability, item, state, lane, sha=admitted.sha)
+        raise _door_refusal(CreativeRefusal.ADMITTED, capability, item, state, facts, sha=admitted.sha)
     holder = state.active_runner or ""
     if holder and holder != caller_session_id:
-        raise _door_refusal(CreativeRefusal.HELD, capability, item, state, lane, holder=holder)
+        raise _door_refusal(CreativeRefusal.HELD, capability, item, state, facts, holder=holder)
     if _closed_phase(state, stored):
-        raise _door_refusal(CreativeRefusal.CLOSED, capability, item, state, lane)
+        raise _door_refusal(CreativeRefusal.CLOSED, capability, item, state, facts)
     if holder and capability is not CreativeCapability.DESIGN:
         raise _refuse(CreativeRefusal.HOLDER, capability, item)
     if state.workflow.episode is not None:

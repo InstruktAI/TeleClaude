@@ -13,7 +13,8 @@ from typing import Final
 from teleclaude.core.workflow_machine.doors import door_for
 from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.phase_reading import read_phase
-from teleclaude.core.workflow_store.store import get_workflow_store
+from teleclaude.core.workflow_machine.single_claim import started_session_for
+from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.types.todos import TodoState
 from teleclaude.types.workflow_record import Act, Phase
 
@@ -65,14 +66,22 @@ _PERFORMER: Final[dict[str, str]] = {
 REFUSAL_TEMPLATE: Final = "{verb} is refused: {item} is in {phase}. Door: {door}.{replacement}"
 REPLACEMENT_TEMPLATE: Final = " The act that replaces it is {act}, performed by {performer}."
 DELIVERED_REFUSAL: Final = (
-    "{verb} is refused: {item} is delivered. Door: none: the item was delivered at its commit; "
+    "{verb} is refused: {item} is delivered. Door: none: the item was delivered at {commit}; "
     "follow-up work is a new item, `telec todo create`."
 )
+NO_DELIVERED_COMMIT: Final = "its commit (none is recorded)"
 NOT_DRIVEN_PHASES: Final = frozenset({Phase.DELIVERED})
 
 
 class PreviousActRefused(Exception):
     """A verb that only the previous machine knew was refused for an item this machine drives; nothing was written."""
+
+
+async def _delivered_commit(store: WorkflowStore, slug: str) -> str:
+    """The commit the item was delivered at, as the store records it; a plain statement when none is recorded."""
+    record = await store.read_todo_diagnostic_record(slug)
+    commit = record["delivered_commit"] if record is not None else None
+    return commit[:12] if commit else NO_DELIVERED_COMMIT
 
 
 async def refuse_previous_machine_act(project_root: str, slug: str, verb: str) -> None:
@@ -89,10 +98,14 @@ async def refuse_previous_machine_act(project_root: str, slug: str, verb: str) -
     raw = await store.read_state(slug)
     if raw is None:
         if await store.read_state_delivered(slug) is not None:
-            raise PreviousActRefused(DELIVERED_REFUSAL.format(verb=verb, item=slug))
+            raise PreviousActRefused(
+                DELIVERED_REFUSAL.format(verb=verb, item=slug, commit=await _delivered_commit(store, slug))
+            )
         return
     state = TodoState.model_validate(raw)
     reading = read_phase(state, await resolve_lane(store, project_root, slug, raw, state))
+    launch = state.workflow.launch
+    started = await started_session_for(slug, launch.key) if launch is not None else ""
     if reading.phase is None or reading.phase in NOT_DRIVEN_PHASES:
         return
     replacement = (
@@ -103,7 +116,7 @@ async def refuse_previous_machine_act(project_root: str, slug: str, verb: str) -
             verb=verb,
             item=slug,
             phase=reading.phase.value,
-            door=door_for(state, reading.phase, slug),
+            door=door_for(state, reading.phase, slug, started_session=started),
             replacement=replacement,
         )
     )

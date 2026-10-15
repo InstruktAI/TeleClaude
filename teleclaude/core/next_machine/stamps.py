@@ -80,7 +80,7 @@ from teleclaude.core.next_machine.work_lane_release import WorkLaneReturnReason,
 from teleclaude.core.operation_follow_through import FollowThrough
 from teleclaude.core.roles import RoleName
 from teleclaude.core.workflow_machine.creative import CreativeCapability, CreativeRefused
-from teleclaude.core.workflow_machine.creative_commit import creative_lane, episode_mutation
+from teleclaude.core.workflow_machine.creative_commit import creative_facts, episode_mutation
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_project_root
@@ -661,7 +661,7 @@ async def _commit_creative_gate_stamp(
         return {**opened, _CREATIVE_STATE_KEY: creative}
 
     mutate = episode_mutation(
-        slug, CreativeCapability.GATE_STAMP, caller_session_id, set_flag, lane=await creative_lane(todos_db, slug)
+        slug, CreativeCapability.GATE_STAMP, caller_session_id, set_flag, facts=await creative_facts(todos_db, slug)
     )
     try:
         change = await todos_db.commit_item_change(

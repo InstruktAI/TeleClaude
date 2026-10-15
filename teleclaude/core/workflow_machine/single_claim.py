@@ -23,9 +23,11 @@ from pydantic import BaseModel, ConfigDict
 from teleclaude.core.db import db
 from teleclaude.core.db_models import ProcedureEventDeliveryOutcome
 from teleclaude.core.models import Session
+from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.entry_declarations import EntryDeclarations, SessionMode
 from teleclaude.events.envelope import ReceivedEvent
+from teleclaude.events.references import TodoRef
 from teleclaude.types.claim_change import workflow_record_of
 from teleclaude.types.procedure_delivery import BINDING_SECTION, BindingField, NotDeliveredReason
 
@@ -139,3 +141,14 @@ async def entitled_to_request(session_id: str, slug: str, key: str) -> bool:
         if facts.slug == slug and facts.request_key == key:
             return True
     return False
+
+
+async def started_session_for(item: str, key: str) -> str:
+    """The open session bound to the item that a driver start for this reservation is starting, or empty when none is."""
+    subject = TodoRef(item).to_ref().to_token()
+    for session in await db.get_sessions_by_origin_metadata(BINDING_SECTION, BindingField.SUBJECT, subject):
+        if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
+            continue
+        if await entitled_to_request(session.session_id, item, key):
+            return session.session_id
+    return ""
