@@ -1010,7 +1010,7 @@ def recover_publication(repository_root: Path, output_directory: Path, token: st
 
 
 def prepare_proof_checkout(repository_root: Path, candidate_path: Path, bundle_path: Path) -> None:
-    """Import R while preserving S as the local main ref consumed by the Tart harness."""
+    """Import R while preserving S as local main for the hosted installer harness."""
     candidate = load_candidate_identity(candidate_path.read_bytes())
     if candidate.bundle_sha256 is None or _sha256_file(bundle_path) != candidate.bundle_sha256:
         raise ValueError(_INVALID_ARTIFACT)

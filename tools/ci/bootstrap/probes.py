@@ -1,4 +1,4 @@
-"""Exercise configuration authorization and identity in the disposable VM."""
+"""Exercise configuration authorization and identity on the hosted runner."""
 
 from __future__ import annotations
 
@@ -14,7 +14,9 @@ import yaml
 from teleclaude.config.identity_schema import CompanyRole
 
 if TYPE_CHECKING:
-    from .__main__ import BootstrapHarness, GuestTerminal
+    from tools.ci.terminal import PersistentTerminal
+
+    from .__main__ import BootstrapHarness
 
 _UTF8 = "utf-8"
 _EMPTY_VALUE = ""
@@ -35,7 +37,7 @@ _COMPANY_FIELD = "company"
 _REVISION_FIELD = "revision"
 _JSON_FORMAT = "json"
 _JSON_OBJECT_START = "{"
-GUEST_TELEC_RELATIVE_PATH = Path(".local") / "bin" / "telec"
+TELEC_RELATIVE_PATH = Path(".local") / "bin" / "telec"
 _ROLE_CUSTOMER_REFUSAL_FRAGMENT = "role 'customer'"
 _LOGIN_REQUIRED_REFUSAL_FRAGMENT = "login required"
 _REFUSAL_EXIT_CODE = 1
@@ -67,8 +69,6 @@ _AUTH_LOGIN = ("auth", "login")
 _CHANGE_DIRECTORY_COMMAND = "cd"
 _PROJECTS_DIRECTORY = "bootstrap-probe-projects"
 _PROJECT_SLUGS = ("proj-a", "proj-b")
-_MKDIR_BINARY = "/bin/mkdir"
-_MKDIR_PARENTS_OPTION = "-p"
 _GIT_BINARY = "git"
 _GIT_CHANGE_DIRECTORY_OPTION = "-C"
 _GIT_INIT_COMMAND = "init"
@@ -119,7 +119,7 @@ _FADA_COMMAND = "Full Disk Access capability"
 _FADA_AVAILABLE = "available"
 _FADA_DENIED = "not available"
 _FADA_NO_RESULT = "no result (exit {exit_code})"
-_GUEST_GLOBAL_PLACEHOLDER = "-"
+_GLOBAL_PLACEHOLDER = "-"
 
 
 class ProbeFailure(RuntimeError):
@@ -201,7 +201,7 @@ def _load_fixtures() -> ProbeFixtures:
 
 
 def _telec_path(harness: BootstrapHarness) -> str:
-    return str(Path(harness.guest_home) / GUEST_TELEC_RELATIVE_PATH)
+    return str(Path(harness.home) / TELEC_RELATIVE_PATH)
 
 
 def _rendered_view(output: str) -> RenderedView | None:
@@ -234,7 +234,7 @@ def _view_defect(output: str, section: str) -> str | None:
 
 def _read_revision(
     harness: BootstrapHarness,
-    terminal: GuestTerminal,
+    terminal: PersistentTerminal,
     telec: str,
     kind: str,
     slug: str | None,
@@ -250,7 +250,7 @@ def _read_revision(
         command.append(slug)
     command.extend((_CONFIG_FORMAT_FLAG, _JSON_FORMAT))
     result = terminal.run(command)
-    harness.record_terminal_result(_READ_REVISION.format(kind=kind, slug=slug or _GUEST_GLOBAL_PLACEHOLDER), result)
+    harness.record_terminal_result(_READ_REVISION.format(kind=kind, slug=slug or _GLOBAL_PLACEHOLDER), result)
     view = _rendered_view(result.output)
     if view is None:
         raise ProbeFailure(_REVISION_MISSING)
@@ -259,7 +259,7 @@ def _read_revision(
 
 def _require_project_ownership(
     harness: BootstrapHarness,
-    terminal: GuestTerminal,
+    terminal: PersistentTerminal,
     telec: str,
     project_slug: str,
     company_slug: str,
@@ -279,21 +279,21 @@ def _require_project_ownership(
 
 def _register_project(
     harness: BootstrapHarness,
-    terminal: GuestTerminal,
+    terminal: PersistentTerminal,
     telec: str,
     project_slug: str,
     company_slug: str,
 ) -> None:
-    project_root = str(Path(harness.guest_home) / _PROJECTS_DIRECTORY / project_slug)
-    harness.run_vm_command(
+    project_root = Path(harness.home) / _PROJECTS_DIRECTORY / project_slug
+    harness.create_directory(
         _PROJECT_CHECKOUT_CREATED.format(slug=project_slug),
-        [_MKDIR_BINARY, _MKDIR_PARENTS_OPTION, project_root],
+        project_root,
     )
-    harness.run_vm_command(
+    harness.run_command(
         _PROJECT_GIT_INITIALIZED.format(slug=project_slug),
-        [_GIT_BINARY, _GIT_CHANGE_DIRECTORY_OPTION, project_root, _GIT_INIT_COMMAND],
+        [_GIT_BINARY, _GIT_CHANGE_DIRECTORY_OPTION, str(project_root), _GIT_INIT_COMMAND],
     )
-    selected = terminal.run([_CHANGE_DIRECTORY_COMMAND, project_root])
+    selected = terminal.run([_CHANGE_DIRECTORY_COMMAND, str(project_root)])
     harness.record_terminal_result(_PROJECT_DIRECTORY_SELECTED.format(slug=project_slug), selected)
     adopted = terminal.run([telec, *_CONFIG_PROJECT_ADOPT])
     harness.record_terminal_result(_PROJECT_ADOPTED.format(slug=project_slug), adopted)
@@ -330,7 +330,7 @@ def _run_admin_fixtures(harness: BootstrapHarness, fixtures: ProbeFixtures, owne
 
         for project_slug in _PROJECT_SLUGS:
             _register_project(harness, terminal, telec, project_slug, fixtures.company_slug)
-        returned = terminal.run([_CHANGE_DIRECTORY_COMMAND, harness.guest_project_root])
+        returned = terminal.run([_CHANGE_DIRECTORY_COMMAND, harness.project_root])
         harness.record_terminal_result(_RETURN_TO_CHECKOUT, returned)
 
         company_revision = _read_revision(harness, terminal, telec, _COMPANY_KIND, fixtures.company_slug)
@@ -429,7 +429,7 @@ def _remove_person(harness: BootstrapHarness, telec: str, person: ProbePerson, o
 
 def _report_full_disk_access(harness: BootstrapHarness, owner_email: str, telec: str) -> None:
     """Report the existing permissions probe as a capability line, outside the health verdict."""
-    python = str(Path(harness.guest_project_root) / _VENV_PYTHON)
+    python = str(Path(harness.project_root) / _VENV_PYTHON)
     with harness.terminal(_PERMISSIONS_COMMAND_TIMEOUT_SECONDS) as terminal:
         login = terminal.run([telec, *_AUTH_LOGIN, owner_email])
         harness.record_terminal_result(_LOGIN_ADMIN.format(purpose=_PURPOSE_FADA), login)
@@ -440,7 +440,7 @@ def _report_full_disk_access(harness: BootstrapHarness, owner_email: str, telec:
                 _MACOS_SETUP_MODULE,
                 _PERMISSIONS_PROBE_ACTION,
                 _PROJECT_ROOT_OPTION,
-                harness.guest_project_root,
+                harness.project_root,
             ]
         )
     if result.returncode == _FADA_PASSED_EXIT_CODE:
