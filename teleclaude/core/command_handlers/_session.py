@@ -389,7 +389,14 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     if cmd.entry_point is SessionEntryPoint.CRON and cmd.job is not None:
         title_args = cmd.job
     title = cmd.title or (
-        compose_command_session_title(cmd.command, title_args, role=cmd.role) if cmd.command is not None else ""
+        compose_command_session_title(
+            cmd.command,
+            title_args,
+            role=cmd.role,
+            invocation=launch.invocation if launch is not None else None,
+        )
+        if cmd.command is not None
+        else ""
     )
 
     # A desk session records its confinement in the creating write, so no

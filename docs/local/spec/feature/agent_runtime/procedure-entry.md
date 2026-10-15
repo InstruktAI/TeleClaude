@@ -46,11 +46,12 @@ arguments, entry kind and facts, and additional context. A scheduled run retains
 its configured job identity; an activation retains its home, subject, attendance
 and delivery settings. Those values remain available on continuation.
 
-The session's generated title is its role name followed by its supplied
-arguments; a scheduled run shows its job name and an activation its home in
-that place. The full procedure ID remains recorded and inspectable in session
-details. Display abbreviation does not change dispatch, continuation or matching
-identity.
+The session's generated title is its role name followed by its work subject.
+A direct invocation with a bound branch uses that branch as its subject;
+other direct invocations use their supplied arguments. A scheduled run shows
+its job name and an activation its home in that place. The full procedure ID
+and complete arguments remain recorded and inspectable in session details.
+Display abbreviation does not change dispatch, continuation or matching identity.
 
 ### Resolution
 
@@ -169,7 +170,7 @@ And unrecognized procedure input retains the surface's ordinary conversation beh
 Given a lifecycle agent dispatches a build procedure
 When the session is created
 Then its recorded command remains the full procedure ID
-And its generated title displays the role and arguments
+And its generated title displays the role and work subject
 ```
 
 #### UC-PE12: Unsupported remote entry refuses before side effects
