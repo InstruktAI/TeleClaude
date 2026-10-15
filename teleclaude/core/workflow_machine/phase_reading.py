@@ -75,12 +75,18 @@ def read_phase(state: TodoState, *, integration_head: str, creative_incomplete: 
     whose commit is no longer the head is stale: the item reads as work again, and a stamp at the new head
     is required (``local/projects/teleclaude/spec/feature/workflow/work-review-cycle``).
     ``creative_incomplete`` is the creative lane's answer for an item it has not finished.
+    An item the integrator admitted reads ``ready`` at the admitted commit until the integrator retires the
+    admission, whatever its head, its stamp or its creative state: the integrator owns the item's posture, so no
+    driver is reserved or started for it and nothing under the integrator's merge is reopened.
     """
     stored = state.lifecycle_phase
     if stored in TASK_LANE_STORED_PHASES or state.kind == KIND_TASK:
         return PhaseReading(phase=None)
     if stored is LifecyclePhase.DELIVERED:
         return PhaseReading(phase=Phase.DELIVERED)
+    admitted = state.workflow.admitted
+    if admitted is not None:
+        return PhaseReading(phase=Phase.READY, ready_sha=admitted.sha, ready_at=admitted.at)
     if creative_incomplete:
         return PhaseReading(phase=Phase.DESIGN)
     if stored is LifecyclePhase.READY:
