@@ -903,7 +903,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec todo act my-item finding --sha 1a2b3c4 "the guard no longer runs on restart"',
                     'telec todo act my-item reply --finding <key> "fixed in 5d6e7f8"',
                     "telec todo act my-item prepared --revision <digest>",
-                    'telec todo act my-item waiting --person maurice-faber "Which of these outcomes do you want?"',
+                    'telec todo act my-item waiting --person <slug> "Which of these outcomes do you want?"',
                 ],
                 literal_dash_tokens=True,
                 auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),

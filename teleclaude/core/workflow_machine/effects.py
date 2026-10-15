@@ -10,6 +10,7 @@ never raises a second notice.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Mapping
 from typing import Any, Final
 
@@ -58,6 +59,13 @@ EFFECT_FAILED_LOG: Final = "workflow effect failed; the reconciler retries it wi
 ITEM_FAILED_LOG: Final = "workflow effect reconciliation failed for an item"
 PROJECT_FAILED_LOG: Final = "workflow effect reconciliation failed for a project"
 NO_HANDLER_LOG: Final = "workflow effect has no handler"
+NOT_FINISHED_LOG: Final = "workflow effect not finished yet; it stays pending and later effects of the item wait"
+CLOSE_WAIT_SECONDS: Final = 10.0
+CLOSE_POLL_SECONDS: Final = 0.25
+
+
+class EffectNotFinished(Exception):
+    """An effect has not reached its terminal outcome; it stays pending and is retried."""
 
 
 class EffectContext:
@@ -108,29 +116,36 @@ def _waiting(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
     return event, WAITING_DESCRIPTION.format(slug=context.item.slug, person=person)
 
 
-def _request_event(event_type: type[PlatformEvent[TodoRef, TodoDriverRequestData]]) -> Callable[..., BuiltEvent]:
-    def build(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
-        event = event_type(
-            id=occurrence_id(context.project_root, context.item.todo_id, effect.id),
-            subject=TodoRef(context.item.slug),
-            home=home_for_project_path(context.project_root),
-            data=TodoDriverRequestData(
-                slug=context.item.slug,
-                project_path=context.project_root,
-                requested_by=effect.params.get(REQUESTED_BY_PARAM, NO_HOLDER),
-                reservation_key=effect.params[RESERVATION_PARAM],
-            ),
-        )
-        return event, REQUEST_DESCRIPTION.format(slug=context.item.slug)
+def _build_request(
+    event_type: type[PlatformEvent[TodoRef, TodoDriverRequestData]], context: EffectContext, effect: PendingEffect
+) -> BuiltEvent:
+    event = event_type(
+        id=occurrence_id(context.project_root, context.item.todo_id, effect.id),
+        subject=TodoRef(context.item.slug),
+        home=home_for_project_path(context.project_root),
+        data=TodoDriverRequestData(
+            slug=context.item.slug,
+            project_path=context.project_root,
+            requested_by=effect.params.get(REQUESTED_BY_PARAM, NO_HOLDER),
+            reservation_key=effect.params[RESERVATION_PARAM],
+        ),
+    )
+    return event, REQUEST_DESCRIPTION.format(slug=context.item.slug)
 
-    return build
+
+def _preparation_requested(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
+    return _build_request(TodoPreparationRequested, context, effect)
+
+
+def _work_requested(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
+    return _build_request(TodoWorkRequested, context, effect)
 
 
 _EVENT_BUILDERS: Final[Mapping[EmittedEvent, Callable[[EffectContext, PendingEffect], BuiltEvent]]] = {
     EmittedEvent.CLAIM_CHANGED: _claim_changed,
     EmittedEvent.WAITING: _waiting,
-    EmittedEvent.PREPARATION_REQUESTED: _request_event(TodoPreparationRequested),
-    EmittedEvent.WORK_REQUESTED: _request_event(TodoWorkRequested),
+    EmittedEvent.PREPARATION_REQUESTED: _preparation_requested,
+    EmittedEvent.WORK_REQUESTED: _work_requested,
 }
 
 
@@ -155,14 +170,36 @@ async def _release_claim(context: EffectContext, effect: PendingEffect) -> None:
     await context.store.release_claim_by_id(context.item.todo_id, effect.params[SESSION_PARAM])
 
 
-async def _end_session(context: EffectContext, effect: PendingEffect) -> None:
-    session_id = effect.params[SESSION_PARAM]
+async def _session_is_closed(session_id: str) -> bool:
     session = await db.get_session(session_id)
-    if session is None or session.closed_at is not None:
+    return session is None or session.closed_at is not None
+
+
+async def _await_closed(session_id: str) -> bool:
+    """Wait, within a bound, for the session to reach its terminal state."""
+    deadline = asyncio.get_running_loop().time() + CLOSE_WAIT_SECONDS
+    while True:
+        if await _session_is_closed(session_id):
+            return True
+        if asyncio.get_running_loop().time() >= deadline:
+            return False
+        await asyncio.sleep(CLOSE_POLL_SECONDS)
+
+
+async def _end_session(context: EffectContext, effect: PendingEffect) -> None:
+    """End the session and acknowledge only once the session lifecycle shows it closed.
+
+    A close another path already has in flight returns without closing; the effect then stays pending and
+    is retried until the terminal state is observed.
+    """
+    session_id = effect.params[SESSION_PARAM]
+    if await _session_is_closed(session_id):
         return
     await dispatch_command(
         get_command_service().client, CloseSessionCommand(session_id=session_id), principal=SYSTEM_DAEMON_PRINCIPAL
     )
+    if not await _await_closed(session_id):
+        raise EffectNotFinished(effect.id)
 
 
 _HANDLERS: Final = {
@@ -185,9 +222,12 @@ async def reconcile_item(store: WorkflowStore, project_root: str, item: PendingE
             continue
         try:
             await handler(context, effect)
-        except Exception:  # supervision boundary: one failed effect must not stop the item's others or the daemon
+        except EffectNotFinished:
+            logger.info(NOT_FINISHED_LOG, slug=item.slug, effect=effect.id, project_root=project_root)
+            break
+        except Exception:  # supervision boundary: a failed effect must not stop the daemon; later effects wait for it
             logger.exception(EFFECT_FAILED_LOG, slug=item.slug, effect=effect.id, project_root=project_root)
-            continue
+            break
         await store.clear_pending_effect(item.todo_id, effect.id)
 
 
