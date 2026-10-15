@@ -214,7 +214,8 @@ class OperationsService:
         The single ``/todos/work`` route serves both lanes: the operation kind is
         resolved from the todo's stored ``kind`` so a ``kind=task`` start records a
         ``task_run`` operation (routed to the task-run lane) while every SDLC kind
-        records ``todo_work``. No caller flag selects the lane.
+        records ``todo_work``. No caller flag selects the lane. A reason belongs to the item vocabulary's work verb
+        only: a task run carries none, so its reattachment is the one it always had.
         """
         operation_kind = await self._resolve_work_operation_kind(slug=slug, cwd=cwd)
         payload_json, existing_match_ok, on_existing = todo_operation_submission(
@@ -223,7 +224,7 @@ class OperationsService:
             cwd=cwd,
             addressed_todo_id=addressed_todo_id,
             client_request_id=client_request_id,
-            reason=reason,
+            reason=reason if operation_kind == OperationKind.TODO_WORK else None,
         )
         return await self._submit_operation(
             kind=operation_kind,

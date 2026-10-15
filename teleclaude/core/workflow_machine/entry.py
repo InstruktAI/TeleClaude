@@ -26,7 +26,13 @@ from teleclaude.core.workflow_machine.heads import observe_item_supervised
 from teleclaude.core.workflow_machine.instruction import InstructionFacts, render_instruction
 from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.ledger_log import render_log_entry
-from teleclaude.core.workflow_machine.phase_reading import LaneFacts, PhaseReading, creative_snapshot, read_phase
+from teleclaude.core.workflow_machine.phase_reading import (
+    LaneFacts,
+    PhaseReading,
+    awaits_readable_head,
+    creative_snapshot,
+    read_phase,
+)
 from teleclaude.core.workflow_machine.publication import (
     PublicationError,
     WorkflowPublication,
@@ -90,6 +96,10 @@ class EntryRefusal(StrEnum):
     ADMITTED = "{item} is admitted by the integrator at {sha}; the integrator delivers or parks it"
     READY_DOOR = "{item} is ready, which `telec todo work {item} --reason <text>` drives"
     HELD_NOTED = "{item} is held by session {session}; your reason is recorded as note {note}"
+    HEAD_UNREADABLE = (
+        "{item}: its carried review verdict cannot be compared with the integration head, which could not be read; "
+        "repeat when the remote can be read"
+    )
 
 
 class EntryRefused(Exception):
@@ -217,6 +227,8 @@ def _check_drivable(request: EntryRequest, state: TodoState, reading: PhaseReadi
     ``starting`` is the call that reserves a driver: on a ready item only that call states the reason.
     """
     phase = reading.phase
+    if awaits_readable_head(state, request.resolved_lane):
+        raise _refuse(EntryRefusal.HEAD_UNREADABLE, item=request.item)
     if phase is Phase.WAITING:
         waiting = state.workflow.waiting
         raise _refuse(EntryRefusal.WAITING, item=request.item, person=waiting.person if waiting else NO_SESSION)

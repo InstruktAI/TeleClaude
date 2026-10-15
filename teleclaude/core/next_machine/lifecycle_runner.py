@@ -54,7 +54,7 @@ from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.core.workflow_machine.dependencies import delivered_slugs as delivered_slugs_of
 from teleclaude.core.workflow_machine.dependencies import prepared_slugs as prepared_slugs_of
 from teleclaude.core.workflow_machine.lane import resolve_lane
-from teleclaude.core.workflow_machine.phase_reading import read_phase
+from teleclaude.core.workflow_machine.phase_reading import awaits_readable_head, read_phase
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
 from teleclaude.types.lifecycle import LifecyclePhase
@@ -170,6 +170,8 @@ def _resolve_kinded_dispatch(
         return None, RunnerSkipReason.INVALID_KIND
     if todo.item_phase is None:
         return None, RunnerSkipReason.UNKNOWN_PHASE
+    if todo.head_unreadable:
+        return None, RunnerSkipReason.HEAD_UNREADABLE
     phase = Phase(todo.item_phase)
     skipped = _PHASE_SKIPS.get(phase)
     if skipped is not None:
@@ -470,7 +472,11 @@ async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, Runner
             raw_state = status_reads[row["id"]].state or {}
             lane = await resolve_lane(todos_db, str(todos_db.project_root), todo.slug, raw_state, state)
             reading = read_phase(state, lane)
-            todo = replace(todo, item_phase=reading.phase.value if reading.phase is not None else None)
+            todo = replace(
+                todo,
+                item_phase=reading.phase.value if reading.phase is not None else None,
+                head_unreadable=awaits_readable_head(state, lane),
+            )
         if state is not None and todo.kind in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
             dependency_snapshot = build_dependency_artifact_snapshot(
                 [

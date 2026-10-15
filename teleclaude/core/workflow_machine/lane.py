@@ -42,10 +42,12 @@ async def resolve_lane(
         has_input=_present(digests, ARTIFACT_INPUT),
         has_design_spec=_present(digests, ARTIFACT_DESIGN_SPEC),
     )
+    observed = await reading_head(project_root, item, state)
     return LaneFacts(
         creative_incomplete=incomplete,
-        integration_head=await reading_head(project_root, item, state),
+        integration_head=observed.head,
         artifact_digests=digests,
+        head_unreadable=observed.unreadable,
     )
 
 

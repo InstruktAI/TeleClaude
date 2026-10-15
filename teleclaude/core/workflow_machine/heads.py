@@ -116,19 +116,30 @@ async def _may_report(store: WorkflowStore, request: IntentRequest, state: TodoS
     )
 
 
-async def observed_head(project_root: str, item: str) -> str:
-    """The integration head for a phase reading; empty, with the failure logged, when it cannot be read."""
+@dataclass(frozen=True)
+class HeadObservation:
+    """What one read of the integration head found: the commit, empty when the ref is absent or the read failed.
+
+    ``unreadable`` tells the two empty answers apart: an absent ref is a known state, a failed read is not.
+    """
+
+    head: str = NO_HEAD
+    unreadable: bool = False
+
+
+async def observed_head(project_root: str, item: str) -> HeadObservation:
+    """The integration head for a phase reading, with the failure logged when it cannot be read."""
     try:
-        return await integration_head(project_root, item)
+        return HeadObservation(head=await integration_head(project_root, item))
     except RemoteReadFailed:
         logger.exception(HEAD_READ_FAILED_LOG, slug=item, project_root=project_root)
-        return NO_HEAD
+        return HeadObservation(unreadable=True)
 
 
-async def reading_head(project_root: str, item: str, state: TodoState) -> str:
+async def reading_head(project_root: str, item: str, state: TodoState) -> HeadObservation:
     """The integration head a phase reading needs: read only for the phases whose reading compares it."""
     if state.lifecycle_phase not in HEAD_COMPARED_PHASES:
-        return NO_HEAD
+        return HeadObservation()
     return await observed_head(project_root, item)
 
 

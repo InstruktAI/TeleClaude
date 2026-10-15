@@ -55,6 +55,7 @@ class LaneFacts:
     creative_incomplete: bool
     integration_head: str
     artifact_digests: tuple[tuple[str, str], ...]
+    head_unreadable: bool = False
 
     @property
     def expected_digests(self) -> dict[str, str]:
@@ -130,6 +131,23 @@ def read_phase(state: TodoState, lane: LaneFacts) -> PhaseReading:
     if stored is LifecyclePhase.WORK:
         return PhaseReading(phase=Phase.WORK)
     return PhaseReading(phase=Phase.PREPARATION)
+
+
+def awaits_readable_head(state: TodoState, lane: LaneFacts) -> bool:
+    """Whether a carried review verdict that nobody holds cannot be driven because the head could not be read.
+
+    The verdict reads ``preparation`` while the head is unknown, but a preparation claim would not rewrite the stored
+    phase, and a head that later equals the verdict would read ``ready`` under a preparation driver. No driver is
+    started for it until the head is readable; an absent integration ref is a known state and is not this
+    (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``).
+    """
+    return (
+        lane.head_unreadable
+        and state.lifecycle_phase is LifecyclePhase.REVIEW_APPROVED
+        and bool(state.build_review.reviewed_target_digest)
+        and not state.active_runner
+        and state.workflow.admitted is None
+    )
 
 
 CLOSED_STORED_PHASES: Final = frozenset(
