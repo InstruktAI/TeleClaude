@@ -1509,9 +1509,10 @@ def _maybe_emit_boundary_response(
         )
 
     supply = None
-    if checkpoint_reason is None and event_type == AgentHookEvents.AGENT_STOP and adapter.supports_hook_checkpoint:
+    if event_type == AgentHookEvents.AGENT_STOP and adapter.supports_hook_checkpoint:
         supply = findings_for_boundary(session_id, SupplyBoundary.STOP)
-        checkpoint_reason = supply.text if supply is not None else None
+        if supply is not None:
+            checkpoint_reason = "\n\n".join(part for part in (checkpoint_reason, supply.text) if part)
 
     if checkpoint_reason is not None:
         write_emission(adapter.render_response(raw_event_type, ContinueWithReason(checkpoint_reason)))
