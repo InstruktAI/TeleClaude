@@ -23,6 +23,8 @@ This spec defines:
 
 ### Machine-Readable Surface
 
+<!-- planned-change:issue-128 -->
+
 ```yaml
 integrator:
   authority:
@@ -109,6 +111,106 @@ integrator:
       - checkpoint_written
 ```
 
+<!-- change:issue-128 -->
+
+```yaml
+integrator:
+  authority:
+    only_role_that_can_push_main: true
+    workers_can_push_feature_branches: true
+
+  trigger_events:
+    - review_approved
+    - finalize_ready
+    - branch_pushed
+    - sdlc.todo.ready
+
+  non_trigger_signals:
+    - worktree_dirty_to_clean
+    - heartbeat_only
+
+  required_event_fields:
+    review_approved:
+      - slug
+      - approved_at
+      - review_round
+      - reviewer_session_id
+    finalize_ready:
+      - slug
+      - branch
+      - sha
+      - worker_session_id
+      - ready_at
+    branch_pushed:
+      - branch
+      - sha
+      - remote
+      - pushed_at
+      - pusher
+    sdlc.todo.ready:
+      - slug
+      - project_path
+      - branch
+      - sha
+      - driver_session_id
+      - ready_at
+    integration_blocked:
+      - slug
+      - branch
+      - sha
+      - conflict_evidence
+      - diagnostics
+      - next_action
+      - blocked_at
+
+  readiness_predicate:
+    phase_reads_ready_at_sha: true
+    sha_is_current_head_of_remote_branch: true
+    sha_reachable_on_remote_branch: true
+    slug_not_superseded_by_newer_stamp: true
+    sha_not_already_integrated_to_main: true
+    events_alone_never_admit_a_candidate: true
+    candidate_scan: ready_items_read_through_the_workflow_store
+    merge_operand: candidate_sha
+
+  serialization:
+    lease_key: integration/main
+    single_active_holder: true
+    queue_is_durable: true
+    queue_order: fifo_by_ready_at
+
+  lease_defaults:
+    ttl_seconds: 120
+    renew_every_seconds: 30
+    stale_break_policy: allowed_when_expired
+
+  main_branch_clearance:
+    required_before_processing: true
+    session_classification:
+      workers_identified_by_initiator_session_id: true
+      orchestrators_identified_by_worker_backreferences: true
+      standalone_candidates_are_only_remaining_sessions: true
+    standalone_activity_signal:
+      source: telec sessions tail
+      blocks_when_actively_modifying_main: true
+      stale_or_idle_sessions_do_not_block: true
+    retry_policy:
+      wait_seconds: 60
+      repeat_until_clear: true
+    housekeeping_commit:
+      allowed_when_no_active_standalone_on_main: true
+      recheck_clean_tree_before_proceeding: true
+
+  integrator_exit:
+    allowed_when:
+      - queue_empty
+      - no_item_in_progress
+      - lease_released
+      - checkpoint_written
+```
+
+<!-- /planned-change:issue-128 -->
+
 ### Canonical Events
 
 ### `review_approved`
@@ -146,6 +248,23 @@ Required fields:
 - `pushed_at` (ISO8601)
 - `pusher` (identity label)
 
+<!-- planned:issue-128 -->
+
+### `sdlc.todo.ready`
+
+Meaning: an item driven by the lifecycle machine (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`) was stamped at a commit and is `ready`. It prompts the integrator. It is never the only way a ready item becomes a candidate: the periodic candidate scan admits it whether or not this event was ever raised or consumed.
+
+Required fields:
+
+- `slug`
+- `project_path`
+- `branch`
+- `sha` (the stamped commit, which was the integration head when it was stamped)
+- `driver_session_id` (the work driver that stamped it)
+- `ready_at` (ISO8601)
+
+<!-- /planned:issue-128 -->
+
 ### `integration_blocked`
 
 Meaning: the queued candidate could not proceed and requires remediation before retry.
@@ -162,6 +281,8 @@ Required fields:
 
 ### Readiness Predicate
 
+<!-- planned-change:issue-128 -->
+
 An integration candidate `(slug, branch, sha)` is `READY` only when:
 
 1. A `review_approved` exists for `slug`.
@@ -172,6 +293,29 @@ An integration candidate `(slug, branch, sha)` is `READY` only when:
 6. `sha` is not already reachable from `origin/main`.
 
 `worktree dirty -> clean` is explicitly not a readiness signal.
+<!-- change:issue-128 -->
+
+An integration candidate `(slug, branch, sha)` is `READY` only when the item's canonical phase establishes it
+(`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`, reading table):
+
+1. The item's phase reads `ready` at `sha` with a `ready_at`: a stamp of the lifecycle machine; for an item stored before
+   it, the carried finalize handoff's commit, or the carried review approval's commit when that commit is the
+   integration head. An item whose phase reads `preparation`, or any phase but `ready`, is never admitted, whatever
+   events exist for it.
+2. `sha` is the current head of `origin/<branch>`. A stamp that the head has moved past is not a candidate, and the item
+   reads as work again until it is stamped at the new head.
+3. `sha` is reachable from `origin/<branch>`.
+4. No newer stamp for the same `slug` supersedes this `(branch, sha)`.
+5. `sha` is not already reachable from `origin/main`.
+
+For an item stored before the lifecycle machine, the events `review_approved`, `finalize_ready` and `branch_pushed` carry
+the evidence its phase is read from; they never admit an item by themselves. `worktree dirty -> clean` is explicitly not
+a readiness signal.
+
+The integrator finds candidates by scanning the ready items through the workflow store on its schedule. An item that is
+ready at the head is admitted by a scan whether or not its `sdlc.todo.ready` event was ever raised or consumed; a missed
+event delays admission until the next scan and loses nothing. Candidates are ordered by `ready_at`.
+<!-- /planned-change:issue-128 -->
 
 ### Lease and Queue Semantics
 
@@ -192,7 +336,13 @@ The integrator lease enforces singleton execution:
 
 ### Queue
 
+<!-- planned-change:issue-128 -->
+
 Queue is durable and event-derived:
+<!-- change:issue-128 -->
+
+The queue is durable and derived from the ready candidates: the integrator's scan reads the items whose phase reads `ready` at the head, and events prompt the scan but are never the only way a candidate enters the queue:
+<!-- /planned-change:issue-128 -->
 
 - Items are candidates `(slug, branch, sha, ready_at)`.
 - Enqueue only when predicate transitions from `NOT_READY` to `READY`.
@@ -201,6 +351,8 @@ Queue is durable and event-derived:
 - Keep status per item: `queued | in_progress | integrated | blocked | superseded`.
 
 ### Integrator Lifecycle
+
+<!-- planned-change:issue-128 -->
 
 1. Event ingestion updates projection state for candidate readiness.
 2. If any candidate becomes `READY`, attempt lease acquisition.
@@ -218,8 +370,30 @@ Queue is durable and event-derived:
 
 Multiple trigger events may arrive concurrently; only one active lease holder processes them.
 Other events are queued and consumed by that same active integrator.
+<!-- change:issue-128 -->
+
+1. Event ingestion updates projection state for candidate readiness.
+2. If any candidate becomes `READY`, attempt lease acquisition.
+3. If lease is acquired:
+   - start integrator session (or continue existing holder),
+   - verify main-branch clearance (session + working tree hygiene),
+   - then drain queue serially.
+4. For each candidate:
+   - re-check the readiness predicate just before the candidate is admitted; a candidate admitted at `sha` stays admitted
+     at that `sha` whatever the branch or the stamp does afterwards, and the checkpoint keeps the admitted `sha`,
+   - integrate from clean canonical refs,
+   - emit `integration_completed` or `integration_blocked`.
+5. When queue empty:
+   - wait short grace window for late events,
+   - if still empty, release lease and self-end.
+
+Multiple trigger events may arrive concurrently; only one active lease holder processes them.
+Other events are queued and consumed by that same active integrator.
+<!-- /planned-change:issue-128 -->
 
 ### Integration Workflow Contract
+
+<!-- planned-change:issue-128 -->
 
 For each queued candidate:
 
@@ -233,6 +407,24 @@ For each queued candidate:
    - push canonical `main`,
    - run delivery bookkeeping for non-bug slugs,
    - emit `integration_completed`.
+
+<!-- change:issue-128 -->
+
+For each queued candidate:
+
+1. Prepare clean integration workspace from latest `origin/main`.
+2. Merge the admitted candidate's `sha` into the integration workspace, never the branch name, so commits past `sha` are
+   not part of its delivery.
+3. If merge conflict:
+   - emit `integration_blocked` with conflict files and slug/branch/sha,
+   - mark queue item `blocked`,
+   - do not push partial merge.
+4. If merge succeeds:
+   - push canonical `main`,
+   - run delivery bookkeeping for non-bug slugs,
+   - emit `integration_completed`.
+
+<!-- /planned-change:issue-128 -->
 
 ### Self-End Authorization Matrix
 
