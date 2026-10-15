@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from teleclaude.entry_declarations import EndingAct, EntryDeclarations, WorkflowDeclaration
-from teleclaude.types.workflow_record import Act, Phase
+from teleclaude.types.workflow_record import Act, DrivenPhase, Phase
 
 HOLDING_TEMPLATE: Final = "You hold {item}, now in {phase}. Your session {session} is its claim."
 WORKTREE_TEMPLATE: Final = "Branch {branch} in worktree {worktree}: the builder works only there."
@@ -60,7 +60,8 @@ def _ending_act_line(item: str, ending: EndingAct) -> str:
 def render_instruction(
     facts: InstructionFacts,
     workflow: WorkflowDeclaration,
-    child: EntryDeclarations,
+    driven: DrivenPhase,
+    child: EntryDeclarations | None,
 ) -> str:
     """The instruction for the holding driver of one phase."""
     lines = [HOLDING_TEMPLATE.format(item=facts.item, phase=facts.phase.value, session=facts.session_id)]
@@ -68,18 +69,18 @@ def render_instruction(
         lines.append(WORKTREE_TEMPLATE.format(branch=facts.branch, worktree=facts.worktree))
     if facts.child_sessions:
         lines.append(CHILD_RUNNING_TEMPLATE.format(sessions=LIST_SEPARATOR.join(facts.child_sessions)))
-    else:
+    elif child is not None:
         dispatch = child.dispatch
         lines.append(
             CHILD_TEMPLATE.format(
                 item=facts.item,
-                procedure=workflow.child,
+                procedure=workflow.child_for(driven),
                 role=child.role.name.value,
                 agents=LIST_SEPARATOR.join(agent.value for agent in dispatch.agents) if dispatch else NO_ARGUMENTS,
                 mode=dispatch.thinking_mode.value if dispatch else NO_ARGUMENTS,
             )
         )
     lines.append(ACT_HEADING)
-    lines.extend(_ending_act_line(facts.item, ending) for ending in workflow.acts)
+    lines.extend(_ending_act_line(facts.item, ending) for ending in workflow.acts_for(driven))
     lines.append(OTHER_ACTS_TEMPLATE.format(item=facts.item))
     return LINE_SEPARATOR.join(lines)

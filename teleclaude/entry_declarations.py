@@ -14,6 +14,7 @@ from typing import NotRequired, TypedDict
 
 from teleclaude.agent_registry import AgentName
 from teleclaude.core.roles import Role, resolve_role
+from teleclaude.core.workflow_machine.vocabulary import ENDING_ACT_RULES, HELD_PHASE
 from teleclaude.helpers.agent_types import ThinkingMode
 from teleclaude.types.workflow_record import Act, DrivenPhase, Phase
 
@@ -33,6 +34,22 @@ class WorkflowKey(StrEnum):
     DRIVES = "drives"
     CHILD = "child"
     ACTS = "acts"
+    SCOPES = "scopes"
+    SESSION = "session"
+
+
+class ScopeKey(StrEnum):
+    """The keys of one scope that narrows a driven phase's child and ending acts."""
+
+    PHASE = "phase"
+    CHILD = "child"
+    ACTS = "acts"
+
+
+class SessionMode(StrEnum):
+    """How a driver procedure's sessions serve claims; the one value is a session that serves one claim of one item."""
+
+    SINGLE_CLAIM = "single-claim"
 
 
 class EndingActKey(StrEnum):
@@ -84,6 +101,13 @@ class EntryFinding(StrEnum):
     WORKFLOW_ACT_DUPLICATE = "snippet_workflow_act_duplicate"
     WORKFLOW_LEADS_TO_UNKNOWN = "snippet_workflow_leads_to_unknown"
     WORKFLOW_WITHOUT_ROLE = "snippet_workflow_without_role"
+    WORKFLOW_SCOPE_INVALID = "snippet_workflow_scope_invalid"
+    WORKFLOW_SCOPE_PHASE_NOT_DRIVEN = "snippet_workflow_scope_phase_not_driven"
+    WORKFLOW_SCOPE_DUPLICATE = "snippet_workflow_scope_duplicate"
+    WORKFLOW_PHASE_UNCOVERED = "snippet_workflow_phase_uncovered"
+    WORKFLOW_SESSION_UNKNOWN = "snippet_workflow_session_unknown"
+    WORKFLOW_ACT_NOT_ADMISSIBLE = "snippet_workflow_act_not_admissible"
+    WORKFLOW_LEADS_TO_MISMATCH = "snippet_workflow_leads_to_mismatch"
 
 
 #: The thinking modes a procedure's dispatch defaults may declare.
@@ -125,12 +149,40 @@ class EndingAct:
 
 
 @dataclass(frozen=True)
+class WorkflowScope:
+    """The child and ending acts of one driven phase; a scope with no child dispatches none."""
+
+    phase: DrivenPhase
+    child: str | None
+    acts: tuple[EndingAct, ...]
+
+
+@dataclass(frozen=True)
 class WorkflowDeclaration:
-    """A driver procedure's part in the item lifecycle: the phases it drives, the child it dispatches and its ending acts."""
+    """A driver procedure's part in the item lifecycle: the phases it drives, the child it dispatches and its ending acts.
+
+    ``child`` and ``acts`` are the defaults of every driven phase that has no scope of its own.
+    """
 
     drives: tuple[DrivenPhase, ...]
-    child: str
+    child: str | None
     acts: tuple[EndingAct, ...]
+    scopes: tuple[WorkflowScope, ...] = ()
+    session: SessionMode | None = None
+
+    def scope_for(self, phase: DrivenPhase) -> WorkflowScope | None:
+        """The scope declared for a driven phase, if any."""
+        return next((scope for scope in self.scopes if scope.phase is phase), None)
+
+    def child_for(self, phase: DrivenPhase) -> str | None:
+        """The child procedure the driver of this phase dispatches; None when its scope names none."""
+        scope = self.scope_for(phase)
+        return scope.child if scope is not None else self.child
+
+    def acts_for(self, phase: DrivenPhase) -> tuple[EndingAct, ...]:
+        """The ending acts of this phase."""
+        scope = self.scope_for(phase)
+        return scope.acts if scope is not None else self.acts
 
 
 @dataclass(frozen=True)
@@ -278,21 +330,102 @@ def _parse_driven_phases(raw: object) -> tuple[tuple[DrivenPhase, ...], list[Ent
     return tuple(phases), findings
 
 
+def _admissibility_findings(acts: tuple[EndingAct, ...], held: Phase) -> list[EntryFindingDetail]:
+    """The findings for ending acts the machine does not admit in a held phase or whose postcondition differs."""
+    findings: list[EntryFindingDetail] = []
+    for ending in acts:
+        rule = ENDING_ACT_RULES.get(ending.act)
+        if rule is None or held not in rule.admissible_in:
+            findings.append(
+                EntryFindingDetail(EntryFinding.WORKFLOW_ACT_NOT_ADMISSIBLE, f"{ending.act.value}@{held.value}")
+            )
+            continue
+        expected = rule.leads_to if rule.leads_to is not None else held
+        if ending.leads_to is not expected:
+            findings.append(
+                EntryFindingDetail(EntryFinding.WORKFLOW_LEADS_TO_MISMATCH, f"{ending.act.value}@{held.value}")
+            )
+    return findings
+
+
+def _parse_child(raw: object) -> str | None:
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def _parse_scopes(
+    raw: object, drives: tuple[DrivenPhase, ...]
+) -> tuple[tuple[WorkflowScope, ...], list[EntryFindingDetail]]:
+    if not isinstance(raw, list):
+        return (), [EntryFindingDetail(EntryFinding.WORKFLOW_SCOPE_INVALID)]
+    findings: list[EntryFindingDetail] = []
+    scopes: list[WorkflowScope] = []
+    known_keys = {key.value for key in ScopeKey}
+    for index, item in enumerate(raw):
+        if not isinstance(item, Mapping) or ScopeKey.PHASE not in item or not set(item) <= known_keys:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_SCOPE_INVALID, str(index)))
+            continue
+        try:
+            phase = DrivenPhase(item[ScopeKey.PHASE])
+        except ValueError:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_PHASE_UNKNOWN, str(item[ScopeKey.PHASE])))
+            continue
+        if phase not in drives:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_SCOPE_PHASE_NOT_DRIVEN, phase.value))
+            continue
+        if any(scope.phase is phase for scope in scopes):
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_SCOPE_DUPLICATE, phase.value))
+            continue
+        child: str | None = None
+        if ScopeKey.CHILD in item:
+            child = _parse_child(item[ScopeKey.CHILD])
+            if child is None:
+                findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_CHILD_MISSING, phase.value))
+                continue
+        acts, act_findings = _parse_ending_acts(item.get(ScopeKey.ACTS))
+        findings.extend(act_findings)
+        findings.extend(_admissibility_findings(acts, HELD_PHASE[phase]))
+        scopes.append(WorkflowScope(phase=phase, child=child, acts=acts))
+    return tuple(scopes), findings
+
+
 def _parse_workflow(raw: object) -> tuple[WorkflowDeclaration | None, list[EntryFindingDetail]]:
     known_keys = {key.value for key in WorkflowKey}
-    if not isinstance(raw, Mapping) or set(raw) != known_keys:
+    if not isinstance(raw, Mapping) or WorkflowKey.DRIVES not in raw or not set(raw) <= known_keys:
         return None, [EntryFindingDetail(EntryFinding.WORKFLOW_INVALID_VALUE)]
     findings: list[EntryFindingDetail] = []
     drives, drive_findings = _parse_driven_phases(raw[WorkflowKey.DRIVES])
     findings.extend(drive_findings)
-    child = raw[WorkflowKey.CHILD]
-    if not isinstance(child, str) or not child.strip():
-        findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_CHILD_MISSING))
-    acts, act_findings = _parse_ending_acts(raw[WorkflowKey.ACTS])
-    findings.extend(act_findings)
-    if findings or not isinstance(child, str):
+    scopes: tuple[WorkflowScope, ...] = ()
+    if WorkflowKey.SCOPES in raw:
+        scopes, scope_findings = _parse_scopes(raw[WorkflowKey.SCOPES], drives)
+        findings.extend(scope_findings)
+    session: SessionMode | None = None
+    if WorkflowKey.SESSION in raw:
+        try:
+            session = SessionMode(raw[WorkflowKey.SESSION])
+        except ValueError:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_SESSION_UNKNOWN, str(raw[WorkflowKey.SESSION])))
+    scoped = {scope.phase for scope in scopes}
+    unscoped = [phase for phase in drives if phase not in scoped]
+    child: str | None = None
+    acts: tuple[EndingAct, ...] = ()
+    if WorkflowKey.CHILD in raw:
+        child = _parse_child(raw[WorkflowKey.CHILD])
+        if child is None:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_CHILD_MISSING))
+    if WorkflowKey.ACTS in raw:
+        acts, act_findings = _parse_ending_acts(raw[WorkflowKey.ACTS])
+        findings.extend(act_findings)
+    if unscoped:
+        if WorkflowKey.CHILD not in raw:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_PHASE_UNCOVERED, unscoped[0].value))
+        if WorkflowKey.ACTS not in raw:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_PHASE_UNCOVERED, unscoped[0].value))
+        for phase in unscoped:
+            findings.extend(_admissibility_findings(acts, HELD_PHASE[phase]))
+    if findings:
         return None, findings
-    return WorkflowDeclaration(drives=drives, child=child.strip(), acts=acts), findings
+    return WorkflowDeclaration(drives=drives, child=child, acts=acts, scopes=scopes, session=session), findings
 
 
 def parse_entry_declarations(metadata: Mapping[str, object]) -> EntryParse:
@@ -368,12 +501,22 @@ class EndingActPayload(TypedDict):
     leads_to: str
 
 
+class ScopePayload(TypedDict):
+    """One scope as published and read back."""
+
+    phase: str
+    child: NotRequired[str]
+    acts: list[EndingActPayload]
+
+
 class WorkflowPayload(TypedDict):
     """The workflow declaration as published and read back."""
 
     drives: list[str]
-    child: str
-    acts: list[EndingActPayload]
+    child: NotRequired[str]
+    acts: NotRequired[list[EndingActPayload]]
+    scopes: NotRequired[list[ScopePayload]]
+    session: NotRequired[str]
 
 
 class EntryPayload(TypedDict):
@@ -400,12 +543,28 @@ def entry_payload(declarations: EntryDeclarations) -> EntryPayload:
     return payload
 
 
+def _acts_payload(acts: tuple[EndingAct, ...]) -> list[EndingActPayload]:
+    return [EndingActPayload(act=ending.act.value, leads_to=ending.leads_to.value) for ending in acts]
+
+
+def _scope_payload(scope: WorkflowScope) -> ScopePayload:
+    payload = ScopePayload(phase=scope.phase.value, acts=_acts_payload(scope.acts))
+    if scope.child is not None:
+        payload[ScopeKey.CHILD.value] = scope.child
+    return payload
+
+
 def _workflow_payload(workflow: WorkflowDeclaration) -> WorkflowPayload:
-    return WorkflowPayload(
-        drives=[phase.value for phase in workflow.drives],
-        child=workflow.child,
-        acts=[EndingActPayload(act=ending.act.value, leads_to=ending.leads_to.value) for ending in workflow.acts],
-    )
+    payload = WorkflowPayload(drives=[phase.value for phase in workflow.drives])
+    if workflow.child is not None:
+        payload[WorkflowKey.CHILD.value] = workflow.child
+    if workflow.acts:
+        payload[WorkflowKey.ACTS.value] = _acts_payload(workflow.acts)
+    if workflow.scopes:
+        payload[WorkflowKey.SCOPES.value] = [_scope_payload(scope) for scope in workflow.scopes]
+    if workflow.session is not None:
+        payload[WorkflowKey.SESSION.value] = workflow.session.value
+    return payload
 
 
 def _parameter_payload(parameter: ProcedureParameter) -> ParameterPayload:

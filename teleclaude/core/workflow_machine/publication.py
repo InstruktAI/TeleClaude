@@ -23,6 +23,7 @@ from teleclaude.docs_subscriptions import IndexKey
 from teleclaude.entry_declarations import (
     EntryDeclarations,
     EntryKey,
+    ScopeKey,
     WorkflowDeclaration,
     WorkflowKey,
     parse_entry_declarations,
@@ -83,9 +84,10 @@ class WorkflowPublication:
                 return declared, workflow
         raise PublicationError(NO_DRIVER_TEMPLATE.format(phase=phase.value))
 
-    def child_of(self, workflow: WorkflowDeclaration) -> DeclaredProcedure:
-        """The child procedure a driver's declaration names."""
-        return self.declared(workflow.child)
+    def child_of(self, workflow: WorkflowDeclaration, phase: DrivenPhase) -> DeclaredProcedure | None:
+        """The child procedure the driver of this phase dispatches; None when the phase's scope names none."""
+        child = workflow.child_for(phase)
+        return self.declared(child) if child is not None else None
 
     def to_json(self) -> str:
         """The serialized snapshot a session's invocation carries."""
@@ -106,6 +108,17 @@ class WorkflowPublication:
             procedures=tuple((str(item[0]), dict(item[1])) for item in data[SnapshotKey.PROCEDURES]),
             digest=str(data[SnapshotKey.DIGEST]),
         )
+
+
+def _declared_children(declaration: object) -> list[str]:
+    """Every child a workflow declaration names, at the procedure level and in its scopes."""
+    if not isinstance(declaration, dict):
+        return []
+    names = [declaration.get(WorkflowKey.CHILD.value)]
+    scopes = declaration.get(WorkflowKey.SCOPES.value)
+    if isinstance(scopes, list):
+        names.extend(scope.get(ScopeKey.CHILD.value) for scope in scopes if isinstance(scope, dict))
+    return [name for name in names if isinstance(name, str)]
 
 
 def _digest_of(procedures: list[tuple[str, JsonDict]]) -> str:
@@ -131,10 +144,9 @@ def published_workflow_publication() -> WorkflowPublication:
         if EntryKey.WORKFLOW.value not in entry:
             continue
         held[procedure_id] = dict(entry)
-        declaration = entry[EntryKey.WORKFLOW.value]
-        child = declaration.get(WorkflowKey.CHILD.value) if isinstance(declaration, dict) else None
-        if isinstance(child, str) and child in live:
-            held[child] = dict(live[child])
+        for child in _declared_children(entry[EntryKey.WORKFLOW.value]):
+            if child in live:
+                held[child] = dict(live[child])
     procedures = sorted(held.items())
     return WorkflowPublication(procedures=tuple(procedures), digest=_digest_of(procedures))
 

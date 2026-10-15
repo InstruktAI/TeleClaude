@@ -78,6 +78,7 @@ class EntryRefusal(StrEnum):
     CREATIVE_CHANGED = "{item}: its creative state changed while the verb ran; repeat the verb"
     NO_LAUNCH = "{item}: no driver start is awaiting a claim; the start this session was given was released"
     WRONG_RESERVATION = "{item}: this session was started for another request than the one awaiting a claim"
+    NO_CHILD = "{item}: the phase {phase} dispatches no child"
 
 
 class EntryRefused(Exception):
@@ -138,6 +139,12 @@ _DRIVEN_PHASE: Final[Mapping[Phase, DrivenPhase]] = {
     Phase.PREPARED: DrivenPhase.PREPARED,
     Phase.WORK: DrivenPhase.WORK,
 }
+_HELD_DRIVEN_PHASE: Final[Mapping[Phase, DrivenPhase]] = {
+    Phase.PREPARATION: DrivenPhase.PREPARATION,
+    Phase.PREPARED: DrivenPhase.WORK,
+    Phase.WORK: DrivenPhase.WORK,
+}
+"""The driven phase whose scope governs the instruction: a prepared item is held as work from the claim."""
 _REQUEST_EVENT: Final[Mapping[Phase, EmittedEvent]] = {
     Phase.PREPARATION: EmittedEvent.PREPARATION_REQUESTED,
     Phase.PREPARED: EmittedEvent.WORK_REQUESTED,
@@ -410,6 +417,8 @@ async def _instruct(
         if phase in (Phase.PREPARED, Phase.WORK)
         else NO_SESSION
     )
+    driven = _HELD_DRIVEN_PHASE[phase]
+    child = publication.child_of(workflow, driven)
     text = render_instruction(
         InstructionFacts(
             item=request.item,
@@ -420,7 +429,8 @@ async def _instruct(
             child_sessions=children,
         ),
         workflow,
-        publication.child_of(workflow).declarations,
+        driven,
+        child.declarations if child is not None else None,
     )
     return EntryResult(text=text, driver_session_id=request.caller_session_id)
 
@@ -498,10 +508,14 @@ async def plan_child(project_root: str, item: str, caller_session_id: str) -> Ch
         raise _refuse(EntryRefusal.NOT_DRIVEN, item=item, phase=phase.value if phase else NO_SESSION)
     publication = await _own_publication(caller_session_id) or published_workflow_publication()
     _, workflow = _driver_for(publication, phase, item)
+    driven = _HELD_DRIVEN_PHASE[phase]
+    child = publication.child_of(workflow, driven)
+    if child is None:
+        raise _refuse(EntryRefusal.NO_CHILD, item=item, phase=driven.value)
     subfolder = f"{WORKTREE_DIR}/{item}" if phase in (Phase.PREPARED, Phase.WORK) else NO_SESSION
     return ChildPlan(
-        procedure_id=workflow.child,
+        procedure_id=child.procedure_id,
         arguments=item,
-        declarations=publication.child_of(workflow).declarations,
+        declarations=child.declarations,
         subfolder=subfolder,
     )

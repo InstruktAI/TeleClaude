@@ -23,7 +23,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
-from teleclaude.entry_declarations import EntryDeclarations, parse_entry_declarations
+from teleclaude.entry_declarations import EntryDeclarations, WorkflowDeclaration, parse_entry_declarations
 from teleclaude.resource_validation._markdown import parse_markdown, read_markdown
 from teleclaude.resource_validation._models import _error
 from teleclaude.snippet_roots import is_excluded_snippet_path
@@ -122,6 +122,12 @@ def _declares_drivers(view: Mapping[str, ProcedureRow]) -> bool:
     return any(row.entry is not None and row.entry.workflow is not None for row in view.values())
 
 
+def _declared_children(workflow: WorkflowDeclaration) -> list[str]:
+    """The children a driver declares, at the procedure level and in its scopes, without repeats."""
+    names = [workflow.child, *(scope.child for scope in workflow.scopes)]
+    return sorted({name for name in names if name is not None})
+
+
 def _check_view(view: Mapping[str, ProcedureRow], label: str) -> None:
     """Report the driven phases without exactly one driver, and children that are not usable procedures."""
     drivers: dict[DrivenPhase, list[str]] = {phase: [] for phase in DrivenPhase}
@@ -143,11 +149,10 @@ def _check_view(view: Mapping[str, ProcedureRow], label: str) -> None:
     for row in view.values():
         if row.entry is None or row.entry.workflow is None:
             continue
-        child = view.get(row.entry.workflow.child)
-        if child is None or child.entry is None or child.entry.dispatch is None:
-            _error(
-                WorkflowFinding.CHILD_UNRESOLVED.value, path=str(row.path), child=row.entry.workflow.child, view=label
-            )
+        for child_id in _declared_children(row.entry.workflow):
+            child = view.get(child_id)
+            if child is None or child.entry is None or child.entry.dispatch is None:
+                _error(WorkflowFinding.CHILD_UNRESOLVED.value, path=str(row.path), child=child_id, view=label)
 
 
 def validate_workflow_drivers(corpus: WorkflowCorpus) -> None:

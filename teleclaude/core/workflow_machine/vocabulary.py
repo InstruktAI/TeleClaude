@@ -7,9 +7,10 @@ This module owns the performer table, the one place that decides which session m
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 
-from teleclaude.types.workflow_record import Act, Phase
+from teleclaude.types.workflow_record import Act, DrivenPhase, Phase
 
 
 class Performer(StrEnum):
@@ -56,7 +57,38 @@ HOLDER_CHECKED_ACTS: frozenset[Act] = frozenset(
     }
 )
 
-DRIVEN_PHASES: frozenset[Phase] = frozenset({Phase.PREPARATION, Phase.PREPARED, Phase.WORK, Phase.WAITING})
+DRIVEN_PHASES: frozenset[Phase] = frozenset({Phase.PREPARATION, Phase.PREPARED, Phase.WORK, Phase.READY, Phase.WAITING})
 """The phases a v2 procedure drives; the others belong to the creative machine and the integrator."""
 
 REFUSAL_TEMPLATE = "{act} requires {performer}"
+
+
+HELD_PHASE: dict[DrivenPhase, Phase] = {
+    DrivenPhase.PREPARATION: Phase.PREPARATION,
+    DrivenPhase.PREPARED: Phase.WORK,
+    DrivenPhase.WORK: Phase.WORK,
+    DrivenPhase.READY: Phase.READY,
+}
+"""The phase a driver of a driven phase is held in: the claim of a prepared item writes work in the same commit."""
+
+
+@dataclass(frozen=True)
+class EndingActRule:
+    """Where an ending act is admissible and the phase it leads to; ``leads_to`` is None when the phase is unchanged."""
+
+    admissible_in: frozenset[Phase]
+    leads_to: Phase | None
+
+
+ENDING_ACT_RULES: dict[Act, EndingActRule] = {
+    Act.PREPARED: EndingActRule(frozenset({Phase.PREPARATION}), Phase.PREPARED),
+    Act.WAITING: EndingActRule(frozenset({Phase.PREPARATION, Phase.WORK}), Phase.WAITING),
+    Act.STAMP: EndingActRule(frozenset({Phase.WORK}), Phase.READY),
+    Act.KICKBACK: EndingActRule(frozenset({Phase.WORK, Phase.READY}), Phase.PREPARATION),
+    Act.RELEASE: EndingActRule(frozenset({Phase.PREPARATION, Phase.WORK, Phase.READY}), None),
+}
+"""The ending acts a procedure header may name, the held phases they are admissible in and their postconditions.
+
+The machine owns this table (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``, Procedure headers): a
+header names effects and never widens who may perform an act or redefines what it does.
+"""

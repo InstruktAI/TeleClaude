@@ -37,6 +37,7 @@ class DrivenPhase(StrEnum):
     PREPARATION = "preparation"
     PREPARED = "prepared"
     WORK = "work"
+    READY = "ready"
 
 
 class WaitedPhase(StrEnum):
