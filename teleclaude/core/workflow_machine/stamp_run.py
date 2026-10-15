@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from functools import partial
@@ -53,6 +54,15 @@ _SLOT_LOCKS: dict[str, asyncio.Lock] = {}
 
 class GateUnsettled(Exception):
     """The gate's processes could not be shown to have ended; the slot stays with them."""
+
+
+@dataclass
+class _StartState:
+    """How far a unit's start got: the runner held, the row written, and whether GO may have reached the runner."""
+
+    handle: RunnerHandle | None = None
+    registered: bool = False
+    go_may_have_been_sent: bool = False
 
 
 class Slot(StrEnum):
@@ -180,63 +190,71 @@ async def _prior_unit_allows(store: WorkflowStore, request: ActRequest, key: str
     raise ActRefused(StampRefusal.UNKNOWN_UNIT.value.format(pgid=pgid))
 
 
-async def _register_and_go(handle: RunnerHandle, owner_key: str, key: str) -> None:
-    """Make the runner's identity durable, then tell it to go; on any failure nothing has been started."""
-    inserted = await db.insert_identified_registry_entry(
+async def _start_unit(request: ActRequest, owner_key: str, key: str, state: _StartState) -> RunnerHandle:
+    """Check the references, spawn the runner, record its identity and release the workload.
+
+    ``state`` records how far the start got, so a failure or a cancellation is judged by it afterwards.
+    """
+    worktree = str(worktree_path(request.project_root, request.item))
+    await check_refs(request.project_root, request.item, request.sha)
+    if not await asyncio.to_thread(has_build_commits_beyond_main, worktree):
+        raise ActRefused(StampRefusal.NO_BUILD_COMMITS.value)
+    try:
+        state.handle = await asyncio.to_thread(start_runner, worktree, request.item)
+    except RunnerNotReady as failure:
+        raise ActRefused(StampRefusal.NOT_STARTED.value.format(reason=str(failure))) from failure
+    state.registered = await db.insert_identified_registry_entry(
         owner=owner_key,
-        pid=handle.pid,
+        pid=state.handle.pid,
         lease_expires_at=(datetime.now(UTC) + timedelta(seconds=LEASE_SECONDS)).isoformat(),
-        identity=handle.identity,
+        identity=state.handle.identity,
         host=config.computer.name,
         boot=boot_session(),
         generation=key,
     )
-    if not inserted:
+    if not state.registered:
         raise ActRefused(StampRefusal.ROW_EXISTS.value)
-    await asyncio.to_thread(send_go, handle)
+    state.go_may_have_been_sent = True
+    await asyncio.to_thread(send_go, state.handle)
+    return state.handle
 
 
-async def _start_unit(request: ActRequest, owner_key: str, key: str) -> RunnerHandle:
-    """Check the references, spawn the runner, record its identity and release the workload.
-
-    A failure before the workload starts ends the bootstrap, removes any row it wrote, and raises.
-    """
-    await check_refs(request.project_root, request.item, request.sha)
-    if not await asyncio.to_thread(
-        has_build_commits_beyond_main, str(worktree_path(request.project_root, request.item))
-    ):
-        raise ActRefused(StampRefusal.NO_BUILD_COMMITS.value)
-    try:
-        handle = await asyncio.to_thread(
-            start_runner, str(worktree_path(request.project_root, request.item)), request.item
-        )
-    except RunnerNotReady as failure:
-        raise ActRefused(StampRefusal.NOT_STARTED.value.format(reason=str(failure))) from failure
-    try:
-        await _register_and_go(handle, owner_key, key)
-    except BaseException:
-        await asyncio.to_thread(end_bootstrap, handle)
+async def _undo_before_go(owner_key: str, key: str, state: _StartState) -> None:
+    """Take back a start that failed before GO could have reached the runner: no workload exists to leave behind."""
+    if state.handle is not None:
+        await asyncio.to_thread(end_bootstrap, state.handle)
+    if state.registered:
         await db.delete_identified_registry_entry(owner=owner_key, generation=key)
-        raise
-    return handle
 
 
-async def _settle(
+async def _run_unit(
     store: WorkflowStore,
     request: ActRequest,
     session_id: str,
     key: str,
     owner_key: str,
-    handle: RunnerHandle,
+    lock: asyncio.Lock,
     commit: Callable[[], Awaitable[str]],
 ) -> str:
-    """Wait for the runner, record the unit's end, check the references again and commit.
+    """Start the unit, wait for it, record its end, check the references again and commit.
 
-    The unit is recorded as ended only after the runner has exited and no other live member of its group is left. A
-    unit that cannot be shown ended keeps the slot and its row; a cancelled task keeps both too.
+    This is one task that owns the slot from the moment it is taken, so no caller's cancellation stops it. A failure
+    before GO could have been delivered is undone completely. Once GO may have reached the runner, nothing is deleted
+    or released until the unit is observed ended: a failure then, or a cancellation at any point, keeps the row and
+    the slot, and the classifier decides later. The unit is recorded as ended only after the runner has exited and
+    no other live member of its group is left.
     """
+    state = _StartState()
     try:
-        result = await asyncio.to_thread(await_outcome, handle)
+        async with lock:
+            try:
+                await _start_unit(request, owner_key, key, state)
+            except Exception:
+                if not state.go_may_have_been_sent:
+                    await _undo_before_go(owner_key, key, state)
+                    raise
+        assert state.handle is not None  # a start that got past GO holds its handle
+        result = await asyncio.to_thread(await_outcome, state.handle)
         if not result.ended:
             raise GateUnsettled(StampRefusal.UNSETTLED.value)
         await db.delete_identified_registry_entry(owner=owner_key, generation=key)
@@ -259,9 +277,10 @@ async def _acquire(
     key: str,
     commit: Callable[[], Awaitable[str]],
 ) -> tuple[Slot, asyncio.Task[str] | None]:
-    """Classify the earlier unit, take the slot, start the new unit and its task, with no other stamp in between.
+    """Classify the earlier unit, take the slot and start the task that owns the new unit, with no other stamp between.
 
-    One lock per item covers all of it, so no other stamp of the item in this process interleaves.
+    One lock per item covers the classification, the slot and the task's whole start phase, so no other stamp of the
+    item in this process interleaves; the task is registered before the lock is released.
     """
     owner_key = GATE_OWNER_TEMPLATE.format(item_id=item_id)
     lock = _SLOT_LOCKS.setdefault(f"{request.project_root}:{request.item}", asyncio.Lock())
@@ -278,15 +297,10 @@ async def _acquire(
         )
         if outcome[-1] is not Slot.OWNED:
             return outcome[-1], None
-        try:
-            handle = await _start_unit(request, owner_key, key)
-        except BaseException:
-            await _release_slot(store, request, session_id, key)
-            raise
-        task = asyncio.ensure_future(_settle(store, request, session_id, key, owner_key, handle, commit))
+        task = asyncio.ensure_future(_run_unit(store, request, session_id, key, owner_key, lock, commit))
         _RUNNING[key] = task
         task.add_done_callback(partial(_forget, key))
-        return Slot.OWNED, task
+    return Slot.OWNED, task
 
 
 async def run_stamp(

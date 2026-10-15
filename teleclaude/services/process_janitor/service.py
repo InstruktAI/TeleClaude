@@ -34,6 +34,7 @@ from .matcher import (
     ProcessJanitorPolicy,
     ProcessMatch,
     default_policy_specs,
+    descriptor_of,
     load_process_table,
     match_processes,
 )
@@ -228,12 +229,13 @@ class ProcessJanitorService:
                 await self._db.delete_identified_registry_entry(owner=entry.owner, generation=entry.generation)
             return 0
         dry_run = self._settings.dry_run_default
-        ended = list(live_members(pgid)) if dry_run else await asyncio.to_thread(_end_unit, pgid, entry.identity or "")
+        ended = (
+            [descriptor_of(pid) for pid in live_members(pgid)] + [descriptor_of(pgid)]
+            if dry_run
+            else await asyncio.to_thread(_end_unit, pgid, entry.identity or "")
+        )
         emitted = 0
-        for pid in ended:
-            descriptor = _descriptor_for_pid(processes, pid)
-            if descriptor is None:
-                continue
+        for descriptor in ended:
             policy = ProcessJanitorPolicy(
                 signature_id="expired-gate-lease",
                 name="expired gate runner lease",
@@ -309,11 +311,21 @@ class ProcessJanitorService:
         )
 
 
-def _end_unit(pgid: int, identity: str) -> list[int]:
-    """End a unit whose leader is positively known: its other live members first, then the leader, observing each step."""
-    _, members = settle_members(pgid, exclude=pgid)
-    ended = list(members)
+def _end_unit(pgid: int, identity: str) -> list[ProcessDescriptor]:
+    """End a unit whose leader is positively known: its other live members first, then the leader.
+
+    Returns a descriptor for each process actually signalled, read at the moment before it was signalled, so every
+    process ended has its observable event whether or not an earlier snapshot of the process table held it.
+    """
+    seen: dict[int, ProcessDescriptor] = {}
+
+    def remember(pid: int) -> None:
+        seen.setdefault(pid, descriptor_of(pid))
+
+    _, members = settle_members(pgid, exclude=pgid, before_signal=remember)
+    ended = [seen[pid] for pid in members if pid in seen]
     if is_runner_alive(pgid, identity):
+        leader = descriptor_of(pgid)
         for sig in (signal.SIGTERM, signal.SIGKILL):
             try:
                 os.kill(pgid, sig)
@@ -324,7 +336,7 @@ def _end_unit(pgid: int, identity: str) -> list[int]:
                 time.sleep(RUNNER_EXIT_POLL_SECONDS)
             if not is_runner_alive(pgid, identity):
                 break
-        ended.append(pgid)
+        ended.append(leader)
     return ended
 
 

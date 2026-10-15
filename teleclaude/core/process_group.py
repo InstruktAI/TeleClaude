@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import signal
 import time
+from collections.abc import Callable
 from enum import StrEnum
 from typing import Final
 
@@ -63,7 +64,12 @@ def _signal_member(pid: int, pgid: int, sig: signal.Signals) -> bool:
 
 
 def settle_members(
-    pgid: int, *, exclude: int = 0, grace: float = GRACE_SECONDS, bound: float = SETTLE_BOUND_SECONDS
+    pgid: int,
+    *,
+    exclude: int = 0,
+    grace: float = GRACE_SECONDS,
+    bound: float = SETTLE_BOUND_SECONDS,
+    before_signal: Callable[[int], None] | None = None,
 ) -> tuple[bool, tuple[int, ...]]:
     """End every live member of the group except ``exclude``: terminate, give a grace, kill, then observe.
 
@@ -73,12 +79,16 @@ def settle_members(
     signalled: list[int] = []
     deadline = time.monotonic() + bound
     for pid in live_members(pgid, exclude=exclude):
+        if before_signal is not None:
+            before_signal(pid)
         if _signal_member(pid, pgid, signal.SIGTERM):
             signalled.append(pid)
     grace_end = time.monotonic() + grace
     while time.monotonic() < grace_end and live_members(pgid, exclude=exclude):
         time.sleep(POLL_SECONDS)
     for pid in live_members(pgid, exclude=exclude):
+        if before_signal is not None:
+            before_signal(pid)
         if _signal_member(pid, pgid, signal.SIGKILL) and pid not in signalled:
             signalled.append(pid)
     while time.monotonic() < deadline:
