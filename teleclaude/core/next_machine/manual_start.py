@@ -16,7 +16,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import DriverLaunchClass
+from teleclaude.constants import RUNNER_NOT_DISPATCHED, DriverLaunchClass
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
 from teleclaude.core.next_machine.git_ops import get_ref_commit
@@ -24,6 +24,7 @@ from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATU
 from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES, WORK_LANE_ROLES
 from teleclaude.core.next_machine.lifecycle import pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
+    LifecycleLinkLost,
     SessionRunner,
     approval_from_state,
     artifact_digest_from_state,
@@ -123,6 +124,11 @@ _MANUAL_SKIP_FEEDBACK: dict[RunnerSkipReason, str] = {
 _CONFLICTING_SESSION_BINDING_FEEDBACK = (
     "This session already owns another todo; finish or release that lifecycle claim before starting this one."
 )
+
+
+def not_dispatched_text(slug: str, reason: str) -> str:
+    """The result text of a manual start that dispatched nothing, naming the item and the reason."""
+    return f"{RUNNER_NOT_DISPATCHED}: {slug} {reason}"
 
 
 def work_feedback_for_manual_skip(reason: RunnerSkipReason | str | None) -> str | None:
@@ -428,6 +434,14 @@ async def manual_start_lifecycle_session(
             project_path=str(project_root),
             intent=make_intent(slug, lane),
             origin=DispatchOrigin.MANUAL,
+        )
+    except LifecycleLinkLost as lost:
+        return ManualLifecycleSessionResult(
+            slug=slug,
+            lane=lane,
+            status=ManualLifecycleStatus.ALREADY_DRIVEN,
+            reason=RunnerSkipReason.ALREADY_DRIVEN,
+            session_id=lost.session_id,
         )
     finally:
         await client.close()

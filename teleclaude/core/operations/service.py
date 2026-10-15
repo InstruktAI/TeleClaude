@@ -19,7 +19,6 @@ from sqlalchemy.exc import IntegrityError
 
 from teleclaude.caller_identity import CliCaller
 from teleclaude.config.machine import config
-from teleclaude.constants import RUNNER_NOT_DISPATCHED
 from teleclaude.core.cleanup_step import cleanup_step
 from teleclaude.core.command_dispatch import invoke_command_handler
 from teleclaude.core.dates import parse_iso_datetime
@@ -33,6 +32,7 @@ from teleclaude.core.next_machine.create import next_create
 from teleclaude.core.next_machine.kinds import KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle_runner import (
     DispatchOrigin,
+    LifecycleLinkLost,
     ManualLifecycleStatus,
     RunnerLane,
     RunnerSkipReason,
@@ -42,6 +42,7 @@ from teleclaude.core.next_machine.lifecycle_runner import (
 )
 from teleclaude.core.next_machine.manual_start import (
     adopt_manual_lifecycle_session,
+    not_dispatched_text,
     resolve_manual_dispatch_intent,
     work_feedback_for_manual_skip,
 )
@@ -125,7 +126,6 @@ _HOLDER_AWARE_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
 _FOLLOW_THROUGH_TASK_NAME_TEMPLATE = "operation-follow-through-{operation_id}"
 _OPERATION_WORK_TEMPLATE = "operation:{kind}"
 _FOLLOW_THROUGH_WORK = "operation-follow-through"
-_RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE = "{prefix}: {slug} {reason}"
 _LEASE_TOUCH_FAILED_EVENT = "operation_lease_touch_failed"
 _OPERATION_HEARTBEAT_CLEANUP_COMPONENT = "operation_heartbeat"
 
@@ -885,17 +885,13 @@ class OperationsService:
             raise ClaimConflict(slug=slug, holder=adoption.session_id)
         if adoption.status is ManualLifecycleStatus.SKIPPED:
             reason = format_manual_lifecycle_reason(adoption.reason)
-            return OperationCompletion(
-                _RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE.format(prefix=RUNNER_NOT_DISPATCHED, slug=slug, reason=reason),
-                work_feedback=adoption.work_feedback,
-            )
+            return OperationCompletion(not_dispatched_text(slug, reason), work_feedback=adoption.work_feedback)
 
         intent, skip_reason = await resolve_manual_dispatch_intent(todos_db, slug, requested_lane=lane)
         if intent is None:
             reason = skip_reason.value if skip_reason is not None else RunnerSkipReason.INVALID_KIND.value
             return OperationCompletion(
-                _RUNNER_NOT_DISPATCHED_RESULT_TEMPLATE.format(prefix=RUNNER_NOT_DISPATCHED, slug=slug, reason=reason),
-                work_feedback=work_feedback_for_manual_skip(skip_reason),
+                not_dispatched_text(slug, reason), work_feedback=work_feedback_for_manual_skip(skip_reason)
             )
         client = self._lifecycle_client_factory()
         await client.connect()
@@ -908,6 +904,8 @@ class OperationsService:
                 intent=intent,
                 origin=DispatchOrigin.MANUAL,
             )
+        except LifecycleLinkLost as lost:
+            raise ClaimConflict(slug=slug, holder=None) from lost
         finally:
             await client.close()
         return f"RUNNER_DISPATCHED: {slug} {intent.lane.value} {session_id}"

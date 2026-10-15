@@ -15,8 +15,10 @@ from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.cli.api_session_args import RunSessionArgs
 from teleclaude.config._models import WorkflowRunnerMode
 from teleclaude.config.machine import config
-from teleclaude.constants import TodoStatus
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL, TodoStatus
 from teleclaude.context_selector import resolve_snippet_meta
+from teleclaude.core.command_dispatch import dispatch_command
+from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.next_machine.git_ops import (
@@ -57,6 +59,7 @@ from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.phase_reading import awaits_readable_head, read_phase
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
+from teleclaude.types.commands import CloseSessionCommand
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TodoKind
@@ -386,6 +389,22 @@ _LIVE_ROW_STATUSES: Final = frozenset({"active", "icebox"})
 LINK_SKIPPED_LOG: Final = "lifecycle runner: the started session was not linked, the row is held by another session"
 
 
+class LifecycleLinkLost(Exception):
+    """The started driver could not be linked because the row has another owner; the started session was ended."""
+
+    def __init__(self, slug: str, session_id: str) -> None:
+        super().__init__(slug, session_id)
+        self.slug = slug
+        self.session_id = session_id
+
+
+async def _end_unlinked_start(session_id: str) -> None:
+    """End the session this dispatch started and could not link, so no second driver runs beside the owner."""
+    await dispatch_command(
+        get_command_service().client, CloseSessionCommand(session_id=session_id), principal=SYSTEM_DAEMON_PRINCIPAL
+    )
+
+
 class LinkSkipped(Exception):
     """The row was claimed by another session before the started driver could be linked; nothing was written."""
 
@@ -418,8 +437,8 @@ async def _set_active_runner(
     lane: RunnerLane,
     manually_started: bool,
     release_hold: bool,
-) -> None:
-    """Write the driver link and its manual marker as one guarded mutation.
+) -> bool:
+    """Write the driver link and its manual marker as one guarded mutation; False when the row has another owner.
 
     ``active_runner`` and ``manually_started`` are always written together so a
     todo never carries a driver link without its origin marker. ``release_hold``
@@ -427,7 +446,7 @@ async def _set_active_runner(
     claim/start of a held unclaimed todo, false for a live owner's continuation.
     """
     if await todos_db.read_state(slug) is None:
-        return
+        return True
 
     def change(writer: StateWriter) -> None:
         owner = writer.state.active_runner
@@ -445,6 +464,8 @@ async def _set_active_runner(
         await commit_on_current(todos_db, slug, change)
     except LinkSkipped as moved:
         logger.warning(LINK_SKIPPED_LOG, slug=slug, started=session_id, owner=str(moved))
+        return False
+    return True
 
 
 async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, RunnerTodo], list[str]]:
@@ -562,7 +583,7 @@ async def dispatch_lifecycle_session(
     if intent.additional_context:
         kwargs["additional_context"] = intent.additional_context
     response = await client.run_session(**kwargs)
-    await _set_active_runner(
+    linked = await _set_active_runner(
         todos_db,
         intent.slug,
         response.session_id,
@@ -570,6 +591,9 @@ async def dispatch_lifecycle_session(
         manually_started=origin.manually_started,
         release_hold=origin.manually_started,
     )
+    if not linked:
+        await _end_unlinked_start(response.session_id)
+        raise LifecycleLinkLost(intent.slug, response.session_id)
     session = await runtime_db.get_session(response.session_id)
     if session is not None and is_session_terminal(
         lifecycle_status=session.lifecycle_status,
@@ -674,14 +698,17 @@ async def run_lifecycle_runner(
                 if await _request_item_driver(str(project_root), intent):
                     dispatched.append(intent)
                 continue
-            await dispatch_lifecycle_session(
-                client=client,
-                runtime_db=runtime_db,
-                todos_db=todos_db,
-                project_path=str(project_root),
-                intent=intent,
-                origin=DispatchOrigin.RUNNER,
-            )
+            try:
+                await dispatch_lifecycle_session(
+                    client=client,
+                    runtime_db=runtime_db,
+                    todos_db=todos_db,
+                    project_path=str(project_root),
+                    intent=intent,
+                    origin=DispatchOrigin.RUNNER,
+                )
+            except LifecycleLinkLost:
+                continue
             dispatched.append(intent)
     finally:
         await client.close()
