@@ -104,6 +104,9 @@ class EntryRefusal(StrEnum):
     ADMITTED = "{item} is admitted by the integrator at {sha}; the integrator delivers or parks it"
     READY_DOOR = "{item} is ready, which `telec todo work {item} --reason <text>` drives"
     HELD_NOTED = "{item} is held by session {session}; your reason is recorded as note {note}"
+    START_IN_PROGRESS = (
+        "{item}: a driver start requested by {requester} is in progress; it is attached to by its own requester"
+    )
     HOLD_BRAKE = "{item} is held by its hold brake; the lifecycle runner starts nothing for it"
     HEAD_UNREADABLE = (
         "{item}: its carried review verdict cannot be compared with the integration head, which could not be read; "
@@ -164,6 +167,7 @@ class EntryResult:
 
 
 REQUESTED_NOTE: Final = "{item}: a driver was requested."
+RUNNER_REQUESTER: Final = "the lifecycle runner or a person at a terminal"
 HOLD_CLEARED_ACT: Final = "hold-cleared"
 HOLD_CLEARED_TEXT: Final = "The hold was cleared by an explicit `telec todo {verb}` start from {session}."
 TERMINAL_CALLER: Final = "a person at a terminal"
@@ -420,6 +424,15 @@ def _apply_reservation(
     holder = state.active_runner or None
     if holder is not None and phase is not Phase.READY:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
+    pending = state.workflow.launch
+    if (
+        pending is not None
+        and phase is not Phase.READY
+        and pending.requested_by != (request.caller_session_id or NO_SESSION)
+    ):
+        raise _refuse(
+            EntryRefusal.START_IN_PROGRESS, item=request.item, requester=pending.requested_by or RUNNER_REQUESTER
+        )
     base = dict(state_dict)
     record = state.workflow.model_copy(deep=True)
     log = NO_SESSION

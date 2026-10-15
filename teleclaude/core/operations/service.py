@@ -650,7 +650,7 @@ class OperationsService:
             OperationKind.TODO_INTEGRATE: lambda op: next_integrate(
                 self._db, op.slug, todo_operation_context(op)[0], abandon=operation_payload_abandon(op)
             ),
-            OperationKind.TODO_CREATE: lambda op: next_create(self._db, op.slug, todo_operation_context(op)[0]),
+            OperationKind.TODO_CREATE: lambda op: next_create(self._db, op.slug, *todo_operation_context(op)),
             OperationKind.TODO_PREPARE: self._run_todo_prepare,
             OperationKind.TODO_RENAME: self._run_todo_rename,
             OperationKind.TODO_REMOVE: lambda op: run_todo_remove_operation(self._db, op),

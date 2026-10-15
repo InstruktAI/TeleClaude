@@ -62,6 +62,26 @@ async def _check_precondition(
         precondition(await host.read_state_in_session(slug, session))
 
 
+def _after_item_commit(
+    host: _CreateItemHost, slug: str, prior: dict[str, StateValue] | None, change: ItemChange | None
+) -> None:
+    """The observers a committed item change owes: the update notice, a phase move and a claim change."""
+    host.on_committed(_TODO_UPDATED_EVENT)
+    if change is None:
+        return
+    prior_state = prior or {}
+    prior_phase = prior_state.get(LIFECYCLE_PHASE_STATE_KEY)
+    new_phase = change.state.get(LIFECYCLE_PHASE_STATE_KEY)
+    if isinstance(new_phase, str) and new_phase != prior_phase:
+        host._on_phase_transition(slug, prior_phase if isinstance(prior_phase, str) else "", new_phase, change.state)
+    prior_holder = prior_state.get(ACTIVE_RUNNER_STATE_KEY)
+    holder = change.state.get(ACTIVE_RUNNER_STATE_KEY)
+    prior_holder = prior_holder if isinstance(prior_holder, str) and prior_holder else None
+    holder = holder if isinstance(holder, str) and holder else None
+    if prior_holder != holder:
+        host._on_claim_changed(slug, prior_holder, holder)
+
+
 class _CreateItemHost(Protocol):
     def _session(self) -> AbstractAsyncContextManager[SqlAsyncSession]: ...
 
@@ -368,20 +388,29 @@ class TodosDbWorkflowOperationsMixin:
             except BaseException:
                 await session.rollback()
                 raise
-        self.on_committed(_TODO_UPDATED_EVENT)
-        prior_state = prior or {}
-        prior_phase = prior_state.get(LIFECYCLE_PHASE_STATE_KEY)
-        new_phase = change.state.get(LIFECYCLE_PHASE_STATE_KEY)
-        if isinstance(new_phase, str) and new_phase != prior_phase:
-            self._on_phase_transition(
-                slug, prior_phase if isinstance(prior_phase, str) else "", new_phase, change.state
-            )
-        prior_holder = prior_state.get(ACTIVE_RUNNER_STATE_KEY)
-        holder = change.state.get(ACTIVE_RUNNER_STATE_KEY)
-        prior_holder = prior_holder if isinstance(prior_holder, str) and prior_holder else None
-        holder = holder if isinstance(holder, str) and holder else None
-        if prior_holder != holder:
-            self._on_claim_changed(slug, prior_holder, holder)
+        _after_item_commit(self, slug, prior, change)
+        return change
+
+    async def write_artifact_with_state_change(
+        self: _CreateItemHost,
+        slug: str,
+        name: str,
+        content: str,
+        *,
+        updated_by: str | None,
+        mutate: Callable[[dict[str, StateValue] | None], ItemChange | None],
+    ) -> ItemChange | None:
+        """Write an artifact and the state change decided on the row read under the writer lock, in one transaction.
+
+        ``mutate`` may raise to write nothing; None writes the artifact alone.
+        """
+        async with _immediate_transaction(self) as session:
+            prior = await self.read_state_in_session(slug, session)
+            change = mutate(prior)
+            await self.write_artifact(slug, name, content, updated_by=updated_by, session=session)
+            if change is not None:
+                await self.write_state(slug, change.state, session=session, owns_workflow_record=True)
+        _after_item_commit(self, slug, prior, change)
         return change
 
     async def update_state_with_artifact_evidence(

@@ -1,0 +1,114 @@
+"""The object-state decision of the creative capabilities.
+
+The design-spec write, the creative gate stamps and the creative dispatch each act on the state read inside their own
+row transaction (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``, the creative capabilities). This
+module decides which of the table's rows the item is in, and returns the state with the creative episode opened, the
+legacy phase converted when there is one, or the refusal that names the cause. The caller commits that state together
+with its artifact, stamp or dispatch, so a refused call writes neither.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Final
+
+from teleclaude.core.next_machine._types import StateValue
+from teleclaude.core.next_machine.kinds import KIND_TASK
+from teleclaude.core.workflow_machine.phase_reading import (
+    CLOSED_STORED_PHASES,
+    TASK_LANE_STORED_PHASES,
+    stored_in_legacy_phase,
+)
+from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
+from teleclaude.types.lifecycle import LifecyclePhase
+from teleclaude.types.todos import LIFECYCLE_PHASE_STATE_KEY, TodoState
+from teleclaude.types.workflow_record import CreativeEpisode, EpisodePath
+
+NO_CONVERSION: Final = ""
+
+
+class CreativeCapability(StrEnum):
+    """The creative writes whose object state this module decides; the value names it in a refusal."""
+
+    DESIGN_SPEC_WRITE = "the design-spec write"
+    GATE_STAMP = "the creative gate stamp"
+    DESIGN = "the creative dispatch"
+
+
+class CreativeRefusal(StrEnum):
+    """The causes a creative capability is refused with; each names the door that exists."""
+
+    DONE = "{capability} is refused: {item} is delivered, so the item is done"
+    ADMITTED = (
+        "{capability} is refused: {item} is admitted by the integrator at {sha}; "
+        "the integrator's delivery or park retires the admission"
+    )
+    CLOSED_PHASE = (
+        "{capability} is refused: {item} is in {phase}, and a creative write never moves a phase or its claim; "
+        "return it to preparation with `telec todo act {item} kickback` first"
+    )
+    HELD = "{capability} is refused: {item} is held by session {holder}"
+    HOLDER = (
+        "{capability} is refused: {item} is held by this session in preparation; "
+        "its creative handoff is `telec todo design {item}`"
+    )
+    UNKNOWN = "{capability} is refused: no item {item} in this project"
+
+
+class CreativeRefused(Exception):
+    """A creative capability was refused for one named cause; nothing was written."""
+
+
+@dataclass(frozen=True)
+class EpisodeOpening:
+    """The state a creative capability commits: the legacy phase it converted (empty when none) and whether it opened."""
+
+    state: dict[str, StateValue]
+    converted_from: str
+    opened: bool
+
+
+def _refuse(refusal: CreativeRefusal, capability: CreativeCapability, item: str, **fields: str) -> CreativeRefused:
+    return CreativeRefused(refusal.value.format(capability=capability.value, item=item, **fields))
+
+
+def open_episode(
+    item: str, current: dict[str, StateValue] | None, *, capability: CreativeCapability, caller_session_id: str
+) -> EpisodeOpening:
+    """Decide the capability against the state read in its own transaction, or refuse naming the cause."""
+    if current is None:
+        raise _refuse(CreativeRefusal.UNKNOWN, capability, item)
+    state = TodoState.model_validate(current)
+    stored = state.lifecycle_phase
+    if state.kind == KIND_TASK or stored in TASK_LANE_STORED_PHASES:
+        return EpisodeOpening(state=current, converted_from=NO_CONVERSION, opened=False)
+    if stored is LifecyclePhase.DELIVERED:
+        raise _refuse(CreativeRefusal.DONE, capability, item)
+    admitted = state.workflow.admitted
+    if admitted is not None:
+        raise _refuse(CreativeRefusal.ADMITTED, capability, item, sha=admitted.sha)
+    holder = state.active_runner or ""
+    if holder and holder != caller_session_id:
+        raise _refuse(CreativeRefusal.HELD, capability, item, holder=holder)
+    if _closed_phase(state, stored):
+        raise _refuse(CreativeRefusal.CLOSED_PHASE, capability, item, phase=stored.value)
+    if holder and capability is not CreativeCapability.DESIGN:
+        raise _refuse(CreativeRefusal.HOLDER, capability, item)
+    if state.workflow.episode is not None:
+        return EpisodeOpening(state=current, converted_from=NO_CONVERSION, opened=False)
+    converted_from = stored.value if stored_in_legacy_phase(state) else NO_CONVERSION
+    record = state.workflow.model_copy(deep=True)
+    record.episode = CreativeEpisode(opened_at=datetime.now(UTC).isoformat(), path=EpisodePath.CAPABILITY)
+    opened: dict[str, StateValue] = dict(current)
+    opened[WORKFLOW_STATE_KEY] = record.to_state()
+    opened[LIFECYCLE_PHASE_STATE_KEY] = LifecyclePhase.PREPARATION.value
+    return EpisodeOpening(state=opened, converted_from=converted_from, opened=True)
+
+
+def _closed_phase(state: TodoState, stored: LifecyclePhase) -> bool:
+    """Whether the record is stored in a closed phase of the machine that a creative write never moves."""
+    if stored is LifecyclePhase.PREPARATION:
+        return False
+    return stored in CLOSED_STORED_PHASES or (stored is LifecyclePhase.PREPARED and state.workflow.prepared is not None)

@@ -91,6 +91,15 @@ class WorkflowStore(Protocol):
         replacement_input: str | None,
         deleted_artifacts: list[str],
     ) -> None: ...
+    async def write_artifact_with_state_change(
+        self,
+        slug: str,
+        name: str,
+        content: str,
+        *,
+        updated_by: str | None,
+        mutate: Callable[[dict[str, StateValue] | None], ItemChange | None],
+    ) -> ItemChange | None: ...
     async def rename_item(
         self, old_slug: str, new_slug: str, precondition: Callable[[dict[str, StateValue] | None], None] | None = None
     ) -> None: ...

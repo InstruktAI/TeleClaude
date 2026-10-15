@@ -22,6 +22,8 @@ from teleclaude.core.next_machine.output_formatting import (
     format_tool_call,
 )
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
+from teleclaude.core.workflow_machine.creative import CreativeCapability
+from teleclaude.core.workflow_machine.creative_commit import open_creative_episode
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -316,7 +318,7 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
     return f"UNKNOWN_PHASE: {slug} — phase={phase.value}. Inspect state.yaml."
 
 
-async def next_create(db: Db, slug: str | None, cwd: str) -> str:
+async def next_create(db: Db, slug: str | None, cwd: str, caller_session_id: str = "") -> str:
     """Creative lifecycle state machine.
 
     Derives creative phase from DB state and artifacts,
@@ -345,6 +347,8 @@ async def next_create(db: Db, slug: str | None, cwd: str) -> str:
     phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
 
     logger.info("NEXT_CREATE_PHASE slug=%s phase=%s", resolved_slug, phase.value)
+    if phase != CreativePhase.CREATIVE_COMPLETE:
+        await open_creative_episode(todos_db, resolved_slug, CreativeCapability.DESIGN, caller_session_id)
 
     return await _creative_instruction(db, resolved_slug, cwd, phase)
 

@@ -28,6 +28,7 @@ from teleclaude.api.todo_routes import (
 )
 from teleclaude.api.todo_update_support import require_slug_in_todo
 from teleclaude.constants import (
+    ARTIFACT_DESIGN_SPEC,
     ARTIFACT_INPUT,
     ARTIFACT_NAMES_RETIRED,
     ARTIFACT_NAMES_WRITABLE,
@@ -37,6 +38,8 @@ from teleclaude.core.next_machine.provenance import clear_artifact_provenance
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.todos_db import HolderWriteRefused, malformed_digest_detail
+from teleclaude.core.workflow_machine.creative import CreativeCapability, CreativeRefused
+from teleclaude.core.workflow_machine.creative_commit import episode_mutation
 from teleclaude.project_root import resolve_project_root
 
 if TYPE_CHECKING:
@@ -168,7 +171,16 @@ async def write_artifact(
         await refuse_non_prepare_writer(identity, slug, name)
     effective_updated_by = resolved_write_principal(identity)
     try:
-        await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
+        if name == ARTIFACT_DESIGN_SPEC:
+            await todos_db.write_artifact_with_state_change(
+                slug,
+                name,
+                content,
+                updated_by=effective_updated_by,
+                mutate=episode_mutation(slug, CreativeCapability.DESIGN_SPEC_WRITE, identity.session_id or ""),
+            )
+        else:
+            await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
         _ = codebase_sha_at_write, referenced_paths
         if name in _DRIFT_TRACKED_ARTIFACT_NAMES:
             await _sync_artifact_provenance_state(
@@ -179,7 +191,7 @@ async def write_artifact(
                 artifact_body=content,
                 prepared_session_id=identity.session_id,
             )
-    except HolderWriteRefused as exc:
+    except (HolderWriteRefused, CreativeRefused) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if name in {artifacts.report_artifact_name for artifacts in REVIEW_EVIDENCE_ARTIFACTS.values()}:
         logger.info(
