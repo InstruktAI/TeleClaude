@@ -223,5 +223,6 @@ And a running task firing is not released by an act, so no second firing starts 
 
 ## Known caveats
 
+- This vocabulary has no authorized return to preparation for an unclaimed `ready` item whose stamp is current and which the integrator has not admitted. Its entry verbs do not drive `ready`, and `kickback` requires a holding phase driver. A later head change can make the stamp stale and reopen work; it is not an act that withdraws a current candidate with a reason.
 - A person's session is identified by facts the calling client carries; the platform does not establish them from infrastructure-owned state.
 - An item whose driver ends without the platform learning of it keeps its claim until it is released by hand.
