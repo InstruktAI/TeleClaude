@@ -52,38 +52,38 @@ own identity and is never a session role.
 
 ### Capabilities
 
-| Capability             | Reach                                                                                                    |
-| ---------------------- | -------------------------------------------------------------------------------------------------------- |
-| `docs-read`            | Reading documentation.                                                                                   |
-| `todo-read`            | Listing and showing todos and bugs.                                                                      |
-| `todo-write`           | Creating, updating, freezing, removing and delivering todos; filing bugs and suppressions.               |
-| `artifact-read`        | Reading and diffing todo artifacts.                                                                      |
-| `artifact-write`       | Writing and removing todo artifacts.                                                                     |
-| `stamp`                | Stamping todo state and commit-review verdicts.                                                          |
-| `todo-orchestration`   | Driving a todo state machine.                                                                            |
-| `integration`          | Integrating deliveries to canonical main and reading dirty-path ownership.                               |
-| `maintenance-recovery` | Inspecting and recovering canonical-main maintenance.                                                    |
-| `memory-curation`      | Curating memories and prospects from conversation extractions.                                           |
-| `session-observe`      | Listing and showing sessions, searching history, and reading the fleet's computers, projects and agents. |
-| `transcript-read`      | Showing the transcript of a named session.                                                               |
-| `operation-read`       | Reading the outcome of an operation one's session started or one's reach admits.                         |
-| `session-act`          | Starting, running, reviving, restarting, ending and messaging sessions other than one's own.             |
-| `self-acts`            | Results, files, unsubscribing, ending and restarting for one's own session.                              |
-| `messaging`            | Messaging a person.                                                                                      |
-| `audio`                | Transcribing supplied audio to text.                                                                     |
-| `jobs`                 | Enabling, disabling and running jobs.                                                                    |
-| `jobs-read`            | Listing jobs and their runtime status.                                                                   |
-| `job-report`           | Reporting the result of a job run.                                                                       |
-| `config`               | Changing configuration, and reading person and company configuration.                                    |
-| `config-read`          | Reading and validating machine, global and project configuration.                                        |
-| `reminders`            | Arming, listing and cancelling reminders.                                                                |
-| `code-check`           | Inspecting code: blast radius, lint and tests.                                                           |
-| `code`                 | Formatting, file declarations and commits.                                                               |
-| `mcp`                  | Listing and calling MCP tools.                                                                           |
-| `peer-talk`            | Sending to and tailing a peer session: the builder a reviewer reviews, the claimant that dispatched it.  |
-| `memories-read`        | Listing, searching, deleting and tracing a person's own memories outside an extraction.                  |
-| `memories-save`        | Saving a memory observation when the human the session works for asks it to; no role composes it.        |
-| `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                      |
+| Capability             | Reach                                                                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `docs-read`            | Reading documentation.                                                                                                   |
+| `todo-read`            | Listing and showing todos and bugs.                                                                                      |
+| `todo-write`           | Creating, updating, freezing, removing and delivering todos; filing bugs and suppressions.                               |
+| `artifact-read`        | Reading and diffing todo artifacts.                                                                                      |
+| `artifact-write`       | Writing and removing todo artifacts.                                                                                     |
+| `stamp`                | Stamping todo state and commit-review verdicts.                                                                          |
+| `todo-orchestration`   | Driving a todo state machine.                                                                                            |
+| `integration`          | Integrating deliveries to canonical main and reading dirty-path ownership.                                               |
+| `maintenance-recovery` | Inspecting and recovering canonical-main maintenance.                                                                    |
+| `memory-curation`      | Curating memories and prospects from conversation extractions.                                                           |
+| `session-observe`      | Listing and showing sessions, searching history, and reading the fleet's computers, projects and agents.                 |
+| `transcript-read`      | Showing the transcript of a named session.                                                                               |
+| `operation-read`       | Reading the outcome of an operation one's session started or one's reach admits.                                         |
+| `session-act`          | Starting, running, reviving, restarting, ending and messaging sessions other than one's own.                             |
+| `self-acts`            | Results, files, unsubscribing, ending and restarting for one's own session.                                              |
+| `messaging`            | Messaging a person.                                                                                                      |
+| `audio`                | Transcribing supplied audio to text.                                                                                     |
+| `jobs`                 | Enabling, disabling and running jobs.                                                                                    |
+| `jobs-read`            | Listing jobs and their runtime status.                                                                                   |
+| `job-report`           | Reporting the result of a job run.                                                                                       |
+| `config`               | Changing configuration, and reading person and company configuration.                                                    |
+| `config-read`          | Reading and validating machine, global and project configuration.                                                        |
+| `reminders`            | Arming, listing and cancelling reminders.                                                                                |
+| `code-check`           | Inspecting code: blast radius, lint and tests.                                                                           |
+| `code`                 | Formatting, file declarations and commits.                                                                               |
+| `mcp`                  | Listing and calling MCP tools.                                                                                           |
+| `peer-talk`            | Sending to and tailing a peer session: the builder a reviewer reviews, the claimant that dispatched it.                  |
+| `memories-read`        | Listing, searching, deleting and tracing a person's own memories outside an extraction.                                  |
+| `memories-save`        | Saving a memory observation when the human the session works for asks it to. Every role reaches it; no role composes it. |
+| `dispatch-worker`      | Starting a session whose role is of class `worker`.                                                                      |
 
 The command families are the catalog's vocabulary; which command declares
 which family is the CLI surface schema's.
@@ -136,7 +136,9 @@ The focused set remains explicit for a full-reach role. Full reach broadens
 permission independently of that focused set; it never expands the focused set
 itself. Restricted roles remain bounded by their explicit sets, with object
 guardrails retaining their own authority
-(`general/principle/trust-and-guardrails`).
+(`general/principle/trust-and-guardrails`). The catalog names the capabilities
+every role reaches without composing them, currently `memories-save`; they
+appear in no focused set, so focused help never lists their commands.
 
 ### Class
 

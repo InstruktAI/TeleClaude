@@ -627,9 +627,13 @@ def catalog() -> tuple[Role, ...]:
     return tuple(_CATALOG.values())
 
 
+# Capabilities every role reaches without composing them, so they stay out of every focused set.
+_EVERY_ROLE: frozenset[Capability] = frozenset({Capability.MEMORIES_SAVE})
+
+
 def allows(role: Role, capability: Capability) -> bool:
-    """Whether ``role`` reaches ``capability``: full reach, or membership in its explicit set."""
-    return role.full_reach or capability in role.capabilities
+    """Whether ``role`` reaches ``capability``: full reach, every-role reach, or membership in its explicit set."""
+    return role.full_reach or capability in _EVERY_ROLE or capability in role.capabilities
 
 
 def may_dispatch(caller: Role | None, target: Role) -> bool:
