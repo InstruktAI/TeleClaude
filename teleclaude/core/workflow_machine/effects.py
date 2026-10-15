@@ -32,6 +32,8 @@ from teleclaude.events.schemas.sdlc import (
     TodoClaimChanged,
     TodoClaimChangedData,
     TodoDriverRequestData,
+    TodoHeadAdvanced,
+    TodoHeadAdvancedData,
     TodoPreparationRequested,
     TodoReady,
     TodoReadyData,
@@ -52,6 +54,8 @@ NONE_LABEL: Final = "none"
 CLAIM_CHANGED_DESCRIPTION: Final = "Claim on {slug} moved from {prior} to {holder}"
 WAITING_DESCRIPTION: Final = "{slug} waits on {person}"
 READY_DESCRIPTION: Final = "{slug} is ready at {sha}"
+HEAD_DESCRIPTION: Final = "{slug} advanced to {sha}"
+BRANCH_PARAM: Final = "branch"
 SHA_PARAM: Final = "sha"
 READY_AT_PARAM: Final = "ready_at"
 REQUEST_DESCRIPTION: Final = "A driver is requested for {slug}"
@@ -122,6 +126,21 @@ def _waiting(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
     return event, WAITING_DESCRIPTION.format(slug=context.item.slug, person=person)
 
 
+def _head_advanced(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
+    event = TodoHeadAdvanced(
+        id=occurrence_id(context.project_root, context.item.todo_id, effect.id),
+        subject=TodoRef(context.item.slug),
+        home=home_for_project_path(context.project_root),
+        data=TodoHeadAdvancedData(
+            slug=context.item.slug,
+            project_path=context.project_root,
+            branch=effect.params[BRANCH_PARAM],
+            sha=effect.params[SHA_PARAM],
+        ),
+    )
+    return event, HEAD_DESCRIPTION.format(slug=context.item.slug, sha=effect.params[SHA_PARAM])
+
+
 def _ready(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
     event = TodoReady(
         id=occurrence_id(context.project_root, context.item.todo_id, effect.id),
@@ -168,6 +187,7 @@ _EVENT_BUILDERS: Final[Mapping[EmittedEvent, Callable[[EffectContext, PendingEff
     EmittedEvent.CLAIM_CHANGED: _claim_changed,
     EmittedEvent.WAITING: _waiting,
     EmittedEvent.READY: _ready,
+    EmittedEvent.HEAD_ADVANCED: _head_advanced,
     EmittedEvent.PREPARATION_REQUESTED: _preparation_requested,
     EmittedEvent.WORK_REQUESTED: _work_requested,
 }
