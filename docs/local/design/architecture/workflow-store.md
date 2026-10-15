@@ -123,7 +123,7 @@ For one store the activation is all or nothing in one write transaction: (a) bef
 
 **The converted-row record and its enforced predicates.** A table holds one record per converted row (row id as key and foreign key with delete cascade, the replaced phase, the time and the path `activation`, `restore` or `capability`), inserted in the same transaction as the conversion it records and never updated or deleted by the machine; it is history and not an open episode. The store refuses, for a converted row, any update whose new state lacks the structured workflow record or whose phase is not a phase of the machine (`preparation`, `waiting`, `work`, `ready`, `delivered`, `prepared` carrying the prepared record, or, for kind task, a task-lane phase), and the refusal names its door: read the item again and write from the current state. These two predicates are the contract; the store's implementation owns how they are enforced, whichever writer or code version attempts the update. The kind change of a converted row stores `preparation` for a non-task target and the task lane's entry phase for a task target. A store is marked activated only while the record table and the enforcement of the two predicates are in place, and the machine's reads check the mark and both.
 
-The four reads of the state mixin that persist an upcycled payload update a version-2 row by compare-and-swap on the exact string they read and write nothing on a miss, so new code never meets the fence.
+A compatibility upgrade preserves concurrent state changes and satisfies the same converted-row predicates as every other writer; an upgrade whose precondition no longer holds writes nothing.
 <!-- /planned:issue-128 -->
 
 ## Failure modes
