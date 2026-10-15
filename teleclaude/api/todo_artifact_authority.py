@@ -18,10 +18,12 @@ from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.session_utils import session_in_claiming_group
+from teleclaude.core.workflow_machine.phase_reading import TASK_LANE_STORED_PHASES
 from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX, Lineage
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
+from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
@@ -177,6 +179,7 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
 
 INTENT_UNCLAIMED = "{slug} has no holder: the intent body is edited only by the driver that holds the item"
 INTENT_FOREIGN = "{slug} is held by session {holder}; the intent body is edited only by the holder or a session of its claiming group"
+INTENT_KIND_CHANGED = "{slug}: its kind changed while the write was deciding; repeat the write"
 INTENT_HELD_READY = "{slug} is ready: a held ready item admits no edit of its intent body"
 SESSION_ANCESTRY_CAP = 32
 
@@ -199,7 +202,7 @@ async def session_ancestry(session_id: str) -> frozenset[str]:
 
 
 def intent_body_mutation(
-    slug: str, ancestry: frozenset[str]
+    slug: str, ancestry: frozenset[str], *, expect_task: bool
 ) -> Callable[[dict[str, StateValue] | None], ItemChange | None]:
     """The authority of an agent session over the intent body of an item outside the task lane, on the row read.
 
@@ -214,6 +217,11 @@ def intent_body_mutation(
         if current is None:
             raise IntentBodyRefused(INTENT_UNCLAIMED.format(slug=slug))
         state = TodoState.model_validate(current)
+        in_task_lane = state.kind == TodoKind.TASK or state.lifecycle_phase in TASK_LANE_STORED_PHASES
+        if in_task_lane != expect_task:
+            raise IntentBodyRefused(INTENT_KIND_CHANGED.format(slug=slug))
+        if in_task_lane:
+            return None
         holder = state.active_runner
         if not holder:
             raise IntentBodyRefused(INTENT_UNCLAIMED.format(slug=slug))
