@@ -32,6 +32,7 @@ from teleclaude.core.workflow_machine.authority import configured_person, has_pr
 from teleclaude.core.workflow_machine.caller import CallerFacts, in_claiming_group, load_caller
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.heads import observe_item_supervised
+from teleclaude.core.workflow_machine.helpers import earlier_claim_sessions
 from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.ledger_log import render_log_entry
 from teleclaude.core.workflow_machine.phase_reading import PhaseReading, creative_snapshot, read_phase
@@ -98,6 +99,7 @@ class _Facts:
     person_email: str
     person_authorized: bool
     waiting_digest: str
+    earlier_sessions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -308,6 +310,8 @@ def _decide_decision(request: ActRequest, facts: _Facts, state: TodoState, readi
     ):
         raise _refuse(Refusal.WAIT_CHANGED, act=request.act.value, person=waiting.person)
     answer = _require(request, request.text, ARGUMENT_TEXT)
+    if facts.earlier_sessions:
+        return _answer_without_start(waiting.person, answer, waiting.waited_phase)
     reservation = LaunchReservation(
         key=_digest(f"{waiting.person}{BOUND_SEPARATOR}{waiting.question_digest}{BOUND_SEPARATOR}{_now()}"),
         phase=Phase(waiting.waited_phase.value),
@@ -336,6 +340,20 @@ def _decide_decision(request: ActRequest, facts: _Facts, state: TodoState, readi
             ),
         ),
     )
+
+
+def _answer_without_start(person: str, answer: str, waited: WaitedPhase) -> _Decision:
+    """Record the person's answer and clear the wait, starting no driver while a session of an earlier claim runs.
+
+    The next entry call starts the driver once that session has ended (``Helpers of a driver``).
+    """
+
+    def record(current: WorkflowRecord) -> WorkflowRecord:
+        updated = current.model_copy(deep=True)
+        updated.waiting = None
+        return updated
+
+    return _Decision(bound=person, text=answer, phase=_STORED_PHASE_FOR_WAITED_PHASE[waited], record=record)
 
 
 def _decide_kickback(request: ActRequest, facts: _Facts, state: TodoState, reading: PhaseReading) -> _Decision:
@@ -485,6 +503,9 @@ async def _resolve_facts(store: WorkflowStore, request: ActRequest, state: TodoS
         person_email=person.email if person is not None else NO_SESSION,
         person_authorized=person is not None and has_project_authority(person, request.project_root),
         waiting_digest=waiting.question_digest if waiting is not None else NO_SESSION,
+        earlier_sessions=await earlier_claim_sessions(state.workflow, holder or NO_SESSION)
+        if request.act is Act.DECISION
+        else (),
     )
 
 
