@@ -378,6 +378,15 @@ FLAG_TODO_RETURN_REASON = Flag(
 FLAG_TODO_RETURN_EVIDENCE = Flag("--evidence", desc="Address of the code-conformance finding", arity=VALUE)
 
 # =============================================================================
+# todo act
+# =============================================================================
+
+FLAG_ACT_SHA = Flag("--sha", desc="The commit the act is bound to (reviewed, finding, stamp)", arity=VALUE)
+FLAG_ACT_REVISION = Flag("--revision", desc="The intent-body revision the prepared act judged", arity=VALUE)
+FLAG_ACT_PERSON = Flag("--person", desc="The person the item waits on, by slug (waiting)", arity=VALUE)
+FLAG_ACT_FINDING = Flag("--finding", desc="The key of the finding a reply answers", arity=VALUE)
+
+# =============================================================================
 # todo stamp
 # =============================================================================
 

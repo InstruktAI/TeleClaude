@@ -76,6 +76,7 @@ class _ParsedTodoCreate:
 class _TodoSubcommand(StrEnum):
     """Closed vocabulary for todo subcommands routed by this handler."""
 
+    ACT = "act"
     ARTIFACTS = "artifacts"
     CREATE = "create"
     DELIVER = "deliver"
@@ -157,6 +158,15 @@ def _handle_todo_stamp(args: list[str]) -> None:
     )
 
     handle_stamp(args)
+
+
+def _handle_todo_act(args: list[str]) -> None:
+    """Handle the sealed act command."""
+    from teleclaude.cli.telec.handlers._todo_act import (  # noqa: PLC0415 - command boundary: API mutation.
+        _handle_todo_act as handle_act,
+    )
+
+    handle_act(args)
 
 
 def _handle_todo_return_to_work(args: list[str]) -> None:
@@ -899,6 +909,7 @@ def _handle_todo_reactivate(args: list[str]) -> None:
 
 
 _TODO_SUBCOMMAND_HANDLERS: dict[_TodoSubcommand, Callable[[list[str]], None]] = {
+    _TodoSubcommand.ACT: _handle_todo_act,
     _TodoSubcommand.ARTIFACTS: _handle_todo_artifacts,
     _TodoSubcommand.CREATE: _handle_todo_create,
     _TodoSubcommand.DELIVER: _handle_todo_deliver,

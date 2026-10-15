@@ -876,6 +876,38 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 examples=["telec todo reactivate my-slug", "telec todo reactivate --id <row-id>"],
                 auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
             ),
+            "act": CommandDef(
+                desc="Perform one act of an item's lifecycle as the session that holds or serves it",
+                args=(
+                    "<item> <act> [<text>] [--sha <commit>] [--revision <digest>] [--person <slug>] [--finding <key>]"
+                ),
+                flags=[
+                    F.FLAG_HELP,
+                    F.FLAG_ACT_SHA,
+                    F.FLAG_ACT_REVISION,
+                    F.FLAG_ACT_PERSON,
+                    F.FLAG_ACT_FINDING,
+                ],
+                notes=[
+                    "Acts: note, reviewed, finding, reply, prepared, waiting, decision, kickback, release.",
+                    "reviewed and finding bind a commit (--sha); prepared binds the judged intent-body "
+                    "revision (--revision); waiting names the person (--person) and states the question as the "
+                    "text; reply names the finding it answers (--finding).",
+                    "Your role and session come from the authenticated session. A refusal names the act and "
+                    "the performer it requires, and writes nothing.",
+                    "Repeating an interrupted act completes what is missing and writes nothing twice.",
+                ],
+                examples=[
+                    'telec todo act my-item note "mechanism: ..."',
+                    "telec todo act my-item reviewed --sha 1a2b3c4",
+                    'telec todo act my-item finding --sha 1a2b3c4 "the guard no longer runs on restart"',
+                    'telec todo act my-item reply --finding <key> "fixed in 5d6e7f8"',
+                    "telec todo act my-item prepared --revision <digest>",
+                    'telec todo act my-item waiting --person maurice-faber "Which of these outcomes do you want?"',
+                ],
+                literal_dash_tokens=True,
+                auth=CommandAuth(capability=Capability.TODO_WRITE, human=_HR_MEMBER),
+            ),
             "stamp": CommandDef(
                 desc="Stamp a verdict or readiness marker into todo state",
                 args=(
@@ -2071,6 +2103,7 @@ OPERATIONS_GET = CLI_SURFACE["operations"].subcommands["get"]
 TODO_CREATE = CLI_SURFACE["todo"].subcommands["create"]
 TODO_DELIVER = CLI_SURFACE["todo"].subcommands["deliver"]
 TODO_REMOVE = CLI_SURFACE["todo"].subcommands["remove"]
+TODO_ACT = CLI_SURFACE["todo"].subcommands["act"]
 TODO_STAMP = CLI_SURFACE["todo"].subcommands["stamp"]
 TODO_RETURN_TO_WORK = CLI_SURFACE["todo"].subcommands["return-to-work"]
 TODO_REACTIVATE = CLI_SURFACE["todo"].subcommands["reactivate"]

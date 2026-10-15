@@ -89,7 +89,6 @@ class EffectKind(StrEnum):
     EMIT_EVENT = "emit_event"
     END_SESSION = "end_session"
     WAKE_SESSION = "wake_session"
-    START_DRIVER = "start_driver"
     RELEASE_CLAIM = "release_claim"
 
 
@@ -106,6 +105,7 @@ class LedgerEntry(BaseModel):
     role: str
     session_id: str
     bound: str = ""
+    text: str = ""
 
 
 class PendingEffect(BaseModel):
@@ -230,9 +230,17 @@ class WorkflowRecord(BaseModel):
         return updated
 
     def without_effect(self, effect_id: str) -> WorkflowRecord:
-        """A copy with the effect removed from the pending list; unchanged when it is not pending."""
+        """A copy with the effect removed from the pending list; unchanged when it is not pending.
+
+        The act the effect belonged to is complete when no other effect of that act remains.
+        """
         updated = self.model_copy(deep=True)
+        finished = [effect for effect in updated.pending_effects if effect.id == effect_id]
         updated.pending_effects = [effect for effect in updated.pending_effects if effect.id != effect_id]
+        for effect in finished:
+            still_pending = any(other.act_key == effect.act_key for other in updated.pending_effects)
+            if effect.act_key and not still_pending and effect.act_key in updated.act_status:
+                updated.act_status[effect.act_key] = ActStatus.COMPLETE
         return updated
 
     def with_claim_change(self, effect: PendingEffect) -> WorkflowRecord:

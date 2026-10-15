@@ -20,7 +20,7 @@ from teleclaude.core.workflow_store.types import (
     PendingEffectItem,
     TodoDiagnosticRecord,
 )
-from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, workflow_record_of
+from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, stored_holder, with_claim_change, workflow_record_of
 from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, LIFECYCLE_PHASE_STATE_KEY
 
 _TODO_UPDATED_EVENT = "todo_updated"
@@ -105,6 +105,8 @@ class _DiagnosticRecordHost(Protocol):
 
 
 class _EffectHost(Protocol):
+    _on_claim_changed: Callable[[str, str | None, str | None], None]
+
     def _session(self) -> AbstractAsyncContextManager[SqlAsyncSession]: ...
 
 
@@ -118,6 +120,38 @@ class TodosDbWorkflowOperationsMixin:
                 .where(TODO_STATE_TABLE.c.state.like(_PENDING_EFFECTS_MARKER))
             )
             return [PendingEffectItem(todo_id=row[0], slug=row[1], status=str(row[2])) for row in rows.all()]
+
+    async def release_claim_by_id(self: _EffectHost, todo_id: str, session_id: str) -> bool:
+        """Release the claim an item row holds for the session, under the writer lock; False when it holds another.
+
+        The claim change commits with the state as its pending effect, like every other holder change.
+        """
+        async with self._session() as session:
+            connection = await session.connection()
+            await connection.exec_driver_sql(_BEGIN_IMMEDIATE_SQL)
+            try:
+                state_model = await session.get(TodoStateModel, todo_id)
+                entry = await session.get(Todo, todo_id)
+                if state_model is None or entry is None:
+                    await session.rollback()
+                    return False
+                payload = json.loads(state_model.state)
+                prior = stored_holder(payload)
+                if prior != session_id:
+                    await session.rollback()
+                    return False
+                payload[ACTIVE_RUNNER_STATE_KEY] = None
+                payload = with_claim_change(payload, prior)
+                state_model.state = json.dumps(payload, default=str)
+                state_model.updated_at = datetime.now(UTC).isoformat()
+                session.add(state_model)
+                await session.commit()
+                slug = entry.slug
+            except BaseException:
+                await session.rollback()
+                raise
+        self._on_claim_changed(slug, prior, None)
+        return True
 
     async def clear_pending_effect(self: _EffectHost, todo_id: str, effect_id: str) -> None:
         """Remove one finished effect from an item row addressed by its durable id, under the writer lock."""

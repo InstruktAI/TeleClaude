@@ -11,10 +11,14 @@ never raises a second notice.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Final
+from typing import Any, Final
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
+from teleclaude.core.command_dispatch import dispatch_command
+from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.db import db
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import PendingEffectItem
 from teleclaude.events.catalog import PlatformEvent
@@ -22,10 +26,19 @@ from teleclaude.events.envelope import EventLevel, EventVisibility, occurrence_i
 from teleclaude.events.envelope_facts import home_for_project_path
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import TodoRef
-from teleclaude.events.schemas.sdlc import TodoClaimChanged, TodoClaimChangedData
+from teleclaude.events.schemas.sdlc import (
+    TodoClaimChanged,
+    TodoClaimChangedData,
+    TodoDriverRequestData,
+    TodoPreparationRequested,
+    TodoWaiting,
+    TodoWaitingData,
+    TodoWorkRequested,
+)
 from teleclaude.events.wire import LegacyFacts
 from teleclaude.types.claim_change import HOLDER_PARAM, NO_HOLDER, PRIOR_HOLDER_PARAM, workflow_record_of
-from teleclaude.types.workflow_record import EffectKind, EmittedEvent, PendingEffect
+from teleclaude.types.commands import CloseSessionCommand
+from teleclaude.types.workflow_record import EffectKind, EmittedEvent, PendingEffect, WaitedPhase
 
 logger = get_logger(__name__)
 
@@ -33,6 +46,13 @@ WORKFLOW_PRODUCER: Final = "workflow"
 SDLC_DOMAIN: Final = "sdlc"
 NONE_LABEL: Final = "none"
 CLAIM_CHANGED_DESCRIPTION: Final = "Claim on {slug} moved from {prior} to {holder}"
+WAITING_DESCRIPTION: Final = "{slug} waits on {person}"
+REQUEST_DESCRIPTION: Final = "A driver is requested for {slug}"
+PERSON_PARAM: Final = "person"
+WAITED_PHASE_PARAM: Final = "waited_phase"
+RESERVATION_PARAM: Final = "reservation_key"
+REQUESTED_BY_PARAM: Final = "requested_by"
+SESSION_PARAM: Final = "session_id"
 
 EFFECT_FAILED_LOG: Final = "workflow effect failed; the reconciler retries it with the same identity"
 ITEM_FAILED_LOG: Final = "workflow effect reconciliation failed for an item"
@@ -43,12 +63,13 @@ NO_HANDLER_LOG: Final = "workflow effect has no handler"
 class EffectContext:
     """What an effect handler needs to act on one item."""
 
-    def __init__(self, project_root: str, item: PendingEffectItem) -> None:
+    def __init__(self, store: WorkflowStore, project_root: str, item: PendingEffectItem) -> None:
+        self.store = store
         self.project_root = project_root
         self.item = item
 
 
-type BuiltEvent = tuple[PlatformEvent[TodoRef, TodoClaimChangedData], str]
+type BuiltEvent = tuple[PlatformEvent[Any, Any], str]
 
 
 def _claim_changed(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
@@ -71,8 +92,45 @@ def _claim_changed(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
     return event, description
 
 
+def _waiting(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
+    person = effect.params[PERSON_PARAM]
+    event = TodoWaiting(
+        id=occurrence_id(context.project_root, context.item.todo_id, effect.id),
+        subject=TodoRef(context.item.slug),
+        home=home_for_project_path(context.project_root),
+        data=TodoWaitingData(
+            slug=context.item.slug,
+            project_path=context.project_root,
+            person=person,
+            waited_phase=WaitedPhase(effect.params[WAITED_PHASE_PARAM]),
+        ),
+    )
+    return event, WAITING_DESCRIPTION.format(slug=context.item.slug, person=person)
+
+
+def _request_event(event_type: type[PlatformEvent[TodoRef, TodoDriverRequestData]]) -> Callable[..., BuiltEvent]:
+    def build(context: EffectContext, effect: PendingEffect) -> BuiltEvent:
+        event = event_type(
+            id=occurrence_id(context.project_root, context.item.todo_id, effect.id),
+            subject=TodoRef(context.item.slug),
+            home=home_for_project_path(context.project_root),
+            data=TodoDriverRequestData(
+                slug=context.item.slug,
+                project_path=context.project_root,
+                requested_by=effect.params.get(REQUESTED_BY_PARAM, NO_HOLDER),
+                reservation_key=effect.params[RESERVATION_PARAM],
+            ),
+        )
+        return event, REQUEST_DESCRIPTION.format(slug=context.item.slug)
+
+    return build
+
+
 _EVENT_BUILDERS: Final[Mapping[EmittedEvent, Callable[[EffectContext, PendingEffect], BuiltEvent]]] = {
     EmittedEvent.CLAIM_CHANGED: _claim_changed,
+    EmittedEvent.WAITING: _waiting,
+    EmittedEvent.PREPARATION_REQUESTED: _request_event(TodoPreparationRequested),
+    EmittedEvent.WORK_REQUESTED: _request_event(TodoWorkRequested),
 }
 
 
@@ -93,7 +151,25 @@ async def _emit_event(context: EffectContext, effect: PendingEffect) -> None:
     )
 
 
-_HANDLERS: Final = {EffectKind.EMIT_EVENT: _emit_event}
+async def _release_claim(context: EffectContext, effect: PendingEffect) -> None:
+    await context.store.release_claim_by_id(context.item.todo_id, effect.params[SESSION_PARAM])
+
+
+async def _end_session(context: EffectContext, effect: PendingEffect) -> None:
+    session_id = effect.params[SESSION_PARAM]
+    session = await db.get_session(session_id)
+    if session is None or session.closed_at is not None:
+        return
+    await dispatch_command(
+        get_command_service().client, CloseSessionCommand(session_id=session_id), principal=SYSTEM_DAEMON_PRINCIPAL
+    )
+
+
+_HANDLERS: Final = {
+    EffectKind.EMIT_EVENT: _emit_event,
+    EffectKind.RELEASE_CLAIM: _release_claim,
+    EffectKind.END_SESSION: _end_session,
+}
 
 
 async def reconcile_item(store: WorkflowStore, project_root: str, item: PendingEffectItem) -> None:
@@ -101,7 +177,7 @@ async def reconcile_item(store: WorkflowStore, project_root: str, item: PendingE
     state = await store.read_state_by_id(item.todo_id)
     if state is None:
         return
-    context = EffectContext(project_root, item)
+    context = EffectContext(store, project_root, item)
     for effect in workflow_record_of(state).pending_effects:
         handler = _HANDLERS.get(effect.kind)
         if handler is None:
