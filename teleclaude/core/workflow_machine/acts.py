@@ -470,13 +470,13 @@ def _apply(
     """
     if state_dict is None:
         raise _refuse(Refusal.UNKNOWN_ITEM, act=request.act.value, item=request.item)
-    if request.act is not Act.NOTE and creative_snapshot(state_dict) != request.creative_snapshot:
-        raise _refuse(Refusal.CREATIVE_CHANGED, act=request.act.value)
     state = TodoState.model_validate(state_dict)
     existing = _act_key(request, facts.item_id, state.workflow)
     if existing in state.workflow.act_status:
         outcome.append(existing)
         return None
+    if request.act is not Act.NOTE and creative_snapshot(state_dict) != request.creative_snapshot:
+        raise _refuse(Refusal.CREATIVE_CHANGED, act=request.act.value)
     holder_now = state.active_runner or None
     if holder_now != facts.holder:
         raise _refuse(Refusal.HOLDER_CHANGED, act=request.act.value)
