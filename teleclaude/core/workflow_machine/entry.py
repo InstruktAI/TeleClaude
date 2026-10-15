@@ -362,8 +362,13 @@ def _apply_claim(
     }
     if phase is Phase.PREPARED or stale_stamp:
         new_state[LIFECYCLE_PHASE_STATE_KEY] = LifecyclePhase.WORK.value
+    elif phase is Phase.PREPARATION and state.lifecycle_phase in _HEAD_DEPENDENT_STORED:
+        new_state[LIFECYCLE_PHASE_STATE_KEY] = LifecyclePhase.PREPARATION.value
     return ItemChange(state=new_state, log_entry=_claim_log(entry, request.item))
 
+
+_HEAD_DEPENDENT_STORED: Final = frozenset({LifecyclePhase.FINALIZE_READY, LifecyclePhase.REVIEW_APPROVED})
+"""Legacy stored phases whose reading follows the integration head: a preparation claim stores what it read."""
 
 CLAIM_LOG_TEMPLATE: Final = (
     "\n### {at} — {role} · {session} · claim\n\n{item} claimed by {role} session {session}{branch}.\n"
