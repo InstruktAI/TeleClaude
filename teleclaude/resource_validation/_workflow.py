@@ -8,10 +8,11 @@ are live; every slug with pending material has its own target view in which its 
 drivers is complete: every driven phase has exactly one driver and every declared child is a
 procedure of that view with a usable entry.
 
-Whether the current view must declare drivers is decided by the current contract: once the
-item-lifecycle spec is itself live, the lifecycle machine governs and the current view is checked
-whatever pending material exists. Before then the machine is being staged, and the current view is
-checked only when it declares drivers.
+Whether a view must declare drivers is decided by the contract in that view: where the
+item-lifecycle spec is itself live, the lifecycle machine governs and the view is checked whatever
+pending material exists, so a target that removes every driver is checked too. Where the spec is
+still pending, or a target retires it, the machine is being staged and a view is checked only when it
+declares drivers.
 """
 
 from __future__ import annotations
@@ -68,11 +69,36 @@ class ProcedureRow:
 
 
 @dataclass(frozen=True)
+class AuthorityRow:
+    """A file of the snippet that makes the lifecycle machine govern: its pending carrier, if any."""
+
+    companion_slug: str | None = None
+    retirement: bool = False
+    delivered_by: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class WorkflowCorpus:
-    """The procedure files of a publication and whether its current contract makes the lifecycle machine govern."""
+    """The procedure files of a publication and the files of the contract that makes the machine govern."""
 
     rows: Sequence[ProcedureRow]
-    governing: bool
+    authority: Sequence[AuthorityRow]
+
+
+def _governs(authority: Iterable[AuthorityRow], slug: str | None) -> bool:
+    """Whether the lifecycle contract is live in one view: the current one, or one delivery's target."""
+    live = False
+    for row in authority:
+        if row.companion_slug is None and not row.delivered_by:
+            live = True
+    if slug is None:
+        return live
+    for row in authority:
+        if row.companion_slug == slug:
+            live = not row.retirement
+        elif row.companion_slug is None and slug in row.delivered_by:
+            live = True
+    return live
 
 
 def _view(rows: Iterable[ProcedureRow], slug: str | None) -> dict[str, ProcedureRow]:
@@ -131,21 +157,22 @@ def validate_workflow_drivers(corpus: WorkflowCorpus) -> None:
     slugs = sorted(
         {row.companion_slug for row in materials if row.companion_slug is not None}
         | {slug for row in materials for slug in row.delivered_by}
+        | {row.companion_slug for row in corpus.authority if row.companion_slug is not None}
+        | {slug for row in corpus.authority for slug in row.delivered_by}
     )
-    declaring = {
-        slug: view for slug, view in ((slug, _view(materials, slug)) for slug in slugs) if _declares_drivers(view)
-    }
-    if corpus.governing or _declares_drivers(current):
+    if _governs(corpus.authority, None) or _declares_drivers(current):
         _check_view(current, VIEW_FIELD_CURRENT)
-    for slug, view in declaring.items():
-        _check_view(view, slug)
+    for slug in slugs:
+        view = _view(materials, slug)
+        if _governs(corpus.authority, slug) or _declares_drivers(view):
+            _check_view(view, slug)
 
 
 def collect_procedure_rows(snippet_roots: Iterable[Path], project_root: Path, domains: Iterable[str]) -> WorkflowCorpus:
-    """Every procedure snippet file under the roots, companions included, and whether the machine governs."""
+    """Every procedure snippet file under the roots, companions included, and the files of the governing contract."""
     known_domains = set(domains)
     rows: list[ProcedureRow] = []
-    governing = False
+    authority: list[AuthorityRow] = []
     for snippets_root in snippet_roots:
         for path in sorted(snippets_root.rglob(MARKDOWN_GLOB)):
             if path.name == INDEX_FILENAME or is_excluded_snippet_path(path, snippets_root):
@@ -155,7 +182,9 @@ def collect_procedure_rows(snippet_roots: Iterable[Path], project_root: Path, do
                 continue
             slug = companion_slug(path)
             if classification.id == WORKFLOW_AUTHORITY_ID:
-                governing = governing or (slug is None and not _delivered_by(path))
+                authority.append(
+                    AuthorityRow(slug, is_retirement_companion(path), _delivered_by(path) if slug is None else ())
+                )
             if classification.type is not SnippetTaxonomy.PROCEDURE:
                 continue
             if is_retirement_companion(path):
@@ -173,7 +202,7 @@ def collect_procedure_rows(snippet_roots: Iterable[Path], project_root: Path, do
                     delivered_by=_slugs(metadata.get(DELIVERED_BY_KEY)),
                 )
             )
-    return WorkflowCorpus(rows=rows, governing=governing)
+    return WorkflowCorpus(rows=rows, authority=authority)
 
 
 def _metadata(path: Path) -> Mapping[str, object] | None:
