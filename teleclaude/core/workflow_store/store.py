@@ -27,6 +27,7 @@ from .types import (
     ExpiredRemovedItem,
     IdentityResolution,
     ItemChange,
+    PendingEffectItem,
     PurgedItem,
     RemovalRequest,
     StoreCapabilities,
@@ -91,6 +92,8 @@ class WorkflowStore(Protocol):
         deleted_artifacts: list[str],
     ) -> None: ...
     async def rename_item(self, old_slug: str, new_slug: str) -> None: ...
+    async def list_items_with_pending_effects(self) -> list[PendingEffectItem]: ...
+    async def clear_pending_effect(self, todo_id: str, effect_id: str) -> None: ...
     async def commit_item_change(
         self,
         slug: str,

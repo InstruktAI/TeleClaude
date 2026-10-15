@@ -2,20 +2,30 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
+from datetime import UTC, datetime
 from typing import Protocol
 
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_LOG, TodoStatus
 from teleclaude.core.next_machine._types import StateValue
-from teleclaude.core.todos_db._models import Todo
-from teleclaude.core.workflow_store.types import ArtifactRevisionMismatch, ItemChange, TodoDiagnosticRecord
+from teleclaude.core.todos_db._models import TODO_STATE_TABLE, TODO_TABLE, Todo, TodoStateModel
+from teleclaude.core.workflow_store.types import (
+    ArtifactRevisionMismatch,
+    ItemChange,
+    PendingEffectItem,
+    TodoDiagnosticRecord,
+)
+from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, workflow_record_of
 from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, LIFECYCLE_PHASE_STATE_KEY
 
 _TODO_UPDATED_EVENT = "todo_updated"
 _BEGIN_IMMEDIATE_SQL = "BEGIN IMMEDIATE"
+_PENDING_EFFECTS_MARKER = '%"pending_effects": [{%'  # the serialized form of a non-empty pending-effect list
 _STATE_RENAME_FAILURE = "state rename failed for {slug!r}"
 _ARTIFACT_RENAME_FAILURE = "artifact rename failed for {slug!r}"
 _TODO_RENAME_FAILURE = "todo rename failed for {slug!r}"
@@ -94,7 +104,46 @@ class _DiagnosticRecordHost(Protocol):
     ) -> list[Todo]: ...
 
 
+class _EffectHost(Protocol):
+    def _session(self) -> AbstractAsyncContextManager[SqlAsyncSession]: ...
+
+
 class TodosDbWorkflowOperationsMixin:
+    async def list_items_with_pending_effects(self: _EffectHost) -> list[PendingEffectItem]:
+        """Every item row, whatever its status, whose state holds effects the machine has not finished."""
+        async with self._session() as session:
+            rows = await session.exec(
+                select(TODO_STATE_TABLE.c.id, TODO_STATE_TABLE.c.slug, TODO_TABLE.c.status)
+                .join(TODO_TABLE, TODO_STATE_TABLE.c.id == TODO_TABLE.c.id)
+                .where(TODO_STATE_TABLE.c.state.like(_PENDING_EFFECTS_MARKER))
+            )
+            return [PendingEffectItem(todo_id=row[0], slug=row[1], status=str(row[2])) for row in rows.all()]
+
+    async def clear_pending_effect(self: _EffectHost, todo_id: str, effect_id: str) -> None:
+        """Remove one finished effect from an item row addressed by its durable id, under the writer lock."""
+        async with self._session() as session:
+            connection = await session.connection()
+            await connection.exec_driver_sql(_BEGIN_IMMEDIATE_SQL)
+            try:
+                state_model = await session.get(TodoStateModel, todo_id)
+                if state_model is None:
+                    await session.rollback()
+                    return
+                payload = json.loads(state_model.state)
+                record = workflow_record_of(payload)
+                updated = record.without_effect(effect_id)
+                if updated == record:
+                    await session.rollback()
+                    return
+                payload[WORKFLOW_STATE_KEY] = updated.to_state()
+                state_model.state = json.dumps(payload, default=str)
+                state_model.updated_at = datetime.now(UTC).isoformat()
+                session.add(state_model)
+                await session.commit()
+            except BaseException:
+                await session.rollback()
+                raise
+
     async def read_todo_diagnostic_record(
         self: _DiagnosticRecordHost,
         slug: str,

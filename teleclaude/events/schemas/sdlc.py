@@ -279,7 +279,7 @@ class TodoClaimChanged(PlatformEvent[TodoRef, TodoClaimChangedData]):
 
 class TodoHeadAdvanced(PlatformEvent[TodoRef, TodoHeadAdvancedData]):
     NAME = "sdlc.todo.head_advanced"
-    DESCRIPTION = "A commit was observed on a workflow todo's integration ref and its work driver reviews it"
+    DESCRIPTION = "A commit was observed on a workflow todo's integration ref"
     HOME_KINDS = _PROJECT_HOME
 
 

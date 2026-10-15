@@ -25,6 +25,15 @@ class ItemChange:
     log_entry: str = ""
 
 
+@dataclass(frozen=True)
+class PendingEffectItem:
+    """An item row, whatever its status, that holds effects the workflow machine has not finished."""
+
+    todo_id: str
+    slug: str
+    status: str
+
+
 class ArtifactRevisionMismatch(Exception):
     """An artifact is not at the revision an atomic change required; nothing was written."""
 

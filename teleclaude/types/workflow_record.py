@@ -10,8 +10,13 @@ owned by ``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Final, cast
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from teleclaude.types.state_value import StateValue
+
+JSON_MODE: Final = "json"
 
 
 class Phase(StrEnum):
@@ -24,6 +29,14 @@ class Phase(StrEnum):
     READY = "ready"
     DELIVERED = "delivered"
     DESIGN = "design"
+
+
+class DrivenPhase(StrEnum):
+    """The phases a driver procedure drives; an item waiting in a phase is driven by that phase's driver."""
+
+    PREPARATION = "preparation"
+    PREPARED = "prepared"
+    WORK = "work"
 
 
 class WaitedPhase(StrEnum):
@@ -208,3 +221,25 @@ class WorkflowRecord(BaseModel):
     observed_heads: list[ObservedHead] = Field(default_factory=list)
     publish_intents: list[PublishIntent] = Field(default_factory=list)
     offered_findings: list[OfferedFinding] = Field(default_factory=list)
+
+    def with_effect(self, effect: PendingEffect) -> WorkflowRecord:
+        """A copy with the effect appended to the pending list."""
+        updated = self.model_copy(deep=True)
+        updated.pending_effects.append(effect)
+        return updated
+
+    def without_effect(self, effect_id: str) -> WorkflowRecord:
+        """A copy with the effect removed from the pending list; unchanged when it is not pending."""
+        updated = self.model_copy(deep=True)
+        updated.pending_effects = [effect for effect in updated.pending_effects if effect.id != effect_id]
+        return updated
+
+    def with_claim_change(self, effect: PendingEffect) -> WorkflowRecord:
+        """A copy for the next claim epoch carrying the claim-change effect."""
+        updated = self.with_effect(effect)
+        updated.claim_epoch += 1
+        return updated
+
+    def to_state(self) -> dict[str, StateValue]:
+        """The record in the form an item's persisted state holds."""
+        return cast(dict[str, StateValue], self.model_dump(mode=JSON_MODE))

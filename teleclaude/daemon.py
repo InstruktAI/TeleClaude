@@ -243,7 +243,7 @@ from teleclaude.core.task_registry import TASK_REGISTRY_SHUTDOWN_TIMEOUT_S, Supe
 _record_import_timing("teleclaude.core.task_registry", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.workflow_machine.effects import reconcile_supervised
+from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_store.store import WorkflowStore, set_workflow_store_mutation_hook
 
 _record_import_timing("teleclaude.core.todos_db", _t)
@@ -824,7 +824,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     return
                 loop.call_soon_threadsafe(
                     lambda: self.task_registry.spawn(
-                        reconcile_supervised(project_root, slug), name=_CLAIM_RECONCILE_TASK.format(slug=slug)
+                        reconcile_slug_supervised(project_root, slug), name=_CLAIM_RECONCILE_TASK.format(slug=slug)
                     )
                 )
 

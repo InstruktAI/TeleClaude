@@ -15,7 +15,7 @@ from typing import NotRequired, TypedDict
 from teleclaude.agent_registry import AgentName
 from teleclaude.core.roles import Role, resolve_role
 from teleclaude.helpers.agent_types import ThinkingMode
-from teleclaude.types.workflow_record import Act, Phase, WaitedPhase
+from teleclaude.types.workflow_record import Act, DrivenPhase, Phase
 
 
 class EntryKey(StrEnum):
@@ -30,7 +30,7 @@ class EntryKey(StrEnum):
 class WorkflowKey(StrEnum):
     """The keys of a driver procedure's workflow declaration."""
 
-    PHASE = "phase"
+    DRIVES = "drives"
     CHILD = "child"
     ACTS = "acts"
 
@@ -75,7 +75,9 @@ class EntryFinding(StrEnum):
     DISPATCH_MODE_UNKNOWN = "snippet_dispatch_mode_unknown"
     DISPATCH_WITHOUT_ROLE = "snippet_dispatch_without_role"
     WORKFLOW_INVALID_VALUE = "snippet_workflow_invalid_value"
+    WORKFLOW_DRIVES_EMPTY = "snippet_workflow_drives_empty"
     WORKFLOW_PHASE_UNKNOWN = "snippet_workflow_phase_unknown"
+    WORKFLOW_PHASE_DUPLICATE = "snippet_workflow_phase_duplicate"
     WORKFLOW_CHILD_MISSING = "snippet_workflow_child_missing"
     WORKFLOW_ACTS_EMPTY = "snippet_workflow_acts_empty"
     WORKFLOW_ACT_UNKNOWN = "snippet_workflow_act_unknown"
@@ -124,9 +126,9 @@ class EndingAct:
 
 @dataclass(frozen=True)
 class WorkflowDeclaration:
-    """A driver procedure's part in the item lifecycle: its phase, the child it dispatches and its ending acts."""
+    """A driver procedure's part in the item lifecycle: the phases it drives, the child it dispatches and its ending acts."""
 
-    phase: WaitedPhase
+    drives: tuple[DrivenPhase, ...]
     child: str
     acts: tuple[EndingAct, ...]
 
@@ -258,24 +260,39 @@ def _parse_ending_acts(raw: object) -> tuple[tuple[EndingAct, ...], list[EntryFi
     return tuple(acts), findings
 
 
+def _parse_driven_phases(raw: object) -> tuple[tuple[DrivenPhase, ...], list[EntryFindingDetail]]:
+    if not isinstance(raw, list) or not raw:
+        return (), [EntryFindingDetail(EntryFinding.WORKFLOW_DRIVES_EMPTY)]
+    findings: list[EntryFindingDetail] = []
+    phases: list[DrivenPhase] = []
+    for item in raw:
+        try:
+            phase = DrivenPhase(item)
+        except ValueError:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_PHASE_UNKNOWN, str(item)))
+            continue
+        if phase in phases:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_PHASE_DUPLICATE, phase.value))
+            continue
+        phases.append(phase)
+    return tuple(phases), findings
+
+
 def _parse_workflow(raw: object) -> tuple[WorkflowDeclaration | None, list[EntryFindingDetail]]:
     known_keys = {key.value for key in WorkflowKey}
     if not isinstance(raw, Mapping) or set(raw) != known_keys:
         return None, [EntryFindingDetail(EntryFinding.WORKFLOW_INVALID_VALUE)]
     findings: list[EntryFindingDetail] = []
-    phase: WaitedPhase | None = None
-    try:
-        phase = WaitedPhase(raw[WorkflowKey.PHASE])
-    except ValueError:
-        findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_PHASE_UNKNOWN, str(raw[WorkflowKey.PHASE])))
+    drives, drive_findings = _parse_driven_phases(raw[WorkflowKey.DRIVES])
+    findings.extend(drive_findings)
     child = raw[WorkflowKey.CHILD]
     if not isinstance(child, str) or not child.strip():
         findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_CHILD_MISSING))
     acts, act_findings = _parse_ending_acts(raw[WorkflowKey.ACTS])
     findings.extend(act_findings)
-    if findings or phase is None or not isinstance(child, str):
+    if findings or not isinstance(child, str):
         return None, findings
-    return WorkflowDeclaration(phase=phase, child=child.strip(), acts=acts), findings
+    return WorkflowDeclaration(drives=drives, child=child.strip(), acts=acts), findings
 
 
 def parse_entry_declarations(metadata: Mapping[str, object]) -> EntryParse:
@@ -354,7 +371,7 @@ class EndingActPayload(TypedDict):
 class WorkflowPayload(TypedDict):
     """The workflow declaration as published and read back."""
 
-    phase: str
+    drives: list[str]
     child: str
     acts: list[EndingActPayload]
 
@@ -385,7 +402,7 @@ def entry_payload(declarations: EntryDeclarations) -> EntryPayload:
 
 def _workflow_payload(workflow: WorkflowDeclaration) -> WorkflowPayload:
     return WorkflowPayload(
-        phase=workflow.phase.value,
+        drives=[phase.value for phase in workflow.drives],
         child=workflow.child,
         acts=[EndingActPayload(act=ending.act.value, leads_to=ending.leads_to.value) for ending in workflow.acts],
     )
