@@ -270,7 +270,7 @@ def _prepare_run_session(
         if activation is not None:
             entry, company = activation.entry, activation.company
             entry_point = SessionEntryPoint.PROCEDURE_ACTIVATION
-    session_id = str(uuid.uuid4())
+    session_id = request.session_id or str(uuid.uuid4())
     try:
         resolved = resolve_entry(
             procedure_token=procedure_token,
@@ -544,6 +544,10 @@ async def _run_session(
 
     ``pinned`` is set only by a daemon-side caller that resolved it from the authenticated holder's own record.
     """
+    if request.session_id:
+        existing = await _existing_run(request.session_id)
+        if existing is not None:
+            return existing
     request_id = str(uuid.uuid4())
     command_kind = request.command.lstrip(COMMAND_PREFIX) or None
     request_entry_point = SessionEntryPoint.CRON if request.job is not None else entry_point
@@ -712,6 +716,19 @@ async def _run_session(
             raise refusal from e
         logger.error("run_session failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to run session: {e}") from e
+
+
+async def _existing_run(session_id: str) -> CreateSessionResponseDTO | None:
+    """The session an idempotent run names, when it already exists, open or ended; nothing is started again."""
+    existing = await db.get_session(session_id)
+    if existing is None:
+        return None
+    return CreateSessionResponseDTO(
+        status="success",
+        session_id=existing.session_id,
+        tmux_session_name=existing.tmux_session_name or "",
+        agent=existing.active_agent,
+    )
 
 
 async def run_pinned_session(

@@ -973,6 +973,13 @@ class RunSessionRequest(BaseModel):
     additional_context: str = ""
     company: str | None = None
     job: str | None = Field(default=None, description="Configured job name when the run is a scheduled job entry")
+    session_id: str | None = Field(
+        default=None,
+        description=(
+            "Caller-chosen identity that makes the run idempotent: a session of this id, open or ended, is returned "
+            "and nothing is started again"
+        ),
+    )
 
 
 class AgentStatusRequest(BaseModel):

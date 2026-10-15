@@ -24,7 +24,7 @@ from teleclaude.core.workflow_machine.caller import child_sessions_of, load_call
 from teleclaude.core.workflow_machine.dependencies import unmet_for_preparation, unmet_for_work
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.heads import observe_item_supervised
-from teleclaude.core.workflow_machine.helpers import earlier_claim_sessions
+from teleclaude.core.workflow_machine.helpers import earlier_claim_sessions, unsettled_helper_starts
 from teleclaude.core.workflow_machine.instruction import InstructionFacts, render_instruction
 from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.ledger_log import render_log_entry
@@ -110,6 +110,10 @@ class EntryRefusal(StrEnum):
         "{item}: a driver start requested by {requester} is in progress; it is attached to by its own requester"
     )
     CLOSING = "{item}: its claim is closing, so no helper is started"
+    EARLIER_START = (
+        "{item}: a helper start accepted under an earlier claim has not produced its session yet; "
+        "no driver is started until it settles, and a start that cannot settle is the overseer's to resolve"
+    )
     EARLIER_CLAIM = (
         "{item}: session {session} of an earlier claim is still running on it; it is the overseer's to resolve, "
         "and no driver is started until it has ended"
@@ -346,6 +350,8 @@ def _apply_claim(
     holder = state.active_runner or None
     if holder is not None:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
+    if unsettled_helper_starts(state.workflow):
+        raise _refuse(EntryRefusal.EARLIER_START, item=request.item)
     launch = state.workflow.launch
     if launch is None:
         raise _refuse(EntryRefusal.NO_LAUNCH, item=request.item)
@@ -373,6 +379,7 @@ def _apply_claim(
     record.dispatched = {}
     record.dispatch_recipients = []
     record.dispatched_phase = ""
+    record.dispatch_workers = []
     stale_stamp = phase is Phase.WORK and state.lifecycle_phase is LifecyclePhase.READY
     carried_stale = phase is Phase.PREPARATION and state.lifecycle_phase is LifecyclePhase.READY
     if stale_stamp or carried_stale:
@@ -434,6 +441,8 @@ def _apply_reservation(
     state = TodoState.model_validate(state_dict)
     reading = read_phase(state, request.resolved_lane)
     phase = _check_drivable(request, state, reading, starting=True)
+    if phase is not Phase.READY and unsettled_helper_starts(state.workflow):
+        raise _refuse(EntryRefusal.EARLIER_START, item=request.item)
     holder = state.active_runner or None
     if holder is not None and phase is not Phase.READY:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)

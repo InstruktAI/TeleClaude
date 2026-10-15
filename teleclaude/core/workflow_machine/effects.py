@@ -16,13 +16,14 @@ from typing import Any, Final
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.machine import config
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
-from teleclaude.core.process_identity import ProcessState, probe_process
 from teleclaude.core.workflow_machine.caller import group_sessions_of
+from teleclaude.core.workflow_machine.helpers import unsettled_helper_starts
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange, PendingEffectItem
 from teleclaude.events.catalog import PlatformEvent
@@ -53,7 +54,7 @@ from teleclaude.types.claim_change import (
 )
 from teleclaude.types.commands import CloseSessionCommand
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.workflow_record import EffectKind, EmittedEvent, PendingEffect, WaitedPhase, WorkflowRecord
+from teleclaude.types.workflow_record import EffectKind, EmittedEvent, PendingEffect, WaitedPhase
 
 logger = get_logger(__name__)
 
@@ -77,13 +78,23 @@ SESSION_PARAM: Final = "session_id"
 INSTRUCTION_PARAM: Final = "instruction"
 PHASE_PARAM: Final = "creative_phase"
 WORKER_COMMAND_PARAM: Final = "worker_command"
+WORKER_IDENTITY: Final = "creative-worker"
 WORKER_ARGS_PARAM: Final = "worker_args"
 WORKER_PROJECT_PARAM: Final = "worker_project"
 DISPATCHED_TEMPLATE: Final = (
     "CREATIVE_DISPATCHED: {slug}\n\n"
-    "The platform started the creative worker session {session} for this phase. When the worker idles, call\n"
-    "`telec todo design {slug}`; the state machine emits the next action."
+    "The platform started the creative worker session {session} for this phase and registered session {owner}, the one\n"
+    "above you, to hear when it idles. That session continues the lane with `telec todo design {slug}`; you have handed\n"
+    "the item on and do not start further sessions for it."
 )
+DISPATCHED_UNOWNED_TEMPLATE: Final = (
+    "CREATIVE_DISPATCHED: {slug}\n\n"
+    "The platform started the creative worker session {session} for this phase. No open session above you listens for\n"
+    "it, so nothing continues the lane by itself: when the worker has finished, a person or a session that is not part\n"
+    "of this claim calls `telec todo design {slug}`; you have handed the item on and do not start further sessions."
+)
+OWNER_WALK_CAP: Final = 32
+NO_OWNER: Final = ("", "")
 
 EFFECT_FAILED_LOG: Final = "workflow effect failed; the reconciler retries it with the same identity"
 ITEM_FAILED_LOG: Final = "workflow effect reconciliation failed for an item"
@@ -272,21 +283,6 @@ async def _end_session(context: EffectContext, effect: PendingEffect) -> None:
         raise EffectNotFinished(effect.id)
 
 
-def _starts_in_flight(record: WorkflowRecord) -> bool:
-    """Whether a helper start names no session and the process that creates it may still be running.
-
-    Time is no evidence that a creation ended. The creation runs in the process that recorded the start, so only that
-    process's end proves it can never produce a session; a start whose process is gone is settled, and a session it
-    created is found by the listing of the holder's group. Only positive evidence settles a start: a start whose
-    process cannot be named, or whose probe could not read it, stays pending.
-    """
-    return any(
-        not start.session_id
-        and (not start.owner_identity or probe_process(start.owner_pid, start.owner_identity) is not ProcessState.ENDED)
-        for start in record.helper_starts
-    )
-
-
 async def _sweep_helpers(context: EffectContext, effect: PendingEffect) -> None:
     """End every live session started from the holder, transitively, and wait for each recorded start to settle.
 
@@ -296,7 +292,7 @@ async def _sweep_helpers(context: EffectContext, effect: PendingEffect) -> None:
     holder = effect.params[SESSION_PARAM]
     for _ in range(SWEEP_ROUNDS):
         state = await context.store.read_state_by_id(context.item.todo_id)
-        in_flight = state is not None and _starts_in_flight(workflow_record_of(state))
+        in_flight = state is not None and bool(unsettled_helper_starts(workflow_record_of(state)))
         live = await group_sessions_of(holder)
         if not live and not in_flight:
             return
@@ -311,59 +307,92 @@ async def _ensure_worktree(context: EffectContext, effect: PendingEffect) -> Non
     await ensure_worktree_with_policy_async(context.project_root, context.item.slug)
 
 
-async def _started_worker(context: EffectContext, effect: PendingEffect) -> str:
-    """The creative worker session the dispatch runs, or empty when the phase starts none.
+async def _continuation_owner(recipient: str) -> tuple[str, str]:
+    """The nearest open session above the dispatch's recipient and its tmux name; empty when no session is above it.
 
-    A live session of the same command on the item's creative workspace is adopted instead of starting a second, so a
-    retry after a crash between the start and the record starts nothing twice. The worker is started by the platform with
+    The recipient has handed the item on and does not continue the creative lane: the session that started it, or the
+    nearest open one above, is told when the worker idles and calls the next step.
+    """
+    current = recipient
+    for _ in range(OWNER_WALK_CAP):
+        session = await db.get_session(current)
+        if session is None or not session.initiator_session_id:
+            return NO_OWNER
+        current = session.initiator_session_id
+        owner = await db.get_session(current)
+        if owner is not None and owner.closed_at is None:
+            return owner.session_id, owner.tmux_session_name or NO_OWNER[1]
+    return NO_OWNER
+
+
+async def _started_worker(context: EffectContext, effect: PendingEffect) -> tuple[str, str]:
+    """The creative worker session the dispatch runs and the session that continues the lane; empty when none starts.
+
+    The session's identity is derived from the durable effect and the owning project, so the start is idempotent
+    wherever it is interrupted: a session of that identity, open or already ended, is adopted and nothing is started
+    twice, and two concurrent reconciliations contend on the one identity. The worker is started by the platform with
     the daemon's own credential, as the lifecycle runner starts a driver, so it is the creative lane's session and
-    not a helper of the holder's claim.
+    not a helper of the holder's claim; the continuing session is registered to hear when it idles.
     """
     from teleclaude.core.next_machine.lifecycle_runner import (  # noqa: PLC0415 - deferred cycle: the runner reads this package
         default_session_runner,
     )
-    from teleclaude.core.next_machine.runtime.sessions import (  # noqa: PLC0415 - deferred cycle: sessions read the store
-        find_live_session_for_slug,
+    from teleclaude.core.session_listeners import (  # noqa: PLC0415 - deferred cycle: listeners read the session store
+        establish_supervision,
     )
 
     command = effect.params.get(WORKER_COMMAND_PARAM, "")
     if not command:
-        return ""
-    slug = context.item.slug
-    existing = await find_live_session_for_slug(db, slug, command, subdir_override=f"workspace/{slug}")
-    if existing is not None:
-        return existing
+        return NO_OWNER[0], NO_OWNER[0]
+    session_id = occurrence_id(context.project_root, context.item.todo_id, effect.id, WORKER_IDENTITY)
+    owner_id, owner_tmux = await _continuation_owner(effect.params[SESSION_PARAM])
+    if await db.get_session(session_id) is not None:
+        return session_id, owner_id
     client = default_session_runner()
     await client.connect()
     try:
-        created = await client.run_session(
+        await client.run_session(
             command=command,
             project_path=effect.params[WORKER_PROJECT_PARAM],
             args=effect.params[WORKER_ARGS_PARAM],
             detach=True,
+            session_id=session_id,
         )
+    except Exception:
+        if await db.get_session(session_id) is None:
+            raise
     finally:
         await client.close()
-    return str(created.session_id)
+    if owner_id:
+        await establish_supervision(
+            session_id,
+            owner_id,
+            owner_tmux,
+            caller_computer=config.computer.name,
+            startup_work_expected=True,
+        )
+    return session_id, owner_id
 
 
 async def _creative_dispatch(context: EffectContext, effect: PendingEffect) -> None:
     """The creative dispatch of the holder's handoff, performed by the platform after the sweep and before the release.
 
-    For a phase that starts a worker, the worker is started here; for every other phase the instruction committed with
-    the handoff is the dispatch. The outcome is written once, keyed by the act, and the caller reads it from the item: a
-    lost response, a repeated call or a restart returns the same committed outcome. Repeating the effect starts and
-    writes nothing twice.
+    For a phase that starts a worker, the worker is started here, recorded on the item as a live session of the lane,
+    and the session that continues the lane is registered to hear when it idles; for every other phase the instruction
+    committed with the handoff is the dispatch. The outcome is written once, keyed by the act, and the caller reads it
+    from the item: a lost response, a repeated call or a restart returns the same committed outcome. Repeating the
+    effect starts and writes nothing twice.
     """
     state = await context.store.read_state_by_id(context.item.todo_id)
     if state is not None and effect.act_key in workflow_record_of(state).dispatched:
         return
-    worker_session = await _started_worker(context, effect)
-    outcome = (
-        DISPATCHED_TEMPLATE.format(slug=context.item.slug, session=worker_session)
-        if worker_session
-        else effect.params[INSTRUCTION_PARAM]
-    )
+    worker_session, owner = await _started_worker(context, effect)
+    if not worker_session:
+        outcome = effect.params[INSTRUCTION_PARAM]
+    elif owner:
+        outcome = DISPATCHED_TEMPLATE.format(slug=context.item.slug, session=worker_session, owner=owner)
+    else:
+        outcome = DISPATCHED_UNOWNED_TEMPLATE.format(slug=context.item.slug, session=worker_session)
 
     def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
         if current is None:
@@ -375,6 +404,8 @@ async def _creative_dispatch(context: EffectContext, effect: PendingEffect) -> N
         recipient = effect.params[SESSION_PARAM]
         if recipient not in record.dispatch_recipients:
             record.dispatch_recipients.append(recipient)
+        if worker_session and worker_session not in record.dispatch_workers:
+            record.dispatch_workers.append(worker_session)
         record.dispatched_phase = effect.params[PHASE_PARAM]
         return ItemChange(state={**current, WORKFLOW_STATE_KEY: record.to_state()})
 

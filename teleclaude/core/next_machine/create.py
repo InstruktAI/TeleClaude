@@ -25,6 +25,7 @@ from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions
 from teleclaude.core.workflow_machine.creative import CreativeCapability, open_episode
 from teleclaude.core.workflow_machine.creative_commit import Handoff, hand_off_to_creative, open_creative_episode
 from teleclaude.types.claim_change import workflow_record_of
+from teleclaude.types.workflow_record import EffectKind
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -64,8 +65,13 @@ def _committed_dispatch(state: Mapping[str, StateValue], caller_session_id: str,
     a later creative phase is the next call of the lane and gets its own instruction.
     """
     record = workflow_record_of(state)
+    owed = {EffectKind.SWEEP_HELPERS, EffectKind.CREATIVE_DISPATCH, EffectKind.RELEASE_CLAIM}
+    finished = state.get("active_runner") != caller_session_id and not any(
+        effect.kind in owed for effect in record.pending_effects
+    )
     if (
-        caller_session_id
+        finished
+        and caller_session_id
         and caller_session_id in record.dispatch_recipients
         and record.dispatched
         and record.dispatched_phase == phase.value

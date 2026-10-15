@@ -747,6 +747,8 @@ class _TelecSessionAPI:
         job = kwargs.get("job")
         if job is not None:
             request_data["job"] = job
+        if "session_id" in kwargs:
+            request_data["session_id"] = kwargs["session_id"]
         request = RunSessionRequest.model_validate(request_data)
         if "agent" in kwargs:
             request = request.model_copy(update={"agent": kwargs["agent"]})

@@ -339,6 +339,7 @@ class WorkflowRecord(BaseModel):
     dispatched: dict[str, str] = Field(default_factory=dict)
     dispatch_recipients: list[str] = Field(default_factory=list)
     dispatched_phase: str = ""
+    dispatch_workers: list[str] = Field(default_factory=list)
 
     def with_effect(self, effect: PendingEffect) -> WorkflowRecord:
         """A copy with the effect appended to the pending list."""
