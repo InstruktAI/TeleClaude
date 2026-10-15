@@ -175,9 +175,7 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
         )
 
 
-INTENT_UNCLAIMED = (
-    "{slug} has no holder: an agent session edits the intent body only through the driver that holds the item"
-)
+INTENT_UNCLAIMED = "{slug} has no holder: the intent body is edited only by the driver that holds the item"
 INTENT_FOREIGN = "{slug} is held by session {holder}; the intent body is edited only by the holder or a session of its claiming group"
 INTENT_HELD_READY = "{slug} is ready: a held ready item admits no edit of its intent body"
 SESSION_ANCESTRY_CAP = 32
@@ -203,11 +201,11 @@ async def session_ancestry(session_id: str) -> frozenset[str]:
 def intent_body_mutation(
     slug: str, ancestry: frozenset[str]
 ) -> Callable[[dict[str, StateValue] | None], ItemChange | None]:
-    """The authority of an agent session over the intent body, decided on the row the write's transaction reads.
+    """The authority over the intent body of an item outside the task lane, on the row the write's transaction reads.
 
-    Only the holder, or a session of its claiming group, edits the body; no role alone grants it. An unclaimed item,
-    a session with no claim and a session of an earlier claiming group have none, and a held ready item admits no
-    edit (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``, Helpers of a driver). The mutation
+    Only the holder, or a session of its claiming group, edits the body; no role, terminal or principal alone grants
+    it. An unclaimed item, a caller with no session, a session with no claim and a session of an earlier claiming
+    group have none, and a held ready item admits no edit (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``, Helpers of a driver). The mutation
     changes no state: it only refuses, before the body is written.
     """
 

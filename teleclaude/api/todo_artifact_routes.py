@@ -172,20 +172,22 @@ async def write_artifact(
     await require_slug_in_todo(todos_db, slug)
     raw_for_lane = await todos_db.read_state(slug) if name == ARTIFACT_INPUT else None
     in_task_lane = raw_for_lane is not None and raw_for_lane.get("kind") == TodoKind.TASK
-    intent_by_session = name == ARTIFACT_INPUT and bool(identity.session_id) and not in_task_lane
-    if not intent_by_session:
+    intent_body_write = name == ARTIFACT_INPUT and not in_task_lane
+    if not intent_body_write:
         await refuse_foreign_claim(todos_db, identity, slug)
         if name in PREPARE_ARTIFACT_NAMES:
             await refuse_non_prepare_writer(identity, slug, name)
     effective_updated_by = resolved_write_principal(identity)
     try:
-        if intent_by_session:
+        if intent_body_write:
             await todos_db.write_artifact_with_state_change(
                 slug,
                 name,
                 content,
                 updated_by=effective_updated_by,
-                mutate=intent_body_mutation(slug, await session_ancestry(identity.session_id)),
+                mutate=intent_body_mutation(
+                    slug, await session_ancestry(identity.session_id) if identity.session_id else frozenset()
+                ),
             )
         elif name == ARTIFACT_DESIGN_SPEC:
             await todos_db.write_artifact_with_state_change(
