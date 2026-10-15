@@ -32,6 +32,11 @@ _LEASE_TEMPLATE = "--force-with-lease=refs/heads/{branch}:{tip}"
 _SHA_REF_TEMPLATE = "{sha}:refs/heads/{branch}"
 _TRACKING_REF_TEMPLATE = "refs/remotes/origin/{branch}"
 _GIT_VERIFY = "--verify"
+_GIT_QUIET = "--quiet"
+_GIT_REFLOG = "reflog"
+_GIT_REFLOG_FORMAT = "--format=%H"
+_GIT_REFLOG_LIMIT = "-n100"
+_BRANCH_REF_TEMPLATE = "refs/heads/{branch}"
 _GIT_IS_ANCESTOR = "--is-ancestor"
 _UNINCORPORATED_MESSAGE = (
     "Commit recorded; the todo branch was not published because origin carries work this clone has not "
@@ -48,21 +53,30 @@ def _known_remote_tip(repo: Repo, branch: str) -> str | None:
     the remote moved since this clone last saw it.
     """
     try:
-        tip: str = repo.git.rev_parse(_TRACKING_REF_TEMPLATE.format(branch=branch), _GIT_VERIFY)
+        tip: str = repo.git.rev_parse(_GIT_VERIFY, _GIT_QUIET, _TRACKING_REF_TEMPLATE.format(branch=branch))
         return tip.strip()
     except GitCommandError:
         return NO_TIP
 
 
-def _incorporates(repo: Repo, tip: str, head_sha: str) -> bool:
-    """Whether the commit to push contains the known remote tip, so the update loses no observed work."""
-    if not tip:
-        return True
+def _is_ancestor(repo: Repo, tip: str, descendant: str) -> bool:
     try:
-        repo.git.merge_base(_GIT_IS_ANCESTOR, tip, head_sha)
+        repo.git.merge_base(_GIT_IS_ANCESTOR, tip, descendant)
     except GitCommandError:
         return False
     return True
+
+
+def _incorporates(repo: Repo, tip: str, head_sha: str, branch: str) -> bool:
+    """Whether this clone has integrated the known remote tip: the commit to push contains it, or a former tip of the branch did.
+
+    The second case is a rebased commit whose branch once carried the tip; it is the case force-if-includes
+    admitted, and the branch's own reflog is the evidence.
+    """
+    if not tip or _is_ancestor(repo, tip, head_sha):
+        return True
+    entries = repo.git.reflog(_GIT_REFLOG_FORMAT, _GIT_REFLOG_LIMIT, _BRANCH_REF_TEMPLATE.format(branch=branch)).split()
+    return any(_is_ancestor(repo, tip, entry) for entry in entries)
 
 
 def _report(path: str, body: Mapping[str, str | bool]) -> object | None:
@@ -127,7 +141,7 @@ def publish_todo_branch(repository_root: Path) -> None:
 
     head_sha = repo.git.rev_parse(_GIT_HEAD).strip()
     expected_tip = _known_remote_tip(repo, expected_branch)
-    if expected_tip is None or not _incorporates(repo, expected_tip, head_sha):
+    if expected_tip is None or not _incorporates(repo, expected_tip, head_sha, expected_branch):
         print(_UNINCORPORATED_MESSAGE, file=sys.stderr)
         logger.warning(
             "code_commit.branch_publish_refused", branch=expected_branch, sha=head_sha, reason="unincorporated"

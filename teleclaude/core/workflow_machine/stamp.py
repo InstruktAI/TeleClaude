@@ -50,6 +50,7 @@ NO_HEAD: Final = ""
 ORIGIN: Final = "origin"
 BRANCH_REF_TEMPLATE: Final = "refs/heads/{branch}"
 REMOTE_READ_TIMEOUT_SECONDS: Final = 10
+REMOTE_READ_FAILED_TEMPLATE: Final = "the integration ref of {item} cannot be read: {reason}"
 
 
 def worktree_path(project_root: str, item: str) -> Path:
@@ -57,26 +58,36 @@ def worktree_path(project_root: str, item: str) -> Path:
     return Path(project_root) / WORKTREE_DIR / item
 
 
+class RemoteReadFailed(Exception):
+    """The branch on origin could not be observed; distinct from observing that it does not exist."""
+
+
 def _read_remote_head(project_root: str, item: str) -> str:
-    """One bounded read of the branch on origin; empty when the remote cannot be read in time."""
+    """One bounded read of the branch on origin; empty only when the remote answered and has no such branch."""
     try:
         output = Repo(project_root).git.ls_remote(
             ORIGIN, BRANCH_REF_TEMPLATE.format(branch=item), kill_after_timeout=REMOTE_READ_TIMEOUT_SECONDS
         )
-    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError):
-        return NO_HEAD
+    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError) as exc:
+        raise RemoteReadFailed(REMOTE_READ_FAILED_TEMPLATE.format(item=item, reason=str(exc).strip())) from exc
     parts = output.strip().split()
     return parts[0] if parts else NO_HEAD
 
 
 async def integration_head(project_root: str, item: str) -> str:
-    """The commit the item's integration ref carries now; empty when it cannot be read within the bound."""
+    """The commit the item's integration ref carries now; empty when it does not exist.
+
+    Raises ``RemoteReadFailed`` when the remote cannot be read within the bound.
+    """
     return await asyncio.to_thread(_read_remote_head, project_root, item)
 
 
 async def check_refs(project_root: str, item: str, sha: str) -> None:
     """Refuse when the integration head, the worktree head and the stamped commit disagree, or the worktree is dirty."""
-    head = await integration_head(project_root, item)
+    try:
+        head = await integration_head(project_root, item)
+    except RemoteReadFailed as failure:
+        raise ActRefused(str(failure)) from failure
     if not head:
         raise ActRefused(StampRefusal.HEAD_UNKNOWN.value.format(item=item))
     if head != sha:
