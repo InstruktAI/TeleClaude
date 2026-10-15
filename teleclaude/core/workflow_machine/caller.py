@@ -63,6 +63,19 @@ async def in_claiming_group(caller_session_id: str, holder_session_id: str) -> b
 
 
 async def child_sessions_of(holder_session_id: str) -> tuple[str, ...]:
-    """The open sessions the holder started: the ones its release or kickback ends."""
+    """The open sessions the holder started directly."""
     children = await db.list_sessions(all_open=True, initiator_session_id=holder_session_id)
     return tuple(child.session_id for child in children)
+
+
+async def group_sessions_of(holder_session_id: str) -> tuple[str, ...]:
+    """Every open session started from the holder, transitively; the holder itself is not among them."""
+    found: list[str] = []
+    frontier = [holder_session_id]
+    while frontier:
+        started = await child_sessions_of(frontier.pop())
+        for session_id in started:
+            if session_id not in found and session_id != holder_session_id:
+                found.append(session_id)
+                frontier.append(session_id)
+    return tuple(found)

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
 from instrukt_ai_logging import get_logger
@@ -21,6 +22,7 @@ from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
+from teleclaude.core.workflow_machine.caller import group_sessions_of
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import PendingEffectItem
 from teleclaude.events.catalog import PlatformEvent
@@ -44,7 +46,7 @@ from teleclaude.events.schemas.sdlc import (
 from teleclaude.events.wire import LegacyFacts
 from teleclaude.types.claim_change import HOLDER_PARAM, NO_HOLDER, PRIOR_HOLDER_PARAM, workflow_record_of
 from teleclaude.types.commands import CloseSessionCommand
-from teleclaude.types.workflow_record import EffectKind, EmittedEvent, PendingEffect, WaitedPhase
+from teleclaude.types.workflow_record import EffectKind, EmittedEvent, PendingEffect, WaitedPhase, WorkflowRecord
 
 logger = get_logger(__name__)
 
@@ -73,6 +75,8 @@ NO_HANDLER_LOG: Final = "workflow effect has no handler"
 NOT_FINISHED_LOG: Final = "workflow effect not finished yet; it stays pending and later effects of the item wait"
 CLOSE_WAIT_SECONDS: Final = 10.0
 CLOSE_POLL_SECONDS: Final = 0.25
+START_DEADLINE_SECONDS: Final = 120
+SWEEP_ROUNDS: Final = 6
 
 
 class EffectNotFinished(Exception):
@@ -232,20 +236,54 @@ async def _await_closed(session_id: str) -> bool:
         await asyncio.sleep(CLOSE_POLL_SECONDS)
 
 
+async def _close_session(session_id: str) -> bool:
+    """Close the session and report whether its lifecycle shows it closed within the bound."""
+    if await _session_is_closed(session_id):
+        return True
+    await dispatch_command(
+        get_command_service().client, CloseSessionCommand(session_id=session_id), principal=SYSTEM_DAEMON_PRINCIPAL
+    )
+    return await _await_closed(session_id)
+
+
 async def _end_session(context: EffectContext, effect: PendingEffect) -> None:
     """End the session and acknowledge only once the session lifecycle shows it closed.
 
     A close another path already has in flight returns without closing; the effect then stays pending and
     is retried until the terminal state is observed.
     """
-    session_id = effect.params[SESSION_PARAM]
-    if await _session_is_closed(session_id):
-        return
-    await dispatch_command(
-        get_command_service().client, CloseSessionCommand(session_id=session_id), principal=SYSTEM_DAEMON_PRINCIPAL
-    )
-    if not await _await_closed(session_id):
+    if not await _close_session(effect.params[SESSION_PARAM]):
         raise EffectNotFinished(effect.id)
+
+
+def _starts_in_flight(record: WorkflowRecord) -> bool:
+    """Whether a helper start was recorded and has neither named its session nor outlived the deadline."""
+    now = datetime.now(UTC)
+    for start in record.helper_starts:
+        if start.session_id:
+            continue
+        if now - datetime.fromisoformat(start.requested_at) < timedelta(seconds=START_DEADLINE_SECONDS):
+            return True
+    return False
+
+
+async def _sweep_helpers(context: EffectContext, effect: PendingEffect) -> None:
+    """End every live session started from the holder, transitively, and wait for each recorded start to settle.
+
+    The listing is repeated until it finds nothing and no recorded start is in flight; the holder is never among the
+    sessions ended. An effect that cannot finish stays pending, and the release of the claim behind it waits.
+    """
+    holder = effect.params[SESSION_PARAM]
+    for _ in range(SWEEP_ROUNDS):
+        state = await context.store.read_state_by_id(context.item.todo_id)
+        in_flight = state is not None and _starts_in_flight(workflow_record_of(state))
+        live = await group_sessions_of(holder)
+        if not live and not in_flight:
+            return
+        for session_id in live:
+            await _close_session(session_id)
+        await asyncio.sleep(CLOSE_POLL_SECONDS)
+    raise EffectNotFinished(effect.id)
 
 
 async def _ensure_worktree(context: EffectContext, effect: PendingEffect) -> None:
@@ -258,6 +296,7 @@ _HANDLERS: Final = {
     EffectKind.EMIT_EVENT: _emit_event,
     EffectKind.RELEASE_CLAIM: _release_claim,
     EffectKind.END_SESSION: _end_session,
+    EffectKind.SWEEP_HELPERS: _sweep_helpers,
 }
 
 

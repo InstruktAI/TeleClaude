@@ -24,6 +24,7 @@ from teleclaude.core.workflow_machine.caller import child_sessions_of, load_call
 from teleclaude.core.workflow_machine.dependencies import unmet_for_preparation, unmet_for_work
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.heads import observe_item_supervised
+from teleclaude.core.workflow_machine.helpers import earlier_claim_sessions
 from teleclaude.core.workflow_machine.instruction import InstructionFacts, render_instruction
 from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.ledger_log import render_log_entry
@@ -107,6 +108,11 @@ class EntryRefusal(StrEnum):
     HELD_NOTED = "{item} is held by session {session}; your reason is recorded as note {note}"
     START_IN_PROGRESS = (
         "{item}: a driver start requested by {requester} is in progress; it is attached to by its own requester"
+    )
+    CLOSING = "{item}: its claim is closing, so no helper is started"
+    EARLIER_CLAIM = (
+        "{item}: session {session} of an earlier claim is still running on it; it is the overseer's to resolve, "
+        "and no driver is started until it has ended"
     )
     HOLD_BRAKE = "{item} is held by its hold brake; the lifecycle runner starts nothing for it"
     HEAD_UNREADABLE = (
@@ -362,6 +368,8 @@ def _apply_claim(
     record.launch = None
     record.instruction_offer = None
     record.episode = None
+    record.closing = False
+    record.helper_starts = []
     stale_stamp = phase is Phase.WORK and state.lifecycle_phase is LifecyclePhase.READY
     carried_stale = phase is Phase.PREPARATION and state.lifecycle_phase is LifecyclePhase.READY
     if stale_stamp or carried_stale:
@@ -689,6 +697,10 @@ async def enter(request: EntryRequest) -> EntryResult:
         lane=await resolve_lane(store, request.project_root, request.item, raw, state),
         creative_snapshot=creative_snapshot(raw),
     )
+    if holder != request.caller_session_id:
+        earlier = await earlier_claim_sessions(state.workflow, holder or NO_SESSION)
+        if earlier:
+            raise _refuse(EntryRefusal.EARLIER_CLAIM, item=request.item, session=earlier[0])
     reading = read_phase(state, request.resolved_lane)
     other_holder = holder is not None and holder != request.caller_session_id
     noting = (
@@ -749,6 +761,8 @@ async def plan_child(project_root: str, item: str, caller_session_id: str) -> Ch
     holder = state.active_runner or None
     if holder != caller_session_id:
         raise _refuse(EntryRefusal.HELD, item=item, session=holder or NO_SESSION)
+    if state.workflow.closing:
+        raise _refuse(EntryRefusal.CLOSING, item=item)
     phase = read_phase(state, await resolve_lane(store, project_root, item, raw, state)).phase
     if phase is None or phase not in _VERB_FOR_PHASE:
         raise _refuse(EntryRefusal.NOT_DRIVEN, item=item, phase=phase.value if phase else NO_SESSION)

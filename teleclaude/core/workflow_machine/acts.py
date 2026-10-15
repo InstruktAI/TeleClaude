@@ -29,7 +29,7 @@ from teleclaude.core.workflow_machine.act_types import (
 )
 from teleclaude.core.workflow_machine.activation import StoreNotActivated, require_activated
 from teleclaude.core.workflow_machine.authority import configured_person, has_project_authority
-from teleclaude.core.workflow_machine.caller import CallerFacts, child_sessions_of, in_claiming_group, load_caller
+from teleclaude.core.workflow_machine.caller import CallerFacts, in_claiming_group, load_caller
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.heads import observe_item_supervised
 from teleclaude.core.workflow_machine.lane import resolve_lane
@@ -69,7 +69,7 @@ PERSON_PARAM: Final = "person"
 WAITED_PHASE_PARAM: Final = "waited_phase"
 RESERVATION_PARAM: Final = "reservation_key"
 EFFECT_RELEASE: Final = "release"
-EFFECT_END_CHILD: Final = "end-child"
+EFFECT_SWEEP_HELPERS: Final = "sweep-helpers"
 EFFECT_WAITING: Final = "waiting"
 WAIT_PARAM: Final = "wait"
 EFFECT_READY: Final = "ready"
@@ -94,7 +94,6 @@ class _Facts:
     item_id: str
     holder: str | None
     in_group: bool
-    child_sessions: tuple[str, ...]
     person_slug: str
     person_email: str
     person_authorized: bool
@@ -195,6 +194,12 @@ def _release_effect(session_id: str) -> _EffectSpec:
     return _EffectSpec(EFFECT_RELEASE, EffectKind.RELEASE_CLAIM, params={SESSION_PARAM: session_id})
 
 
+def _closing_effects(session_id: str) -> tuple[_EffectSpec, ...]:
+    """The end of a holder's claim: sweep every helper it started, and release the claim last."""
+    sweep = _EffectSpec(EFFECT_SWEEP_HELPERS, EffectKind.SWEEP_HELPERS, params={SESSION_PARAM: session_id})
+    return (sweep, _release_effect(session_id))
+
+
 def _decide_note(request: ActRequest, facts: _Facts, state: TodoState, reading: PhaseReading) -> _Decision:
     text = _require(request, request.text, ARGUMENT_TEXT)
     bound = f"{facts.caller.session_id}{BOUND_SEPARATOR}{_digest(text)}"
@@ -237,7 +242,7 @@ def _decide_prepared(request: ActRequest, facts: _Facts, state: TodoState, readi
         text=request.text,
         phase=LifecyclePhase.PREPARED,
         record=record,
-        effects=(_release_effect(facts.caller.session_id),),
+        effects=_closing_effects(facts.caller.session_id),
         expect_digests={ARTIFACT_INPUT: revision},
     )
 
@@ -273,7 +278,7 @@ def _decide_waiting(request: ActRequest, facts: _Facts, state: TodoState, readin
                 EmittedEvent.WAITING,
                 {PERSON_PARAM: person, WAITED_PHASE_PARAM: waited_phase.value, WAIT_PARAM: waiting.key},
             ),
-            _release_effect(facts.caller.session_id),
+            *_closing_effects(facts.caller.session_id),
         ),
     )
 
@@ -347,16 +352,12 @@ def _decide_kickback(request: ActRequest, facts: _Facts, state: TodoState, readi
         updated.instruction_offer = None
         return updated
 
-    ends = tuple(
-        _EffectSpec(f"{EFFECT_END_CHILD}-{child}", EffectKind.END_SESSION, params={SESSION_PARAM: child})
-        for child in facts.child_sessions
-    )
     return _Decision(
         bound=_digest(reason),
         text=reason,
         phase=LifecyclePhase.PREPARATION,
         record=record,
-        effects=(*ends, _release_effect(facts.caller.session_id)),
+        effects=_closing_effects(facts.caller.session_id),
     )
 
 
@@ -375,10 +376,6 @@ def _decide_stamp(request: ActRequest, facts: _Facts, state: TodoState, reading:
         updated.stamp_in_flight = None
         return updated
 
-    ends = tuple(
-        _EffectSpec(f"{EFFECT_END_CHILD}-{child}", EffectKind.END_SESSION, params={SESSION_PARAM: child})
-        for child in facts.child_sessions
-    )
     return _Decision(
         bound=sha,
         text=request.text,
@@ -391,8 +388,7 @@ def _decide_stamp(request: ActRequest, facts: _Facts, state: TodoState, reading:
                 EmittedEvent.READY,
                 {SHA_PARAM: sha, READY_AT_PARAM: stamp.ready_at, SESSION_PARAM: facts.caller.session_id},
             ),
-            *ends,
-            _release_effect(facts.caller.session_id),
+            *_closing_effects(facts.caller.session_id),
         ),
     )
 
@@ -408,7 +404,7 @@ def _decide_release(request: ActRequest, facts: _Facts, state: TodoState, readin
         updated.instruction_offer = None
         return updated
 
-    return _Decision(bound=facts.caller.session_id, record=record, effects=(_release_effect(facts.caller.session_id),))
+    return _Decision(bound=facts.caller.session_id, record=record, effects=_closing_effects(facts.caller.session_id))
 
 
 def _require_instruction_seen(request: ActRequest, state: TodoState) -> None:
@@ -485,9 +481,6 @@ async def _resolve_facts(store: WorkflowStore, request: ActRequest, state: TodoS
         item_id=item_id,
         holder=holder,
         in_group=in_group,
-        child_sessions=await child_sessions_of(holder)
-        if holder is not None and request.act in (Act.KICKBACK, Act.STAMP)
-        else (),
         person_slug=person_slug,
         person_email=person.email if person is not None else NO_SESSION,
         person_authorized=person is not None and has_project_authority(person, request.project_root),
@@ -542,6 +535,8 @@ def _apply(
             )
         )
     updated.act_status[key] = ActStatus.IN_PROGRESS if decision.effects else ActStatus.COMPLETE
+    if any(spec.kind is EffectKind.RELEASE_CLAIM for spec in decision.effects):
+        updated.closing = True
     new_state: dict[str, StateValue] = {**state_dict, WORKFLOW_STATE_KEY: updated.to_state()}
     if decision.phase is not None:
         new_state[LIFECYCLE_PHASE_STATE_KEY] = decision.phase.value

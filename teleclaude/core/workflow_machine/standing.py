@@ -7,9 +7,10 @@ admission, an open creative episode and the person a waiting item waits on. A to
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Final, cast
 
 from teleclaude.core.todos_db._show import ShowPayload, TodoShowPayload, assemble_show_payload
+from teleclaude.core.workflow_machine.helpers import earlier_claim_sessions
 from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.phase_reading import read_phase
 from teleclaude.core.workflow_machine.reasons import reason_notes
@@ -17,6 +18,8 @@ from teleclaude.core.workflow_store.store import WorkflowStore
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 from teleclaude.types.workflow_record import Act, Phase, WorkflowRecord
+
+OVERSEER_DOOR: Final = "the overseer: a person resolves a session an earlier claim left running"
 
 
 def _held_since(record: WorkflowRecord) -> str:
@@ -68,7 +71,10 @@ async def assemble_item_show(
     reading = read_phase(state, await resolve_lane(store, str(store.project_root), slug, raw, state))
     if reading.phase is None:
         return payload
-    cast(TodoShowPayload, payload)["standing"] = standing_of(
-        state, reading.ready_sha, reading.ready_at, reading.phase, state.workflow
-    )
+    standing = standing_of(state, reading.ready_sha, reading.ready_at, reading.phase, state.workflow)
+    earlier = await earlier_claim_sessions(state.workflow, state.active_runner or "")
+    if earlier:
+        standing["running_sessions_of_earlier_claims"] = cast(StateValue, list(earlier))
+        standing["door"] = OVERSEER_DOOR
+    cast(TodoShowPayload, payload)["standing"] = standing
     return payload

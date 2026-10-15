@@ -98,6 +98,7 @@ class EffectKind(StrEnum):
     WAKE_SESSION = "wake_session"
     RELEASE_CLAIM = "release_claim"
     ENSURE_WORKTREE = "ensure_worktree"
+    SWEEP_HELPERS = "sweep_helpers"
 
 
 class LedgerEntry(BaseModel):
@@ -293,6 +294,17 @@ class CreativeEpisode(BaseModel):
     deferred: bool = False
 
 
+class HelperStart(BaseModel):
+    """A helper start a holder recorded before it created the session; it names the session once that exists."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    epoch: int
+    requested_at: str
+    session_id: str = ""
+
+
 class WorkflowRecord(BaseModel):
     """Everything the workflow machine persists on an item beyond the lifecycle phase."""
 
@@ -313,6 +325,8 @@ class WorkflowRecord(BaseModel):
     admitted: AdmittedCandidate | None = None
     instruction_offer: InstructionOffer | None = None
     episode: CreativeEpisode | None = None
+    closing: bool = False
+    helper_starts: list[HelperStart] = Field(default_factory=list)
 
     def with_effect(self, effect: PendingEffect) -> WorkflowRecord:
         """A copy with the effect appended to the pending list."""
