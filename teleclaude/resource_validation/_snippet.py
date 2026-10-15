@@ -14,6 +14,7 @@ from teleclaude.constants import (
 from teleclaude.core.workflow_store.selection import inspect_workflow_store_presence
 from teleclaude.core.workflow_store.types import StorePresenceKind
 from teleclaude.docs_publishers import DocsPublisherResolutionError, resolve_global_doc_source
+from teleclaude.entry_declarations import parse_entry_declarations
 from teleclaude.paths import GLOBAL_DOCS_ROOTS
 from teleclaude.required_reads import extract_required_reads
 from teleclaude.resource_validation._activation import (
@@ -46,6 +47,7 @@ from teleclaude.resource_validation._models import (
     _first_out_of_order_ref,
 )
 from teleclaude.resource_validation._todo_status import TodoStatusFact, build_todo_status_facts, is_pending_marker_stale
+from teleclaude.resource_validation._workflow import ProcedureRow, validate_workflow_drivers
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, iter_tier_snippet_roots
 from teleclaude.snippet_validation import (
     UNREGISTERED_DOMAIN_REF,
@@ -749,6 +751,29 @@ def _iter_reachable_refs(start: Path, project_root: Path, seen: set[Path]) -> It
         yield from _iter_reachable_refs(resolved, project_root, seen)
 
 
+def _validate_workflow_drivers(project_root: Path) -> None:
+    """Check the lifecycle driver declarations across every published procedure, companions included."""
+    domains = load_domains(project_root)
+    rows: list[ProcedureRow] = []
+    for snippets_root in _iter_snippet_roots(project_root):
+        for path in sorted(snippets_root.rglob("*.md")):
+            if (
+                path.name == "index.yaml"
+                or is_excluded_snippet_path(path, snippets_root)
+                or is_retirement_companion(path)
+            ):
+                continue
+            classification, _ = derive_snippet_classification(path, project_root=project_root, domains=domains)
+            if classification is None or classification.type is not SnippetTaxonomy.PROCEDURE:
+                continue
+            try:
+                metadata = parse_markdown(read_markdown(path)).metadata or {}
+            except (OSError, ValueError):
+                continue
+            rows.append(ProcedureRow(classification.id, path, parse_entry_declarations(metadata).declarations))
+    validate_workflow_drivers(rows)
+
+
 def _validate_baseline_dedup(project_root: Path, *, paths: list[Path] | None = None) -> None:
     """Fail when either baseline delivery mechanism also includes baseline content."""
     domains = load_domains(project_root)
@@ -971,4 +996,5 @@ def _validate_all_snippets(
             validate_snippet(path, text, project_root, domains=domains, todo_status_facts=todo_status_facts)
     _validate_tier_roots(tier_roots, domains=domains, todo_status_facts=todo_status_facts)
     _validate_baseline_dedup(project_root)
+    _validate_workflow_drivers(project_root)
     validate_third_party_docs(project_root)

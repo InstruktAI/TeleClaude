@@ -15,6 +15,7 @@ from typing import NotRequired, TypedDict
 from teleclaude.agent_registry import AgentName
 from teleclaude.core.roles import Role, resolve_role
 from teleclaude.helpers.agent_types import ThinkingMode
+from teleclaude.types.workflow_record import Act, Phase, WaitedPhase
 
 
 class EntryKey(StrEnum):
@@ -23,6 +24,22 @@ class EntryKey(StrEnum):
     ROLE = "role"
     PARAMETERS = "parameters"
     DISPATCH = "dispatch"
+    WORKFLOW = "workflow"
+
+
+class WorkflowKey(StrEnum):
+    """The keys of a driver procedure's workflow declaration."""
+
+    PHASE = "phase"
+    CHILD = "child"
+    ACTS = "acts"
+
+
+class EndingActKey(StrEnum):
+    """The keys of one act that ends the driver's phase."""
+
+    ACT = "act"
+    LEADS_TO = "leads_to"
 
 
 class ParameterKey(StrEnum):
@@ -57,6 +74,14 @@ class EntryFinding(StrEnum):
     DISPATCH_AGENT_UNKNOWN = "snippet_dispatch_agent_unknown"
     DISPATCH_MODE_UNKNOWN = "snippet_dispatch_mode_unknown"
     DISPATCH_WITHOUT_ROLE = "snippet_dispatch_without_role"
+    WORKFLOW_INVALID_VALUE = "snippet_workflow_invalid_value"
+    WORKFLOW_PHASE_UNKNOWN = "snippet_workflow_phase_unknown"
+    WORKFLOW_CHILD_MISSING = "snippet_workflow_child_missing"
+    WORKFLOW_ACTS_EMPTY = "snippet_workflow_acts_empty"
+    WORKFLOW_ACT_UNKNOWN = "snippet_workflow_act_unknown"
+    WORKFLOW_ACT_DUPLICATE = "snippet_workflow_act_duplicate"
+    WORKFLOW_LEADS_TO_UNKNOWN = "snippet_workflow_leads_to_unknown"
+    WORKFLOW_WITHOUT_ROLE = "snippet_workflow_without_role"
 
 
 #: The thinking modes a procedure's dispatch defaults may declare.
@@ -90,12 +115,30 @@ class DispatchDeclaration:
 
 
 @dataclass(frozen=True)
+class EndingAct:
+    """An act that ends the driver's phase, and the phase it leads to."""
+
+    act: Act
+    leads_to: Phase
+
+
+@dataclass(frozen=True)
+class WorkflowDeclaration:
+    """A driver procedure's part in the item lifecycle: its phase, the child it dispatches and its ending acts."""
+
+    phase: WaitedPhase
+    child: str
+    acts: tuple[EndingAct, ...]
+
+
+@dataclass(frozen=True)
 class EntryDeclarations:
-    """What a procedure declares as a launch root. ``dispatch`` is ``None`` when it declares none."""
+    """What a procedure declares as a launch root. ``dispatch`` and ``workflow`` are ``None`` when undeclared."""
 
     role: Role
     parameters: tuple[ProcedureParameter, ...]
     dispatch: DispatchDeclaration | None
+    workflow: WorkflowDeclaration | None = None
 
 
 @dataclass(frozen=True)
@@ -184,6 +227,57 @@ def _parse_dispatch(raw: object) -> tuple[DispatchDeclaration | None, list[Entry
     return DispatchDeclaration(agents=tuple(agents), thinking_mode=mode), findings
 
 
+def _parse_ending_acts(raw: object) -> tuple[tuple[EndingAct, ...], list[EntryFindingDetail]]:
+    if not isinstance(raw, list) or not raw:
+        return (), [EntryFindingDetail(EntryFinding.WORKFLOW_ACTS_EMPTY)]
+    findings: list[EntryFindingDetail] = []
+    acts: list[EndingAct] = []
+    seen: set[Act] = set()
+    known_keys = {key.value for key in EndingActKey}
+    for index, item in enumerate(raw):
+        if not isinstance(item, Mapping) or set(item) != known_keys:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_INVALID_VALUE, str(index)))
+            continue
+        try:
+            act = Act(item[EndingActKey.ACT])
+        except ValueError:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_ACT_UNKNOWN, str(item[EndingActKey.ACT])))
+            continue
+        try:
+            leads_to = Phase(item[EndingActKey.LEADS_TO])
+        except ValueError:
+            findings.append(
+                EntryFindingDetail(EntryFinding.WORKFLOW_LEADS_TO_UNKNOWN, str(item[EndingActKey.LEADS_TO]))
+            )
+            continue
+        if act in seen:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_ACT_DUPLICATE, act.value))
+            continue
+        seen.add(act)
+        acts.append(EndingAct(act=act, leads_to=leads_to))
+    return tuple(acts), findings
+
+
+def _parse_workflow(raw: object) -> tuple[WorkflowDeclaration | None, list[EntryFindingDetail]]:
+    known_keys = {key.value for key in WorkflowKey}
+    if not isinstance(raw, Mapping) or set(raw) != known_keys:
+        return None, [EntryFindingDetail(EntryFinding.WORKFLOW_INVALID_VALUE)]
+    findings: list[EntryFindingDetail] = []
+    phase: WaitedPhase | None = None
+    try:
+        phase = WaitedPhase(raw[WorkflowKey.PHASE])
+    except ValueError:
+        findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_PHASE_UNKNOWN, str(raw[WorkflowKey.PHASE])))
+    child = raw[WorkflowKey.CHILD]
+    if not isinstance(child, str) or not child.strip():
+        findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_CHILD_MISSING))
+    acts, act_findings = _parse_ending_acts(raw[WorkflowKey.ACTS])
+    findings.extend(act_findings)
+    if findings or phase is None or not isinstance(child, str):
+        return None, findings
+    return WorkflowDeclaration(phase=phase, child=child.strip(), acts=acts), findings
+
+
 def parse_entry_declarations(metadata: Mapping[str, object]) -> EntryParse:
     """Read the entry declarations a snippet's metadata carries.
 
@@ -211,6 +305,8 @@ def parse_entry_declarations(metadata: Mapping[str, object]) -> EntryParse:
             findings.append(EntryFindingDetail(EntryFinding.PARAMETERS_WITHOUT_ROLE))
         if EntryKey.DISPATCH in metadata:
             findings.append(EntryFindingDetail(EntryFinding.DISPATCH_WITHOUT_ROLE))
+        if EntryKey.WORKFLOW in metadata:
+            findings.append(EntryFindingDetail(EntryFinding.WORKFLOW_WITHOUT_ROLE))
     parameters: tuple[ProcedureParameter, ...] = ()
     if EntryKey.PARAMETERS in metadata and EntryKey.ROLE in metadata:
         parameters, parameter_findings = _parse_parameters(metadata[EntryKey.PARAMETERS])
@@ -219,8 +315,16 @@ def parse_entry_declarations(metadata: Mapping[str, object]) -> EntryParse:
     if EntryKey.DISPATCH in metadata and EntryKey.ROLE in metadata:
         dispatch, dispatch_findings = _parse_dispatch(metadata[EntryKey.DISPATCH])
         findings.extend(dispatch_findings)
+    workflow: WorkflowDeclaration | None = None
+    if EntryKey.WORKFLOW in metadata and EntryKey.ROLE in metadata:
+        workflow, workflow_findings = _parse_workflow(metadata[EntryKey.WORKFLOW])
+        findings.extend(workflow_findings)
     usable = role is not None and not findings
-    declarations = EntryDeclarations(role=role, parameters=parameters, dispatch=dispatch) if usable and role else None
+    declarations = (
+        EntryDeclarations(role=role, parameters=parameters, dispatch=dispatch, workflow=workflow)
+        if usable and role
+        else None
+    )
     return EntryParse(declarations=declarations, findings=tuple(findings), declares_entry_fields=True)
 
 
@@ -240,12 +344,28 @@ class DispatchPayload(TypedDict):
     thinking_mode: str
 
 
+class EndingActPayload(TypedDict):
+    """One ending act as published and read back."""
+
+    act: str
+    leads_to: str
+
+
+class WorkflowPayload(TypedDict):
+    """The workflow declaration as published and read back."""
+
+    phase: str
+    child: str
+    acts: list[EndingActPayload]
+
+
 class EntryPayload(TypedDict):
     """Usable entry declarations in the published-index form that ``parse_entry_declarations`` reads back."""
 
     role: str
     parameters: NotRequired[list[ParameterPayload]]
     dispatch: NotRequired[DispatchPayload]
+    workflow: NotRequired[WorkflowPayload]
 
 
 def entry_payload(declarations: EntryDeclarations) -> EntryPayload:
@@ -258,7 +378,17 @@ def entry_payload(declarations: EntryDeclarations) -> EntryPayload:
             agent=[agent.value for agent in declarations.dispatch.agents],
             thinking_mode=declarations.dispatch.thinking_mode.value,
         )
+    if declarations.workflow is not None:
+        payload[EntryKey.WORKFLOW.value] = _workflow_payload(declarations.workflow)
     return payload
+
+
+def _workflow_payload(workflow: WorkflowDeclaration) -> WorkflowPayload:
+    return WorkflowPayload(
+        phase=workflow.phase.value,
+        child=workflow.child,
+        acts=[EndingActPayload(act=ending.act.value, leads_to=ending.leads_to.value) for ending in workflow.acts],
+    )
 
 
 def _parameter_payload(parameter: ProcedureParameter) -> ParameterPayload:
