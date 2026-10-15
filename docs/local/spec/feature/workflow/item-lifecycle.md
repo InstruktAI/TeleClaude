@@ -27,7 +27,7 @@ Facing: every actor below is an agent session unless a person is named. A person
 | `delivered`   | The integrator recorded delivery at the confirmed final commit of the shared branch.                                                                                                                                 |
 | `design`      | The creative lane's own machine drives an undelivered item outside the task lane while its design is not complete. Once the design is complete the item reads as its stored phase gives, by the reading table below. |
 
-An item in the icebox keeps its phase; the icebox is a status. The task lane's phases stay outside this vocabulary and are driven by the task procedures.
+An item in the icebox keeps its phase; the icebox is a status. The task lane stays outside this vocabulary: a todo of kind task is driven by the task procedures whatever its stored phase, including the shared `prepared` while its plan awaits authorization, and no entry verb, claim, driver, phase-changing act or holder-dependent control of this machine applies to it (the claim, the prepared, waiting, decision, stamp, kickback, release and work-cycle acts). The note act, which records context and moves nothing, and the create verb stay available for a task; a session ending still releases the claim its platform path releases.
 
 ### Acts and who may perform them
 
@@ -61,8 +61,8 @@ A stored phase value from before this vocabulary is read as a phase of it, and t
 | `review_approved`                                                                                                               | `ready` at the carried review's commit when that commit is the integration head; otherwise `preparation` |
 | `ready` with a stamp of this machine                                                                                            | `ready` at the stamp's commit; `work` when the integration head is known and is another commit           |
 | `delivered`                                                                                                                     | `delivered`                                                                                              |
-| `task_plan_drafting`, `task_running`                                                                                            | unchanged                                                                                                |
-| any phase except `delivered` and the task lane's phases, while the creative state is not complete                               | `design`; once it is complete, the stored phase is read by this table                                    |
+| any phase of a todo of kind task, including `task_plan_drafting`, `task_running` and the shared `prepared`                      | unchanged: the task lane, outside this vocabulary                                                        |
+| any phase of a non-task item except `delivered`, while the creative state is not complete                                       | `design`; once it is complete, the stored phase is read by this table                                    |
 
 A stamp bound to a commit that is no longer the integration head is stale: the item reads as `work` again, the next entry verb for work claims it and clears the stale stamp, and the driver stamps the new head. An integration head that cannot be read leaves a stamp as it is. A candidate the integrator has queued, has in progress or has parked keeps its checkpoint and candidate key. Reading a phase never withdraws one.
 
@@ -72,7 +72,11 @@ A v2 driver procedure declares the phases it drives (preparation, prepared and w
 
 ### Entry verbs
 
-The machine is called through the verbs that prepare and work an item. Called by a session that does not hold the item, a verb starts the driver of the procedure the headers name for the item's phase and returns its session, or refuses naming the cause: held by a session, waiting on a person, the phase and the verb that drives it, unmet dependencies, or a body revision that no longer matches. The driver a verb starts claims by presenting the reservation it was started for; a claim without it, or with another, is refused. Called by the holding driver, a verb returns the instruction for the phase: the phase and claim, the child procedure to dispatch with its arguments and launch defaults when no live child exists, the acts that end the phase with the phase each leads to, and the reminders and formatting the lifecycle already carries. The commands that perform the acts, start the child and return these results are `local/projects/teleclaude/spec/feature/workflow/item-acts`.
+The machine is called through the verbs that prepare and work an item. Called by a session that does not hold the item, a verb starts the driver of the procedure the headers name for the item's phase and returns its session, or refuses naming the cause: held by a session, waiting on a person, the phase and the verb that drives it, unmet dependencies, or a body revision that no longer matches.
+
+An entry verb of this lifecycle machine applied to a todo of kind task refuses naming the task lane and writes nothing, and so does a phase-changing or holder-dependent act, including release by a holder; the note act and the create verb are not refused.
+
+The driver a verb starts claims by presenting the reservation it was started for; a claim without it, or with another, is refused. Called by the holding driver, a verb returns the instruction for the phase: the phase and claim, the child procedure to dispatch with its arguments and launch defaults when no live child exists, the acts that end the phase with the phase each leads to, and the reminders and formatting the lifecycle already carries. The commands that perform the acts, start the child and return these results are `local/projects/teleclaude/spec/feature/workflow/item-acts`.
 
 ### Notes
 
@@ -202,6 +206,18 @@ Given a session from before this vocabulary holds a claim on an item
 When it calls the previous machine, or a surface starts a driver for that item
 Then the call is refused with an instruction to end the session, and the surface names the holding session
 And when that session ends its claim is released and the next surface call drives the item from the phase the reading table gives
+```
+
+#### UC-IL14: A task stays on the task lane
+
+```gherkin
+Given a todo of kind task whose plan awaits authorization and whose stored phase is prepared
+When an entry request to the v2 lifecycle machine, or a phase-changing or holder-dependent act (claim, prepared, waiting, decision, stamp, kickback, release), is applied to it
+Then it is refused naming the task lane and nothing is written
+And the task procedures and their authorization continue to drive it, unchanged
+And a note on the task is still recorded
+And the release of its claim by the platform when its session ends is unchanged
+And a running task firing is not released by an act, so no second firing starts beside it
 ```
 
 ## Known caveats

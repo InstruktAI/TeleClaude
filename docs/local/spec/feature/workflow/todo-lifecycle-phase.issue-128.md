@@ -25,11 +25,14 @@ by the reading table as usual (an ordinary pre-vocabulary value reads as `prepar
 reads as it stands). `design` is a phase the creative lane's own machine drives, not one the lifecycle machine writes or
 stores.
 
-The task lane's phases are owned by the task lane, not by the lifecycle machine. `task_plan_drafting` holds a kind=`task`
-todo from kind assignment or task creation until `sdlc/procedure/lifecycle/task/prepare-task` writes a `task-plan`; the
-phase then advances to `prepared`, awaiting human authorization. `task_running` is the live execution marker while
-`sdlc/procedure/lifecycle/task/run-task` is dispatched by the lifecycle runner; it is not a work phase and does not
-satisfy the lifecycle machine's work gates.
+A todo of kind task belongs to the task lane whatever its stored phase and reads as no item phase. The task lane owns
+its phases, not the lifecycle machine. `task_plan_drafting` holds a kind=`task` todo from kind assignment or task
+creation until `sdlc/procedure/lifecycle/task/prepare-task` writes a `task-plan`; the pointer then advances to
+`prepared`, awaiting human authorization, and for a task that shared value means a plan awaiting authorization, never an
+item prepared at a body revision. `task_running` is the live execution marker while
+`sdlc/procedure/lifecycle/task/run-task` is dispatched by the lifecycle runner. No entry verb, claim, driver, phase-changing act or holder-dependent control of the lifecycle machine applies to a task,
+the release act included; the note act and the create verb stay available, and the platform's release of a claim when
+its session ends is unchanged.
 
 A stored value from before this vocabulary is read as the phase the reading table of the item-lifecycle spec gives, and
 the stored value is replaced at the item's next phase write. A stored value that is empty or outside the enum is an error
