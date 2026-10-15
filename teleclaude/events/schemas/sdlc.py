@@ -11,6 +11,7 @@ from pydantic import JsonValue
 from teleclaude.events.catalog import DeclaredEvent, EventData, PlatformEvent
 from teleclaude.events.envelope import EventHomeKind
 from teleclaude.events.references import ComputerRef, DeploymentRef, SessionRef, TodoRef
+from teleclaude.types.workflow_record import Phase, WaitedPhase
 
 _PROJECT_HOME = (EventHomeKind.PROJECT,)
 
@@ -82,7 +83,7 @@ class TodoWaitingData(EventData):
     person: str
     project_path: str
     slug: str
-    waited_phase: str
+    waited_phase: WaitedPhase
 
 
 class TodoReadyData(EventData):
@@ -95,7 +96,7 @@ class TodoReadyData(EventData):
 
 
 class TodoDriverRequestedData(EventData):
-    phase: str
+    phase: Phase
     project_path: str
     requested_by: str
     reservation_key: str

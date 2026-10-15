@@ -23,6 +23,7 @@ from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.procedure_routing import build_procedure_activation_consumer
 from teleclaude.core.reconciliation import FleetCapabilityMap, contraction_answer_from_live_map
 from teleclaude.core.session_cleanup import terminate_session
+from teleclaude.core.workflow_machine.reconciler_consumer import build_effect_reconciler_consumer
 from teleclaude.events import (
     Consumer,
     ConsumerRuntime,
@@ -162,6 +163,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         return [
             self._build_integration_trigger(),
             build_lifecycle_router_consumer(),
+            build_effect_reconciler_consumer(),
             build_mirror_closure_consumer(),
             build_memory_closure_consumer(),
             build_procedure_activation_consumer(),

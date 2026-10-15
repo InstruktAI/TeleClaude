@@ -12,8 +12,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.config.machine import config
+from teleclaude.core.local_checkouts import local_checkout_paths
 from teleclaude.core.next_machine.lifecycle_runner import (
     default_session_runner,
     project_path_from_event_payload,
@@ -55,26 +54,14 @@ _TRIGGER_TYPES = (
 _SESSION_ENDED_PATTERNS = (TypePattern.below(SESSION_ENDED_PREFIX), TypePattern(RETIRED_SESSION_ENDED_TYPE))
 
 _PICKUP_NOT_REQUESTED_EVENT = "Todo creation skipped: pickup not requested"
-_NOT_A_CHECKOUT_EVENT = "Scheduler lifecycle wake-up skipped: project is not a checkout"
 _MISSING_PROJECT_EVENT = "Workflow runner wake-up skipped: missing project identity"
 _ENDED_OUTSIDE_CHECKOUT_EVENT = "Session-ended wake-up skipped: the session did not work in a project checkout"
 
 
 async def _wake_every_local_checkout(trigger: str) -> None:
     """Wake the lifecycle runner for each project checkout on this computer."""
-    client = TelecAPIClient(daemon_credential=True)
-    await client.connect()
-    try:
-        projects = await client.list_projects()
-    finally:
-        await client.close()
-    for project in projects:
-        if project.computer and project.computer != config.computer.name:
-            continue
-        if not is_project_checkout(project.path):
-            logger.debug(_NOT_A_CHECKOUT_EVENT, project_path=project.path)
-            continue
-        await run_lifecycle_runner(project.path, trigger=trigger, client_factory=default_session_runner)
+    for project_path in await local_checkout_paths():
+        await run_lifecycle_runner(project_path, trigger=trigger, client_factory=default_session_runner)
 
 
 def _checkout_of_ended_session(project_path: str | None) -> str | None:

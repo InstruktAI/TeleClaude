@@ -26,6 +26,23 @@ class Phase(StrEnum):
     DESIGN = "design"
 
 
+class WaitedPhase(StrEnum):
+    """The phases an item can wait in; the item returns to the one it waited in."""
+
+    PREPARATION = "preparation"
+    WORK = "work"
+
+
+class EmittedEvent(StrEnum):
+    """The notices an emit-event effect can raise."""
+
+    CLAIM_CHANGED = "claim_changed"
+    HEAD_ADVANCED = "head_advanced"
+    WAITING = "waiting"
+    READY = "ready"
+    DRIVER_REQUESTED = "driver_requested"
+
+
 class Act(StrEnum):
     """The closed vocabulary of acts the sealed verbs record."""
 
@@ -85,6 +102,7 @@ class PendingEffect(BaseModel):
     id: str
     act_key: str
     kind: EffectKind
+    event: EmittedEvent | None = None
     params: dict[str, str] = Field(default_factory=dict)
 
 
@@ -104,7 +122,7 @@ class WaitingRecord(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    waited_phase: Phase
+    waited_phase: WaitedPhase
     person: str
     question_digest: str
 

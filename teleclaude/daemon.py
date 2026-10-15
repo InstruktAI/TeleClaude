@@ -40,6 +40,7 @@ _REGISTRY_SHUTDOWN_COMPONENT = "task_registry"
 _LIFECYCLE_SHUTDOWN_COMPONENT = "lifecycle"
 _PREPARED_EXIT_WARNING = "No termination arrived within the grace after drained; completing own shutdown"
 _IDENTITY_DECLARATION_WATCH_ATTR = "identity_declarations_watch_task"
+_CLAIM_RECONCILE_TASK = "reconcile-claim-{slug}"
 _IDENTITY_DECLARATION_WATCH_STOPPED = "Identity declaration watcher stopped"
 _IDENTITY_DECLARATION_WATCHER_STARTED = "Identity declaration watcher started"
 _WORKER_TIMED_OUT = "%s timed out after %.1fs; task was cancelled"
@@ -242,6 +243,7 @@ from teleclaude.core.task_registry import TASK_REGISTRY_SHUTDOWN_TIMEOUT_S, Supe
 _record_import_timing("teleclaude.core.task_registry", _t)
 
 _t = time.perf_counter()
+from teleclaude.core.workflow_machine.effects import reconcile_supervised
 from teleclaude.core.workflow_store.store import WorkflowStore, set_workflow_store_mutation_hook
 
 _record_import_timing("teleclaude.core.todos_db", _t)
@@ -269,8 +271,6 @@ from teleclaude.events.envelope_facts import home_for_project_path as _workflow_
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import ConfigurationRef, TodoRef
 from teleclaude.events.schemas.sdlc import (
-    TodoClaimChanged,
-    TodoClaimChangedData,
     TodoDelivered,
     TodoDeliveredData,
     TodoFinalizeReady,
@@ -771,28 +771,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     ),
                 )
 
-            async def _emit_claim_changed(slug: str, prior_holder: str | None, holder: str | None) -> None:
-                await publish_event(
-                    TodoClaimChanged(
-                        subject=TodoRef(slug),
-                        home=_workflow_event_home(project_root),
-                        data=TodoClaimChangedData(
-                            slug=slug,
-                            project_path=project_root,
-                            prior_holder=prior_holder,
-                            holder=holder,
-                        ),
-                    ),
-                    LegacyFacts(
-                        producer="workflow",
-                        level=EventLevel.WORKFLOW,
-                        domain="sdlc",
-                        visibility=EventVisibility.LOCAL,
-                        entity=slug,
-                        description=f"Claim on {slug} moved from {prior_holder or 'none'} to {holder or 'none'}",
-                    ),
-                )
-
             async def _emit_delivered(slug: str, delivery_commit: str | None, delivered_at: str) -> None:
                 await publish_event(
                     TodoDelivered(
@@ -841,11 +819,13 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     )
                 )
 
-            def _on_claim_changed(slug: str, prior_holder: str | None, holder: str | None) -> None:
+            def _on_claim_changed(slug: str, _prior_holder: str | None, _holder: str | None) -> None:
                 if loop is None or not loop.is_running():
                     return
                 loop.call_soon_threadsafe(
-                    lambda: asyncio.ensure_future(_emit_claim_changed(slug, prior_holder, holder))
+                    lambda: self.task_registry.spawn(
+                        reconcile_supervised(project_root, slug), name=_CLAIM_RECONCILE_TASK.format(slug=slug)
+                    )
                 )
 
             def _on_delivered(slug: str, delivery_commit: str | None, delivered_at: str) -> None:
