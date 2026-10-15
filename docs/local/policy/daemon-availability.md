@@ -35,7 +35,7 @@ visibility: 'public'
 
 <!-- planned:issue-128 -->
 
-- On Linux, `make stop` also stops the installed `teleclaude-config.path` watcher and verifies that it is inactive before recording the daemon as stopped. The watcher can activate the daemon even when its service is disabled, so stopping the service alone does not establish the stopped outcome. The stop leaves the watcher's installation and enablement unchanged. `make start` restores the installed watcher after starting the daemon; a failed watcher stop withholds the stopped outcome, and a failed watcher start is reported as a lifecycle failure. A machine without an installed watcher owes no watcher action. These operations stay inside the lifecycle `make` targets.
+- On Linux, `make stop` also stops the installed `teleclaude-config.path` watcher and verifies that it is inactive before recording the daemon as stopped. The watcher can activate the daemon even when its service is disabled, so stopping the service alone does not establish the stopped outcome. The stop leaves the watcher's installation and enablement unchanged. `make start` restores the installed, enabled watcher after starting the daemon; a deliberately disabled or masked watcher stays off. A failed watcher stop withholds the stopped outcome, and a failed watcher start is reported as a lifecycle failure. An unreadable or unproved watcher load, activity or enablement state is a lifecycle failure, never evidence that the watcher is absent or deliberately disabled. A machine whose watcher is positively absent and inactive owes no watcher action. These operations stay inside the lifecycle `make` targets.
 
 <!-- /planned:issue-128 -->
 
