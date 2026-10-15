@@ -10,7 +10,7 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine.claim_authority import ClaimOwnership, classify_claim_ownership
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
-from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.state_mutation import StateConflict, StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.workflow_store.store import get_workflow_store
 
@@ -19,6 +19,7 @@ _CONFLICTING_BINDING_MESSAGE = (
     "error: cannot unclaim {slug}: caller session {caller_session_id} owns working_slug={caller_working_slug}"
 )
 _FOREIGN_CLAIM_MESSAGE = "error: cannot unclaim {slug}: live claim is held by session {live_claimant}"
+_CLAIM_CHANGED_MESSAGE = "error: cannot unclaim {slug}: {detail}"
 _NO_OWNED_LIVE_CLAIM_MESSAGE = "unclaimed {slug}: no owned live claim"
 _CLEARED_CLAIM_MESSAGE = "unclaimed {slug}: cleared {cleared_claims}"
 _MISSING_CALLER_LABEL = "<none>"
@@ -42,6 +43,7 @@ class ClaimReleaseReason(StrEnum):
     TODO_NOT_FOUND = "todo_not_found"
     CONFLICTING_BINDING = "conflicting_binding"
     FOREIGN_CLAIM = "foreign_claim"
+    CLAIM_CHANGED = "claim_changed"
 
 
 class ClaimReleaseFields(StrEnum):
@@ -157,8 +159,21 @@ class ClaimReleaseForeignClaim(ClaimReleaseRefusal):
         return ClaimReleaseReason.FOREIGN_CLAIM
 
 
+@dataclass(frozen=True)
+class ClaimReleaseClaimChanged(ClaimReleaseRefusal):
+    """The claim changed hands while the release was deciding; the claim now on the row was left as it is."""
+
+    slug: str
+    detail: str
+
+    @property
+    def refusal_reason(self) -> ClaimReleaseReason:
+        return ClaimReleaseReason.CLAIM_CHANGED
+
+
 type ClaimReleaseOutcome = (
-    ClaimReleaseNoop
+    ClaimReleaseClaimChanged
+    | ClaimReleaseNoop
     | ClaimReleased
     | ClaimReleaseTodoNotFound
     | ClaimReleaseConflictingBinding
@@ -179,6 +194,8 @@ def format_claim_release_outcome(*, outcome: ClaimReleaseOutcome) -> str:
         )
     if isinstance(outcome, ClaimReleaseForeignClaim):
         return _FOREIGN_CLAIM_MESSAGE.format(slug=slug, live_claimant=outcome.live_claimant)
+    if isinstance(outcome, ClaimReleaseClaimChanged):
+        return _CLAIM_CHANGED_MESSAGE.format(slug=slug, detail=outcome.detail)
     if isinstance(outcome, ClaimReleaseNoop):
         return _NO_OWNED_LIVE_CLAIM_MESSAGE.format(slug=slug)
     return _CLEARED_CLAIM_MESSAGE.format(slug=slug, cleared_claims=outcome.fields.value)
@@ -229,7 +246,10 @@ async def unclaim_todo_for_caller(
         writer = StateWriter(raw_state)
         writer.state.active_runner = None
         writer.state.manually_started = False
-        await writer.commit(todos_db, slug)
+        try:
+            await writer.commit(todos_db, slug)
+        except StateConflict as changed:
+            return ClaimReleaseClaimChanged(slug=slug, detail=str(changed))
         cleared_active_runner = True
 
     cleared_working_slug = False
@@ -240,8 +260,11 @@ async def unclaim_todo_for_caller(
             writer = StateWriter(raw_state)
             writer.state.active_runner = None
             writer.state.manually_started = False
-            await writer.commit(todos_db, slug)
-            cleared_active_runner = True
+            try:
+                await writer.commit(todos_db, slug)
+                cleared_active_runner = True
+            except StateConflict:
+                pass  # the claim moved to another session: it is theirs and stays; only the binding was ours to clear
 
     if cleared_active_runner or cleared_working_slug:
         await emit_todo_updated(slug=slug, project_root=str(project_root), source="workflow.unclaim")
@@ -257,6 +280,7 @@ async def unclaim_todo_for_caller(
 
 
 __all__ = [
+    "ClaimReleaseClaimChanged",
     "ClaimReleaseConflictingBinding",
     "ClaimReleaseFields",
     "ClaimReleaseForeignClaim",

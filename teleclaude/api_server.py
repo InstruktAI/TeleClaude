@@ -107,6 +107,7 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
 )
 from teleclaude.core.models import JsonDict, MessageMetadata
+from teleclaude.core.next_machine.state_mutation import StateConflict
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operations._kinds import all_outcome_events
 from teleclaude.core.origins import InputOrigin
@@ -542,6 +543,11 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 work_feedback=exc.work_feedback,
                 headers=exc.headers,
             )
+
+        @self.app.exception_handler(StateConflict)
+        async def _claim_changed(request, exc):  # type: ignore[no-untyped-def]
+            """A write refused because the claim changed under it: explicit, with the holder now, and safe to repeat."""
+            return declared_refusal_response(status_code=409, detail=str(exc), work_feedback=str(exc))
 
         @self.app.middleware("http")
         async def _track_requests(request, call_next):  # type: ignore[no-untyped-def]
