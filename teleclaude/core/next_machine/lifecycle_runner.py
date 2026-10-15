@@ -15,10 +15,8 @@ from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.cli.api_session_args import RunSessionArgs
 from teleclaude.config._models import WorkflowRunnerMode
 from teleclaude.config.machine import config
-from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL, TodoStatus
+from teleclaude.constants import TodoStatus
 from teleclaude.context_selector import resolve_snippet_meta
-from teleclaude.core.command_dispatch import dispatch_command
-from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.next_machine.git_ops import (
@@ -59,12 +57,11 @@ from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.phase_reading import awaits_readable_head, read_phase
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import WorkItemStateRead as TodoStatusStateRead
-from teleclaude.types.commands import CloseSessionCommand
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TodoKind
 from teleclaude.types.todos import HoldAuditState, TodoState
-from teleclaude.types.workflow_record import Phase
+from teleclaude.types.workflow_record import EffectKind, PendingEffect, Phase
 
 logger = get_logger(__name__)
 
@@ -392,17 +389,39 @@ LINK_SKIPPED_LOG: Final = "lifecycle runner: the started session was not linked,
 class LifecycleLinkLost(Exception):
     """The started driver could not be linked because the row has another owner; the started session was ended."""
 
-    def __init__(self, slug: str, session_id: str) -> None:
-        super().__init__(slug, session_id)
+    def __init__(self, slug: str, session_id: str, owner: str) -> None:
+        super().__init__(slug, session_id, owner)
         self.slug = slug
         self.session_id = session_id
+        self.owner = owner
 
 
-async def _end_unlinked_start(session_id: str) -> None:
-    """End the session this dispatch started and could not link, so no second driver runs beside the owner."""
-    await dispatch_command(
-        get_command_service().client, CloseSessionCommand(session_id=session_id), principal=SYSTEM_DAEMON_PRINCIPAL
+UNLINKED_START_EFFECT: Final = "unlinked-start:{session_id}"
+SESSION_PARAM: Final = "session_id"
+
+
+async def _end_unlinked_start(todos_db: WorkflowStore, slug: str, session_id: str) -> None:
+    """End the session this dispatch started and could not link, so no second driver runs beside the owner.
+
+    The ending is recorded on the item first, as a pending effect with a stable identity, and then completed: the
+    reconciler ends the session and acknowledges only once its lifecycle shows it closed, and repeats the effect after
+    a failure or a restart, so an interrupted cleanup is never forgotten.
+    """
+    from teleclaude.core.workflow_machine.effects import (  # noqa: PLC0415 - deferred cycle: effects read this package
+        reconcile_slug_supervised,
     )
+
+    effect_id = UNLINKED_START_EFFECT.format(session_id=session_id)
+
+    def record(writer: StateWriter) -> None:
+        pending = writer.state.workflow.pending_effects
+        if all(effect.id != effect_id for effect in pending):
+            pending.append(
+                PendingEffect(id=effect_id, act_key="", kind=EffectKind.END_SESSION, params={SESSION_PARAM: session_id})
+            )
+
+    await commit_on_current(todos_db, slug, record)
+    await reconcile_slug_supervised(str(todos_db.project_root), slug)
 
 
 class LinkSkipped(Exception):
@@ -437,8 +456,8 @@ async def _set_active_runner(
     lane: RunnerLane,
     manually_started: bool,
     release_hold: bool,
-) -> bool:
-    """Write the driver link and its manual marker as one guarded mutation; False when the row has another owner.
+) -> str:
+    """Write the driver link and its manual marker as one guarded mutation; the winning owner when the row has one.
 
     ``active_runner`` and ``manually_started`` are always written together so a
     todo never carries a driver link without its origin marker. ``release_hold``
@@ -446,7 +465,7 @@ async def _set_active_runner(
     claim/start of a held unclaimed todo, false for a live owner's continuation.
     """
     if await todos_db.read_state(slug) is None:
-        return True
+        return ""
 
     def change(writer: StateWriter) -> None:
         owner = writer.state.active_runner
@@ -463,9 +482,10 @@ async def _set_active_runner(
     try:
         await commit_on_current(todos_db, slug, change)
     except LinkSkipped as moved:
-        logger.warning(LINK_SKIPPED_LOG, slug=slug, started=session_id, owner=str(moved))
-        return False
-    return True
+        winner = str(moved)
+        logger.warning(LINK_SKIPPED_LOG, slug=slug, started=session_id, owner=winner)
+        return winner
+    return ""
 
 
 async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, RunnerTodo], list[str]]:
@@ -583,7 +603,7 @@ async def dispatch_lifecycle_session(
     if intent.additional_context:
         kwargs["additional_context"] = intent.additional_context
     response = await client.run_session(**kwargs)
-    linked = await _set_active_runner(
+    winner = await _set_active_runner(
         todos_db,
         intent.slug,
         response.session_id,
@@ -591,9 +611,9 @@ async def dispatch_lifecycle_session(
         manually_started=origin.manually_started,
         release_hold=origin.manually_started,
     )
-    if not linked:
-        await _end_unlinked_start(response.session_id)
-        raise LifecycleLinkLost(intent.slug, response.session_id)
+    if winner:
+        await _end_unlinked_start(todos_db, intent.slug, response.session_id)
+        raise LifecycleLinkLost(intent.slug, response.session_id, winner)
     session = await runtime_db.get_session(response.session_id)
     if session is not None and is_session_terminal(
         lifecycle_status=session.lifecycle_status,

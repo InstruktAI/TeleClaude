@@ -448,7 +448,7 @@ async def manual_start_lifecycle_session(
             lane=lane,
             status=ManualLifecycleStatus.ALREADY_DRIVEN,
             reason=RunnerSkipReason.ALREADY_DRIVEN,
-            session_id=lost.session_id,
+            session_id=lost.owner,
         )
     finally:
         await client.close()

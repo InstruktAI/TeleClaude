@@ -905,7 +905,7 @@ class OperationsService:
                 origin=DispatchOrigin.MANUAL,
             )
         except LifecycleLinkLost as lost:
-            raise ClaimConflict(slug=slug, holder=None) from lost
+            raise ClaimConflict(slug=slug, holder=lost.owner) from lost
         finally:
             await client.close()
         return f"RUNNER_DISPATCHED: {slug} {intent.lane.value} {session_id}"
