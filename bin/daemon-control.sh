@@ -793,49 +793,84 @@ systemd_unit_active() {
     esac
 }
 
-# Whether the config watcher unit is installed on this machine; a machine without it owes no watcher action.
-config_watcher_installed() {
+# The watcher's runtime state as the service manager reports it: prints running, stopped or absent, and fails when the
+# state cannot be established. Installation is not the question: a masked or not-yet-reloaded unit can still be running,
+# so the runtime state is read whatever its load state, and only a unit the manager reports as not found is absent.
+config_watcher_runtime_state() {
+    local active_state=""
     local load_state=""
-    load_state="$(systemctl show "$CONFIG_WATCHER_UNIT" --property=LoadState --value 2>/dev/null || true)"
-    [ "$load_state" = "loaded" ]
+    if ! active_state="$(systemctl show "$CONFIG_WATCHER_UNIT" --property=ActiveState --value 2>/dev/null)"; then
+        return 1
+    fi
+    case "$active_state" in
+        active | activating | reloading | deactivating | maintenance | refreshing)
+            printf 'running'
+            return 0
+            ;;
+        inactive | failed)
+            if ! load_state="$(systemctl show "$CONFIG_WATCHER_UNIT" --property=LoadState --value 2>/dev/null)"; then
+                return 1
+            fi
+            if [ "$load_state" = "not-found" ]; then
+                printf 'absent'
+            else
+                printf 'stopped'
+            fi
+            return 0
+            ;;
+    esac
+    return 1
 }
 
-# Stops the installed config watcher and verifies it inactive. Installation and enablement are left unchanged.
+# Stops the config watcher and verifies it inactive, whatever its load state. A unit the manager reports as not found
+# owes no action; a state that cannot be established is a failure, never an absence. Installation and enablement are
+# left unchanged.
 stop_config_watcher() {
-    local state_rc=0
-    if ! config_watcher_installed; then
-        return 0
+    local runtime_state=""
+    if ! runtime_state="$(config_watcher_runtime_state)"; then
+        log_error "Could not establish the runtime state of $CONFIG_WATCHER_UNIT"
+        return 1
     fi
-    systemd_unit_active "$CONFIG_WATCHER_UNIT" || state_rc=$?
-    if [ "$state_rc" -eq 1 ]; then
-        return 0
-    fi
+    case "$runtime_state" in
+        absent | stopped)
+            return 0
+            ;;
+    esac
     if ! _tc_sudo "stop the config watcher" systemctl stop "$CONFIG_WATCHER_UNIT"; then
         log_error "The service manager refused to stop $CONFIG_WATCHER_UNIT"
         return 1
     fi
-    state_rc=0
-    systemd_unit_active "$CONFIG_WATCHER_UNIT" || state_rc=$?
-    if [ "$state_rc" -ne 1 ]; then
-        log_error "The config watcher $CONFIG_WATCHER_UNIT remains active after stop"
+    if ! runtime_state="$(config_watcher_runtime_state)" || [ "$runtime_state" = "running" ]; then
+        log_error "The config watcher $CONFIG_WATCHER_UNIT is not shown inactive after stop"
         return 1
     fi
     return 0
 }
 
-# Restores an installed, enabled config watcher once the daemon is up; installation and enablement are not touched.
+# Restores the config watcher once the daemon is up. An enabled watcher is started; a deliberately disabled, masked or
+# linked one is left as the operator set it; a unit the manager reports as not found owes nothing; an enablement that
+# cannot be established is a failure. Installation and enablement are not touched.
 restore_config_watcher() {
-    if ! config_watcher_installed; then
+    local enablement=""
+    local runtime_state=""
+    enablement="$(systemctl is-enabled "$CONFIG_WATCHER_UNIT" 2>/dev/null)" || true
+    case "$enablement" in
+        enabled | enabled-runtime | static | indirect | generated | alias)
+            if ! _tc_sudo "restore the config watcher" systemctl start "$CONFIG_WATCHER_UNIT"; then
+                log_error "Failed to restore the config watcher: $CONFIG_WATCHER_UNIT"
+                return 1
+            fi
+            return 0
+            ;;
+        disabled | masked | masked-runtime | linked | linked-runtime)
+            return 0
+            ;;
+    esac
+    if runtime_state="$(config_watcher_runtime_state)" && [ "$runtime_state" = "absent" ]; then
         return 0
     fi
-    if ! systemctl is-enabled --quiet "$CONFIG_WATCHER_UNIT"; then
-        return 0
-    fi
-    if ! _tc_sudo "restore the config watcher" systemctl start "$CONFIG_WATCHER_UNIT"; then
-        log_error "Failed to restore the config watcher: $CONFIG_WATCHER_UNIT"
-        return 1
-    fi
-    return 0
+    log_error "Could not establish whether the config watcher $CONFIG_WATCHER_UNIT is to be restored"
+    return 1
 }
 
 stop_systemd_periodic_units() {
