@@ -47,7 +47,7 @@ from teleclaude.core.next_machine.runner_types import (
 )
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id, live_orchestrator_owned_slugs
 from teleclaude.core.next_machine.session_hold import reconcile_driver_ownership_for_session
-from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.state_mutation import StateWriter, commit_on_current
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db._rows import TodoRow
@@ -382,13 +382,22 @@ def _approval_from_state(state: Mapping[str, StateValue], approval_key: str) -> 
     return approval.get("approved") is True, approved_digest if isinstance(approved_digest, str) else ""
 
 
+_LIVE_ROW_STATUSES: Final = frozenset({"active", "icebox"})
+
+
 async def _clear_active_runner(todos_db: WorkflowStore, row: TodoRow) -> None:
+    def change(writer: StateWriter) -> None:
+        writer.state.active_runner = None
+        writer.state.manually_started = False
+
+    if row["status"] in _LIVE_ROW_STATUSES:
+        await commit_on_current(todos_db, row["slug"], change)
+        return
     state = await todos_db.read_state_by_id(row["id"])
     if state is None:
         return
     writer = StateWriter(state)
-    writer.state.active_runner = None
-    writer.state.manually_started = False
+    change(writer)
     await writer.commit_by_id(todos_db, row["id"])
 
 
@@ -408,18 +417,19 @@ async def _set_active_runner(
     is the caller-owned intent to clear a stored hold: true only for a fresh
     claim/start of a held unclaimed todo, false for a live owner's continuation.
     """
-    state = await todos_db.read_state(slug)
-    if state is None:
+    if await todos_db.read_state(slug) is None:
         return
-    writer = StateWriter(state)
-    writer.state.active_runner = session_id
-    writer.state.manually_started = manually_started
-    if release_hold:
-        writer.state.hold = False
-        writer.state.hold_audit = HoldAuditState()
-    if lane is RunnerLane.TASK_RUN:
-        writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING
-    await writer.commit(todos_db, slug)
+
+    def change(writer: StateWriter) -> None:
+        writer.state.active_runner = session_id
+        writer.state.manually_started = manually_started
+        if release_hold:
+            writer.state.hold = False
+            writer.state.hold_audit = HoldAuditState()
+        if lane is RunnerLane.TASK_RUN:
+            writer.state.lifecycle_phase = LifecyclePhase.TASK_RUNNING
+
+    await commit_on_current(todos_db, slug, change)
 
 
 async def _load_todos(todos_db: WorkflowStore, db: Db) -> tuple[dict[str, RunnerTodo], list[str]]:

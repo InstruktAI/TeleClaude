@@ -8,6 +8,7 @@ live here so the route module stays focused on request routing.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
@@ -17,7 +18,11 @@ from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.session_utils import session_in_claiming_group
+from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX, Lineage
+from teleclaude.types.lifecycle import LifecyclePhase
+from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -168,3 +173,55 @@ async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: s
                 f"role-bearing session; caller role '{session.role}' is refused"
             ),
         )
+
+
+INTENT_UNCLAIMED = (
+    "{slug} has no holder: an agent session edits the intent body only through the driver that holds the item"
+)
+INTENT_FOREIGN = "{slug} is held by session {holder}; the intent body is edited only by the holder or a session of its claiming group"
+INTENT_HELD_READY = "{slug} is ready: a held ready item admits no edit of its intent body"
+SESSION_ANCESTRY_CAP = 32
+
+
+class IntentBodyRefused(Exception):
+    """An agent session's write of the intent body was refused for one named cause; nothing was written."""
+
+
+async def session_ancestry(session_id: str) -> frozenset[str]:
+    """The session and every session it descends from through its persisted initiator links."""
+    chain = {session_id}
+    current = session_id
+    for _ in range(SESSION_ANCESTRY_CAP):
+        session = await runtime_db.get_session(current)
+        if session is None or not session.initiator_session_id or session.initiator_session_id in chain:
+            break
+        current = session.initiator_session_id
+        chain.add(current)
+    return frozenset(chain)
+
+
+def intent_body_mutation(
+    slug: str, ancestry: frozenset[str]
+) -> Callable[[dict[str, StateValue] | None], ItemChange | None]:
+    """The authority of an agent session over the intent body, decided on the row the write's transaction reads.
+
+    Only the holder, or a session of its claiming group, edits the body; no role alone grants it. An unclaimed item,
+    a session with no claim and a session of an earlier claiming group have none, and a held ready item admits no
+    edit (``local/projects/teleclaude/spec/feature/workflow/item-lifecycle``, Helpers of a driver). The mutation
+    changes no state: it only refuses, before the body is written.
+    """
+
+    def decide(current: dict[str, StateValue] | None) -> ItemChange | None:
+        if current is None:
+            raise IntentBodyRefused(INTENT_UNCLAIMED.format(slug=slug))
+        state = TodoState.model_validate(current)
+        holder = state.active_runner
+        if not holder:
+            raise IntentBodyRefused(INTENT_UNCLAIMED.format(slug=slug))
+        if holder not in ancestry:
+            raise IntentBodyRefused(INTENT_FOREIGN.format(slug=slug, holder=holder))
+        if state.lifecycle_phase is LifecyclePhase.READY or state.workflow.admitted is not None:
+            raise IntentBodyRefused(INTENT_HELD_READY.format(slug=slug))
+        return None
+
+    return decide

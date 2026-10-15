@@ -20,7 +20,7 @@ from teleclaude.constants import (
 from teleclaude.core.dates import normalize_task_schedule
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
-from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.state_mutation import StateWriter, commit_on_current
 from teleclaude.core.next_machine.unclaim import (
     ClaimReleaseRefusal,
     format_claim_release_outcome,
@@ -229,28 +229,28 @@ async def apply_hold_update(
 ) -> bool | None:
     if not hold and not release:
         return None
-    raw_state = await todos_db.read_state(slug)
-    if raw_state is None:
+    if await todos_db.read_state(slug) is None:
         raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
-    writer = StateWriter(raw_state)
-    if release and writer.state.hold_audit.source == HoldAuditSource.TASK_ERROR:
-        detail = _TASK_ERROR_RELEASE_DETAIL_TEMPLATE.format(slug=slug, refusal=TASK_ERROR_RELEASE_REFUSAL)
-        raise DeclaredWorkRefusal(status_code=409, detail=detail, work_feedback=detail)
-    writer.state.hold = hold
-    if hold:
-        normalized_reason = normalize_hold_reason(hold=hold, reason=reason)
-        assert normalized_reason is not None
-        writer.state.hold_audit.source = HoldAuditSource.MANUAL
-        writer.state.hold_audit.set_at = datetime.now(UTC).isoformat()
-        writer.state.hold_audit.set_by_session_id = caller_session_id or ""
-        writer.state.hold_audit.reason = normalized_reason
-    else:
-        writer.state.hold_audit.source = HoldAuditSource.NONE
-        writer.state.hold_audit.set_at = ""
-        writer.state.hold_audit.set_by_session_id = ""
-        writer.state.hold_audit.reason = ""
-    await writer.commit(todos_db, slug)
-    return writer.state.hold
+
+    def change(writer: StateWriter) -> None:
+        if release and writer.state.hold_audit.source == HoldAuditSource.TASK_ERROR:
+            detail = _TASK_ERROR_RELEASE_DETAIL_TEMPLATE.format(slug=slug, refusal=TASK_ERROR_RELEASE_REFUSAL)
+            raise DeclaredWorkRefusal(status_code=409, detail=detail, work_feedback=detail)
+        writer.state.hold = hold
+        if hold:
+            normalized_reason = normalize_hold_reason(hold=hold, reason=reason)
+            assert normalized_reason is not None
+            writer.state.hold_audit.source = HoldAuditSource.MANUAL
+            writer.state.hold_audit.set_at = datetime.now(UTC).isoformat()
+            writer.state.hold_audit.set_by_session_id = caller_session_id or ""
+            writer.state.hold_audit.reason = normalized_reason
+        else:
+            writer.state.hold_audit.source = HoldAuditSource.NONE
+            writer.state.hold_audit.set_at = ""
+            writer.state.hold_audit.set_by_session_id = ""
+            writer.state.hold_audit.reason = ""
+
+    return (await commit_on_current(todos_db, slug, change)).hold
 
 
 async def apply_unclaim_update(

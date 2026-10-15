@@ -10,7 +10,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.state_mutation import StateWriter, commit_on_current
 from teleclaude.core.session_listeners import notify_gate_approved
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.events.envelope import EventLevel
@@ -196,12 +196,30 @@ async def reconcile_driver_ownership_for_session(
         state = await todos_db.read_state_by_id(row["id"])
         if state is None or state.get("active_runner") != session_id:
             continue
-        writer = StateWriter(state)
-        writer.state.active_runner = None
-        writer.state.manually_started = False
-        await writer.commit_by_id(todos_db, row["id"])
+        if row["status"] in _LIVE_ROW_STATUSES:
+            await _release_if_still_held(todos_db, row["slug"], session_id)
+        else:
+            writer = StateWriter(state)
+            writer.state.active_runner = None
+            writer.state.manually_started = False
+            await writer.commit_by_id(todos_db, row["id"])
         cleared_slugs.append(row["slug"])
     return DriverOwnershipReconciliation(cleared_slugs=tuple(cleared_slugs))
+
+
+_LIVE_ROW_STATUSES = frozenset({"active", "icebox"})
+
+
+async def _release_if_still_held(todos_db: WorkflowStore, slug: str, session_id: str) -> None:
+    """Clear the session's claim on the row as the transaction reads it; a claim that changed hands is left alone."""
+
+    def change(writer: StateWriter) -> None:
+        if writer.state.active_runner != session_id:
+            return
+        writer.state.active_runner = None
+        writer.state.manually_started = False
+
+    await commit_on_current(todos_db, slug, change)
 
 
 def hold_todo_for_diagnosis_unresolved(writer: StateWriter, *, reason: str, caller_session_id: str) -> None:

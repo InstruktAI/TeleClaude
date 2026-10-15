@@ -11,6 +11,7 @@ flows — persistence is always driven by ``StateWriter``.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
@@ -168,6 +169,35 @@ class StateWriter:
         payload = self.to_dict()
         todos_db.write_state_sync(slug, payload)
         return payload
+
+
+async def commit_on_current(
+    todos_db: WorkflowStore,
+    slug: str,
+    change: Callable[[StateWriter], None],
+    *,
+    updated_by: str | None = None,
+) -> TodoState:
+    """Apply ``change`` to the item's state as the write's own transaction reads it, and persist the result.
+
+    The previous machine's writers read the state, mutated it and wrote the whole of it back, so a claim, a hold or a
+    phase that landed in between was overwritten. This reads and writes in one row transaction under the writer lock:
+    ``change`` sees the state as it is now, may raise to write nothing, and every field it does not touch is carried.
+    """
+    from teleclaude.core.workflow_store.types import ItemChange  # noqa: PLC0415 - the store types read this package
+
+    outcome: list[TodoState] = []
+
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            raise StateMutationError(f"slug {slug!r} not found in todo list")
+        writer = StateWriter(current)
+        change(writer)
+        outcome.append(writer.state.model_copy(deep=True))
+        return ItemChange(state=writer.to_dict())
+
+    await todos_db.commit_item_change(slug, expect_digests={}, mutate=mutate, updated_by=updated_by)
+    return outcome[-1]
 
 
 class ApprovalsManager:

@@ -16,9 +16,12 @@ from pydantic import BaseModel, ConfigDict
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.todo_artifact_authority import (
+    IntentBodyRefused,
+    intent_body_mutation,
     refuse_foreign_claim,
     refuse_non_prepare_writer,
     resolved_write_principal,
+    session_ancestry,
 )
 from teleclaude.api.todo_routes import (
     _DRIFT_TRACKED_ARTIFACT_NAMES,
@@ -166,12 +169,22 @@ async def write_artifact(
     todos_db = await _get_workflow_store_from_cwd(project_root)
     await _refuse_holder_mutation(todos_db, slug)
     await require_slug_in_todo(todos_db, slug)
-    await refuse_foreign_claim(todos_db, identity, slug)
-    if name in PREPARE_ARTIFACT_NAMES:
-        await refuse_non_prepare_writer(identity, slug, name)
+    intent_by_session = name == ARTIFACT_INPUT and bool(identity.session_id)
+    if not intent_by_session:
+        await refuse_foreign_claim(todos_db, identity, slug)
+        if name in PREPARE_ARTIFACT_NAMES:
+            await refuse_non_prepare_writer(identity, slug, name)
     effective_updated_by = resolved_write_principal(identity)
     try:
-        if name == ARTIFACT_DESIGN_SPEC:
+        if intent_by_session:
+            await todos_db.write_artifact_with_state_change(
+                slug,
+                name,
+                content,
+                updated_by=effective_updated_by,
+                mutate=intent_body_mutation(slug, await session_ancestry(identity.session_id)),
+            )
+        elif name == ARTIFACT_DESIGN_SPEC:
             await todos_db.write_artifact_with_state_change(
                 slug,
                 name,
@@ -191,7 +204,7 @@ async def write_artifact(
                 artifact_body=content,
                 prepared_session_id=identity.session_id,
             )
-    except (HolderWriteRefused, CreativeRefused) as exc:
+    except (HolderWriteRefused, CreativeRefused, IntentBodyRefused) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if name in {artifacts.report_artifact_name for artifacts in REVIEW_EVIDENCE_ARTIFACTS.values()}:
         logger.info(
