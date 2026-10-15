@@ -28,6 +28,7 @@ from teleclaude.constants import (
     STATE_KEY_PRD,
 )
 from teleclaude.core.next_machine._types import StateValue
+from teleclaude.core.next_machine.state_merge import apply_changes, changed_fields
 from teleclaude.types.todos import (
     ApprovalsState,
     ApprovalStamp,
@@ -42,6 +43,7 @@ from teleclaude.types.todos import (
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
+    from teleclaude.core.workflow_store.types import ItemChange
 
 
 __all__ = [
@@ -96,6 +98,7 @@ class StateWriter:
 
     def __init__(self, raw_state: dict[str, StateValue]) -> None:
         self._model = _validate_full_state(raw_state)
+        self._baseline = _dump_state(self._model)
 
     @property
     def state(self) -> TodoState:
@@ -149,10 +152,27 @@ class StateWriter:
         todos_db: WorkflowStore,
         slug: str,
     ) -> dict[str, StateValue]:
-        """Validate and persist the current state through the workflow store."""
-        payload = self.to_dict()
-        await todos_db.write_state(slug, payload)
-        return payload
+        """Validate the state and persist what this writer changed, merged onto the row the commit reads.
+
+        Only the fields that differ from the state this writer was built from are written, in one transaction that
+        reads the stored state, so a field another writer committed in between is kept, not overwritten.
+        """
+        from teleclaude.core.workflow_store.types import ItemChange  # noqa: PLC0415 - the store types read this package
+
+        final = self.to_dict()
+        changes = changed_fields(self._baseline, final)
+        merged: list[dict[str, StateValue]] = []
+
+        def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+            if current is None:
+                merged.append(final)
+                return ItemChange(state=final)
+            combined = _dump_state(_validate_full_state(apply_changes(current, changes)))
+            merged.append(combined)
+            return ItemChange(state=combined) if combined != current else None
+
+        await todos_db.commit_item_change(slug, expect_digests={}, mutate=mutate, updated_by=None)
+        return merged[-1]
 
     async def commit_by_id(
         self,
