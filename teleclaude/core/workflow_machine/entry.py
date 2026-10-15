@@ -426,6 +426,7 @@ def _apply_reservation(
     if state.hold and phase is not Phase.READY:
         if request.origin is StartOrigin.RUNNER:
             raise _refuse(EntryRefusal.HOLD_BRAKE, item=request.item)
+    if state.hold and phase is not Phase.READY and state.workflow.launch is None:
         base[HOLD_STATE_KEY] = False
         base[HOLD_AUDIT_STATE_KEY] = HoldAuditState().model_dump(mode="json")
         cleared = _hold_cleared_note(request, item_id, role, record)
