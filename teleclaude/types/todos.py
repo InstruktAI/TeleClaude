@@ -11,6 +11,7 @@ from teleclaude.constants import TodoStatus
 from teleclaude.types.lifecycle import LEGACY_LIFECYCLE_PHASE_NORMALIZATION, LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TodoKind
+from teleclaude.types.workflow_record import WorkflowRecord
 
 ACTIVE_RUNNER_STATE_KEY = "active_runner"
 LIFECYCLE_PHASE_STATE_KEY = "lifecycle_phase"
@@ -360,6 +361,7 @@ class TodoState(BaseModel):
     integration_phase: str | None = None
     audit: AuditState = Field(default_factory=AuditState)
     events: list[Event] = Field(default_factory=list)
+    workflow: WorkflowRecord = Field(default_factory=WorkflowRecord)
 
     @model_validator(mode="before")
     @classmethod
