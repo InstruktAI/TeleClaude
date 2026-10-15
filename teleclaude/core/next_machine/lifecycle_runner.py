@@ -573,6 +573,7 @@ async def _request_item_driver(project_path: str, intent: DispatchIntent) -> boo
         EntryRefused,
         EntryRequest,
         EntryVerb,
+        StartOrigin,
         enter,
     )
 
@@ -585,6 +586,7 @@ async def _request_item_driver(project_path: str, intent: DispatchIntent) -> boo
                 verb=verb,
                 caller_session_id="",
                 wait_for_claim=False,
+                origin=StartOrigin.RUNNER,
             )
         )
     except EntryRefused as refusal:

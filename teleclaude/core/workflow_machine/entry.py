@@ -49,7 +49,7 @@ from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.procedure_delivery import BINDING_SECTION, BindingField
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, LIFECYCLE_PHASE_STATE_KEY, TodoState
+from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY, LIFECYCLE_PHASE_STATE_KEY, HoldAuditState, TodoState
 from teleclaude.types.workflow_record import (
     Act,
     ActStatus,
@@ -62,9 +62,17 @@ from teleclaude.types.workflow_record import (
     NoteKind,
     PendingEffect,
     Phase,
+    WorkflowRecord,
 )
 
 logger = get_logger(__name__)
+
+
+class StartOrigin(StrEnum):
+    """Who asks for a driver start: the lifecycle runner on its own, or an explicit call."""
+
+    RUNNER = "runner"
+    EXPLICIT = "explicit"
 
 
 class EntryVerb(StrEnum):
@@ -96,6 +104,7 @@ class EntryRefusal(StrEnum):
     ADMITTED = "{item} is admitted by the integrator at {sha}; the integrator delivers or parks it"
     READY_DOOR = "{item} is ready, which `telec todo work {item} --reason <text>` drives"
     HELD_NOTED = "{item} is held by session {session}; your reason is recorded as note {note}"
+    HOLD_BRAKE = "{item} is held by its hold brake; the lifecycle runner starts nothing for it"
     HEAD_UNREADABLE = (
         "{item}: its carried review verdict cannot be compared with the integration head, which could not be read; "
         "repeat when the remote can be read"
@@ -125,6 +134,7 @@ class EntryRequest:
     reservation: str = ""
     reason: str = ""
     wait_for_claim: bool = True
+    origin: StartOrigin = StartOrigin.EXPLICIT
     lane: LaneFacts | None = None
     creative_snapshot: str = ""
 
@@ -154,6 +164,11 @@ class EntryResult:
 
 
 REQUESTED_NOTE: Final = "{item}: a driver was requested."
+HOLD_CLEARED_ACT: Final = "hold-cleared"
+HOLD_CLEARED_TEXT: Final = "The hold was cleared by an explicit `telec todo {verb}` start from {session}."
+TERMINAL_CALLER: Final = "a person at a terminal"
+HOLD_STATE_KEY: Final = "hold"
+HOLD_AUDIT_STATE_KEY: Final = "hold_audit"
 REASON_NOTED: Final = " Your reason is recorded as note {note}."
 RETRY_NOTE: Final = "{item}: this reason is already recorded as note {note} in this stamp's cycle; nothing was started."
 LAUNCH_NOTE: Final = "{item}: a driver was requested; session {session} holds the claim."
@@ -404,9 +419,18 @@ def _apply_reservation(
     holder = state.active_runner or None
     if holder is not None and phase is not Phase.READY:
         raise _refuse(EntryRefusal.HELD, item=request.item, session=holder)
+    base = dict(state_dict)
     record = state.workflow.model_copy(deep=True)
     log = NO_SESSION
     created = False
+    if state.hold and phase is not Phase.READY:
+        if request.origin is StartOrigin.RUNNER:
+            raise _refuse(EntryRefusal.HOLD_BRAKE, item=request.item)
+        base[HOLD_STATE_KEY] = False
+        base[HOLD_AUDIT_STATE_KEY] = HoldAuditState().model_dump(mode="json")
+        cleared = _hold_cleared_note(request, item_id, role, record)
+        record.ledger.append(cleared)
+        log = render_log_entry(cleared)
     if phase is Phase.READY:
         recorded = record_reason(
             record,
@@ -424,14 +448,14 @@ def _apply_reservation(
         outcome.held_by = holder
         if not created:
             return None
-        return ItemChange(state={**state_dict, WORKFLOW_STATE_KEY: record.to_state()}, log_entry=log)
+        return ItemChange(state={**base, WORKFLOW_STATE_KEY: record.to_state()}, log_entry=log)
     if phase is Phase.READY and not created and state.workflow.launch is None:
         outcome.retried = True
         return None
     if state.workflow.launch is not None:
         if not log:
             return ItemChange(state=state_dict)
-        return ItemChange(state={**state_dict, WORKFLOW_STATE_KEY: record.to_state()}, log_entry=log)
+        return ItemChange(state={**base, WORKFLOW_STATE_KEY: record.to_state()}, log_entry=log)
     key = occurrence_id(request.project_root, item_id, EFFECT_REQUEST, str(record.claim_epoch), _now())
     record.launch = LaunchReservation(
         key=key,
@@ -450,7 +474,22 @@ def _apply_reservation(
         )
     )
     record.act_status[key] = ActStatus.IN_PROGRESS
-    return ItemChange(state={**state_dict, WORKFLOW_STATE_KEY: record.to_state()}, log_entry=log)
+    return ItemChange(state={**base, WORKFLOW_STATE_KEY: record.to_state()}, log_entry=log)
+
+
+def _hold_cleared_note(request: EntryRequest, item_id: str, role: str, record: WorkflowRecord) -> LedgerEntry:
+    """The ledger note that names the verb and the calling session whose explicit start cleared the hold."""
+    caller = request.caller_session_id or TERMINAL_CALLER
+    return LedgerEntry(
+        seq=len(record.ledger) + 1,
+        act=Act.NOTE,
+        key=occurrence_id(request.project_root, item_id, HOLD_CLEARED_ACT, str(record.claim_epoch), _now()),
+        epoch=record.claim_epoch,
+        at=_now(),
+        role=role,
+        session_id=request.caller_session_id,
+        text=HOLD_CLEARED_TEXT.format(verb=request.verb.value, session=caller),
+    )
 
 
 _STAMPED_STORED: Final = frozenset(
