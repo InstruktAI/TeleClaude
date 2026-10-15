@@ -139,35 +139,31 @@ installation and lifecycle use the sanctioned make surface
 <!-- change:release-install-proof-on-hosted-mac -->
 
 The release workflow names a GitHub-hosted runner for every job: hosted Ubuntu
-for the Linux stages and outcome reporting, hosted macOS for installation
-proof. No job targets a self-hosted runner, and no repository setting selects
-a destination. Placement changes neither the release stream's serialization
-nor artifact, candidate and credential-settlement authority
-(`local/projects/teleclaude/spec/feature/release/publication`).
+for the Linux stages and outcome reporting, hosted arm64 macOS
+(`macos-latest`) for installation proof. No job targets a self-hosted runner,
+and no repository setting selects a destination. Placement changes neither the
+release stream's serialization nor artifact, candidate and credential-settlement
+authority (`local/projects/teleclaude/spec/feature/release/publication`).
 
-The hosting provider creates each job's machine for that job and discards it
-afterwards, so the hosted macOS runner is itself the disposable machine the
-installation proof requires. The proof harness installs the candidate directly
-on its runner, as the runner's user, from the repository bundle it builds
-locally; a nested virtual machine is neither needed nor available on hosted
-macOS. Nothing a release job creates outlives the job except its uploaded
-artifacts, so release tooling keeps no host admission, machine ownership
-record, disposal confirmation or guest routing, and an interrupted attempt
-leaves nothing for its successor to recover. Job ordering, the serialized
-attempt stream and exact-artifact binding carry every guarantee between jobs.
+Each hosted runner is a virtual machine the provider creates for one job and
+decommissions after it; hosted arm64 macOS runners provide no nested
+virtualization.
+The proof harness installs the candidate directly on its own runner, as the
+runner's user, from a repository bundle it builds locally. Release tooling
+keeps no host admission, machine ownership record, disposal confirmation or
+guest routing; an interrupted attempt leaves its successor nothing to recover.
+Job ordering, the serialized attempt stream and exact-artifact binding carry
+every guarantee between jobs.
 
-Because the harness installs onto the machine it runs on, it refuses to start
-unless that machine is a GitHub-hosted runner with no TeleClaude platform home,
-daemon socket or canonical checkout present, so it never installs over a live
-platform. The installed candidate shares its machine with the runner agent, so
-the step that runs the harness receives no repository token, and every
-installation and probe command runs with the runner user's login environment
-rather than the job's; artifact download and upload run as separate steps that
-hold the job's token. A proof job that is
-never assigned, times out or loses its runner produces no successful proof
-receipt, which withholds publication through the existing proof-success
-requirement. The harness drives installation and service lifecycle through
-the sanctioned make surface
+The harness refuses to start unless `RUNNER_ENVIRONMENT` is `github-hosted`
+and no TeleClaude platform home, daemon socket or canonical checkout exists on
+the machine. The step that runs the harness receives no repository token, and
+every installation and probe command runs with the runner user's login
+environment, never the job's. Artifact download and upload run as separate
+steps that hold the job's token. A proof job that is never assigned, times out
+or loses its runner produces no successful proof receipt, and the existing
+proof-success requirement then withholds publication. The harness drives
+installation and service lifecycle through the sanctioned make surface
 (`local/projects/teleclaude/policy/agent-service-control`).
 
 <!-- /planned-change:release-install-proof-on-hosted-mac -->
@@ -379,3 +375,9 @@ its own lint, runtime acceptance and installer proof.
 - docs/third-party/uv/project-version-updates.md
 - docs/third-party/git-cliff/changelog-generation.md
 - docs/third-party/git-cliff-action/changelog-step.md
+
+<!-- planned:release-install-proof-on-hosted-mac -->
+
+- docs/third-party/github-actions/hosted-macos-runners.md
+
+<!-- /planned:release-install-proof-on-hosted-mac -->

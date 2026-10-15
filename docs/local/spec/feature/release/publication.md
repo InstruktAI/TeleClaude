@@ -92,12 +92,12 @@ separate virtualization-capable execution target.
 
 Every release stage runs on a GitHub-hosted runner that the release workflow
 names: the Linux stages on hosted Ubuntu, and the installation proof on hosted
-macOS. No release stage runs on owned infrastructure. Each job receives a fresh
-machine created for that job alone and discarded by the hosting provider after
-it, so release tooling holds no machine lifecycle, cleanup record or host
-admission of its own. Hosted placement changes neither the release stream's
-serialization nor its artifact, candidate and credential-settlement authority,
-and publication retains its full verification requirements
+arm64 macOS. No release stage runs on owned infrastructure. Each job runs on a
+machine the hosting provider creates for that job and decommissions after it;
+release tooling holds no machine lifecycle, cleanup record or host admission of
+its own. Hosted placement changes neither the release stream's serialization nor its
+artifact, candidate and credential-settlement authority, and publication
+retains its full verification requirements
 (`sdlc/policy/process-change-authority`). A runner that is never assigned or is
 lost during its job produces a visible failure, and a missing proof withholds
 publication.
@@ -479,11 +479,11 @@ And an interrupted proof leaves nothing for the next attempt to recover
 
 <!-- planned:release-install-proof-on-hosted-mac -->
 
-- A hosted runner cannot restart its machine within a job, so installation
-  proof stops and starts the installed services rather than restarting the
-  machine; service loading at machine startup is not proved.
-- The hosted macOS image carries preinstalled developer tooling, so a passing
-  proof does not establish installation on a macOS machine without it.
+- Installation proof stops and starts the installed services and does not
+  restart the machine; service loading at machine startup is not proved.
+- Installation proof runs on the hosted macOS image with its preinstalled
+  developer tooling and does not establish installation on a macOS machine
+  without that tooling.
 
 <!-- /planned:release-install-proof-on-hosted-mac -->
 
@@ -494,3 +494,11 @@ And an interrupted proof leaves nothing for the next attempt to recover
 - Published candidate and proof evidence remains interpretable across owned
   record migrations; the published commit and tag are immutable. Migration
   behavior is owned by `sdlc/policy/backward-compatibility-hygiene`.
+
+<!-- planned:release-install-proof-on-hosted-mac -->
+
+## See Also
+
+- docs/third-party/github-actions/hosted-macos-runners.md
+
+<!-- /planned:release-install-proof-on-hosted-mac -->
