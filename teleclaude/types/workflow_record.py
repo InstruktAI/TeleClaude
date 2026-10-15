@@ -121,8 +121,22 @@ class PendingEffect(BaseModel):
     params: dict[str, str] = Field(default_factory=dict)
 
 
+class LaunchRecipient(BaseModel):
+    """One activation the request event caused: the operation that carries it and whom it concerns."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    operation_id: str
+    procedure_id: str
+    home: str
+
+
 class LaunchReservation(BaseModel):
-    """A driver being started: the key a claiming agent must present."""
+    """A driver being started: the key a claiming agent must present.
+
+    ``recipients`` is the activations the request caused, recorded once the activation consumer has handled
+    the request event: None until then, empty only when that observation found that nothing matched.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -131,6 +145,7 @@ class LaunchReservation(BaseModel):
     requested_at: str
     requested_by: str
     effect_id: str
+    recipients: tuple[LaunchRecipient, ...] | None = None
 
 
 class WaitingRecord(BaseModel):

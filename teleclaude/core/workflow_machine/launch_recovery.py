@@ -32,7 +32,7 @@ from teleclaude.types.claim_change import WORKFLOW_STATE_KEY, workflow_record_of
 from teleclaude.types.procedure_delivery import BINDING_SECTION, BindingField
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import ACTIVE_RUNNER_STATE_KEY
-from teleclaude.types.workflow_record import ActStatus, LaunchReservation
+from teleclaude.types.workflow_record import ActStatus, LaunchRecipient, LaunchReservation
 
 logger = get_logger(__name__)
 
@@ -46,6 +46,8 @@ class ActivateProcedureCommandPayload(BaseModel):
     home: str
 
 
+OBSERVATION_WINDOW_SECONDS: Final = 3 * 24 * 3600
+RECIPIENTS_FIELD: Final = "recipients"
 RECOVERY_FAILED_LOG: Final = "launch recovery failed for an item"
 RECOVERED_LOG: Final = "launch reservation released on terminal evidence"
 RECOVERY_NOTE: Final = (
@@ -70,25 +72,73 @@ async def _has_open_bound_session(item: str, procedure_id: str, home: str) -> bo
     return False
 
 
-async def has_terminal_evidence(project_root: str, item: str, item_id: str, launch: LaunchReservation) -> bool:
-    """Whether the reservation's request can no longer produce a driver, by the platform's durable records of it.
+async def _observe_recipients(
+    store: WorkflowStore, project_root: str, item: str, item_id: str, launch: LaunchReservation
+) -> tuple[LaunchRecipient, ...] | None:
+    """The activations the request caused, recorded on the reservation the first time they can be observed.
 
-    The request event is one event with one id. The activation consumer's handled record says it has finished
-    submitting everything that event causes; the operations it accepted for that event, found by the event's
-    own id, are exactly the recipients, whatever the published headers say now. Every one of them must be
-    terminal, and none may have an open session bound to this item for its procedure and home. Anything not
-    yet recorded, or no longer recorded, is unknown and leaves the reservation in place.
+    Observation happens while the platform still holds the receipts, and is refused for a reservation older
+    than the observation window, so a receipt that retention has already begun to delete can never be read as
+    'nothing matched'. None means not observable yet or no longer reliably so.
     """
+    if launch.recipients is not None:
+        return launch.recipients
+    age = (datetime.now(UTC) - datetime.fromisoformat(launch.requested_at)).total_seconds()
+    if age >= OBSERVATION_WINDOW_SECONDS:
+        return None
     event_id = occurrence_id(project_root, item_id, launch.effect_id)
     event_db = await get_event_db()
     if not await event_db.has_handled_event(PROCEDURE_ACTIVATION_CONSUMER, event_id):
-        return False
+        return None
     operations = await db.list_operations_for_event(kind=OperationKind.PROCEDURE_ACTIVATION.value, event_id=event_id)
-    if any(operation.state not in TERMINAL_OPERATION_STATES for operation in operations):
+    recipients = tuple(
+        LaunchRecipient(
+            operation_id=operation.operation_id,
+            procedure_id=command.procedure_id,
+            home=command.home,
+        )
+        for operation in operations
+        for command in (ActivateProcedureCommandPayload.model_validate_json(operation.payload_json),)
+    )
+    await store.commit_item_change(
+        item, expect_digests={}, mutate=_record_recipients(launch.key, recipients), updated_by=None
+    )
+    return recipients
+
+
+def _record_recipients(key: str, recipients: tuple[LaunchRecipient, ...]) -> Callable[..., ItemChange | None]:
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            return None
+        record = workflow_record_of(current)
+        if record.launch is None or record.launch.key != key or record.launch.recipients is not None:
+            return None
+        updated = record.model_copy(deep=True)
+        updated.launch = record.launch.model_copy(update={RECIPIENTS_FIELD: recipients})
+        return ItemChange(state={**current, WORKFLOW_STATE_KEY: updated.to_state()})
+
+    return mutate
+
+
+async def has_terminal_evidence(
+    store: WorkflowStore, project_root: str, item: str, item_id: str, launch: LaunchReservation
+) -> bool:
+    """Whether the reservation's request can no longer produce a driver, by what the platform durably recorded.
+
+    The recipients are the activations the request event caused, as recorded on the reservation, whatever the
+    published headers say now. Each must be terminal (a receipt retention has already deleted was terminal,
+    because only terminal receipts are deleted), and none may have an open session bound to this item for its
+    procedure and home. Recipients not yet observed are unknown and leave the reservation in place.
+    """
+    recipients = await _observe_recipients(store, project_root, item, item_id, launch)
+    if recipients is None:
         return False
-    for operation in operations:
-        command = ActivateProcedureCommandPayload.model_validate_json(operation.payload_json)
-        if await _has_open_bound_session(item, command.procedure_id, command.home):
+    for recipient in recipients:
+        operation = await db.get_operation(recipient.operation_id)
+        if operation is not None and operation.state not in TERMINAL_OPERATION_STATES:
+            return False
+    for recipient in recipients:
+        if await _has_open_bound_session(item, recipient.procedure_id, recipient.home):
             return False
     return True
 
@@ -124,7 +174,7 @@ async def _recover_item(store: WorkflowStore, project_root: str, item: str) -> N
         return
     if any(effect.id == launch.effect_id for effect in record.pending_effects):
         return
-    if not await has_terminal_evidence(project_root, item, item_id, launch):
+    if not await has_terminal_evidence(store, project_root, item, item_id, launch):
         return
     await store.commit_item_change(
         item, expect_digests={}, mutate=_release(item, launch.key, datetime.now(UTC)), updated_by=None
