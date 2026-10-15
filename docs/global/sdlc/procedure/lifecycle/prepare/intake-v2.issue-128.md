@@ -39,7 +39,12 @@ dispose every challenge with a change or with evidence.
    the outcome; use cases as `Given / When / Then`, each one observable
    behavior; invariants as falsifiable claims, including what holds when a step
    fails midway, when two actors act at once, and across a restart. Reference
-   contracts other contexts own instead of restating them.
+   contracts other contexts own instead of restating them. For a bug, state the
+   cause the spec rests on: the causal mechanism with its evidence, an occurrence
+   or a dangerous path in the terms of `sdlc/concept/defect-evidence`; a cause
+   the filer supplied is input, and you show the evidence for it or state what is
+   missing. When the spec changes a domain rule, name the single bounded context
+   that owns the rule and the layer used inside it.
 4. **Record what you inferred.** Record a note saying what the body now says
    beyond the literal input and why each addition belongs. State as a question
    anything that would change the intent itself.

@@ -45,8 +45,12 @@ every commit and places findings against commits; you answer each of them.
    authored there and folded at integration.
 3. **Build and commit.** Implement the spec. Commit each coherent step through
    `telec code commit --approved "<message>"` in the worktree; the commit
-   publishes the branch. End your turn with one line naming the commits pushed;
-   the delivering session reviews them.
+   publishes the branch, so you push nothing separately. End your turn with one
+   line naming the commits pushed; the delivering session reviews them. On a bug,
+   change nothing beyond what the spec's cause requires
+   (`sdlc/procedure/debugging`). Report to the delivering session any temporary
+   suppression whose removal you defer; it decides under
+   `sdlc/policy/todo-creation-discipline`.
 4. **Answer findings.** Findings reach you at the start of each turn and when
    you stop. Reply to each, naming it: changed, with the fixing commit, or
    rejected, with evidence. Stop only for a finding you accept as a
