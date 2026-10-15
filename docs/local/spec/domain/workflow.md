@@ -13,6 +13,8 @@ feature specs remain the current contract.
 
 ## Canonical fields
 
+<!-- planned-change:issue-128 -->
+
 - **Current behavior:** `docs/local/spec/feature/workflow/`.
 - **Implementation roots:** `teleclaude/core/workflow_store/` owns the
   backend-neutral workflow-store contract, selection and local adapter;
@@ -24,7 +26,25 @@ feature specs remain the current contract.
 - **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. Replacement work never uses this store or
   lifecycle.
 
+<!-- change:issue-128 -->
+
+- **Current behavior:** `docs/local/spec/feature/workflow/`, which includes the lifecycle machine's contracts: `item-lifecycle` (phases, acts and who may perform them), `item-acts` (the sealed commands) and `work-review-cycle` (commits, findings and the stamp), with the mechanism in `local/projects/teleclaude/design/architecture/workflow-machine`.
+- **Implementation roots:** `teleclaude/core/workflow_store/` owns the
+  backend-neutral workflow-store contract, selection and local adapter;
+  `teleclaude/core/todos_db/` remains the local adapter's SQLite implementation
+  and migration owner. `teleclaude/core/workflow_machine/` owns the lifecycle machine: phase reading, acts, entry
+  verbs, effects, head observation and the stamp. `teleclaude/core/next_machine/`,
+  `teleclaude/core/integration/`, API routes, services and CLI handlers consume
+  the workflow-store contract and do not access a backend directly.
+
+- **Maintenance stance:** see `local/projects/teleclaude/spec/domain/glossary`. Replacement work never uses this store or
+  lifecycle, except that the lifecycle machine for the workflow domain is delivered here, as the glossary states.
+
+<!-- /planned-change:issue-128 -->
+
 ### Ownership boundary
+
+<!-- planned-change:issue-128 -->
 
 - **Owns:** todo and artifact records, preparation and delivery state
   transitions, claims, dependencies, worktree delivery, and integration
@@ -57,6 +77,32 @@ feature specs remain the current contract.
   stamping and the checkpoint's worktree dirty-set selection consume those
   groupings by role name; the catalog composes the roles and decides nothing
   about lanes (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
+
+<!-- change:issue-128 -->
+
+- **Owns:** todo and artifact records, preparation and delivery state
+  transitions, claims, dependencies, worktree delivery, and integration
+  coordination.
+- **Does not own:** agent process lifecycle, provider transport, caller
+  identity, or domain behavior delivered by a todo.
+- **Published contracts:** todo and artifact commands, queries, lifecycle
+  events, and explicit dispatch requests to agent runtime.
+- **Also published:** where a project's shared state lives, given a project
+  root. A primary checkout owns its own state and a linked worktree's state
+  lives at the owning checkout — the relation this context creates and defines,
+  which is why the answer is published from here rather than from the context
+  that owns the project's configuration file. Consumers read it through this
+  contract and never interpret git metadata themselves.
+- **Also published:** which checkouts are slug worktrees and where a slug
+  worktree's home lives, given the worktree root
+  (`local/projects/teleclaude/spec/feature/agent_runtime/isolated-home`). The contract loads no
+  other part of the platform, so runtime home resolution can ask it before
+  anything else loads. Consumers ask this contract and never restate the
+  layout.
+
+- **Also owns:** which procedure drives each phase of an item - the preparation driver and the work driver, each named by the `workflow` header it declares (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`), with the child procedure each header names (the intake and the build) - and every emission of those procedure IDs by the lifecycle runner and the machine; the dispatch of the task procedures by the task lane; and the lane groupings of catalog role names its own gates read: the preparation-authoring roles (prepare-orchestrator, intaker, architect, diagnoser, planner), the worktree-writer roles (builder, finalizer) and the work-lane roles (work-orchestrator and the writers). The artifact-authority gate, kickback stamping and the checkpoint's worktree dirty-set selection consume those groupings by role name; the catalog composes the roles and decides nothing about lanes (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
+
+<!-- /planned-change:issue-128 -->
 
 ### Preparation completion provenance
 
