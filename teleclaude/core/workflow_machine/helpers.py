@@ -106,8 +106,7 @@ async def earlier_claim_sessions(
     the item's ledger records and the holders its claim changes have displaced, which includes a claim the previous
     machine made without any ledger act, and (with the item and its project named) the sessions such a claim left
     running, found by their persisted working slug and project; the current holder, the sessions it started and sessions
-    already closed are not among them. The creative workers the platform started in a handoff are among the live ones, so
-    a driver is not started beside a worker that is still writing.
+    already closed are not among them.
     """
     current = {holder, *await group_sessions_of(holder)} if holder else set()
     found: list[str] = []
@@ -118,10 +117,6 @@ async def earlier_claim_sessions(
         session = await db.get_session(claimer)
         members = [*(await group_sessions_of(claimer)), *([claimer] if session and session.closed_at is None else [])]
         found.extend(member for member in members if member not in current and member not in found)
-    for worker in record.dispatch_workers:
-        session = await db.get_session(worker)
-        if session is not None and session.closed_at is None and worker not in current and worker not in found:
-            found.append(worker)
     if item and project_root:
         legacy = await _previous_machine_helpers(item, project_root, current)
         found.extend(member for member in legacy if member not in found)

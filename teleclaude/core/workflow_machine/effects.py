@@ -22,7 +22,7 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 from teleclaude.core.workflow_machine.caller import group_sessions_of
-from teleclaude.core.workflow_machine.dispatch import DispatchPending, WorkerSpec, dispatch_worker
+from teleclaude.core.workflow_machine.dispatch import OrchestratorSpec, orchestrator_session_id, start_orchestrator
 from teleclaude.core.workflow_machine.helpers import unsettled_helper_starts
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange, PendingEffectItem
@@ -82,15 +82,9 @@ WORKER_ARGS_PARAM: Final = "worker_args"
 WORKER_PROJECT_PARAM: Final = "worker_project"
 DISPATCHED_TEMPLATE: Final = (
     "CREATIVE_DISPATCHED: {slug}\n\n"
-    "The platform started the creative worker session {session} for this phase and registered session {owner}, the one\n"
-    "above you, to hear when it idles. That session continues the lane with `telec todo design {slug}`; you have handed\n"
-    "the item on and do not start further sessions for it."
-)
-DISPATCHED_UNOWNED_TEMPLATE: Final = (
-    "CREATIVE_DISPATCHED: {slug}\n\n"
-    "The platform started the creative worker session {session} for this phase. No open session above you listens for\n"
-    "it, so nothing continues the lane by itself: when the worker has finished, a person or a session that is not part\n"
-    "of this claim calls `telec todo design {slug}`; you have handed the item on and do not start further sessions."
+    "The platform started the creative orchestrator, session {session}. It drives the creative lane from here:\n"
+    "it dispatches the lane's workers, parks at the human gates and ends the lane's sessions when the design is\n"
+    "complete. You have handed the item on and do not start further sessions for it."
 )
 
 EFFECT_FAILED_LOG: Final = "workflow effect failed; the reconciler retries it with the same identity"
@@ -307,36 +301,25 @@ async def _ensure_worktree(context: EffectContext, effect: PendingEffect) -> Non
 async def _creative_dispatch(context: EffectContext, effect: PendingEffect) -> None:
     """The creative dispatch of the holder's handoff, performed by the platform after the sweep and before the release.
 
-    For a phase that starts a worker, the worker is started here, recorded on the item as a live session of the lane,
-    and the session that continues the lane is registered to hear when it idles; for every other phase the instruction
-    committed with the handoff is the dispatch. The outcome is written once, keyed by the act, and the caller reads it
-    from the item: a lost response, a repeated call or a restart returns the same committed outcome. Repeating the
-    effect starts and writes nothing twice.
+    For a phase the creative lane drives, the creative orchestrator is started here under an identity derived from this
+    effect, recorded on the item as the lane's session; for completion the instruction committed with the handoff is the
+    dispatch. The outcome is written once, keyed by the act, and the caller reads it from the item: a lost response, a
+    repeated call or a restart returns the same committed outcome. Repeating the effect starts and writes nothing twice.
     """
     state = await context.store.read_state_by_id(context.item.todo_id)
     if state is not None and effect.act_key in workflow_record_of(state).dispatched:
         return
     command = effect.params.get(WORKER_COMMAND_PARAM, "")
-    worker_session = owner = ""
+    session_id = ""
     if command:
-        spec = WorkerSpec(
-            command=command,
-            args=effect.params[WORKER_ARGS_PARAM],
-            project_root=effect.params[WORKER_PROJECT_PARAM],
-            slug=context.item.slug,
-            recipient=effect.params[SESSION_PARAM],
+        session_id = orchestrator_session_id(context.project_root, context.item.todo_id, effect.id)
+        await start_orchestrator(
+            OrchestratorSpec(command=command, slug=context.item.slug, project_root=effect.params[WORKER_PROJECT_PARAM]),
+            session_id,
         )
-        try:
-            result = await dispatch_worker(context.store, context.item.todo_id, spec, effect.act_key)
-        except DispatchPending as pending:
-            raise EffectNotFinished(effect.id) from pending
-        worker_session, owner = result.session_id, result.supervisor
-    if not worker_session:
-        outcome = effect.params[INSTRUCTION_PARAM]
-    elif owner:
-        outcome = DISPATCHED_TEMPLATE.format(slug=context.item.slug, session=worker_session, owner=owner)
+        outcome = DISPATCHED_TEMPLATE.format(slug=context.item.slug, session=session_id)
     else:
-        outcome = DISPATCHED_UNOWNED_TEMPLATE.format(slug=context.item.slug, session=worker_session)
+        outcome = effect.params[INSTRUCTION_PARAM]
 
     def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
         if current is None:
@@ -348,8 +331,8 @@ async def _creative_dispatch(context: EffectContext, effect: PendingEffect) -> N
         recipient = effect.params[SESSION_PARAM]
         if recipient not in record.dispatch_recipients:
             record.dispatch_recipients.append(recipient)
-        if worker_session and worker_session not in record.dispatch_workers:
-            record.dispatch_workers.append(worker_session)
+        if session_id and session_id not in record.dispatch_workers:
+            record.dispatch_workers.append(session_id)
         record.dispatched_phase = effect.params[PHASE_PARAM]
         return ItemChange(state={**current, WORKFLOW_STATE_KEY: record.to_state()})
 

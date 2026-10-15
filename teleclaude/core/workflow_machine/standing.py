@@ -52,6 +52,8 @@ def standing_of(
         block["creative_episode"] = cast(StateValue, record.episode.model_dump(mode="json"))
     if record.waiting is not None:
         block["waiting_on"] = record.waiting.person
+    if record.dispatch_workers:
+        block["creative_orchestrator"] = cast(StateValue, list(record.dispatch_workers))
     return block
 
 

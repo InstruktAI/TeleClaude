@@ -38,21 +38,22 @@ logger = get_logger(__name__)
 _IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".svg"})
 
 
-_WORKER_FOR_PHASE: dict[CreativePhase, LifecycleProcedure] = {
-    CreativePhase.ART_GENERATION_REQUIRED: LifecycleProcedure.CREATE_ART,
-    CreativePhase.VISUAL_DRAFTS_REQUIRED: LifecycleProcedure.CREATE_HTML,
-}
+_ENDED_PHASES = frozenset({CreativePhase.CREATIVE_COMPLETE, CreativePhase.BLOCKED})
 
 
 def _handoff_for(phase: CreativePhase, slug: str, cwd: str, instruction: str) -> Handoff:
-    """The dispatch of a phase: the worker it starts, when it starts one, and the instruction for every other case."""
-    worker = _WORKER_FOR_PHASE.get(phase)
-    if worker is None:
+    """The dispatch of a phase: the creative orchestrator the lane already has, or the instruction at its end.
+
+    The creative lane is driven by the creative orchestrator, which calls the machine in a loop. A holder's handoff
+    starts it; when the design is already complete or blocked there is nothing to drive, and the instruction is the
+    dispatch.
+    """
+    if phase in _ENDED_PHASES:
         return Handoff(instruction=instruction, creative_phase=phase.value)
     return Handoff(
         instruction=instruction,
         creative_phase=phase.value,
-        worker_command=worker.value,
+        worker_command=LifecycleProcedure.CREATE.value,
         worker_args=slug,
         worker_project=cwd,
     )
