@@ -22,7 +22,8 @@ of the role's ordinary surface and binds nothing, and the focus of such a
 session is its procedure's own discipline, with the integrity of shared
 objects staying where it always was — with the object guardrails (claims,
 driver dedup, singleton leases, extraction scope), which no role filter
-replaces. A role not so marked reaches exactly its set.
+replaces. A role not so marked reaches exactly its set and the capabilities the
+catalog gives every role.
 
 Every consumer that asks what a role may do or what kind of session it is reads
 the catalog and keeps no role list of its own: command clearance
