@@ -100,6 +100,11 @@ stateDiagram-v2
 - Domain events (SESSION_STARTED, OUTPUT_UPDATE, SESSION_CLOSE_REQUESTED, SESSION_CLOSED)
 - Final transcript and summary artifacts
 
+<!-- planned:issue-128 -->
+
+A session's initiator is the session that started it as its own helper or dispatch. A session the platform starts for an independent responsibility, such as the integrator or a procedure activation, records no initiator, and the session that caused the activation is recorded as its requester in the event or log that carries the cause. The claiming group of a driver is the driver and the sessions started from it by that lineage; because independent activations record no initiator, they are never in it, whatever role they carry.
+<!-- /planned:issue-128 -->
+
 ## Invariants
 
 - **Unique Session ID**: Each session has a globally unique UUID that never changes.

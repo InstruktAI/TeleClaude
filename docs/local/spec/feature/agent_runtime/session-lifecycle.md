@@ -23,6 +23,11 @@ Termination accepted by the service is a request, not a finished close: the end-
 Closing a session of a single-claim procedure follows the responsibility inbox contract in `local/projects/teleclaude/design/architecture/procedure-activation`: its pending activations end as `not delivered` with reason `session closed`, retaining their assignee. The session carries this property from its initialization publication; closing does not reread the current declaration. Every other session keeps its existing pending-event behavior.
 <!-- /planned:issue-128 -->
 
+<!-- planned:issue-128 -->
+
+A session's initiator is the session that started it as its own helper or dispatch. A session the platform starts for an independent responsibility, such as the integrator or a procedure activation, records no initiator, and the session that caused the activation is recorded as its requester in the event or log that carries the cause. The claiming group of a driver is the driver and the sessions started from it by that lineage; because independent activations record no initiator, they are never in it, whatever role they carry.
+<!-- /planned:issue-128 -->
+
 ## Canonical fields
 
 ### Use cases

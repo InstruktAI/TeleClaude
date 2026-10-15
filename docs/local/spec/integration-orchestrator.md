@@ -263,6 +263,7 @@ Required fields:
 - `driver_session_id` (the work driver that stamped it)
 - `ready_at` (ISO8601)
 
+The integrator session that a ready notice or the periodic candidate scan starts is an independent platform activation: it has its own lease and its own delivery lifecycle, and it is created through the platform's sanctioned creation path as a system standing-role session, recording no session as its initiator. The session that stamped the item is recorded as the requester in the ready notice (which names the driver session) and in the integrator's log, not as the integrator's parent, so the end of that driver's helpers (`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`, Helpers of a driver) can never reach it, and the closing claim's refusal of new helper starts does not apply to it.
 <!-- /planned:issue-128 -->
 
 ### `integration_blocked`
