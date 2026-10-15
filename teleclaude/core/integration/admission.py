@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Final
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.constants import ARTIFACT_DESIGN_SPEC, ARTIFACT_INPUT
 from teleclaude.core.integration.candidate_scan import CandidateKey, candidate_is_held
 from teleclaude.core.integration.git_ops import _run_git
@@ -28,6 +30,9 @@ from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 from teleclaude.types.workflow_record import AdmittedCandidate, Phase
 
+logger = get_logger(__name__)
+
+RETIRE_FAILED_LOG: Final = "retiring an integration admission failed"
 INTEGRATION_PHASE_STATE_KEY: Final = "integration_phase"
 STARTED_PHASE: Final = "started"
 ADMISSION_TIMEOUT_SECONDS: Final = 30
@@ -46,6 +51,8 @@ class AdmissionRefusal(StrEnum):
     NOT_READY = "{item} no longer reads ready at {sha}"
     CREATIVE_MOVED = "{item}'s creative design changed after the scan"
     HEAD_UNREADABLE = "the branch of {item} cannot be read on origin"
+    HEAD_MOVED = "the branch of {item} moved to {head} after the scan read {sha}"
+    OTHER_ADMISSION = "{item} already holds an admission at {sha}"
 
 
 class AdmissionRefused(Exception):
@@ -71,6 +78,12 @@ def _mutation(key: CandidateKey, head: str, snapshot: str, session_id: str) -> I
         admitted = state.workflow.admitted
         if admitted is not None and admitted.sha == key.sha:
             return None
+        if admitted is not None:
+            raise AdmissionRefused(AdmissionRefusal.OTHER_ADMISSION.value.format(item=key.slug, sha=admitted.sha[:8]))
+        if head != key.sha:
+            raise AdmissionRefused(
+                AdmissionRefusal.HEAD_MOVED.value.format(item=key.slug, head=head[:8], sha=key.sha[:8])
+            )
         if creative_snapshot(current) != snapshot:
             raise AdmissionRefused(AdmissionRefusal.CREATIVE_MOVED.value.format(item=key.slug))
         if candidate_is_held(current, state, head):
@@ -111,9 +124,9 @@ def admit_candidate(cwd: str, key: CandidateKey, session_id: str, loop: asyncio.
     head = _branch_head(cwd, key.branch)
     if not head:
         return Admission(AdmissionRefusal.HEAD_UNREADABLE.value.format(item=key.slug))
+    expected = {name: store.artifact_digest_sync(key.slug, name) for name in FENCED_ARTIFACTS}
     if creative_incomplete_sync(store, cwd, key.slug, raw):
         return Admission(AdmissionRefusal.CREATIVE_MOVED.value.format(item=key.slug))
-    expected = {name: store.artifact_digest_sync(key.slug, name) for name in FENCED_ARTIFACTS}
     mutation = _mutation(key, head, creative_snapshot(raw), session_id)
     commit = _commit(cwd, key, mutation, expected)
     try:
@@ -124,3 +137,31 @@ def admit_candidate(cwd: str, key: CandidateKey, session_id: str, loop: asyncio.
     except AdmissionRefused as refusal:
         return Admission(str(refusal))
     return Admission()
+
+
+def _retirement(key: CandidateKey) -> ItemMutation:
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            return None
+        record = workflow_record_of(current)
+        if record.admitted is None or record.admitted.sha != key.sha:
+            return None
+        updated = record.model_copy(deep=True)
+        updated.admitted = None
+        return ItemChange(state={**current, WORKFLOW_STATE_KEY: updated.to_state()})
+
+    return mutate
+
+
+def retire_admission(cwd: str, key: CandidateKey, loop: asyncio.AbstractEventLoop | None) -> None:
+    """Retire the admission of exactly this commit when the integrator parks it; a failure is logged and retried by the next park."""
+    commit = _commit(cwd, key, _retirement(key), {})
+    try:
+        if loop is not None and loop.is_running():
+            asyncio.run_coroutine_threadsafe(commit, loop).result(timeout=ADMISSION_TIMEOUT_SECONDS)
+        else:
+            asyncio.run(commit)
+    except (
+        Exception
+    ):  # supervision boundary: a failed retirement leaves the admission, which the next drain picks up again
+        logger.exception(RETIRE_FAILED_LOG, slug=key.slug)

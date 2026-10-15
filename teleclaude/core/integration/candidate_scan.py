@@ -95,19 +95,15 @@ def _remote_head(cwd: str, branch: str) -> str:
     return parts[0] if rc == 0 and parts else ""
 
 
-def _admitted_candidate(slug: str, typed: TodoState, cwd: str) -> ScannedCandidate | None:
-    """The commit the integrator admitted for the item, while the item still reads ready at it.
+def _admitted_candidate(slug: str, typed: TodoState) -> ScannedCandidate | None:
+    """The commit the integrator admitted for the item, exactly as admitted.
 
-    An admission whose commit the item no longer reads ready at was superseded by a later stamp or a kickback.
+    An admission lives until the integrator's own terminal lifecycle retires it: delivery, or a park. A later stamp, a
+    kickback, a moved head or a main that already contains the commit does not discard it; the integration step
+    finishes the bookkeeping for a commit that is already in main.
     """
     admitted = typed.workflow.admitted
     if admitted is None:
-        return None
-    reading = read_phase(typed, integration_head=admitted.sha, creative_incomplete=False)
-    if reading.phase is not Phase.READY or reading.ready_sha != admitted.sha:
-        return None
-    rc, _, _ = _run_git(["merge-base", "--is-ancestor", admitted.sha, "HEAD"], cwd=cwd)
-    if rc == 0:
         return None
     return ScannedCandidate(
         key=CandidateKey(slug=slug, branch=admitted.branch, sha=admitted.sha), ready_at=admitted.at, admitted=True
@@ -128,7 +124,7 @@ def _candidate_from_state(
     typed = TodoState.model_validate(state)
     if bool(state.get("hold")):
         return None
-    admitted = _admitted_candidate(slug, typed, cwd)
+    admitted = _admitted_candidate(slug, typed)
     if admitted is not None:
         return admitted
     finalize = state.get("finalize")

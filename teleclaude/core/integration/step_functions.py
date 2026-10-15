@@ -440,6 +440,7 @@ def _step_awaiting_commit(
             key=key,
             reason=_HELD_UNCOMMITTED_PARK_REASON,
             home=_workflow_home_for_path(cwd),
+            cwd=cwd,
         )
 
     # Check for unresolved merge conflicts first (in integration worktree)
@@ -503,6 +504,7 @@ def _step_awaiting_commit(
                     key=key,
                     reason=_TEXTUAL_CONFLICT_PARK_REASON,
                     home=_workflow_home_for_path(cwd),
+                    cwd=cwd,
                 )
         return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt)
 

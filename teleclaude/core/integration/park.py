@@ -12,6 +12,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.integration.admission import retire_admission
 from teleclaude.core.integration.candidate_scan import CandidateKey
 from teleclaude.core.integration.checkpoint import (
     IntegrationCheckpoint,
@@ -21,7 +22,11 @@ from teleclaude.core.integration.checkpoint import (
     _write_checkpoint,
 )
 from teleclaude.core.integration.formatters import _format_content_gate_conflict, _format_error
-from teleclaude.core.integration.lifecycle_events import _EVENT_INTEGRATION_CANDIDATE_PARKED, _emit_lifecycle_event
+from teleclaude.core.integration.lifecycle_events import (
+    _EVENT_INTEGRATION_CANDIDATE_PARKED,
+    _emit_lifecycle_event,
+    _tls,
+)
 from teleclaude.events.envelope import EventHome
 
 logger = get_logger(__name__)
@@ -38,6 +43,7 @@ def _park_candidate(
     key: CandidateKey,
     reason: str,
     home: EventHome,
+    cwd: str,
 ) -> tuple[bool, str]:
     """Park a candidate for the current drain and reset to IDLE for the next dequeue.
 
@@ -58,6 +64,7 @@ def _park_candidate(
     _emit_lifecycle_event(_EVENT_INTEGRATION_CANDIDATE_PARKED, dict(parked), home)
     _reset_candidate(checkpoint)
     _write_checkpoint(checkpoint_path, checkpoint)
+    retire_admission(cwd, key, getattr(_tls, "loop", None))
     return True, ""
 
 
