@@ -118,6 +118,16 @@ And the holder's artifacts and their version history are unchanged
 
 ### Write authority
 
+<!-- planned:issue-128 -->
+
+Agent-session writes of `input` on an item outside the task lane follow the
+intent-body authority in
+`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`, Helpers of a
+driver. The claim and prepare-author rules and their authority scenarios below govern
+task input, direct human-identity writes and writes of artifacts other than
+`input`.
+<!-- /planned:issue-128 -->
+
 Artifact writes consult the slug's claim. A todo whose `active_runner` names a
 live session is claimed, and every writable artifact kind on it is writable only
 by that claim's group: the holding session and every session it dispatched,
@@ -308,7 +318,15 @@ And the verdict stamp binds the current report digest rather than inferring evid
 
 - The `codebase_sha_at_write` and `referenced_paths` fields live on the Todo's lifecycle state, not on the artifact records. The artifact records intentionally stay narrow (content + digest + audit columns); provenance is a Todo-lifecycle-state concern refreshed by the single workflow provenance boundary only for the lifecycle-relevant artifact kinds (`input`, `prd`, `requirements`, `architecture`, `implementation-plan`).
 
+<!-- planned-change:issue-128 -->
+
 - The `input` artifact follows the claim-free prepare-artifact write rule (see Write authority), and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
+
+<!-- change:issue-128 -->
+
+- The `input` artifact follows the authority under Write authority, and `telec todo artifacts remove input` is unconditionally rejected. A holder's retained `input` artifact is also frozen by the holder invariant: it remains readable as split source material, but write/remove paths refuse all holder artifact mutations.
+
+<!-- /planned-change:issue-128 -->
 
 - The `bug` artifact kind is retained only for legacy read/remove compatibility after bug content moved to the universal `input` artifact. API and CLI write boundaries refuse `bug` as retired read-only.
 
