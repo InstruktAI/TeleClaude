@@ -10,6 +10,7 @@ it is observed ended or classified dead; one that may still run holds the slot a
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -64,6 +65,7 @@ class _StartState:
     registered: bool = False
     go_may_have_been_sent: bool = False
     ended: bool = False
+    waiting: bool = False
 
 
 class Slot(StrEnum):
@@ -258,6 +260,7 @@ async def _run_unit(
                     await _undo_before_go(owner_key, key, state)
                     raise
         assert state.handle is not None  # a start that got past GO holds its handle
+        state.waiting = True
         result = await asyncio.to_thread(await_outcome, state.handle)
         if not result.ended:
             raise GateUnsettled(StampRefusal.UNSETTLED.value)
@@ -269,7 +272,11 @@ async def _run_unit(
         return await commit()
     except GateUnsettled:
         raise
-    except Exception:
+    except BaseException as failure:
+        if state.handle is not None and not state.waiting:
+            threading.Thread(target=state.handle.process.wait, daemon=True).start()  # a spawned runner is always reaped
+        if not isinstance(failure, Exception):
+            raise
         if state.go_may_have_been_sent and not state.ended:
             raise  # the unit may still run: the row and the slot stay until it is observed ended
         await _release_slot(store, request, session_id, key)

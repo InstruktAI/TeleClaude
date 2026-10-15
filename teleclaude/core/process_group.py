@@ -51,12 +51,18 @@ def live_members(pgid: int, *, exclude: int = 0) -> list[int]:
     return members
 
 
-def _signal_member(pid: int, pgid: int, sig: signal.Signals) -> bool:
-    """Signal one process after reading its group again; False when it is no longer in the group."""
+def _signal_member(pid: int, pgid: int, sig: signal.Signals, leader_alive: Callable[[], bool] | None) -> bool:
+    """Signal one process: read its group, re-verify the leader, then signal, with nothing between the check and the call.
+
+    False when it is no longer in the group, the leader's identity no longer holds, or the signal was not delivered.
+    The time between the identity check and the kernel call is a limit: a process id can in principle be reused in it.
+    """
     if pid <= MIN_SIGNALLABLE_PID:
         return False
     try:
         if os.getpgid(pid) != pgid:
+            return False
+        if leader_alive is not None and not leader_alive():
             return False
         os.kill(pid, sig)
     except (ProcessLookupError, PermissionError):
@@ -85,11 +91,9 @@ def settle_members(
     if leader_alive is not None and not leader_alive():
         return False, ()
     for pid in live_members(pgid, exclude=exclude):
-        if leader_alive is not None and not leader_alive():
-            return False, tuple(signalled)
         if before_signal is not None:
             before_signal(pid)
-        if _signal_member(pid, pgid, signal.SIGTERM):
+        if _signal_member(pid, pgid, signal.SIGTERM, leader_alive):
             signalled.append(pid)
     grace_end = time.monotonic() + grace
     while time.monotonic() < grace_end and live_members(pgid, exclude=exclude):
@@ -97,11 +101,9 @@ def settle_members(
     if leader_alive is not None and not leader_alive():
         return False, tuple(signalled)
     for pid in live_members(pgid, exclude=exclude):
-        if leader_alive is not None and not leader_alive():
-            return False, tuple(signalled)
         if before_signal is not None:
             before_signal(pid)
-        if _signal_member(pid, pgid, signal.SIGKILL) and pid not in signalled:
+        if _signal_member(pid, pgid, signal.SIGKILL, leader_alive) and pid not in signalled:
             signalled.append(pid)
     while time.monotonic() < deadline:
         if not live_members(pgid, exclude=exclude):
