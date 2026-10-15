@@ -33,7 +33,7 @@ from teleclaude.events.envelope import occurrence_id
 from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import LIFECYCLE_PHASE_STATE_KEY, TodoState
+from teleclaude.types.todos import LIFECYCLE_PHASE_STATE_KEY, PREPARED_SESSION_ID_STATE_KEY, TodoState
 from teleclaude.types.workflow_record import (
     Act,
     ActStatus,
@@ -111,6 +111,7 @@ class _Decision:
     record: Callable[[WorkflowRecord], WorkflowRecord] | None = None
     effects: tuple[_EffectSpec, ...] = ()
     expect_digests: Mapping[str, str] | None = None
+    state_writes: Mapping[str, StateValue] | None = None
 
 
 def _digest(text: str) -> str:
@@ -228,6 +229,7 @@ def _decide_prepared(request: ActRequest, facts: _Facts, state: TodoState, readi
         record=record,
         effects=(_release_effect(facts.caller.session_id),),
         expect_digests={ARTIFACT_INPUT: revision},
+        state_writes={PREPARED_SESSION_ID_STATE_KEY: facts.caller.session_id},
     )
 
 
@@ -506,6 +508,7 @@ def _apply(
     new_state: dict[str, StateValue] = {**state_dict, WORKFLOW_STATE_KEY: updated.to_state()}
     if decision.phase is not None:
         new_state[LIFECYCLE_PHASE_STATE_KEY] = decision.phase.value
+    new_state.update(decision.state_writes or {})
     outcome.append(key)
     return ItemChange(state=new_state, log_entry=_log_entry(entry))
 
