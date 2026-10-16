@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import time
 from collections.abc import Callable, Mapping
 from enum import StrEnum
@@ -42,6 +43,8 @@ SUDOERS: Final = "guest.sudoers"
 CONTROL_ROOT: Final = Path("var/lib/teleclaude-runtime-acceptance")
 STATIC_SUBDIRECTORY: Final = "static"
 SOURCE_DIRECTORY: Final = Path("srv/teleclaude-candidate")
+GUEST_ARCHIVE_DIRECTORY: Final = Path("/var/lib/teleclaude-runtime-acceptance/archives")
+DEB_SUFFIX: Final = ".deb"
 NANOSECONDS: Final = 1_000_000_000
 ERROR_DATA: Final = "a declared guest archive is missing or disagrees with its byte lock: {digest}"
 ERROR_ROOT: Final = "guest file-data materialization requires its new declared rootfs and privileged owner"
@@ -164,6 +167,34 @@ def _write_data(path: Path, data: bytes, mode: int) -> None:
         handle.write(data)
         handle.flush()
         os.fsync(handle.fileno())
+
+
+def stage_guest_archives(
+    rootfs: Path, package: StaticPackage, run_token: str, inputs: Mapping[str, Path], deadline: AdmittedDeadline
+) -> None:
+    """Copy only the declared package archives for later namespace-confined unpack/configuration."""
+    require_hex(run_token, 32)
+    recipe = parse_object(package.recipe_bytes)
+    expected_root = Path(text(object_value(recipe[Key.HOST]), Key.ROOTFS).format(run_token=run_token))
+    if os.geteuid() != 0 or rootfs != expected_root:
+        raise ValueError(ERROR_ROOT)
+    rows = object_value(parse_object(package.lock_bytes)[Key.GUEST_CLOSURE])[Key.FINAL_PACKAGES]
+    if not isinstance(rows, list):
+        raise ValueError(ERROR_ROOT)
+    for value in rows:
+        row = object_value(value)
+        if Key.ARCHIVE_URL not in row:
+            continue
+        source = _archive(row, inputs, deadline)
+        guest_path = GUEST_ARCHIVE_DIRECTORY / (text(row, Field.SHA256) + DEB_SUFFIX)
+        target = _guest_path(rootfs, GUEST_PREFIX + str(guest_path.relative_to(guest_path.anchor)))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with source.open(mode=READ_BINARY) as original, target.open(mode=EXCLUSIVE_BINARY) as copied:
+            os.fchmod(copied.fileno(), 0o644)
+            shutil.copyfileobj(original, copied)
+            copied.flush()
+            os.fsync(copied.fileno())
+        _require_time(deadline)
 
 
 def stage_guest_declarations(
