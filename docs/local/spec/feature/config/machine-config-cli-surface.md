@@ -101,6 +101,8 @@ And no configuration mutation occurs
 
 #### UC-CFG-CLI-7: Repair commands remain reachable when current configuration is invalid
 
+<!-- planned-change:config-client-command-boundary -->
+
 ```gherkin
 Given the committed machine configuration violates its typed schema
 When an agent invokes machine-config validation
@@ -111,6 +113,22 @@ Then the config context validates the corrected candidate before persisting it
 And direct file editing is not required
 ```
 
+<!-- change:config-client-command-boundary -->
+
+```gherkin
+Given the daemon is available and the committed machine configuration violates its typed schema
+When an agent invokes machine-config validation
+Then the command surface starts without requiring a valid runtime aggregate
+And reports the invalid state through the config context
+When an authorized agent removes the offending field through a computer patch
+Then the config context validates the corrected candidate before persisting it
+And direct file editing is not required
+```
+
+<!-- /planned-change:config-client-command-boundary -->
+
+<!-- planned-change:config-client-command-boundary -->
+
 #### UC-CFG-CLI-8: Agents never mutate the backing file directly
 
 ```gherkin
@@ -120,7 +138,29 @@ Then the mutation is expressed through `telec config computer`
 And no shell editor, ad hoc script, or direct filesystem write targets the backing file
 ```
 
+<!-- change:config-client-command-boundary -->
+
+#### UC-CFG-CLI-8: Ordinary configuration edits use daemon-owned operations
+
+```gherkin
+Given the daemon is available and an agent needs to change machine configuration
+When the agent follows the supported configuration workflow
+Then the mutation is expressed through `telec config computer`
+And no shell editor, ad hoc script, or direct filesystem write targets the backing file
+```
+
+<!-- /planned-change:config-client-command-boundary -->
+
 ## Known caveats
+
+<!-- planned:config-client-command-boundary -->
+
+- Configuration commands require the addressed daemon. When it is unavailable,
+  an agent may repair configuration files directly as recovery under
+  `general/policy/machine-config-mutation-authority`; ordinary client execution
+  remains daemon-owned.
+
+<!-- /planned:config-client-command-boundary -->
 
 - A candidate may depend on environment-backed values available during
   mutation but absent in a later runtime environment. Validation uses the

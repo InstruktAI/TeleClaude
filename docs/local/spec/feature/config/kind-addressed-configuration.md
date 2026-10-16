@@ -153,6 +153,67 @@ not change a kind or instance by implication.
 
 ## Canonical fields
 
+<!-- planned:config-client-command-boundary -->
+
+### Shared configuration editor
+
+Configuration editing has one daemon-owned contract, consumed by terminal and
+web clients. UI clients address the API, whose adapter constructs the internal
+configuration command; the CLI constructs the same internal command for daemon
+submission. The addressed daemon executes the command through the configuration
+owner under the caller's configuration target clearance. Command transport does
+not execute configuration operations in the client process
+(`sdlc/principle/architecture-boundary-purity`,
+`sdlc/policy/domain-ownership`).
+
+Wire request and answer types load independently of operation handlers and
+runtime bootstrap. The CLI loads the request contract, identity and transport
+it needs; operation handlers remain loaded in the daemon. Internal setup callers
+continue to invoke the configuration owner's operations where installation runs
+before the daemon is available. The daemon's ordinary command path does not
+introduce another transport or an offline client execution path
+(`sdlc/principle/module-depth`).
+
+The editor read returns the subject revision, schema-derived field identities
+and input metadata, and each field's effective display value. Resolution,
+defaults, applicability, sensitivity masking, and the distinction between absent
+and present values belong to the configuration owner. False, zero, and empty
+collections retain their declared values. A configured sensitive value reaches
+the client as the configuration mask; an absent value is explicitly absent.
+Clients render the supplied values and use the supplied input metadata without
+reconstructing configuration models or consulting environment state. The same
+read contract serves every UI client.
+
+An editor write names its subject, the field identity returned by the read,
+the revision, and the user's keep, replace, or clear intent with the entered
+value. The configuration owner converts submitted input through the declared
+type, determines the owning source, validates the candidate, and performs its
+targeted mutation. A whole-value environment reference retains its declaration:
+replacement and clearing address the variable it actually names in its owning
+environment, including a reference with a default. A literal remains owned by
+its configuration document. Default elision and creation of a partial nested
+structure are configuration-owned behavior. Omitted edits and keep leave state
+unchanged; clearing is explicit. The write answers with the resulting masked
+editor view or a structured failure.
+
+An unchanged effective value leaves its declaration and environment untouched.
+An embedded reference retains the existing owner contract for an effective edit
+that cannot be represented as a targeted environment change
+(`local/projects/teleclaude/spec/feature/config/yaml-env-var-expansion`).
+
+Revision checking covers the state the field edit can change, including
+environment-backed values, so a stale editor cannot overwrite a newer edit.
+Validation precedes persistence, unchanged fields and unrelated environment
+entries remain unchanged, and a rejected edit leaves committed state unchanged
+(`local/projects/teleclaude/spec/feature/config/machine-config-write`).
+
+The document-level `get` and merge-patch contracts remain distinct from field
+editing: explicitly changing a stored reference is a document mutation, while
+editing its effective value changes the referenced value. Both execute through
+the same daemon-owned configuration commands. This contract supplies the shared
+capability to web clients; it does not define a web-console screen.
+<!-- /planned:config-client-command-boundary -->
+
 ### Read paths
 
 Dotted paths passed to `get` address the selected configuration document. The

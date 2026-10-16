@@ -120,6 +120,27 @@ design owns only the path that connects them.
 
 ## Primary flows
 
+<!-- planned:config-client-command-boundary -->
+
+### Configuration command execution
+
+Ordinary `telec config` operations submit typed requests to the addressed
+daemon, including when that daemon is local. Configuration's shared editor
+contract owns the read and write behavior
+(`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`,
+Shared configuration editor). This is the configuration-specific execution rule
+within invariant 8; other commands keep their existing locality contracts.
+
+The CLI imports configuration wire contracts and its identity and transport
+dependencies. Configuration operation handlers and runtime services load in the
+daemon, where their initialization is shared across requests. An unavailable
+daemon returns the ordinary transport failure. Agent-operated file recovery
+follows `general/policy/machine-config-mutation-authority`; the CLI carries no
+offline execution fallback. Internal installation callers still use the
+configuration owner's operations during setup before daemon startup
+(`sdlc/principle/module-depth`).
+<!-- /planned:config-client-command-boundary -->
+
 ### Todo command selection
 
 The todo router selects its existing enum-bound named handler before loading

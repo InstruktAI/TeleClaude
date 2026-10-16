@@ -39,6 +39,8 @@ duplicating canonical config fields into TUI-only Pydantic models, duplicating
 nested config paths into save maps, or excluding a valid field because nobody
 hand-added it to the form.
 
+<!-- planned-change:config-client-command-boundary -->
+
 The view reads and writes configuration only through the daemon's configuration
 operations
 (`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`),
@@ -48,6 +50,16 @@ The schemas it renders from are the only configuration knowledge it holds
 locally; values, environment references, set state and personal secret
 inventories reach it from the daemon, and every edit is a daemon operation on
 the subject that owns the field.
+<!-- change:config-client-command-boundary -->
+
+The view consumes the shared configuration editor contract
+(`local/projects/teleclaude/spec/feature/config/kind-addressed-configuration`,
+Shared configuration editor) through the API. It renders the field values and
+input metadata supplied by that contract and submits the field identity,
+revision, entered value, and edit intent. Configuration interpretation and
+persistence remain with the daemon's configuration owner; the TUI owns widgets,
+navigation, edit buffers, and presentation of returned results.
+<!-- /planned-change:config-client-command-boundary -->
 
 The first visible gap this fixes is the People view: `PersonConfig.settings` and
 `PersonConfig.creds` validate and drive runtime behavior, but the People TUI
