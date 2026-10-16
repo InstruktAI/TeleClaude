@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final, NoReturn, cast
 
@@ -14,6 +14,7 @@ from tools.ci import workflow_flow as flow_module
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_ledger as start_ledger
 from tools.ci import workflow_publication as publication
+from tools.ci import workflow_waiting as waiting
 
 TELEC: Final = "telec"
 TODO: Final = "todo"
@@ -63,6 +64,7 @@ DETAIL_PLATFORM: Final = "B5 platform assertion failed: {detail}"
 DETAIL_FRAME: Final = "fixture command {name} did not succeed: {frame!r}"
 DETAIL_STATE: Final = "operation {operation} ended in {state!r}: {detail!r}"
 DETAIL_KEY: Final = "finding returned no key: {result!r}"
+DETAIL_LEDGER: Final = "B5 ledger declaration failed: {detail}"
 DETAIL_PRECONDITION: Final = "B5 began outside the approved unclaimed work state: {item!r}"
 DETAIL_WRITE_SCOPE: Final = "builder launch cwd and public project_path do not name the owned worktree"
 DETAIL_INTEGRATOR: Final = "no started integrator has a public session record and mapped native control"
@@ -126,12 +128,125 @@ def _startup(
     return record, launch
 
 
-def _run_command(
+def _operation_command(
     flow: flow_module.WorkflowFlow, session: str, frame_name: str
 ) -> tuple[Mapping[str, object], Mapping[str, object]]:
     frame = _frame_success(flow, session, frame_name)
     _, terminal = _operation(flow, frame, frame_name)
     return frame, terminal
+
+
+def _direct_act(
+    flow: flow_module.WorkflowFlow, session: str, frame_name: str, performed: str
+) -> tuple[Mapping[str, object], str]:
+    """Read a synchronous direct act's public CLI text; it has no operation receipt."""
+    frame = _frame_success(flow, session, frame_name)
+    run = frame.get("run")
+    stdout = run.get("stdout") if isinstance(run, Mapping) else None
+    if not isinstance(stdout, str) or performed not in stdout:
+        _fail(DETAIL_FRAME.format(name=frame_name, frame=frame))
+    return frame, stdout
+
+
+def _public_log(payload: Mapping[str, object]) -> list[tuple[str, str]]:
+    artifact = payload.get("artifact_content")
+    log = artifact.get("log") if isinstance(artifact, Mapping) else None
+    if not isinstance(log, str):
+        raise creation.trace_failure("the public item projection has no artifact_content.log")
+    return waiting.log_entries(log)
+
+
+def _expect_log_append(
+    flow: flow_module.WorkflowFlow,
+    before: list[tuple[str, str]],
+    role: str,
+    session: str,
+    act: str,
+    bound: str | None,
+    text: str,
+) -> None:
+    after = _public_log(flow.item())
+    header = after[-1][0] if after else ""
+    expected = f" · {role} · {session} · {act}"
+    if bound:
+        expected += f" ({bound})"
+    if len(after) != len(before) + 1 or after[:-1] != before or expected not in header or after[-1][1].strip() != text:
+        _fail(f"{act} log delta does not match its actor, binding and text: {after[len(before) :]!r}")
+
+
+def _direct_effect(flow: flow_module.WorkflowFlow, label: str) -> str:
+    try:
+        return flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, label, start_ledger.RECORD_EFFECT)
+    except ValueError as error:
+        raise creation.binding_failure(DETAIL_LEDGER.format(detail=str(error))) from error
+
+
+def _negative_direct_act(
+    flow: flow_module.WorkflowFlow,
+    actor: str,
+    label: str,
+    frame_name: str,
+    argv_file: str,
+    argv: Sequence[str],
+    expected: str,
+) -> None:
+    attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, label, start_ledger.RECORD_EFFECT)
+    before = flow.item()
+    before_log = _public_log(before)
+    flow.late_argv(actor, argv_file, argv)
+    flow.gate(actor, f"go_{frame_name}")
+    frame = flow.frame(actor, f"cmd_{frame_name}")
+    raw_run = frame.get("run")
+    run = raw_run if isinstance(raw_run, Mapping) else {}
+    status = run.get("exit_status")
+    output = f"{run.get('stdout', '')}{run.get('stderr', '')}"
+    if status in (None, 0) or expected not in output or "Performed " in output:
+        _fail(f"B9 {label} lacked its required refusal {expected!r}: {frame!r}")
+    after = flow.item()
+    if after != before or _public_log(after) != before_log:
+        _fail(f"B9 {label} changed the complete public item or parsed log")
+    flow.require_ledger().discharge(attempt, f"direct refusal {expected!r}; public show and log unchanged")
+
+
+def _negative_stamp(flow: flow_module.WorkflowFlow, builder: str, commit: str, worktree: Path) -> None:
+    attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-performer", start_ledger.RECORD_TRIGGER)
+    before = flow.item()
+    before_log = _public_log(before)
+    if (
+        _git(flow, "rev-parse", "HEAD", cwd=worktree) != commit
+        or _git(flow, "status", "--porcelain", cwd=worktree)
+        or _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}")
+        != f"{commit}\trefs/heads/{flow_module.ITEM}"
+    ):
+        raise creation.binding_failure("B9 stamp-performer precondition is not a clean published C1 head")
+    flow.late_argv(
+        builder,
+        "stampperformer.argv",
+        (TELEC, TODO, ACT, flow_module.ITEM, "stamp", "--sha", commit, LANE_ONE),
+    )
+    flow.gate(builder, "go_stampperformer")
+    frame = flow.frame(builder, "cmd_stampperformer")
+    raw_run = frame.get("run")
+    run = raw_run if isinstance(raw_run, Mapping) else {}
+    stdout = run.get("stdout")
+    receipt = foundation.json_object(stdout) if isinstance(stdout, str) else None
+    operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
+    if run.get("exit_status") != 0 or not isinstance(operation, str) or not operation:
+        flow.require_ledger().unknown(attempt)
+        raise creation.binding_failure(DETAIL_BINDING.format(detail=f"stamp-performer receipt missing: {frame!r}"))
+    flow.require_ledger().record_operation(attempt, operation)
+    terminal = publication.await_terminal(flow.observer, operation, OPERATION_SECONDS)
+    error = terminal.get(FIELD_ERROR)
+    if (
+        terminal.get(FIELD_STATE) != STATE_FAILED
+        or not isinstance(error, str)
+        or "stamp requires the holding driver" not in error
+    ):
+        _fail(f"B9 stamp-performer failed with {terminal.get(FIELD_STATE)!r}: {error!r}")
+    after = flow.item()
+    if after != before or _public_log(after) != before_log:
+        _fail("B9 stamp-performer refusal changed the public item or parsed log")
+    # The receipt-backed trigger stays open by the approved SFC contract.
 
 
 def _end(flow: flow_module.WorkflowFlow, session: str) -> None:
@@ -233,35 +348,87 @@ def _build_and_review(
     if (
         not remote_one.startswith(commit_one)
         or subject != flow_module.B5_COMMIT_1.splitlines()[0]
-        or body.strip() != flow_module.B5_COMMIT_1
+        or not body.startswith(f"{flow_module.B5_COMMIT_1}\n\n")
         or f"Session: {builder}" not in body
         or author == "Runtime Acceptance Fixture"
         or count != "2"
     ):
         _fail(f"sealed builder commit {commit_one} did not publish the branch: {remote_one!r}")
+    _negative_direct_act(
+        flow,
+        builder,
+        "reviewed-wrong",
+        "reviewedwrong",
+        "reviewedwrong.argv",
+        (TELEC, TODO, ACT, flow_module.ITEM, "reviewed", "--sha", commit_one),
+        "Error: 409 — reviewed requires the holding driver",
+    )
+    _negative_direct_act(
+        flow,
+        builder,
+        "finding-wrong",
+        "findingwrong",
+        "findingwrong.argv",
+        (TELEC, TODO, ACT, flow_module.ITEM, "finding", "--sha", commit_one, "B9 wrong performer"),
+        "Error: 409 — finding requires the holding driver",
+    )
+    _negative_direct_act(
+        flow,
+        builder,
+        "kickback-wrong",
+        "kickbackwrong",
+        "kickbackwrong.argv",
+        (TELEC, TODO, ACT, flow_module.ITEM, "kickback", "B9 wrong performer"),
+        "Error: 409 — kickback requires the holding driver",
+    )
+    _negative_direct_act(
+        flow,
+        builder,
+        "release-wrong",
+        "releasewrong",
+        "releasewrong.argv",
+        (TELEC, TODO, ACT, flow_module.ITEM, "release"),
+        "Error: 409 — release requires the holder, or the platform on session end",
+    )
+    _negative_stamp(flow, builder, commit_one, worktree)
+    reviewed_attempt = _direct_effect(flow, "reviewed")
+    reviewed_log = _public_log(flow.item())
     flow.late_argv(w2, "reviewed.argv", (TELEC, TODO, ACT, flow_module.ITEM, "reviewed", "--sha", commit_one))
     flow.gate(w2, "go_rev")
-    _, reviewed = _run_command(flow, w2, "reviewed")
-    if reviewed.get(FIELD_STATE) != STATE_COMPLETED:
-        _fail(f"reviewed operation failed: {reviewed!r}")
+    _direct_act(flow, w2, "reviewed", f"Performed reviewed on {flow_module.ITEM}")
+    _expect_log_append(flow, reviewed_log, ROLE_WORK, w2, "reviewed", commit_one, "")
+    flow.require_ledger().discharge(reviewed_attempt, "W2 performed reviewed on the published C1 head")
+    finding_attempt = _direct_effect(flow, "finding")
+    finding_log = _public_log(flow.item())
     flow.late_argv(
         w2, "finding.argv", (TELEC, TODO, ACT, flow_module.ITEM, "finding", "--sha", commit_one, FINDING_TEXT)
     )
     flow.gate(w2, "go_find")
-    _, finding = _run_command(flow, w2, "finding")
-    if finding.get(FIELD_STATE) != STATE_COMPLETED:
-        _fail(f"finding operation failed: {finding!r}")
-    key_match = re.search(r"finding key:\s*(\S+)", str(finding.get(FIELD_RESULT, "")))
+    _, finding_text = _direct_act(flow, w2, "finding", f"Performed finding on {flow_module.ITEM}")
+    _expect_log_append(flow, finding_log, ROLE_WORK, w2, "finding", commit_one, FINDING_TEXT)
+    flow.require_ledger().discharge(finding_attempt, "W2 performed finding on the published C1 head")
+    key_match = re.search(r"finding key:\s*(\S+)", finding_text)
     if key_match is None:
-        _fail(DETAIL_KEY.format(result=finding.get(FIELD_RESULT)))
+        _fail(DETAIL_KEY.format(result=finding_text))
     finding_key = key_match.group(1)
+    _negative_direct_act(
+        flow,
+        w2,
+        "reply-wrong",
+        "replywrong",
+        "replywrong.argv",
+        (TELEC, TODO, ACT, flow_module.ITEM, "reply", "--finding", finding_key, "B9 wrong performer"),
+        "Error: 409 — reply requires a builder in the holder's claiming group",
+    )
+    reply_attempt = _direct_effect(flow, "reply")
+    reply_log = _public_log(flow.item())
     flow.late_argv(
         builder, "reply.argv", (TELEC, TODO, ACT, flow_module.ITEM, "reply", "--finding", finding_key, REPLY_TEXT)
     )
     flow.gate(builder, "go_reply")
-    _, reply = _run_command(flow, builder, "reply")
-    if reply.get(FIELD_STATE) != STATE_COMPLETED:
-        _fail(f"reply operation failed: {reply!r}")
+    _direct_act(flow, builder, "reply", f"Performed reply on {flow_module.ITEM}")
+    _expect_log_append(flow, reply_log, ROLE_BUILDER, builder, "reply", finding_key, REPLY_TEXT)
+    flow.require_ledger().discharge(reply_attempt, "the builder replied to W2's published finding key")
     flow.gate(builder, "go_c2")
     _frame_success(flow, builder, "write2", writes=True)
     _frame_success(flow, builder, "commit2")
@@ -287,9 +454,10 @@ def _build_and_review(
     return commit_one, commit_two, finding_key
 
 
-def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, commit_one: str, commit_two: str) -> None:
+def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, commit_one: str, commit_two: str) -> None:
     worktree = flow.project / flow_module.WORKTREE_DIRECTORY / flow_module.ITEM
     snapshot = flow.item()
+    snapshot_log = _public_log(snapshot)
     refs = (
         _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}"),
         _git(flow, "rev-parse", "HEAD", cwd=worktree),
@@ -300,7 +468,7 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, commit_one: str, c
     )
     flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-nonhead", start_ledger.RECORD_TRIGGER)
     flow.gate(w2, "go_nh")
-    _, rejected = _run_command(flow, w2, "stamp_nonhead")
+    _, rejected = _operation_command(flow, w2, "stamp_nonhead")
     error = rejected.get(FIELD_ERROR)
     if (
         rejected.get(FIELD_STATE) != STATE_FAILED
@@ -309,10 +477,10 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, commit_one: str, c
         or commit_two not in error
     ):
         _fail(f"non-head stamp did not refuse both refs: {rejected!r}")
-    if flow.item() != snapshot:
+    if flow.item() != snapshot or _public_log(flow.item()) != snapshot_log:
         _fail("a refused non-head stamp changed the item snapshot")
     time.sleep(5.0)
-    if flow.item() != snapshot:
+    if flow.item() != snapshot or _public_log(flow.item()) != snapshot_log:
         _fail("a refused non-head stamp changed the item during the stability window")
     current_refs = (
         _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}"),
@@ -324,11 +492,12 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, commit_one: str, c
     flow.late_argv(w2, "stamp_empty.argv", (TELEC, TODO, ACT, flow_module.ITEM, "stamp", "--sha", commit_two))
     flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-empty", start_ledger.RECORD_TRIGGER)
     flow.gate(w2, "go_empty")
-    _, empty = _run_command(flow, w2, "stamp_empty")
+    _, empty = _operation_command(flow, w2, "stamp_empty")
     if empty.get(FIELD_STATE) != STATE_FAILED or "lane report" not in str(empty.get(FIELD_ERROR, "")):
         _fail(f"empty stamp did not refuse the missing lane report: {empty!r}")
     if (
         flow.item() != snapshot
+        or _public_log(flow.item()) != snapshot_log
         or (
             _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}"),
             _git(flow, "rev-parse", "HEAD", cwd=worktree),
@@ -337,23 +506,31 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, commit_one: str, c
         != refs
     ):
         _fail("empty stamp changed the item or branch refs")
+    success_log = _public_log(flow.item())
     flow.late_argv(w2, "stamp_ok.argv", (TELEC, TODO, ACT, flow_module.ITEM, "stamp", "--sha", commit_two, LANE_ONE))
     flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-ok", start_ledger.RECORD_TRIGGER)
     flow.gate(w2, "go_ok")
-    _, stamped = _run_command(flow, w2, "stamp_ok")
+    _, stamped = _operation_command(flow, w2, "stamp_ok")
     if stamped.get(FIELD_STATE) != STATE_COMPLETED or not str(stamped.get(FIELD_RESULT, "")).startswith(
         f"Stamped {flow_module.ITEM} at {commit_two}"
     ):
         _fail(f"head stamp did not complete at {commit_two}: {stamped!r}")
     shown = flow.item()
     standing = shown.get("standing")
+    state = shown.get("state")
+    _expect_log_append(flow, success_log, ROLE_WORK, w2, "stamp", commit_two, LANE_ONE)
     if (
         not isinstance(standing, Mapping)
         or standing.get(FIELD_STANDING_PHASE) != "ready"
         or standing.get(FIELD_READY_COMMIT) != commit_two
         or FIELD_ADMITTED in standing
+        or not isinstance(state, Mapping)
+        or state.get(FIELD_ACTIVE) not in (None, "")
     ):
         _fail(f"successful stamp did not produce unadmitted ready at {commit_two}: {shown!r}")
+    builder_record = flow.session_record(builder)
+    if builder_record.get("closed_at") is None or builder_record.get("lifecycle_status") != "closed":
+        _fail(f"successful stamp did not close the builder child: {builder_record!r}")
 
 
 def _observe_integrators(
@@ -418,7 +595,11 @@ def _move_head(flow: flow_module.WorkflowFlow, worktree: Path) -> str:
     while time.monotonic() < deadline:
         item = flow.item()
         standing = item.get("standing")
-        if isinstance(standing, Mapping) and standing.get(FIELD_STANDING_PHASE) == flow_module.WORK_PHASE:
+        if (
+            isinstance(standing, Mapping)
+            and standing.get(FIELD_STANDING_PHASE) == flow_module.WORK_PHASE
+            and FIELD_READY_COMMIT not in standing
+        ):
             return head
         time.sleep(POLL_SECONDS)
     _fail("the stale ready item did not read as work after the branch head moved")
@@ -456,14 +637,45 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
     instruction = case.claim_call((operation,))
     case.check_instruction(w3, instruction)
     case.observe_claim(w3, known_entries=known_claims + 1)
+    claimed = flow.item()
+    standing = claimed.get("standing")
+    state = claimed.get("state")
+    if (
+        not isinstance(standing, Mapping)
+        or standing.get(FIELD_STANDING_PHASE) != flow_module.WORK_PHASE
+        or FIELD_READY_COMMIT in standing
+        or not isinstance(state, Mapping)
+        or state.get(FIELD_PHASE) != flow_module.WORK_PHASE
+        or state.get(FIELD_ACTIVE) != w3
+    ):
+        _fail(f"W3 claim did not clear the stale ready stamp: {claimed!r}")
+    flow.require_ledger().discharge(attempt, "public work start completed and W3 claim was observed")
     flow.require_ledger().discharge(attempt, "work claim completed and held by the mapped W3 session")
     flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-ok2", start_ledger.RECORD_TRIGGER)
+    stamp_before_log = _public_log(flow.item())
+    flow.late_argv(
+        w3,
+        "stamp_ok2.argv",
+        (TELEC, TODO, ACT, flow_module.ITEM, "stamp", "--sha", commit, LANE_TWO),
+    )
     flow.gate(w3, "go_ok2")
-    _, stamped = _run_command(flow, w3, "stamp_ok2")
+    _, stamped = _operation_command(flow, w3, "stamp_ok2")
     if stamped.get(FIELD_STATE) != STATE_COMPLETED or not str(stamped.get(FIELD_RESULT, "")).startswith(
         f"Stamped {flow_module.ITEM} at {commit}"
     ):
         _fail(f"re-stamp did not complete at {commit}: {stamped!r}")
+    _expect_log_append(flow, stamp_before_log, ROLE_WORK, w3, "stamp", commit, LANE_TWO)
+    ready = flow.item()
+    ready_standing = ready.get("standing")
+    ready_state = ready.get("state")
+    if (
+        not isinstance(ready_standing, Mapping)
+        or ready_standing.get(FIELD_STANDING_PHASE) != "ready"
+        or ready_standing.get(FIELD_READY_COMMIT) != commit
+        or not isinstance(ready_state, Mapping)
+        or ready_state.get(FIELD_ACTIVE) not in (None, "")
+    ):
+        _fail(f"re-stamp did not restore unadmitted ready at {commit}: {ready!r}")
     _end(flow, w3)
     flow.sessions[w3] = ROLE_WORK
     return w3
@@ -487,7 +699,7 @@ def run_b5(flow: flow_module.WorkflowFlow) -> None:
             raise creation.binding_failure(DETAIL_PRECONDITION.format(item=item))
         baseline, worktree, w2, builder, operation, parent_id, known_claims = _start_work(flow)
         commit_one, commit_two, _ = _build_and_review(flow, worktree, w2, builder, operation)
-        _exercise_stamps(flow, w2, commit_one, commit_two)
+        _exercise_stamps(flow, w2, builder, commit_one, commit_two)
         integrators = _observe_integrators(flow, baseline, w2, builder)
         _end(flow, w2)
         commit_three = _move_head(flow, worktree)

@@ -925,6 +925,7 @@ class FullRuntimeResources:
     environment: dict[str, str]
     source_revision: str
     source_tree: str
+    report_path: Path | None = None
     admin_terminal: PersistentTerminal | None = None
     member_terminal: PersistentTerminal | None = None
     install_attempted: bool = False
@@ -1747,6 +1748,20 @@ def _restore_full_profile_changes(resources: FullRuntimeResources, evidence: lis
             raise RuntimeError(_FULL_CONFIG_RESTORE_ERROR) from exc
 
 
+def _record_retained_workflow_markers(resources: FullRuntimeResources) -> bool:
+    retained_markers = sorted(resources.temporary_root.rglob("RETAINED.json"))
+    for marker in retained_markers:
+        try:
+            record = json.loads(marker.read_text(encoding=_UTF8))
+            reason = record.get("reason") if isinstance(record, Mapping) else None
+            resources.retained.append(
+                f"retained marker {marker}: {reason if isinstance(reason, str) else 'unreadable status'}"
+            )
+        except (OSError, ValueError) as error:
+            resources.retained.append(f"retained marker {marker} cannot be read: {type(error).__name__}")
+    return bool(retained_markers)
+
+
 def _close_full_profile_resources(
     resources: FullRuntimeResources,
     cleanup_evidence: list[CommandEvidence],
@@ -1769,8 +1784,10 @@ def _close_full_profile_resources(
             resources.workflow_flow.record_profile_stop(recorded)
         if recorded != _STOPPED_OUTCOME:
             resources.retained.append(_FULL_STOP_UNPROVEN.format(outcome=recorded or "none"))
+    has_retained_marker = _record_retained_workflow_markers(resources)
     try:
-        _restore_full_profile_changes(resources, cleanup_evidence)
+        if not has_retained_marker and not resources.retained:
+            _restore_full_profile_changes(resources, cleanup_evidence)
     except Exception:
         failures.append(_FULL_CONFIG_RESTORE_ERROR)
     for terminal in (resources.member_terminal, resources.admin_terminal):
@@ -2105,6 +2122,8 @@ def _full_workflow_prepared(resources: FullRuntimeResources, evidence: list[Comm
         resources.project_path,
         resources.source_root,
         _OWNER_SEED_EMAIL,
+        _OWNER_SEED_SLUG,
+        resources.report_path or resources.temporary_root / "runtime-acceptance-report.json",
         resources.project_slug,
         lambda: _register_procedure_fixture_company(resources, evidence),
         resources.retained.append,
@@ -2128,10 +2147,15 @@ def _full_workflow_review(resources: FullRuntimeResources, evidence: list[Comman
             register_company=lambda: _register_procedure_fixture_company(resources, evidence),
             retain=resources.retained.append,
         )
-        resources.workflow_flow.setup_flow()
-    else:
-        resources.workflow_flow.attach(_FoundationRunner(resources, evidence))
-    review.run_b5(resources.workflow_flow)
+    flow = resources.workflow_flow
+    try:
+        flow.attach(_FoundationRunner(resources, evidence))
+        if flow.ledger is None:
+            flow.setup_flow()
+        review.run_b5(flow)
+    except BaseException as error:
+        flow.finalize(str(error))
+        raise
 
 
 def _full_workflow_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -4635,6 +4659,7 @@ def run_profile(
     source_revision: str,
     source_tree: str,
     selection: frozenset[str] = frozenset(),
+    report_path: Path | None = None,
 ) -> AcceptanceReport:
     """Run the selected profile with disposable state and report cleanup separately."""
     resolved_root = source_root.expanduser().resolve()
@@ -4662,6 +4687,7 @@ def run_profile(
                 environment=_full_runtime_environment(),
                 source_revision=source_revision,
                 source_tree=source_tree,
+                report_path=report_path.resolve() if report_path is not None else None,
             )
             resources.workflow_chain = full_flow.declared_chain(selection)
             actions.update(
@@ -4933,6 +4959,7 @@ def main(arguments: list[str] | None = None) -> int:
             source_revision=parsed.source_revision,
             source_tree=parsed.source_tree,
             selection=selection,
+            report_path=parsed.report,
         )
         write_report(report, parsed.report)
         if report.selection:

@@ -43,6 +43,7 @@ WORK_PHASE: Final = "work"
 PREPARATION_PHASE: Final = "preparation"
 STATE_ACTIVE_RUNNER: Final = "state.active_runner"
 STATE_PHASE: Final = "state.lifecycle_phase"
+STATE_PHASE_FIELD: Final = "lifecycle_phase"
 STATE_HOLD: Final = "state.hold"
 STANDING: Final = "standing"
 STANDING_PHASE: Final = "standing.phase"
@@ -156,6 +157,15 @@ type PlanSets = dict[str, list[controls.Plan]]
 B5_ACTIONS: Final = (
     {"label": "w2-start", "kind": start_ledger.RECORD_OPERATION},
     {"label": "w2-child", "kind": start_ledger.RECORD_SESSION, "parent": "w2-start"},
+    {"label": "reviewed", "kind": start_ledger.RECORD_EFFECT},
+    {"label": "finding", "kind": start_ledger.RECORD_EFFECT},
+    {"label": "reply", "kind": start_ledger.RECORD_EFFECT},
+    {"label": "reviewed-wrong", "kind": start_ledger.RECORD_EFFECT},
+    {"label": "finding-wrong", "kind": start_ledger.RECORD_EFFECT},
+    {"label": "reply-wrong", "kind": start_ledger.RECORD_EFFECT},
+    {"label": "kickback-wrong", "kind": start_ledger.RECORD_EFFECT},
+    {"label": "release-wrong", "kind": start_ledger.RECORD_EFFECT},
+    {"label": "stamp-performer", "kind": start_ledger.RECORD_TRIGGER},
     {"label": "stamp-nonhead", "kind": start_ledger.RECORD_TRIGGER},
     {"label": "stamp-empty", "kind": start_ledger.RECORD_TRIGGER},
     {"label": "stamp-ok", "kind": start_ledger.RECORD_TRIGGER},
@@ -217,6 +227,7 @@ def flow_plan_sets(chain: Sequence[str]) -> PlanSets:
                 controls.command("child", [TELEC, "todo", "child", ITEM]),
                 _late_plan("reviewed", "reviewed.argv", "go_rev"),
                 _late_plan("finding", "finding.argv", "go_find"),
+                _late_plan("replywrong", "replywrong.argv", "go_replywrong"),
                 _late_plan("stamp_nonhead", "stamp_nonhead.argv", "go_nh"),
                 _late_plan("stamp_empty", "stamp_empty.argv", "go_empty"),
                 _late_plan("stamp_ok", "stamp_ok.argv", "go_ok"),
@@ -245,6 +256,11 @@ def flow_plan_sets(chain: Sequence[str]) -> PlanSets:
                     (TELEC, "code", "commit", "--approved", B5_COMMIT_1, "--only", "feature.txt", "Makefile"),
                     "go_w1",
                 ),
+                _late_plan("reviewedwrong", "reviewedwrong.argv", "go_reviewedwrong"),
+                _late_plan("findingwrong", "findingwrong.argv", "go_findingwrong"),
+                _late_plan("kickbackwrong", "kickbackwrong.argv", "go_kickbackwrong"),
+                _late_plan("releasewrong", "releasewrong.argv", "go_releasewrong"),
+                _late_plan("stampperformer", "stampperformer.argv", "go_stampperformer"),
                 _late_plan("reply", "reply.argv", "go_reply"),
                 controls.Command(
                     name="write2",
@@ -356,6 +372,7 @@ class WorkflowFlow:
     finalizer_errors: list[str] = field(default_factory=list)
     item_snapshot: Json | None = None
     finalizer_summary: MutableJson = field(default_factory=dict)
+    finalizer_ledger_error: str | None = None
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -674,7 +691,7 @@ class WorkflowFlow:
                     "declared_chain": list(self.chain),
                     "open_attempt_ids": [attempt.identifier for attempt in self.ledger.open_attempts]
                     if self.ledger is not None
-                    else ["ledger-not-yet-established"],
+                    else (["unreadable-ledger"] if self.finalizer_ledger_error else ["ledger-not-yet-established"]),
                     "item": ITEM,
                     "project": str(self.project),
                     "sidecar": str(self.setup.configuration),
@@ -724,20 +741,83 @@ class WorkflowFlow:
         self.finalized = True
         issues = [failure] if failure else []
         starts = self._finalizer_start_snapshot(issues)
+        classification_complete = self.finalizer_ledger_error is None
         baseline_ids = self.baseline.ids if self.baseline is not None else frozenset()
-        sessions = set(self.sessions) | (set(self.all_current_project_sessions()) - set(baseline_ids))
-        roles = self._finalizer_roles(sessions, issues)
+        sessions = set(self.sessions)
+        try:
+            sessions.update(set(self.all_current_project_sessions()) - set(baseline_ids))
+        except BaseException as error:
+            issues.append(f"initial session inventory: {error}")
+            classification_complete = False
+        roles: dict[str, str] = {}
+        classification_complete = (
+            self._run_finalizer_stage(
+                "session role inventory", lambda: roles.update(self._finalizer_roles(sessions, issues)), issues
+            )
+            and classification_complete
+        )
+        if any(role == "unknown" for role in roles.values()):
+            classification_complete = False
         session_rows: dict[str, JsonValue] = {}
-        ordinary = [session for session, role in roles.items() if role != ROLE_INTEGRATOR]
-        self._finalizer_end_sessions(ordinary, roles, session_rows, issues)
-        self._finalizer_hold_ready(issues)
-        integrators = [session for session, role in roles.items() if role == ROLE_INTEGRATOR]
-        self._finalizer_end_sessions(integrators, roles, session_rows, issues)
-        self._finalizer_restore(issues)
-        self._finalizer_sweep(baseline_ids, session_rows, issues)
-        self._finalizer_stop_fixtures(issues)
-        current = self.ledger
-        open_ids = [attempt.identifier for attempt in current.open_attempts] if current is not None else []
+        ordinary = [session for session, role in roles.items() if role not in (ROLE_INTEGRATOR, "unknown")]
+        classification_complete = (
+            self._run_finalizer_stage(
+                "ordinary session closure",
+                lambda: self._finalizer_end_sessions(ordinary, roles, session_rows, issues),
+                issues,
+            )
+            and classification_complete
+        )
+        if not self._finalizer_sessions_closed(ordinary, session_rows):
+            classification_complete = False
+        issue_count = len(issues)
+        self._run_finalizer_stage(
+            "ready hold and admitted recovery", lambda: self._finalizer_hold_ready(issues), issues
+        )
+        if len(issues) != issue_count:
+            classification_complete = False
+        integrators = [session for session, role in roles.items() if role in (ROLE_INTEGRATOR, "unknown")]
+        classification_complete = (
+            self._run_finalizer_stage(
+                "integrator session closure",
+                lambda: self._finalizer_end_sessions(integrators, roles, session_rows, issues),
+                issues,
+            )
+            and classification_complete
+        )
+        if not self._finalizer_sessions_closed(integrators, session_rows):
+            classification_complete = False
+        issue_count = len(issues)
+        classification_complete = (
+            self._run_finalizer_stage(
+                "public session sweep", lambda: self._finalizer_sweep(baseline_ids, session_rows, issues), issues
+            )
+            and classification_complete
+        )
+        if len(issues) != issue_count or not all(
+            isinstance(row, Mapping) and row.get("closed") is True for row in session_rows.values()
+        ):
+            classification_complete = False
+        if classification_complete:
+            self._run_finalizer_stage("publication restore", lambda: self._finalizer_restore(issues), issues)
+        else:
+            issues.append("publication restore deferred because session classification or closure is incomplete")
+            self.retain(RETAINED_MARKER.format(path=self.root))
+        self._run_finalizer_stage("fixture stop markers", lambda: self._finalizer_stop_fixtures(issues), issues)
+        try:
+            current = start_ledger.StartLedger.load(self.ledger_path)
+            self.ledger = current
+            self.finalizer_ledger_error = None
+        except (OSError, ValueError) as error:
+            current = None
+            self.ledger = None
+            self.finalizer_ledger_error = str(error)
+            issues.append(DETAIL_LEDGER.format(detail=str(error)))
+        open_ids = (
+            [attempt.identifier for attempt in current.open_attempts]
+            if current is not None
+            else (["unreadable-ledger"] if self.finalizer_ledger_error else [])
+        )
         self.finalizer_summary = {
             "status": RETAINED_STATE,
             "failure": failure,
@@ -746,6 +826,7 @@ class WorkflowFlow:
             "integrators": cast(JsonValue, sorted(integrators)),
             "start_ledger": cast(JsonValue, starts),
             "open_attempt_ids": cast(JsonValue, open_ids),
+            "start_ledger_error": self.finalizer_ledger_error,
             "P1_session_lifecycle": "proven"
             if all(isinstance(row, Mapping) and row.get("closed") is True for row in session_rows.values())
             else "unproven",
@@ -758,10 +839,30 @@ class WorkflowFlow:
         except BaseException as error:
             self._finalizer_failure(error)
 
+    @staticmethod
+    def _run_finalizer_stage(label: str, action: Callable[[], None], issues: list[str]) -> bool:
+        try:
+            action()
+            return True
+        except BaseException as error:
+            issues.append(f"{label}: {error}")
+            return False
+
+    @staticmethod
+    def _finalizer_sessions_closed(sessions: Sequence[str], rows: Mapping[str, JsonValue]) -> bool:
+        for session in sessions:
+            row = rows.get(session)
+            if not isinstance(row, Mapping) or row.get("closed") is not True:
+                return False
+        return True
+
     def _finalizer_start_snapshot(self, issues: list[str]) -> list[JsonValue]:
         try:
-            current = self.require_ledger()
+            current = start_ledger.StartLedger.load(self.ledger_path)
+            self.ledger = current
         except (OSError, ValueError) as error:
+            self.ledger = None
+            self.finalizer_ledger_error = str(error)
             issues.append(DETAIL_LEDGER.format(detail=str(error)))
             return []
         return [
@@ -811,13 +912,45 @@ class WorkflowFlow:
             if item.get("stage") == "delivered" or not isinstance(standing, Mapping):
                 return
             state = item.get("state")
-            if not isinstance(state, Mapping) or state.get(STATE_PHASE) != READY_PHASE:
-                return
-            if standing.get(STANDING_ADMITTED) is not None:
+            if not isinstance(state, Mapping) or state.get(STATE_PHASE_FIELD) != READY_PHASE:
                 return
             held = self.observer.run((TELEC, "todo", "update", ITEM, "--hold", "--reason", "flow finalizer"))
             if held.exit_status != 0:
                 issues.append(f"ready item hold: {held.output[-300:]}")
+                return
+            held_item = self.item()
+            held_state = held_item.get("state")
+            if not isinstance(held_state, Mapping) or held_state.get(STATE_HOLD) is not True:
+                issues.append("ready item hold returned success without a public hold state")
+                return
+            admitted = standing.get(STANDING_ADMITTED)
+            if admitted is None:
+                return
+            integration = self.project / WORKTREE_DIRECTORY / INTEGRATION_DIRECTORY
+            if not integration.is_dir():
+                issues.append("admitted undelivered item retained: integration worktree is absent")
+                return
+            status = self.git(("status", "--porcelain"), cwd=integration)
+            head = self.git(("rev-parse", "HEAD"), cwd=integration)
+            base = self.git(("rev-parse", f"{ORIGIN}/{MAIN}"), cwd=self.project)
+            staged_candidate = status.splitlines()
+            if head != base or staged_candidate != ["A  Makefile", "A  feature.txt"]:
+                issues.append("admitted undelivered item retained: integration worktree is not clean and uncommitted")
+                return
+            outcome = self.observer.run((TELEC, "todo", "integrate", ITEM, "--abandon"))
+            receipt = foundation.json_object(outcome.output)
+            operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
+            if outcome.exit_status != 0 or not isinstance(operation, str) or not operation:
+                issues.append(f"admitted undelivered attempt retained: {outcome.output[-300:]}")
+                return
+            terminal = self.operation(operation, FLOW_COMMAND_SECONDS)
+            if terminal.get(FIELD_STATE) != STATE_COMPLETED:
+                issues.append(f"admitted undelivered abandon did not complete: {terminal!r}")
+                return
+            post = self.item()
+            post_standing = post.get(STANDING)
+            if isinstance(post_standing, Mapping) and post_standing.get(STANDING_ADMITTED) is not None:
+                issues.append("admitted undelivered abandon completed but admission remains; resources retained")
         except BaseException as error:
             issues.append(f"item hold/read: {error}")
 
@@ -956,9 +1089,14 @@ class WorkflowFlow:
     def all_current_project_sessions(self) -> tuple[str, ...]:
         """Read each retained session record and select sessions belonging to the disposable project."""
         found: list[str] = []
+        owned_paths = {
+            str(self.project),
+            str((self.project / WORKTREE_DIRECTORY / ITEM).resolve()),
+            str((self.project / WORKTREE_DIRECTORY / INTEGRATION_DIRECTORY).resolve()),
+        }
         for session_id in self.observer.sessions(retain=False).ids:
             record = self._session_record(session_id, retain=False)
-            if record is not None and record.get(FIELD_PROJECT_PATH) == str(self.project):
+            if record is not None and record.get(FIELD_PROJECT_PATH) in owned_paths:
                 found.append(session_id)
         return tuple(sorted(found))
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
@@ -41,6 +42,7 @@ FIELD_STANDING: Final = "standing"
 FIELD_STANDING_PHASE: Final = "phase"
 FIELD_STATUS: Final = "stage"
 FIELD_ROADMAP: Final = "roadmap"
+FIELD_ROADMAP_STATUS: Final = "status"
 FIELD_DELIVERED: Final = "delivered"
 FIELD_DELIVERED_COMMIT: Final = "delivered_commit"
 FIELD_DELIVERED_AT: Final = "delivered_at"
@@ -55,6 +57,14 @@ DETAIL_COMMIT: Final = "integration commit {found!r} does not match expected {ex
 
 def _git(flow: flow_module.WorkflowFlow, *args: str, cwd: Path | None = None) -> str:
     return flow.git(args, cwd=cwd)
+
+
+def _git_bytes(flow: flow_module.WorkflowFlow, *args: str, cwd: Path | None = None) -> bytes:
+    working = cwd if cwd is not None else flow.project
+    outcome = flow.host.process(("git", *args), working, flow.host.environment, FRAME_SECONDS)
+    if outcome.exit_status != 0:
+        raise creation.binding_failure(f"git {' '.join(args)} failed: {outcome.output[-300:]}")
+    return outcome.output.encode("utf-8")
 
 
 def _operation_result(flow: flow_module.WorkflowFlow, session: str, name: str, label: str) -> Mapping[str, object]:
@@ -133,17 +143,21 @@ def _verify_staged(flow: flow_module.WorkflowFlow, integration: Path, base: str)
         _fail("int1 moved origin/main before the integration commit")
 
 
-def _verify_docs_only_capability(flow: flow_module.WorkflowFlow, integration: Path) -> None:
+def _verify_root_docs_only_capability(flow: flow_module.WorkflowFlow) -> None:
     root_head = _git(flow, "show", "HEAD:teleclaude.yml")
     root_worktree = (flow.project / "teleclaude.yml").read_text(encoding="utf-8")
-    integration_worktree = (integration / "teleclaude.yml").read_text(encoding="utf-8")
-    for label, text in (
-        ("root HEAD", root_head),
-        ("root worktree", root_worktree),
-        ("integration worktree", integration_worktree),
-    ):
+    for label, text in (("root HEAD", root_head), ("root worktree", root_worktree)):
         if not text_capability_enabled(text, "docs") or text_capability_enabled(text, "code"):
             raise creation.binding_failure(f"{label} is not docs-enabled with code disabled")
+
+
+def _verify_integration_declaration(integration: Path) -> None:
+    try:
+        declaration = (integration / "teleclaude.yml").read_text(encoding="utf-8")
+    except OSError as error:
+        raise creation.binding_failure("the int1-created integration worktree lacks teleclaude.yml") from error
+    if not text_capability_enabled(declaration, "docs") or text_capability_enabled(declaration, "code"):
+        raise creation.binding_failure("the integration worktree is not docs-enabled with code disabled")
 
 
 def _verify_integration_commit(flow: flow_module.WorkflowFlow, integration: Path, base: str, session: str) -> str:
@@ -182,6 +196,64 @@ def _verify_integration_commit(flow: flow_module.WorkflowFlow, integration: Path
     return head
 
 
+def _verify_delivered_readback(flow: flow_module.WorkflowFlow, base: str) -> tuple[Mapping[str, object], str]:
+    remote_main = _git(flow, "ls-remote", flow_module.ORIGIN, "refs/heads/main")
+    main_head = remote_main.split()[0] if remote_main.split() else ""
+    delivered = flow.item()
+    roadmap = delivered.get(FIELD_ROADMAP)
+    if (
+        main_head == base
+        or _git(flow, "rev-parse", "main") != main_head
+        or delivered.get(FIELD_STATUS) != FIELD_DELIVERED
+        or not isinstance(roadmap, Mapping)
+        or roadmap.get(FIELD_ROADMAP_STATUS) != FIELD_DELIVERED
+        or roadmap.get(FIELD_DELIVERED_COMMIT) != main_head
+        or not isinstance(roadmap.get(FIELD_DELIVERED_AT), str)
+        or not roadmap.get(FIELD_DELIVERED_AT)
+        or _git(flow, "rev-parse", f"{main_head}^") != base
+        or _git_bytes(flow, "show", f"{main_head}:{FEATURE_FILE}") != EXPECTED_FEATURE
+        or _git_bytes(flow, "show", f"{main_head}:{MAKE_FILE}") != EXPECTED_MAKEFILE
+    ):
+        _fail(DETAIL_DELIVERED.format(item=delivered))
+    listing = flow.observer.run((TELEC, TODO, "list", "--json", "--include-delivered"))
+    payload = creation.decode_object(listing.output) if listing.exit_status == 0 else None
+    delivered_section = payload.get("delivered") if payload is not None else None
+    active_section = payload.get("active") if payload is not None else None
+    if (
+        not isinstance(delivered_section, list)
+        or flow_module.ITEM not in creation.collect_slugs(delivered_section)
+        or flow_module.ITEM in creation.collect_slugs(active_section)
+    ):
+        _fail("public todo list did not move the item from active to delivered")
+    return delivered, main_head
+
+
+def _verify_retired_v1_and_cleanup(
+    flow: flow_module.WorkflowFlow, delivered: Mapping[str, object], main_head: str
+) -> None:
+    refused = flow.observer.run((TELEC, TODO, "stamp", flow_module.ITEM, "--prd-approved"))
+    refused_text = refused.output
+    main_abbrev = main_head[:12]
+    if (
+        refused.exit_status == 0
+        or FIELD_DELIVERED not in refused_text
+        or f"{TELEC} todo create" not in refused_text
+        or main_abbrev not in refused_text
+    ):
+        _fail(f"retired v1 act did not refuse through the delivered door: {refused_text[-400:]!r}")
+    for label, pause in (("immediately", 0.0), ("five seconds later", 5.0)):
+        if pause:
+            time.sleep(pause)
+        if flow.item() != delivered:
+            _fail(f"retired v1 act changed the delivered item {label}")
+    if _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}"):
+        _fail("delivery left the item branch on the owned origin")
+    if _git(flow, "branch", "--list", flow_module.ITEM):
+        _fail("delivery left the item branch in the local repository")
+    if (flow.project / flow_module.WORKTREE_DIRECTORY / flow_module.ITEM).exists():
+        _fail("delivery left the item worktree on disk")
+
+
 def run_b6(flow: flow_module.WorkflowFlow) -> None:
     """Select the atomic integrate-plan claimant, admit, squash, publish and verify delivery."""
     try:
@@ -197,15 +269,13 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
         if not isinstance(candidate, str) or not candidate:
             raise creation.binding_failure(DETAIL_HANDOVER)
         integration = flow.project / INTEGRATION_TREE
-        if not integration.is_dir():
-            raise creation.binding_failure(DETAIL_HANDOVER)
         dirty = _git(flow, "status", "--porcelain")
         if FEATURE_FILE in dirty or MAKE_FILE in dirty:
             _fail(DETAIL_DIRTY.format(status=dirty))
         base = _git(flow, "rev-parse", "origin/main")
         if _git(flow, "ls-remote", flow_module.ORIGIN, "refs/heads/main") != f"{base}\trefs/heads/main":
             _fail("origin/main and the local origin/main read differ before admission")
-        _verify_docs_only_capability(flow, integration)
+        _verify_root_docs_only_capability(flow)
         actor = _acting_integrator(flow)
         admission = _operation_result(flow, actor, "int1", "int1")
         if (
@@ -231,6 +301,9 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
             or state.get(FIELD_ACTIVE) not in (None, "")
         ):
             _fail(f"int1 did not admit the B7 candidate at {candidate}: {admitted!r}")
+        if not integration.is_dir():
+            raise creation.binding_failure("int1 completed without its public integration worktree")
+        _verify_integration_declaration(integration)
         _verify_staged(flow, integration, base)
         sessions = flow.observer.sessions().ids
         _refused_work(flow, admitted, sessions)
@@ -253,34 +326,8 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
                     detail=delivery_operation.get(FIELD_ERROR),
                 )
             )
-        remote_main = _git(flow, "ls-remote", flow_module.ORIGIN, "refs/heads/main")
-        main_head = remote_main.split()[0] if remote_main.split() else ""
-        delivered = flow.item()
-        roadmap = delivered.get(FIELD_ROADMAP)
-        if (
-            main_head == base
-            or _git(flow, "rev-parse", "main") != main_head
-            or delivered.get(FIELD_STATUS) != FIELD_DELIVERED
-            or not isinstance(roadmap, Mapping)
-            or roadmap.get(FIELD_DELIVERED) != FIELD_DELIVERED
-            or roadmap.get(FIELD_DELIVERED_COMMIT) != main_head
-            or not isinstance(roadmap.get(FIELD_DELIVERED_AT), str)
-            or not roadmap.get(FIELD_DELIVERED_AT)
-            or _git(flow, "rev-parse", f"{main_head}^") != base
-            or _git(flow, "show", f"{main_head}:{FEATURE_FILE}").encode("utf-8") != EXPECTED_FEATURE
-            or _git(flow, "show", f"{main_head}:{MAKE_FILE}").encode("utf-8") != EXPECTED_MAKEFILE
-        ):
-            _fail(DETAIL_DELIVERED.format(item=delivered))
-        listing = flow.observer.run((TELEC, TODO, "list", "--json", "--include-delivered"))
-        payload = creation.decode_object(listing.output) if listing.exit_status == 0 else None
-        delivered_section = payload.get("delivered") if payload is not None else None
-        active_section = payload.get("active") if payload is not None else None
-        if (
-            not isinstance(delivered_section, list)
-            or flow_module.ITEM not in creation.collect_slugs(delivered_section)
-            or flow_module.ITEM in creation.collect_slugs(active_section)
-        ):
-            _fail("public todo list did not move the item from active to delivered")
+        delivered, main_head = _verify_delivered_readback(flow, base)
+        _verify_retired_v1_and_cleanup(flow, delivered, main_head)
         _end(flow, actor)
         flow.sessions[actor] = ROLE_INTEGRATOR
         flow.handover(

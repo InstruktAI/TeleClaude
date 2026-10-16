@@ -38,7 +38,7 @@ import time
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
@@ -46,6 +46,7 @@ from tools.ci import workflow_driver as driver
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_handover as handover
 from tools.ci import workflow_items as items
+from tools.ci import workflow_ledger as start_ledger
 from tools.ci import workflow_publication as publication
 from tools.ci import workflow_waiting as waiting
 from tools.ci.workflow_foundation import FoundationHost
@@ -70,6 +71,34 @@ TODO: Final = "todo"
 ITEM: Final = waiting.ITEM
 CONTROL_NAME: Final = "native-fixture-control-b4"
 ORIGIN_NAME: Final = "b4-origin.git"
+RETAINED_NAME: Final = "RETAINED.json"
+B4_ATTEMPT_LEDGER: Final = "b4-attempts.jsonl"
+B4_CASE: Final = "B4"
+B9_BODY_C: Final = "b4 body zero"
+B9_S_P_MESSAGE: Final = "b9 outsider parent"
+B9_X_MESSAGE: Final = "b9 outsider actor"
+B9_X_INPUT: Final = "B9 outsider attempt"
+B9_PREPARED_TEXT: Final = "B9 wrong performer"
+B9_WAITING_TEXT: Final = "B9 waiting probe"
+GATE_X_START: Final = "go_x_start"
+GATE_X_INPUT: Final = "go_x_input"
+GATE_C2_INPUT: Final = "go_c2_input"
+GATE_C2_PREPARED: Final = "go_c2_prepared"
+GATE_C2_WAITING: Final = "go_c2_waiting"
+ARGV_X_START: Final = "x_start.argv"
+ARGV_X_INPUT: Final = "x_input.argv"
+ARGV_C2_INPUT: Final = "c2_input.argv"
+ARGV_C2_PREPARED: Final = "c2_prepared.argv"
+ARGV_C2_WAITING: Final = "c2_waiting.argv"
+SESSION_S_P: Final = "session-S_P-start"
+SESSION_X: Final = "session-X-start"
+EFFECT_C2_INPUT: Final = "effect-C2-input"
+EFFECT_X_INPUT: Final = "effect-X-input"
+EFFECT_C2_PREPARED: Final = "effect-C2-prepared"
+EFFECT_C2_WAITING: Final = "effect-C2-waiting"
+END_X: Final = "session-X-end"
+END_S_P: Final = "session-S_P-end"
+FIELD_DELIVERED: Final = "delivered"
 BODY_A: Final = "b4 body one"
 BODY_B: Final = "b4 body two"
 INPUT: Final = creation.INPUT_ARTIFACT
@@ -134,6 +163,22 @@ DETAIL_INSTRUCTION: Final = "the work instruction lacks {needle!r}: {text!r}"
 DETAIL_ROLE_COUNT: Final = "{count} sessions beyond the baseline hold the work role, not exactly one: {found!r}"
 DETAIL_CONTROLS_KEPT: Final = "closure was not proven, so the control directories {control} are kept for diagnosis"
 DETAIL_NOT_PRESENT: Final = "{what} is not available through the supported git read-backs"
+DETAIL_B9_REFUSAL: Final = "B9 {act} refusal is {status!r} and lacks {expected!r}: {output!r}"
+DETAIL_B9_SESSION: Final = "B9 session {label} is not bound to its first-free control: {record!r}"
+DETAIL_B9_ATTEMPT: Final = "the B4 B9 attempt ledger is unresolved: {detail}"
+DETAIL_B9_RETAINED: Final = "B4 retained the full runtime because B9 evidence is unresolved at {path}"
+DETAIL_B9_END: Final = "B9 session {session} end did not complete and close its retained record: {record!r}"
+
+B4_B9_ACTIONS: Final = (
+    {"label": SESSION_S_P, "kind": start_ledger.RECORD_SESSION},
+    {"label": SESSION_X, "kind": start_ledger.RECORD_SESSION, "parent": SESSION_S_P},
+    {"label": EFFECT_C2_INPUT, "kind": start_ledger.RECORD_EFFECT},
+    {"label": EFFECT_X_INPUT, "kind": start_ledger.RECORD_EFFECT},
+    {"label": EFFECT_C2_PREPARED, "kind": start_ledger.RECORD_EFFECT},
+    {"label": EFFECT_C2_WAITING, "kind": start_ledger.RECORD_EFFECT},
+    {"label": END_X, "kind": start_ledger.RECORD_OPERATION},
+    {"label": END_S_P, "kind": start_ledger.RECORD_OPERATION},
+)
 
 type Json = Mapping[str, object]
 
@@ -176,6 +221,8 @@ class _Prepared:
         project: Path,
         source_root: Path,
         owner_email: str,
+        owner_slug: str,
+        report_path: Path,
         register_company: Callable[[], None],
         retain: Callable[[str], None],
     ) -> None:
@@ -190,6 +237,8 @@ class _Prepared:
         self.source_root = source_root
         self.project = project.resolve()
         self.owner_email = owner_email
+        self.owner_slug = owner_slug
+        self.report_path = report_path.resolve()
         self.baseline: creation.SessionView | None = None
         self.starts: dict[str, str] = {}
         self.setups: list[foundation.FixtureSetup] = []
@@ -198,15 +247,18 @@ class _Prepared:
         self.initial_headers: list[str] = []
         self.known_claims = 0
         self.known_sessions: list[str] = []
+        self.b4_ledger: start_ledger.StartLedger | None = None
+        self.outsider_sessions: dict[str, str] = {}
+        self.b4_retained = False
         self.handover = handover.Handover(self.observer, host, worktree=self._worktree_block)
 
     # -- helpers ---------------------------------------------------------------------------------------------------
     def _known(self, *sessions: str) -> frozenset[str]:
         assert self.baseline is not None
-        return self.baseline.ids | frozenset(sessions)
+        return self.baseline.ids | frozenset(self.known_sessions) | frozenset(sessions)
 
-    def _journey(self, name: str, index: int) -> foundation.Journey:
-        journey = foundation.Journey(self.host, self.setups[index], self.project, self.owner_email)
+    def _journey(self, name: str, index: int, message: str | None = None) -> foundation.Journey:
+        journey = foundation.Journey(self.host, self.setups[index], self.project, self.owner_email, message=message)
         self.journeys[name] = journey
         return journey
 
@@ -242,6 +294,73 @@ class _Prepared:
 
     def _gate(self, index: int, name: str) -> None:
         (self.setups[index].control / name).write_text("1\n", encoding="utf-8")
+
+    def _b4_begin(self, label: str, kind: str, parent: str | None = None) -> str:
+        if self.b4_ledger is None:
+            raise creation.binding_failure(
+                DETAIL_B9_ATTEMPT.format(detail="the ledger was not created before B9 calls")
+            )
+        try:
+            return self.b4_ledger.begin(B4_CASE, label, kind, parent=parent)
+        except ValueError as error:
+            raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail=str(error))) from error
+
+    def _b4_discharge(self, attempt: str, evidence: str) -> None:
+        if self.b4_ledger is None:
+            raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail="the ledger is missing"))
+        try:
+            self.b4_ledger.discharge(attempt, evidence)
+        except ValueError as error:
+            raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail=str(error))) from error
+
+    def _slot_session(self, index: int) -> str:
+        """Map a first-free pool slot to its public session through the launch's native id."""
+        launch_path = self.setups[index].control / foundation.LAUNCH_FILE
+        deadline = time.monotonic() + waiting.START_CAP_SECONDS
+        while time.monotonic() < deadline:
+            try:
+                launch_value = json.loads(launch_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                time.sleep(POLL_SECONDS)
+                continue
+            launch = launch_value if isinstance(launch_value, Mapping) else {}
+            native = launch.get(foundation.FIELD_NATIVE)
+            if isinstance(native, str) and native:
+                for session in self.observer.sessions(retain=False).ids:
+                    record = self._record(session)
+                    if record.get(foundation.FIELD_NATIVE) == native:
+                        return session
+            time.sleep(POLL_SECONDS)
+        raise creation.binding_failure(DETAIL_B9_SESSION.format(label=f"d{index}", record="no native launch mapping"))
+
+    def _roleless_startup(self, session: str, index: int, message: str) -> None:
+        journey = self._journey("S_P" if index == 0 else "X", index, message)
+        journey.session_id = session
+        launch = journey.await_json(self.setups[index].control / foundation.LAUNCH_FILE, waiting.LAUNCH_SECONDS)
+        native = launch.get(foundation.FIELD_NATIVE)
+        if not isinstance(native, str) or not native:
+            raise creation.binding_failure(DETAIL_B9_SESSION.format(label=session, record=launch))
+        deadline = time.monotonic() + waiting.START_CAP_SECONDS
+        for hook in (foundation.FRAME_SESSION_START, foundation.FRAME_PROMPT_SUBMIT):
+            journey.require_hook(hook, journey.await_frame(hook, deadline))
+        record = self._record(session)
+        if (
+            record.get(foundation.FIELD_NATIVE) != native
+            or not journey.started(record, native)
+            or record.get(waiting.FIELD_ROLE) is not None
+            or record.get(waiting.FIELD_JOB) is not None
+        ):
+            raise creation.platform_failure(DETAIL_B9_SESSION.format(label=session, record=record))
+        inputs = journey.inputs()
+        first = inputs[0].get("text") if inputs else None
+        if first != message:
+            raise creation.platform_failure(DETAIL_B9_SESSION.format(label=session, record={"input": first}))
+
+    def _public_log_entries(self, payload: Json) -> list[tuple[str, str]]:
+        found, log = creation.dig(payload, "artifact_content.log")
+        if not found or not isinstance(log, str):
+            raise creation.trace_failure(creation.DETAIL_PATH_ABSENT.format(slug=ITEM, path="artifact_content.log"))
+        return waiting.log_entries(log)
 
     def _record(self, session: str) -> Json:
         outcome = self.observer.run((TELEC, "sessions", "show", session, foundation.FULL_FLAG), retain=False)
@@ -398,15 +517,30 @@ class _Prepared:
     def setup_pool(self) -> None:
         prepare = ["telec", TODO, "prepare", ITEM]
         child = ["telec", TODO, "child", ITEM]
-        first = [
+        outsider_parent = [controls.late("startx", ARGV_X_START, GATE_X_START)]
+        outsider_child = [controls.late("inputforeign", ARGV_X_INPUT, GATE_X_INPUT)]
+        preparation_driver = [
             controls.command("claim", prepare),
             controls.command("child", child),
             controls.late("preparedold", ARGV_OLD, GATE_OLD),
             controls.late("preparednew", ARGV_NEW, GATE_NEW),
         ]
+        intaker = [
+            controls.late("inputc", ARGV_C2_INPUT, GATE_C2_INPUT),
+            controls.late("preparedwrong", ARGV_C2_PREPARED, GATE_C2_PREPARED),
+            controls.late("waitingwrong", ARGV_C2_WAITING, GATE_C2_WAITING),
+        ]
         work = [controls.command("claim", ["telec", TODO, "work", ITEM])]
-        plans = [controls.PlanFile(commands=commands) for commands in (first, [], work, [])]
+        plans = [
+            controls.PlanFile(commands=commands)
+            for commands in (outsider_parent, outsider_child, preparation_driver, intaker, work)
+        ]
         self.setups = self.controls.pool(plans)
+        self.b4_ledger = start_ledger.StartLedger.create(self.controls.root / B4_ATTEMPT_LEDGER)
+        try:
+            self.b4_ledger.declare_case(B4_CASE, B4_B9_ACTIONS)
+        except ValueError as error:
+            raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail=str(error))) from error
 
     def preconditions(self) -> None:
         shown = self._shown()
@@ -429,6 +563,333 @@ class _Prepared:
         self.known_claims = sum(
             1 for header in self.initial_headers if f" {driver.CLAIM_HEADER_SUFFIX.strip()}" in header
         )
+
+    def start_b9_outsiders(self) -> tuple[str, str]:
+        """The approved B9 parent/outsider launch order occupies d0 and d1 before D2 starts."""
+        if self.baseline is None:
+            raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail="B0 was not captured"))
+        start_s_p = self._b4_begin(SESSION_S_P, start_ledger.RECORD_SESSION)
+        parent_journey = self._journey("S_P", 0, B9_S_P_MESSAGE)
+        parent_journey.start_session(case_start_file=False)
+        session_parent = parent_journey.session_id
+        if not session_parent:
+            self.b4_ledger.unknown(start_s_p)
+            raise creation.binding_failure(DETAIL_B9_SESSION.format(label="S_P", record="missing public session id"))
+        self.b4_ledger.record_session(start_s_p, session_parent)
+        self.outsider_sessions["S_P"] = session_parent
+        self.known_sessions.append(session_parent)
+        if self._slot_session(0) != session_parent:
+            raise creation.binding_failure(DETAIL_B9_SESSION.format(label="S_P", record=self._record(session_parent)))
+        self._roleless_startup(session_parent, 0, B9_S_P_MESSAGE)
+        record_parent = self._record(session_parent)
+        if record_parent.get(waiting.FIELD_INITIATOR) not in (None, ""):
+            raise creation.platform_failure(DETAIL_B9_SESSION.format(label="S_P", record=record_parent))
+        self._require_pool(1)
+
+        start_x = self._b4_begin(SESSION_X, start_ledger.RECORD_SESSION, parent=SESSION_S_P)
+        self._late(
+            0,
+            ARGV_X_START,
+            [
+                TELEC,
+                "sessions",
+                "start",
+                "--path",
+                str(self.project),
+                "--agent",
+                "claude",
+                "--mode",
+                "fast",
+                "--message",
+                B9_X_MESSAGE,
+            ],
+        )
+        self._gate(0, GATE_X_START)
+        status, output = self._frame_output(parent_journey, "cmd_startx")
+        result = foundation.json_object(output)
+        session_from_start = result.get("session_id") if result is not None else None
+        if status != 0 or not isinstance(session_from_start, str) or not session_from_start:
+            self.b4_ledger.unknown(start_x)
+            raise creation.platform_failure(
+                DETAIL_B9_REFUSAL.format(
+                    act="X start", status=status, expected="a successful public session id", output=output[-400:]
+                )
+            )
+        self.b4_ledger.record_session(start_x, session_from_start)
+        self.outsider_sessions["X"] = session_from_start
+        self.known_sessions.append(session_from_start)
+        session_x = self._slot_session(1)
+        if session_x != session_from_start:
+            raise creation.binding_failure(DETAIL_B9_SESSION.format(label="X", record=self._record(session_x)))
+        self._roleless_startup(session_x, 1, B9_X_MESSAGE)
+        record_x = self._record(session_x)
+        if record_x.get(waiting.FIELD_INITIATOR) != session_parent:
+            raise creation.binding_failure(DETAIL_B9_SESSION.format(label="X initiator", record=record_x))
+        self.outsider_sessions["X"] = session_x
+        self._require_pool(2)
+        return session_parent, session_x
+
+    def b9_positive_input(self, intaker: str) -> None:
+        """C2's successful BODY_C write binds the in-group intent edit before the owner BODY_A write."""
+        attempt = self._b4_begin(EFFECT_C2_INPUT, start_ledger.RECORD_EFFECT)
+        before = self.snapshot()
+        before_log = self._public_log_entries(before)
+        self._late(3, ARGV_C2_INPUT, [TELEC, TODO, "artifacts", "write", ITEM, INPUT, B9_BODY_C])
+        self._gate(3, GATE_C2_INPUT)
+        journey = self.journeys["child"]
+        status, output = self._frame_output(journey, "cmd_inputc")
+        if status != 0 or WROTE_PHRASE not in output:
+            raise creation.platform_failure(
+                DETAIL_WRITE.format(status=status, phrase=WROTE_PHRASE, output=output[-300:])
+            )
+        after = self._shown()
+        items.require_only_changes("B9 C2 intent body", before, after, OWNER_WRITE_PATHS)
+        if self._input() != B9_BODY_C:
+            raise creation.platform_failure(DETAIL_BODY.format(found=self._input(), expected=B9_BODY_C))
+        found, updated_by = creation.dig(after, UPDATED_BY)
+        if not found or updated_by != intaker:
+            raise creation.platform_failure(DETAIL_UPDATED_SESSION.format(found=updated_by))
+        if self._public_log_entries(after) != before_log:
+            raise creation.platform_failure(
+                DETAIL_LOG_HEADERS.format(
+                    when="after C2's positive input", before=before_log, after=self._public_log_entries(after)
+                )
+            )
+        self.require_live(intaker, "after C2's positive input")
+        self._b4_discharge(attempt, "C2 command succeeded, BODY_C is public, and updated_by names C2")
+
+    def _b9_refusal(
+        self,
+        label: str,
+        index: int,
+        argv_file: str,
+        gate: str,
+        frame: str,
+        argv: list[str],
+        expected: tuple[str, ...],
+    ) -> None:
+        attempt = self._b4_begin(label, start_ledger.RECORD_EFFECT)
+        snapshot = self.snapshot()
+        entries = self._public_log_entries(snapshot)
+        sessions = self.observer.sessions()
+        self._late(index, argv_file, argv)
+        self._gate(index, gate)
+        journey = self._journey("outsider", 1 if index == 1 else index)
+        status, output = self._frame_output(journey, frame)
+        if status in (None, 0) or any(needle not in output for needle in expected) or "Performed " in output:
+            raise creation.platform_failure(
+                DETAIL_B9_REFUSAL.format(act=label, status=status, expected=expected, output=output[-400:])
+            )
+        self.require_snapshot(snapshot, f"B9 {label}")
+        if self._public_log_entries(self._shown()) != entries:
+            raise creation.platform_failure(
+                DETAIL_LOG_HEADERS.format(
+                    when=f"B9 {label}", before=entries, after=self._public_log_entries(self._shown())
+                )
+            )
+        creation.require_sessions_equal(sessions, self.observer.sessions(retain=False), f"B9 {label}")
+        self._b4_discharge(attempt, f"public refusal {expected!r}; complete show, log and session set unchanged")
+
+    def b9_wrong_performers(self, author: str, intaker: str, r1: str) -> None:
+        """Run X and C2's phase-valid refused probes before D2's successful prepared."""
+        if self._record(author).get(waiting.FIELD_ROLE) != "prepare-orchestrator":
+            raise creation.platform_failure(DETAIL_B9_SESSION.format(label="D2", record=self._record(author)))
+        if (
+            self._record(intaker).get(waiting.FIELD_ROLE) != "intaker"
+            or self._record(intaker).get(waiting.FIELD_INITIATOR) != author
+        ):
+            raise creation.platform_failure(DETAIL_B9_SESSION.format(label="C2", record=self._record(intaker)))
+        creation.require_value(ITEM, self._shown(), "state.active_runner", author)
+        x = self.outsider_sessions.get("X")
+        if x is None:
+            raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail="X was not recorded"))
+        self._b9_refusal(
+            EFFECT_X_INPUT,
+            1,
+            ARGV_X_INPUT,
+            GATE_X_INPUT,
+            "cmd_inputforeign",
+            [TELEC, TODO, "artifacts", "write", ITEM, INPUT, B9_X_INPUT],
+            ("409", f"{ITEM} is held by session {author}", "holder or a session of its claiming group"),
+        )
+        self._b9_refusal(
+            EFFECT_C2_PREPARED,
+            3,
+            ARGV_C2_PREPARED,
+            GATE_C2_PREPARED,
+            "cmd_preparedwrong",
+            [TELEC, TODO, "act", ITEM, "prepared", "--revision", r1, B9_PREPARED_TEXT],
+            ("Error: 409 — prepared requires the holding driver",),
+        )
+        self._b9_refusal(
+            EFFECT_C2_WAITING,
+            3,
+            ARGV_C2_WAITING,
+            GATE_C2_WAITING,
+            "cmd_waitingwrong",
+            [TELEC, TODO, "act", ITEM, "waiting", "--person", self.owner_slug, B9_WAITING_TEXT],
+            ("Error: 409 — waiting requires the holding driver",),
+        )
+
+    def _end_b9_session(self, label: str, session: str) -> None:
+        assert self.b4_ledger is not None
+        attempt = next((row for row in self.b4_ledger.attempts.values() if row.label == label), None)
+        if attempt is not None and attempt.state == start_ledger.RECORD_DISCHARGED:
+            return
+        if attempt is None:
+            identifier = self._b4_begin(label, start_ledger.RECORD_OPERATION)
+        elif attempt.operation_id:
+            identifier = attempt.identifier
+        else:
+            self.b4_ledger.unknown(attempt.identifier)
+            return
+        if attempt is None or not attempt.operation_id:
+            outcome = self.observer.run((TELEC, "sessions", "end", session))
+            receipt = foundation.json_object(outcome.output)
+            operation = receipt.get("operation_id") if receipt is not None else None
+            if outcome.exit_status != 0 or not isinstance(operation, str) or not operation:
+                self.b4_ledger.unknown(identifier)
+                return
+            self.b4_ledger.record_operation(identifier, operation)
+        else:
+            operation = attempt.operation_id
+        terminal = publication.await_terminal(self.observer, operation, OPERATION_SECONDS)
+        record = self._record(session)
+        if (
+            terminal.get(publication.FIELD_STATE) != publication.STATE_COMPLETED
+            or record.get(waiting.FIELD_CLOSED_AT) is None
+            or record.get(waiting.FIELD_LIFECYCLE) != foundation.CLOSED
+        ):
+            raise creation.platform_failure(DETAIL_B9_END.format(session=session, record=record))
+        self._b4_discharge(identifier, "public end operation completed and retained session record closed")
+
+    def close_b9_outsiders(self, *, strict: bool = True) -> None:
+        """Close X before S_P with independent receipts and retained records, before D2's valid prepared."""
+        session_x = self.outsider_sessions.get("X")
+        session_parent = self.outsider_sessions.get("S_P")
+        if session_x is not None:
+            self._end_b9_session(END_X, session_x)
+        if session_parent is not None:
+            self._end_b9_session(END_S_P, session_parent)
+        if strict and (session_x is None or session_parent is None):
+            raise creation.binding_failure(
+                DETAIL_B9_ATTEMPT.format(detail="S_P or X has no observed public session id")
+            )
+        assert self.b4_ledger is not None
+        for label in (SESSION_X, SESSION_S_P):
+            attempt = next(row for row in self.b4_ledger.attempts.values() if row.label == label)
+            if attempt.state == start_ledger.RECORD_DISCHARGED:
+                continue
+            if attempt.session_id is None:
+                if strict:
+                    raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail=f"{label} has no public session id"))
+                continue
+            if attempt.state != start_ledger.RECORD_DISCHARGED:
+                if strict:
+                    raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail=f"{label} has no proven end"))
+                continue
+            closed = self._record(attempt.session_id)
+            if closed.get(waiting.FIELD_CLOSED_AT) is None or closed.get(waiting.FIELD_LIFECYCLE) != foundation.CLOSED:
+                raise creation.platform_failure(DETAIL_B9_END.format(session=attempt.session_id, record=closed))
+            self._b4_discharge(
+                attempt.identifier, "public session start is owned and its explicit end is proven closed"
+            )
+
+    def _b9_open_attempts(self) -> tuple[list[start_ledger.JsonObject], str | None]:
+        if self.b4_ledger is None:
+            return [], "the B4 attempt ledger was not established"
+        try:
+            loaded = start_ledger.StartLedger.load(self.b4_ledger.path)
+            self.b4_ledger = loaded
+        except (OSError, ValueError) as error:
+            return [], str(error)
+        return [
+            {
+                "id": attempt.identifier,
+                "case": attempt.case,
+                "label": attempt.label,
+                "kind": attempt.kind,
+                "state": attempt.state,
+                "parent": attempt.parent,
+                "operation_id": attempt.operation_id,
+                "session_id": attempt.session_id,
+                "evidence": attempt.evidence,
+            }
+            for attempt in self.b4_ledger.attempts.values()
+            if attempt.state != start_ledger.RECORD_DISCHARGED
+        ], None
+
+    def _write_b9_retained(self, problems: list[str], attempt_error: str | None) -> None:
+        """Retain the complete full-profile runtime before any candidate restore or control deletion."""
+        self.b4_retained = True
+        marker_path = self.controls.root / RETAINED_NAME
+        attempt_rows, read_error = self._b9_open_attempts()
+        known: dict[str, start_ledger.JsonValue] = {}
+        for label, session in {
+            **self.outsider_sessions,
+            **{str(i): value for i, value in enumerate(self.known_sessions)},
+        }.items():
+            try:
+                known[label] = cast(start_ledger.JsonValue, self._record(session))
+            except BaseException as error:
+                known[label] = {"session_id": session, "error": str(error)}
+        try:
+            item_snapshot = self._shown()
+            parsed_log: object = self._public_log_entries(item_snapshot)
+        except BaseException as error:
+            item_snapshot = {"unavailable": str(error)}
+            parsed_log = None
+        try:
+            candidate_identity: object = self.publication.identity()
+        except BaseException as error:
+            candidate_identity = {"unavailable": str(error)}
+        attempts_path = self.controls.root / B4_ATTEMPT_LEDGER
+        plan_and_argv = [
+            str(path.resolve())
+            for setup in self.setups
+            for path in (setup.control / controls.PLAN_FILE, *setup.control.glob("*.argv"))
+            if path.exists()
+        ]
+        marker = {
+            "status": "RETAINED-UNPROVEN",
+            "reason": "B9 B4 attempt, session close, or process settlement is unresolved; no cleanup pass is claimed",
+            "failure": problems,
+            "attempt_ledger": str(attempts_path.resolve()),
+            "attempt_ledger_error": read_error or attempt_error,
+            "open_attempts": attempt_rows,
+            "known_sessions": known,
+            "driver_start_attempts": dict(self.starts),
+            "last_complete_public_show": item_snapshot,
+            "parsed_public_log": parsed_log,
+            "candidate_identity": candidate_identity,
+            "candidate_publication": self.publication.candidate,
+            "fixture_publication_sha": candidate_identity,
+            "runtime_home": str(self.temporary_root.resolve()),
+            "project": str(self.project),
+            "pool_root": str(self.controls.root.resolve()),
+            "control_directories": [str(path.resolve()) for path in self.controls.directories],
+            "sidecar": str(self.controls.setup.configuration.resolve()),
+            "plans_and_argv": plan_and_argv,
+            "publication_clone": str(self.publication.clone.resolve()),
+            "worktree": str((self.project / "trees" / ITEM).resolve()),
+            "owned_origin": str((self.temporary_root / ORIGIN_NAME).resolve()),
+            "report": str(self.report_path),
+            "proofs": {
+                "P1_session_lifecycle": "from public completed ends and closed retained records only",
+                "P2_launch_consumption": "unknown B9 starts or effects remain open",
+                "P3_daemon_stopped": "pending profile boundary make stop outcome",
+                "P4_fixture_processes_and_panes": "unproven by the approved contract",
+            },
+        }
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = marker_path.with_name(f".{marker_path.name}.tmp")
+        with temporary.open("w", encoding="utf-8") as handle:
+            json.dump(marker, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, marker_path)
+        self.retain(DETAIL_B9_RETAINED.format(path=marker_path.resolve()))
 
     # -- the owner write set ----------------------------------------------------------------------------------------
     def require_owner_write(self, before: Json, after: Json) -> None:
@@ -503,9 +964,10 @@ class _Prepared:
             )
         child_attempt = driver.begin_attempt(self.starts, "session-child")
         author = self._discover(self._known())
-        case = self._case("author", 0, driver.DRIVER_ID, "prepare", PREPARATION_PHASE)
-        case.check_startup(author, frozenset({author}))
-        self._require_pool(1)
+        case = self._case("author", 2, driver.DRIVER_ID, "prepare", PREPARATION_PHASE)
+        outsiders = set(self.outsider_sessions.values())
+        case.check_startup(author, frozenset({*outsiders, author}))
+        self._require_pool(3)
         instruction = case.claim_call([starter])
         case.check_instruction(author, instruction)
         case.observe_claim(author, known_entries=self.known_claims)
@@ -519,17 +981,21 @@ class _Prepared:
         child = started.group("session")
         driver.release_attempt(self.starts, child_attempt)
         self.known_sessions = [author, child]
-        child_journey = self._journey("child", 1)
-        self._startup(child, child_journey, 1)
+        child_journey = self._journey("child", 3)
+        self._startup(child, child_journey, 3)
         record = self._record(child)
-        for field, expected in ((waiting.FIELD_ROLE, waiting.CHILD_ROLE), (waiting.FIELD_INITIATOR, author)):
+        for field, expected in (
+            (waiting.FIELD_ROLE, "intaker"),
+            (waiting.FIELD_INITIATOR, author),
+        ):
             if record.get(field) != expected:
                 raise creation.platform_failure(
                     waiting.DETAIL_CHILD_RECORD.format(
                         session=child, field=field, found=record.get(field), expected=expected
                     )
                 )
-        self._require_pool(2)
+        self._require_pool(4)
+        self.known_sessions = [*self.outsider_sessions.values(), author, child]
         return case, author, child
 
     def _case(self, name: str, index: int, driver_id: str, verb: str, phase: str) -> driver.DriverCase:
@@ -587,8 +1053,8 @@ class _Prepared:
         snapshot = self.snapshot()
         headers = self._headers()
         sessions = self.observer.sessions()
-        self._late(0, ARGV_OLD, ["telec", TODO, "act", ITEM, "prepared", "--revision", r0])
-        self._gate(0, GATE_OLD)
+        self._late(2, ARGV_OLD, ["telec", TODO, "act", ITEM, "prepared", "--revision", r0])
+        self._gate(2, GATE_OLD)
         status, text = self._frame_output(self.journeys["author"], FRAME_OLD)
         problems = []
         if status in (0, None):
@@ -614,8 +1080,8 @@ class _Prepared:
 
     def step4_prepared(self, author: str, child: str, r1: str) -> None:
         headers = self._headers()
-        self._late(0, ARGV_NEW, ["telec", TODO, "act", ITEM, "prepared", "--revision", r1])
-        self._gate(0, GATE_NEW)
+        self._late(2, ARGV_NEW, ["telec", TODO, "act", ITEM, "prepared", "--revision", r1])
+        self._gate(2, GATE_NEW)
         status, text = self._frame_output(self.journeys["author"], FRAME_NEW)
         performed = waiting.PERFORMED.format(act="prepared", item=ITEM)
         if status != 0 or performed not in text or COMPLETE_ENDING.search(text.replace("\r\n", "\n")) is None:
@@ -701,9 +1167,9 @@ class _Prepared:
                 waiting.DETAIL_RECEIPT.format(status=outcome.exit_status, output=outcome.output[-300:])
             )
         worker = self._discover(self._known(author, child))
-        case = self._case("worker", 2, WORK_DRIVER_ID, "work", WORK_PHASE)
-        case.check_startup(worker, frozenset({author, child, worker}))
-        self._require_pool(3)
+        case = self._case("worker", 4, WORK_DRIVER_ID, "work", WORK_PHASE)
+        case.check_startup(worker, frozenset({*self.known_sessions, worker}))
+        self._require_pool(5)
         instruction = case.claim_call([operation])
         case.check_instruction(worker, instruction)
         for needle in (ITEM, str(self.project / "trees" / ITEM)):
@@ -789,6 +1255,18 @@ class _Prepared:
         self.handover.before(ITEM, worker, WORK_PHASE)
         case.close(worker)
         self.handover.after([ITEM])
+        if self.baseline is None:
+            raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail="B0 was not retained"))
+        expected = frozenset((*self.known_sessions, worker))
+        current = self.observer.sessions(retain=False)
+        if current.ids - self.baseline.ids != expected:
+            raise creation.platform_failure(
+                DETAIL_B9_SESSION.format(label="B4 post-B0 session set", record=sorted(current.ids - self.baseline.ids))
+            )
+        for session in sorted(expected):
+            record = self._record(session)
+            if record.get(waiting.FIELD_CLOSED_AT) is None or record.get(waiting.FIELD_LIFECYCLE) != foundation.CLOSED:
+                raise creation.platform_failure(DETAIL_B9_END.format(session=session, record=record))
 
 
 def run_prepared(
@@ -797,12 +1275,16 @@ def run_prepared(
     project: Path,
     source_root: Path,
     owner_email: str,
+    owner_slug: str,
+    report_path: Path,
     project_slug: str,
     register_company: Callable[[], None],
     retain: Callable[[str], None],
 ) -> None:
     """Journey B4; raises JourneyFailure leading with its class."""
-    prepared = _Prepared(host, setup, project, source_root, owner_email, register_company, retain)
+    prepared = _Prepared(
+        host, setup, project, source_root, owner_email, owner_slug, report_path, register_company, retain
+    )
     observer = prepared.observer
     failure: BaseException | None = None
     try:
@@ -821,9 +1303,13 @@ def run_prepared(
         prepared.publication.publish()
         prepared.publication.verify_parity()
         creation.enter_project(observer, project)
+        prepared.start_b9_outsiders()
         author_case, author, child = prepared.step1_driver()
+        prepared.b9_positive_input(child)
         r0, r1 = prepared.step2_move(author, child)
+        prepared.b9_wrong_performers(author, child, r1)
         prepared.step3_old_refused(author, child, r0, r1)
+        prepared.close_b9_outsiders()
         prepared.step4_prepared(author, child, r1)
         prepared.step5_end_author(author_case, author)
         prepared.step6_moved_refuses_work(r0, r1)
@@ -839,13 +1325,56 @@ def run_prepared(
 
 def _cleanup(prepared: _Prepared, failure: BaseException | None) -> None:
     """Settle the sessions the journey owns, restore the candidate publication and the sidecar, report every failure."""
-    settlement = publication.settle_sessions(
-        prepared.observer, prepared.baseline, prepared.starts, prepared.controls.directories
-    )
-    problems = list(settlement.problems)
-    problems.extend(prepared.publication.restore())
-    if settlement.proven and not prepared.handover.unrelated:
-        problems.extend(prepared.controls.restore())
+    b9_problems: list[str] = []
+    try:
+        prepared.close_b9_outsiders(strict=False)
+    except BaseException as error:
+        b9_problems.append(f"closing B9 outsider sessions failed: {error}")
+    settlement_proven = False
+    try:
+        settlement = publication.settle_sessions(
+            prepared.observer, prepared.baseline, prepared.starts, prepared.controls.directories
+        )
+        settlement_proven = settlement.proven
+        problems = list(settlement.problems)
+    except BaseException as error:
+        prepared.b4_retained = True
+        problems = [f"public session settlement could not be classified: {error}"]
+    problems.extend(b9_problems)
+    open_attempts, attempt_error = prepared._b9_open_attempts()
+    retained_marker = prepared.controls.root / RETAINED_NAME
+    if (
+        open_attempts
+        or attempt_error
+        or b9_problems
+        or not settlement_proven
+        or retained_marker.exists()
+        or prepared.handover.unrelated
+    ):
+        try:
+            prepared._write_b9_retained(problems, attempt_error)
+        except BaseException as error:
+            prepared.b4_retained = True
+            prepared.retain(DETAIL_B9_RETAINED.format(path=retained_marker.resolve()))
+            problems.append(f"writing B9 RETAINED.json failed: {error}")
+    if not prepared.b4_retained:
+        try:
+            restore_problems = prepared.publication.restore()
+            problems.extend(restore_problems)
+            if restore_problems:
+                prepared.b4_retained = True
+        except BaseException as error:
+            prepared.b4_retained = True
+            problems.append(f"candidate publication restore could not be proven: {error}")
+    if not prepared.b4_retained and settlement_proven and not prepared.handover.unrelated:
+        try:
+            control_problems = prepared.controls.restore()
+            problems.extend(control_problems)
+            if control_problems:
+                prepared.b4_retained = True
+        except BaseException as error:
+            prepared.b4_retained = True
+            problems.append(f"control restoration could not be proven: {error}")
     else:
         kept = DETAIL_CONTROLS_KEPT.format(control=prepared.controls.root)
         if prepared.handover.unrelated:
@@ -856,8 +1385,24 @@ def _cleanup(prepared: _Prepared, failure: BaseException | None) -> None:
         creation.leave_project(prepared.observer, prepared.source_root)
     except BaseException as error:
         problems.append(f"returning the owner terminal failed: {error}")
-    problems.extend(prepared.publication.candidate_unchanged())
+    try:
+        candidate_problems = prepared.publication.candidate_unchanged()
+        problems.extend(candidate_problems)
+        if candidate_problems:
+            prepared.b4_retained = True
+    except BaseException as error:
+        prepared.b4_retained = True
+        problems.append(f"candidate publication read-back failed: {error}")
+    if prepared.b4_retained and not retained_marker.exists():
+        try:
+            prepared._write_b9_retained(problems, attempt_error)
+        except BaseException as error:
+            prepared.retain(DETAIL_B9_RETAINED.format(path=retained_marker.resolve()))
+            problems.append(f"writing B9 RETAINED.json failed: {error}")
     if problems and failure is None:
         raise creation.binding_failure("; ".join(problems))
     if problems:
-        prepared.publication.note("cleanup-problems", "; ".join(problems))
+        try:
+            prepared.publication.note("cleanup-problems", "; ".join(problems))
+        except BaseException:
+            prepared.retain(DETAIL_B9_RETAINED.format(path=retained_marker.resolve()))
