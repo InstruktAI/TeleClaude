@@ -181,20 +181,20 @@ class JourneyFailure(RuntimeError):
     """A journey result that proves something other than a pass; the message leads with its class."""
 
 
-def _fail(kind: str, detail: str) -> JourneyFailure:
+def fail(kind: str, detail: str) -> JourneyFailure:
     return JourneyFailure(MARK_FAILURE.format(kind=kind, detail=detail))
 
 
-def _binding(detail: str) -> JourneyFailure:
-    return _fail(CLASS_BINDING, detail)
+def binding_failure(detail: str) -> JourneyFailure:
+    return fail(CLASS_BINDING, detail)
 
 
-def _trace(detail: str) -> JourneyFailure:
-    return _fail(CLASS_TRACE, detail)
+def trace_failure(detail: str) -> JourneyFailure:
+    return fail(CLASS_TRACE, detail)
 
 
-def _platform(detail: str) -> JourneyFailure:
-    return _fail(CLASS_PLATFORM, detail)
+def platform_failure(detail: str) -> JourneyFailure:
+    return fail(CLASS_PLATFORM, detail)
 
 
 def normalized(output: str) -> str:
@@ -286,7 +286,7 @@ class SessionView:
     working: Mapping[str, str]
 
 
-class _Observer:
+class Observer:
     """The approved observation primitives O1-O3, each a fresh public CLI process on the owner terminal."""
 
     def __init__(self, host: FoundationHost) -> None:
@@ -301,11 +301,11 @@ class _Observer:
         if outcome.exit_status == 0:
             payload = decode_object(outcome.output)
             if payload is None:
-                raise _binding(DETAIL_UNDECODABLE.format(what=f"todo show {slug}", output=outcome.output[-300:]))
+                raise binding_failure(DETAIL_UNDECODABLE.format(what=f"todo show {slug}", output=outcome.output[-300:]))
             return payload
         if NOT_FOUND_PHRASE.format(slug=slug) in outcome.output:
             return None
-        raise _binding(
+        raise binding_failure(
             DETAIL_NOT_FOUND_AMBIGUOUS.format(slug=slug, status=outcome.exit_status, output=outcome.output[-300:])
         )
 
@@ -316,7 +316,7 @@ class _Observer:
         )
         payload = decode_object(outcome.output) if outcome.output.strip().startswith(JSON_OBJECT_START) else None
         if outcome.exit_status != 0 or payload is None:
-            raise _binding(DETAIL_UNDECODABLE.format(what="todo list", output=outcome.output[-300:]))
+            raise binding_failure(DETAIL_UNDECODABLE.format(what="todo list", output=outcome.output[-300:]))
         return collect_slugs(payload)
 
     def sessions(self, *, retain: bool = True) -> SessionView:
@@ -324,15 +324,15 @@ class _Observer:
         outcome = self.run((TELEC, SESSIONS, LIST, ALL_FLAG, CLOSED_FLAG), retain=retain)
         records = decode_array(outcome.output)
         if outcome.exit_status != 0 or records is None:
-            raise _binding(DETAIL_UNDECODABLE_LIST.format(what="sessions list", output=outcome.output[-300:]))
+            raise binding_failure(DETAIL_UNDECODABLE_LIST.format(what="sessions list", output=outcome.output[-300:]))
         ids: set[str] = set()
         working: dict[str, str] = {}
         for record in records:
             if not isinstance(record, Mapping):
-                raise _binding(DETAIL_SESSION_RECORD.format(record=record))
+                raise binding_failure(DETAIL_SESSION_RECORD.format(record=record))
             session_id = record.get(FIELD_SESSION_ID)
             if not isinstance(session_id, str) or not session_id:
-                raise _binding(DETAIL_SESSION_RECORD.format(record=record))
+                raise binding_failure(DETAIL_SESSION_RECORD.format(record=record))
             ids.add(session_id)
             slug = record.get(FIELD_WORKING_SLUG)
             if isinstance(slug, str) and slug:
@@ -340,132 +340,138 @@ class _Observer:
         return SessionView(frozenset(ids), working)
 
 
-def _require_manual_runner(observer: _Observer) -> None:
+def require_manual_runner(observer: Observer) -> None:
     """P1: the public configuration readback shows the manual workflow runner."""
     outcome = observer.run((TELEC, CONFIG, COMPUTER, GET, FORMAT_OPTION, JSON_FORMAT))
     payload = decode_object(outcome.output)
     path = f"{FIELD_COMPUTER_SECTION}{DOT}{FIELD_WORKFLOW}{DOT}{FIELD_RUNNER_MODE}"
     found, runner = dig(payload, path) if payload is not None else (False, None)
     if outcome.exit_status != 0 or not found or runner != RUNNER_MANUAL:
-        raise _binding(DETAIL_RUNNER.format(output=outcome.output[-300:]))
+        raise binding_failure(DETAIL_RUNNER.format(output=outcome.output[-300:]))
 
 
-def _enter_project(observer: _Observer, project: Path) -> None:
+def enter_project(observer: Observer, project: Path) -> None:
     """P2: the owner terminal's directory is the owned project, resolved."""
     changed = observer.run((CHANGE_DIRECTORY, str(project)))
     if changed.exit_status != 0:
-        raise _binding(
+        raise binding_failure(
             DETAIL_COMMAND.format(command=CHANGE_DIRECTORY, status=changed.exit_status, output=changed.output)
         )
     printed = observer.run((PRINT_DIRECTORY,))
     lines = [line.strip() for line in printed.output.splitlines() if line.strip()]
     found = lines[-1] if lines else EMPTY
     if printed.exit_status != 0 or not found or Path(found).resolve() != project.resolve():
-        raise _binding(DETAIL_DIRECTORY.format(found=found, project=str(project)))
+        raise binding_failure(DETAIL_DIRECTORY.format(found=found, project=str(project)))
 
 
-def _leave_project(observer: _Observer, source_root: Path) -> None:
+def leave_project(observer: Observer, source_root: Path) -> None:
     """Return the owner terminal to the source checkout, as the other journeys do."""
     observer.run((CHANGE_DIRECTORY, str(source_root)))
 
 
-def _create(observer: _Observer, slug: str, content: str, kind: str, *, approved: bool) -> Outcome:
+def create_item(observer: Observer, slug: str, content: str, kind: str, *, approved: bool) -> Outcome:
     argv = [TELEC, TODO, CREATE, slug, content, KIND_OPTION, kind]
     if approved:
         argv.append(APPROVED_FLAG)
     return observer.run(argv)
 
 
-def _require_created(outcome: Outcome, slug: str) -> None:
+def require_created(outcome: Outcome, slug: str) -> None:
     if outcome.exit_status != 0 or CREATED_PHRASE.format(slug=slug) not in outcome.output:
-        raise _platform(DETAIL_CREATE.format(slug=slug, status=outcome.exit_status, output=outcome.output[-300:]))
+        raise platform_failure(
+            DETAIL_CREATE.format(slug=slug, status=outcome.exit_status, output=outcome.output[-300:])
+        )
 
 
-def _require_value(slug: str, payload: Mapping[str, object], path: str, expected: object) -> None:
+def require_value(slug: str, payload: Mapping[str, object], path: str, expected: object) -> None:
     found, value = dig(payload, path)
     if not found:
-        raise _trace(DETAIL_PATH_ABSENT.format(slug=slug, path=path))
+        raise trace_failure(DETAIL_PATH_ABSENT.format(slug=slug, path=path))
     if value != expected:
-        raise _platform(DETAIL_VALUE.format(slug=slug, path=path, found=value, expected=expected))
+        raise platform_failure(DETAIL_VALUE.format(slug=slug, path=path, found=value, expected=expected))
 
 
-def _require_unclaimed(slug: str, payload: Mapping[str, object]) -> None:
+def require_unclaimed(slug: str, payload: Mapping[str, object]) -> None:
     found, runner = dig(payload, f"{FIELD_STATE}{DOT}{FIELD_RUNNER}")
     if not found:
-        raise _trace(DETAIL_PATH_ABSENT.format(slug=slug, path=f"{FIELD_STATE}{DOT}{FIELD_RUNNER}"))
+        raise trace_failure(DETAIL_PATH_ABSENT.format(slug=slug, path=f"{FIELD_STATE}{DOT}{FIELD_RUNNER}"))
     if runner not in (None, EMPTY):
-        raise _platform(
+        raise platform_failure(
             DETAIL_VALUE.format(slug=slug, path=f"{FIELD_STATE}{DOT}{FIELD_RUNNER}", found=runner, expected=None)
         )
 
 
-def _require_standing_clear(slug: str, payload: Mapping[str, object]) -> None:
-    _require_value(slug, payload, f"{FIELD_STANDING}{DOT}{FIELD_STANDING_PHASE}", PHASE_PREPARATION)
+def require_standing_clear(slug: str, payload: Mapping[str, object]) -> None:
+    require_value(slug, payload, f"{FIELD_STANDING}{DOT}{FIELD_STANDING_PHASE}", PHASE_PREPARATION)
     _, standing = dig(payload, FIELD_STANDING)
     if not isinstance(standing, Mapping):
-        raise _trace(DETAIL_PATH_ABSENT.format(slug=slug, path=FIELD_STANDING))
+        raise trace_failure(DETAIL_PATH_ABSENT.format(slug=slug, path=FIELD_STANDING))
     for key in STANDING_FORBIDDEN_KEYS:
         if key in standing:
-            raise _platform(DETAIL_STANDING_KEY.format(slug=slug, key=key))
+            raise platform_failure(DETAIL_STANDING_KEY.format(slug=slug, key=key))
 
 
-def _require_created_item(observer: _Observer, slug: str, kind: str, content: str) -> None:
+def require_created_item(observer: Observer, slug: str, kind: str, content: str) -> None:
     """R1 step 2: what a plain creation stores, from the contract."""
     payload = observer.show(slug)
     if payload is None:
-        raise _platform(DETAIL_VALUE.format(slug=slug, path="existence", found="absent", expected="present"))
-    _require_value(slug, payload, FIELD_SLUG, slug)
-    _require_value(slug, payload, f"{FIELD_STATE}{DOT}{FIELD_KIND}", kind)
-    _require_value(slug, payload, f"{FIELD_STATE}{DOT}{FIELD_PHASE}", PHASE_PREPARATION)
-    _require_value(slug, payload, f"{FIELD_ROADMAP}{DOT}{FIELD_STATUS}", STATUS_ACTIVE)
-    _require_value(slug, payload, f"{FIELD_STATE}{DOT}{FIELD_HOLD}", False)
-    _require_unclaimed(slug, payload)
+        raise platform_failure(DETAIL_VALUE.format(slug=slug, path="existence", found="absent", expected="present"))
+    require_value(slug, payload, FIELD_SLUG, slug)
+    require_value(slug, payload, f"{FIELD_STATE}{DOT}{FIELD_KIND}", kind)
+    require_value(slug, payload, f"{FIELD_STATE}{DOT}{FIELD_PHASE}", PHASE_PREPARATION)
+    require_value(slug, payload, f"{FIELD_ROADMAP}{DOT}{FIELD_STATUS}", STATUS_ACTIVE)
+    require_value(slug, payload, f"{FIELD_STATE}{DOT}{FIELD_HOLD}", False)
+    require_unclaimed(slug, payload)
     _, artifacts = dig(payload, FIELD_ARTIFACTS)
     if not isinstance(artifacts, list) or not all(isinstance(name, str) for name in artifacts):
-        raise _trace(DETAIL_ARTIFACT_SHAPE.format(slug=slug, found=artifacts))
+        raise trace_failure(DETAIL_ARTIFACT_SHAPE.format(slug=slug, found=artifacts))
     if INPUT_ARTIFACT not in artifacts:
-        raise _platform(
+        raise platform_failure(
             DETAIL_VALUE.format(slug=slug, path=FIELD_ARTIFACTS, found=artifacts, expected=f"contains {INPUT_ARTIFACT}")
         )
-    _require_value(
+    require_value(
         slug,
         payload,
         f"{FIELD_ARTIFACT_CONTENT}{DOT}{INPUT_ARTIFACT}",
         INPUT_BODY.format(slug=slug, content=content),
     )
-    _require_standing_clear(slug, payload)
+    require_standing_clear(slug, payload)
 
 
-def _require_sessions_equal(baseline: SessionView, now: SessionView, when: str) -> None:
+def require_sessions_equal(baseline: SessionView, now: SessionView, when: str) -> None:
     if now.ids != baseline.ids:
-        raise _platform(DETAIL_SESSIONS_CHANGED.format(baseline=sorted(baseline.ids), now=sorted(now.ids), when=when))
+        raise platform_failure(
+            DETAIL_SESSIONS_CHANGED.format(baseline=sorted(baseline.ids), now=sorted(now.ids), when=when)
+        )
 
 
-def _absence_window(observer: _Observer, baseline: SessionView, slugs: Sequence[str]) -> None:
+def _absence_window(observer: Observer, baseline: SessionView, slugs: Sequence[str]) -> None:
     """R1 step 5: no session appears in the window, and none works on any of the journey's items."""
     deadline = time.monotonic() + ABSENCE_WINDOW_SECONDS
     while True:
         now = observer.sessions(retain=False)
-        _require_sessions_equal(baseline, now, "inside the absence window")
+        require_sessions_equal(baseline, now, "inside the absence window")
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
         time.sleep(min(ABSENCE_POLL_SECONDS, remaining))
     for session_id, slug in now.working.items():
         if slug in slugs:
-            raise _platform(DETAIL_SESSION_FOR_SLUG.format(session=session_id, slug=slug))
+            raise platform_failure(DETAIL_SESSION_FOR_SLUG.format(session=session_id, slug=slug))
 
 
 def run_creation(host: FoundationHost, project: Path, source_root: Path) -> None:
     """Journey R1; raises JourneyFailure leading with its class."""
-    observer = _Observer(host)
-    _require_manual_runner(observer)
-    _enter_project(observer, project)
+    observer = Observer(host)
+    require_manual_runner(observer)
+    enter_project(observer, project)
     try:
         present = observer.slugs()
         journey_slugs = (SLUG_FEATURE, SLUG_CHANGE, SLUG_BUG, SLUG_GATE)
         if present.intersection(journey_slugs):
-            raise _binding(DETAIL_SLUG_PRESENT.format(slug=sorted(present.intersection(journey_slugs)), slugs=present))
+            raise binding_failure(
+                DETAIL_SLUG_PRESENT.format(slug=sorted(present.intersection(journey_slugs)), slugs=present)
+            )
         baseline = observer.sessions()
         items = (
             (SLUG_FEATURE, KIND_FEATURE, CONTENT_FEATURE),
@@ -473,38 +479,44 @@ def run_creation(host: FoundationHost, project: Path, source_root: Path) -> None
             (SLUG_BUG, KIND_BUG, CONTENT_BUG),
         )
         for slug, kind, content in items:
-            _require_created(_create(observer, slug, content, kind, approved=True), slug)
+            require_created(create_item(observer, slug, content, kind, approved=True), slug)
         for slug, kind, content in items:
-            _require_created_item(observer, slug, kind, content)
+            require_created_item(observer, slug, kind, content)
         _gate_control(observer, baseline)
-        twin = _create(observer, SLUG_GATE, CONTENT_GATE, KIND_FEATURE, approved=True)
-        _require_created(twin, SLUG_GATE)
+        twin = create_item(observer, SLUG_GATE, CONTENT_GATE, KIND_FEATURE, approved=True)
+        require_created(twin, SLUG_GATE)
         gated = observer.show(SLUG_GATE)
         if gated is None:
-            raise _platform(DETAIL_VALUE.format(slug=SLUG_GATE, path="existence", found="absent", expected="present"))
-        _require_value(SLUG_GATE, gated, f"{FIELD_STATE}{DOT}{FIELD_PHASE}", PHASE_PREPARATION)
+            raise platform_failure(
+                DETAIL_VALUE.format(slug=SLUG_GATE, path="existence", found="absent", expected="present")
+            )
+        require_value(SLUG_GATE, gated, f"{FIELD_STATE}{DOT}{FIELD_PHASE}", PHASE_PREPARATION)
         _absence_window(observer, baseline, journey_slugs)
     finally:
-        _leave_project(observer, source_root)
+        leave_project(observer, source_root)
 
 
-def _gate_control(observer: _Observer, baseline: SessionView) -> None:
+def _gate_control(observer: Observer, baseline: SessionView) -> None:
     """R1 step 3: the creation line without the acknowledgement flag creates nothing."""
-    outcome = _create(observer, SLUG_GATE, CONTENT_GATE, KIND_FEATURE, approved=False)
+    outcome = create_item(observer, SLUG_GATE, CONTENT_GATE, KIND_FEATURE, approved=False)
     if outcome.exit_status != 0:
-        raise _platform(DETAIL_GATE_EXIT.format(flag=APPROVED_FLAG, status=outcome.exit_status, output=outcome.output))
+        raise platform_failure(
+            DETAIL_GATE_EXIT.format(flag=APPROVED_FLAG, status=outcome.exit_status, output=outcome.output)
+        )
     if not outcome.output.strip():
-        raise _platform(DETAIL_GATE_SILENT.format(flag=APPROVED_FLAG))
+        raise platform_failure(DETAIL_GATE_SILENT.format(flag=APPROVED_FLAG))
     if CREATED_PREFIX in outcome.output:
-        raise _platform(DETAIL_GATE_CREATED.format(flag=APPROVED_FLAG, output=outcome.output))
+        raise platform_failure(DETAIL_GATE_CREATED.format(flag=APPROVED_FLAG, output=outcome.output))
     found = observer.show(SLUG_GATE)
     slugs = observer.slugs()
     if found is not None or SLUG_GATE in slugs:
-        raise _platform(DETAIL_GATE_ITEM.format(flag=APPROVED_FLAG, slug=SLUG_GATE, slugs=sorted(slugs), found=found))
-    _require_sessions_equal(baseline, observer.sessions(), "after the gate control")
+        raise platform_failure(
+            DETAIL_GATE_ITEM.format(flag=APPROVED_FLAG, slug=SLUG_GATE, slugs=sorted(slugs), found=found)
+        )
+    require_sessions_equal(baseline, observer.sessions(), "after the gate control")
 
 
-def _stamp(observer: _Observer, slug: str, *flags: str) -> Outcome:
+def _stamp(observer: Observer, slug: str, *flags: str) -> Outcome:
     return observer.run((TELEC, TODO, STAMP, slug, *flags))
 
 
@@ -513,72 +525,74 @@ def _signature_in(output: str) -> str | None:
     return next((signature for signature in GATE_SIGNATURES if signature in lowered), None)
 
 
-def _quiescent_item(observer: _Observer) -> Mapping[str, object]:
+def _quiescent_item(observer: Observer) -> Mapping[str, object]:
     """P4 and P5: the item sits in the tested table row and two reads, apart, are deeply equal."""
     first = observer.show(SLUG_FEATURE)
     if first is None:
-        raise _binding(DETAIL_PRECONDITION.format(slug=SLUG_FEATURE, path="existence", found="absent"))
+        raise binding_failure(DETAIL_PRECONDITION.format(slug=SLUG_FEATURE, path="existence", found="absent"))
     for path, expected in (
         (f"{FIELD_STATE}{DOT}{FIELD_PHASE}", PHASE_PREPARATION),
         (f"{FIELD_STATE}{DOT}{FIELD_HOLD}", False),
     ):
         found, value = dig(first, path)
         if not found or value != expected:
-            raise _binding(DETAIL_PRECONDITION.format(slug=SLUG_FEATURE, path=path, found=value))
+            raise binding_failure(DETAIL_PRECONDITION.format(slug=SLUG_FEATURE, path=path, found=value))
     found, runner = dig(first, f"{FIELD_STATE}{DOT}{FIELD_RUNNER}")
     if not found or runner not in (None, EMPTY):
-        raise _binding(DETAIL_PRECONDITION.format(slug=SLUG_FEATURE, path=FIELD_RUNNER, found=runner))
+        raise binding_failure(DETAIL_PRECONDITION.format(slug=SLUG_FEATURE, path=FIELD_RUNNER, found=runner))
     try:
-        _require_standing_clear(SLUG_FEATURE, first)
+        require_standing_clear(SLUG_FEATURE, first)
     except JourneyFailure as failure:
-        raise _binding(
+        raise binding_failure(
             DETAIL_PRECONDITION.format(slug=SLUG_FEATURE, path=FIELD_STANDING, found=str(failure))
         ) from failure
     time.sleep(QUIESCENCE_GAP_SECONDS)
     second = observer.show(SLUG_FEATURE)
     if second is None or differences(first, second):
         paths = differences(first, second) if second is not None else ["absent"]
-        raise _binding(DETAIL_NOT_QUIESCENT.format(paths=paths))
+        raise binding_failure(DETAIL_NOT_QUIESCENT.format(paths=paths))
     return second
 
 
-def _control_clearance(observer: _Observer) -> None:
+def _control_clearance(observer: Observer) -> None:
     """C0: the owner passes the stamp gate and meets the CLI's own machine-owned refusal, touching nothing."""
     outcome = _stamp(observer, SLUG_FEATURE, BUILD_STARTED_FLAG)
     signature = _signature_in(outcome.output)
     if signature is not None:
-        raise _fail(CLASS_GATE, DETAIL_CONTROL_SIGNATURE.format(signature=signature, output=outcome.output[-300:]))
+        raise fail(CLASS_GATE, DETAIL_CONTROL_SIGNATURE.format(signature=signature, output=outcome.output[-300:]))
     if MACHINE_OWNED_PHRASE not in normalized(outcome.output):
-        raise _trace(DETAIL_CONTROL_TEXT.format(phrase=MACHINE_OWNED_PHRASE, output=outcome.output[-300:]))
+        raise trace_failure(DETAIL_CONTROL_TEXT.format(phrase=MACHINE_OWNED_PHRASE, output=outcome.output[-300:]))
     if outcome.exit_status in (0, None):
-        raise _platform(DETAIL_CONTROL_EXIT.format(status=outcome.exit_status, output=outcome.output[-300:]))
+        raise platform_failure(DETAIL_CONTROL_EXIT.format(status=outcome.exit_status, output=outcome.output[-300:]))
 
 
 def _check_refusal(case: str, outcome: Outcome, *, performer: bool) -> None:
     text = normalized(outcome.output)
     if outcome.exit_status in (0, None):
-        raise _platform(DETAIL_CASE_EXIT.format(case=case, status=outcome.exit_status, output=outcome.output[-300:]))
+        raise platform_failure(
+            DETAIL_CASE_EXIT.format(case=case, status=outcome.exit_status, output=outcome.output[-300:])
+        )
     signature = _signature_in(outcome.output)
     if signature is not None:
-        raise _fail(
-            CLASS_GATE, DETAIL_GATE_REACHED.format(case=case, signature=signature, output=outcome.output[-300:])
-        )
+        raise fail(CLASS_GATE, DETAIL_GATE_REACHED.format(case=case, signature=signature, output=outcome.output[-300:]))
     sentence = DOOR_SENTENCE.format(slug=SLUG_FEATURE)
     if sentence not in text:
-        raise _fail(CLASS_GATE, DETAIL_CASE_DOOR.format(case=case, sentence=sentence, output=outcome.output[-300:]))
+        raise fail(CLASS_GATE, DETAIL_CASE_DOOR.format(case=case, sentence=sentence, output=outcome.output[-300:]))
     if performer:
         if HOLDING_DRIVER not in text:
-            raise _platform(
+            raise platform_failure(
                 DETAIL_CASE_PERFORMER.format(case=case, phrase=HOLDING_DRIVER, output=outcome.output[-300:])
             )
         return
     for marker in (REPLACEMENT_MARKER, PERFORMER_MARKER):
         if marker in text:
-            raise _platform(DETAIL_CASE_REPLACEMENT.format(case=case, marker=marker, output=outcome.output[-300:]))
+            raise platform_failure(
+                DETAIL_CASE_REPLACEMENT.format(case=case, marker=marker, output=outcome.output[-300:])
+            )
 
 
 def _require_nothing_written(
-    observer: _Observer, case: str, before: Mapping[str, object], sessions: SessionView, slugs: set[str]
+    observer: Observer, case: str, before: Mapping[str, object], sessions: SessionView, slugs: set[str]
 ) -> None:
     """After a refusal: the item, the sessions and the slugs are exactly as before, now and after a pause."""
     for when, pause in (("immediately", 0.0), ("five seconds later", SETTLE_SECONDS)):
@@ -586,21 +600,21 @@ def _require_nothing_written(
             time.sleep(pause)
         after = observer.show(SLUG_FEATURE)
         if after is None:
-            raise _platform(DETAIL_WRITE_LANDED.format(case=case, when=when, paths=["absent"]))
+            raise platform_failure(DETAIL_WRITE_LANDED.format(case=case, when=when, paths=["absent"]))
         changed = differences(before, after)
         if changed:
-            raise _platform(DETAIL_WRITE_LANDED.format(case=case, when=when, paths=changed))
-        _require_sessions_equal(sessions, observer.sessions(retain=False), when)
+            raise platform_failure(DETAIL_WRITE_LANDED.format(case=case, when=when, paths=changed))
+        require_sessions_equal(sessions, observer.sessions(retain=False), when)
     now = observer.slugs(retain=False)
     if now != slugs:
-        raise _platform(DETAIL_SLUGS_CHANGED.format(case=case, before=sorted(slugs), after=sorted(now)))
+        raise platform_failure(DETAIL_SLUGS_CHANGED.format(case=case, before=sorted(slugs), after=sorted(now)))
 
 
 def run_retired_acts(host: FoundationHost, project: Path, source_root: Path) -> None:
     """Journey R4 on the item R1 left unchanged; raises JourneyFailure leading with its class."""
-    observer = _Observer(host)
-    _require_manual_runner(observer)
-    _enter_project(observer, project)
+    observer = Observer(host)
+    require_manual_runner(observer)
+    enter_project(observer, project)
     try:
         _control_clearance(observer)
         cases = (
@@ -614,4 +628,4 @@ def run_retired_acts(host: FoundationHost, project: Path, source_root: Path) -> 
             _check_refusal(case, _stamp(observer, SLUG_FEATURE, *flags), performer=performer)
             _require_nothing_written(observer, case, before, sessions, slugs)
     finally:
-        _leave_project(observer, source_root)
+        leave_project(observer, source_root)

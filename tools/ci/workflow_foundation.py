@@ -70,6 +70,8 @@ FRAME_SELF_PROBE: Final = "self_probe"
 FRAME_SUFFIX: Final = ".json"
 FRAME_HOOK_KEYS: Final = frozenset({"event", "registered", "native_session_id", "input", "runs"})
 FRAME_SELF_PROBE_KEYS: Final = frozenset({"telec", "run"})
+FRAME_COMMAND_PREFIX: Final = "cmd_"
+FRAME_COMMAND_KEYS: Final = frozenset({"name", "argv", "telec", "run"})
 FRAME_COMPLETE_SUFFIX: Final = ".complete"
 
 WINDOW_AFTER_CASE_START_SECONDS: Final = 45.0
@@ -308,11 +310,17 @@ def _frame_has_shape(name: str, frame: Mapping[str, object]) -> bool:
     """A frame carries the keys its writer emits for that frame name, with the types the writer gives them."""
     if name == FRAME_SELF_PROBE:
         return isinstance(frame.get("run"), dict) and FRAME_SELF_PROBE_KEYS <= frame.keys()
+    if name.startswith(FRAME_COMMAND_PREFIX):
+        return (
+            isinstance(frame.get("run"), dict)
+            and isinstance(frame.get("argv"), list)
+            and FRAME_COMMAND_KEYS <= frame.keys()
+        )
     runs = frame.get("runs")
     return FRAME_HOOK_KEYS <= frame.keys() and isinstance(runs, list) and isinstance(frame.get("registered"), bool)
 
 
-def _json_object(output: str) -> Mapping[str, object] | None:
+def json_object(output: str) -> Mapping[str, object] | None:
     decoder = json.JSONDecoder()
     for index, character in enumerate(output):
         if character != "{":
@@ -333,15 +341,15 @@ def _read_number(path: Path) -> float | None:
         return None
 
 
-def _platform(detail: str) -> FoundationFailure:
+def platform_failure(detail: str) -> FoundationFailure:
     return FoundationFailure(PLATFORM_FAILURE.format(detail=detail))
 
 
-def _binding(detail: str) -> FixtureBindingFailure:
+def binding_failure(detail: str) -> FixtureBindingFailure:
     return FixtureBindingFailure(BINDING_FAILURE.format(detail=detail))
 
 
-class _Journey:
+class Journey:
     """One run of journey F0 against the profile's runtime."""
 
     def __init__(self, host: FoundationHost, setup: FixtureSetup, project: Path, owner_email: str) -> None:
@@ -357,18 +365,18 @@ class _Journey:
             (self.setup.control / name).unlink(missing_ok=True)
         shutil.rmtree(self.setup.control / FRAMES_DIRECTORY, ignore_errors=True)
 
-    def _record(
+    def record(
         self, timeout_seconds: float = CLI_TIMEOUT_SECONDS, *, retain: bool = True
     ) -> Mapping[str, object] | None:
         outcome = self.host.cli((TELEC, SESSIONS, SHOW, self.session_id, FULL_FLAG), timeout_seconds, retain=retain)
         if outcome.exit_status != 0:
             return None
-        return _json_object(outcome.output)
+        return json_object(outcome.output)
 
     def non_session_control(self) -> None:
         """Step 1: a terminal that is not a session is refused with its terminal identity, and gets no record."""
         outcome = self.host.cli((TELEC, SESSIONS, SHOW, SELF_TARGET, FULL_FLAG), CLI_TIMEOUT_SECONDS)
-        record = _json_object(outcome.output)
+        record = json_object(outcome.output)
         refused = (
             outcome.exit_status not in (0, None)
             and NOT_A_SESSION_PHRASE in outcome.output
@@ -376,7 +384,7 @@ class _Journey:
             and (record is None or FIELD_SESSION_ID not in record)
         )
         if not refused:
-            raise _platform(DETAIL_NOT_SESSION.format(status=outcome.exit_status, output=outcome.output[-400:]))
+            raise platform_failure(DETAIL_NOT_SESSION.format(status=outcome.exit_status, output=outcome.output[-400:]))
 
     def start_session(self) -> float:
         """Step 2: a public start; its acknowledgement is not startup. Returns the case-start reading."""
@@ -399,7 +407,7 @@ class _Journey:
             ),
             CLI_TIMEOUT_SECONDS,
         )
-        result = _json_object(outcome.output)
+        result = json_object(outcome.output)
         valid = (
             outcome.exit_status == 0
             and result is not None
@@ -410,7 +418,7 @@ class _Journey:
             and result.get(FIELD_AGENT) == AGENT_NAME
         )
         if not valid or result is None:
-            raise _platform(DETAIL_START_RESULT.format(result=outcome.output[-400:]))
+            raise platform_failure(DETAIL_START_RESULT.format(result=outcome.output[-400:]))
         self.session_id = str(result[FIELD_SESSION_ID])
         return case_start
 
@@ -420,24 +428,26 @@ class _Journey:
         deadline = min(case_start + WINDOW_AFTER_CASE_START_SECONDS, composer + WINDOW_AFTER_COMPOSER_SECONDS)
         sample_at = composer + QUIET_BEFORE_SAMPLE_SECONDS
         if sample_at >= deadline - MINIMUM_SAMPLE_SECONDS:
-            raise _binding(DETAIL_WINDOW.format(detail="the composer marker arrived too late for a qualifying sample"))
+            raise binding_failure(
+                DETAIL_WINDOW.format(detail="the composer marker arrived too late for a qualifying sample")
+            )
         while time.monotonic() < sample_at:
             time.sleep(0.1)
         remaining = deadline - time.monotonic()
         if remaining < MINIMUM_SAMPLE_SECONDS:
-            raise _binding(DETAIL_WINDOW.format(detail="no time remained for the negative sample"))
-        record = self._record(min(SAMPLE_BOUND_SECONDS, remaining))
+            raise binding_failure(DETAIL_WINDOW.format(detail="no time remained for the negative sample"))
+        record = self.record(min(SAMPLE_BOUND_SECONDS, remaining))
         completed_at = time.monotonic()
         (self.setup.control / RELEASE_FILE).write_text("1\n", encoding="utf-8")
         if record is None or completed_at >= deadline:
-            raise _binding(DETAIL_WINDOW.format(detail="the negative sample did not complete inside the window"))
-        barrier = self._await_json(self.setup.control / BARRIER_FILE, POLL_SECONDS * 30)
+            raise binding_failure(DETAIL_WINDOW.format(detail="the negative sample did not complete inside the window"))
+        barrier = self.await_json(self.setup.control / BARRIER_FILE, POLL_SECONDS * 30)
         if barrier.get("released_by") != "controller":
-            raise _binding(DETAIL_WINDOW.format(detail="the fixture released its own barrier first"))
-        inputs = self._inputs()
+            raise binding_failure(DETAIL_WINDOW.format(detail="the fixture released its own barrier first"))
+        inputs = self.inputs()
         unchanged = (
             record.get(FIELD_SESSION_ID) == self.session_id
-            and self._same_path(record.get(FIELD_PROJECT))
+            and self.same_path(record.get(FIELD_PROJECT))
             and record.get(FIELD_ACTIVE_AGENT) == AGENT_NAME
             and record.get(FIELD_LIFECYCLE) == INITIALIZING
             and record.get(FIELD_OBSERVED) is False
@@ -445,18 +455,18 @@ class _Journey:
         )
         pre_hook_submissions = [entry for entry in inputs if entry.get("hook_started") is False]
         if not unchanged or pre_hook_submissions:
-            raise _platform(DETAIL_NEGATIVE.format(record=record, inputs=pre_hook_submissions))
+            raise platform_failure(DETAIL_NEGATIVE.format(record=record, inputs=pre_hook_submissions))
 
-    def _same_path(self, value: object) -> bool:
+    def same_path(self, value: object) -> bool:
         return isinstance(value, str) and Path(value).resolve() == self.project
 
-    def _inputs(self) -> list[Mapping[str, object]]:
+    def inputs(self) -> list[Mapping[str, object]]:
         path = self.setup.control / INPUT_LOG_FILE
         entries: list[Mapping[str, object]] = []
         if not path.exists():
             return entries
         for line in path.read_text(encoding="utf-8").splitlines():
-            parsed = _json_object(line)
+            parsed = json_object(line)
             if parsed is not None:
                 entries.append(parsed)
         return entries
@@ -467,19 +477,19 @@ class _Journey:
             if value is not None:
                 return value
             time.sleep(0.1)
-        raise _binding(DETAIL_WINDOW.format(detail=f"{path.name} never appeared"))
+        raise binding_failure(DETAIL_WINDOW.format(detail=f"{path.name} never appeared"))
 
-    def _await_json(self, path: Path, timeout_seconds: float) -> Mapping[str, object]:
+    def await_json(self, path: Path, timeout_seconds: float) -> Mapping[str, object]:
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
             if path.exists():
-                parsed = _json_object(path.read_text(encoding="utf-8"))
+                parsed = json_object(path.read_text(encoding="utf-8"))
                 if parsed is not None:
                     return parsed
             time.sleep(0.1)
-        raise _binding(DETAIL_WINDOW.format(detail=f"{path.name} never appeared"))
+        raise binding_failure(DETAIL_WINDOW.format(detail=f"{path.name} never appeared"))
 
-    def _await_frame(self, name: str, deadline: float) -> Mapping[str, object]:
+    def await_frame(self, name: str, deadline: float) -> Mapping[str, object]:
         """Wait for a frame's completion marker, then parse the whole frame; partial or malformed output fails."""
         frames = self.setup.control / FRAMES_DIRECTORY
         marker = frames / f"{name}{FRAME_COMPLETE_SUFFIX}"
@@ -488,18 +498,18 @@ class _Journey:
                 text = (frames / f"{name}{FRAME_SUFFIX}").read_text(encoding="utf-8")
                 parsed = _whole_frame(text)
                 if parsed is None or not _frame_has_shape(name, parsed):
-                    raise _platform(DETAIL_FRAME_INVALID.format(frame=name))
+                    raise platform_failure(DETAIL_FRAME_INVALID.format(frame=name))
                 return parsed
             time.sleep(POLL_SECONDS)
-        raise _platform(DETAIL_NO_FRAME.format(frame=name, seconds=START_OBSERVATION_CAP_SECONDS))
+        raise platform_failure(DETAIL_NO_FRAME.format(frame=name, seconds=START_OBSERVATION_CAP_SECONDS))
 
-    def _require_hook(self, name: str, frame: Mapping[str, object]) -> None:
+    def require_hook(self, name: str, frame: Mapping[str, object]) -> None:
         runs = frame.get("runs")
         if frame.get("registered") is not True or not isinstance(runs, list) or not runs:
-            raise _binding(DETAIL_HOOK_UNREGISTERED.format(frame=name))
+            raise binding_failure(DETAIL_HOOK_UNREGISTERED.format(frame=name))
         for run in runs:
             if not isinstance(run, dict):
-                raise _platform(DETAIL_FRAME_INVALID.format(frame=name))
+                raise platform_failure(DETAIL_FRAME_INVALID.format(frame=name))
             argv = [str(part) for part in run.get("argv", [])]
             outcome = Outcome(
                 run.get("exit_status") if isinstance(run.get("exit_status"), int) else None,
@@ -507,34 +517,34 @@ class _Journey:
             )
             self.host.note(argv, outcome, "")
             if outcome.exit_status != 0 or run.get("timed_out") is True:
-                raise _platform(DETAIL_HOOK_FAILED.format(frame=name, run=run))
+                raise platform_failure(DETAIL_HOOK_FAILED.format(frame=name, run=run))
 
     def positive_start(self, release_at: float) -> str:
         """Steps 4-5: the hooks run through the installed receivers, the platform delivers MESSAGE, the record turns active."""
         deadline = release_at + START_OBSERVATION_CAP_SECONDS
-        launch = self._await_json(self.setup.control / LAUNCH_FILE, POLL_SECONDS * 30)
+        launch = self.await_json(self.setup.control / LAUNCH_FILE, POLL_SECONDS * 30)
         owned = str(self.setup.executable.resolve())
         found = str(launch.get("executable"))
         if Path(found).resolve() != Path(owned) or Path(str(launch.get("resolved_command"))).resolve() != Path(owned):
-            raise _binding(DETAIL_EXECUTABLE.format(found=launch, owned=owned))
+            raise binding_failure(DETAIL_EXECUTABLE.format(found=launch, owned=owned))
         native = str(launch.get("native_session_id"))
-        start_frame = self._await_frame(FRAME_SESSION_START, deadline)
-        self._require_hook(FRAME_SESSION_START, start_frame)
-        prompt_frame = self._await_frame(FRAME_PROMPT_SUBMIT, deadline)
-        self._require_hook(FRAME_PROMPT_SUBMIT, prompt_frame)
-        received = [entry for entry in self._inputs() if entry.get("hook_started") is True]
+        start_frame = self.await_frame(FRAME_SESSION_START, deadline)
+        self.require_hook(FRAME_SESSION_START, start_frame)
+        prompt_frame = self.await_frame(FRAME_PROMPT_SUBMIT, deadline)
+        self.require_hook(FRAME_PROMPT_SUBMIT, prompt_frame)
+        received = [entry for entry in self.inputs() if entry.get("hook_started") is True]
         first = received[0].get("text") if received else None
         if first != self.message:
-            raise _platform(DETAIL_INPUT_TEXT.format(received=first))
+            raise platform_failure(DETAIL_INPUT_TEXT.format(received=first))
         self._await_record(native, deadline)
         return native
 
-    def _started(self, record: Mapping[str, object] | None, native: str) -> bool:
+    def started(self, record: Mapping[str, object] | None, native: str) -> bool:
         """Whether the flat record shows the platform\'s completed startup of this fixture launch."""
         return (
             record is not None
             and record.get(FIELD_SESSION_ID) == self.session_id
-            and self._same_path(record.get(FIELD_PROJECT))
+            and self.same_path(record.get(FIELD_PROJECT))
             and record.get(FIELD_ACTIVE_AGENT) == AGENT_NAME
             and record.get(FIELD_NATIVE) == native
             and record.get(FIELD_LIFECYCLE) == ACTIVE
@@ -546,55 +556,57 @@ class _Journey:
         """Poll fresh public reads until the startup state shows; the read that shows it is the retained evidence."""
         last: Mapping[str, object] | None = None
         while time.monotonic() < deadline:
-            record = self._record(retain=False)
+            record = self.record(retain=False)
             last = record if record is not None else last
-            if self._started(record, native):
-                confirmed = self._record()
-                if self._started(confirmed, native):
+            if self.started(record, native):
+                confirmed = self.record()
+                if self.started(confirmed, native):
                     return
                 last = confirmed if confirmed is not None else last
             time.sleep(RECORD_POLL_SECONDS)
-        self._record()
-        raise _platform(DETAIL_RECORD.format(seconds=START_OBSERVATION_CAP_SECONDS, record=last))
+        self.record()
+        raise platform_failure(DETAIL_RECORD.format(seconds=START_OBSERVATION_CAP_SECONDS, record=last))
 
     def self_identity(self, release_at: float) -> None:
         """Step 6: the fixture's own fresh `sessions show self --full`, run in its platform-created pane."""
-        frame = self._await_frame(FRAME_SELF_PROBE, release_at + START_OBSERVATION_CAP_SECONDS)
+        frame = self.await_frame(FRAME_SELF_PROBE, release_at + START_OBSERVATION_CAP_SECONDS)
         run = frame.get("run")
         if not isinstance(run, dict):
-            raise _platform(DETAIL_FRAME_INVALID.format(frame=FRAME_SELF_PROBE))
+            raise platform_failure(DETAIL_FRAME_INVALID.format(frame=FRAME_SELF_PROBE))
         output = str(run.get("stdout", ""))
         self.host.note(
             [str(part) for part in run.get("argv", [])],
             Outcome(run.get("exit_status") if isinstance(run.get("exit_status"), int) else None, output),
             str(run.get("stderr", ""))[:400],
         )
-        record = _json_object(output)
+        record = json_object(output)
         if run.get("exit_status") != 0 or record is None or record.get(FIELD_SESSION_ID) != self.session_id:
-            raise _platform(DETAIL_SELF_PROBE.format(output=output[:400]))
+            raise platform_failure(DETAIL_SELF_PROBE.format(output=output[:400]))
 
     def end_session(self) -> None:
         """Step 8: end the session; acceptance is not closure, so read the operation and the retained record."""
         outcome = self.host.cli((TELEC, SESSIONS, END, self.session_id), CLI_TIMEOUT_SECONDS)
-        receipt = _json_object(outcome.output)
+        receipt = json_object(outcome.output)
         operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
         if outcome.exit_status != 0 or not isinstance(operation, str) or not operation:
-            raise _platform(DETAIL_END.format(detail=f"no operation receipt: {outcome.output[-300:]}"))
+            raise platform_failure(DETAIL_END.format(detail=f"no operation receipt: {outcome.output[-300:]}"))
         deadline = time.monotonic() + START_OBSERVATION_CAP_SECONDS
         while True:
             state_outcome = self.host.cli((TELEC, OPERATIONS, GET, operation), CLI_TIMEOUT_SECONDS, retain=False)
-            state = _json_object(state_outcome.output)
+            state = json_object(state_outcome.output)
             value = state.get(FIELD_STATE) if state is not None else None
             if value == OPERATION_COMPLETED:
                 self.host.cli((TELEC, OPERATIONS, GET, operation), CLI_TIMEOUT_SECONDS)
                 break
             if value in OPERATION_FAILED_STATES or time.monotonic() >= deadline:
                 self.host.cli((TELEC, OPERATIONS, GET, operation), CLI_TIMEOUT_SECONDS)
-                raise _platform(DETAIL_END.format(detail=f"operation state {value!r}: {state_outcome.output[-300:]}"))
+                raise platform_failure(
+                    DETAIL_END.format(detail=f"operation state {value!r}: {state_outcome.output[-300:]}")
+                )
             time.sleep(RECORD_POLL_SECONDS)
-        record = self._record()
+        record = self.record()
         if record is None or record.get(FIELD_CLOSED_AT) is None or record.get(FIELD_LIFECYCLE) != CLOSED:
-            raise _platform(DETAIL_END.format(detail=f"retained record not closed: {record!r}"))
+            raise platform_failure(DETAIL_END.format(detail=f"retained record not closed: {record!r}"))
 
     def release_session(self) -> None:
         """Best-effort cleanup of a session the journey left open; failures are reported by the caller's evidence."""
@@ -609,13 +621,13 @@ def prepare_project(host: FoundationHost, project: Path) -> None:
         return
     outcome = host.process((GIT_EXECUTABLE, *GIT_INIT_ARGUMENTS), project, host.environment, PROCESS_TIMEOUT_SECONDS)
     if outcome.exit_status != 0:
-        raise _binding(f"git init of the owned project failed: {outcome.output[-200:]}")
+        raise binding_failure(f"git init of the owned project failed: {outcome.output[-200:]}")
 
 
 def run_foundation(host: FoundationHost, setup: FixtureSetup, project: Path, owner_email: str) -> None:
     """Run journey F0; raises FoundationFailure or FixtureBindingFailure."""
     prepare_project(host, project)
-    journey = _Journey(host, setup, project, owner_email)
+    journey = Journey(host, setup, project, owner_email)
     journey.non_session_control()
     try:
         case_start = journey.start_session()

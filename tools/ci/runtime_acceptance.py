@@ -28,6 +28,7 @@ from pathlib import Path
 from types import FrameType
 from typing import cast
 
+from tools.ci import workflow_claim as claim
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
@@ -161,6 +162,7 @@ _SCENARIO_RELEASE_BLUEPRINT = "UC-BPF1"
 _SCENARIO_WORKFLOW_FOUNDATION = "UC-WF-F0"
 _SCENARIO_WORKFLOW_CREATION = "UC-WF-R1"
 _SCENARIO_WORKFLOW_RETIRED_ACTS = "UC-WF-R4"
+_SCENARIO_WORKFLOW_CLAIM = "UC-WF-B1"
 _COLD_PROFILE_SCENARIOS = (_SCENARIO_COLD,)
 _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_COLD,
@@ -193,6 +195,7 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_WORKFLOW_FOUNDATION,
     _SCENARIO_WORKFLOW_CREATION,
     _SCENARIO_WORKFLOW_RETIRED_ACTS,
+    _SCENARIO_WORKFLOW_CLAIM,
 )
 _SCENARIO_PREREQUISITES = {
     _SCENARIO_WORKFLOW_FOUNDATION: (
@@ -210,6 +213,12 @@ _SCENARIO_PREREQUISITES = {
         _SCENARIO_CONFIG_PATCH,
         _SCENARIO_PROJECT_REGISTRATION,
         _SCENARIO_WORKFLOW_CREATION,
+    ),
+    _SCENARIO_WORKFLOW_CLAIM: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+        _SCENARIO_WORKFLOW_FOUNDATION,
     ),
 }
 _PROFILE_COLD = "cold"
@@ -1920,6 +1929,16 @@ def _full_workflow_retired_acts(resources: FullRuntimeResources, evidence: list[
     if resources.project_path is None:
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
     creation.run_retired_acts(_FoundationRunner(resources, evidence), resources.project_path, resources.source_root)
+
+
+def _full_workflow_claim(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B1: an explicit prepare starts the real driver, which claims with its reservation."""
+    setup = resources.fixture_setup
+    if setup is None or resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    claim.run_claim(
+        _FoundationRunner(resources, evidence), setup, resources.project_path, resources.source_root, _OWNER_SEED_EMAIL
+    )
 
 
 def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -4502,6 +4521,9 @@ def run_profile(
                     ),
                     _SCENARIO_WORKFLOW_RETIRED_ACTS: _bind_full_scenario(
                         _SCENARIO_WORKFLOW_RETIRED_ACTS, resources, _full_workflow_retired_acts
+                    ),
+                    _SCENARIO_WORKFLOW_CLAIM: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_CLAIM, resources, _full_workflow_claim
                     ),
                 }
             )
