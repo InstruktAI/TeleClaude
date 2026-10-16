@@ -316,12 +316,26 @@ class _Waiting:
         self.setups = self.controls.pool(plans)
 
     def verify_owner(self) -> None:
+        """The owner terminal reads as the configured administrator: its email by whoami, its standing by the person record."""
+        who = self.observer.run((TELEC, "auth", "whoami"))
+        emails = [
+            line.partition(": ")[2].strip()
+            for line in who.output.replace("\r\n", "\n").split("\n")
+            if line.startswith("Email: ")
+        ]
         outcome = self.observer.run((TELEC, CONFIG, PERSON, GET, self.owner_slug, FORMAT_OPTION, JSON_FORMAT))
         person = foundation.json_object(outcome.output)
-        email = person.get("email") if person is not None else None
-        if outcome.exit_status != 0 or email != self.owner_email:
+        roles = person.get("roles") if person is not None else None
+        administrator = isinstance(roles, list) and any(
+            isinstance(role, Mapping) and role.get("platform") == "admin" for role in roles
+        )
+        if emails != [self.owner_email] or outcome.exit_status != 0 or not administrator:
             raise creation.binding_failure(
-                DETAIL_PERSON.format(slug=self.owner_slug, email=self.owner_email, output=outcome.output[-300:])
+                DETAIL_PERSON.format(
+                    slug=self.owner_slug,
+                    email=self.owner_email,
+                    output=f"whoami emails {emails!r}; person {outcome.output[-200:]}",
+                )
             )
         self.person = self.owner_slug
 
