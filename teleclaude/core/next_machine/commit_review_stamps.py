@@ -20,11 +20,12 @@ from datetime import UTC, datetime
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.commit_identity import SESSION_TRAILER_KEY
+from teleclaude.commit_identity import PLANNED_TODO_TRAILER_KEY, SESSION_TRAILER_KEY, TODO_TRAILER_KEY
 from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine.git_ops import run_git_command
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.core.workflow_store.store import get_workflow_store
+from teleclaude.core.workflow_store.store import get_workflow_store, get_workflow_store_sync
+from teleclaude.core.workflow_store.types import CommitReviewRecord
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_project_root
 from teleclaude.types.state_value import StateValue
@@ -44,7 +45,6 @@ __all__ = [
     "OutstandingCommit",
     "StampResult",
     "apply_commit_review_stamp",
-    "current_outcomes",
     "outstanding_claim_period_commits",
 ]
 
@@ -66,6 +66,9 @@ _RECORD_SEP = "\x1e"
 _RECORD_LINE_ENDINGS = "\r\n"
 _TRAILER_VALUE_SEP = ","
 _LOG_FORMAT = "--format=%H%x1f%(trailers:key={key},valueonly,unfold,separator=%x2c)%x1e"
+_TODO_ASSOCIATION_LOG_FORMAT = (
+    "--format=%H%x1f%(trailers:key={todo},valueonly,unfold)%x1f%(trailers:key={planned},valueonly,unfold)%x1e"
+)
 
 _ERR_NO_SESSION = "a commit-review stamp requires a stamping session"
 _ERR_NO_SHAS = "a commit-review stamp requires at least one commit SHA"
@@ -110,25 +113,47 @@ class StampResult:
     discharged_sessions: tuple[str, ...]
 
 
-def current_outcomes(events: list[Event]) -> dict[str, CommitOutcome]:
-    """Return each stamped SHA's current outcome — the latest stamp event for it."""
+def outcomes_from_records(records: tuple[CommitReviewRecord, ...]) -> dict[str, CommitOutcome]:
+    """Reduce append-only repository evidence to each SHA's latest outcome."""
     outcomes: dict[str, CommitOutcome] = {}
-    for event in events:
-        if event.kind != TodoEventKind.COMMIT_REVIEW_STAMP:
-            continue
-        sha = event.details.get(CommitReviewDetail.SHA)
-        verdict = event.details.get(CommitReviewDetail.VERDICT)
-        if not isinstance(sha, str) or not isinstance(verdict, str):
-            continue
-        reason = event.details.get(CommitReviewDetail.REASON)
-        outcomes[sha] = CommitOutcome(
-            sha=sha,
-            verdict=CommitReviewVerdict(verdict),
-            stamped_by=event.actor,
-            stamped_at=event.at,
-            reason=reason if isinstance(reason, str) else "",
+    for record in records:
+        outcomes[record.sha] = CommitOutcome(
+            sha=record.sha,
+            verdict=CommitReviewVerdict(record.verdict),
+            stamped_by=record.reviewer_session_id,
+            stamped_at=record.stamped_at,
+            reason=record.reason,
         )
     return outcomes
+
+
+def associated_commit_shas(project_root: str, slug: str) -> tuple[str, ...]:
+    """Return canonical-main commits associated with a todo through either footer key."""
+    returncode, stdout, stderr = run_git_command(
+        [
+            _GIT_LOG,
+            _MAIN_REF,
+            _TODO_ASSOCIATION_LOG_FORMAT.format(todo=TODO_TRAILER_KEY, planned=PLANNED_TODO_TRAILER_KEY),
+        ],
+        project_root,
+    )
+    if returncode != 0:
+        raise RuntimeError(_ERR_GIT_LOG.format(detail=stderr.strip() or "unknown"))
+    shas: list[str] = []
+    for record in stdout.split(_RECORD_SEP):
+        text = record.strip(_RECORD_LINE_ENDINGS)
+        if not text:
+            continue
+        fields = text.split(_FIELD_SEP)
+        if len(fields) != 3:
+            continue
+        sha, todo_values, planned_values = fields
+        associations = {
+            value.strip() for value in (todo_values + _TRAILER_VALUE_SEP + planned_values).split(_TRAILER_VALUE_SEP)
+        }
+        if slug in associations:
+            shas.append(sha)
+    return tuple(shas)
 
 
 def outstanding_claim_period_commits(
@@ -144,9 +169,11 @@ def outstanding_claim_period_commits(
     claim_head = _latest_claim_boundary(events, session_id)
     if claim_head is None:
         return []
-    outcomes = current_outcomes(events)
+    candidate_commits = _main_commits_by_session(project_root, session_id, claim_head)
+    candidate_shas = tuple(sha for sha, sessions in candidate_commits if session_id in sessions)
+    outcomes = outcomes_from_records(get_workflow_store_sync(project_root).commit_review_records_sync(candidate_shas))
     outstanding: list[OutstandingCommit] = []
-    for commit_sha, sessions in _main_commits_by_session(project_root, session_id, claim_head):
+    for commit_sha, sessions in candidate_commits:
         if session_id not in sessions:
             continue
         outcome = outcomes.get(commit_sha)
@@ -181,10 +208,27 @@ async def apply_commit_review_stamp(
     slug = _read_session_text(session_id, _WORKING_SLUG_FIELD) or (
         _read_session_text(initiator, _WORKING_SLUG_FIELD) if initiator else None
     )
+    producer_sessions = await asyncio.gather(
+        *(asyncio.to_thread(_commit_sessions, project_root, (sha,)) for sha in full_shas)
+    )
+    stamped_at = datetime.now(UTC).isoformat()
+    records = tuple(
+        CommitReviewRecord(
+            sha=sha,
+            verdict=verdict,
+            reviewer_session_id=session_id,
+            producer_session_ids=tuple(sorted(producers)),
+            stamped_at=stamped_at,
+            reason=reason,
+        )
+        for sha, producers in zip(full_shas, producer_sessions, strict=True)
+    )
+    todos_db = await get_workflow_store(project_root)
+    await todos_db.append_commit_reviews(records)
     if slug:
         await _append_stamps(project_root, slug, session_id, full_shas, verdict, reason)
     chain = {session_id} if initiator is None else {session_id, initiator}
-    authored_by = await asyncio.to_thread(_commit_sessions, project_root, full_shas)
+    authored_by = frozenset().union(*producer_sessions)
     discharged = tuple(sorted(chain & authored_by))
     logger.info(
         _LOG_STAMP_APPLIED,

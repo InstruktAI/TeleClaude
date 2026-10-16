@@ -16,6 +16,10 @@ from pathlib import Path
 from typing import Self
 
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
+from teleclaude.core.next_machine.documentation_evidence import (
+    DocumentationEvidenceRefused,
+    require_reviewed_pending_documentation,
+)
 from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.todo_dependency_warnings import freeze_dependent_warnings, unfreeze_frozen_dep_warnings
 from teleclaude.core.todos_db._errors import DeliveryProvenanceRefused
@@ -76,8 +80,12 @@ async def freeze_todo(project_root: Path, slug: str) -> SlugActionResult:
 async def unfreeze_todo(project_root: Path, slug: str) -> SlugActionResult:
     """Return an iceboxed todo to the active list, warning about dependencies still iceboxed."""
     todos_db = await get_workflow_store(project_root)
-    if not await todos_db.unfreeze(slug):
-        return SlugActionResult(outcome=SlugActionOutcome.NOT_FOUND)
+    try:
+        evidence_snapshot = await require_reviewed_pending_documentation(todos_db.project_root, todos_db, (slug,))
+        if not await todos_db.unfreeze(slug, evidence_snapshot=evidence_snapshot):
+            return SlugActionResult(outcome=SlugActionOutcome.NOT_FOUND)
+    except DocumentationEvidenceRefused as exc:
+        return SlugActionResult(outcome=SlugActionOutcome.REFUSED, detail=str(exc))
     dependencies = await todos_db.get_deps_with_status(slug)
     return SlugActionResult(outcome=SlugActionOutcome.DONE, warnings=unfreeze_frozen_dep_warnings(slug, dependencies))
 

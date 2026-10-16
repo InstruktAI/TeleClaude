@@ -9,12 +9,16 @@ from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, cast
 from teleclaude.constants import WORKTREE_DIR, TodoStatus
 from teleclaude.core.next_machine._types import ItemPhase, StateValue
 from teleclaude.core.next_machine.artifacts import artifact_name_to_state_key
-from teleclaude.core.next_machine.commit_review_stamps import current_outcomes
+from teleclaude.core.next_machine.commit_review_stamps import (
+    CommitOutcome,
+    associated_commit_shas,
+    outcomes_from_records,
+)
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
 from teleclaude.core.next_machine.slug_resolution import effective_delivered_slugs_for_dependencies
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, TASK_LIFECYCLE_PHASE_ORDER
 from teleclaude.types.todo_kind import TodoKind
-from teleclaude.types.todos import HoldAuditReason, TodoState
+from teleclaude.types.todos import CommitReviewDetail, HoldAuditReason, TodoEventKind, TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore
@@ -255,7 +259,10 @@ def _derive_approvals_block(state_model: TodoState) -> dict[str, StateValue]:
     return cast(dict[str, StateValue], state_model.approvals.model_dump())
 
 
-def _derive_reviews_block(state_model: TodoState) -> dict[str, StateValue]:
+def _derive_reviews_block(
+    state_model: TodoState,
+    commit_outcomes: dict[str, CommitOutcome],
+) -> dict[str, StateValue]:
     """Project prepare and build review verdict state, and each commit's current review outcome."""
     return {
         "prd_review": state_model.prd_review.model_dump(),
@@ -270,7 +277,7 @@ def _derive_reviews_block(state_model: TodoState) -> dict[str, StateValue]:
                 "stamped_at": outcome.stamped_at,
                 "reason": outcome.reason,
             }
-            for sha, outcome in current_outcomes(state_model.events).items()
+            for sha, outcome in commit_outcomes.items()
         },
     }
 
@@ -600,7 +607,15 @@ async def assemble_show_payload(
     payload["roadmap"] = todo_block
     payload["state"] = _derive_state_block(state_model)
     payload["approvals"] = _derive_approvals_block(state_model)
-    payload["reviews"] = _derive_reviews_block(state_model)
+    event_shas = tuple(
+        str(event.details[CommitReviewDetail.SHA])
+        for event in state_model.events
+        if event.kind == TodoEventKind.COMMIT_REVIEW_STAMP
+        and isinstance(event.details.get(CommitReviewDetail.SHA), str)
+    )
+    stamped_shas = tuple(dict.fromkeys((*event_shas, *associated_commit_shas(str(project_root), slug))))
+    commit_outcomes = outcomes_from_records(await todos_db.commit_review_records(stamped_shas))
+    payload["reviews"] = _derive_reviews_block(state_model, commit_outcomes)
     payload["drift"] = _derive_drift_block(state_model)
     payload["work"] = _derive_work_block(state_model)
     payload["audit"] = _derive_audit_block(state_model)

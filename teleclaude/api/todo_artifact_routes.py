@@ -36,7 +36,8 @@ from teleclaude.constants import (
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.core.todos_db import HolderWriteRefused, malformed_digest_detail
+from teleclaude.core.todos_db._artifacts import malformed_digest_detail
+from teleclaude.core.todos_db._errors import HolderWriteRefused
 from teleclaude.project_root import resolve_project_root
 
 if TYPE_CHECKING:
