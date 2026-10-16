@@ -131,19 +131,35 @@ B13_ERROR_WAITING: Final = "the item no longer matches B3's waiting checkpoint"
 B13_ERROR_START_OPEN: Final = "a B3 start attempt is still unresolved"
 B13_ERROR_REFUSAL: Final = "the public kickback call was not one terminal HTTP 409 refusal"
 B13_ERROR_DIAGNOSTIC: Final = "the public kickback call carries a command diagnostic"
+B13_ERROR_SNAPSHOT_MISSING: Final = "the independently reviewed complete-output snapshot is missing"
+B13_ERROR_SNAPSHOT_MISMATCH: Final = "the complete public kickback output differs from its reviewed snapshot"
 B13_ERROR_CHANGED: Final = "public state changed after the refusal: {differences}"
 B13_ERROR_SEAL: Final = "the B13 evidence carrier failed its byte/hash read-back"
 B13_ERROR_READBACK_COUNT: Final = "B13 did not capture all six required post-call observations"
+
+
+def _require_b13_completed_result(outcome: foundation.Outcome, operation: str | None) -> None:
+    """Allow effect readbacks only after one completed nonzero command without a receipt or diagnostic."""
+    if outcome.exit_status in (None, B13_SUCCESS_EXIT) or operation is not None:
+        raise ValueError(B13_ERROR_REFUSAL)
+    if outcome.diagnostics:
+        raise ValueError(B13_ERROR_DIAGNOSTIC)
+
+
+def _require_b13_snapshot(output: str) -> None:
+    """Require the complete public refusal to match its reviewed snapshot."""
+    snapshot_state = creation.retired_snapshot_state(creation.RETIRED_SNAPSHOT_B13_KICKBACK, output)
+    if snapshot_state is creation.RetiredSnapshotState.MISSING:
+        raise ValueError(B13_ERROR_SNAPSHOT_MISSING)
+    if snapshot_state is creation.RetiredSnapshotState.MISMATCH:
+        raise ValueError(B13_ERROR_SNAPSHOT_MISMATCH)
+
+
 B13_CALL_ARGV: Final = ("bin/telec", "todo", "stamp", "b3-item", "--kickback", "--reason", B13_REASON_TEXT)
 B13_READ_ARGV: Final = (
     ("bin/telec", "todo", "show", ITEM, "--include-artifact-content"),
     ("bin/telec", "sessions", "list", "--all", "--closed"),
     ("bin/telec", "todo", "list", "--json", "--include-icebox", "--include-delivered", "--include-removed"),
-)
-B13_ERROR_409: Final = "Error: 409 —"
-B13_REFUSAL_SENTENCE: Final = "kickback is refused: b3-item is in waiting."
-B13_DOOR_SENTENCE: Final = (
-    "Door: {owner}'s decision (`telec todo act b3-item decision`), which starts the waited phase's driver"
 )
 B13_UTF8: Final = "utf-8"
 B13_NEWLINE: Final = "\n"
@@ -1210,17 +1226,7 @@ class _Waiting:
             append_b13_attempt(
                 evidence, marker_path, carrier_path, {B13_EVENT: B13_ATTEMPT_RESULT, **evidence.response}, self.sanitize
             )
-            normalized = creation.normalized(outcome.output)
-            expected_door = B13_DOOR_SENTENCE.format(owner=self.person)
-            if (
-                outcome.exit_status in (None, B13_SUCCESS_EXIT)
-                or outcome.diagnostics
-                or operation is not None
-                or B13_ERROR_409 not in outcome.output
-                or B13_REFUSAL_SENTENCE not in normalized
-                or creation.normalized(expected_door) not in normalized
-            ):
-                raise ValueError(B13_ERROR_DIAGNOSTIC if outcome.diagnostics else B13_ERROR_REFUSAL)
+            _require_b13_completed_result(outcome, operation)
             for label, pause in ((B13_OBSERVATION_IMMEDIATE, 0.0), (B13_OBSERVATION_SETTLED, B13_SETTLE_SECONDS)):
                 if pause:
                     observer.wait(pause)
@@ -1268,7 +1274,7 @@ class _Waiting:
                 if final_readback:
                     evidence.duration_seconds = time.monotonic() - started
                     evidence.status = (
-                        B13_STATUS_COMPLETE
+                        B13_STATUS_PARTIAL
                         if readback_matches and evidence.duration_seconds <= B13_SCENARIO_SECONDS
                         else B13_STATUS_UNPROVEN
                     )
@@ -1293,8 +1299,10 @@ class _Waiting:
                     raise ValueError(B13_ERROR_CHANGED.format(differences=changed))
             if len(evidence.readbacks) != 2:
                 raise ValueError(B13_ERROR_READBACK_COUNT)
-            if evidence.status != B13_STATUS_COMPLETE:
+            if evidence.status != B13_STATUS_PARTIAL:
                 raise ValueError(evidence.primary_failure or B13_ERROR_DEADLINE)
+            _require_b13_snapshot(outcome.output)
+            evidence.status = B13_STATUS_COMPLETE
             if not verify_b13_delivery(evidence, marker_path, carrier_path, self.sanitize):
                 raise ValueError(B13_ERROR_SEAL)
             if time.monotonic() - started > B13_SCENARIO_SECONDS:

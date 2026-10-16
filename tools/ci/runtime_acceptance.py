@@ -26,7 +26,7 @@ from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from types import FrameType
-from typing import cast
+from typing import Final, cast
 
 from tools.ci import workflow_claim as claim
 from tools.ci import workflow_creation as creation
@@ -174,6 +174,27 @@ _SCENARIO_WORKFLOW_FOUNDATION = "UC-WF-F0"
 _SCENARIO_WORKFLOW_CREATION = "UC-WF-R1"
 _SCENARIO_WORKFLOW_RETIRED_ACTS = "UC-WF-R4"
 _SCENARIO_WORKFLOW_RETIRED_ACTS_B12 = "UC-WF-B12"
+_R4_SNAPSHOT_COMMANDS: Final = (
+    (
+        (creation.TODO, creation.STAMP, creation.SLUG_FEATURE, creation.BUILD_STARTED_FLAG),
+        creation.RETIRED_SNAPSHOT_R4_CLEARANCE,
+    ),
+    (
+        (creation.TODO, creation.STAMP, creation.SLUG_FEATURE, creation.PRD_APPROVED_FLAG),
+        creation.RETIRED_SNAPSHOT_R4_PRD,
+    ),
+    (
+        (
+            creation.TODO,
+            creation.STAMP,
+            creation.SLUG_FEATURE,
+            creation.KICKBACK_FLAG,
+            creation.REASON_OPTION,
+            creation.KICKBACK_REASON,
+        ),
+        creation.RETIRED_SNAPSHOT_R4_KICKBACK,
+    ),
+)
 _SCENARIO_WORKFLOW_PLANS = "UC-WF-R2"
 _SCENARIO_WORKFLOW_HOLDS = "UC-WF-R3"
 _SCENARIO_WORKFLOW_REMOVAL = "UC-WF-R5"
@@ -302,6 +323,11 @@ _PROFILE_FULL = "full"
 _UNKNOWN_REVISION = "unknown"
 _EMPTY = ""
 _DIAGNOSTIC_LIMIT = 4096
+_COMMAND_EVIDENCE_COMMANDS_FIELD = "commands"
+_COMMAND_EVIDENCE_ARGV_FIELD = "argv"
+_COMMAND_EVIDENCE_EXIT_STATUS_FIELD = "exit_status"
+_COMMAND_EVIDENCE_STDOUT_FIELD = "stdout"
+_COMMAND_EVIDENCE_DIAGNOSTICS_FIELD = "diagnostics"
 _EVIDENCE_SEPARATOR = "\n"
 _EVIDENCE_STDOUT_TRUNCATION = "stdout truncated at diagnostic limit"
 _EVIDENCE_STDERR_TRUNCATION = "stderr truncated at diagnostic limit"
@@ -1435,13 +1461,16 @@ def _capture_scenario(
         duration_seconds=time.monotonic() - started,
         commands=tuple(
             command
-            if status is ScenarioStatus.FAILED
-            and (
-                index == len(evidence) - 1
-                or command.exit_status != _PROCESS_SUCCESS
-                or command.diagnostics
-                or (scenario_id == _SCENARIO_CURATION_REFUSAL and index == 0)
+            if (
+                status is ScenarioStatus.FAILED
+                and (
+                    index == len(evidence) - 1
+                    or command.exit_status != _PROCESS_SUCCESS
+                    or command.diagnostics
+                    or (scenario_id == _SCENARIO_CURATION_REFUSAL and index == 0)
+                )
             )
+            or scenario_id == _SCENARIO_WORKFLOW_RETIRED_ACTS
             else replace(command, stdout=_EMPTY)
             for index, command in enumerate(evidence)
         ),
@@ -5576,10 +5605,8 @@ def _validate_b13_report(report: Mapping[str, object], source_revision: str, sou
         or b13_response.get("output_truncated") is not False
         or b13_response.get("stderr_truncated") is not False
         or not all(isinstance(b13_response.get(key), str) for key in ("output", "stderr", "diagnostics"))
-        or waiting.B13_ERROR_409 not in b13_response.get("output", "")
-        or waiting.B13_REFUSAL_SENTENCE not in creation.normalized(b13_response.get("output", ""))
-        or creation.normalized(waiting.B13_DOOR_SENTENCE.format(owner=owner_slug))
-        not in creation.normalized(b13_response.get("output", ""))
+        or creation.retired_snapshot_state(creation.RETIRED_SNAPSHOT_B13_KICKBACK, b13_response.get("output", ""))
+        is not creation.RetiredSnapshotState.MATCH
         or not isinstance(b13_reads, list)
         or len(b13_reads) != 2
         or not isinstance(b13_ledger, dict)
@@ -5629,6 +5656,37 @@ def _validate_b13_report(report: Mapping[str, object], source_revision: str, sou
             or readback.get("slugs") != baseline_slugs
         ):
             raise ValueError
+
+
+def _validate_r4_snapshot_commands(scenario: Mapping[str, object]) -> None:
+    """Require the three retained R4 target commands to match their full reviewed output snapshots."""
+    commands = scenario.get(_COMMAND_EVIDENCE_COMMANDS_FIELD)
+    if not isinstance(commands, list):
+        raise ValueError
+    matched_indices: list[int] = []
+    for expected_arguments, snapshot_id in _R4_SNAPSHOT_COMMANDS:
+        matches = [
+            (index, command)
+            for index, command in enumerate(commands)
+            if isinstance(command, dict)
+            and isinstance(command.get(_COMMAND_EVIDENCE_ARGV_FIELD), list)
+            and command[_COMMAND_EVIDENCE_ARGV_FIELD][1:] == list(expected_arguments)
+        ]
+        if len(matches) != 1:
+            raise ValueError
+        index, command = matches[0]
+        matched_indices.append(index)
+        output = command.get(_COMMAND_EVIDENCE_STDOUT_FIELD)
+        if (
+            type(command.get(_COMMAND_EVIDENCE_EXIT_STATUS_FIELD)) is not int
+            or command[_COMMAND_EVIDENCE_EXIT_STATUS_FIELD] == 0
+            or command.get(_COMMAND_EVIDENCE_DIAGNOSTICS_FIELD) != _EMPTY
+            or not isinstance(output, str)
+            or creation.retired_snapshot_state(snapshot_id, output) is not creation.RetiredSnapshotState.MATCH
+        ):
+            raise ValueError
+    if matched_indices != sorted(matched_indices):
+        raise ValueError
 
 
 def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, source_tree: str) -> None:
@@ -5757,6 +5815,12 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
                     isinstance(case.get(field), str)
                     for field in (creation.B12Field.STDOUT, creation.B12Field.STDERR, creation.B12Field.DIAGNOSTICS)
                 )
+                or case.get(creation.B12Field.OUTPUT_TRUNCATED) is not False
+                or creation.retired_snapshot_state(
+                    f"{creation.B12_SNAPSHOT_ID_PREFIX}{expected_case_id}",
+                    case.get(creation.B12Field.STDOUT, ""),
+                )
+                is not creation.RetiredSnapshotState.MATCH
                 or type(case.get(creation.B12Field.STDOUT_BYTE_COUNT)) is not int
                 or case.get(creation.B12Field.STDOUT_BYTE_COUNT) < 0
                 or not isinstance(case.get(creation.B12Field.STDOUT_SHA256), str)
@@ -5866,6 +5930,8 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
                     or not all(isinstance(command[field], str) for field in ("stdout", "stderr", "diagnostics"))
                 ):
                     raise ValueError
+            if expected_id == _SCENARIO_WORKFLOW_RETIRED_ACTS:
+                _validate_r4_snapshot_commands(scenario)
         cleanup = report["cleanup"]
         if (
             not isinstance(cleanup, dict)

@@ -84,9 +84,6 @@ CONTENT_CHANGE: Final = "r1 change content two"
 CONTENT_BUG: Final = "r1 bug content three"
 CONTENT_GATE: Final = "r1 gate control four"
 KICKBACK_REASON: Final = "r4 retired kickback"
-REPLACEMENT_MARKER: Final = "The act that replaces it is"
-PERFORMER_MARKER: Final = "performed by"
-HOLDING_DRIVER: Final = "the holding driver"
 B12_MATRIX_DIRECTORY: Final = "b12-retired-act-preparation"
 B12_MARKER_FILE: Final = "RETAINED.json"
 B12_ATTEMPTS_FILE: Final = "attempts.jsonl"
@@ -117,6 +114,14 @@ class B12Classification(StrEnum):
     VERIFIED = "verified_refusal"
     UNPROVEN = "unproven"
     NOT_RUN = "not_run"
+
+
+class RetiredSnapshotState(StrEnum):
+    """Exact comparison result for one approved emitted-string snapshot."""
+
+    MATCH = "match"
+    MISSING = "missing"
+    MISMATCH = "mismatch"
 
 
 class B12AttemptEvent(StrEnum):
@@ -167,7 +172,7 @@ B12_REASON: Final = "B12 retired-act matrix evidence is incomplete; retain the f
 B12_ERROR_PREFIX: Final = "B12 matrix evidence is unproven: "
 B12_JSON_SCHEMA: Final = 1
 B12_LINE_ENDING: Final = "\n"
-B12_ERROR_409: Final = "Error: 409 —"
+B12_CARRIAGE_RETURN_LINE_ENDING: Final = "\r\n"
 B12_OUTCOME_COMPLETED: Final = B12Outcome.COMPLETED
 B12_OUTCOME_TIMEOUT: Final = B12Outcome.TIMEOUT
 B12_OUTCOME_TRANSPORT: Final = B12Outcome.TRANSPORT
@@ -194,16 +199,11 @@ B12_DETAIL_UNORDERED_RESULT: Final = "case {case_id} has no ordered result recor
 B12_DETAIL_INVALID_RESULT: Final = "case {case_id} result is not a verified refusal"
 B12_DETAIL_UNORDERED_CLASSIFICATION: Final = "case {case_id} has no final classification record"
 B12_DETAIL_NOT_VERIFIED: Final = "case {case_id} is not verified"
-B12_REFUSAL_NOT_409: Final = "the completed request did not contain the public HTTP 409 error form"
-B12_REFUSAL_UNRELATED_GATE: Final = "the request reached an unrelated gate signature {signature!r}"
-B12_REFUSAL_PHASE: Final = "the refusal did not identify the retired act and preparation phase"
-B12_REFUSAL_DOOR: Final = "the refusal did not include the approved preparation door"
-B12_REFUSAL_PRD_SUFFIX: Final = "the original PRD refusal added a replacement-clause marker"
-B12_REFUSAL_KICKBACK: Final = "the original kickback refusal did not name the holding driver"
 B12_REFUSAL_RECEIPT: Final = "the synchronous refusal unexpectedly returned an operation receipt"
 B12_REFUSAL_NO_TERMINAL: Final = "the public request timed out or did not return a terminal outcome"
 B12_REFUSAL_ZERO_EXIT: Final = "the public refusal command returned success"
 B12_REFUSAL_DIAGNOSTIC: Final = "the public request carried an unresolved command diagnostic: {detail}"
+B12_SNAPSHOT_ID_PREFIX: Final = "b12-"
 B12_MARKER_MISSING_ATTEMPT: Final = "the attempt file is missing while its retention marker exists"
 B12_FRAMING_COMPLETE: Final = B12Framing.COMPLETE
 B12_FRAMING_PARTIAL: Final = B12Framing.PARTIAL
@@ -227,7 +227,6 @@ B12_CASE_SETTLED: Final = "settled"
 B12_CARRIER_ERROR_MARKER: Final = "the attempt file is missing while its retention marker exists"
 B12_EXCEPTION_DETAIL: Final = "{error_class}: {detail}"
 B12_INTERRUPT_DETAIL: Final = "KeyboardInterrupt: {detail}"
-B12_REFUSAL_ACT_PHASE: Final = "{retired_type} {phase}"
 B12_RETAIN_REASON: Final = "B12 retained evidence at {path}"
 B12_DETAIL_DEADLINE: Final = "the 600-second scenario deadline expired"
 B12_DETAIL_COMPLETED_SNAPSHOT: Final = "the completed report failed read-back validation"
@@ -348,9 +347,19 @@ class B12Field(StrEnum):
     PRECALL_DIFFERENCES = "precall_differences"
 
 
-B12_PREPARATION_REFUSAL: Final = "is refused: ra-feature is in preparation."
-B12_DOOR: Final = "Door: none needed: the item is in preparation, which `telec todo prepare ra-feature` drives."
-B12_REPLACEMENT_MARKERS: Final = (REPLACEMENT_MARKER, PERFORMER_MARKER)
+RETIRED_SNAPSHOT_DIRECTORY: Final = "snapshots"
+RETIRED_SNAPSHOT_PREFIX: Final = "retired-output-"
+RETIRED_SNAPSHOT_SUFFIX: Final = ".txt"
+RETIRED_SNAPSHOT_R4_CLEARANCE: Final = "r4-clearance"
+RETIRED_SNAPSHOT_R4_PRD: Final = "r4-prd"
+RETIRED_SNAPSHOT_R4_KICKBACK: Final = "r4-kickback"
+RETIRED_SNAPSHOT_B13_KICKBACK: Final = "b13-kickback"
+B12_REFUSAL_SNAPSHOT_MISSING: Final = (
+    "the independently reviewed complete refusal snapshot is missing for case {case_id}"
+)
+B12_REFUSAL_SNAPSHOT_MISMATCH: Final = (
+    "the complete refusal output differs from its reviewed snapshot for case {case_id}"
+)
 B12_CASES: Final = (
     ("01", (TELEC, TODO, STAMP, SLUG_FEATURE, PRD_APPROVED_FLAG), "prd_approved"),
     ("02", (TELEC, TODO, STAMP, SLUG_FEATURE, "--requirements-ready"), "requirements_ready"),
@@ -407,19 +416,6 @@ CREATED_PREFIX: Final = "Created todo:"
 INPUT_ARTIFACT: Final = "input"
 INPUT_BODY: Final = "# {slug} — Input\n\n{content}\n"
 NOT_FOUND_PHRASE: Final = "slug '{slug}' not found in todo list"
-MACHINE_OWNED_PHRASE: Final = "--build-started is machine-owned"
-DOOR_SENTENCE: Final = "none needed: the item is in preparation, which `telec todo prepare {slug}` drives"
-GATE_SIGNATURES: Final = (
-    "permission denied",
-    "login required",
-    "unknown command path or missing command authorization",
-    "human principal required",
-    "cwd required",
-    "missing stamp flag",
-    "usage:",
-    "unknown caller",
-    "not found in todo list",
-)
 
 PHASE_PREPARATION: Final = "preparation"
 STATUS_ACTIVE: Final = "active"
@@ -483,14 +479,9 @@ DETAIL_NOT_QUIESCENT: Final = "the item is being written by something else; diff
 DETAIL_WRITE_LANDED: Final = "{case}: the item shown {when} differs from before the command; differing paths: {paths}"
 DETAIL_SLUGS_CHANGED: Final = "{case}: the set of slugs changed from {before!r} to {after!r}"
 DETAIL_PRECONDITION: Final = "{slug} is not in the table row this journey tests: {path} is {found!r}"
-DETAIL_CONTROL_SIGNATURE: Final = "the clearance control printed a signature of another gate {signature!r}: {output!r}"
-DETAIL_CONTROL_TEXT: Final = "the clearance control did not print {phrase!r} and no gate signature: {output!r}"
-DETAIL_CONTROL_EXIT: Final = "the clearance control exited {status}, not non-zero: {output!r}"
-DETAIL_CASE_EXIT: Final = "{case}: the retired act exited {status}, not non-zero, with output {output!r}"
-DETAIL_GATE_REACHED: Final = "{case}: the output carries the gate signature {signature!r}: {output!r}"
-DETAIL_CASE_DOOR: Final = "{case}: the refusal does not carry the door sentence {sentence!r}: {output!r}"
-DETAIL_CASE_REPLACEMENT: Final = "{case}: the refusal names a replacing act through {marker!r}: {output!r}"
-DETAIL_CASE_PERFORMER: Final = "{case}: the refusal does not name {phrase!r}: {output!r}"
+DETAIL_SNAPSHOT_MISSING: Final = "the reviewed complete-output snapshot is missing for {case}"
+DETAIL_SNAPSHOT_MISMATCH: Final = "the complete public output differs from the reviewed snapshot for {case}"
+DETAIL_REFUSAL_SHAPE: Final = "the public refusal for {case} was not a completed nonzero command without a receipt"
 DETAIL_COMMAND: Final = "`{command}` exited {status}: {output!r}"
 
 CASE_PRD: Final = "R4-1"
@@ -520,6 +511,23 @@ def platform_failure(detail: str) -> JourneyFailure:
 def normalized(output: str) -> str:
     """Runs of whitespace, newlines included, as one space."""
     return SPACE.join(output.split())
+
+
+def retired_snapshot_state(snapshot_id: str, output: str) -> RetiredSnapshotState:
+    """Compare one complete emitted string after only PTY line-ending and controller-separator normalization."""
+    snapshot_path = (
+        Path(__file__).parent
+        / RETIRED_SNAPSHOT_DIRECTORY
+        / (f"{RETIRED_SNAPSHOT_PREFIX}{snapshot_id}{RETIRED_SNAPSHOT_SUFFIX}")
+    )
+    try:
+        expected = snapshot_path.read_text(encoding=B12_UTF8)
+    except FileNotFoundError:
+        return RetiredSnapshotState.MISSING
+    observed = output.replace(B12_CARRIAGE_RETURN_LINE_ENDING, B12_LINE_ENDING)
+    if observed.endswith(B12_LINE_ENDING):
+        observed = observed[:-1]
+    return RetiredSnapshotState.MATCH if observed == expected else RetiredSnapshotState.MISMATCH
 
 
 def decode_object(output: str) -> Mapping[str, object] | None:
@@ -944,11 +952,6 @@ def _stamp(observer: Observer, slug: str, *flags: str) -> Outcome:
     return observer.run((TELEC, TODO, STAMP, slug, *flags))
 
 
-def _signature_in(output: str) -> str | None:
-    lowered = normalized(output).lower()
-    return next((signature for signature in GATE_SIGNATURES if signature in lowered), None)
-
-
 def _quiescent_item(
     observer: Observer, show_reads: list[Mapping[str, object] | None] | None = None
 ) -> Mapping[str, object]:
@@ -1002,38 +1005,24 @@ def _b12_quiescent_item(
 def _control_clearance(observer: Observer) -> None:
     """C0: the owner passes the stamp gate and meets the CLI's own machine-owned refusal, touching nothing."""
     outcome = _stamp(observer, SLUG_FEATURE, BUILD_STARTED_FLAG)
-    signature = _signature_in(outcome.output)
-    if signature is not None:
-        raise fail(CLASS_GATE, DETAIL_CONTROL_SIGNATURE.format(signature=signature, output=outcome.output[-300:]))
-    if MACHINE_OWNED_PHRASE not in normalized(outcome.output):
-        raise trace_failure(DETAIL_CONTROL_TEXT.format(phrase=MACHINE_OWNED_PHRASE, output=outcome.output[-300:]))
-    if outcome.exit_status in (0, None):
-        raise platform_failure(DETAIL_CONTROL_EXIT.format(status=outcome.exit_status, output=outcome.output[-300:]))
+    _require_completed_refusal(outcome, RETIRED_SNAPSHOT_R4_CLEARANCE)
+    _require_retired_snapshot(RETIRED_SNAPSHOT_R4_CLEARANCE, RETIRED_SNAPSHOT_R4_CLEARANCE, outcome.output)
 
 
-def _check_refusal(case: str, outcome: Outcome, *, performer: bool) -> None:
-    text = normalized(outcome.output)
-    if outcome.exit_status in (0, None):
-        raise platform_failure(
-            DETAIL_CASE_EXIT.format(case=case, status=outcome.exit_status, output=outcome.output[-300:])
-        )
-    signature = _signature_in(outcome.output)
-    if signature is not None:
-        raise fail(CLASS_GATE, DETAIL_GATE_REACHED.format(case=case, signature=signature, output=outcome.output[-300:]))
-    sentence = DOOR_SENTENCE.format(slug=SLUG_FEATURE)
-    if sentence not in text:
-        raise fail(CLASS_GATE, DETAIL_CASE_DOOR.format(case=case, sentence=sentence, output=outcome.output[-300:]))
-    if performer:
-        if HOLDING_DRIVER not in text:
-            raise platform_failure(
-                DETAIL_CASE_PERFORMER.format(case=case, phrase=HOLDING_DRIVER, output=outcome.output[-300:])
-            )
-        return
-    for marker in (REPLACEMENT_MARKER, PERFORMER_MARKER):
-        if marker in text:
-            raise platform_failure(
-                DETAIL_CASE_REPLACEMENT.format(case=case, marker=marker, output=outcome.output[-300:])
-            )
+def _require_completed_refusal(outcome: Outcome, case: str) -> None:
+    """Require a completed nonzero public result without diagnostics or an operation receipt."""
+    operation_id, _operation_status = _operation_receipt(outcome.output)
+    if outcome.exit_status in (0, None) or outcome.diagnostics or operation_id is not None:
+        raise platform_failure(DETAIL_REFUSAL_SHAPE.format(case=case))
+
+
+def _require_retired_snapshot(case: str, snapshot_id: str, output: str) -> None:
+    """Require the complete public output to equal its independently reviewed string snapshot."""
+    state = retired_snapshot_state(snapshot_id, output)
+    if state is RetiredSnapshotState.MISSING:
+        raise trace_failure(DETAIL_SNAPSHOT_MISSING.format(case=case))
+    if state is RetiredSnapshotState.MISMATCH:
+        raise platform_failure(DETAIL_SNAPSHOT_MISMATCH.format(case=case))
 
 
 def _require_nothing_written(
@@ -1063,15 +1052,18 @@ def run_retired_acts(host: FoundationHost, project: Path, source_root: Path) -> 
     try:
         _control_clearance(observer)
         cases = (
-            (CASE_PRD, (PRD_APPROVED_FLAG,), False),
-            (CASE_KICKBACK, (KICKBACK_FLAG, REASON_OPTION, KICKBACK_REASON), True),
+            (CASE_PRD, (PRD_APPROVED_FLAG,)),
+            (CASE_KICKBACK, (KICKBACK_FLAG, REASON_OPTION, KICKBACK_REASON)),
         )
-        for case, flags, performer in cases:
+        for case, flags in cases:
             before = _quiescent_item(observer)
             sessions = observer.sessions()
             slugs = observer.slugs()
-            _check_refusal(case, _stamp(observer, SLUG_FEATURE, *flags), performer=performer)
+            outcome = _stamp(observer, SLUG_FEATURE, *flags)
+            _require_completed_refusal(outcome, case)
             _require_nothing_written(observer, case, before, sessions, slugs)
+            snapshot_id = RETIRED_SNAPSHOT_R4_PRD if case == CASE_PRD else RETIRED_SNAPSHOT_R4_KICKBACK
+            _require_retired_snapshot(case, snapshot_id, outcome.output)
     finally:
         leave_project(observer, source_root)
 
@@ -1188,6 +1180,14 @@ def validate_b12_attempts(raw: bytes, complete: bool) -> list[EvidenceObject]:
             or result.get(B12Field.OPERATION_STATUS) != B12_OPERATION_NOT_APPLICABLE
         ):
             raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_INVALID_RESULT.format(case_id=case_id))
+        result_output = result.get(B12Field.STDOUT)
+        if complete and (
+            not isinstance(result_output, str)
+            or result.get(B12Field.OUTPUT_TRUNCATED) is not False
+            or retired_snapshot_state(f"{B12_SNAPSHOT_ID_PREFIX}{case_id}", result_output)
+            is not RetiredSnapshotState.MATCH
+        ):
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_INVALID_RESULT.format(case_id=case_id))
         if offset + 2 >= len(records):
             break
         classified = records[offset + 2]
@@ -1198,24 +1198,25 @@ def validate_b12_attempts(raw: bytes, complete: bool) -> list[EvidenceObject]:
     return records
 
 
-def _b12_refusal(case_id: str, retired_type: str, exit_status: int | None, output: str) -> str:
-    """Return an assertion failure or the diagnostic suffix without grading unapproved replacement text."""
-    text = normalized(output)
-    if exit_status == 0:
-        return B12_REFUSAL_ZERO_EXIT
-    if B12_ERROR_409 not in text:
-        return B12_REFUSAL_NOT_409
-    signature = _signature_in(output)
-    if signature is not None:
-        return B12_REFUSAL_UNRELATED_GATE.format(signature=signature)
-    if B12_REFUSAL_ACT_PHASE.format(retired_type=retired_type, phase=B12_PREPARATION_REFUSAL) not in text:
-        return B12_REFUSAL_PHASE
-    if B12_DOOR not in text:
-        return B12_REFUSAL_DOOR
-    if case_id == B12_CASE_PRD_ID and any(marker in text for marker in B12_REPLACEMENT_MARKERS):
-        return B12_REFUSAL_PRD_SUFFIX
-    if case_id == B12_CASE_KICKBACK_ID and HOLDING_DRIVER not in text:
-        return B12_REFUSAL_KICKBACK
+def _b12_refusal_shape(exit_status: int | None, diagnostics: str, operation_id: str | None) -> str:
+    """Require a completed nonzero no-receipt public command before its no-write readbacks."""
+    if exit_status in (None, 0):
+        return B12_REFUSAL_NO_TERMINAL if exit_status is None else B12_REFUSAL_ZERO_EXIT
+    if diagnostics:
+        return B12_REFUSAL_DIAGNOSTIC.format(detail=diagnostics)
+    if operation_id is not None:
+        return B12_REFUSAL_RECEIPT
+    return EMPTY
+
+
+def _b12_snapshot_failure(case_id: str, output: str) -> str:
+    """Return the missing or mismatching complete-output snapshot failure for one matrix row."""
+    snapshot_id = f"{B12_SNAPSHOT_ID_PREFIX}{case_id}"
+    state = retired_snapshot_state(snapshot_id, output)
+    if state is RetiredSnapshotState.MISSING:
+        return B12_REFUSAL_SNAPSHOT_MISSING.format(case_id=case_id)
+    if state is RetiredSnapshotState.MISMATCH:
+        return B12_REFUSAL_SNAPSHOT_MISMATCH.format(case_id=case_id)
     return EMPTY
 
 
@@ -1543,13 +1544,6 @@ def run_retired_act_matrix(
             call_started = time.monotonic()
             outcome = observer.run(argv)
             result_duration = max(outcome.duration_seconds, time.monotonic() - call_started)
-            refusal_failure = (
-                _b12_refusal(case_id, retired_type, outcome.exit_status, outcome.output)
-                if outcome.exit_status is not None
-                else B12_REFUSAL_NO_TERMINAL
-            )
-            if outcome.diagnostics:
-                refusal_failure = B12_REFUSAL_DIAGNOSTIC.format(detail=outcome.diagnostics)
             outcome_kind = (
                 B12_OUTCOME_COMPLETED
                 if outcome.exit_status is not None
@@ -1558,8 +1552,7 @@ def run_retired_act_matrix(
                 else B12_OUTCOME_TRANSPORT
             )
             operation_id, operation_status = _operation_receipt(outcome.output)
-            if operation_id is not None:
-                refusal_failure = B12_REFUSAL_RECEIPT
+            refusal_failure = _b12_refusal_shape(outcome.exit_status, outcome.diagnostics, operation_id)
             stdout_bytes = outcome.output.encode(B12_UTF8)
             embedded_stdout = sanitize_text(outcome.output).encode(B12_UTF8)
             case.update(
@@ -1586,15 +1579,20 @@ def run_retired_act_matrix(
             )
             case_reads: list[EvidenceObject] = []
             case[B12Field.READBACKS] = cast(list[EvidenceValue], case_reads)
-            after_reads, readback_differences = _b12_readbacks(
-                observer, baseline_item, baseline_sessions, baseline_slugs, case_id, case_reads
-            )
+            after_reads: EvidenceObject = {B12Field.READS: []}
+            readback_differences: list[str] = []
+            if not refusal_failure:
+                after_reads, readback_differences = _b12_readbacks(
+                    observer, baseline_item, baseline_sessions, baseline_slugs, case_id, case_reads
+                )
+                refusal_failure = _b12_snapshot_failure(case_id, outcome.output)
             sanitized_readbacks = _sanitize_evidence(after_reads[B12Field.READS], sanitize_text)
             case.update(
                 _evidence_object(
                     {
                         B12Field.READBACKS: sanitized_readbacks,
                         B12Field.DIFFERENCES: readback_differences,
+                        B12Field.REFUSAL_FAILURE: refusal_failure,
                     }
                 )
             )
