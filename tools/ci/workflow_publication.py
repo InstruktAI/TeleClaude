@@ -95,6 +95,9 @@ DETAIL_OPERATION_TIMEOUT: Final = (
 )
 DETAIL_IDENTITY_MOVED: Final = "the candidate checkout changed during the journey: {before!r} became {after!r}"
 DETAIL_UNSETTLED_SESSIONS: Final = "sessions beyond the baseline are still open after their end: {owned!r}"
+DETAIL_LEDGER_UNREADABLE: Final = (
+    "the launch record of {control} is unreadable or does not hold the launch it shows, so its processes are unknown"
+)
 DETAIL_PROCESS_ALIVE: Final = "the fixture process {pid} of {control} is still alive after its session ended"
 DETAIL_UNRESOLVED_START: Final = "accepted starts {operations!r} were never observed consumed by a claim or refused, so they may still create a driver"
 DETAIL_SESSION_OPEN: Final = "session {session} could not be closed: {detail}"
@@ -190,20 +193,26 @@ def _process_alive(pid: int) -> bool:
     return True
 
 
-def _launch_pids(control: Path) -> list[int]:
-    """Every fixture process the directory\'s launches recorded, from the append-only record of each launch."""
+def _launch_pids(control: Path, problems: list[str]) -> list[int]:
+    """Every fixture process the directory\'s launches recorded, from the append-only record of each launch.
+
+    A directory that holds no launch has no fixture process, which is legitimate. A directory that shows a launch
+    (`launch.json`) whose append-only record is unreadable, malformed, or lacks that launch\'s own process is a launch
+    whose processes are unknown, which is never read as none.
+    """
+    shown = control / "launch.json"
+    if not shown.exists():
+        return []
     try:
         lines = (control / "launches.jsonl").read_text(encoding="utf-8").splitlines()
-    except OSError:
+        records = [json.loads(line) for line in lines if line.strip()]
+        pids = [record["pid"] for record in records if isinstance(record, dict) and isinstance(record.get("pid"), int)]
+        current = json.loads(shown.read_text(encoding="utf-8")).get("pid")
+    except (OSError, ValueError, KeyError, AttributeError):
+        problems.append(DETAIL_LEDGER_UNREADABLE.format(control=control))
         return []
-    pids: list[int] = []
-    for line in lines:
-        try:
-            pid = json.loads(line).get("pid")
-        except ValueError:
-            continue
-        if isinstance(pid, int):
-            pids.append(pid)
+    if len(pids) != len(records) or not isinstance(current, int) or current not in pids:
+        problems.append(DETAIL_LEDGER_UNREADABLE.format(control=control))
     return pids
 
 
@@ -212,7 +221,7 @@ def _fixture_processes_gone(controls: Sequence[Path], problems: list[str]) -> No
     for control in controls:
         with suppress(OSError):
             (control / "stop").write_text("stop\n", encoding="utf-8")
-        for pid in _launch_pids(control):
+        for pid in _launch_pids(control, problems):
             deadline = time.monotonic() + PROCESS_EXIT_SECONDS
             while _process_alive(pid) and time.monotonic() < deadline:
                 time.sleep(POLL_SECONDS)
