@@ -113,6 +113,47 @@ reports which installation assessment journeys ran.
 
 <!-- /planned:installation-activation-inspection -->
 
+<!-- planned:issue-128 -->
+
+### Workflow journeys
+
+The full profile exercises the public journeys of
+`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`,
+`local/projects/teleclaude/spec/feature/workflow/item-acts` and
+`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`.
+Journey assertions are independently reviewed against those owning contracts
+before harness implementation, under
+`general/principle/verification-independence`.
+
+For journeys requiring an agent session, the harness may supply an inert
+executable at the external agent-CLI process boundary defined by
+`sdlc/concept/functional-test-boundary`. TeleClaude creates the session,
+assigns its role and binding, admits its native startup and resolves callers
+through the real public paths. The executable follows the provider's documented
+hook protocol and terminal interaction contract; its commands invoke public
+executables as fresh processes inside the platform-created session. It creates
+no session record, caller identity, authentication state or application event
+directly, and imports no application modules. Application components,
+authentication decisions and persistent storage run for real. The disposable
+profile inherits no live host credentials or adapters.
+
+A journey proceeds on positive native-startup and public-operation evidence.
+A missing startup, hook failure, unexpected refusal, timeout or cleanup failure
+fails the journey. The fixture's command and hook outputs are retained as bounded,
+secret-free diagnostics. A fixture does not establish that a model follows an
+instruction; the reported coverage identifies the platform behavior it actually
+exercises.
+
+Legacy-store fixtures are pre-existing input installed before activation in the
+disposable environment. They do not manufacture an authenticated caller or stand
+in for a successful claim. Workflow outcomes are observed through public reads,
+logs and operation results; a controller does not edit an item into the outcome
+under assertion. Each report maps executed journeys to their owning contract and
+identifies unexecuted journeys and observations the public surfaces cannot
+provide. An unexecuted journey remains unverified.
+
+<!-- /planned:issue-128 -->
+
 ### Use cases
 
 #### UC-RA1: Cold public entry points execute from the checked source
