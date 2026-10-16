@@ -172,7 +172,9 @@ async def write_artifact(
     await _refuse_holder_mutation(todos_db, slug)
     await require_slug_in_todo(todos_db, slug)
     raw_for_lane = await todos_db.read_state(slug) if name == ARTIFACT_INPUT else None
-    in_task_lane = raw_for_lane is not None and task_lane_of(TodoState.model_validate(raw_for_lane))
+    lane_state = TodoState.model_validate(raw_for_lane) if raw_for_lane is not None else None
+    in_task_lane = lane_state is not None and task_lane_of(lane_state)
+    retained = lane_state.workflow.remote_members if lane_state is not None else []
     intent_body_write = name == ARTIFACT_INPUT and bool(identity.session_id)
     if not intent_body_write or in_task_lane:
         await refuse_foreign_claim(todos_db, identity, slug)
@@ -187,7 +189,7 @@ async def write_artifact(
                 content,
                 updated_by=effective_updated_by,
                 mutate=intent_body_mutation(
-                    slug, await session_ancestry(identity.session_id), expect_task=in_task_lane
+                    slug, await session_ancestry(identity.session_id, retained), expect_task=in_task_lane
                 ),
             )
         elif name == ARTIFACT_DESIGN_SPEC:

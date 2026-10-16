@@ -131,6 +131,7 @@ class SessionSnapshot(
     # Older-reader projection of ``role``, kept populated for nodes that predate the role catalog; read for display only.
     system_role: str | None = None
     job: str | None = None
+    initiator_computer: str | None = None
     agent_status: str | None = None
     agent_status_reason: str | None = None
     agent_status_since: str | None = None
@@ -178,6 +179,7 @@ class SessionSnapshot(
             "native_session_id": self.native_session_id,
             "tmux_session_name": self.tmux_session_name,
             "initiator_session_id": self.initiator_session_id,
+            "initiator_computer": self.initiator_computer,
             "detached": self.detached,
             "computer": self.computer,
             "human_email": self.human_email,
@@ -256,6 +258,7 @@ class SessionSnapshot(
             native_session_id=session.native_session_id,
             tmux_session_name=session.tmux_session_name,
             initiator_session_id=session.initiator_session_id,
+            initiator_computer=session.initiator_computer,
             detached=session.detached,
             computer=computer,
             human_email=session.human_email,
@@ -330,6 +333,7 @@ class SessionSnapshot(
                 data.get("tmux_session_name"), "session tmux_session_name"
             ),
             initiator_session_id=str(data.get("initiator_session_id")) if data.get("initiator_session_id") else None,
+            initiator_computer=str(data.get("initiator_computer")) if data.get("initiator_computer") else None,
             detached=bool(data.get("detached")) if data.get("detached") is not None else False,
             computer=str(data.get("computer")) if data.get("computer") else None,
             human_email=str(data.get("human_email")) if data.get("human_email") else None,

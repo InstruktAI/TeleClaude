@@ -63,6 +63,10 @@ _CONTENT_TYPE_HEADER = "content-type"
 _DIRECT_FIELDS: Final = ("direct", "close_link")
 _UNKNOWN_COMPUTER_DETAIL = "{computer} is unknown to {local}; the request was not sent and nothing was run."
 _NESTED_RELAY_DETAIL = "a request carried here runs here; it names {computer}, and is not carried on."
+_NOT_LOCAL_SESSION_DETAIL = (
+    "session {session} is not a session of {local}, so {local} cannot carry a request as it; "
+    "nothing was sent. Run the request from the computer that holds the session."
+)
 _TRANSPORT_UNAVAILABLE_DETAIL = "the request to {computer} could not be sent: {error}"
 _INVALID_RESPONSE_DETAIL = "{computer} answered the carried request with a response this computer cannot read."
 
@@ -247,6 +251,10 @@ async def _carry(request: Request, target: str, identity: CallerIdentity, raw_bo
 
     if not is_known_computer(target):
         return relay_failure_response(unknown_computer_failure(target))
+
+    if identity.session_id and await db.get_session(identity.session_id) is None:
+        detail = _NOT_LOCAL_SESSION_DETAIL.format(session=identity.session_id, local=config.computer.name)
+        return JSONResponse(status_code=HTTPStatus.FORBIDDEN, content={_DETAIL_FIELD: detail})
 
     cleared = _cleared_command(request, identity)
     try:

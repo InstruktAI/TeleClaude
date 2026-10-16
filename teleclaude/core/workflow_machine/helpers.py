@@ -10,16 +10,21 @@ on a start that cannot finish.
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from teleclaude.config.machine import config
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
 from teleclaude.core.next_machine._types import StateValue
+from teleclaude.core.operation_caller_identity import relayed_caller_computer
 from teleclaude.core.process_identity import ProcessState, probe_process, start_identity
+from teleclaude.core.session_utils import cached_remote_session
 from teleclaude.core.workflow_machine.caller import group_view_of, in_claiming_group
+from teleclaude.core.workflow_machine.peer_starts import StartEntry, register_with_owner, settle_with_owners
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.events.envelope import occurrence_id
@@ -110,6 +115,8 @@ async def earlier_claim_sessions(
     machine made without any ledger act, and (with the item and its project named) the sessions such a claim left
     running, found by their persisted working slug and project; the current holder, the sessions it started and sessions
     already closed are not among them.
+    A retained remote member of an earlier group whose computer could not say whether it ended counts as one: the group
+    is not shown ended, so the entry refuses until it is.
     """
     retained = record.remote_members
     current = {holder, *(m.session_id for m in (await group_view_of(holder, retained)).live)} if holder else set()
@@ -119,7 +126,8 @@ async def earlier_claim_sessions(
         if not claimer or claimer in current:
             continue
         session = await db.get_session(claimer)
-        earlier = [m.session_id for m in (await group_view_of(claimer, retained)).live]
+        earlier_view = await group_view_of(claimer, retained)
+        earlier = [*(m.session_id for m in earlier_view.live), *earlier_view.unresolved]
         members = [*earlier, *([claimer] if session and session.closed_at is None else [])]
         found.extend(member for member in members if member not in current and member not in found)
     if item and project_root:
@@ -225,56 +233,152 @@ class HelperFence:
 async def helper_start_fence(
     project_root: str, working_slug: str | None, initiator_session_id: str | None, computer: str = ""
 ) -> AsyncIterator[HelperFence]:
-    """Record a session creation as a helper start of every item whose holder's group the creator belongs to.
+    """Record a session creation as a helper start of every item whose holder\'s group the creator belongs to.
 
     This is the common creation boundary, so it covers every session started from a holder, transitively. The governing
-    items come from authoritative evidence of the initiator's own chain (each ancestor's persisted working slug and
-    project), not only from the directory the new session asks for, and the new session's own slug is one more
-    candidate. For each item whose holder the creator is, or descends from, the start is recorded in a conditional write
-    before the session exists; a closing claim or a changed holder refuses the creation. A creator in the group of an
-    earlier claim is refused. The records name the created session, or are withdrawn when none was created.
+    items come from authoritative evidence of the creator\'s own chain (each ancestor\'s persisted working slug and
+    project), not only from the directory the new session asks for, and the new session\'s own slug is one more
+    candidate. A chain that leaves this computer continues on the computer that holds the next ancestor, which records
+    the start on its own items. For each item whose holder the creator is, or descends from, the start is recorded in a
+    conditional write before the session exists; a closing claim or a changed holder refuses the creation. A creator in
+    the group of an earlier claim is refused. The records name the created session, or are withdrawn when none was
+    created. ``computer`` names the computer the session is created on when it is not this one.
     """
     fence = HelperFence(computer)
-    keys: list[tuple[str, str, str]] = []
+    local = config.computer.name
+    entries = (
+        await register_for_creation(project_root, working_slug, initiator_session_id, computer)
+        if initiator_session_id
+        else []
+    )
     try:
-        if initiator_session_id:
-            for root, item in await _governing_items(project_root, working_slug, initiator_session_id):
-                key = await _register_for_group(root, item, initiator_session_id, computer)
-                if key:
-                    keys.append((root, item, key))
         yield fence
     except BaseException:
         if not fence.ambiguous:
-            for root, item, key in keys:
-                await settle_helper_start(root, item, key, "")
+            await settle_entries(entries, "", computer or local, initiator_session_id or "")
         raise
-    remote = (
-        RemoteMember(session_id=fence.session_id, computer=computer, parent=initiator_session_id or "")
-        if computer and fence.session_id and initiator_session_id
-        else None
-    )
-    for root, item, key in keys:
-        if fence.session_id or not fence.ambiguous:
-            await settle_helper_start(root, item, key, fence.session_id, remote)
+    if fence.session_id or not fence.ambiguous:
+        await settle_entries(entries, fence.session_id, computer or local, initiator_session_id or "")
 
 
-async def _governing_items(
-    project_root: str, working_slug: str | None, initiator_session_id: str
-) -> list[tuple[str, str]]:
-    """The (project root, item) pairs a creation may concern: the new session's slug, then each ancestor's own."""
-    pairs: list[tuple[str, str]] = [(project_root, working_slug)] if working_slug else []
-    current = initiator_session_id
+@dataclass
+class _Lineage:
+    """What a creator\'s chain concerns: the items on this computer, and the ancestors held by other computers."""
+
+    items: list[tuple[str, str]] = field(default_factory=list)
+    remote: list[tuple[str, str]] = field(default_factory=list)
+
+
+async def _creation_lineage(project_root: str, working_slug: str | None, start_session_id: str) -> _Lineage:
+    """The (project root, item) pairs a creation may concern, and the ancestors that other computers hold.
+
+    The new session\'s slug comes first, then each ancestor\'s own items. A creator that another computer carried here
+    is not in this computer\'s store; its chain continues from the initiator its own computer recorded. An ancestor
+    this computer does not hold, whose record names another computer, is handed to that computer.
+    """
+    lineage = _Lineage(items=[(project_root, working_slug)] if working_slug else [])
+    local = config.computer.name
+    current = start_session_id
+    current_computer = ""
     seen: set[str] = set()
     for _ in range(ANCESTOR_WALK_CAP):
-        session = await db.get_session(current) if current and current not in seen else None
-        if session is None:
+        if not current or current in seen:
             break
         seen.add(current)
-        for pair in _session_items(session):
-            if pair not in pairs:
-                pairs.append(pair)
-        current = session.initiator_session_id or ""
-    return pairs
+        session = await db.get_session(current)
+        if session is not None:
+            for pair in _session_items(session):
+                if pair not in lineage.items:
+                    lineage.items.append(pair)
+            current, current_computer = session.initiator_session_id or "", session.initiator_computer or ""
+            continue
+        carried = relayed_caller_computer(current) if current == start_session_id else None
+        snapshot = cached_remote_session(current, carried) if carried else None
+        if snapshot is not None:
+            current, current_computer = snapshot.initiator_session_id or "", snapshot.initiator_computer or ""
+            continue
+        held_by = current_computer if current_computer and current_computer != local else ""
+        if not held_by:
+            open_ancestor = cached_remote_session(current)
+            held_by = str(open_ancestor.computer) if open_ancestor is not None and open_ancestor.computer else ""
+        if held_by and held_by != local:
+            lineage.remote.append((current, held_by))
+        break
+    return lineage
+
+
+async def register_for_creation(
+    project_root: str, working_slug: str | None, initiator_session_id: str, computer: str
+) -> list[StartEntry]:
+    """Record the start on every governing item, here and on the computers that hold the creator\'s ancestors.
+
+    Nothing stays recorded when any one record is refused: the starts already made are withdrawn first.
+    """
+    local = config.computer.name
+    carried_from = relayed_caller_computer(initiator_session_id) or local
+    entries: list[StartEntry] = []
+    try:
+        lineage = await _creation_lineage(project_root, working_slug, initiator_session_id)
+        for root, item in lineage.items:
+            key = await _register_for_group(root, item, initiator_session_id, computer, carried_from)
+            if key:
+                entries.append(StartEntry("", root, item, key))
+        for ancestor, owner in lineage.remote:
+            entries.extend(
+                await register_with_owner(owner, initiator_session_id, carried_from, ancestor, computer or local)
+            )
+    except BaseException:
+        await settle_entries(entries, "", computer or local, initiator_session_id)
+        raise
+    return entries
+
+
+async def register_from_ancestor(
+    creator_session_id: str, creator_computer: str, ancestor_session_id: str, new_computer: str
+) -> list[StartEntry]:
+    """Serve a start that another computer asks this one to record: the creator\'s chain reaches ``ancestor`` here.
+
+    The creator is judged against the items found along the ancestor\'s chain on this computer\'s own evidence; the
+    entries returned name this computer as the holder so the creator\'s computer settles them here.
+    """
+    local = config.computer.name
+    elsewhere = new_computer if new_computer != local else ""
+    entries: list[StartEntry] = []
+    try:
+        lineage = await _creation_lineage("", None, ancestor_session_id)
+        for root, item in lineage.items:
+            key = await _register_for_group(root, item, creator_session_id, elsewhere, creator_computer)
+            if key:
+                entries.append(StartEntry(local, root, item, key))
+        for ancestor, owner in lineage.remote:
+            entries.extend(
+                await register_with_owner(owner, creator_session_id, creator_computer, ancestor, new_computer)
+            )
+    except BaseException:
+        await settle_entries(entries, "", new_computer, creator_session_id)
+        raise
+    return entries
+
+
+async def settle_entries(
+    entries: Sequence[StartEntry], session_id: str, session_computer: str, creator_session_id: str
+) -> None:
+    """Name the created session on every recorded start, or withdraw the starts when none was created.
+
+    A session created on another computer than the item\'s is retained as a remote member in the write that names it,
+    parented to its creator; the computers that hold other starts settle them on their own request.
+    """
+    local = config.computer.name
+    for entry in entries:
+        if entry.computer and entry.computer != local:
+            continue
+        remote = (
+            RemoteMember(session_id=session_id, computer=session_computer, parent=creator_session_id)
+            if session_id and session_computer != local and creator_session_id
+            else None
+        )
+        await settle_helper_start(entry.root, entry.item, entry.key, session_id, remote)
+    await settle_with_owners(entries, session_id, session_computer, creator_session_id, local)
 
 
 def _session_items(session: Session) -> list[tuple[str, str]]:
@@ -301,8 +405,14 @@ def _session_items(session: Session) -> list[tuple[str, str]]:
     return items
 
 
-async def _register_for_group(project_root: str, item: str, initiator_session_id: str, computer: str = "") -> str:
-    """Register the start when the creator is in the item's holder's group; refuse it when in an earlier group's."""
+async def _register_for_group(
+    project_root: str, item: str, initiator_session_id: str, computer: str = "", creator_computer: str = ""
+) -> str:
+    """Register the start when the creator is in the item\'s holder\'s group; refuse it when in an earlier group\'s.
+
+    A creator another computer holds is judged as that computer\'s session: its id counts only where the cluster or
+    the item shows that computer holding it.
+    """
     try:
         store = await get_workflow_store(project_root)
     except (OSError, ValueError):
@@ -312,7 +422,8 @@ async def _register_for_group(project_root: str, item: str, initiator_session_id
         return ""
     state = TodoState.model_validate(raw)
     holder = state.active_runner or ""
-    if holder and await in_claiming_group(initiator_session_id, holder, state.workflow.remote_members):
+    source = creator_computer if creator_computer and creator_computer != config.computer.name else None
+    if holder and await in_claiming_group(initiator_session_id, holder, state.workflow.remote_members, source=source):
         return await register_helper_start(project_root, item, holder, computer)
     if initiator_session_id in await earlier_claim_sessions(state.workflow, holder, item, project_root):
         raise HelperStartRefused(EARLIER_GROUP.format(item=item, session=initiator_session_id))

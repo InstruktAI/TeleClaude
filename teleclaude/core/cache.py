@@ -367,13 +367,6 @@ class DaemonCache:
         cached = self._sessions.get(session_id)
         return cached.data if cached is not None else None
 
-    def computers_heard_from(self) -> frozenset[str]:
-        """The computers whose full sessions snapshot has been applied since this cache started.
-
-        Without one, the absence of a computer\'s sessions says nothing: the cache has simply not heard from it.
-        """
-        return frozenset(self._sessions_digest)
-
     def get_sessions(self, computer: str | None = None) -> list[SessionSnapshot]:
         """Get cached sessions, optionally filtered by computer.
 
