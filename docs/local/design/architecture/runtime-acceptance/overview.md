@@ -19,27 +19,35 @@ qualification (`general/principle/verification-independence`).
 
 ## Inputs/Outputs
 
-Input is an independently reviewed static lock and concrete provisioning recipe,
-bound to exact controller/helper/unit bytes and candidate commit/tree. The lock
-contains no unresolved value at execution. A setup result records observed
-host/package/namespace/activation/observation facts and the exact lock/recipe
-identity. It is separate from the application profile and its final aggregate.
+The static input is the authenticated vendor closure in `static-lock.json` and
+the exact declarative unit/configuration/helper protocol in
+`enclosure-recipes.json`. Those files own their concrete values and byte
+identities. Future helper implementation bytes are not a static-stage input.
+
+After implementation, a separate source-realization record binds the actual
+candidate commit/tree, controller/helper/interpreter/library bytes, rendered
+units and report schemas to that reviewed static package. Exact-SHA source
+review judges this realization before qualification. Qualification consumes
+both records, its separately reviewed `qualification.json` and separate run
+authorization. Results add observed host/package/namespace/activation and
+observation facts; static review supplies none of those runtime identities.
 
 ### Static lock completeness
 
-| Binding group           | Required evidence                                                                                                                                                                                                                                                                                                                      |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Host compatibility      | Architecture and explicit accepted runner-image/kernel/systemd/package tuples; executable/interpreter identities; actual runner account is discovered and recorded rather than inferred from the guest UID.                                                                                                                            |
-| Signed package inputs   | Fixed snapshot/pocket/component/architecture; signed Release/InRelease bytes, digest, trusted key fingerprint and verification result; each selected index path/size/digest; complete host and guest package dependency closure with versions, alternatives, archive addresses/sizes/digests and maintainer-script/activation effects. |
-| Guest base and tools    | Exact archive and independently authenticated checksum/signature/key chain; base package inventory; locked Python distribution/patch/build, uv binary and all installer/native dependencies. Floating archives, package upgrades and host PID-1 replacement are excluded.                                                              |
-| Effective manager graph | Distro-installed vendor template bytes, all dependency units/drop-ins/settings and activation sources; complete host instance and parent recipe, guest payload/poweroff units, accounts/sudo/user-manager/network setup and actual effective-property predicates. An upstream template is not a distro-file digest.                    |
-| Harness and evidence    | Controller/helper code and interpreter digests, closed privileged action vocabulary, source commit/tree and clean guest checkout, argv/environment/cwd recipe, role discriminator, report/export map, budget declaration and qualification assertions.                                                                                 |
+| Binding group           | Required evidence                                                                                                                                                                                                                                                                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host compatibility      | Architecture and explicit accepted runner-image/kernel/systemd/package tuples; executable/interpreter identities; actual runner account is discovered and recorded rather than inferred from the guest UID.                                                                                                                                    |
+| Signed package inputs   | Fixed snapshot/pocket/component/architecture; signed Release/InRelease bytes, digest, trusted key fingerprint and verification result; each selected index path/size/digest; complete host and guest package dependency closure with versions, alternatives, archive addresses/sizes/digests and maintainer-script/activation effects.         |
+| Guest base and tools    | Exact archive and independently authenticated checksum/signature/key chain; base package inventory; locked Python distribution/patch/build, uv binary and all installer/native dependencies. Floating archives, package upgrades and host PID-1 replacement are excluded.                                                                      |
+| Effective manager graph | Distro-installed vendor template bytes, all dependency units/drop-ins/settings and activation sources; complete host instance and parent recipe, guest payload/poweroff units, accounts/sudo/user-manager/network setup and actual effective-property predicates. An upstream template is not a distro-file digest.                            |
+| Harness and evidence    | Declared controller/helper entry and closed action protocol, authenticated interpreter/library inputs, dependency-basis source locks, argv/environment/cwd recipe, role discriminator, report/export map and finite qualification declaration. Actual implementation commit/tree and code digests belong to the subsequent realization record. |
 
-Signatures authenticate vendor inputs, not the author's lock or future host
-behavior. Every lock/recipe change is reviewed independently and invalidates
-qualification bound to earlier bytes. Source implementation review separately
-binds the realized helpers/units and their effective graph before any privileged
-qualification; a completed field or version string alone supplies no approval
+Signatures authenticate their named vendor inputs, not the author's JSON or
+future host behavior. Integrity-only and attested inputs retain their explicit
+authentication classes in the lock. Every lock/recipe change is independently
+reviewed before implementation against it and invalidates earlier qualification.
+Source review binds actual helpers and rendered units through the separate
+realization record; it does not retroactively complete a missing static recipe
 (`sdlc/policy/security-awareness`).
 
 ## Invariants
@@ -126,46 +134,45 @@ guards. Snapshot acquisition modes and B14 behavior require their own authority.
 
 ### Static preparation and source review
 
-1. Freeze the complete signed static inputs and concrete unit/helper/configuration
-   recipes, including all activation and account/network/ownership effects.
-2. Independently review the owning contract, separate finalization amendment,
-   locks, recipes and finite qualification assertions before implementation.
-3. Implement only that reviewed contract in the one harness. Review the exact
-   source SHA, all starts/exceptions, privilege and admission paths, report types,
-   observation and resource-release paths. Bind realized bytes back to the lock.
-4. Record separate authorization for the finite setup attempt at that SHA and
-   lock. No setup action is implied by a design or source approval.
+1. Freeze the static lock, concrete recipe and finite assertion files, including
+   vendor signatures/integrity, complete dependency sets, activation sources,
+   account/network/ownership declarations and selected monitoring primitives.
+2. Independently review those exact artifacts with the owning contract and
+   separate finalization amendment before implementation. No future source hash
+   is required or represented as existing at this gate.
+3. Implement only that reviewed package in the one harness. Produce the distinct
+   source-realization record. Review the exact source SHA, starts/exceptions,
+   privilege/admission paths, report types, notification and resource-release
+   paths, including agreement between emitted bytes and static declarations.
+4. Record separate authorization for one finite setup attempt at the approved
+   realization and static package. A changed recipe returns through preparation
+   review; source review cannot silently replace it. No setup action is implied
+   by either earlier approval.
 
 ### Finite operational setup qualification
 
-One explicitly authorized attempt runs only the following OS/harness assertions
-with no TeleClaude workload, API call, session record or seeded authentication.
-It creates one measurement guest and separately named disposable diagnostic
-objects for destructive observation checks. The latter are never the production
-measurement parent. Each row reports its own observed result or unexecuted state.
+`qualification.json` owns the closed vector order, concrete action lists,
+observation authority, required retained facts, per-vector and per-command
+budgets, resource inventory and total deadline. It permits no equivalent-vector
+substitution. Each vector executes at most once; an unexpected result ends the
+attempt after bounded declared closure/read/export, and later vectors remain
+unexecuted. Another attempt requires independent disposition and separate
+authorization (`general/principle/verification-independence`).
 
-| ID  | Action and observable expected result                                                                                                                                                                                                                                                                                           |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Q1  | Verify signed locks against actual host tuple/packages/template/helper bytes and privilege. Any mismatch stops before guest/workload; there is no upgrade/restart or floating-version fallback.                                                                                                                                 |
-| Q2  | Provision the locked empty guest and bind the original active parent before one boot. Record manager generation, ControlGroup, invocation, complete effective graph, namespaces/maps, account/bus/network/tools and actual ownership. Unsupported or unknown facts prevent payload admission.                                   |
-| Q3  | Apply the exact active-instance mask with no stop, reconcile queued starts/aliases/activation sources and seal admission. Verify unchanged invocation and no later start action. An accepted or ambiguous start after sealing fails qualification; no retry supplies a second invocation.                                       |
-| Q4  | Put inert OS descendants under guest system/user managers and a long-lived shell within the measured subtree, then shut down normally. Observe verified poweroff, unchanged original active parent, closed admission and recursive empty population through the original handle. No application lifecycle fact is manufactured. |
-| Q5  | On separate diagnostic objects, exercise removal/recreation, movement/deactivation and observation disconnect/overflow or equivalent lost-continuity inputs. Every loss yields unproven, including a same-name replacement that is empty. The measurement handle is never rebound.                                              |
-| Q6  | End a setup phase unexpectedly and exercise one lost start acknowledgment plus missing/corrupt report/readback/export failures in harness-owned OS diagnostics. Preserve prewritten intent, original error and verified prefix; no second start, final pass or unsafe resource release occurs.                                  |
-| Q7  | Run two distinct setup owners and a colliding run identity. Distinct resources remain disjoint; collision is refused before privileged mutation, and foreign resources remain untouched.                                                                                                                                        |
-| Q8  | Bound a clean setup shutdown/export and one expired-budget attempt. Measure actual durations, preserve partial diagnostics on expiry and verify every phase uses remaining outer time, with no force-kill-to-pass or automatic retry.                                                                                           |
+Qualification executes only OS/harness facts: one empty measurement guest and
+explicitly named inert diagnostic objects, without a product installer, API,
+session record or authentication seed. Diagnostic removal/recreation never
+rebinds the measurement parent. Kernel queue overflow is observed on a separate
+owned filesystem queue; it supplies no claim that a cgroup was moved. Source
+review covers every specified invalidation handler independently of which
+physical events the finite declaration exercises.
 
-The qualification declaration assigns finite per-row and command budgets within
-one monotonic outer deadline no greater than the workflow runtime step. It
-reserves five minutes within that existing cap for shutdown/evidence, rather
-than adding time to the step. A setup command has at most 120 seconds, guest
-boot/closure at most 300 seconds each; the outer remaining budget always wins.
-Each diagnostic vector runs once, in a distinct namespace where needed. No
-unbounded repetitions, automatic compatibility updates or attempts to repair the
-host are part of qualification. Insufficient remaining time prevents a new row.
-Actual provisioning and complete-attempt fit are measured, never inferred from
-these limits. Failure retains bounded diagnostics and returns for independent
-disposition before another attempt.
+The qualification deadline and closure/export reserve are explicit declarations,
+not measured fit. Every action consumes the least remaining vector, command or
+outer allowance. Expired allowance prevents another action. No host repair,
+floating-version update, automatic retry or force-kill-to-pass belongs to the
+attempt. Actual provisioning/shutdown/export fit and all effective host facts
+remain operational results obtained only under separate authorization.
 
 ### Installation and acceptance
 
