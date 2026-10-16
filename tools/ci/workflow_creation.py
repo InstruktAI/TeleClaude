@@ -26,7 +26,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from tools.ci.workflow_foundation import FoundationHost, Outcome
 
@@ -622,9 +622,16 @@ def empty_retired_act_evidence(
 class Observer:
     """The approved observation primitives O1-O3, each a fresh public CLI process on the owner terminal."""
 
-    def __init__(self, host: FoundationHost, *, deadline: float | None = None) -> None:
+    def __init__(
+        self,
+        host: FoundationHost,
+        *,
+        deadline: float | None = None,
+        deadline_detail: str = B12_ERROR_PREFIX + B12_DETAIL_DEADLINE,
+    ) -> None:
         self.host = host
         self.deadline = deadline
+        self.deadline_detail = deadline_detail
 
     def run(self, argv: Sequence[str], *, retain: bool = True) -> Outcome:
         timeout: float = CLI_TIMEOUT_SECONDS
@@ -636,9 +643,9 @@ class Observer:
         return self.host.cli(argv, timeout, retain=retain)
 
     def require_time(self) -> None:
-        """Fail closed once the optional B12 wall-clock budget expires."""
+        """Fail closed once the caller's optional wall-clock budget expires."""
         if self.deadline is not None and time.monotonic() >= self.deadline:
-            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_DEADLINE)
+            raise binding_failure(self.deadline_detail)
 
     def wait(self, seconds: float) -> None:
         """Wait only within the optional B12 scenario deadline."""
@@ -885,9 +892,13 @@ def _signature_in(output: str) -> str | None:
     return next((signature for signature in GATE_SIGNATURES if signature in lowered), None)
 
 
-def _quiescent_item(observer: Observer, show_reads: list[Mapping[str, object]] | None = None) -> Mapping[str, object]:
+def _quiescent_item(
+    observer: Observer, show_reads: list[Mapping[str, object] | None] | None = None
+) -> Mapping[str, object]:
     """P4 and P5: the item sits in the tested table row and two reads, apart, are deeply equal."""
     first = observer.show(SLUG_FEATURE)
+    if show_reads is not None:
+        show_reads.append(first)
     if first is None:
         raise binding_failure(DETAIL_PRECONDITION.format(slug=SLUG_FEATURE, path="existence", found="absent"))
     for path, expected in (
@@ -908,16 +919,16 @@ def _quiescent_item(observer: Observer, show_reads: list[Mapping[str, object]] |
         ) from failure
     observer.wait(QUIESCENCE_GAP_SECONDS)
     second = observer.show(SLUG_FEATURE)
+    if show_reads is not None:
+        show_reads.append(second)
     if second is None or differences(first, second):
         paths = differences(first, second) if second is not None else ["absent"]
         raise binding_failure(DETAIL_NOT_QUIESCENT.format(paths=paths))
-    if show_reads is not None:
-        show_reads.extend((first, second))
     return second
 
 
 def _b12_quiescent_item(
-    observer: Observer, show_reads: list[Mapping[str, object]] | None = None
+    observer: Observer, show_reads: list[Mapping[str, object] | None] | None = None
 ) -> Mapping[str, object]:
     """Apply B12's active-feature condition to the existing R4 quiescence witness."""
     payload = _quiescent_item(observer, show_reads)
@@ -1188,6 +1199,9 @@ def _record_b12_failure(
     evidence.primary_failure = sanitize_text(
         evidence.primary_failure or B12_EXCEPTION_DETAIL.format(error_class=type(error).__name__, detail=error)
     )
+    evidence.prerequisites = cast(EvidenceObject, _sanitize_evidence(evidence.prerequisites, sanitize_text))
+    evidence.baselines = cast(EvidenceObject, _sanitize_evidence(evidence.baselines, sanitize_text))
+    evidence.cases = [cast(EvidenceObject, _sanitize_evidence(case, sanitize_text)) for case in evidence.cases]
     completed_path = attempts_path.parent / B12_COMPLETED_FILE
     marker_path = attempts_path.parent / B12_MARKER_FILE
     if not attempts_path.exists():
@@ -1300,25 +1314,20 @@ def _b12_readbacks(
     baseline_sessions: SessionView,
     baseline_slugs: set[str],
     case_id: str,
+    reads: list[EvidenceObject],
 ) -> tuple[EvidenceObject, list[str]]:
     """Capture immediate and settled public item/session/slug reads and compare each with the frozen baseline."""
-    reads: list[EvidenceObject] = []
     differences_found: list[str] = []
     for when, pause in ((B12_CASE_IMMEDIATE, 0.0), (B12_CASE_SETTLED, B12_SETTLE_SECONDS)):
         if pause:
             observer.wait(pause)
         item = observer.show(SLUG_FEATURE)
-        sessions = observer.sessions()
-        slugs = observer.slugs()
-        observation = _evidence_object(
-            {
-                B12Field.WHEN: when,
-                B12Field.ITEM: item,
-                B12Field.SESSION_IDS: sorted(sessions.ids),
-                B12Field.SLUGS: sorted(slugs),
-            }
-        )
+        observation = _evidence_object({B12Field.WHEN: when, B12Field.ITEM: item})
         reads.append(observation)
+        sessions = observer.sessions()
+        observation[B12Field.SESSION_IDS] = cast(list[EvidenceValue], sorted(sessions.ids))
+        slugs = observer.slugs()
+        observation[B12Field.SLUGS] = cast(list[EvidenceValue], sorted(slugs))
         if item is None:
             differences_found.append(B12_DETAIL_CASE_ABSENT.format(case_id=case_id, when=when))
         else:
@@ -1360,9 +1369,13 @@ def run_retired_act_matrix(
         enter_project(observer, project)
         _control_clearance(observer)
         baseline_sessions = observer.sessions()
+        evidence.baselines[B12Field.B0] = cast(list[EvidenceValue], sorted(baseline_sessions.ids))
         baseline_slugs = observer.slugs()
-        initial_show_reads: list[Mapping[str, object]] = []
+        evidence.baselines[B12Field.T0] = cast(list[EvidenceValue], sorted(baseline_slugs))
+        initial_show_reads: list[Mapping[str, object] | None] = []
+        evidence.baselines[B12Field.INITIAL_SHOW_READS] = cast(list[EvidenceValue], initial_show_reads)
         baseline_item = _b12_quiescent_item(observer, initial_show_reads)
+        evidence.baselines[B12Field.S0] = _sanitize_evidence(baseline_item, sanitize_text)
         evidence.prerequisites.update(
             _evidence_object(
                 {
@@ -1435,20 +1448,26 @@ def run_retired_act_matrix(
                     B12Field.RETIRED_TYPE: retired_type,
                 }
             )
-            before_show_reads: list[Mapping[str, object]] = []
-            before_item = _b12_quiescent_item(observer, before_show_reads)
-            before_sessions = observer.sessions()
-            before_slugs = observer.slugs()
-            before_differences = differences(baseline_item, before_item)
-            case[B12Field.BEFORE] = _evidence_object(
+            before_show_reads: list[Mapping[str, object] | None] = []
+            before = _evidence_object(
                 {
-                    B12Field.ITEM: _sanitize_evidence(before_item, sanitize_text),
-                    B12Field.BEFORE_SHOW_READS: _sanitize_evidence(before_show_reads, sanitize_text),
-                    B12Field.BEFORE_SESSIONS: sorted(before_sessions.ids),
-                    B12Field.BEFORE_SLUGS: sorted(before_slugs),
-                    B12Field.PRECALL_DIFFERENCES: before_differences,
+                    B12Field.ITEM: {},
+                    B12Field.BEFORE_SHOW_READS: before_show_reads,
+                    B12Field.BEFORE_SESSIONS: [],
+                    B12Field.BEFORE_SLUGS: [],
+                    B12Field.PRECALL_DIFFERENCES: [],
                 }
             )
+            case[B12Field.BEFORE] = before
+            before_item = _b12_quiescent_item(observer, before_show_reads)
+            before[B12Field.ITEM] = _sanitize_evidence(before_item, sanitize_text)
+            before[B12Field.BEFORE_SHOW_READS] = _sanitize_evidence(before_show_reads, sanitize_text)
+            before_sessions = observer.sessions()
+            before[B12Field.BEFORE_SESSIONS] = cast(list[EvidenceValue], sorted(before_sessions.ids))
+            before_slugs = observer.slugs()
+            before[B12Field.BEFORE_SLUGS] = cast(list[EvidenceValue], sorted(before_slugs))
+            before_differences = differences(baseline_item, before_item)
+            before[B12Field.PRECALL_DIFFERENCES] = cast(list[EvidenceValue], before_differences)
             if before_differences or before_sessions.ids != baseline_sessions.ids or before_slugs != baseline_slugs:
                 detail = B12_DETAIL_PRECALL_STATE_CHANGED.format(case_id=case_id, differences=before_differences)
                 raise platform_failure(B12_ERROR_PREFIX + detail)
@@ -1504,8 +1523,10 @@ def run_retired_act_matrix(
                     }
                 )
             )
+            case_reads: list[EvidenceObject] = []
+            case[B12Field.READBACKS] = cast(list[EvidenceValue], case_reads)
             after_reads, readback_differences = _b12_readbacks(
-                observer, baseline_item, baseline_sessions, baseline_slugs, case_id
+                observer, baseline_item, baseline_sessions, baseline_slugs, case_id, case_reads
             )
             sanitized_readbacks = _sanitize_evidence(after_reads[B12Field.READS], sanitize_text)
             case.update(
