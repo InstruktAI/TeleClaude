@@ -21,7 +21,7 @@ from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
-from teleclaude.core.workflow_machine.caller import group_sessions_of
+from teleclaude.core.workflow_machine.caller import GroupMember, group_members_of
 from teleclaude.core.workflow_machine.dispatch import OrchestratorSpec, orchestrator_session_id, start_orchestrator
 from teleclaude.core.workflow_machine.helpers import unsettled_helper_starts
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
@@ -92,6 +92,7 @@ ITEM_FAILED_LOG: Final = "workflow effect reconciliation failed for an item"
 PROJECT_FAILED_LOG: Final = "workflow effect reconciliation failed for a project"
 NO_HANDLER_LOG: Final = "workflow effect has no handler"
 NOT_FINISHED_LOG: Final = "workflow effect not finished yet; it stays pending and later effects of the item wait"
+REMOTE_CLOSE_FAILED_LOG: Final = "closing a session of another computer failed; the sweep finds it again"
 CLOSE_WAIT_SECONDS: Final = 10.0
 CLOSE_POLL_SECONDS: Final = 0.25
 SWEEP_ROUNDS: Final = 6
@@ -264,6 +265,24 @@ async def _close_session(session_id: str) -> bool:
     return await _await_closed(session_id)
 
 
+async def _close_member(member: GroupMember) -> None:
+    """End one member of the holder\'s group, on this computer or on the one it runs on.
+
+    A session of another computer is closed by forwarding the close to that computer as the platform; it is not waited
+    for here. The sweep repeats until the cluster cache no longer shows any member live, so a close that has not taken
+    effect, or whose answer is not yet cached, is simply found again.
+    """
+    if not member.computer:
+        await _close_session(member.session_id)
+        return
+    command = CloseSessionCommand(session_id=member.session_id)
+    command.computer = member.computer
+    try:
+        await dispatch_command(get_command_service().client, command, principal=SYSTEM_DAEMON_PRINCIPAL)
+    except Exception:  # supervision boundary: a peer that cannot be reached leaves the member live, and the sweep waits
+        logger.exception(REMOTE_CLOSE_FAILED_LOG, session_id=member.session_id, computer=member.computer)
+
+
 async def _end_session(context: EffectContext, effect: PendingEffect) -> None:
     """End the session and acknowledge only once the session lifecycle shows it closed.
 
@@ -284,11 +303,11 @@ async def _sweep_helpers(context: EffectContext, effect: PendingEffect) -> None:
     for _ in range(SWEEP_ROUNDS):
         state = await context.store.read_state_by_id(context.item.todo_id)
         in_flight = state is not None and bool(unsettled_helper_starts(workflow_record_of(state)))
-        live = await group_sessions_of(holder)
+        live = await group_members_of(holder)
         if not live and not in_flight:
             return
-        for session_id in live:
-            await _close_session(session_id)
+        for member in live:
+            await _close_member(member)
         await asyncio.sleep(CLOSE_POLL_SECONDS)
     raise EffectNotFinished(effect.id)
 

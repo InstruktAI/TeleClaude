@@ -10,7 +10,10 @@ from dataclasses import dataclass
 from typing import Final
 
 from teleclaude.caller_identity import HUMAN_PRINCIPAL_PREFIX
+from teleclaude.config.machine import config
+from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.db import db
+from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.session_utils import session_in_claiming_group
 
 NO_PRINCIPAL_EMAIL: Final = ""
@@ -68,24 +71,66 @@ async def child_sessions_of(holder_session_id: str) -> tuple[str, ...]:
     return tuple(child.session_id for child in children)
 
 
-async def group_sessions_of(holder_session_id: str) -> tuple[str, ...]:
-    """Every open session started from the holder, transitively; the holder itself is not among them.
+@dataclass(frozen=True)
+class GroupMember:
+    """A live session of a claiming group and the computer it runs on; empty for a session of this computer."""
+
+    session_id: str
+    computer: str = ""
+
+
+def _remote_snapshots() -> list[SessionSnapshot]:
+    """The other computers\' sessions this computer knows from the cluster cache, with the initiator each recorded.
+
+    Empty while there is no cache (no daemon wiring), so a caller outside the daemon sees this computer\'s sessions only.
+    """
+    from teleclaude.core.command_registry import get_command_service  # noqa: PLC0415 - deferred cycle
+
+    try:
+        cache = get_command_service().client.cache
+    except RuntimeError:
+        return []
+    if cache is None:
+        return []
+    return [
+        session
+        for session in cache.get_sessions()
+        if session.computer not in (None, "", LOCAL_COMPUTER, config.computer.name)
+    ]
+
+
+async def group_members_of(holder_session_id: str) -> tuple[GroupMember, ...]:
+    """Every live session started from the holder, transitively and on any computer; the holder is not among them.
 
     The persisted initiator links are followed through sessions that have already ended, so a live session started by
-    an ended helper is still found.
+    an ended helper is still found. Sessions of this computer come from its store; sessions of the others come from the
+    cluster cache, which carries each one\'s initiator and whether it has closed, and a session started by a remote
+    one is found the same way.
     """
+    remote = _remote_snapshots()
     seen: set[str] = {holder_session_id}
-    live: list[str] = []
+    live: list[GroupMember] = []
     frontier = [holder_session_id]
     while frontier:
-        started = await db.list_sessions(
-            include_closed=True, include_headless=True, initiator_session_id=frontier.pop()
-        )
+        parent = frontier.pop()
+        started = await db.list_sessions(include_closed=True, include_headless=True, initiator_session_id=parent)
         for session in started:
             if session.session_id in seen:
                 continue
             seen.add(session.session_id)
             frontier.append(session.session_id)
             if session.closed_at is None:
-                live.append(session.session_id)
+                live.append(GroupMember(session.session_id))
+        for snapshot in remote:
+            if snapshot.initiator_session_id != parent or snapshot.session_id in seen:
+                continue
+            seen.add(snapshot.session_id)
+            frontier.append(snapshot.session_id)
+            if snapshot.closed_at is None:
+                live.append(GroupMember(snapshot.session_id, str(snapshot.computer)))
     return tuple(live)
+
+
+async def group_sessions_of(holder_session_id: str) -> tuple[str, ...]:
+    """The ids of every open session started from the holder, transitively and on any computer."""
+    return tuple(member.session_id for member in await group_members_of(holder_session_id))
