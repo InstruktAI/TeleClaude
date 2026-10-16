@@ -6,6 +6,7 @@ act command takes nothing about the caller from what the caller typed.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
@@ -189,13 +190,35 @@ def _remote_view() -> RemoteView:
 _PROVEN_CLOSED: set[str] = set()
 
 
-async def _open_sessions_of(computer: str) -> tuple[SessionSnapshot, ...] | None:
+LISTING_TTL_SECONDS: Final = 15.0
+_LISTINGS: dict[str, tuple[float, tuple[SessionSnapshot, ...]]] = {}
+
+
+def peer_computers() -> frozenset[str]:
+    """The other computers this computer has discovered or been configured with, online or not."""
+    from teleclaude.core.command_registry import get_command_service  # noqa: PLC0415 - deferred cycle
+
+    names = {remote.name for remote in config.remote_computers}
+    try:
+        cache = get_command_service().client.cache
+    except RuntimeError:
+        cache = None
+    if cache is not None:
+        names.update(computer.name for computer in cache.get_computers())
+    return frozenset(name for name in names if name != config.computer.name)
+
+
+async def _open_sessions_of(computer: str, *, reuse: bool = False) -> tuple[SessionSnapshot, ...] | None:
     """Every open session the named computer holds, read from that computer now; None when it did not answer.
 
     The answer is the computer\'s own record at the moment it answers. A session it created before this read began is
     in the answer while it is open and absent once it has closed, which is what the cluster cache cannot say: its
-    update for a session just created may not have reached this computer yet.
+    update for a session just created may not have reached this computer yet. A caller whose question concerns only
+    sessions of a holder that has ended may reuse a listing read a few seconds ago, since an ended holder starts no
+    session after it: whatever such a listing lacks stays absent.
     """
+    if reuse and computer in _LISTINGS and time.monotonic() - _LISTINGS[computer][0] < LISTING_TTL_SECONDS:
+        return _LISTINGS[computer][1]
     from teleclaude.core.command_dispatch import (  # noqa: PLC0415 - deferred cycle
         RemoteDispatchError,
         relay_caller_read,
@@ -213,7 +236,9 @@ async def _open_sessions_of(computer: str) -> tuple[SessionSnapshot, ...] | None
         parsed = parse_peer_session_snapshots(listing, computer)
         if len(parsed) != len(listing):
             return None
-        return tuple(s for s in parsed if s.closed_at is None)
+        opened = tuple(s for s in parsed if s.closed_at is None)
+        _LISTINGS[computer] = (time.monotonic(), opened)
+        return opened
     except (RemoteDispatchError, RuntimeError, ValueError, OSError):
         return None
 
@@ -240,7 +265,11 @@ class GroupView:
 
 
 async def group_view_of(
-    holder_session_id: str, recorded: Sequence[RemoteMember] = (), starts: Sequence[HelperStart] = ()
+    holder_session_id: str,
+    recorded: Sequence[RemoteMember] = (),
+    starts: Sequence[HelperStart] = (),
+    *,
+    also_ask: Sequence[str] = (),
 ) -> GroupView:
     """Every session started from the holder, transitively and on any computer, with what is not positively known.
 
@@ -250,7 +279,8 @@ async def group_view_of(
     does not show open is ended only when its own computer says so: that computer is asked, and its answer, read after
     the member was retained, either lists the member (live) or does not (ended, for good). A computer that does not
     answer leaves its members unresolved. A creation carried to a computer without ever naming its session is found
-    the same way, from that computer\'s own listing.
+    the same way, from that computer\'s own listing. ``also_ask`` names computers to read although nothing retained
+    points at them: the helpers of a holder that ended before the item retained anything may be on any of them.
     """
     view = _remote_view()
     open_remote = {snapshot.session_id: snapshot for snapshot in view.snapshots if snapshot.closed_at is None}
@@ -263,6 +293,8 @@ async def group_view_of(
     fresh: dict[str, tuple[SessionSnapshot, ...] | None] = {
         computer: await _open_sessions_of(computer) for computer in sorted(asked)
     }
+    for computer in sorted(set(also_ask) - asked):
+        fresh[computer] = await _open_sessions_of(computer, reuse=True)
     answered = {computer: sessions for computer, sessions in fresh.items() if sessions is not None}
     snapshots = tuple(s for s in view.snapshots if s.computer not in answered) + tuple(
         s for sessions in answered.values() for s in sessions

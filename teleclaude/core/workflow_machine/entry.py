@@ -25,6 +25,7 @@ from teleclaude.core.workflow_machine.dependencies import unmet_for_preparation,
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.heads import observe_item_supervised
 from teleclaude.core.workflow_machine.helpers import (
+    UNANSWERED_PREFIX,
     earlier_claim_sessions,
     settled_remote_starts,
     unsettled_helper_starts,
@@ -121,6 +122,10 @@ class EntryRefusal(StrEnum):
     EARLIER_CLAIM = (
         "{item}: session {session} of an earlier claim is still running on it; it is the overseer's to resolve, "
         "and no driver is started until it has ended"
+    )
+    EARLIER_UNANSWERED = (
+        "{item}: no answer from computer {computer} about the helpers of an ended earlier holder; it is the overseer's "
+        "to resolve, and no driver is started until that computer answers"
     )
     HOLD_BRAKE = "{item} is held by its hold brake; the lifecycle runner starts nothing for it"
     HEAD_UNREADABLE = (
@@ -757,6 +762,10 @@ async def enter(request: EntryRequest) -> EntryResult:
         earlier = await earlier_claim_sessions(state.workflow, holder or NO_SESSION, request.item, request.project_root)
         left = [session for session in earlier if not (bound and session == request.caller_session_id)]
         if left:
+            if left[0].startswith(UNANSWERED_PREFIX):
+                raise _refuse(
+                    EntryRefusal.EARLIER_UNANSWERED, item=request.item, computer=left[0].removeprefix(UNANSWERED_PREFIX)
+                )
             raise _refuse(EntryRefusal.EARLIER_CLAIM, item=request.item, session=left[0])
     _, workflow = _driver_for(publication, phase, request.item)
     branch = request.item

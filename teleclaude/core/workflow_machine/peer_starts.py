@@ -68,6 +68,11 @@ def release_in_flight(keys: Sequence[str]) -> None:
             _IN_FLIGHT.pop(key, None)
 
 
+def creating_here(key: str) -> bool:
+    """Whether a creation with this key is being performed or carried by this process right now."""
+    return key in _IN_FLIGHT
+
+
 def record_unresolved(key: str, target: str, deadline_at: float) -> None:
     """Keep a carried creation as in progress, durably, from before it is handed to the target computer.
 

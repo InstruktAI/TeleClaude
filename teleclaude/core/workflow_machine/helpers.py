@@ -24,11 +24,12 @@ from teleclaude.core.models import Session
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.operation_caller_identity import relayed_caller_computer
 from teleclaude.core.process_identity import ProcessState, probe_process, start_identity
-from teleclaude.core.session_utils import cached_remote_session
-from teleclaude.core.workflow_machine.caller import group_view_of, in_claiming_group
+from teleclaude.core.session_utils import cached_remote_session, session_descends_from
+from teleclaude.core.workflow_machine.caller import group_view_of, in_claiming_group, peer_computers
 from teleclaude.core.workflow_machine.peer_starts import (
     StartEntry,
     clear_unresolved,
+    creating_here,
     creation_closed_at,
     keys_in_flight_at,
     mark_in_flight,
@@ -52,6 +53,7 @@ EARLIER_GROUP = (
     "{item}: session {session} belongs to an earlier claim, so it starts no session; it is the overseer's to resolve"
 )
 ANCESTOR_WALK_CAP = 32
+UNANSWERED_PREFIX = "unanswered:"
 NO_IDENTITY = "{item}: the creating process cannot be named, so a helper start cannot be recorded"
 UNKNOWN_ITEM = "no item {item} in this project"
 START_ACT = "helper-start"
@@ -109,10 +111,11 @@ def unsettled_helper_starts(record: WorkflowRecord, settled_remote: frozenset[st
 def _unsettled(start: HelperStart, settled_remote: frozenset[str]) -> bool:
     if start.owner_computer:
         return start.key not in settled_remote
-    running = not start.owner_identity or probe_process(start.owner_pid, start.owner_identity) is not ProcessState.ENDED
     if start.computer and start.carry_deadline:
-        return running or start.key not in settled_remote
-    return running
+        # This process only carries the creation to the target: its fence is open while it waits for the answer, and
+        # afterwards only the target can say whether the carried request ran, runs, or can still arrive.
+        return creating_here(start.key) or start.key not in settled_remote
+    return not start.owner_identity or probe_process(start.owner_pid, start.owner_identity) is not ProcessState.ENDED
 
 
 def _same_project(session_project: str | None, project_root: str) -> bool:
@@ -136,7 +139,11 @@ async def _works_on(session_id: str, item: str, project_root: str) -> bool:
 
 
 async def _previous_machine_helpers(
-    item: str, project_root: str, current: set[str], retained: Sequence[RemoteMember] = ()
+    item: str,
+    project_root: str,
+    current: set[str],
+    retained: Sequence[RemoteMember] = (),
+    tracked: Sequence[str] = (),
 ) -> list[str]:
     """Live sessions a claim the previous machine made left running, on any computer.
 
@@ -156,8 +163,16 @@ async def _previous_machine_helpers(
     for former in await db.list_sessions(include_closed=True, include_headless=True, working_slug=item):
         if former.session_id in current or not _same_project(former.project_path, project_root):
             continue
-        view = await group_view_of(former.session_id, retained)
-        for member in [*(m.session_id for m in view.live), *view.unresolved]:
+        if former.session_id in tracked or any(
+            [await session_descends_from(former.session_id, claimer) for claimer in tracked]
+        ):
+            continue  # a holder the item\'s ledger records, and its descendants, are tracked with retained members
+        view = await group_view_of(former.session_id, retained, also_ask=sorted(peer_computers()))
+        for member in [
+            *(m.session_id for m in view.live),
+            *view.unresolved,
+            *(f"{UNANSWERED_PREFIX}{computer}" for computer in view.unknown),
+        ]:
             if member not in current and member not in found:
                 found.append(member)
     return found
@@ -189,7 +204,8 @@ async def earlier_claim_sessions(
         members = [*earlier, *([claimer] if session and session.closed_at is None else [])]
         found.extend(member for member in members if member not in current and member not in found)
     if item and project_root:
-        legacy = await _previous_machine_helpers(item, project_root, current, retained)
+        tracked = [claimer for claimer in dict.fromkeys([*recorded, *record.claimers, holder]) if claimer]
+        legacy = await _previous_machine_helpers(item, project_root, current, retained, tracked)
         found.extend(member for member in legacy if member not in found)
     return tuple(found)
 
