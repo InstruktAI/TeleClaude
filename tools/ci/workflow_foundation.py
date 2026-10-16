@@ -169,6 +169,9 @@ class Outcome:
 
     exit_status: int | None
     output: str
+    stderr: str = ""
+    diagnostics: str = ""
+    duration_seconds: float = 0.0
 
 
 class FoundationHost(Protocol):

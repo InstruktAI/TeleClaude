@@ -45,7 +45,7 @@ from tools.ci import workflow_waiting as waiting
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
 _UTF8 = "utf-8"
-_REPORT_SCHEMA_VERSION = 2
+_REPORT_SCHEMA_VERSION = 3
 _DEFAULT_ROOT = "."
 _REPORT_TEMP_SUFFIX = ".tmp"
 _LINE_BREAK = "\n"
@@ -173,6 +173,7 @@ _SCENARIO_RELEASE_BLUEPRINT = "UC-BPF1"
 _SCENARIO_WORKFLOW_FOUNDATION = "UC-WF-F0"
 _SCENARIO_WORKFLOW_CREATION = "UC-WF-R1"
 _SCENARIO_WORKFLOW_RETIRED_ACTS = "UC-WF-R4"
+_SCENARIO_WORKFLOW_RETIRED_ACTS_B12 = "UC-WF-B12"
 _SCENARIO_WORKFLOW_PLANS = "UC-WF-R2"
 _SCENARIO_WORKFLOW_HOLDS = "UC-WF-R3"
 _SCENARIO_WORKFLOW_REMOVAL = "UC-WF-R5"
@@ -215,6 +216,7 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_WORKFLOW_FOUNDATION,
     _SCENARIO_WORKFLOW_CREATION,
     _SCENARIO_WORKFLOW_RETIRED_ACTS,
+    _SCENARIO_WORKFLOW_RETIRED_ACTS_B12,
     _SCENARIO_WORKFLOW_PLANS,
     _SCENARIO_WORKFLOW_HOLDS,
     _SCENARIO_WORKFLOW_REMOVAL,
@@ -243,6 +245,7 @@ _SCENARIO_PREREQUISITES = {
         _SCENARIO_PROJECT_REGISTRATION,
         _SCENARIO_WORKFLOW_CREATION,
     ),
+    _SCENARIO_WORKFLOW_RETIRED_ACTS_B12: (_SCENARIO_WORKFLOW_RETIRED_ACTS,),
     _SCENARIO_WORKFLOW_PLANS: (
         _SCENARIO_RUNTIME_READY,
         _SCENARIO_CONFIG_PATCH,
@@ -342,6 +345,7 @@ _PROCESS_SUCCESS = 0
 _PROCESS_FAILURE = 1
 _PROCESS_LAUNCH_EXIT_CODE = 127
 _REPORT_NAME_TEMPLATE = "runtime-acceptance-{identifier}.json"
+_REPORT_RETIRED_ACT_DELIVERY_PATH = "retired_act_delivery_path"
 _VENV_CONFIG_FILENAME = "pyvenv.cfg"
 _PYTHON_DIRECTORY = "bin"
 _PATH_SEPARATOR = os.pathsep
@@ -752,6 +756,8 @@ class AcceptanceReport:
     duration_seconds: float
     selection: tuple[str, ...] = ()
     workflow_event_evidence: JSONObject = field(default_factory=dict)
+    retired_act_evidence: creation.RetiredActEvidence = field(default_factory=creation.empty_retired_act_evidence)
+    retired_act_delivery_path: Path | None = field(default=None, repr=False)
 
     @property
     def passed(self) -> bool:
@@ -945,6 +951,10 @@ class FullRuntimeResources:
     workflow_flow: full_flow.WorkflowFlow | None = None
     workflow_chain: tuple[str, ...] = ()
     retained: list[str] = field(default_factory=list)
+    retired_act_selected: bool = False
+    retired_act_evidence: creation.RetiredActEvidence = field(default_factory=creation.empty_retired_act_evidence)
+    retired_act_deadline: float | None = None
+    owner_identity_facts: JSONObject = field(default_factory=dict)
 
     def open_admin_terminal(self) -> PersistentTerminal:
         """Create the one administrator PTY retained for fresh CLI processes."""
@@ -1295,6 +1305,11 @@ def _record_terminal_command(
 ) -> tuple[int | None, str]:
     """Run one fresh CLI command on an owned PTY and retain bounded sanitized evidence."""
     started = time.monotonic()
+    if resources.retired_act_deadline is not None:
+        remaining = resources.retired_act_deadline - started
+        if remaining <= 0:
+            raise creation.binding_failure(creation.B12_ERROR_PREFIX + creation.B12_DETAIL_DEADLINE)
+        timeout_seconds = min(timeout_seconds or _FULL_COMMAND_TIMEOUT_SECONDS, remaining)
     argv_tuple = tuple(argv)
     if argv_tuple and argv_tuple[0] == str(_CLI_EXECUTABLE):
         argv_tuple = (str(resources.source_root / _CLI_EXECUTABLE), *argv_tuple[1:])
@@ -1752,16 +1767,188 @@ def _restore_full_profile_changes(resources: FullRuntimeResources, evidence: lis
 
 def _record_retained_workflow_markers(resources: FullRuntimeResources) -> bool:
     retained_markers = sorted(resources.temporary_root.rglob("RETAINED.json"))
+    unresolved_marker = False
     for marker in retained_markers:
         try:
-            record = json.loads(marker.read_text(encoding=_UTF8))
-            reason = record.get("reason") if isinstance(record, Mapping) else None
+            marker_bytes = marker.read_bytes()
+            record = json.loads(marker_bytes)
+            if _is_b12_delivery_marker(resources, marker, record, marker_bytes):
+                continue
+            reason = record.get(creation.B12Field.REASON) if isinstance(record, Mapping) else None
             resources.retained.append(
                 f"retained marker {marker}: {reason if isinstance(reason, str) else 'unreadable status'}"
             )
+            unresolved_marker = True
         except (OSError, ValueError) as error:
             resources.retained.append(f"retained marker {marker} cannot be read: {type(error).__name__}")
-    return bool(retained_markers)
+            unresolved_marker = True
+    return unresolved_marker
+
+
+def _is_b12_delivery_marker(resources: FullRuntimeResources, marker: Path, record: object, marker_bytes: bytes) -> bool:
+    """Recognize only the completed B12 marker retained until report.json is safely written."""
+    expected = resources.temporary_root / creation.B12_MATRIX_DIRECTORY / creation.B12_MARKER_FILE
+    if marker != expected or resources.retired_act_evidence.status != creation.B12_STATUS_COMPLETE:
+        return False
+    if not isinstance(record, Mapping):
+        return False
+    return (
+        record.get(creation.B12Field.SCHEMA_VERSION) == creation.B12_JSON_SCHEMA
+        and record.get(creation.B12Field.REASON) == creation.B12_REASON
+        and record.get(creation.B12Field.SOURCE_REVISION) == resources.source_revision
+        and record.get(creation.B12Field.SOURCE_TREE) == resources.source_tree
+        and record.get(creation.B12Field.ISSUE_REVISION) == creation.B12_ISSUE_REVISION
+        and record.get(creation.B12Field.ASSERTION_SHA256) == creation.B12_ARTIFACT_SHA
+        and record.get(creation.B12Field.ORDERED_CASES) == [case_id for case_id, _, _ in creation.B12_CASES]
+        and record.get(creation.B12Field.ORDERED_CASE_PLAN)
+        == [
+            {
+                creation.B12Field.CASE_ID: case_id,
+                creation.B12Field.ARGV: list(argv),
+                creation.B12Field.RETIRED_TYPE: retired_type,
+            }
+            for case_id, argv, retired_type in creation.B12_CASES
+        ]
+        and record.get(creation.B12Field.ATTEMPTS_PATH) == str((marker.parent / creation.B12_ATTEMPTS_FILE).resolve())
+        and isinstance(record.get(creation.B12Field.S0), Mapping)
+        and isinstance(record.get(creation.B12Field.B0), list)
+        and isinstance(record.get(creation.B12Field.T0), list)
+        and hashlib.sha256(marker_bytes).hexdigest()
+        == resources.retired_act_evidence.carrier.get(creation.B12Field.MARKER_SHA256)
+        and len(marker_bytes) == resources.retired_act_evidence.carrier.get(creation.B12Field.MARKER_BYTE_COUNT)
+        and all(
+            case.get(creation.B12Field.CLASSIFICATION) == creation.B12_CLASS_VERIFIED
+            for case in resources.retired_act_evidence.cases
+        )
+    )
+
+
+def _remove_temporary_root_except_b12(resources: FullRuntimeResources) -> None:
+    """Remove ordinary disposable profile contents while preserving B12's pending report carrier."""
+    retained_carrier = resources.temporary_root / creation.B12_MATRIX_DIRECTORY
+    for child in resources.temporary_root.iterdir():
+        if child == retained_carrier:
+            continue
+        if child.is_symlink() or not child.is_dir():
+            child.unlink()
+        else:
+            shutil.rmtree(child)
+
+
+def _remove_temporary_profile_root(resources: FullRuntimeResources) -> None:
+    """Preserve only the complete B12 report-delivery carrier until write_report succeeds."""
+    delivery_marker = resources.temporary_root / creation.B12_MATRIX_DIRECTORY / creation.B12_MARKER_FILE
+    if resources.retired_act_evidence.status == creation.B12_STATUS_COMPLETE and delivery_marker.is_file():
+        _remove_temporary_root_except_b12(resources)
+    else:
+        shutil.rmtree(resources.temporary_root)
+
+
+def _freeze_retired_act_evidence(resources: FullRuntimeResources) -> None:
+    """Copy local B12 carrier integrity into its in-memory report before cleanup can remove files."""
+    snapshot = resources.retired_act_evidence
+    if snapshot.status == creation.B12_STATUS_NOT_SELECTED:
+        return
+    path = resources.temporary_root / creation.B12_MATRIX_DIRECTORY / creation.B12_ATTEMPTS_FILE
+    marker_path = path.parent / creation.B12_MARKER_FILE
+    if not path.exists():
+        if marker_path.exists() or snapshot.carrier.get(creation.B12Field.FRAMING) != creation.B12_FRAMING_NOT_CREATED:
+            snapshot.status = creation.B12_STATUS_UNPROVEN
+            snapshot.evidence_failure = creation.B12_DETAIL_MISSING_CARRIER
+            snapshot.carrier[creation.B12Field.READ_ERROR] = snapshot.evidence_failure
+        return
+    try:
+        raw = path.read_bytes()
+        embedded = creation.embedded_b12_evidence_bytes(snapshot)
+        snapshot.carrier.update(
+            {
+                creation.B12Field.ATTEMPTS_PATH: resources.sanitize(str(path.resolve())),
+                creation.B12Field.ORIGINAL_SHA256: hashlib.sha256(raw).hexdigest(),
+                creation.B12Field.ORIGINAL_BYTE_COUNT: len(raw),
+                creation.B12Field.FRAMING: (
+                    creation.B12_FRAMING_COMPLETE
+                    if not raw or raw.endswith(_LINE_BREAK.encode(_UTF8))
+                    else creation.B12_FRAMING_PARTIAL
+                ),
+                creation.B12Field.RAW_TEXT: resources.sanitize(raw.decode(_UTF8, errors=_UTF8_REPLACEMENT))[
+                    :_DIAGNOSTIC_LIMIT
+                ],
+                creation.B12Field.RAW_TEXT_TRUNCATED: len(raw) > _DIAGNOSTIC_LIMIT,
+                creation.B12Field.EMBEDDED_SHA256: hashlib.sha256(embedded).hexdigest(),
+                creation.B12Field.EMBEDDED_BYTE_COUNT: len(embedded),
+                creation.B12Field.EMBEDDED_SCOPE: creation.B12_EMBEDDED_SCOPE,
+            }
+        )
+        try:
+            records = creation.validate_b12_attempts(raw, complete=snapshot.status == creation.B12_STATUS_COMPLETE)
+            snapshot.carrier[creation.B12Field.LINE_COUNT] = len(records)
+        except Exception as error:
+            snapshot.status = creation.B12_STATUS_UNPROVEN
+            snapshot.evidence_failure = creation.B12_EXCEPTION_DETAIL.format(
+                error_class=type(error).__name__, detail=error
+            )
+            snapshot.carrier[creation.B12Field.READ_ERROR] = snapshot.evidence_failure
+    except Exception as error:
+        snapshot.status = creation.B12_STATUS_UNPROVEN
+        snapshot.evidence_failure = creation.B12_EXCEPTION_DETAIL.format(error_class=type(error).__name__, detail=error)
+        snapshot.carrier[creation.B12Field.READ_ERROR] = snapshot.evidence_failure
+    if path.exists():
+        try:
+            marker_raw = marker_path.read_bytes()
+            snapshot.carrier[creation.B12Field.MARKER_PATH] = resources.sanitize(str(marker_path.resolve()))
+            if hashlib.sha256(marker_raw).hexdigest() != snapshot.carrier.get(creation.B12Field.MARKER_SHA256) or len(
+                marker_raw
+            ) != snapshot.carrier.get(creation.B12Field.MARKER_BYTE_COUNT):
+                raise ValueError(creation.B12_CARRIER_ERROR_MARKER)
+        except Exception as error:
+            snapshot.status = creation.B12_STATUS_UNPROVEN
+            snapshot.evidence_failure = creation.B12_EXCEPTION_DETAIL.format(
+                error_class=type(error).__name__, detail=error
+            )
+            snapshot.carrier[creation.B12Field.READ_ERROR] = snapshot.evidence_failure
+    completed_path = path.parent / creation.B12_COMPLETED_FILE
+    if snapshot.status == creation.B12_STATUS_COMPLETE and not completed_path.is_file():
+        snapshot.status = creation.B12_STATUS_UNPROVEN
+        snapshot.evidence_failure = creation.B12_DETAIL_COMPLETED_SNAPSHOT
+        snapshot.carrier[creation.B12Field.COMPLETED_READ_ERROR] = snapshot.evidence_failure
+    elif completed_path.is_file():
+        try:
+            expected_completed_hash = snapshot.carrier.get(creation.B12Field.COMPLETED_SHA256)
+            expected_completed_bytes = snapshot.carrier.get(creation.B12Field.COMPLETED_BYTE_COUNT)
+            completed_raw = completed_path.read_bytes()
+            completed = json.loads(completed_raw)
+            snapshot.carrier.update(
+                {
+                    creation.B12Field.COMPLETED_PATH: resources.sanitize(str(completed_path.resolve())),
+                    creation.B12Field.COMPLETED_SHA256: hashlib.sha256(completed_raw).hexdigest(),
+                    creation.B12Field.COMPLETED_BYTE_COUNT: len(completed_raw),
+                    creation.B12Field.COMPLETED_RAW_TEXT: resources.sanitize(
+                        completed_raw.decode(_UTF8, errors=_UTF8_REPLACEMENT)
+                    )[:_DIAGNOSTIC_LIMIT],
+                    creation.B12Field.COMPLETED_RAW_TEXT_TRUNCATED: len(completed_raw) > _DIAGNOSTIC_LIMIT,
+                    creation.B12Field.COMPLETED_READ_ERROR: _EMPTY,
+                }
+            )
+            if snapshot.status == creation.B12_STATUS_COMPLETE and (
+                not isinstance(completed, dict)
+                or completed.get(creation.B12Field.STATUS) != creation.B12_STATUS_COMPLETE
+                or completed.get(creation.B12Field.ORDERED_RESULTS) != snapshot.cases
+                or completed.get(creation.B12Field.ATTEMPTS_SHA256)
+                != snapshot.carrier.get(creation.B12Field.ORIGINAL_SHA256)
+                or completed.get(creation.B12Field.ATTEMPTS_BYTE_COUNT)
+                != snapshot.carrier.get(creation.B12Field.ORIGINAL_BYTE_COUNT)
+                or completed.get(creation.B12Field.ATTEMPTS_LINE_COUNT)
+                != snapshot.carrier.get(creation.B12Field.LINE_COUNT)
+                or hashlib.sha256(completed_raw).hexdigest() != expected_completed_hash
+                or len(completed_raw) != expected_completed_bytes
+            ):
+                raise ValueError(creation.B12_DETAIL_COMPLETED_SNAPSHOT)
+        except Exception as error:
+            snapshot.status = creation.B12_STATUS_UNPROVEN
+            snapshot.evidence_failure = creation.B12_EXCEPTION_DETAIL.format(
+                error_class=type(error).__name__, detail=error
+            )
+            snapshot.carrier[creation.B12Field.COMPLETED_READ_ERROR] = snapshot.evidence_failure
 
 
 def _close_full_profile_resources(
@@ -1769,6 +1956,13 @@ def _close_full_profile_resources(
     cleanup_evidence: list[CommandEvidence],
 ) -> None:
     """Stop the supported runtime, restore temporary declarations and remove owned resources."""
+    b12_status_before_freeze = resources.retired_act_evidence.status
+    _freeze_retired_act_evidence(resources)
+    if (
+        b12_status_before_freeze == creation.B12_STATUS_COMPLETE
+        and resources.retired_act_evidence.status != creation.B12_STATUS_COMPLETE
+    ):
+        resources.retained.append(creation.B12_DETAIL_POSTFREEZE)
     failures: list[str] = []
     stop_outcome = resources.temporary_root / _STOP_OUTCOME_NAME
     if resources.install_attempted:
@@ -1823,7 +2017,7 @@ def _close_full_profile_resources(
         if resources.fixture_setup is not None and foundation.remove_fixture(resources.fixture_setup):
             failures.append(_FULL_FIXTURE_CLEANUP_ERROR)
         try:
-            shutil.rmtree(resources.temporary_root)
+            _remove_temporary_profile_root(resources)
         except OSError:
             failures.append(_FULL_TEMP_CLEANUP_ERROR)
     if failures:
@@ -1935,7 +2129,14 @@ class _FoundationRunner:
         terminal = self._resources.open_admin_terminal()
         evidence = self._evidence if retain else []
         status, output = _record_terminal_command(self._resources, terminal, argv, evidence, timeout_seconds)
-        return foundation.Outcome(status, output)
+        recorded = evidence[-1] if evidence else None
+        return foundation.Outcome(
+            status,
+            output,
+            stderr=recorded.stderr if recorded is not None else _EMPTY,
+            diagnostics=recorded.diagnostics if recorded is not None else _EMPTY,
+            duration_seconds=recorded.duration_seconds if recorded is not None else 0.0,
+        )
 
     def process(
         self, argv: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout_seconds: float
@@ -2035,10 +2236,65 @@ def _full_workflow_creation(resources: FullRuntimeResources, evidence: list[Comm
 
 
 def _full_workflow_retired_acts(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
-    """Journey R4: a retired previous-machine act is refused naming the door, and writes nothing."""
+    """Journey R4, optionally extended by B12's approved retired-act vocabulary matrix."""
     if resources.project_path is None:
+        if resources.retired_act_selected:
+            resources.retired_act_evidence.selected_amendment = creation.B12_AMENDMENT
+            resources.retired_act_evidence.status = creation.B12_STATUS_UNPROVEN
+            resources.retired_act_evidence.primary_failure = _FULL_FOUNDATION_PREREQUISITES
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
-    creation.run_retired_acts(_FoundationRunner(resources, evidence), resources.project_path, resources.source_root)
+    runner = _FoundationRunner(resources, evidence)
+    if resources.retired_act_selected:
+        started_at = time.monotonic()
+        resources.retired_act_deadline = started_at + creation.B12_SCENARIO_SECONDS
+        resources.retired_act_evidence.selected_amendment = creation.B12_AMENDMENT
+        resources.retired_act_evidence.status = creation.B12_STATUS_PARTIAL
+        try:
+            _full_owner_identity(resources, evidence)
+            resources.retired_act_evidence.prerequisites[creation.B12Field.OWNER_IDENTITY] = dict(
+                resources.owner_identity_facts
+            )
+            creation.run_retired_act_matrix(
+                runner,
+                resources.project_path,
+                resources.source_root,
+                resources.temporary_root,
+                resources.retired_act_evidence,
+                resources.retained.append,
+                lambda reason: resources.retained.remove(reason) if reason in resources.retained else None,
+                resources.sanitize,
+                started_at=started_at,
+            )
+        except KeyboardInterrupt as error:
+            resources.retired_act_evidence.status = creation.B12_STATUS_UNPROVEN
+            resources.retired_act_evidence.primary_failure = resources.sanitize(
+                creation.B12_INTERRUPT_DETAIL.format(detail=error)
+            )
+            resources.retired_act_evidence.duration_seconds = time.monotonic() - started_at
+            raise
+        except Exception as error:
+            resources.retired_act_evidence.status = creation.B12_STATUS_UNPROVEN
+            resources.retired_act_evidence.primary_failure = resources.sanitize(
+                creation.B12_EXCEPTION_DETAIL.format(error_class=type(error).__name__, detail=error)
+            )
+            resources.retired_act_evidence.duration_seconds = time.monotonic() - started_at
+            raise
+        finally:
+            resources.retired_act_deadline = None
+    else:
+        creation.run_retired_acts(runner, resources.project_path, resources.source_root)
+
+
+def _full_workflow_b12(resources: FullRuntimeResources, _evidence: list[CommandEvidence]) -> None:
+    """Require R4's amendment run to have a complete, sealed upload-carried matrix snapshot."""
+    del _evidence
+    snapshot = resources.retired_act_evidence
+    if not resources.retired_act_selected or snapshot.status != creation.B12_STATUS_COMPLETE:
+        raise ValueError(creation.B12_DETAIL_MODE)
+    if len(snapshot.cases) != len(creation.B12_CASES) or any(
+        case.get("classification") != creation.B12_CLASS_VERIFIED for case in snapshot.cases
+    ):
+        raise ValueError(creation.B12_DETAIL_SIXTEEN)
 
 
 def _full_workflow_plans(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -2309,6 +2565,11 @@ def _full_owner_identity(resources: FullRuntimeResources, evidence: list[Command
     _require_terminal_success(person_status, person_output, evidence)
     if not _owner_record_is_administrator(person_output):
         raise ValueError(_EXPECTED_PERSON_IDENTITY_ERROR)
+    resources.owner_identity_facts = {
+        creation.B12Field.EMAIL: whoami.email,
+        creation.B12Field.ROLE: whoami.role,
+        creation.B12Field.PERSON_IS_ADMINISTRATOR: True,
+    }
 
 
 def _full_configuration_change(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -4707,6 +4968,16 @@ def run_profile(
                 source_revision=source_revision,
                 source_tree=source_tree,
                 report_path=report_path.resolve() if report_path is not None else None,
+                retired_act_selected=not selection or _SCENARIO_WORKFLOW_RETIRED_ACTS_B12 in selection,
+                retired_act_evidence=creation.empty_retired_act_evidence(
+                    status=(
+                        creation.B12_STATUS_NOT_RUN
+                        if not selection or _SCENARIO_WORKFLOW_RETIRED_ACTS_B12 in selection
+                        else creation.B12_STATUS_NOT_SELECTED
+                    ),
+                    source_revision=source_revision,
+                    source_tree=source_tree,
+                ),
             )
             resources.workflow_chain = full_flow.declared_chain(selection)
             actions.update(
@@ -4792,6 +5063,9 @@ def run_profile(
                     _SCENARIO_WORKFLOW_RETIRED_ACTS: _bind_full_scenario(
                         _SCENARIO_WORKFLOW_RETIRED_ACTS, resources, _full_workflow_retired_acts
                     ),
+                    _SCENARIO_WORKFLOW_RETIRED_ACTS_B12: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_RETIRED_ACTS_B12, resources, _full_workflow_b12
+                    ),
                     _SCENARIO_WORKFLOW_PLANS: _bind_full_scenario(
                         _SCENARIO_WORKFLOW_PLANS, resources, _full_workflow_plans
                     ),
@@ -4848,7 +5122,22 @@ def run_profile(
                     "case_report_path": str(temporary_root / events.CASE_REPORT_FILE),
                     "error": str(error),
                 }
-            return replace(report, workflow_event_evidence=event_evidence)
+            delivery_path: Path | None = None
+            delivery_marker = temporary_root / creation.B12_MATRIX_DIRECTORY / creation.B12_MARKER_FILE
+            if delivery_marker.is_file():
+                try:
+                    marker_bytes = delivery_marker.read_bytes()
+                    marker_record = json.loads(marker_bytes)
+                    if _is_b12_delivery_marker(resources, delivery_marker, marker_record, marker_bytes):
+                        delivery_path = delivery_marker.parent.resolve()
+                except (OSError, ValueError):
+                    delivery_path = None
+            return replace(
+                report,
+                workflow_event_evidence=event_evidence,
+                retired_act_evidence=resources.retired_act_evidence,
+                retired_act_delivery_path=delivery_path,
+            )
         return report
     except BaseException:
         if temporary_root.exists() and (resources is None or not resources.retained):
@@ -4856,15 +5145,34 @@ def run_profile(
         raise
 
 
+def _retire_delivered_b12_carrier(path: Path) -> None:
+    """Remove only B12's delivery marker/carrier after the upload report has been written."""
+    try:
+        shutil.rmtree(path)
+        parent = path.parent
+        descriptor = os.open(parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        parent.rmdir()
+    except OSError:
+        return
+
+
 def write_report(report: AcceptanceReport, report_path: Path) -> None:
     """Persist a report atomically enough that readers never accept a partial JSON file."""
     temporary_path = report_path.with_suffix(f"{report_path.suffix}{_REPORT_TEMP_SUFFIX}")
+    payload = asdict(report)
+    delivery_path = payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
     try:
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path.write_text(json.dumps(asdict(report), indent=2) + _LINE_BREAK, encoding=_UTF8)
+        temporary_path.write_text(json.dumps(payload, indent=2) + _LINE_BREAK, encoding=_UTF8)
         temporary_path.replace(report_path)
     except OSError as exc:
         raise RuntimeError(_REPORT_WRITE_ERROR.format(error=exc)) from exc
+    if isinstance(delivery_path, Path):
+        _retire_delivered_b12_carrier(delivery_path)
 
 
 def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, source_tree: str) -> None:
@@ -4882,6 +5190,7 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             "duration_seconds",
             "selection",
             "workflow_event_evidence",
+            creation.B12Field.RETIRED_ACT_EVIDENCE,
         }
         if (
             not isinstance(report, dict)
@@ -4897,6 +5206,177 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             or not math.isfinite(report["duration_seconds"])
             or report["duration_seconds"] < 0
             or not isinstance(report["workflow_event_evidence"], dict)
+            or not isinstance(report[creation.B12Field.RETIRED_ACT_EVIDENCE], dict)
+        ):
+            raise ValueError
+        retired = report[creation.B12Field.RETIRED_ACT_EVIDENCE]
+        retired_fields = {
+            creation.B12Field.SCHEMA_VERSION,
+            creation.B12Field.STATUS,
+            creation.B12Field.SELECTED_AMENDMENT,
+            creation.B12Field.ASSERTION_PATH,
+            creation.B12Field.ASSERTION_SHA256,
+            creation.B12Field.SOURCE_REVISION,
+            creation.B12Field.SOURCE_TREE,
+            creation.B12Field.ISSUE_REVISION,
+            creation.B12Field.ORDERED_CASES,
+            creation.B12Field.ORDERED_CASE_PLAN,
+            creation.B12Field.PREREQUISITES,
+            creation.B12Field.BASELINES,
+            creation.B12Field.INITIAL_SHOW_READS,
+            creation.B12Field.CASES,
+            creation.B12Field.CARRIER,
+            creation.B12Field.DURATION_SECONDS,
+            creation.B12Field.PRIMARY_FAILURE,
+            creation.B12Field.EVIDENCE_FAILURE,
+        }
+        if (
+            set(retired) != retired_fields
+            or type(retired[creation.B12Field.SCHEMA_VERSION]) is not int
+            or retired[creation.B12Field.SCHEMA_VERSION] != creation.B12_JSON_SCHEMA
+            or retired[creation.B12Field.STATUS] != creation.B12_STATUS_COMPLETE
+            or retired[creation.B12Field.SELECTED_AMENDMENT] != creation.B12_AMENDMENT
+            or retired[creation.B12Field.ASSERTION_PATH] != creation.B12_ARTIFACT_PATH
+            or retired[creation.B12Field.ASSERTION_SHA256] != creation.B12_ARTIFACT_SHA
+            or retired[creation.B12Field.SOURCE_REVISION] != source_revision
+            or retired[creation.B12Field.SOURCE_TREE] != source_tree
+            or retired[creation.B12Field.ISSUE_REVISION] != creation.B12_ISSUE_REVISION
+            or retired[creation.B12Field.ORDERED_CASES] != [case_id for case_id, _, _ in creation.B12_CASES]
+            or retired[creation.B12Field.ORDERED_CASE_PLAN]
+            != [
+                {
+                    creation.B12Field.CASE_ID: case_id,
+                    creation.B12Field.ARGV: list(argv),
+                    creation.B12Field.RETIRED_TYPE: retired_type,
+                }
+                for case_id, argv, retired_type in creation.B12_CASES
+            ]
+            or not isinstance(retired[creation.B12Field.PREREQUISITES], dict)
+            or not isinstance(retired[creation.B12Field.BASELINES], dict)
+            or not isinstance(retired[creation.B12Field.CARRIER], dict)
+            or retired[creation.B12Field.PRIMARY_FAILURE] != _EMPTY
+            or retired[creation.B12Field.EVIDENCE_FAILURE] != _EMPTY
+            or type(retired[creation.B12Field.DURATION_SECONDS]) not in (int, float)
+            or not math.isfinite(retired[creation.B12Field.DURATION_SECONDS])
+            or retired[creation.B12Field.DURATION_SECONDS] > creation.B12_SCENARIO_SECONDS
+            or retired[creation.B12Field.BASELINES].get(creation.B12Field.STABLE_SHOW_READS) != 2
+            or retired[creation.B12Field.BASELINES].get(creation.B12Field.SEPARATION_SECONDS)
+            != creation.B12_INITIAL_STABILITY_SECONDS
+            or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.S0), dict)
+            or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.B0), list)
+            or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.T0), list)
+            or not isinstance(retired[creation.B12Field.BASELINES].get(creation.B12Field.INITIAL_SHOW_READS), list)
+            or len(retired[creation.B12Field.BASELINES][creation.B12Field.INITIAL_SHOW_READS]) != 2
+            or retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.MANUAL_RUNNER) is not True
+            or not isinstance(retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.PROJECT_CWD), str)
+            or not isinstance(retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.CLEARANCE), str)
+            or not isinstance(retired[creation.B12Field.PREREQUISITES].get(creation.B12Field.OWNER_IDENTITY), dict)
+        ):
+            raise ValueError
+        if any(
+            show != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
+            for show in retired[creation.B12Field.BASELINES][creation.B12Field.INITIAL_SHOW_READS]
+        ):
+            raise ValueError
+        retired_cases = retired[creation.B12Field.CASES]
+        if not isinstance(retired_cases, list) or len(retired_cases) != len(creation.B12_CASES):
+            raise ValueError
+        for case, (expected_case_id, expected_argv, expected_type) in zip(
+            retired_cases, creation.B12_CASES, strict=True
+        ):
+            if (
+                not isinstance(case, dict)
+                or case.get(creation.B12Field.CASE_ID) != expected_case_id
+                or case.get(creation.B12Field.ARGV) != list(expected_argv)
+                or case.get(creation.B12Field.RETIRED_TYPE) != expected_type
+                or case.get(creation.B12Field.CLASSIFICATION) != creation.B12_CLASS_VERIFIED
+                or case.get(creation.B12Field.OUTCOME) != creation.B12_OUTCOME_COMPLETED
+                or type(case.get(creation.B12Field.EXIT_STATUS)) is not int
+                or case.get(creation.B12Field.EXIT_STATUS) == 0
+                or type(case.get(creation.B12Field.DURATION_SECONDS)) not in (int, float)
+                or not math.isfinite(case[creation.B12Field.DURATION_SECONDS])
+                or case[creation.B12Field.DURATION_SECONDS] < 0
+                or not all(
+                    isinstance(case.get(field), str)
+                    for field in (creation.B12Field.STDOUT, creation.B12Field.STDERR, creation.B12Field.DIAGNOSTICS)
+                )
+                or type(case.get(creation.B12Field.STDOUT_BYTE_COUNT)) is not int
+                or case.get(creation.B12Field.STDOUT_BYTE_COUNT) < 0
+                or not isinstance(case.get(creation.B12Field.STDOUT_SHA256), str)
+                or case.get(creation.B12Field.EMBEDDED_STDOUT_SHA256)
+                != hashlib.sha256(case[creation.B12Field.STDOUT].encode(_UTF8)).hexdigest()
+                or case.get(creation.B12Field.EMBEDDED_STDOUT_BYTE_COUNT)
+                != len(case[creation.B12Field.STDOUT].encode(_UTF8))
+                or case.get(creation.B12Field.STDERR_CAPTURE) != creation.B12_PTY_CAPTURE
+                or not isinstance(case.get(creation.B12Field.READBACKS), list)
+                or len(case[creation.B12Field.READBACKS]) != 2
+                or not isinstance(case.get(creation.B12Field.BEFORE), dict)
+                or case[creation.B12Field.BEFORE].get(creation.B12Field.ITEM)
+                != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
+                or case[creation.B12Field.BEFORE].get(creation.B12Field.BEFORE_SESSIONS)
+                != retired[creation.B12Field.BASELINES][creation.B12Field.B0]
+                or case[creation.B12Field.BEFORE].get(creation.B12Field.BEFORE_SLUGS)
+                != retired[creation.B12Field.BASELINES][creation.B12Field.T0]
+                or case[creation.B12Field.BEFORE].get(creation.B12Field.PRECALL_DIFFERENCES) != []
+                or not isinstance(case[creation.B12Field.BEFORE].get(creation.B12Field.BEFORE_SHOW_READS), list)
+                or len(case[creation.B12Field.BEFORE][creation.B12Field.BEFORE_SHOW_READS]) != 2
+                or case.get(creation.B12Field.UNCHANGED) is not True
+                or case.get(creation.B12Field.DIFFERENCES) != []
+                or case.get(creation.B12Field.OPERATION_ID) is not None
+                or case.get(creation.B12Field.OPERATION_STATUS) != creation.B12_OPERATION_NOT_APPLICABLE
+                or case.get(creation.B12Field.REFUSAL_FAILURE) != _EMPTY
+                or type(case.get(creation.B12Field.OUTPUT_TRUNCATED)) is not bool
+            ):
+                raise ValueError
+            if any(
+                show != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
+                for show in case[creation.B12Field.BEFORE][creation.B12Field.BEFORE_SHOW_READS]
+            ):
+                raise ValueError
+            for expected_when, readback in zip(
+                (creation.B12_CASE_IMMEDIATE, creation.B12_CASE_SETTLED), case[creation.B12Field.READBACKS], strict=True
+            ):
+                if (
+                    not isinstance(readback, dict)
+                    or readback.get(creation.B12Field.WHEN) != expected_when
+                    or readback.get(creation.B12Field.ITEM)
+                    != retired[creation.B12Field.BASELINES][creation.B12Field.S0]
+                    or readback.get(creation.B12Field.SESSION_IDS)
+                    != retired[creation.B12Field.BASELINES][creation.B12Field.B0]
+                    or readback.get(creation.B12Field.SLUGS)
+                    != retired[creation.B12Field.BASELINES][creation.B12Field.T0]
+                ):
+                    raise ValueError
+        carrier = retired[creation.B12Field.CARRIER]
+        embedded_b12 = json.dumps(
+            {
+                creation.B12Field.BASELINES: retired[creation.B12Field.BASELINES],
+                creation.B12Field.CASES: retired_cases,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=_JSON_SEPARATORS,
+        ).encode(_UTF8)
+        if (
+            carrier.get(creation.B12Field.FRAMING) != creation.B12_FRAMING_COMPLETE
+            or carrier.get(creation.B12Field.LINE_COUNT) != len(creation.B12_CASES) * 3
+            or type(carrier.get(creation.B12Field.ORIGINAL_BYTE_COUNT)) is not int
+            or carrier.get(creation.B12Field.ORIGINAL_BYTE_COUNT) <= 0
+            or not isinstance(carrier.get(creation.B12Field.ORIGINAL_SHA256), str)
+            or type(carrier.get(creation.B12Field.MARKER_BYTE_COUNT)) is not int
+            or carrier.get(creation.B12Field.MARKER_BYTE_COUNT) <= 0
+            or not isinstance(carrier.get(creation.B12Field.MARKER_SHA256), str)
+            or not isinstance(carrier.get(creation.B12Field.MARKER_PATH), str)
+            or type(carrier.get(creation.B12Field.COMPLETED_BYTE_COUNT)) is not int
+            or carrier.get(creation.B12Field.COMPLETED_BYTE_COUNT) <= 0
+            or not isinstance(carrier.get(creation.B12Field.COMPLETED_SHA256), str)
+            or not isinstance(carrier.get(creation.B12Field.COMPLETED_PATH), str)
+            or type(carrier.get(creation.B12Field.COMPLETED_RAW_TEXT_TRUNCATED)) is not bool
+            or carrier.get(creation.B12Field.COMPLETED_READ_ERROR) != _EMPTY
+            or carrier.get(creation.B12Field.EMBEDDED_SCOPE) != creation.B12_EMBEDDED_SCOPE
+            or carrier.get(creation.B12Field.EMBEDDED_SHA256) != hashlib.sha256(embedded_b12).hexdigest()
+            or carrier.get(creation.B12Field.EMBEDDED_BYTE_COUNT) != len(embedded_b12)
+            or carrier.get(creation.B12Field.READ_ERROR) != _EMPTY
         ):
             raise ValueError
         scenarios = report["scenarios"]

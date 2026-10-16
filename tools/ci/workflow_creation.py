@@ -18,10 +18,13 @@ gate not reached and platform assertion.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import time
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import asdict, dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
@@ -80,6 +83,267 @@ CONTENT_CHANGE: Final = "r1 change content two"
 CONTENT_BUG: Final = "r1 bug content three"
 CONTENT_GATE: Final = "r1 gate control four"
 KICKBACK_REASON: Final = "r4 retired kickback"
+REPLACEMENT_MARKER: Final = "The act that replaces it is"
+PERFORMER_MARKER: Final = "performed by"
+HOLDING_DRIVER: Final = "the holding driver"
+B12_MATRIX_DIRECTORY: Final = "b12-retired-act-preparation"
+B12_MARKER_FILE: Final = "RETAINED.json"
+B12_ATTEMPTS_FILE: Final = "attempts.jsonl"
+B12_COMPLETED_FILE: Final = "completed.json"
+B12_ARTIFACT_PATH: Final = "journeys/b12-retired-act-report-evidence-budget.md"
+B12_ARTIFACT_SHA: Final = "e229801eacff1f674b0a7156c2a47d0682386be827451a9dc63ca98377d9357e"
+B12_ISSUE_REVISION: Final = "UCE_lAHOQMTdPc8AAAABXPR6wc8AAAABB_Nr9Q"
+B12_SCENARIO_SECONDS: Final = 600.0
+B12_CASE_TIMEOUT_SECONDS: Final = 60.0
+B12_INITIAL_STABILITY_SECONDS: Final = 2.0
+B12_SETTLE_SECONDS: Final = 5.0
+B12_STATUS_NOT_SELECTED: Final = "not_selected"
+B12_STATUS_NOT_RUN: Final = "not_run"
+B12_STATUS_PARTIAL: Final = "partial"
+B12_STATUS_COMPLETE: Final = "complete"
+B12_STATUS_UNPROVEN: Final = "unproven"
+B12_CLASS_OPEN: Final = "open"
+B12_CLASS_VERIFIED: Final = "verified_refusal"
+B12_CLASS_UNPROVEN: Final = "unproven"
+B12_CLASS_NOT_RUN: Final = "not_run"
+B12_EVENT_OPEN: Final = "open"
+B12_EVENT_RESULT: Final = "result"
+B12_EVENT_VERIFIED: Final = "verified_refusal"
+B12_REASON: Final = "B12 retired-act matrix evidence is incomplete; retain the full profile resources"
+B12_ERROR_PREFIX: Final = "B12 matrix evidence is unproven: "
+B12_JSON_SCHEMA: Final = 1
+B12_LINE_ENDING: Final = "\n"
+B12_ERROR_409: Final = "Error: 409 —"
+B12_OUTCOME_COMPLETED: Final = "completed"
+B12_OUTCOME_TIMEOUT: Final = "timeout"
+B12_OUTCOME_TRANSPORT: Final = "transport"
+B12_TIMEOUT_DIAGNOSTIC: Final = "The command exceeded its deadline."
+B12_OUTPUT_LIMIT_DIAGNOSTIC: Final = "The command exceeded its output limit."
+B12_PTY_CAPTURE: Final = "stdout/stderr are merged by the authenticated PTY"
+B12_UTF8: Final = "utf-8"
+B12_JSON_SEPARATORS: Final = (",", ":")
+B12_MODE_WRITE: Final = "w"
+B12_MODE_EXCLUSIVE: Final = "x"
+B12_MODE_APPEND: Final = "a"
+B12_JSON_SUFFIX: Final = ".json.tmp"
+B12_STANDARD_ERROR: Final = "stderr"
+B12_DETAIL_NOT_OBJECT: Final = "a public observation was not a JSON object"
+B12_DETAIL_UNSUPPORTED: Final = "the upload snapshot contains an unsupported value"
+B12_DETAIL_TRAILING_LINE: Final = "the attempt ledger has an incomplete trailing line"
+B12_DETAIL_EMPTY_COMPLETE: Final = "the complete attempt ledger is empty"
+B12_DETAIL_NOT_OBJECT_LINE: Final = "an attempt ledger line is not an object"
+B12_DETAIL_EXTRA_RECORDS: Final = "the attempt ledger has extra or missing records"
+B12_DETAIL_UNORDERED_OPEN: Final = "case {case_id} has no exact ordered open attempt"
+B12_DETAIL_UNORDERED_RESULT: Final = "case {case_id} has no ordered result record"
+B12_DETAIL_INVALID_RESULT: Final = "case {case_id} result is not a verified refusal"
+B12_DETAIL_UNORDERED_CLASSIFICATION: Final = "case {case_id} has no final classification record"
+B12_DETAIL_NOT_VERIFIED: Final = "case {case_id} is not verified"
+B12_REFUSAL_NOT_409: Final = "the completed request did not contain the public HTTP 409 error form"
+B12_REFUSAL_UNRELATED_GATE: Final = "the request reached an unrelated gate signature {signature!r}"
+B12_REFUSAL_PHASE: Final = "the refusal did not identify the retired act and preparation phase"
+B12_REFUSAL_DOOR: Final = "the refusal did not include the approved preparation door"
+B12_REFUSAL_PRD_SUFFIX: Final = "the original PRD refusal added a replacement-clause marker"
+B12_REFUSAL_KICKBACK: Final = "the original kickback refusal did not name the holding driver"
+B12_REFUSAL_RECEIPT: Final = "the synchronous refusal unexpectedly returned an operation receipt"
+B12_REFUSAL_NO_TERMINAL: Final = "the public request timed out or did not return a terminal outcome"
+B12_REFUSAL_ZERO_EXIT: Final = "the public refusal command returned success"
+B12_MARKER_MISSING_ATTEMPT: Final = "the attempt file is missing while its retention marker exists"
+B12_FRAMING_COMPLETE: Final = "complete newline-terminated JSONL"
+B12_FRAMING_PARTIAL: Final = "partial trailing record"
+B12_FRAMING_MISSING: Final = "missing_attempt_file"
+B12_FRAMING_NOT_CREATED: Final = "not_created"
+B12_CAPTURE_IMMEDIATE: Final = "immediate"
+B12_CAPTURE_SETTLED: Final = "settled"
+B12_OUTCOME_UNKNOWN: Final = "not_applicable"
+B12_OPERATION_UNKNOWN: Final = "unknown"
+B12_STATUS_JSON: Final = "status"
+B12_COMPLETED_VALIDATION_FAILED: Final = "the completed report failed read-back validation"
+B12_SNAPSHOT_INCOMPLETE: Final = "the in-memory upload snapshot is incomplete"
+B12_UPLOAD_VALIDATION_FAILED: Final = "the upload-carried evidence snapshot failed validation"
+B12_DETAIL_PRECALL_STATE_CHANGED: Final = "public state changed before case {case_id}: {differences!r}"
+B12_DETAIL_MODE: Final = "B12 matrix was selected without complete evidence"
+B12_DETAIL_SIXTEEN: Final = "B12 matrix snapshot does not contain sixteen verified refusals"
+B12_AMENDMENT: Final = "B12"
+B12_OPERATION_NOT_APPLICABLE: Final = "not_applicable"
+B12_CASE_IMMEDIATE: Final = "immediate"
+B12_CASE_SETTLED: Final = "settled"
+B12_CARRIER_ERROR_MARKER: Final = "the attempt file is missing while its retention marker exists"
+B12_EXCEPTION_DETAIL: Final = "{error_class}: {detail}"
+B12_INTERRUPT_DETAIL: Final = "KeyboardInterrupt: {detail}"
+B12_REFUSAL_ACT_PHASE: Final = "{retired_type} {phase}"
+B12_RETAIN_REASON: Final = "B12 retained evidence at {path}"
+B12_DETAIL_DEADLINE: Final = "the 600-second scenario deadline expired"
+B12_DETAIL_COMPLETED_SNAPSHOT: Final = "the completed report failed read-back validation"
+B12_DETAIL_UPLOAD_SNAPSHOT: Final = "the upload-carried evidence snapshot failed validation"
+B12_DETAIL_MEMORY_SNAPSHOT: Final = "the in-memory upload snapshot is incomplete"
+B12_DETAIL_MISSING_CARRIER: Final = "the B12 attempt carrier is missing before report freeze"
+B12_DETAIL_CARRIER_MISMATCH: Final = "the B12 local retention carrier did not match its written bytes"
+B12_EMBEDDED_SCOPE: Final = "sanitized baselines and ordered case evidence"
+B12_DETAIL_POSTFREEZE: Final = "B12 evidence changed or disappeared during the cleanup report freeze"
+B12_UTF8_REPLACE: Final = "replace"
+B12_CLEARANCE_EVIDENCE: Final = "--build-started was refused by the CLI-owned clearance control"
+B12_OWNER_IDENTITY_EVIDENCE: Final = "UC-RA3 and fresh public whoami/person read before the matrix"
+B12_CASE_PRD_ID: Final = "01"
+B12_CASE_KICKBACK_ID: Final = "15"
+B12_DETAIL_CASE_ABSENT: Final = "{case_id}: item absent {when} the refusal"
+B12_DETAIL_SESSIONS_CHANGED: Final = "{case_id}: session-id set changed {when} the refusal"
+B12_DETAIL_SLUGS_CHANGED: Final = "{case_id}: slug set changed {when} the refusal"
+
+
+class B12Field(StrEnum):
+    """Closed JSON field vocabulary for the B12 durable and upload evidence."""
+
+    SCHEMA_VERSION = "schema_version"
+    STATUS = "status"
+    SELECTED_AMENDMENT = "selected_amendment"
+    ASSERTION_PATH = "assertion_path"
+    ASSERTION_SHA256 = "assertion_sha256"
+    SOURCE_REVISION = "source_revision"
+    SOURCE_TREE = "source_tree"
+    ISSUE_REVISION = "issue_revision"
+    ORDERED_CASES = "ordered_cases"
+    PREREQUISITES = "prerequisites"
+    BASELINES = "baselines"
+    CASES = "cases"
+    CARRIER = "carrier"
+    DURATION_SECONDS = "duration_seconds"
+    PRIMARY_FAILURE = "primary_failure"
+    EVIDENCE_FAILURE = "evidence_failure"
+    CASE_ID = "case_id"
+    RETIRED_TYPE = "retired_type"
+    CLASSIFICATION = "classification"
+    WHEN = "when"
+    ITEM = "item"
+    SESSION_IDS = "session_ids"
+    SLUGS = "slugs"
+    READS = "reads"
+    ARGV = "argv"
+    EVENT = "event"
+    STARTED_MONOTONIC_SECONDS = "started_monotonic_seconds"
+    REASON = "reason"
+    PROJECT_PATH = "project_path"
+    CALLER_EVIDENCE = "caller_evidence"
+    ATTEMPTS_PATH = "attempts_path"
+    ORDERED_CASE_PLAN = "ordered_case_plan"
+    MANUAL_RUNNER = "manual_runner"
+    PROJECT_CWD = "project_cwd"
+    CLEARANCE = "clearance"
+    OWNER_IDENTITY_EVIDENCE = "owner_identity_evidence"
+    OWNER_IDENTITY = "owner_identity"
+    S0 = "S0"
+    B0 = "B0"
+    T0 = "T0"
+    STABLE_SHOW_READS = "stable_show_reads"
+    SEPARATION_SECONDS = "separation_seconds"
+    EXIT_STATUS = "exit_status"
+    OUTCOME = "outcome"
+    STDOUT = "stdout"
+    STDOUT_SHA256 = "stdout_sha256"
+    STDOUT_BYTE_COUNT = "stdout_byte_count"
+    EMBEDDED_STDOUT_SHA256 = "embedded_stdout_sha256"
+    EMBEDDED_STDOUT_BYTE_COUNT = "embedded_stdout_byte_count"
+    STDERR = "stderr"
+    STDERR_CAPTURE = "stderr_capture"
+    DIAGNOSTICS = "diagnostics"
+    OUTPUT_TRUNCATED = "output_truncated"
+    RETURNED_SUFFIX_DIAGNOSTIC = "returned_suffix_diagnostic"
+    READBACKS = "readbacks"
+    UNCHANGED = "unchanged"
+    DIFFERENCES = "differences"
+    OPERATION_ID = "operation_id"
+    OPERATION_STATUS = "operation_status"
+    REFUSAL_FAILURE = "refusal_failure"
+    ATTEMPTS_SHA256 = "attempts_sha256"
+    ATTEMPTS_BYTE_COUNT = "attempts_byte_count"
+    ATTEMPTS_LINE_COUNT = "attempts_line_count"
+    ORDERED_RESULTS = "ordered_results"
+    ORIGINAL_SHA256 = "original_sha256"
+    ORIGINAL_BYTE_COUNT = "original_byte_count"
+    LINE_COUNT = "line_count"
+    FRAMING = "framing"
+    EMBEDDED_SHA256 = "embedded_sha256"
+    EMBEDDED_BYTE_COUNT = "embedded_byte_count"
+    READ_ERROR = "read_error"
+    RAW_TEXT = "raw_text"
+    RAW_TEXT_TRUNCATED = "raw_text_truncated"
+    COMPLETED_PATH = "completed_path"
+    COMPLETED_SHA256 = "completed_sha256"
+    COMPLETED_BYTE_COUNT = "completed_byte_count"
+    COMPLETED_RAW_TEXT = "completed_raw_text"
+    COMPLETED_RAW_TEXT_TRUNCATED = "completed_raw_text_truncated"
+    COMPLETED_READ_ERROR = "completed_read_error"
+    MARKER_SHA256 = "marker_sha256"
+    MARKER_BYTE_COUNT = "marker_byte_count"
+    MARKER_PATH = "marker_path"
+    MARKER_RAW_TEXT = "marker_raw_text"
+    MARKER_RAW_TEXT_TRUNCATED = "marker_raw_text_truncated"
+    EMBEDDED_SCOPE = "embedded_scope"
+    RETIRED_ACT_EVIDENCE = "retired_act_evidence"
+    EMAIL = "email"
+    ROLE = "role"
+    PERSON_IS_ADMINISTRATOR = "person_is_administrator"
+    INITIAL_SHOW_READS = "initial_show_reads"
+    BEFORE = "before"
+    BEFORE_SHOW_READS = "show_reads"
+    BEFORE_SESSIONS = "session_ids"
+    BEFORE_SLUGS = "slugs"
+    PRECALL_DIFFERENCES = "precall_differences"
+
+
+B12_PREPARATION_REFUSAL: Final = "is refused: ra-feature is in preparation."
+B12_DOOR: Final = "Door: none needed: the item is in preparation, which `telec todo prepare ra-feature` drives."
+B12_REPLACEMENT_MARKERS: Final = (REPLACEMENT_MARKER, PERFORMER_MARKER)
+B12_CASES: Final = (
+    ("01", (TELEC, TODO, STAMP, SLUG_FEATURE, PRD_APPROVED_FLAG), "prd_approved"),
+    ("02", (TELEC, TODO, STAMP, SLUG_FEATURE, "--requirements-ready"), "requirements_ready"),
+    ("03", (TELEC, TODO, STAMP, SLUG_FEATURE, "--plan-ready"), "plan_ready"),
+    ("04", (TELEC, TODO, STAMP, SLUG_FEATURE, "--verdict", "approve", "--phase", "prd_review"), "verdict"),
+    (
+        "05",
+        (TELEC, TODO, STAMP, SLUG_FEATURE, "--verdict", "approve", "--phase", "architecture_review"),
+        "verdict",
+    ),
+    ("06", (TELEC, TODO, STAMP, SLUG_FEATURE, "--verdict", "approve", "--phase", "plan_review"), "verdict"),
+    ("07", (TELEC, TODO, STAMP, SLUG_FEATURE, "--verdict", "approve", "--phase", "build_review"), "verdict"),
+    (
+        "08",
+        (TELEC, TODO, STAMP, SLUG_FEATURE, "--architecture-skipped", "b12 retired architecture"),
+        "architecture_skipped",
+    ),
+    ("09", (TELEC, TODO, STAMP, SLUG_FEATURE, "--diagnosis-settled"), "diagnosis_settled"),
+    (
+        "10",
+        (TELEC, TODO, STAMP, SLUG_FEATURE, "--diagnosis-unresolved", REASON_OPTION, "b12 retired diagnosis"),
+        "diagnosis_unresolved",
+    ),
+    (
+        "11",
+        (TELEC, TODO, STAMP, SLUG_FEATURE, "--drift-reviewed", "plan", "substantive", "b12 retired drift"),
+        "drift_reviewed",
+    ),
+    ("12", (TELEC, TODO, STAMP, SLUG_FEATURE, "--deferrals-processed"), "deferrals_processed"),
+    ("13", (TELEC, TODO, STAMP, SLUG_FEATURE, "--build-complete"), "build_complete"),
+    ("14", (TELEC, TODO, STAMP, SLUG_FEATURE, "--finalize-ready"), "finalize_ready"),
+    (
+        "15",
+        (TELEC, TODO, STAMP, SLUG_FEATURE, KICKBACK_FLAG, REASON_OPTION, KICKBACK_REASON),
+        "kickback",
+    ),
+    (
+        "16",
+        (
+            TELEC,
+            TODO,
+            "return-to-work",
+            SLUG_FEATURE,
+            REASON_OPTION,
+            "b12 retired return",
+            "--evidence",
+            "b12-retired-act-preparation-matrix#case16",
+        ),
+        "return_to_work",
+    ),
+)
 CREATED_PHRASE: Final = "Created todo: {slug}"
 CREATED_PREFIX: Final = "Created todo:"
 INPUT_ARTIFACT: Final = "input"
@@ -87,9 +351,6 @@ INPUT_BODY: Final = "# {slug} — Input\n\n{content}\n"
 NOT_FOUND_PHRASE: Final = "slug '{slug}' not found in todo list"
 MACHINE_OWNED_PHRASE: Final = "--build-started is machine-owned"
 DOOR_SENTENCE: Final = "none needed: the item is in preparation, which `telec todo prepare {slug}` drives"
-REPLACEMENT_MARKER: Final = "The act that replaces it is"
-PERFORMER_MARKER: Final = "performed by"
-HOLDING_DRIVER: Final = "the holding driver"
 GATE_SIGNATURES: Final = (
     "permission denied",
     "login required",
@@ -288,14 +549,107 @@ class SessionView:
     closed: frozenset[str] = frozenset()
 
 
+type EvidenceValue = str | int | float | bool | None | list[EvidenceValue] | dict[str, EvidenceValue]
+type EvidenceObject = dict[str, EvidenceValue]
+
+
+@dataclass
+class RetiredActEvidence:
+    """Typed, upload-carried B12 evidence retained independently of temporary files."""
+
+    schema_version: int
+    status: str
+    selected_amendment: str
+    assertion_path: str
+    assertion_sha256: str
+    source_revision: str
+    source_tree: str
+    issue_revision: str
+    ordered_cases: list[str]
+    ordered_case_plan: list[EvidenceObject]
+    prerequisites: EvidenceObject
+    baselines: EvidenceObject
+    cases: list[EvidenceObject]
+    carrier: EvidenceObject
+    duration_seconds: float
+    primary_failure: str
+    evidence_failure: str
+
+
+def empty_retired_act_evidence(
+    *,
+    status: str = B12_STATUS_NOT_SELECTED,
+    source_revision: str = EMPTY,
+    source_tree: str = EMPTY,
+) -> RetiredActEvidence:
+    """Create an explicit typed evidence state; an empty object is never a pass."""
+    return RetiredActEvidence(
+        schema_version=B12_JSON_SCHEMA,
+        status=status,
+        selected_amendment=B12_STATUS_NOT_SELECTED if status == B12_STATUS_NOT_SELECTED else B12_STATUS_NOT_RUN,
+        assertion_path=B12_ARTIFACT_PATH,
+        assertion_sha256=B12_ARTIFACT_SHA,
+        source_revision=source_revision,
+        source_tree=source_tree,
+        issue_revision=B12_ISSUE_REVISION,
+        ordered_cases=[case_id for case_id, _, _ in B12_CASES],
+        ordered_case_plan=[
+            {
+                B12Field.CASE_ID: case_id,
+                B12Field.ARGV: list(argv),
+                B12Field.RETIRED_TYPE: retired_type,
+            }
+            for case_id, argv, retired_type in B12_CASES
+        ],
+        prerequisites={},
+        baselines={},
+        cases=[
+            {
+                B12Field.CASE_ID: case_id,
+                B12Field.RETIRED_TYPE: retired_type,
+                B12Field.CLASSIFICATION: B12_CLASS_NOT_RUN,
+            }
+            for case_id, _, retired_type in B12_CASES
+        ],
+        carrier={B12Field.FRAMING: B12_FRAMING_NOT_CREATED, B12Field.READ_ERROR: EMPTY},
+        duration_seconds=0.0,
+        primary_failure=EMPTY,
+        evidence_failure=EMPTY,
+    )
+
+
 class Observer:
     """The approved observation primitives O1-O3, each a fresh public CLI process on the owner terminal."""
 
-    def __init__(self, host: FoundationHost) -> None:
+    def __init__(self, host: FoundationHost, *, deadline: float | None = None) -> None:
         self.host = host
+        self.deadline = deadline
 
     def run(self, argv: Sequence[str], *, retain: bool = True) -> Outcome:
-        return self.host.cli(argv, CLI_TIMEOUT_SECONDS, retain=retain)
+        timeout: float = CLI_TIMEOUT_SECONDS
+        if self.deadline is not None:
+            remaining = self.deadline - time.monotonic()
+            if remaining <= 0:
+                self.require_time()
+            timeout = min(timeout, remaining)
+        return self.host.cli(argv, timeout, retain=retain)
+
+    def require_time(self) -> None:
+        """Fail closed once the optional B12 wall-clock budget expires."""
+        if self.deadline is not None and time.monotonic() >= self.deadline:
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_DEADLINE)
+
+    def wait(self, seconds: float) -> None:
+        """Wait only within the optional B12 scenario deadline."""
+        if self.deadline is None:
+            time.sleep(seconds)
+            return
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            self.require_time()
+        time.sleep(min(seconds, remaining))
+        if time.monotonic() >= self.deadline:
+            self.require_time()
 
     def show(self, slug: str, *, retain: bool = True) -> Mapping[str, object] | None:
         """O1: the shown payload of an item, or None when the platform says there is no such slug."""
@@ -530,7 +884,7 @@ def _signature_in(output: str) -> str | None:
     return next((signature for signature in GATE_SIGNATURES if signature in lowered), None)
 
 
-def _quiescent_item(observer: Observer) -> Mapping[str, object]:
+def _quiescent_item(observer: Observer, show_reads: list[Mapping[str, object]] | None = None) -> Mapping[str, object]:
     """P4 and P5: the item sits in the tested table row and two reads, apart, are deeply equal."""
     first = observer.show(SLUG_FEATURE)
     if first is None:
@@ -551,12 +905,26 @@ def _quiescent_item(observer: Observer) -> Mapping[str, object]:
         raise binding_failure(
             DETAIL_PRECONDITION.format(slug=SLUG_FEATURE, path=FIELD_STANDING, found=str(failure))
         ) from failure
-    time.sleep(QUIESCENCE_GAP_SECONDS)
+    observer.wait(QUIESCENCE_GAP_SECONDS)
     second = observer.show(SLUG_FEATURE)
     if second is None or differences(first, second):
         paths = differences(first, second) if second is not None else ["absent"]
         raise binding_failure(DETAIL_NOT_QUIESCENT.format(paths=paths))
+    if show_reads is not None:
+        show_reads.extend((first, second))
     return second
+
+
+def _b12_quiescent_item(
+    observer: Observer, show_reads: list[Mapping[str, object]] | None = None
+) -> Mapping[str, object]:
+    """Apply B12's active-feature condition to the existing R4 quiescence witness."""
+    payload = _quiescent_item(observer, show_reads)
+    for path, expected in ((FIELD_KIND, KIND_FEATURE), (f"{FIELD_ROADMAP}{DOT}{FIELD_STATUS}", STATUS_ACTIVE)):
+        found, value = dig(payload, path)
+        if not found or value != expected:
+            raise binding_failure(DETAIL_PRECONDITION.format(slug=SLUG_FEATURE, path=path, found=value))
+    return payload
 
 
 def _control_clearance(observer: Observer) -> None:
@@ -602,7 +970,7 @@ def _require_nothing_written(
     """After a refusal: the item, the sessions and the slugs are exactly as before, now and after a pause."""
     for when, pause in (("immediately", 0.0), ("five seconds later", SETTLE_SECONDS)):
         if pause:
-            time.sleep(pause)
+            observer.wait(pause)
         after = observer.show(SLUG_FEATURE)
         if after is None:
             raise platform_failure(DETAIL_WRITE_LANDED.format(case=case, when=when, paths=["absent"]))
@@ -634,3 +1002,659 @@ def run_retired_acts(host: FoundationHost, project: Path, source_root: Path) -> 
             _require_nothing_written(observer, case, before, sessions, slugs)
     finally:
         leave_project(observer, source_root)
+
+
+def _evidence_object(value: object) -> EvidenceObject:
+    """Copy a public JSON object into the report's recursively typed carrier."""
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    decoded = json.loads(encoded)
+    if not isinstance(decoded, dict):
+        raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_NOT_OBJECT)
+    return decoded
+
+
+def embedded_b12_evidence_bytes(evidence: RetiredActEvidence) -> bytes:
+    """Serialize the sanitized baseline and ordered case observations embedded in report.json."""
+    return json.dumps(
+        {B12Field.BASELINES: evidence.baselines, B12Field.CASES: evidence.cases},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=B12_JSON_SEPARATORS,
+    ).encode(B12_UTF8)
+
+
+def _sanitize_evidence(value: object, sanitize_text: Callable[[str], str]) -> EvidenceValue:
+    """Sanitize local paths in the upload copy while local attempt bytes remain intact."""
+    if isinstance(value, str):
+        return sanitize_text(value)
+    if isinstance(value, Mapping):
+        return {str(key): _sanitize_evidence(item, sanitize_text) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_evidence(item, sanitize_text) for item in value]
+    if value is None:
+        return value
+    if type(value) is bool:
+        return value
+    if type(value) is int:
+        return value
+    if type(value) is float:
+        return value
+    raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_UNSUPPORTED)
+
+
+def _sync_json(path: Path, value: EvidenceObject, *, exclusive: bool = False) -> bytes:
+    """Write one complete JSON object and fsync it before returning its exact bytes."""
+    mode = B12_MODE_EXCLUSIVE if exclusive else B12_MODE_WRITE
+    encoded = (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=B12_JSON_SEPARATORS) + B12_LINE_ENDING
+    ).encode(B12_UTF8)
+    with path.open(mode, encoding=B12_UTF8, newline="") as handle:
+        handle.write(encoded.decode(B12_UTF8))
+        handle.flush()
+        os.fsync(handle.fileno())
+    return encoded
+
+
+def _append_attempt(path: Path, value: EvidenceObject) -> None:
+    """Append one whole JSONL record and fsync the append before the next action."""
+    with path.open(B12_MODE_APPEND, encoding=B12_UTF8, newline="") as handle:
+        handle.write(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=B12_JSON_SEPARATORS))
+        handle.write(B12_LINE_ENDING)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _sync_directory(path: Path) -> None:
+    """Fsync a directory entry set after durable carrier creation or replacement."""
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def validate_b12_attempts(raw: bytes, complete: bool) -> list[EvidenceObject]:
+    """Require ordered open/result/classification records; malformed tails stay unproven."""
+    if raw and not raw.endswith(b"\n"):
+        raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_TRAILING_LINE)
+    if not raw:
+        if complete:
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_EMPTY_COMPLETE)
+        return []
+    records: list[EvidenceObject] = []
+    for line in raw.splitlines():
+        value = json.loads(line)
+        if not isinstance(value, dict):
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_NOT_OBJECT_LINE)
+        records.append(value)
+    expected_count = len(B12_CASES) * 3
+    if len(records) > expected_count or (complete and len(records) != expected_count):
+        raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_EXTRA_RECORDS)
+    for case_index, (case_id, expected_argv, _retired_type) in enumerate(B12_CASES):
+        offset = case_index * 3
+        if offset >= len(records):
+            break
+        opened = records[offset]
+        if (
+            opened.get(B12Field.CASE_ID) != case_id
+            or opened.get(B12Field.EVENT) != B12_EVENT_OPEN
+            or opened.get(B12Field.ARGV) != list(expected_argv)
+        ):
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_UNORDERED_OPEN.format(case_id=case_id))
+        if offset + 1 >= len(records):
+            break
+        result = records[offset + 1]
+        if result.get(B12Field.CASE_ID) != case_id or result.get(B12Field.EVENT) != B12_EVENT_RESULT:
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_UNORDERED_RESULT.format(case_id=case_id))
+        if complete and (
+            result.get(B12Field.OUTCOME) != B12_OUTCOME_COMPLETED
+            or type(result.get(B12Field.EXIT_STATUS)) is not int
+            or result.get(B12Field.EXIT_STATUS) == 0
+            or result.get(B12Field.REFUSAL_FAILURE) != EMPTY
+            or result.get(B12Field.DIFFERENCES) != []
+            or result.get(B12Field.OPERATION_ID) is not None
+            or result.get(B12Field.OPERATION_STATUS) != B12_OPERATION_NOT_APPLICABLE
+        ):
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_INVALID_RESULT.format(case_id=case_id))
+        if offset + 2 >= len(records):
+            break
+        classified = records[offset + 2]
+        if classified.get(B12Field.CASE_ID) != case_id or classified.get(B12Field.EVENT) != B12_EVENT_VERIFIED:
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_UNORDERED_CLASSIFICATION.format(case_id=case_id))
+        if complete and classified.get(B12Field.CLASSIFICATION) != B12_CLASS_VERIFIED:
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_NOT_VERIFIED.format(case_id=case_id))
+    return records
+
+
+def _b12_refusal(case_id: str, retired_type: str, exit_status: int | None, output: str) -> str:
+    """Return an assertion failure or the diagnostic suffix without grading unapproved replacement text."""
+    text = normalized(output)
+    if exit_status == 0:
+        return B12_REFUSAL_ZERO_EXIT
+    if B12_ERROR_409 not in text:
+        return B12_REFUSAL_NOT_409
+    signature = _signature_in(output)
+    if signature is not None:
+        return B12_REFUSAL_UNRELATED_GATE.format(signature=signature)
+    if B12_REFUSAL_ACT_PHASE.format(retired_type=retired_type, phase=B12_PREPARATION_REFUSAL) not in text:
+        return B12_REFUSAL_PHASE
+    if B12_DOOR not in text:
+        return B12_REFUSAL_DOOR
+    if case_id == B12_CASE_PRD_ID and any(marker in text for marker in B12_REPLACEMENT_MARKERS):
+        return B12_REFUSAL_PRD_SUFFIX
+    if case_id == B12_CASE_KICKBACK_ID and HOLDING_DRIVER not in text:
+        return B12_REFUSAL_KICKBACK
+    return EMPTY
+
+
+def _operation_receipt(output: str) -> tuple[str | None, str]:
+    """Preserve a genuinely decoded unexpected operation receipt and any public status."""
+    payload = decode_object(output)
+    if payload is None:
+        return None, B12_OPERATION_NOT_APPLICABLE
+
+    def find_receipt(value: object) -> tuple[str | None, str]:
+        if isinstance(value, Mapping):
+            operation_id = value.get(B12Field.OPERATION_ID)
+            if isinstance(operation_id, str) and operation_id:
+                status = value.get(B12Field.STATUS)
+                return operation_id, status if isinstance(status, str) and status else B12_OPERATION_UNKNOWN
+            for nested in value.values():
+                operation_id, status = find_receipt(nested)
+                if operation_id is not None:
+                    return operation_id, status
+        elif isinstance(value, list):
+            for nested in value:
+                operation_id, status = find_receipt(nested)
+                if operation_id is not None:
+                    return operation_id, status
+        return None, B12_OPERATION_NOT_APPLICABLE
+
+    return find_receipt(payload)
+
+
+def _record_b12_failure(
+    evidence: RetiredActEvidence,
+    attempts_path: Path,
+    error: BaseException,
+    sanitize_text: Callable[[str], str],
+    started_at: float,
+) -> None:
+    """Freeze the last known partial state and local carrier seal without replacing the primary failure."""
+    verified_count = sum(case.get(B12Field.CLASSIFICATION) == B12_CLASS_VERIFIED for case in evidence.cases)
+    evidence.status = B12_STATUS_PARTIAL if 0 < verified_count < len(B12_CASES) else B12_STATUS_UNPROVEN
+    evidence.duration_seconds = max(0.0, time.monotonic() - started_at)
+    evidence.primary_failure = sanitize_text(
+        evidence.primary_failure or B12_EXCEPTION_DETAIL.format(error_class=type(error).__name__, detail=error)
+    )
+    completed_path = attempts_path.parent / B12_COMPLETED_FILE
+    marker_path = attempts_path.parent / B12_MARKER_FILE
+    if not attempts_path.exists():
+        marker_path = attempts_path.parent / B12_MARKER_FILE
+        if marker_path.exists():
+            evidence.carrier[B12Field.FRAMING] = B12_FRAMING_MISSING
+            evidence.carrier[B12Field.READ_ERROR] = B12_CARRIER_ERROR_MARKER
+            evidence.evidence_failure = evidence.evidence_failure or str(evidence.carrier[B12Field.READ_ERROR])
+            try:
+                marker_raw = marker_path.read_bytes()
+                evidence.carrier.update(
+                    {
+                        B12Field.MARKER_PATH: sanitize_text(str(marker_path.resolve())),
+                        B12Field.MARKER_SHA256: hashlib.sha256(marker_raw).hexdigest(),
+                        B12Field.MARKER_BYTE_COUNT: len(marker_raw),
+                        B12Field.MARKER_RAW_TEXT: sanitize_text(marker_raw.decode(B12_UTF8, errors=B12_UTF8_REPLACE))[
+                            :65536
+                        ],
+                        B12Field.MARKER_RAW_TEXT_TRUNCATED: len(marker_raw) > 65536,
+                    }
+                )
+            except Exception as marker_error:
+                detail = sanitize_text(
+                    B12_EXCEPTION_DETAIL.format(error_class=type(marker_error).__name__, detail=marker_error)
+                )
+                evidence.carrier[B12Field.READ_ERROR] = detail
+                evidence.evidence_failure = evidence.evidence_failure or detail
+        else:
+            evidence.carrier.setdefault(B12Field.FRAMING, B12_FRAMING_NOT_CREATED)
+            evidence.carrier.setdefault(B12Field.READ_ERROR, EMPTY)
+    else:
+        try:
+            raw = attempts_path.read_bytes()
+            embedded = embedded_b12_evidence_bytes(evidence)
+            evidence.carrier.update(
+                {
+                    B12Field.ATTEMPTS_PATH: sanitize_text(str(attempts_path.resolve())),
+                    B12Field.ORIGINAL_SHA256: hashlib.sha256(raw).hexdigest(),
+                    B12Field.ORIGINAL_BYTE_COUNT: len(raw),
+                    B12Field.FRAMING: B12_FRAMING_COMPLETE if not raw or raw.endswith(b"\n") else B12_FRAMING_PARTIAL,
+                    B12Field.RAW_TEXT: sanitize_text(raw.decode(B12_UTF8, errors=B12_UTF8_REPLACE))[:65536],
+                    B12Field.RAW_TEXT_TRUNCATED: len(raw) > 65536,
+                    B12Field.EMBEDDED_SHA256: hashlib.sha256(embedded).hexdigest(),
+                    B12Field.EMBEDDED_BYTE_COUNT: len(embedded),
+                    B12Field.EMBEDDED_SCOPE: B12_EMBEDDED_SCOPE,
+                    B12Field.READ_ERROR: EMPTY,
+                }
+            )
+            try:
+                records = validate_b12_attempts(raw, complete=False)
+                evidence.carrier[B12Field.LINE_COUNT] = len(records)
+            except Exception as validation_error:
+                detail = sanitize_text(
+                    B12_EXCEPTION_DETAIL.format(error_class=type(validation_error).__name__, detail=validation_error)
+                )
+                evidence.carrier[B12Field.READ_ERROR] = detail
+                evidence.evidence_failure = evidence.evidence_failure or detail
+        except Exception as read_error:
+            detail = sanitize_text(
+                B12_EXCEPTION_DETAIL.format(error_class=type(read_error).__name__, detail=read_error)
+            )
+            evidence.carrier[B12Field.READ_ERROR] = detail
+            evidence.evidence_failure = evidence.evidence_failure or detail
+    if marker_path.exists():
+        try:
+            marker_raw = marker_path.read_bytes()
+            evidence.carrier.update(
+                {
+                    B12Field.MARKER_PATH: sanitize_text(str(marker_path.resolve())),
+                    B12Field.MARKER_SHA256: hashlib.sha256(marker_raw).hexdigest(),
+                    B12Field.MARKER_BYTE_COUNT: len(marker_raw),
+                }
+            )
+        except Exception as marker_error:
+            detail = sanitize_text(
+                B12_EXCEPTION_DETAIL.format(error_class=type(marker_error).__name__, detail=marker_error)
+            )
+            evidence.carrier[B12Field.READ_ERROR] = detail
+            evidence.evidence_failure = evidence.evidence_failure or detail
+    elif attempts_path.exists():
+        evidence.status = B12_STATUS_UNPROVEN
+        evidence.carrier[B12Field.READ_ERROR] = B12_CARRIER_ERROR_MARKER
+        evidence.evidence_failure = evidence.evidence_failure or B12_CARRIER_ERROR_MARKER
+    if completed_path.exists():
+        try:
+            completed_raw = completed_path.read_bytes()
+            evidence.carrier.update(
+                {
+                    B12Field.COMPLETED_PATH: sanitize_text(str(completed_path.resolve())),
+                    B12Field.COMPLETED_SHA256: hashlib.sha256(completed_raw).hexdigest(),
+                    B12Field.COMPLETED_BYTE_COUNT: len(completed_raw),
+                    B12Field.COMPLETED_RAW_TEXT: sanitize_text(completed_raw.decode(B12_UTF8, errors=B12_UTF8_REPLACE))[
+                        :65536
+                    ],
+                    B12Field.COMPLETED_RAW_TEXT_TRUNCATED: len(completed_raw) > 65536,
+                    B12Field.COMPLETED_READ_ERROR: EMPTY,
+                }
+            )
+        except Exception as completed_error:
+            detail = sanitize_text(
+                B12_EXCEPTION_DETAIL.format(error_class=type(completed_error).__name__, detail=completed_error)
+            )
+            evidence.carrier[B12Field.COMPLETED_READ_ERROR] = detail
+            evidence.evidence_failure = evidence.evidence_failure or detail
+
+
+def _b12_readbacks(
+    observer: Observer,
+    baseline_item: Mapping[str, object],
+    baseline_sessions: SessionView,
+    baseline_slugs: set[str],
+    case_id: str,
+) -> tuple[EvidenceObject, list[str]]:
+    """Capture immediate and settled public item/session/slug reads and compare each with the frozen baseline."""
+    reads: list[EvidenceObject] = []
+    differences_found: list[str] = []
+    for when, pause in ((B12_CASE_IMMEDIATE, 0.0), (B12_CASE_SETTLED, B12_SETTLE_SECONDS)):
+        if pause:
+            observer.wait(pause)
+        item = observer.show(SLUG_FEATURE)
+        sessions = observer.sessions()
+        slugs = observer.slugs()
+        observation = _evidence_object(
+            {
+                B12Field.WHEN: when,
+                B12Field.ITEM: item,
+                B12Field.SESSION_IDS: sorted(sessions.ids),
+                B12Field.SLUGS: sorted(slugs),
+            }
+        )
+        reads.append(observation)
+        if item is None:
+            differences_found.append(B12_DETAIL_CASE_ABSENT.format(case_id=case_id, when=when))
+        else:
+            differences_found.extend(differences(baseline_item, item))
+        if sessions.ids != baseline_sessions.ids:
+            differences_found.append(B12_DETAIL_SESSIONS_CHANGED.format(case_id=case_id, when=when))
+        if slugs != baseline_slugs:
+            differences_found.append(B12_DETAIL_SLUGS_CHANGED.format(case_id=case_id, when=when))
+    return _evidence_object({B12Field.READS: reads}), differences_found
+
+
+def run_retired_act_matrix(
+    host: FoundationHost,
+    project: Path,
+    source_root: Path,
+    temporary_root: Path,
+    evidence: RetiredActEvidence,
+    retain_reason: Callable[[str], None],
+    release_reason: Callable[[str], None],
+    sanitize_text: Callable[[str], str],
+    started_at: float | None = None,
+) -> None:
+    """Run the approved B12 matrix once at R4's preparation checkpoint and retain a sealed report."""
+    started = started_at if started_at is not None else time.monotonic()
+    deadline = started + B12_SCENARIO_SECONDS
+    observer = Observer(host, deadline=deadline)
+    evidence.selected_amendment = B12_AMENDMENT
+    evidence.status = B12_STATUS_PARTIAL
+    matrix_root = temporary_root / B12_MATRIX_DIRECTORY
+    marker_path = matrix_root / B12_MARKER_FILE
+    attempts_path = matrix_root / B12_ATTEMPTS_FILE
+    completed_path = matrix_root / B12_COMPLETED_FILE
+    returned_to_source = False
+    baseline_item: Mapping[str, object] | None = None
+    baseline_sessions: SessionView | None = None
+    baseline_slugs: set[str] | None = None
+    try:
+        require_manual_runner(observer)
+        enter_project(observer, project)
+        _control_clearance(observer)
+        baseline_sessions = observer.sessions()
+        baseline_slugs = observer.slugs()
+        initial_show_reads: list[Mapping[str, object]] = []
+        baseline_item = _b12_quiescent_item(observer, initial_show_reads)
+        evidence.prerequisites.update(
+            _evidence_object(
+                {
+                    B12Field.MANUAL_RUNNER: True,
+                    B12Field.PROJECT_CWD: sanitize_text(str(project.resolve())),
+                    B12Field.CLEARANCE: B12_CLEARANCE_EVIDENCE,
+                    B12Field.OWNER_IDENTITY_EVIDENCE: B12_OWNER_IDENTITY_EVIDENCE,
+                }
+            )
+        )
+        evidence.baselines.update(
+            _evidence_object(
+                {
+                    B12Field.S0: _sanitize_evidence(baseline_item, sanitize_text),
+                    B12Field.INITIAL_SHOW_READS: _sanitize_evidence(initial_show_reads, sanitize_text),
+                    B12Field.B0: sorted(baseline_sessions.ids),
+                    B12Field.T0: sorted(baseline_slugs),
+                    B12Field.STABLE_SHOW_READS: 2,
+                    B12Field.SEPARATION_SECONDS: B12_INITIAL_STABILITY_SECONDS,
+                }
+            )
+        )
+        matrix_root.mkdir()
+        _sync_directory(temporary_root)
+        marker = _evidence_object(
+            {
+                B12Field.SCHEMA_VERSION: B12_JSON_SCHEMA,
+                B12Field.REASON: B12_REASON,
+                B12Field.SOURCE_REVISION: evidence.source_revision,
+                B12Field.SOURCE_TREE: evidence.source_tree,
+                B12Field.ISSUE_REVISION: evidence.issue_revision,
+                B12Field.ASSERTION_PATH: evidence.assertion_path,
+                B12Field.ASSERTION_SHA256: evidence.assertion_sha256,
+                B12Field.PROJECT_PATH: str(project.resolve()),
+                B12Field.CALLER_EVIDENCE: evidence.prerequisites,
+                B12Field.S0: baseline_item,
+                B12Field.B0: sorted(baseline_sessions.ids),
+                B12Field.T0: sorted(baseline_slugs),
+                B12Field.ORDERED_CASES: [case_id for case_id, _, _ in B12_CASES],
+                B12Field.ORDERED_CASE_PLAN: [
+                    {B12Field.CASE_ID: case_id, B12Field.ARGV: list(argv), B12Field.RETIRED_TYPE: retired_type}
+                    for case_id, argv, retired_type in B12_CASES
+                ],
+                B12Field.ATTEMPTS_PATH: str(attempts_path.resolve()),
+            }
+        )
+        marker_bytes = _sync_json(marker_path, marker, exclusive=True)
+        if marker_path.read_bytes() != marker_bytes:
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_CARRIER_MISMATCH)
+        evidence.carrier.update(
+            {
+                B12Field.MARKER_PATH: sanitize_text(str(marker_path.resolve())),
+                B12Field.MARKER_SHA256: hashlib.sha256(marker_bytes).hexdigest(),
+                B12Field.MARKER_BYTE_COUNT: len(marker_bytes),
+            }
+        )
+        with attempts_path.open(B12_MODE_EXCLUSIVE, encoding=B12_UTF8, newline="") as handle:
+            handle.flush()
+            os.fsync(handle.fileno())
+        if attempts_path.read_bytes():
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_CARRIER_MISMATCH)
+        _sync_directory(matrix_root)
+        retain_reason(B12_RETAIN_REASON.format(path=marker_path))
+        evidence.status = B12_STATUS_PARTIAL
+        for case_index, (case_id, argv, retired_type) in enumerate(B12_CASES):
+            case = evidence.cases[case_index]
+            case.update(
+                {
+                    B12Field.ARGV: list(argv),
+                    B12Field.RETIRED_TYPE: retired_type,
+                }
+            )
+            before_show_reads: list[Mapping[str, object]] = []
+            before_item = _b12_quiescent_item(observer, before_show_reads)
+            before_sessions = observer.sessions()
+            before_slugs = observer.slugs()
+            before_differences = differences(baseline_item, before_item)
+            case[B12Field.BEFORE] = _evidence_object(
+                {
+                    B12Field.ITEM: _sanitize_evidence(before_item, sanitize_text),
+                    B12Field.BEFORE_SHOW_READS: _sanitize_evidence(before_show_reads, sanitize_text),
+                    B12Field.BEFORE_SESSIONS: sorted(before_sessions.ids),
+                    B12Field.BEFORE_SLUGS: sorted(before_slugs),
+                    B12Field.PRECALL_DIFFERENCES: before_differences,
+                }
+            )
+            if before_differences or before_sessions.ids != baseline_sessions.ids or before_slugs != baseline_slugs:
+                detail = B12_DETAIL_PRECALL_STATE_CHANGED.format(case_id=case_id, differences=before_differences)
+                raise platform_failure(B12_ERROR_PREFIX + detail)
+            open_record: EvidenceObject = {
+                B12Field.EVENT: B12_EVENT_OPEN,
+                B12Field.CASE_ID: case_id,
+                B12Field.ARGV: list(argv),
+                B12Field.STARTED_MONOTONIC_SECONDS: time.monotonic() - started,
+            }
+            _append_attempt(attempts_path, open_record)
+            case[B12Field.CLASSIFICATION] = B12_CLASS_OPEN
+            call_started = time.monotonic()
+            outcome = observer.run(argv)
+            result_duration = max(outcome.duration_seconds, time.monotonic() - call_started)
+            refusal_failure = (
+                _b12_refusal(case_id, retired_type, outcome.exit_status, outcome.output)
+                if outcome.exit_status is not None
+                else B12_REFUSAL_NO_TERMINAL
+            )
+            outcome_kind = (
+                B12_OUTCOME_COMPLETED
+                if outcome.exit_status is not None
+                else B12_OUTCOME_TIMEOUT
+                if outcome.diagnostics == B12_TIMEOUT_DIAGNOSTIC
+                else B12_OUTCOME_TRANSPORT
+            )
+            operation_id, operation_status = _operation_receipt(outcome.output)
+            if operation_id is not None:
+                refusal_failure = B12_REFUSAL_RECEIPT
+            stdout_bytes = outcome.output.encode(B12_UTF8)
+            embedded_stdout = sanitize_text(outcome.output).encode(B12_UTF8)
+            case.update(
+                _evidence_object(
+                    {
+                        B12Field.DURATION_SECONDS: result_duration,
+                        B12Field.OUTCOME: outcome_kind,
+                        B12Field.EXIT_STATUS: outcome.exit_status,
+                        B12Field.STDOUT: embedded_stdout.decode(B12_UTF8),
+                        B12Field.STDOUT_SHA256: hashlib.sha256(stdout_bytes).hexdigest(),
+                        B12Field.STDOUT_BYTE_COUNT: len(stdout_bytes),
+                        B12Field.EMBEDDED_STDOUT_SHA256: hashlib.sha256(embedded_stdout).hexdigest(),
+                        B12Field.EMBEDDED_STDOUT_BYTE_COUNT: len(embedded_stdout),
+                        B12Field.STDERR: sanitize_text(outcome.stderr),
+                        B12Field.STDERR_CAPTURE: B12_PTY_CAPTURE,
+                        B12Field.DIAGNOSTICS: sanitize_text(outcome.diagnostics),
+                        B12Field.OUTPUT_TRUNCATED: outcome.diagnostics == B12_OUTPUT_LIMIT_DIAGNOSTIC,
+                        B12Field.RETURNED_SUFFIX_DIAGNOSTIC: sanitize_text(normalized(outcome.output)),
+                        B12Field.OPERATION_ID: operation_id,
+                        B12Field.OPERATION_STATUS: operation_status,
+                        B12Field.REFUSAL_FAILURE: refusal_failure,
+                    }
+                )
+            )
+            after_reads, readback_differences = _b12_readbacks(
+                observer, baseline_item, baseline_sessions, baseline_slugs, case_id
+            )
+            sanitized_readbacks = _sanitize_evidence(after_reads[B12Field.READS], sanitize_text)
+            case.update(
+                _evidence_object(
+                    {
+                        B12Field.READBACKS: sanitized_readbacks,
+                        B12Field.DIFFERENCES: readback_differences,
+                    }
+                )
+            )
+            classification = (
+                B12_CLASS_VERIFIED if not refusal_failure and not readback_differences else B12_CLASS_UNPROVEN
+            )
+            case.update(
+                _evidence_object(
+                    {
+                        B12Field.UNCHANGED: classification == B12_CLASS_VERIFIED,
+                        B12Field.CLASSIFICATION: classification,
+                    }
+                )
+            )
+            result_record = _evidence_object(
+                {
+                    B12Field.EVENT: B12_EVENT_RESULT,
+                    B12Field.CASE_ID: case_id,
+                    B12Field.DURATION_SECONDS: result_duration,
+                    B12Field.OUTCOME: case[B12Field.OUTCOME],
+                    B12Field.EXIT_STATUS: outcome.exit_status,
+                    B12Field.STDOUT: outcome.output,
+                    B12Field.STDOUT_SHA256: hashlib.sha256(stdout_bytes).hexdigest(),
+                    B12Field.STDOUT_BYTE_COUNT: len(stdout_bytes),
+                    B12Field.STDERR: outcome.stderr,
+                    B12Field.STDERR_CAPTURE: B12_PTY_CAPTURE,
+                    B12Field.DIAGNOSTICS: outcome.diagnostics,
+                    B12Field.OUTPUT_TRUNCATED: outcome.diagnostics == B12_OUTPUT_LIMIT_DIAGNOSTIC,
+                    B12Field.READBACKS: after_reads[B12Field.READS],
+                    B12Field.DIFFERENCES: readback_differences,
+                    B12Field.OPERATION_ID: operation_id,
+                    B12Field.OPERATION_STATUS: operation_status,
+                    B12Field.REFUSAL_FAILURE: refusal_failure,
+                }
+            )
+            _append_attempt(attempts_path, result_record)
+            _append_attempt(
+                attempts_path,
+                {
+                    B12Field.EVENT: B12_EVENT_VERIFIED,
+                    B12Field.CASE_ID: case_id,
+                    B12Field.CLASSIFICATION: classification,
+                },
+            )
+            if classification != B12_CLASS_VERIFIED:
+                evidence.primary_failure = refusal_failure or repr(readback_differences)
+                evidence.status = B12_STATUS_UNPROVEN if case_index == 0 else B12_STATUS_PARTIAL
+                raise platform_failure(B12_ERROR_PREFIX + evidence.primary_failure)
+            validate_b12_attempts(attempts_path.read_bytes(), complete=False)
+        leave_project(observer, source_root)
+        returned_to_source = True
+        observer.require_time()
+        evidence.duration_seconds = time.monotonic() - started
+        raw_attempts = attempts_path.read_bytes()
+        records = validate_b12_attempts(raw_attempts, complete=True)
+        completed = _evidence_object(
+            {
+                B12Field.SCHEMA_VERSION: B12_JSON_SCHEMA,
+                B12Field.STATUS: B12_STATUS_COMPLETE,
+                B12Field.ORDERED_RESULTS: evidence.cases,
+                B12Field.ATTEMPTS_SHA256: hashlib.sha256(raw_attempts).hexdigest(),
+                B12Field.ATTEMPTS_BYTE_COUNT: len(raw_attempts),
+                B12Field.ATTEMPTS_LINE_COUNT: len(records),
+                B12Field.DURATION_SECONDS: evidence.duration_seconds,
+            }
+        )
+        temporary_completed = completed_path.with_suffix(B12_JSON_SUFFIX)
+        _sync_json(temporary_completed, completed)
+        temporary_completed.replace(completed_path)
+        _sync_directory(matrix_root)
+        readback = json.loads(completed_path.read_text(encoding=B12_UTF8))
+        if (
+            not isinstance(readback, dict)
+            or readback.get(B12Field.STATUS) != B12_STATUS_COMPLETE
+            or readback.get(B12Field.ATTEMPTS_SHA256) != hashlib.sha256(raw_attempts).hexdigest()
+            or readback.get(B12Field.ATTEMPTS_BYTE_COUNT) != len(raw_attempts)
+            or readback.get(B12Field.ATTEMPTS_LINE_COUNT) != len(records)
+            or readback.get(B12Field.ORDERED_RESULTS) != evidence.cases
+            or len(readback.get(B12Field.ORDERED_RESULTS, [])) != len(B12_CASES)
+        ):
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_COMPLETED_SNAPSHOT)
+        observer.require_time()
+        evidence.duration_seconds = time.monotonic() - started
+        completed[B12Field.DURATION_SECONDS] = evidence.duration_seconds
+        _sync_json(temporary_completed, completed)
+        temporary_completed.replace(completed_path)
+        _sync_directory(matrix_root)
+        readback = json.loads(completed_path.read_text(encoding=B12_UTF8))
+        if not isinstance(readback, dict) or readback != completed:
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_COMPLETED_SNAPSHOT)
+        completed_bytes = completed_path.read_bytes()
+        evidence.carrier.update(
+            {
+                B12Field.ATTEMPTS_PATH: sanitize_text(str(attempts_path.resolve())),
+                B12Field.COMPLETED_PATH: sanitize_text(str(completed_path.resolve())),
+                B12Field.COMPLETED_SHA256: hashlib.sha256(completed_bytes).hexdigest(),
+                B12Field.COMPLETED_BYTE_COUNT: len(completed_bytes),
+                B12Field.ORIGINAL_SHA256: hashlib.sha256(raw_attempts).hexdigest(),
+                B12Field.ORIGINAL_BYTE_COUNT: len(raw_attempts),
+                B12Field.LINE_COUNT: len(records),
+                B12Field.FRAMING: B12_FRAMING_COMPLETE,
+                B12Field.EMBEDDED_SHA256: hashlib.sha256(embedded_b12_evidence_bytes(evidence)).hexdigest(),
+                B12Field.EMBEDDED_BYTE_COUNT: len(embedded_b12_evidence_bytes(evidence)),
+                B12Field.EMBEDDED_SCOPE: B12_EMBEDDED_SCOPE,
+                B12Field.READ_ERROR: EMPTY,
+            }
+        )
+        evidence.status = B12_STATUS_COMPLETE
+        evidence.primary_failure = EMPTY
+        if not evidence.cases or any(
+            case.get(B12Field.CLASSIFICATION) != B12_CLASS_VERIFIED for case in evidence.cases
+        ):
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_MEMORY_SNAPSHOT)
+        upload_snapshot = asdict(evidence)
+        upload_bytes = json.dumps(
+            upload_snapshot, ensure_ascii=False, sort_keys=True, separators=B12_JSON_SEPARATORS
+        ).encode(B12_UTF8)
+        if (
+            len(evidence.cases) != len(B12_CASES)
+            or upload_snapshot.get(B12Field.STATUS) != B12_STATUS_COMPLETE
+            or upload_snapshot.get(B12Field.SELECTED_AMENDMENT) != B12_AMENDMENT
+            or evidence.carrier.get(B12Field.EMBEDDED_SHA256)
+            != hashlib.sha256(embedded_b12_evidence_bytes(evidence)).hexdigest()
+            or json.loads(upload_bytes) != upload_snapshot
+        ):
+            raise binding_failure(B12_ERROR_PREFIX + B12_DETAIL_UPLOAD_SNAPSHOT)
+        observer.require_time()
+        release_reason(B12_RETAIN_REASON.format(path=marker_path))
+        observer.require_time()
+    except Exception as error:
+        _record_b12_failure(evidence, attempts_path, error, sanitize_text, started)
+        raise
+    except KeyboardInterrupt as error:
+        _record_b12_failure(evidence, attempts_path, error, sanitize_text, started)
+        raise
+    finally:
+        if not returned_to_source:
+            try:
+                leave_project(Observer(host), source_root)
+            except Exception as return_error:
+                detail = sanitize_text(
+                    B12_EXCEPTION_DETAIL.format(error_class=type(return_error).__name__, detail=return_error)
+                )
+                evidence.evidence_failure = evidence.evidence_failure or detail
+                if not evidence.primary_failure:
+                    evidence.primary_failure = detail
+                    evidence.status = B12_STATUS_UNPROVEN
+                    raise platform_failure(B12_ERROR_PREFIX + detail) from return_error
