@@ -53,6 +53,23 @@ whether setup and validation are ready to run. Successful corroboration is an
 upstream review decision, not a copy of the contributor's approval
 (`sdlc/procedure/lifecycle/review`).
 
+### Admission evidence
+
+The contribution inspection surface exposes the pinned source, base, proposed
+contracts and prior reports as data, independently of executable preparation.
+Initial reviewer and waiting-builder bootstrap use upstream-owned instructions
+and configuration. Their assigned review subject is the retained imported
+worktree; the imported tree supplies no startup instructions or executable
+configuration before admission.
+
+The upstream reviewer records corroborated obligations, unresolved findings,
+preparation gaps, execution readiness and remaining native checks in its
+versioned review report. The admission decision binds that report and the exact
+proposal subject. Admission readiness and completed build review are separate
+facts: read-only admission records no claim that an outstanding check ran.
+The workflow consumes the reviewer's declared decision, never inferring it
+from report prose (`general/principle/intelligence-boundaries`).
+
 ### Continuation inside the lifecycle
 
 The adopted proposal owns a normal todo worktree. Its reviewer starts with the

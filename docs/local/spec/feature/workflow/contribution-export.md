@@ -59,6 +59,29 @@ until its owner retires or resumes it. A confirmed merge records upstream
 acceptance and its actual commit before ordinary delivered-work cleanup; closure
 alone never supplies that confirmation.
 
+### Contribution operations
+
+The contribution command surface offers proposal publication, inspection and
+reconciliation by local todo. Its inspection identifies retained work, the
+current proposal revision, publication failures and the independent delivery,
+release and installation facts. Automatic finalize-ready handling invokes the
+same publication operation as an explicit retry.
+
+Standing enrollment is a computer-local declaration for the registered logical
+project, changed through the configuration owner's semantic operation. The
+declaration selects the upstream and writable destination independently of the
+release channel; a clone, imported project declaration or supplied PR cannot
+enroll its receiving installation. Disabling enrollment stops later public
+writes and retains existing proposals. The configuration owner validates and
+persists the declaration (`local/projects/teleclaude/spec/domain/config`).
+
+Workflow owns durable proposal and adoption records, including their revision
+history, retry position and links to local todo identities. Provider operations
+cross integration's typed transport contract; configuration, documentation
+projection, release admission and installation assessment retain their owners
+(`sdlc/policy/domain-ownership`). An interrupted external write is reconciled
+with the provider before it is repeated.
+
 ### Review evidence
 
 The PR carries a comment with the exportable reviewer reports, the exact
