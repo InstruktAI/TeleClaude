@@ -306,7 +306,8 @@ def _read_manifest() -> bytes:
     parent_fd = os.open(MANIFEST.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
         directory = os.fstat(parent_fd)
-        if directory.st_uid != 0 or stat.S_IMODE(directory.st_mode) & 0o022:
+        shared_write = stat.S_IMODE(directory.st_mode) & 0o022
+        if directory.st_uid != 0 or (shared_write and not directory.st_mode & stat.S_ISVTX):
             raise ValueError(ERROR_CONTEXT)
         descriptor = os.open(MANIFEST.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent_fd)
         try:

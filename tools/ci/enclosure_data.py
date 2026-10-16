@@ -283,7 +283,18 @@ def stage_guest_declarations(
         raise ValueError(ERROR_DESTINATION)
     _require_time(deadline)
     _write_data(_guest_path(rootfs, text(policy, Key.INSTALLED_PATH)), source.read_bytes(), 0o755)
-    static = rootfs / CONTROL_ROOT / STATIC_SUBDIRECTORY
+    control = _guest_path(rootfs, GUEST_PREFIX + str(CONTROL_ROOT))
+    control.mkdir(parents=True, exist_ok=True)
+    control_fd = os.open(control, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        if os.fstat(control_fd).st_uid != 0:
+            raise ValueError(ERROR_ROOT)
+        # Root-owned sticky entries protect the manifest/journals while runner owns its report/temp entries.
+        os.fchmod(control_fd, 0o1777)
+        os.fsync(control_fd)
+    finally:
+        os.close(control_fd)
+    static = control / STATIC_SUBDIRECTORY
     for name, data in (
         (STATIC_FILE, package.lock_bytes),
         (RECIPE_FILE, package.recipe_bytes),
