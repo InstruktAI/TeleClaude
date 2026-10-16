@@ -65,14 +65,17 @@ DETAIL_RELEASE: Final = (
 DETAIL_AFTER: Final = "A4-5: {item} {what} is {found!r}, not {expected!r}"
 DETAIL_SESSION: Final = "A4-6: a session appeared after the release: {found!r}"
 DETAIL_SESSION_LOG: Final = "A4-2: the log headers of {item} changed: {before!r} became {after!r}"
+DETAIL_WITNESS: Final = "A4-2: {item} has no typed {what} witness before its holder ends: {found!r}"
 
 type Json = Mapping[str, object]
 
 
-def log_headers(shown: Json) -> list[str]:
+def log_headers(shown: Json, item: str) -> list[str]:
     """The section header lines of the item\'s log, in order."""
-    _, log = creation.dig(shown, "artifact_content.log")
-    return [line for line in str(log).replace("\r\n", "\n").split("\n") if line.startswith(HEADER_PREFIX)]
+    found, log = creation.dig(shown, "artifact_content.log")
+    if not found or not isinstance(log, str):
+        raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what="artifact log", found=log))
+    return [line for line in log.replace("\r\n", "\n").split("\n") if line.startswith(HEADER_PREFIX)]
 
 
 @dataclass
@@ -101,15 +104,38 @@ class Handover:
     def before(self, item: str, ended: str, phase: str) -> None:
         """A fresh strict public snapshot of the item, immediately before its holder is ended."""
         snapshot = driver.fresh_snapshot(self.observer, item)
+        for path in (PHASE_PATH, STANDING_PHASE_PATH):
+            found, value = creation.dig(snapshot, path)
+            if not found or not isinstance(value, str) or value != phase:
+                raise creation.binding_failure(
+                    DETAIL_WITNESS.format(item=item, what=f"{path} equal to {phase!r}", found=value)
+                )
         found, input_text = creation.dig(snapshot, INPUT_PATH)
+        if not found or not isinstance(input_text, str):
+            raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what="input body", found=input_text))
+        headers = log_headers(snapshot, item)
+        worktree: str | None = None
+        if self.worktree is not None:
+            worktree = self.worktree()
+            expected_branch = f"branch refs/heads/{item}"
+            lines = worktree.splitlines() if isinstance(worktree, str) else []
+            if (
+                not isinstance(worktree, str)
+                or not lines
+                or not lines[0].startswith("worktree /")
+                or expected_branch not in lines[1:]
+            ):
+                raise creation.binding_failure(
+                    DETAIL_WITNESS.format(item=item, what="B4 worktree bound to its branch", found=worktree)
+                )
         self.pending[item] = Pending(
             item=item,
             ended=ended,
             phase=phase,
             snapshot=snapshot,
-            headers=log_headers(snapshot),
-            input_text=input_text if found else None,
-            worktree=self.worktree() if self.worktree is not None else None,
+            headers=headers,
+            input_text=input_text,
+            worktree=worktree,
         )
 
     def _closed(self, pending: Pending) -> None:
@@ -137,7 +163,7 @@ class Handover:
             raise creation.platform_failure(
                 DETAIL_INVARIANT.format(item=item, what=INPUT_PATH, found=input_text, expected=pending.input_text)
             )
-        headers = log_headers(shown)
+        headers = log_headers(shown, item)
         if headers != pending.headers:
             raise creation.platform_failure(DETAIL_SESSION_LOG.format(item=item, before=pending.headers, after=headers))
         if self.worktree is not None:
@@ -193,12 +219,6 @@ class Handover:
             self._invariant(pending, shown)
             views[item] = shown
             classes[item] = self._expected_hold(pending, shown)
-        for item, kind in classes.items():
-            _, audit = creation.dig(views[item], STATE_AUDIT)
-            if kind == "absent":
-                raise creation.platform_failure(
-                    DETAIL_NO_HOLD.format(item=item, session=self.pending[item].ended, audit=audit)
-                )
         unrelated = [item for item, kind in classes.items() if kind == "unrelated"]
         if unrelated:
             detail = "; ".join(
@@ -207,7 +227,16 @@ class Handover:
                 )
                 for item in unrelated
             )
-            self.unrelated = detail
+        else:
+            detail = ""
+        self.unrelated = detail
+        for item, kind in classes.items():
+            _, audit = creation.dig(views[item], STATE_AUDIT)
+            if kind == "absent":
+                raise creation.platform_failure(
+                    DETAIL_NO_HOLD.format(item=item, session=self.pending[item].ended, audit=audit)
+                )
+        if detail:
             raise creation.binding_failure(detail)
         for item in items_ended:
             self._release(self.pending[item], views[item])
