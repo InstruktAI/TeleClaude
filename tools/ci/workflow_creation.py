@@ -215,6 +215,7 @@ class B12Field(StrEnum):
     CLASSIFICATION = "classification"
     WHEN = "when"
     ITEM = "item"
+    STATE = "state"
     SESSION_IDS = "session_ids"
     SLUGS = "slugs"
     READS = "reads"
@@ -932,7 +933,10 @@ def _b12_quiescent_item(
 ) -> Mapping[str, object]:
     """Apply B12's active-feature condition to the existing R4 quiescence witness."""
     payload = _quiescent_item(observer, show_reads)
-    for path, expected in ((FIELD_KIND, KIND_FEATURE), (f"{FIELD_ROADMAP}{DOT}{FIELD_STATUS}", STATUS_ACTIVE)):
+    for path, expected in (
+        (f"{FIELD_STATE}{DOT}{FIELD_KIND}", KIND_FEATURE),
+        (f"{FIELD_ROADMAP}{DOT}{FIELD_STATUS}", STATUS_ACTIVE),
+    ):
         found, value = dig(payload, path)
         if not found or value != expected:
             raise binding_failure(DETAIL_PRECONDITION.format(slug=SLUG_FEATURE, path=path, found=value))
@@ -1169,7 +1173,7 @@ def _operation_receipt(output: str) -> tuple[str | None, str]:
         if isinstance(value, Mapping):
             operation_id = value.get(B12Field.OPERATION_ID)
             if isinstance(operation_id, str) and operation_id:
-                status = value.get(B12Field.STATUS)
+                status = value.get(B12Field.STATE)
                 return operation_id, status if isinstance(status, str) and status else B12_OPERATION_UNKNOWN
             for nested in value.values():
                 operation_id, status = find_receipt(nested)
@@ -1449,14 +1453,15 @@ def run_retired_act_matrix(
                 }
             )
             before_show_reads: list[Mapping[str, object] | None] = []
-            before = _evidence_object(
+            before = cast(
+                EvidenceObject,
                 {
                     B12Field.ITEM: {},
-                    B12Field.BEFORE_SHOW_READS: before_show_reads,
+                    B12Field.BEFORE_SHOW_READS: cast(list[EvidenceValue], before_show_reads),
                     B12Field.BEFORE_SESSIONS: [],
                     B12Field.BEFORE_SLUGS: [],
                     B12Field.PRECALL_DIFFERENCES: [],
-                }
+                },
             )
             case[B12Field.BEFORE] = before
             before_item = _b12_quiescent_item(observer, before_show_reads)
