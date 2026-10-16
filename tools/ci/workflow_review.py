@@ -74,7 +74,8 @@ DETAIL_STATE: Final = "operation {operation} ended in {state!r}: {detail!r}"
 DETAIL_KEY: Final = "finding returned no key: {result!r}"
 DETAIL_LEDGER: Final = "B5 ledger declaration failed: {detail}"
 DETAIL_PRECONDITION: Final = "B5 began outside the approved unclaimed work state: {item!r}"
-DETAIL_WRITE_SCOPE: Final = "builder launch cwd and public project_path do not name the owned worktree"
+DETAIL_WRITE_SCOPE: Final = "builder expected worktree {worktree}; public project_path {project!r}, launch cwd {cwd!r}"
+DETAIL_WRITE_FRAME_SCOPE: Final = "builder write frame cwd {cwd!r} does not name worktree {worktree}; frame {frame!r}"
 DETAIL_INTEGRATOR: Final = "no started integrator has a public session record and mapped native control"
 B11_SENTINEL_BYTES: Final = b"b11 dirty sentinel\n"
 B11_SENTINEL_LINE: Final = "b11 dirty sentinel"
@@ -423,7 +424,13 @@ def _start_work(
     if builder_record.get(FIELD_PROJECT) != str(worktree.resolve()) or builder_launch.get("cwd") != str(
         worktree.resolve()
     ):
-        raise creation.binding_failure(DETAIL_WRITE_SCOPE)
+        raise creation.binding_failure(
+            DETAIL_WRITE_SCOPE.format(
+                worktree=worktree.resolve(),
+                project=builder_record.get(FIELD_PROJECT),
+                cwd=builder_launch.get("cwd"),
+            )
+        )
     case = driver.DriverCase(
         host=flow.host,
         observer=flow.observer,
@@ -449,7 +456,9 @@ def _build_and_review(
     flow.gate(builder, "go_w1")
     write_frame = _frame_success(flow, builder, "write1", writes=True)
     if write_frame.get("cwd") != str(worktree.resolve()):
-        raise creation.binding_failure(DETAIL_WRITE_SCOPE)
+        raise creation.binding_failure(
+            DETAIL_WRITE_FRAME_SCOPE.format(cwd=write_frame.get("cwd"), worktree=worktree.resolve(), frame=write_frame)
+        )
     _frame_success(flow, builder, "commit1")
     commit_one = _git(flow, "rev-parse", "HEAD", cwd=worktree)
     subject = _git(flow, "show", "-s", "--format=%s", commit_one, cwd=worktree)
