@@ -20,6 +20,7 @@ from teleclaude.core.integration.checkpoint import (
     _now_iso,
     _reset_candidate,
     _write_checkpoint,
+    record_retirement,
 )
 from teleclaude.core.integration.formatters import _format_content_gate_conflict, _format_error
 from teleclaude.core.integration.lifecycle_events import (
@@ -62,10 +63,28 @@ def _park_candidate(
     checkpoint.parked.append(parked)
     checkpoint.items_blocked += 1
     _emit_lifecycle_event(_EVENT_INTEGRATION_CANDIDATE_PARKED, dict(parked), home)
+    record_retirement(checkpoint)
     _reset_candidate(checkpoint)
     _write_checkpoint(checkpoint_path, checkpoint)
-    retire_admission(cwd, key, getattr(_tls, "loop", None))
+    complete_retirements(checkpoint, checkpoint_path, cwd)
     return True, ""
+
+
+def complete_retirements(checkpoint: IntegrationCheckpoint, checkpoint_path: Path, cwd: str) -> None:
+    """Complete every pending retirement intent, clearing each one only when its exact retirement is done.
+
+    The intent was persisted in the same checkpoint write that parked or reset the candidate, so it outlives a crash
+    between that write and the row. A retirement that fails stays pending and is retried by the next call; one that
+    completes late clears only the attempt it names.
+    """
+    intents = list(checkpoint.retirements or [])
+    if not intents:
+        return
+    loop = getattr(_tls, "loop", None)
+    remaining = [intent for intent in intents if not retire_admission(cwd, intent, loop)]
+    if len(remaining) != len(intents):
+        checkpoint.retirements = remaining
+        _write_checkpoint(checkpoint_path, checkpoint)
 
 
 def _format_content_gate_conflict_or_invariant_error(
@@ -91,4 +110,5 @@ __all__ = [
     "_UNGROUNDABLE_CONTENT_GATE_PARK_REASON",
     "_format_content_gate_conflict_or_invariant_error",
     "_park_candidate",
+    "complete_retirements",
 ]

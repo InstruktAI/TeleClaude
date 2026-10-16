@@ -34,6 +34,7 @@ from teleclaude.core.integration.checkpoint import (
     _get_candidate_key,
     _now_iso,
     _write_checkpoint,
+    pending_attempts,
 )
 from teleclaude.core.integration.delivery_fold import assert_clean_before_push, reassert_delivered_fold
 from teleclaude.core.integration.formatters import (
@@ -73,6 +74,7 @@ from teleclaude.core.integration.park import (
     _TEXTUAL_CONFLICT_PARK_REASON,
     _format_content_gate_conflict_or_invariant_error,
     _park_candidate,
+    complete_retirements,
 )
 from teleclaude.core.integration.push_recovery import _is_content_gate_rejection
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
@@ -187,15 +189,19 @@ def _step_idle(
     reconcile_worktree_homes(Path(cwd), at_startup=False)
     remove_vanished_worktree_trust(Path(cwd))
 
+    complete_retirements(checkpoint, checkpoint_path, cwd)
     exclude = checkpoint.candidate_slug
     parked_slugs = {parked["slug"] for parked in checkpoint.parked}
+    retiring = pending_attempts(checkpoint)
 
     try:
         if slug is not None:
-            candidate = _verify_slug_ready(cwd, slug, parked_slugs=parked_slugs)
+            candidate = _verify_slug_ready(cwd, slug, parked_slugs=parked_slugs, retiring=retiring)
             candidates = [candidate] if candidate else []
         else:
-            candidates = _scan_finalize_ready_candidates(cwd, parked_slugs=parked_slugs, exclude_slug=exclude)
+            candidates = _scan_finalize_ready_candidates(
+                cwd, parked_slugs=parked_slugs, exclude_slug=exclude, retiring=retiring
+            )
     except CandidateStateReadError as exc:
         return False, _format_error("CANDIDATE_STATE_READ_FAILED", str(exc))
 
@@ -234,7 +240,7 @@ def _step_idle(
     lease_token = acquire_result.lease.lease_token
     key = candidates[0].key
     now = _now_iso()
-    admission = admit_candidate(cwd, key, session_id, getattr(_tls, "loop", None))
+    admission = admit_candidate(cwd, key, session_id, getattr(_tls, "loop", None), retiring=retiring)
     if admission.refused:
         _try_release_lease(lease_store, session_id, lease_token)
         return False, _format_error("CANDIDATE_ADMISSION_REFUSED", admission.refused + _ADMISSION_RETRY)
@@ -242,6 +248,7 @@ def _step_idle(
     checkpoint.candidate_slug = key.slug
     checkpoint.candidate_branch = key.branch
     checkpoint.candidate_sha = key.sha
+    checkpoint.candidate_attempt = admission.attempt or None
     checkpoint.lease_token = lease_token
     checkpoint.started_at = now
     _write_checkpoint(checkpoint_path, checkpoint)

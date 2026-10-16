@@ -66,6 +66,15 @@ class ParkedCandidate(TypedDict):
     parked_at: str
 
 
+class RetirementIntent(TypedDict):
+    """The intent to retire one row admission, named by the attempt it carries; kept until that exact retirement is done."""
+
+    slug: str
+    branch: str
+    sha: str
+    attempt: str
+
+
 @dataclass
 class IntegrationCheckpoint:
     """Durable checkpoint for crash recovery and idempotent re-entry."""
@@ -89,6 +98,10 @@ class IntegrationCheckpoint:
     parked: list[ParkedCandidate]
     # Non-fatal anomalies accumulated during integration (surfaced to agents)
     warnings: list[str] | None = None
+    # The attempt identity of the admission the current candidate was published with; empty for an older admission
+    candidate_attempt: str | None = None
+    # Row admissions a park or a reset abandoned and whose retirement is not yet complete
+    retirements: list[RetirementIntent] | None = None
 
 
 class _CheckpointPayload(TypedDict):
@@ -107,6 +120,8 @@ class _CheckpointPayload(TypedDict):
     pushed_sha: str | None
     parked: list[ParkedCandidate]
     warnings: list[str]
+    candidate_attempt: str | None
+    retirements: list[RetirementIntent]
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +153,7 @@ def _reset_candidate(checkpoint: IntegrationCheckpoint) -> None:
     checkpoint.candidate_slug = None
     checkpoint.candidate_branch = None
     checkpoint.candidate_sha = None
+    checkpoint.candidate_attempt = None
     checkpoint.lease_token = None
     checkpoint.pre_merge_head = None
     checkpoint.pushed_sha = None
@@ -189,6 +205,8 @@ def _read_checkpoint(path: Path) -> IntegrationCheckpoint:
             pushed_sha=data.get("pushed_sha"),
             parked=list(data[_CHECKPOINT_PARKED_FIELD]),
             warnings=list(data.get("warnings", [])),
+            candidate_attempt=data.get("candidate_attempt"),
+            retirements=list(data.get("retirements", [])),
         )
     except (OSError, TypeError, ValueError):
         logger.warning("Failed to read integration checkpoint at %s; starting fresh", path)
@@ -216,6 +234,8 @@ def _write_checkpoint(path: Path, checkpoint: IntegrationCheckpoint) -> None:
         "pushed_sha": checkpoint.pushed_sha,
         "parked": checkpoint.parked,
         "warnings": checkpoint.warnings or [],
+        "candidate_attempt": checkpoint.candidate_attempt,
+        "retirements": checkpoint.retirements or [],
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
     with tmp.open("w", encoding="utf-8") as fh:
@@ -232,6 +252,28 @@ def _write_checkpoint(path: Path, checkpoint: IntegrationCheckpoint) -> None:
 
 def _default_state_dir(cwd: str | Path) -> Path:
     return resolve_project_root(cwd) / ".teleclaude" / "integration"
+
+
+def record_retirement(checkpoint: IntegrationCheckpoint) -> None:
+    """Add the intent to retire the current candidate\'s row admission, before the candidate is reset or parked.
+
+    Called in the same checkpoint write that parks or resets, so the intent is as durable as the abandonment: an idle
+    or absent entry is no proof that the attempt ended, and the intent survives the reset and the clearing of the
+    parked list until its exact completion clears it.
+    """
+    key = _get_candidate_key(checkpoint)
+    if key is None:
+        return
+    intents = list(checkpoint.retirements or [])
+    intent = RetirementIntent(slug=key.slug, branch=key.branch, sha=key.sha, attempt=checkpoint.candidate_attempt or "")
+    if intent not in intents:
+        intents.append(intent)
+    checkpoint.retirements = intents
+
+
+def pending_attempts(checkpoint: IntegrationCheckpoint) -> frozenset[str]:
+    """The attempt identities a pending retirement intent names."""
+    return frozenset(intent["attempt"] for intent in checkpoint.retirements or [] if intent["attempt"])
 
 
 def _get_candidate_key(checkpoint: IntegrationCheckpoint) -> CandidateKey | None:
@@ -251,6 +293,7 @@ __all__ = [
     "IntegrationCheckpoint",
     "IntegrationPhase",
     "ParkedCandidate",
+    "RetirementIntent",
     "_CheckpointPayload",
     "_default_state_dir",
     "_get_candidate_key",
@@ -258,4 +301,6 @@ __all__ = [
     "_read_checkpoint",
     "_reset_candidate",
     "_write_checkpoint",
+    "pending_attempts",
+    "record_retirement",
 ]

@@ -257,6 +257,7 @@ class AdmittedCandidate(BaseModel):
     sha: str
     at: str
     session_id: str
+    attempt: str = ""
 
 
 class InstructionOffer(BaseModel):

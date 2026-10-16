@@ -112,7 +112,7 @@ def _admitted_candidate(slug: str, typed: TodoState) -> ScannedCandidate | None:
 
 
 def _candidate_from_state(
-    cwd: str, slug: str, state: dict[str, StateValue], todos_db: WorkflowStore
+    cwd: str, slug: str, state: dict[str, StateValue], todos_db: WorkflowStore, retiring: frozenset[str]
 ) -> ScannedCandidate | None:
     """The candidate an item's canonical phase establishes, or None.
 
@@ -125,6 +125,8 @@ def _candidate_from_state(
     typed = TodoState.model_validate(state)
     if bool(state.get("hold")):
         return None
+    if typed.workflow.admitted is not None and typed.workflow.admitted.attempt in retiring:
+        return None  # its retirement is pending: a row admission is neither prioritized nor read as ready meanwhile
     admitted = _admitted_candidate(slug, typed)
     if admitted is not None:
         return admitted
@@ -158,6 +160,7 @@ def _scan_finalize_ready_candidates(
     *,
     parked_slugs: set[str],
     exclude_slug: str | None = None,
+    retiring: frozenset[str] = frozenset(),
 ) -> list[ScannedCandidate]:
     """Scan the store's items for the ones whose canonical phase reads ready at the head of their branch.
 
@@ -187,7 +190,7 @@ def _scan_finalize_ready_candidates(
             raise CandidateStateReadError(slug, exc) from exc
         if state is None:
             continue
-        candidate = _candidate_from_state(cwd, slug, state, todos_db)
+        candidate = _candidate_from_state(cwd, slug, state, todos_db, retiring)
         if candidate is not None:
             candidates.append(candidate)
 
@@ -195,7 +198,9 @@ def _scan_finalize_ready_candidates(
     return candidates
 
 
-def _verify_slug_ready(cwd: str, slug: str, *, parked_slugs: set[str]) -> ScannedCandidate | None:
+def _verify_slug_ready(
+    cwd: str, slug: str, *, parked_slugs: set[str], retiring: frozenset[str] = frozenset()
+) -> ScannedCandidate | None:
     """Check whether a specific slug's canonical phase still reads ready at the head of its branch.
 
     Same validations as the scanner but targeted to a single slug.
@@ -213,7 +218,7 @@ def _verify_slug_ready(cwd: str, slug: str, *, parked_slugs: set[str]) -> Scanne
         raise CandidateStateReadError(slug, exc) from exc
     if state is None:
         return None
-    return _candidate_from_state(cwd, slug, state, todos_db)
+    return _candidate_from_state(cwd, slug, state, todos_db, retiring)
 
 
 def _sweep_stale_artifacts(cwd: str) -> list[str]:

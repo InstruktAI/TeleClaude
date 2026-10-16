@@ -30,6 +30,7 @@ from teleclaude.core.integration.checkpoint import (
     _read_checkpoint,
     _reset_candidate,
     _write_checkpoint,
+    record_retirement,
 )
 from teleclaude.core.integration.delivery_fold import (
     DeliveredMarkerRecoveryFault,
@@ -56,6 +57,7 @@ from teleclaude.core.integration.lease import (
     LeaseAcquireStatus,
 )
 from teleclaude.core.integration.lifecycle_events import _tls
+from teleclaude.core.integration.park import complete_retirements
 from teleclaude.core.integration.push_recovery import _step_content_gate_blocked, _step_push_rejected
 from teleclaude.core.integration.step_functions import (
     _INTEGRATION_LEASE_KEY,
@@ -341,12 +343,15 @@ def _dispatch_sync(
         # project is foreign or phantom — resuming it wedges the integrator in an
         # unadvanceable loop. Reset to IDLE so the loop below re-scans this
         # project's own finalize-ready candidates instead.
+        record_retirement(initial_checkpoint)
         initial_checkpoint.phase = IntegrationPhase.IDLE.value
         initial_checkpoint.candidate_slug = None
         initial_checkpoint.candidate_branch = None
         initial_checkpoint.candidate_sha = None
+        initial_checkpoint.candidate_attempt = None
         initial_checkpoint.lease_token = None
         _write_checkpoint(checkpoint_path, initial_checkpoint)
+        complete_retirements(initial_checkpoint, checkpoint_path, cwd)
 
     if abandon and initial_checkpoint.phase not in (
         IntegrationPhase.CONTENT_GATE_BLOCKED.value,

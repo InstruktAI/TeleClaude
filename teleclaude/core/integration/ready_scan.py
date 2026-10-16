@@ -13,7 +13,12 @@ from typing import Final
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.integration.candidate_scan import ScannedCandidate, _scan_finalize_ready_candidates
-from teleclaude.core.integration.checkpoint import CHECKPOINT_STATE_FILENAME, _default_state_dir, _read_checkpoint
+from teleclaude.core.integration.checkpoint import (
+    CHECKPOINT_STATE_FILENAME,
+    _default_state_dir,
+    _read_checkpoint,
+    pending_attempts,
+)
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.types.claim_change import workflow_record_of
 
@@ -27,7 +32,7 @@ def _ready_candidates(project_root: str) -> list[ScannedCandidate]:
     """The candidates that are ready now, leaving out the ones the integrator parked."""
     checkpoint = _read_checkpoint(_default_state_dir(project_root) / CHECKPOINT_STATE_FILENAME)
     parked = {parked["slug"] for parked in checkpoint.parked}
-    return _scan_finalize_ready_candidates(project_root, parked_slugs=parked)
+    return _scan_finalize_ready_candidates(project_root, parked_slugs=parked, retiring=pending_attempts(checkpoint))
 
 
 async def ensure_integrator_for_ready_items(project_root: str) -> None:

@@ -15,10 +15,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Final
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.integration.candidate_scan import CandidateKey, candidate_is_held
+from teleclaude.core.integration.checkpoint import RetirementIntent
 from teleclaude.core.integration.git_ops import _run_git
 from teleclaude.core.workflow_machine.lane import resolve_lane_sync
 from teleclaude.core.workflow_machine.phase_reading import LaneFacts, creative_snapshot, read_phase
@@ -52,6 +54,7 @@ class AdmissionRefusal(StrEnum):
     HEAD_UNREADABLE = "the branch of {item} cannot be read on origin"
     HEAD_MOVED = "the branch of {item} moved to {head} after the scan read {sha}"
     OTHER_ADMISSION = "{item} already holds an admission at {sha}"
+    RETIRING = "{item}'s admission at {sha} is being retired; the next pass admits it again once that is done"
     UNMARKED_STORE = "{item} is not admitted: the store is not activated yet, the next tick of the daemon activates it"
     EPISODE_OPEN = "{item} has a creative episode open; the next pass applies its conversion first"
 
@@ -65,6 +68,7 @@ class Admission:
     """The outcome of an admission: the refusal text when refused, empty when the commit is recorded."""
 
     refused: str = ""
+    attempt: str = ""
 
 
 def _now() -> str:
@@ -98,7 +102,9 @@ def _mutation(key: CandidateKey, lane: LaneFacts, snapshot: str, session_id: str
         if reading.phase is not Phase.READY or reading.ready_sha != key.sha:
             raise AdmissionRefused(AdmissionRefusal.NOT_READY.value.format(item=key.slug, sha=key.sha[:8]))
         record = workflow_record_of(current).model_copy(deep=True)
-        record.admitted = AdmittedCandidate(branch=key.branch, sha=key.sha, at=_now(), session_id=session_id)
+        record.admitted = AdmittedCandidate(
+            branch=key.branch, sha=key.sha, at=_now(), session_id=session_id, attempt=uuid4().hex
+        )
         return ItemChange(
             state={**current, WORKFLOW_STATE_KEY: record.to_state(), INTEGRATION_PHASE_STATE_KEY: STARTED_PHASE}
         )
@@ -117,8 +123,18 @@ def _branch_head(cwd: str, branch: str) -> str:
     return parts[0] if rc == 0 and parts else ""
 
 
-def admit_candidate(cwd: str, key: CandidateKey, session_id: str, loop: asyncio.AbstractEventLoop | None) -> Admission:
+def admit_candidate(
+    cwd: str,
+    key: CandidateKey,
+    session_id: str,
+    loop: asyncio.AbstractEventLoop | None,
+    *,
+    retiring: frozenset[str] = frozenset(),
+) -> Admission:
     """Commit the admission of one candidate on its item, or report why the item no longer qualifies.
+
+    Every admission carries an attempt identity, unique to it, which the caller publishes with the checkpoint\'s
+    candidate. A row admission whose attempt a pending retirement intent names (``retiring``) is not accepted early.
 
     The creative lane and the branch head are read again here, so the commit decides on state read after the scan; the
     artifacts the lane reads are fenced at the commit by their digests, the creative section by its snapshot.
@@ -132,9 +148,11 @@ def admit_candidate(cwd: str, key: CandidateKey, session_id: str, loop: asyncio.
         return Admission(AdmissionRefusal.UNKNOWN_ITEM.value.format(item=key.slug))
     admitted = workflow_record_of(raw).admitted
     if admitted is not None:
-        if admitted.sha == key.sha:
-            return Admission()
-        return Admission(AdmissionRefusal.OTHER_ADMISSION.value.format(item=key.slug, sha=admitted.sha[:8]))
+        if admitted.sha != key.sha:
+            return Admission(AdmissionRefusal.OTHER_ADMISSION.value.format(item=key.slug, sha=admitted.sha[:8]))
+        if admitted.attempt and admitted.attempt in retiring:
+            return Admission(AdmissionRefusal.RETIRING.value.format(item=key.slug, sha=admitted.sha[:8]))
+        return Admission(attempt=admitted.attempt)
     head = _branch_head(cwd, key.branch)
     if not head:
         return Admission(AdmissionRefusal.HEAD_UNREADABLE.value.format(item=key.slug))
@@ -151,15 +169,23 @@ def admit_candidate(cwd: str, key: CandidateKey, session_id: str, loop: asyncio.
             asyncio.run(commit)
     except AdmissionRefused as refusal:
         return Admission(str(refusal))
-    return Admission()
+    committed = workflow_record_of(store.read_state_sync(key.slug) or {}).admitted
+    return Admission(attempt=committed.attempt if committed is not None and committed.sha == key.sha else "")
 
 
-def _retirement(key: CandidateKey) -> ItemMutation:
+def _carries_attempt(admitted: AdmittedCandidate, intent: RetirementIntent) -> bool:
+    """Whether the row admission is the attempt the intent names: by its identity, or by its commit for an older one."""
+    if intent["attempt"]:
+        return admitted.attempt == intent["attempt"]
+    return not admitted.attempt and admitted.sha == intent["sha"]
+
+
+def _retirement(intent: RetirementIntent) -> ItemMutation:
     def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
         if current is None:
             return None
         record = workflow_record_of(current)
-        if record.admitted is None or record.admitted.sha != key.sha:
+        if record.admitted is None or not _carries_attempt(record.admitted, intent):
             return None
         updated = record.model_copy(deep=True)
         updated.admitted = None
@@ -168,15 +194,20 @@ def _retirement(key: CandidateKey) -> ItemMutation:
     return mutate
 
 
-def retire_admission(cwd: str, key: CandidateKey, loop: asyncio.AbstractEventLoop | None) -> None:
-    """Retire the admission of exactly this commit when the integrator parks it; a failure is logged and retried by the next park."""
-    commit = _commit(cwd, key, _retirement(key), {})
+def retire_admission(cwd: str, intent: RetirementIntent, loop: asyncio.AbstractEventLoop | None) -> bool:
+    """Retire the row admission this intent names, and only that attempt; True when it is done or already gone.
+
+    A retirement that completes late never clears a later attempt at the same commit, because that attempt carries
+    another identity. A failure is logged and reported, and the intent stays pending to be retried.
+    """
+    key = CandidateKey(slug=intent["slug"], branch=intent["branch"], sha=intent["sha"])
+    commit = _commit(cwd, key, _retirement(intent), {})
     try:
         if loop is not None and loop.is_running():
             asyncio.run_coroutine_threadsafe(commit, loop).result(timeout=ADMISSION_TIMEOUT_SECONDS)
         else:
             asyncio.run(commit)
-    except (
-        Exception
-    ):  # supervision boundary: a failed retirement leaves the admission, which the next drain picks up again
+    except Exception:  # supervision boundary: a failed retirement stays pending as its intent and is retried
         logger.exception(RETIRE_FAILED_LOG, slug=key.slug)
+        return False
+    return True
