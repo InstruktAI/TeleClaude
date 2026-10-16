@@ -20,6 +20,15 @@ from tools.ci import workflow_foundation as foundation
 PLAN_FILE: Final = "plan.json"
 POOL_KEY: Final = "control_directories"
 SINGLE_KEY: Final = foundation.CONFIG_CONTROL_DIRECTORY
+PLAN_REGISTRY_CONFIG_KEY: Final = "plan_registry"
+PLAN_CLAIMS_CONFIG_KEY: Final = "plan_claims"
+PLAN_REGISTRY_NAME: Final = "plans.json"
+PLAN_CLAIMS_NAME: Final = "claims"
+PLAN_SETS_FIELD: Final = "plan_sets"
+PLAN_CONTROL_COUNT_FIELD: Final = "plan_control_count"
+PLAN_SPARE_COUNT_FIELD: Final = "plan_spare_count"
+EMPTY_COMMANDS: Final = "commands"
+EMPTY_DIRECTORY_PREFIX: Final = "d"
 CLAIM_MARKER: Final = "claimed"
 ENCODING: Final = "utf-8"
 
@@ -33,6 +42,8 @@ class Command(TypedDict, total=False):
     argv: list[str]
     argv_from: str
     wait_for: str
+    writes: list[Mapping[str, object]]
+    cwd: str
 
 
 class PlanFile(TypedDict, total=False):
@@ -61,15 +72,18 @@ class Controls:
         self.root = setup.control.parent / name
         self.original = setup.configuration.read_text(encoding=ENCODING)
         self.directories: list[Path] = []
+        self.registry_path: Path | None = None
+        self.claims_path: Path | None = None
 
     def _write_configuration(self, key: str, value: object) -> None:
         configuration = json.loads(self.original)
         configuration[key] = value
         self.setup.configuration.write_text(json.dumps(configuration), encoding=ENCODING)
 
-    def _prepare(self, plan: Plan, directory: Path) -> foundation.FixtureSetup:
+    def _prepare(self, plan: Plan | None, directory: Path) -> foundation.FixtureSetup:
         directory.mkdir(parents=True)
-        (directory / PLAN_FILE).write_text(json.dumps(plan), encoding=ENCODING)
+        if plan is not None:
+            (directory / PLAN_FILE).write_text(json.dumps(plan), encoding=ENCODING)
         self.directories.append(directory)
         return foundation.FixtureSetup(self.setup.executable, self.setup.configuration, directory)
 
@@ -86,6 +100,28 @@ class Controls:
         self.root.mkdir(parents=True)
         setups = [self._prepare(plan, self.root / f"d{index}") for index, plan in enumerate(plans)]
         self._write_configuration(POOL_KEY, [str(setup.control) for setup in setups])
+        return setups
+
+    def shared_pool(self, plan_sets: Mapping[str, Sequence[Plan]], count: int) -> list[foundation.FixtureSetup]:
+        """Create one fixed control pool and shared opaque-key plan registry for the whole flow."""
+        self.root.mkdir(parents=True, exist_ok=True)
+        registry = self.root / PLAN_REGISTRY_NAME
+        claims = self.root / PLAN_CLAIMS_NAME
+        if registry.exists() or claims.exists():
+            raise FileExistsError(f"shared flow registry already exists at {self.root}")
+        claims.mkdir()
+        registry_payload = {PLAN_SETS_FIELD: {key: list(plans) for key, plans in plan_sets.items()}}
+        registry.write_text(json.dumps(registry_payload), encoding=ENCODING)
+        self.registry_path = registry
+        self.claims_path = claims
+        setups = [self._prepare(None, self.root / f"{EMPTY_DIRECTORY_PREFIX}{index}") for index in range(count)]
+        configuration = json.loads(self.original)
+        configuration[POOL_KEY] = [str(setup.control) for setup in setups]
+        configuration[PLAN_REGISTRY_CONFIG_KEY] = str(registry)
+        configuration[PLAN_CLAIMS_CONFIG_KEY] = str(claims)
+        configuration[PLAN_CONTROL_COUNT_FIELD] = max(0, count - 2)
+        configuration[PLAN_SPARE_COUNT_FIELD] = 2
+        self.setup.configuration.write_text(json.dumps(configuration), encoding=ENCODING)
         return setups
 
     def claimed(self) -> list[Path]:

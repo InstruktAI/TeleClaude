@@ -72,6 +72,19 @@ FRAME_HOOK_KEYS: Final = frozenset({"event", "registered", "native_session_id", 
 FRAME_SELF_PROBE_KEYS: Final = frozenset({"telec", "run"})
 FRAME_COMMAND_PREFIX: Final = "cmd_"
 FRAME_COMMAND_KEYS: Final = frozenset({"name", "argv", "telec", "run"})
+FRAME_WRITE_PREFIX: Final = "cmd_write"
+FRAME_WRITE_OK: Final = "ok"
+FRAME_WRITE_CWD: Final = "cwd"
+FRAME_WRITE_ROWS: Final = "writes"
+FRAME_WRITE_ERROR: Final = "error"
+FRAME_WRITE_COMPLETED: Final = "written"
+FRAME_WRITE_PATH: Final = "path"
+FRAME_WRITE_MODE: Final = "mode"
+FRAME_WRITE_BYTES: Final = "bytes"
+FRAME_WRITE_SHA: Final = "sha256"
+FRAME_WRITE_SUCCESS_KEYS: Final = frozenset({FRAME_WRITE_OK, FRAME_WRITE_CWD, FRAME_WRITE_ROWS})
+FRAME_WRITE_FAILURE_KEYS: Final = frozenset({FRAME_WRITE_OK, FRAME_WRITE_ERROR, FRAME_WRITE_COMPLETED})
+FRAME_WRITE_ROW_KEYS: Final = frozenset({FRAME_WRITE_PATH, FRAME_WRITE_MODE, FRAME_WRITE_BYTES, FRAME_WRITE_SHA})
 FRAME_COMPLETE_SUFFIX: Final = ".complete"
 
 WINDOW_AFTER_CASE_START_SECONDS: Final = 45.0
@@ -310,6 +323,34 @@ def _frame_has_shape(name: str, frame: Mapping[str, object]) -> bool:
     """A frame carries the keys its writer emits for that frame name, with the types the writer gives them."""
     if name == FRAME_SELF_PROBE:
         return isinstance(frame.get("run"), dict) and FRAME_SELF_PROBE_KEYS <= frame.keys()
+    if name.startswith(FRAME_WRITE_PREFIX):
+        success = frame.get(FRAME_WRITE_OK)
+        if success is True:
+            rows = frame.get(FRAME_WRITE_ROWS)
+            return (
+                frozenset(frame) == FRAME_WRITE_SUCCESS_KEYS
+                and isinstance(frame.get(FRAME_WRITE_CWD), str)
+                and isinstance(rows, list)
+                and all(
+                    isinstance(row, Mapping)
+                    and frozenset(row) == FRAME_WRITE_ROW_KEYS
+                    and isinstance(row.get(FRAME_WRITE_PATH), str)
+                    and isinstance(row.get(FRAME_WRITE_MODE), str)
+                    and isinstance(row.get(FRAME_WRITE_BYTES), int)
+                    and not isinstance(row.get(FRAME_WRITE_BYTES), bool)
+                    and isinstance(row.get(FRAME_WRITE_SHA), str)
+                    for row in rows
+                )
+            )
+        if success is False:
+            written = frame.get(FRAME_WRITE_COMPLETED)
+            return (
+                frozenset(frame) == FRAME_WRITE_FAILURE_KEYS
+                and isinstance(frame.get(FRAME_WRITE_ERROR), str)
+                and isinstance(written, list)
+                and all(isinstance(path, str) for path in written)
+            )
+        return False
     if name.startswith(FRAME_COMMAND_PREFIX):
         return (
             isinstance(frame.get("run"), dict)
@@ -352,12 +393,19 @@ def binding_failure(detail: str) -> FixtureBindingFailure:
 class Journey:
     """One run of journey F0 against the profile's runtime."""
 
-    def __init__(self, host: FoundationHost, setup: FixtureSetup, project: Path, owner_email: str) -> None:
+    def __init__(
+        self,
+        host: FoundationHost,
+        setup: FixtureSetup,
+        project: Path,
+        owner_email: str,
+        message: str | None = None,
+    ) -> None:
         self.host = host
         self.setup = setup
         self.project = project.resolve()
         self.owner_email = owner_email
-        self.message = f"{MESSAGE_PREFIX}{uuid.uuid4().hex[:MESSAGE_SUFFIX_LENGTH]}"
+        self.message = message if message is not None else f"{MESSAGE_PREFIX}{uuid.uuid4().hex[:MESSAGE_SUFFIX_LENGTH]}"
         self.session_id = ""
 
     def _reset_control(self) -> None:
@@ -386,11 +434,12 @@ class Journey:
         if not refused:
             raise platform_failure(DETAIL_NOT_SESSION.format(status=outcome.exit_status, output=outcome.output[-400:]))
 
-    def start_session(self) -> float:
+    def start_session(self, *, case_start_file: bool = True) -> float:
         """Step 2: a public start; its acknowledgement is not startup. Returns the case-start reading."""
         self._reset_control()
         case_start = time.monotonic()
-        (self.setup.control / CASE_START_FILE).write_text(f"{case_start!r}\n", encoding="utf-8")
+        if case_start_file:
+            (self.setup.control / CASE_START_FILE).write_text(f"{case_start!r}\n", encoding="utf-8")
         outcome = self.host.cli(
             (
                 TELEC,

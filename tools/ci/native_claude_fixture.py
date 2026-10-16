@@ -19,6 +19,7 @@ the processes of a machine.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import selectors
@@ -34,13 +35,17 @@ import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import FrameType
-from typing import Final
+from typing import Final, cast
 
 CONFIG_RELATIVE_PATH: Final = Path(".local") / "share" / "claude-fixture" / "config.json"
 SETTINGS_RELATIVE_PATH: Final = Path(".claude") / "settings.json"
 PROJECTS_RELATIVE_PATH: Final = Path(".claude") / "projects"
 CONFIG_CONTROL_DIRECTORY: Final = "control_directory"
 CONFIG_CONTROL_POOL: Final = "control_directories"
+CONFIG_PLAN_REGISTRY: Final = "plan_registry"
+CONFIG_PLAN_CLAIMS: Final = "plan_claims"
+CONFIG_PLAN_CONTROL_COUNT: Final = "plan_control_count"
+CONFIG_PLAN_SPARE_COUNT: Final = "plan_spare_count"
 CLAIM_MARKER: Final = "claimed"
 UNCLAIMED_REPORT: Final = "pool-exhausted.json"
 CONFIG_VERSION: Final = "version"
@@ -64,11 +69,74 @@ FRAME_SESSION_START: Final = "session_start"
 FRAME_PROMPT_SUBMIT: Final = "prompt_submit"
 FRAME_SELF_PROBE: Final = "self_probe"
 PLAN_FILE: Final = "plan.json"
+PLAN_REGISTRY_FILE: Final = "plans.json"
+PLAN_CLAIMS_DIRECTORY: Final = "claims"
+PLAN_SETS_FIELD: Final = "plan_sets"
+PLAN_REGISTRY_INDEX_FIELD: Final = "index"
+PLAN_REGISTRY_KEY_FIELD: Final = "key"
+PLAN_REGISTRY_STATUS_FIELD: Final = "plan_status"
+PLAN_REGISTRY_ERROR_FIELD: Final = "plan_error"
+PLAN_KEY_KIND_FIELD: Final = "key_kind"
+PLAN_KEY_PROCEDURE: Final = "procedure"
+PLAN_KEY_MESSAGE: Final = "message"
+PLAN_FIRST_LINE_FIELD: Final = "first_line"
+PLAN_UNBOUND_STATUS: Final = "unbound"
+PLAN_MISSING_STATUS: Final = "missing"
+PLAN_CLAIMED_STATUS: Final = "claimed"
+PLAN_EXHAUSTED_STATUS: Final = "exhausted"
+PLAN_PREFIX: Final = "TELECLAUDE COMMAND: "
+MESSAGE_KEY_PREFIX: Final = "message:"
+PLAN_DIGEST_SIZE: Final = 32
+PLAN_WRITE_FIELD: Final = "writes"
+PLAN_WRITE_MODE_FIELD: Final = "mode"
+PLAN_WRITE_PATH_FIELD: Final = "path"
+PLAN_WRITE_TEXT_FIELD: Final = "text"
+PLAN_WRITE_CREATE: Final = "create"
+PLAN_WRITE_APPEND: Final = "append"
+PLAN_WRITE_BYTES_FIELD: Final = "bytes"
+PLAN_WRITE_SHA_FIELD: Final = "sha256"
+PLAN_WRITE_SUCCESS_FIELD: Final = "ok"
+PLAN_WRITE_ERROR_FIELD: Final = "error"
+PLAN_WRITE_WRITTEN_FIELD: Final = "written"
+PLAN_CWD_FIELD: Final = "cwd"
+PLAN_CWD_RESOLVED_FIELD: Final = "cwd"
+PATH_ROOT: Final = "/"
+PATH_PARENT: Final = ".."
+PATH_CURRENT: Final = "."
+PATH_SEPARATOR: Final = "/"
+WRITE_MODE_CREATE: Final = "xb"
+WRITE_MODE_APPEND: Final = "ab"
+WRITE_PERMISSION: Final = 0o644
+WRITE_FRAME_PREFIX: Final = "write"
+PLAN_NAME_SEPARATOR: Final = "_"
+PLAN_INVALID_STATUS: Final = "invalid"
+LATE_ARGV_UNREADABLE: Final = "late argument list unreadable"
+WRITE_DEADLINE_SECONDS: Final = 10.0
+WRITE_FRAME_DEADLINE: Final = "fixture write deadline exceeded"
+WRITE_ENCODING: Final = "utf-8"
+DETAIL_CWD_BINDING: Final = "working directory binding failed"
+FRAME_NAME_FIELD: Final = "name"
+FRAME_ARGV_FIELD: Final = "argv"
+FRAME_TELEC_FIELD: Final = "telec"
+FRAME_RUN_FIELD: Final = "run"
+RUN_EXIT_STATUS_FIELD: Final = "exit_status"
+RUN_ERROR_FIELD: Final = "error"
+RUN_TIMED_OUT_FIELD: Final = "timed_out"
+DETAIL_PLAN_PREFIX: Final = "the first input line does not name a procedure"
+DETAIL_PLAN_REGISTRY: Final = "the shared plan registry is unreadable"
+DETAIL_PLAN_KEY_MISSING: Final = "the procedure has no plan set"
+DETAIL_PLAN_CLAIM: Final = "the shared plan claim could not be recorded"
+DETAIL_PLAN_INVALID: Final = "the selected plan is unreadable"
+DETAIL_WRITE_INVALID: Final = "the fixture write plan is invalid"
+DETAIL_WRITE_PATH: Final = "the fixture write path is outside its starting directory"
+DETAIL_WRITE_MODE: Final = "the fixture write precondition is not met"
+DETAIL_WRITE_FAILED: Final = "the fixture write failed"
 STOP_FILE: Final = "stop"
 LAUNCHES_FILE: Final = "launches.jsonl"
 PLAN_COMMANDS_FIELD: Final = "commands"
 PLAN_NAME_FIELD: Final = "name"
 PLAN_WAIT_FIELD: Final = "wait_for"
+WRITE_ENTRY_KEYS: Final = frozenset({PLAN_WRITE_PATH_FIELD, PLAN_WRITE_MODE_FIELD, PLAN_WRITE_TEXT_FIELD})
 PLAN_ARGV_FROM_FIELD: Final = "argv_from"
 ARGV_FILE_CHARACTERS: Final = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
 PLAN_HOLD_FIELD: Final = "barrier_hold_seconds"
@@ -134,15 +202,25 @@ def _claim_control(config: Mapping[str, JsonValue]) -> _Control | None:
     launches. ``os.mkdir`` of a ``claimed`` marker succeeds for exactly one launch per directory. A launch that finds
     the whole pool claimed reports it beside the pool and exits non-zero.
     """
+    registry_value = config.get(CONFIG_PLAN_REGISTRY)
+    claims_value = config.get(CONFIG_PLAN_CLAIMS)
+    registry = Path(registry_value) if isinstance(registry_value, str) and registry_value else None
+    claims = Path(claims_value) if isinstance(claims_value, str) and claims_value else None
     pool = config.get(CONFIG_CONTROL_POOL)
     if isinstance(pool, list):
         directories = [Path(str(entry)) for entry in pool]
-        for directory in directories:
+        active_count_value = config.get(CONFIG_PLAN_CONTROL_COUNT)
+        active_count = (
+            active_count_value
+            if isinstance(active_count_value, int) and not isinstance(active_count_value, bool)
+            else len(directories)
+        )
+        for pool_index, directory in enumerate(directories):
             try:
                 os.mkdir(directory / CLAIM_MARKER)
             except FileExistsError:
                 continue
-            return _Control(directory)
+            return _Control(directory, registry, claims, plan_enabled=pool_index < active_count)
         if directories:
             report = directories[0].parent / UNCLAIMED_REPORT
             report.write_text(
@@ -150,7 +228,7 @@ def _claim_control(config: Mapping[str, JsonValue]) -> _Control | None:
                 encoding=ENCODING,
             )
         return None
-    return _Control(Path(str(config[CONFIG_CONTROL_DIRECTORY])))
+    return _Control(Path(str(config[CONFIG_CONTROL_DIRECTORY])), registry, claims)
 
 
 def _bounded(text: str) -> str:
@@ -160,9 +238,19 @@ def _bounded(text: str) -> str:
 class _Control:
     """The controller-owned directory this program reports into and reads its barrier from."""
 
-    def __init__(self, directory: Path) -> None:
+    def __init__(
+        self,
+        directory: Path,
+        registry: Path | None = None,
+        claims: Path | None = None,
+        *,
+        plan_enabled: bool = True,
+    ) -> None:
         self.directory = directory
         self.frames = directory / FRAMES_DIRECTORY
+        self.registry = registry
+        self.claims = claims
+        self.plan_enabled = plan_enabled
         self.frames.mkdir(parents=True, exist_ok=True)
 
     def write_json(self, name: str, payload: JsonObject) -> None:
@@ -216,6 +304,86 @@ class _Control:
             return None
         return value if isinstance(value, dict) else None
 
+    def _read_path(self, path: Path) -> JsonObject | None:
+        try:
+            value = json.loads(path.read_text(encoding=ENCODING))
+        except (OSError, ValueError):
+            return None
+        return value if isinstance(value, dict) else None
+
+    def select_plan(self, first_line: str, launch: JsonObject) -> JsonObject | None:
+        """Claim the next plan in the flow-wide namespace from the first procedure or message key."""
+        if self.registry is None and self.claims is None:
+            return None
+        if self.registry is None or self.claims is None:
+            launch[PLAN_REGISTRY_STATUS_FIELD] = PLAN_MISSING_STATUS
+            launch[PLAN_REGISTRY_ERROR_FIELD] = DETAIL_PLAN_REGISTRY
+            self._record_plan_selection(launch)
+            return None
+        if first_line.startswith(PLAN_PREFIX):
+            key_kind = PLAN_KEY_PROCEDURE
+            key_parts = first_line[len(PLAN_PREFIX) :].split(maxsplit=1)
+            key_text = key_parts[0] if key_parts else ""
+            key_source = key_text.encode(ENCODING)
+        else:
+            key_kind = PLAN_KEY_MESSAGE
+            key_source = f"{MESSAGE_KEY_PREFIX}{first_line}".encode(ENCODING)
+        if not key_source:
+            launch[PLAN_REGISTRY_STATUS_FIELD] = PLAN_UNBOUND_STATUS
+            launch[PLAN_REGISTRY_ERROR_FIELD] = DETAIL_PLAN_PREFIX
+            self._record_plan_selection(launch)
+            return None
+        key = hashlib.sha256(key_source).hexdigest()
+        launch[PLAN_KEY_KIND_FIELD] = key_kind
+        launch[PLAN_REGISTRY_KEY_FIELD] = key
+        launch[PLAN_FIRST_LINE_FIELD] = first_line
+        if not self.plan_enabled:
+            launch[PLAN_REGISTRY_STATUS_FIELD] = "inert-spare"
+            self._record_plan_selection(launch)
+            return None
+        registry = self._read_path(self.registry)
+        sets = registry.get(PLAN_SETS_FIELD) if registry is not None else None
+        if not isinstance(sets, dict):
+            launch[PLAN_REGISTRY_STATUS_FIELD] = PLAN_MISSING_STATUS
+            launch[PLAN_REGISTRY_ERROR_FIELD] = DETAIL_PLAN_REGISTRY
+            self._record_plan_selection(launch)
+            return None
+        plans = sets.get(key)
+        if not isinstance(plans, list):
+            launch[PLAN_REGISTRY_STATUS_FIELD] = PLAN_MISSING_STATUS
+            launch[PLAN_REGISTRY_ERROR_FIELD] = DETAIL_PLAN_KEY_MISSING
+            self._record_plan_selection(launch)
+            return None
+        try:
+            claim_directory = self.claims / key
+            claim_directory.mkdir(parents=True, exist_ok=True)
+            selected: JsonObject | None = None
+            for index, raw_plan in enumerate(plans, start=1):
+                try:
+                    (claim_directory / str(index)).mkdir()
+                except FileExistsError:
+                    continue
+                if isinstance(raw_plan, dict):
+                    selected = {str(name): value for name, value in raw_plan.items()}
+                launch[PLAN_REGISTRY_STATUS_FIELD] = (
+                    PLAN_CLAIMED_STATUS if selected is not None else PLAN_MISSING_STATUS
+                )
+                launch[PLAN_REGISTRY_INDEX_FIELD] = index
+                self._record_plan_selection(launch)
+                return selected
+        except OSError:
+            launch[PLAN_REGISTRY_STATUS_FIELD] = PLAN_MISSING_STATUS
+            launch[PLAN_REGISTRY_ERROR_FIELD] = DETAIL_PLAN_CLAIM
+            self._record_plan_selection(launch)
+            return None
+        launch[PLAN_REGISTRY_STATUS_FIELD] = PLAN_EXHAUSTED_STATUS
+        self._record_plan_selection(launch)
+        return None
+
+    def _record_plan_selection(self, launch: JsonObject) -> None:
+        self.write_json(LAUNCH_FILE, launch)
+        self.append_launch(launch)
+
     def exists(self, name: str) -> bool:
         return (self.directory / name).exists()
 
@@ -235,7 +403,7 @@ def _registered_commands(event: str) -> list[str]:
     return commands
 
 
-def _run(argv: Sequence[str], *, timeout_seconds: float, stdin_text: str = "") -> JsonObject:
+def _run(argv: Sequence[str], *, timeout_seconds: float, stdin_text: str = "", cwd: Path | None = None) -> JsonObject:
     """Run one command in this pane's environment and report its bounded outcome."""
     started = time.monotonic()
     try:
@@ -246,6 +414,7 @@ def _run(argv: Sequence[str], *, timeout_seconds: float, stdin_text: str = "") -
             text=True,
             timeout=timeout_seconds,
             check=False,
+            cwd=cwd,
         )
         outcome: JsonObject = {
             "argv": [_bounded(part) for part in argv],
@@ -276,6 +445,8 @@ class _Fixture:
         self.first_prompt_handled = False
         self.running = True
         self.row = len(BANNER_LINES) + 2
+        self.launch_record: JsonObject | None = None
+        self.selected_plan: JsonObject | None = None
         plan = control.read_json(PLAN_FILE)
         hold = plan.get(PLAN_HOLD_FIELD) if plan is not None else None
         self.hold_seconds = float(hold) if isinstance(hold, int | float) and not isinstance(hold, bool) else None
@@ -307,6 +478,7 @@ class _Fixture:
             "pid": os.getpid(),
             "launched_at": time.monotonic(),
         }
+        self.launch_record = record
         self.control.write_json(LAUNCH_FILE, record)
         self.control.append_launch(record)
 
@@ -384,9 +556,9 @@ class _Fixture:
         telec = shutil.which(TELEC_COMMAND)
         probe = _run([telec or TELEC_COMMAND, *SELF_PROBE_ARGUMENTS], timeout_seconds=PROBE_TIMEOUT_SECONDS)
         self.control.write_frame(FRAME_SELF_PROBE, {"telec": telec, "run": probe})
-        self._run_plan()
+        self._run_plan(text)
 
-    def _run_plan(self) -> None:
+    def _run_plan(self, first_prompt: str) -> None:
         """Run the controller\'s reviewed public commands, each as a fresh process of this pane, and report each.
 
         The plan names only the public ``telec`` executable with its arguments. It carries no identity, token, header
@@ -395,11 +567,18 @@ class _Fixture:
         the first such command on, the whole remaining plan runs in its written order on one worker beside the terminal
         loop, each command only after the previous one has finished; before it, commands run now, in order.
         """
-        plan = self.control.read_json(PLAN_FILE)
+        if self.control.registry is not None:
+            first_line = first_prompt.splitlines()[0] if first_prompt.splitlines() else ""
+            launch = self.launch_record if self.launch_record is not None else {}
+            launch[PLAN_FIRST_LINE_FIELD] = first_line
+            self.selected_plan = self.control.select_plan(first_line, launch)
+            plan = self.selected_plan
+        else:
+            plan = self.control.read_json(PLAN_FILE)
         commands = plan.get(PLAN_COMMANDS_FIELD) if plan is not None else None
         if not isinstance(commands, list):
             return
-        deferred: list[tuple[str | None, str, list[str] | str]] = []
+        deferred: list[tuple[str | None, str, object]] = []
         for command in commands:
             if self.control.exists(STOP_FILE):
                 return  # the controller has asked this launch to run nothing more
@@ -408,16 +587,19 @@ class _Fixture:
             name = command.get(PLAN_NAME_FIELD)
             argv = command.get(PLAN_ARGV_FIELD)
             late = command.get(PLAN_ARGV_FROM_FIELD)
+            writes = command.get(PLAN_WRITE_FIELD)
             wait = command.get(PLAN_WAIT_FIELD)
-            if not isinstance(name, str) or not name.isalnum():
+            if not isinstance(name, str) or not name.replace(PLAN_NAME_SEPARATOR, "").isalnum():
                 continue
-            source: list[str] | str
-            if isinstance(late, str) and _is_argv_file_name(late) and argv is None:
-                source = late
-            elif isinstance(argv, list) and argv:
-                source = [part for part in argv if isinstance(part, str)]
-                if len(source) != len(argv) or source[0] != TELEC_COMMAND:
+            source: object
+            if isinstance(writes, list) and argv is None and late is None:
+                source = command
+            elif isinstance(late, str) and _is_argv_file_name(late) and argv is None and writes is None:
+                source = command
+            elif isinstance(argv, list) and argv and writes is None:
+                if not all(isinstance(part, str) for part in argv) or argv[0] != TELEC_COMMAND:
                     continue
+                source = command
             else:
                 continue
             gate = wait if isinstance(wait, str) and wait.isidentifier() else None
@@ -429,7 +611,7 @@ class _Fixture:
             self.worker = threading.Thread(target=self._drain, args=(deferred,), daemon=True)
             self.worker.start()
 
-    def _drain(self, queue: list[tuple[str | None, str, list[str] | str]]) -> None:
+    def _drain(self, queue: list[tuple[str | None, str, object]]) -> None:
         """Run the deferred commands one at a time in plan order, each after its gate file exists."""
         for gate, name, source in queue:
             while gate is not None and not self.control.exists(gate):
@@ -450,19 +632,158 @@ class _Fixture:
             return None
         return value if value[0] == TELEC_COMMAND else None
 
-    def _execute(self, name: str, source: list[str] | str) -> None:
-        arguments = self._late_argv(source) if isinstance(source, str) else source
-        if arguments is None:
-            unreadable: JsonObject = {"exit_status": None, "error": "late argument list unreadable"}
-            self.control.write_frame(
-                f"{PLAN_FRAME_PREFIX}{name}", {"name": name, "argv": [], "telec": None, "run": unreadable}
-            )
+    def _execute(self, name: str, source: object) -> None:
+        if not isinstance(source, Mapping):
+            self._write_command_failure(name, [], PLAN_INVALID_STATUS)
+            return
+        if PLAN_WRITE_FIELD in source:
+            self._execute_writes(name, source)
+            return
+        late = source.get(PLAN_ARGV_FROM_FIELD)
+        raw_argv = source.get(PLAN_ARGV_FIELD)
+        arguments = self._late_argv(late) if isinstance(late, str) else raw_argv
+        if not isinstance(arguments, list) or not arguments or not all(isinstance(part, str) for part in arguments):
+            self._write_command_failure(name, [], LATE_ARGV_UNREADABLE)
             return
         resolved = shutil.which(TELEC_COMMAND)
-        run = _run([resolved or TELEC_COMMAND, *arguments[1:]], timeout_seconds=PLAN_TIMEOUT_SECONDS)
+        cwd = self._working_directory(source.get(PLAN_CWD_FIELD))
+        if cwd is None:
+            self._write_command_failure(name, [str(part) for part in arguments], DETAIL_CWD_BINDING)
+            return
+        run = _run([resolved or TELEC_COMMAND, *arguments[1:]], timeout_seconds=PLAN_TIMEOUT_SECONDS, cwd=cwd)
         reported: list[JsonValue] = [*arguments]
         self.control.write_frame(
-            f"{PLAN_FRAME_PREFIX}{name}", {"name": name, "argv": reported, "telec": resolved, "run": run}
+            f"{PLAN_FRAME_PREFIX}{name}",
+            {
+                FRAME_NAME_FIELD: name,
+                FRAME_ARGV_FIELD: reported,
+                FRAME_TELEC_FIELD: resolved,
+                FRAME_RUN_FIELD: run,
+            },
+        )
+
+    def _working_directory(self, value: object) -> Path | None:
+        """Resolve a plan's relative working directory under the real launch directory."""
+        root = Path(self.cwd)
+        if value is None:
+            return root
+        if not isinstance(value, str):
+            return None
+        relative = Path(value)
+        if relative.is_absolute() or PATH_PARENT in relative.parts or PATH_CURRENT in relative.parts:
+            return None
+        candidate = root / relative
+        current = root
+        for part in relative.parts:
+            current = current / part
+            if current.is_symlink():
+                return None
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            return None
+        if not resolved.is_dir() or not resolved.is_relative_to(root):
+            return None
+        return resolved
+
+    def _prepare_writes(self, raw_writes: object) -> list[tuple[Path, str, bytes]] | None:
+        """Validate all fixture file writes before applying any of them."""
+        if not isinstance(raw_writes, list) or not raw_writes:
+            return None
+        root = Path(self.cwd)
+        prepared: list[tuple[Path, str, bytes]] = []
+        for raw in raw_writes:
+            if not isinstance(raw, dict) or frozenset(raw) != WRITE_ENTRY_KEYS:
+                return None
+            path_text = raw.get(PLAN_WRITE_PATH_FIELD)
+            mode = raw.get(PLAN_WRITE_MODE_FIELD)
+            text = raw.get(PLAN_WRITE_TEXT_FIELD)
+            if not isinstance(path_text, str) or not path_text or not isinstance(text, str):
+                return None
+            relative = Path(path_text)
+            if relative.is_absolute() or PATH_PARENT in relative.parts or PATH_CURRENT in relative.parts:
+                return None
+            if mode not in (PLAN_WRITE_CREATE, PLAN_WRITE_APPEND):
+                return None
+            target = root / relative
+            current = root
+            for part in relative.parts[:-1]:
+                current = current / part
+                if current.is_symlink() or not current.is_dir():
+                    return None
+            if target.is_symlink():
+                return None
+            try:
+                resolved_parent = target.parent.resolve(strict=True)
+            except OSError:
+                return None
+            if not resolved_parent.is_relative_to(root):
+                return None
+            if mode == PLAN_WRITE_CREATE and target.exists():
+                return None
+            if mode == PLAN_WRITE_APPEND and not target.is_file():
+                return None
+            prepared.append((target, str(mode), text.encode(WRITE_ENCODING)))
+        return prepared
+
+    def _execute_writes(self, name: str, plan: Mapping[str, object]) -> None:
+        """Execute the approved external fixture write operation and report exact bytes and digests."""
+        started = time.monotonic()
+        prepared = self._prepare_writes(plan.get(PLAN_WRITE_FIELD))
+        if prepared is None or PLAN_CWD_FIELD in plan:
+            self._write_writes_failure(name, DETAIL_WRITE_INVALID, [])
+            return
+        written: list[JsonValue] = []
+        details: list[JsonValue] = []
+        for path, mode, payload in prepared:
+            if time.monotonic() - started > WRITE_DEADLINE_SECONDS:
+                self._write_writes_failure(name, WRITE_FRAME_DEADLINE, written)
+                return
+            try:
+                file_mode = WRITE_MODE_CREATE if mode == PLAN_WRITE_CREATE else WRITE_MODE_APPEND
+                with path.open(file_mode) as handle:
+                    handle.write(payload)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                path_text = path.relative_to(Path(self.cwd)).as_posix()
+                written.append(path_text)
+                if mode == PLAN_WRITE_CREATE:
+                    path.chmod(WRITE_PERMISSION)
+            except OSError as error:
+                self._write_writes_failure(name, type(error).__name__, written)
+                return
+            path_text = path.relative_to(Path(self.cwd)).as_posix()
+            details.append(
+                {
+                    PLAN_WRITE_PATH_FIELD: path_text,
+                    PLAN_WRITE_MODE_FIELD: mode,
+                    PLAN_WRITE_BYTES_FIELD: len(payload),
+                    PLAN_WRITE_SHA_FIELD: hashlib.sha256(payload).hexdigest(),
+                }
+            )
+        self.control.write_frame(
+            f"{PLAN_FRAME_PREFIX}{name}",
+            {PLAN_WRITE_SUCCESS_FIELD: True, PLAN_CWD_RESOLVED_FIELD: self.cwd, PLAN_WRITE_FIELD: details},
+        )
+
+    def _write_writes_failure(self, name: str, error: str, written: list[JsonValue]) -> None:
+        """Write the exact failure frame for a refused or partial fixture file operation."""
+        self.control.write_frame(
+            f"{PLAN_FRAME_PREFIX}{name}",
+            {PLAN_WRITE_SUCCESS_FIELD: False, PLAN_WRITE_ERROR_FIELD: error, PLAN_WRITE_WRITTEN_FIELD: written},
+        )
+
+    def _write_command_failure(self, name: str, argv: list[str], error: str) -> None:
+        """Write a command frame that lets the controller distinguish a fixture binding failure."""
+        run: JsonObject = {RUN_EXIT_STATUS_FIELD: None, RUN_ERROR_FIELD: error, RUN_TIMED_OUT_FIELD: False}
+        self.control.write_frame(
+            f"{PLAN_FRAME_PREFIX}{name}",
+            {
+                FRAME_NAME_FIELD: name,
+                FRAME_ARGV_FIELD: cast(list[JsonValue], argv),
+                FRAME_TELEC_FIELD: None,
+                FRAME_RUN_FIELD: run,
+            },
         )
 
     def join_worker(self) -> None:

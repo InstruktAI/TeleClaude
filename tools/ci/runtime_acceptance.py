@@ -30,12 +30,16 @@ from typing import cast
 
 from tools.ci import workflow_claim as claim
 from tools.ci import workflow_creation as creation
+from tools.ci import workflow_flow as full_flow
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_holds as holds
+from tools.ci import workflow_integration as integration
 from tools.ci import workflow_plans as plans
 from tools.ci import workflow_prepared as prepared
 from tools.ci import workflow_race as race
+from tools.ci import workflow_ready as ready
 from tools.ci import workflow_removal as removal
+from tools.ci import workflow_review as review
 from tools.ci import workflow_waiting as waiting
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
@@ -175,6 +179,9 @@ _SCENARIO_WORKFLOW_CLAIM = "UC-WF-B1"
 _SCENARIO_WORKFLOW_RACE = "UC-WF-B2"
 _SCENARIO_WORKFLOW_WAITING = "UC-WF-B3"
 _SCENARIO_WORKFLOW_PREPARED = "UC-WF-B4"
+_SCENARIO_WORKFLOW_REVIEW = "UC-WF-B5"
+_SCENARIO_WORKFLOW_READY = "UC-WF-B7"
+_SCENARIO_WORKFLOW_INTEGRATION = "UC-WF-B6"
 _COLD_PROFILE_SCENARIOS = (_SCENARIO_COLD,)
 _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_COLD,
@@ -214,6 +221,9 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_WORKFLOW_RACE,
     _SCENARIO_WORKFLOW_WAITING,
     _SCENARIO_WORKFLOW_PREPARED,
+    _SCENARIO_WORKFLOW_REVIEW,
+    _SCENARIO_WORKFLOW_READY,
+    _SCENARIO_WORKFLOW_INTEGRATION,
 )
 _SCENARIO_PREREQUISITES = {
     _SCENARIO_WORKFLOW_FOUNDATION: (
@@ -272,6 +282,16 @@ _SCENARIO_PREREQUISITES = {
         _SCENARIO_WORKFLOW_FOUNDATION,
         _SCENARIO_WORKFLOW_WAITING,
     ),
+    _SCENARIO_WORKFLOW_REVIEW: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+        _SCENARIO_WORKFLOW_FOUNDATION,
+        _SCENARIO_WORKFLOW_WAITING,
+        _SCENARIO_WORKFLOW_PREPARED,
+    ),
+    _SCENARIO_WORKFLOW_READY: (_SCENARIO_WORKFLOW_REVIEW,),
+    _SCENARIO_WORKFLOW_INTEGRATION: (_SCENARIO_WORKFLOW_READY,),
 }
 _PROFILE_COLD = "cold"
 _PROFILE_FULL = "full"
@@ -919,6 +939,8 @@ class FullRuntimeResources:
     unrelated_computer_role: str | None = None
     release_world: object | None = None
     fixture_setup: foundation.FixtureSetup | None = None
+    workflow_flow: full_flow.WorkflowFlow | None = None
+    workflow_chain: tuple[str, ...] = ()
     retained: list[str] = field(default_factory=list)
 
     def open_admin_terminal(self) -> PersistentTerminal:
@@ -1743,6 +1765,8 @@ def _close_full_profile_resources(
         if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
             failures.append(_FULL_SERVICE_STOP_ERROR)
         recorded = stop_outcome.read_text(encoding=_UTF8).strip() if stop_outcome.is_file() else _EMPTY
+        if resources.workflow_flow is not None:
+            resources.workflow_flow.record_profile_stop(recorded)
         if recorded != _STOPPED_OUTCOME:
             resources.retained.append(_FULL_STOP_UNPROVEN.format(outcome=recorded or "none"))
     try:
@@ -2085,6 +2109,45 @@ def _full_workflow_prepared(resources: FullRuntimeResources, evidence: list[Comm
         lambda: _register_procedure_fixture_company(resources, evidence),
         resources.retained.append,
     )
+
+
+def _full_workflow_review(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B5: continue the B4 work item through review acts, stamp refusals and re-stamp."""
+    setup = resources.fixture_setup
+    if setup is None or resources.project_path is None or resources.project_slug is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    if resources.workflow_flow is None:
+        resources.workflow_flow = full_flow.WorkflowFlow(
+            host=_FoundationRunner(resources, evidence),
+            setup=setup,
+            source_root=resources.source_root,
+            project=resources.project_path,
+            owner_email=_OWNER_SEED_EMAIL,
+            project_slug=resources.project_slug,
+            chain=resources.workflow_chain,
+            register_company=lambda: _register_procedure_fixture_company(resources, evidence),
+            retain=resources.retained.append,
+        )
+        resources.workflow_flow.setup_flow()
+    else:
+        resources.workflow_flow.attach(_FoundationRunner(resources, evidence))
+    review.run_b5(resources.workflow_flow)
+
+
+def _full_workflow_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B7: return a held ready item to work, observe exact message keyed requests and re-stamp."""
+    if resources.workflow_flow is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    resources.workflow_flow.attach(_FoundationRunner(resources, evidence))
+    ready.run_b7(resources.workflow_flow)
+
+
+def _full_workflow_integration(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B6: admit only the registry claimant and observe real integration and delivery."""
+    if resources.workflow_flow is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    resources.workflow_flow.attach(_FoundationRunner(resources, evidence))
+    integration.run_b6(resources.workflow_flow)
 
 
 def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -4576,6 +4639,7 @@ def run_profile(
     """Run the selected profile with disposable state and report cleanup separately."""
     resolved_root = source_root.expanduser().resolve()
     temporary_root = Path(tempfile.mkdtemp(prefix=_ENVIRONMENT_CACHE_DIRECTORY))
+    resources: FullRuntimeResources | None = None
     try:
 
         def cold_action() -> ScenarioResult:
@@ -4599,6 +4663,7 @@ def run_profile(
                 source_revision=source_revision,
                 source_tree=source_tree,
             )
+            resources.workflow_chain = full_flow.declared_chain(selection)
             actions.update(
                 {
                     _SCENARIO_RUNTIME_READY: _bind_full_scenario(
@@ -4703,6 +4768,15 @@ def run_profile(
                     _SCENARIO_WORKFLOW_PREPARED: _bind_full_scenario(
                         _SCENARIO_WORKFLOW_PREPARED, resources, _full_workflow_prepared
                     ),
+                    _SCENARIO_WORKFLOW_REVIEW: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_REVIEW, resources, _full_workflow_review
+                    ),
+                    _SCENARIO_WORKFLOW_READY: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_READY, resources, _full_workflow_ready
+                    ),
+                    _SCENARIO_WORKFLOW_INTEGRATION: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_INTEGRATION, resources, _full_workflow_integration
+                    ),
                 }
             )
             inventory = _FULL_PROFILE_SCENARIOS
@@ -4721,7 +4795,7 @@ def run_profile(
             selection=selection,
         )
     except BaseException:
-        if temporary_root.exists():
+        if temporary_root.exists() and (resources is None or not resources.retained):
             shutil.rmtree(temporary_root)
         raise
 
@@ -4831,8 +4905,13 @@ def _selection_with_prerequisites(requested: str, profile: Profile) -> frozenset
     for scenario_id in asked:
         if scenario_id not in inventory:
             raise SystemExit(_SELECTION_UNKNOWN.format(scenario_id=scenario_id))
-        selected.add(scenario_id)
-        selected.update(_SCENARIO_PREREQUISITES.get(scenario_id, ()))
+        pending = [scenario_id]
+        while pending:
+            current = pending.pop()
+            if current in selected:
+                continue
+            selected.add(current)
+            pending.extend(_SCENARIO_PREREQUISITES.get(current, ()))
     return frozenset(selected)
 
 
