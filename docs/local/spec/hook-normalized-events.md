@@ -21,18 +21,6 @@ Use it when:
 
 ## Canonical fields
 
-<!-- planned:retire-legacy-event-bus -->
-
-### Managed ordinary launch context
-
-The receiver carries the runtime-owned ordinary launch context from its child
-environment unchanged through normalization and the durable hook outbox.
-Compaction keeps its separate maintenance launch context. Correlation is not
-session authorization: existing session resolution and descendant filtering
-retain their contracts. The runtime decides applicability and readiness under
-`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`.
-<!-- /planned:retire-legacy-event-bus -->
-
 This spec must always document:
 
 - raw event sources (per agent/tool),
@@ -188,6 +176,18 @@ commands from list-shaped hook blocks that are no longer declared. Opaque or
 malformed provider-owned values are preserved because their ownership cannot be
 established; a declared event is replaced with TeleClaude's valid list shape
 during merge.
+
+<!-- planned:retire-legacy-event-bus -->
+
+### Managed ordinary launch context
+
+The receiver carries the runtime-owned ordinary launch context from its child
+environment unchanged through normalization and the durable hook outbox.
+Compaction keeps its separate maintenance launch context. Correlation is not
+session authorization: existing session resolution and descendant filtering
+retain their contracts. The runtime decides applicability and readiness under
+`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`.
+<!-- /planned:retire-legacy-event-bus -->
 
 ### Maintenance launch context
 

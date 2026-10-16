@@ -122,6 +122,8 @@ not preserve the earlier general-purpose event execution machinery, and the
 separate peer cache replication protocol retains its existing contract.
 Withdrawal retires the earlier representation, while the internal source stream
 retains its exposure boundary.
+Retained earlier entries remain decodable while any consumer still owes their
+handling; fleet capability alone does not discard pending work.
 
 ### Runtime and command coordination
 
