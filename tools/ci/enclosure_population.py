@@ -11,7 +11,6 @@ import errno
 import os
 import struct
 import sys
-import threading
 import time
 from dataclasses import dataclass
 from enum import IntFlag, StrEnum
@@ -28,6 +27,7 @@ POPULATED: Final = b"populated"
 ZERO: Final = b"0"
 ONE: Final = b"1"
 NEWLINE: Final = b"\n"
+EMPTY_BYTES: Final = b""
 EVENT_HEADER: Final = struct.Struct("=iIII")
 EVENT_BUFFER_BYTES: Final = 64 * 1024
 POPULATION_BYTES: Final = 4096
@@ -109,7 +109,7 @@ class PopulationRead:
 
 
 class PopulationObserver:
-    """Hold original directory/event descriptors and one non-reconnecting native queue."""
+    """Event-loop-owned original descriptors and one non-reconnecting native queue."""
 
     def __init__(self, control_group: str):
         if sys.platform != LINUX:
@@ -121,7 +121,6 @@ class PopulationObserver:
             or any(part in DOT_COMPONENTS for part in parts[1:])
         ):
             raise ValueError(ERROR_PATH)
-        self._lock = threading.RLock()
         self._control_group = control_group
         self._faults: dict[Invalidation, Fault] = {}
         self._sequence = 0
@@ -170,11 +169,10 @@ class PopulationObserver:
         watch_descriptor: int | None = None,
     ) -> None:
         """Retain the first fact for a cause, including manager facts supplied by its observer."""
-        with self._lock:
-            if cause not in self._faults:
-                self._faults[cause] = Fault(
-                    cause, time.monotonic_ns(), self._sequence, error_number, native_mask, watch_descriptor
-                )
+        if cause not in self._faults:
+            self._faults[cause] = Fault(
+                cause, time.monotonic_ns(), self._sequence, error_number, native_mask, watch_descriptor
+            )
 
     def fileno(self) -> int:
         """Expose the original queue to the supervisor's native readiness loop."""
@@ -182,8 +180,7 @@ class PopulationObserver:
 
     def observe_notifications(self, deadline_ns: int) -> None:
         """Drain readiness notifications within the original supplied allowance."""
-        with self._lock:
-            self._drain(deadline_ns)
+        self._drain(deadline_ns)
 
     def _drain(self, deadline_ns: int) -> None:
         while not self._closed:
@@ -221,46 +218,44 @@ class PopulationObserver:
 
     def sample(self, deadline_ns: int) -> PopulationRead:
         """Use original descriptors only; all faults survive subsequent readable empty data."""
-        with self._lock:
-            started = time.monotonic_ns()
+        started = time.monotonic_ns()
+        self._drain(deadline_ns)
+        raw = EMPTY_BYTES
+        populated: bool | None = None
+        if self._closed:
+            self.invalidate(Invalidation.MONITOR_CLOSED)
+        elif time.monotonic_ns() >= deadline_ns:
+            self.invalidate(Invalidation.DEADLINE_EXPIRED)
+        else:
+            try:
+                os.fstat(self._directory_fd)
+                raw = os.pread(self._events_fd, POPULATION_BYTES + 1, 0)
+                populated = _population(raw)
+            except OSError as error:
+                self.invalidate(
+                    Invalidation.DEAD_HANDLE if error.errno == errno.EBADF else Invalidation.READ_FAILED,
+                    error.errno,
+                )
+            except ValueError:
+                self.invalidate(Invalidation.INVALID_POPULATION)
             self._drain(deadline_ns)
-            raw = b""
-            populated: bool | None = None
-            if self._closed:
-                self.invalidate(Invalidation.MONITOR_CLOSED)
-            elif time.monotonic_ns() >= deadline_ns:
-                self.invalidate(Invalidation.DEADLINE_EXPIRED)
-            else:
-                try:
-                    os.fstat(self._directory_fd)
-                    raw = os.pread(self._events_fd, POPULATION_BYTES + 1, 0)
-                    populated = _population(raw)
-                except OSError as error:
-                    self.invalidate(
-                        Invalidation.DEAD_HANDLE if error.errno == errno.EBADF else Invalidation.READ_FAILED,
-                        error.errno,
-                    )
-                except ValueError:
-                    self.invalidate(Invalidation.INVALID_POPULATION)
-                self._drain(deadline_ns)
-            if time.monotonic_ns() >= deadline_ns:
-                self.invalidate(Invalidation.DEADLINE_EXPIRED)
-            return PopulationRead(
-                raw, populated, started, time.monotonic_ns(), self._sequence, tuple(self._faults.values())
-            )
+        if time.monotonic_ns() >= deadline_ns:
+            self.invalidate(Invalidation.DEADLINE_EXPIRED)
+        return PopulationRead(
+            raw, populated, started, time.monotonic_ns(), self._sequence, tuple(self._faults.values())
+        )
 
     def close(self) -> None:
         """End observation explicitly; any later read carries irreversible closure evidence."""
-        with self._lock:
-            self.invalidate(Invalidation.MONITOR_CLOSED)
-            self._closed = True
-            for descriptor in (self._notify_fd, self._events_fd, self._directory_fd):
-                if descriptor >= 0:
-                    try:
-                        os.close(descriptor)
-                    except OSError as error:
-                        self.invalidate(Invalidation.READ_FAILED, error.errno)
-            self._notify_fd = self._events_fd = self._directory_fd = -1
+        self.invalidate(Invalidation.MONITOR_CLOSED)
+        self._closed = True
+        for descriptor in (self._notify_fd, self._events_fd, self._directory_fd):
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError as error:
+                    self.invalidate(Invalidation.READ_FAILED, error.errno)
+        self._notify_fd = self._events_fd = self._directory_fd = -1
 
 
 def _open_original(parts: list[str]) -> int:

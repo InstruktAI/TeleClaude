@@ -311,7 +311,8 @@ class ManagerObserver:
         """Read an object and both interfaces; a bound object is never replaced by name."""
         if name not in self._expected_units or specific not in (Interface.SERVICE, Interface.SLICE):
             raise ValueError(BINDING_ERROR)
-        await self.check_identity(deadline_ns)
+        if self._identity is None or self._faults:
+            raise RuntimeError(CONNECTION_ERROR)
         found = await self._call(
             Interface.MANAGER, MANAGER_PATH, Member.GET_UNIT, Signature.STRING, [name], Signature.OBJECT, deadline_ns
         )

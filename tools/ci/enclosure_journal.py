@@ -7,7 +7,6 @@ import hashlib
 import json
 import os
 import stat
-import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
@@ -239,7 +238,6 @@ class ActionJournal:
         self.deadline = deadline
         self.transitions = package.transitions()
         self.owner_record = binding.record(deadline)
-        self._thread_lock = threading.Lock()
 
     @classmethod
     def create(cls, parent: Path, binding: Binding, deadline: Deadline, package: StaticPackage) -> ActionJournal:
@@ -302,20 +300,15 @@ class ActionJournal:
 
     @contextmanager
     def _exclusive(self) -> Iterator[None]:
-        if not self._thread_lock.acquire(blocking=False):
-            raise RuntimeError(ERROR_BUSY)
         try:
-            try:
-                fcntl.flock(self.journal_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as error:
-                raise RuntimeError(ERROR_BUSY) from error
-            try:
-                self._require_owned()
-                yield
-            finally:
-                fcntl.flock(self.journal_fd, fcntl.LOCK_UN)
+            fcntl.flock(self.journal_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError(ERROR_BUSY) from error
+        try:
+            self._require_owned()
+            yield
         finally:
-            self._thread_lock.release()
+            fcntl.flock(self.journal_fd, fcntl.LOCK_UN)
 
     def _require_owned(self) -> None:
         directory = os.fstat(self.directory_fd)
