@@ -68,6 +68,8 @@ FRAME_SESSION_START: Final = "session_start"
 FRAME_PROMPT_SUBMIT: Final = "prompt_submit"
 FRAME_SELF_PROBE: Final = "self_probe"
 FRAME_SUFFIX: Final = ".json"
+FRAME_HOOK_KEYS: Final = frozenset({"event", "registered", "native_session_id", "input", "runs"})
+FRAME_SELF_PROBE_KEYS: Final = frozenset({"telec", "run"})
 FRAME_COMPLETE_SUFFIX: Final = ".complete"
 
 WINDOW_AFTER_CASE_START_SECONDS: Final = 45.0
@@ -289,6 +291,27 @@ def owner_login_environment(base: Mapping[str, str]) -> dict[str, str]:
     return environment
 
 
+def _whole_frame(text: str) -> Mapping[str, object] | None:
+    """Decode a fixture frame strictly: exactly one JSON object and its single terminating newline, nothing else."""
+    if not text.endswith(LINE_FEED) or text.endswith(LINE_FEED * 2):
+        return None
+    try:
+        value = json.loads(text[: -len(LINE_FEED)])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(value, dict):
+        return None
+    return {str(key): item for key, item in value.items()}
+
+
+def _frame_has_shape(name: str, frame: Mapping[str, object]) -> bool:
+    """A frame carries the keys its writer emits for that frame name, with the types the writer gives them."""
+    if name == FRAME_SELF_PROBE:
+        return isinstance(frame.get("run"), dict) and FRAME_SELF_PROBE_KEYS <= frame.keys()
+    runs = frame.get("runs")
+    return FRAME_HOOK_KEYS <= frame.keys() and isinstance(runs, list) and isinstance(frame.get("registered"), bool)
+
+
 def _json_object(output: str) -> Mapping[str, object] | None:
     decoder = json.JSONDecoder()
     for index, character in enumerate(output):
@@ -463,8 +486,8 @@ class _Journey:
         while time.monotonic() < deadline:
             if marker.exists():
                 text = (frames / f"{name}{FRAME_SUFFIX}").read_text(encoding="utf-8")
-                parsed = _json_object(text) if text.endswith("\n") else None
-                if parsed is None:
+                parsed = _whole_frame(text)
+                if parsed is None or not _frame_has_shape(name, parsed):
                     raise _platform(DETAIL_FRAME_INVALID.format(frame=name))
                 return parsed
             time.sleep(POLL_SECONDS)
