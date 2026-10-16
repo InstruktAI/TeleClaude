@@ -105,6 +105,12 @@ BODY_A: Final = "b4 body one"
 BODY_B: Final = "b4 body two"
 INPUT: Final = creation.INPUT_ARTIFACT
 COMPLETE_ENDING: Final = re.compile(r"^Performed prepared on b3-item.*, complete\s*$", re.MULTILINE)
+B9_CALLER_IDENTITY_OPENING_RE: Final = re.compile(
+    r"\[(?:Orchestrator|Integrator|System|Worker|Tasker|Job Runner|Agent)(?: - [^\]\n]+)? \([^\]\n]+\) on [^\]\n]+(?: · [^\]\n]+)?\]"
+)
+B9_RENDERER_SEPARATOR: Final = "\n\n"
+B9_CALLER_CLOSING_TEMPLATE: Final = "[/{header}]"
+B9_STARTUP_INPUT_MISMATCH: Final = "the startup input does not match its declared message and caller envelope"
 WORK_DRIVER_ID: Final = "sdlc/procedure/lifecycle/work/overview-v2"
 WORK_PHASE: Final = "work"
 PREPARED_PHASE: Final = "prepared"
@@ -355,8 +361,35 @@ class _Prepared:
             raise creation.platform_failure(DETAIL_B9_SESSION.format(label=session, record=record))
         inputs = journey.inputs()
         first = inputs[0].get("text") if inputs else None
-        if first != message:
-            raise creation.platform_failure(DETAIL_B9_SESSION.format(label=session, record={"input": first}))
+        if index == 0:
+            input_matches = first == message
+        else:
+            input_matches = isinstance(first, str) and self._caller_startup_body(first, message)
+        if not input_matches:
+            raise creation.platform_failure(
+                DETAIL_B9_SESSION.format(
+                    label=session,
+                    record={
+                        "detail": B9_STARTUP_INPUT_MISMATCH,
+                        "input_length": len(first) if isinstance(first, str) else None,
+                    },
+                )
+            )
+
+    @staticmethod
+    def _caller_startup_body(startup_input: str, expected_body: str) -> bool:
+        """Recognize the complete registered caller envelope and compare its exact body."""
+        opening_match = B9_CALLER_IDENTITY_OPENING_RE.match(startup_input)
+        if opening_match is None:
+            return False
+        opening = opening_match.group(0)
+        opening_framing = opening + B9_RENDERER_SEPARATOR
+        closing_framing = B9_RENDERER_SEPARATOR + B9_CALLER_CLOSING_TEMPLATE.format(header=opening[1:-1])
+        if not startup_input.startswith(opening_framing) or not startup_input.endswith(closing_framing):
+            return False
+        body_start = len(opening_framing)
+        body_end = len(startup_input) - len(closing_framing)
+        return startup_input[body_start:body_end] == expected_body
 
     def _public_log_entries(self, payload: Json) -> list[tuple[str, str]]:
         found, log = creation.dig(payload, "artifact_content.log")
