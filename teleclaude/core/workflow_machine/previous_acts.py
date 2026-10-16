@@ -1,7 +1,8 @@
 """The acts only the previous machine knew, refused for an item this machine drives.
 
 ``local/projects/teleclaude/spec/feature/workflow/item-lifecycle`` (UC-IL12) is the contract: a verb that applies an approval, return or handoff
-act that only the previous machine knew is refused, naming the item's phase and the act that replaces it, and no phase moves. The creative gate
+act that only the previous machine knew is refused, naming the item's phase and door, and no phase moves. A replacement act is named only where
+one exists. The creative gate
 stamps and the task stamps belong to lanes that stay, and a todo of kind task or a delivered item is not driven by this machine.
 """
 
@@ -20,7 +21,7 @@ from teleclaude.types.workflow_record import Act, Phase
 
 
 class PreviousStamp(StrEnum):
-    """The stamp types the previous machine owned and this machine replaces by an act."""
+    """The stamp types the previous machine owned."""
 
     VERDICT = "verdict"
     FINALIZE_READY = "finalize_ready"
@@ -37,12 +38,10 @@ class PreviousStamp(StrEnum):
 
 
 RETURN_TO_WORK: Final = "return_to_work"
-CREATE_CAPABILITY: Final = "create"
-
 _REPLACING_ACT: Final[dict[str, str | None]] = {
-    PreviousStamp.VERDICT: Act.FINDING.value,
+    PreviousStamp.VERDICT: None,
     PreviousStamp.FINALIZE_READY: Act.STAMP.value,
-    PreviousStamp.DEFERRALS_PROCESSED: CREATE_CAPABILITY,
+    PreviousStamp.DEFERRALS_PROCESSED: None,
     PreviousStamp.REQUIREMENTS_READY: Act.PREPARED.value,
     PreviousStamp.PLAN_READY: Act.PREPARED.value,
     PreviousStamp.PRD_APPROVED: None,
@@ -59,9 +58,7 @@ _PERFORMER: Final[dict[str, str]] = {
     Act.WAITING.value: "the holding driver",
     Act.STAMP.value: "the holding driver",
     Act.KICKBACK.value: "the holding driver",
-    Act.FINDING.value: "the holding driver",
     Act.DECISION.value: "the session of the waited-on person",
-    CREATE_CAPABILITY: "any session with todo write",
 }
 REFUSAL_TEMPLATE: Final = "{verb} is refused: {item} is in {phase}. Door: {door}.{replacement}"
 REPLACEMENT_TEMPLATE: Final = " The act that replaces it is {act}, performed by {performer}."
