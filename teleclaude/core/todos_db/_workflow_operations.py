@@ -436,12 +436,15 @@ class TodosDbWorkflowOperationsMixin:
         artifact_names: list[str],
         update: Callable[[dict[str, StateValue] | None, dict[str, str]], dict[str, StateValue]],
     ) -> dict[str, StateValue]:
-        """Read evidence and persist its derived state inside one transaction."""
-        async with self._session() as session:
+        """Read evidence and persist its derived state inside one write transaction taken up front.
+
+        The writer lock is held from the read, so no other writer commits between the state this reads and the state
+        it writes; the evidence and the state it is derived from are one reading.
+        """
+        async with immediate_transaction(self) as session:
             raw_state = await self.read_state_in_session(slug, session)
             digests = {name: await self.artifact_digest_in_session(slug, name, session) for name in artifact_names}
             payload = update(raw_state, digests)
             await self.write_state(slug, payload, session=session)
-            await session.commit()
         self.on_committed(_TODO_UPDATED_EVENT)
         return payload

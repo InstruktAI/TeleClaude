@@ -470,6 +470,11 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
         db_session = session or self._session()  # type: ignore[attr-defined]
         db_commit_landed = False
         try:
+            if owns_session:
+                # The writer lock is taken before the row and its state are read, so no other writer commits between
+                # that reading and the delivered state written from it.
+                connection = await db_session.connection()
+                await connection.exec_driver_sql("BEGIN IMMEDIATE")
             entry = await self._active_entry(db_session, slug)
             if entry is None:
                 if reconciliation_receipt is not None and reconciliation_receipt.plan is not None:
@@ -925,6 +930,7 @@ class TodosDbTodoMixin(TodosDbTodoMembershipMixin):
         db_commit_landed = False
         try:
             with self._sync_session() as session:  # type: ignore[attr-defined]
+                session.connection().exec_driver_sql("BEGIN IMMEDIATE")  # the writer lock before the reading
                 statement = (
                     select(Todo).where(TODO_TABLE.c.slug == slug, TODO_TABLE.c.status.in_(_ACTIVE_OR_ICEBOX)).limit(1)
                 )
