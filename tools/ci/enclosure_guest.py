@@ -76,6 +76,18 @@ class Purpose(StrEnum):
     QUALIFICATION = "qualification"
 
 
+class Role(StrEnum):
+    """The roles selected by the reviewed harness entry protocol."""
+
+    SUPERVISOR = "supervisor"
+    PAYLOAD = "payload"
+    GUEST_SETUP = "guest-setup"
+    GUEST_POWEROFF = "guest-poweroff"
+    PRIVILEGED = "privileged"
+    QUALIFICATION = "qualification"
+    ROLLING_INPUT_OBSERVER = "rolling-input-observer"
+
+
 class Key(StrEnum):
     """Internal protected guest-manifest and shutdown evidence fields."""
 
@@ -99,6 +111,11 @@ class Key(StrEnum):
     HOST_PID_NAMESPACE = "host_pid_namespace"
     HOST_CGROUP_NAMESPACE = "host_cgroup_namespace"
     SOURCE_FILES = "source_files"
+    SELECTED_SCENARIOS = "selected_scenarios"
+    GUEST = "guest"
+    ACCOUNT = "account"
+    UID = "uid"
+    GID = "gid"
     RECORD = "record"
     MONOTONIC_NS = "monotonic_ns"
     COMMAND = "command"
@@ -144,6 +161,17 @@ class GuestContext:
         package = StaticPackage.load(STATIC_DIRECTORY, SOURCE_ROOT)
         context = cls(data, package)
         context.verify()
+        return context
+
+    @classmethod
+    def load_payload(cls, manifest: Path) -> GuestContext:
+        """Read the same protected binding as the declared ordinary guest account."""
+        if manifest != MANIFEST:
+            raise ValueError(ERROR_CONTEXT)
+        data = _read_manifest()
+        package = StaticPackage.load(STATIC_DIRECTORY, SOURCE_ROOT)
+        context = cls(data, package)
+        context.verify_payload()
         return context
 
     def verify(self) -> None:
@@ -213,6 +241,39 @@ class GuestContext:
             self.record, require_vector=Purpose(text(self.record, Key.PURPOSE)) is Purpose.QUALIFICATION
         )
 
+    def verify_payload(self) -> None:
+        """Require application purpose and the recipe's actual ordinary UID/GID before product work."""
+        self.verify()
+        recipe = parse_object(self.package.recipe_bytes)
+        account = object_value(object_value(recipe[Key.GUEST])[Key.ACCOUNT])
+        if (
+            Purpose(text(self.record, Key.PURPOSE)) is not Purpose.APPLICATION
+            or os.geteuid() != positive_integer(account, Key.UID)
+            or os.getegid() != positive_integer(account, Key.GID)
+        ):
+            raise ValueError(ERROR_CONTEXT)
+
+    def verify_request(self, root: Path, commit: str, tree: str, selection: frozenset[str]) -> None:
+        """Bind the public payload request to the protected candidate and effective selection."""
+        self.verify_payload()
+        record = self.record
+        selected = record.get(Key.SELECTED_SCENARIOS)
+        if not isinstance(selected, list):
+            raise ValueError(ERROR_CONTEXT)
+        names: list[str] = []
+        for value in selected:
+            if not isinstance(value, str):
+                raise ValueError(ERROR_CONTEXT)
+            names.append(value)
+        if (
+            root.resolve(strict=True) != SOURCE_ROOT
+            or commit != text(record, Key.SOURCE_COMMIT)
+            or tree != text(record, Key.SOURCE_TREE)
+            or len(names) != len(set(names))
+            or frozenset(names) != selection
+        ):
+            raise ValueError(ERROR_CONTEXT)
+
     def command_end(self) -> int:
         """Intersect all admitted cutoffs with the static cleanup unit's own allowance."""
         rendered = self.package.render(
@@ -235,8 +296,6 @@ class GuestContext:
 
 
 def _read_manifest() -> bytes:
-    if os.geteuid() != 0:
-        raise ValueError(ERROR_CONTEXT)
     parent_fd = os.open(MANIFEST.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
         directory = os.fstat(parent_fd)
@@ -302,6 +361,8 @@ def _output(descriptor: int) -> JsonObject:
 
 def request_guest_poweroff(context: GuestContext) -> Record:
     """Request the declared endpoint once, for Q4 or payload cleanup, without claiming exit."""
+    if os.geteuid() != 0:
+        raise ValueError(ERROR_CONTEXT)
     context.verify()
     admitted = context.admitted_deadline()
     command_end = context.command_end()

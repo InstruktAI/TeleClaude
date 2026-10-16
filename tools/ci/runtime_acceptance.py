@@ -42,9 +42,23 @@ from tools.ci import workflow_ready as ready
 from tools.ci import workflow_removal as removal
 from tools.ci import workflow_review as review
 from tools.ci import workflow_waiting as waiting
+from tools.ci.enclosure_contract import Action
+from tools.ci.enclosure_guest import GuestContext, Role, request_guest_poweroff
+from tools.ci.enclosure_guest import Record as GuestShutdownRecord
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
 _UTF8 = "utf-8"
+_ENCLOSURE_ROLE_OPTION = "--enclosure-role"
+_ENCLOSURE_MANIFEST_OPTION = "--enclosure-manifest"
+_ENCLOSURE_ACTION_OPTION = "--enclosure-action"
+_OBSERVATION_KEY_OPTION = "--observation-key"
+_ENCLOSURE_MANIFEST_REQUIRED = "An enclosure role requires its protected manifest."
+_ENCLOSURE_ACTION_ROLE = "An enclosure action belongs only to the privileged role."
+_PROFILE_ARGUMENTS_REQUIRED = "Profile execution requires profile, source-revision and source-tree."
+_ENCLOSED_FULL_REQUIRED = "Supervisor and payload roles require the full profile."
+_ENCLOSURE_UNAVAILABLE = "The selected enclosure role is not yet implemented: {role}"
+_ENCLOSURE_ENTRY_FAILED = "Enclosure entry failed: {error_class}: {detail}"
+_ENCLOSURE_REQUIRED = "Full-profile product work requires the admitted guest payload binding."
 _REPORT_SCHEMA_VERSION = 3
 _DEFAULT_ROOT = "."
 _REPORT_TEMP_SUFFIX = ".tmp"
@@ -5123,8 +5137,13 @@ def run_profile(
     source_tree: str,
     selection: frozenset[str] = frozenset(),
     report_path: Path | None = None,
+    payload_admission: GuestContext | None = None,
 ) -> AcceptanceReport:
     """Run the selected profile with disposable state and report cleanup separately."""
+    if profile is Profile.FULL:
+        if payload_admission is None:
+            return _unadmitted_full_report(source_revision, source_tree, selection)
+        payload_admission.verify_request(source_root, source_revision, source_tree, selection)
     resolved_root = source_root.expanduser().resolve()
     temporary_root = Path(tempfile.mkdtemp(prefix=_ENVIRONMENT_CACHE_DIRECTORY))
     resources: FullRuntimeResources | None = None
@@ -5945,16 +5964,49 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
         raise ValueError(_FULL_REPORT_INVALID) from None
 
 
+def _unadmitted_full_report(source_revision: str, source_tree: str, selection: frozenset[str]) -> AcceptanceReport:
+    """Refuse before resource creation; absent enclosure admission supplies no journey or cleanup result."""
+    return AcceptanceReport(
+        schema_version=_REPORT_SCHEMA_VERSION,
+        source_revision=source_revision,
+        source_tree=source_tree,
+        profile=Profile.FULL,
+        scenario_inventory=_FULL_PROFILE_SCENARIOS,
+        scenarios=tuple(
+            ScenarioResult(scenario_id, ScenarioStatus.NOT_RUN, 0.0, diagnostics=_ENCLOSURE_REQUIRED)
+            for scenario_id in _FULL_PROFILE_SCENARIOS
+        ),
+        cleanup=CleanupResult(ScenarioStatus.NOT_RUN, _ENCLOSURE_REQUIRED),
+        duration_seconds=0.0,
+        selection=tuple(sorted(selection)),
+    )
+
+
 def _parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=_CLI_DESCRIPTION)
-    parser.add_argument(_PROFILE_OPTION, choices=[profile.value for profile in Profile], required=True)
+    parser.add_argument(_PROFILE_OPTION, choices=[profile.value for profile in Profile])
     parser.add_argument(_ROOT_OPTION, type=Path, default=Path(_DEFAULT_ROOT))
-    parser.add_argument(_SOURCE_REVISION_OPTION, required=True)
-    parser.add_argument(_SOURCE_TREE_OPTION, required=True)
+    parser.add_argument(_SOURCE_REVISION_OPTION)
+    parser.add_argument(_SOURCE_TREE_OPTION)
+    parser.add_argument(_ENCLOSURE_ROLE_OPTION, choices=[role.value for role in Role])
+    parser.add_argument(_ENCLOSURE_MANIFEST_OPTION, type=Path)
+    parser.add_argument(_ENCLOSURE_ACTION_OPTION, choices=[action.value for action in Action])
+    parser.add_argument(_OBSERVATION_KEY_OPTION)
     default_report = Path(tempfile.gettempdir()) / _REPORT_NAME_TEMPLATE.format(identifier=uuid.uuid4().hex)
     parser.add_argument(_REPORT_OPTION, type=Path, default=default_report)
     parser.add_argument(_SELECT_OPTION, default=_EMPTY, help=_SELECT_HELP)
-    return parser.parse_args(arguments)
+    parsed = parser.parse_args(arguments)
+    if parsed.enclosure_role is not None and parsed.enclosure_manifest is None:
+        parser.error(_ENCLOSURE_MANIFEST_REQUIRED)
+    if parsed.enclosure_action is not None and parsed.enclosure_role != Role.PRIVILEGED:
+        parser.error(_ENCLOSURE_ACTION_ROLE)
+    if parsed.enclosure_role in (None, Role.PAYLOAD, Role.SUPERVISOR) and not (
+        parsed.profile and parsed.source_revision and parsed.source_tree
+    ):
+        parser.error(_PROFILE_ARGUMENTS_REQUIRED)
+    if parsed.enclosure_role in (Role.PAYLOAD, Role.SUPERVISOR) and parsed.profile != Profile.FULL:
+        parser.error(_ENCLOSED_FULL_REQUIRED)
+    return parsed
 
 
 def _selection_with_prerequisites(requested: str, profile: Profile) -> frozenset[str]:
@@ -5985,6 +6037,18 @@ def _handle_profile_termination(_signum: int, _frame: FrameType | None) -> None:
 def main(arguments: list[str] | None = None) -> int:
     """Run the requested profile and write a structured result for the checked source."""
     parsed = _parse_arguments(sys.argv[1:] if arguments is None else arguments)
+    role = Role(parsed.enclosure_role) if parsed.enclosure_role is not None else None
+    if role is Role.GUEST_POWEROFF:
+        try:
+            outcome = request_guest_poweroff(GuestContext.load(parsed.enclosure_manifest))
+        except (OSError, ValueError, RuntimeError) as error:
+            print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
+            return _PROCESS_FAILURE
+        return _PROCESS_SUCCESS if outcome is GuestShutdownRecord.ACKNOWLEDGED else _PROCESS_FAILURE
+    if role is not None and role is not Role.PAYLOAD:
+        print(_ENCLOSURE_UNAVAILABLE.format(role=role), file=sys.stderr)
+        return _PROCESS_FAILURE
+    admission = GuestContext.load_payload(parsed.enclosure_manifest) if role is Role.PAYLOAD else None
     selected_profile = Profile(parsed.profile)
     previous_termination_handler = signal.signal(signal.SIGTERM, _handle_profile_termination)
     try:
@@ -5996,6 +6060,7 @@ def main(arguments: list[str] | None = None) -> int:
             source_tree=parsed.source_tree,
             selection=selection,
             report_path=parsed.report,
+            payload_admission=admission,
         )
         report = write_report(report, parsed.report)
         if report.selection:
