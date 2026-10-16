@@ -274,14 +274,14 @@ class GuestContext:
         ):
             raise ValueError(ERROR_CONTEXT)
 
-    def command_end(self) -> int:
-        """Intersect all admitted cutoffs with the static cleanup unit's own allowance."""
+    def command_end(self, unit_name: str = POWER_UNIT) -> int:
+        """Intersect all admitted cutoffs with the selected static guest unit's own allowance."""
         rendered = self.package.render(
             run_token=text(self.record, Key.RUN_TOKEN),
             candidate_sha=text(self.record, Key.SOURCE_COMMIT),
             candidate_tree=text(self.record, Key.SOURCE_TREE),
             selection="",
-        )[POWER_UNIT]
+        )[unit_name]
         declarations = [
             line[len(TIMEOUT_PREFIX) :]
             for line in rendered.decode(UTF8).splitlines()
