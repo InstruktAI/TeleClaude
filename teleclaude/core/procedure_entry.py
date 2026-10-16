@@ -319,6 +319,15 @@ def _gap_refusal(procedure_id: str, gap: EntryGap) -> EntryRefusal:
     )
 
 
+def declared_parameters(
+    *, procedure_token: str, project_root: Path, pinned: EntryDeclarations | None = None
+) -> tuple[ProcedureParameter, ...]:
+    """The parameters the procedure declares: those of the pinned declarations, else of the published ones."""
+    procedure_id = normalize_procedure_id(procedure_token)
+    declarations = pinned if pinned is not None else _published_entry(procedure_id, project_root).declarations
+    return declarations.parameters
+
+
 def resolve_entry(
     *,
     procedure_token: str,

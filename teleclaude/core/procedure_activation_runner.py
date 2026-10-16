@@ -44,7 +44,7 @@ from teleclaude.core.models import (
 from teleclaude.core.models._adapter import session_is_unattended
 from teleclaude.core.operations._kinds import OperationKind
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.procedure_entry import EntryRefusal, activation_entry, resolve_entry
+from teleclaude.core.procedure_entry import EntryRefusal, activation_entry, declared_parameters, resolve_entry
 from teleclaude.core.procedure_event_delivery import (
     ProcedureActivationFailureReason,
     ProcedureActivationTerminalError,
@@ -71,6 +71,7 @@ from teleclaude.docs_subscriptions import (
 )
 from teleclaude.entry_declarations import SessionMode
 from teleclaude.events.envelope import ReceivedEvent
+from teleclaude.events.references import EventRef
 from teleclaude.paths import REPO_ROOT
 from teleclaude.types.activation_home import ActivationHome
 from teleclaude.types.commands import ActivateProcedureCommand, CreateSessionCommand
@@ -96,6 +97,7 @@ _CREATE_RETURNED_NO_SESSION_ERROR = "procedure activation session creation retur
 _CREATED_SESSION_MISSING_ERROR = "procedure activation session row missing: {session_id}"
 _REVIVAL_FAILED_ERROR = "procedure activation could not revive session {session_id} bound to {subject}"
 _INITIAL_INPUT_TEMPLATE = "{procedure_id} {home}"
+_INITIAL_INPUT_ARGUMENTS_TEMPLATE = "{procedure_id} {arguments}"
 _NO_SESSION_ERROR = "procedure activation could not resolve a session: {procedure_id} / {home}"
 
 _activation_locks: dict[tuple[str, str], asyncio.Lock] = {}
@@ -224,18 +226,22 @@ async def _create_agent(
     own_row_only: bool = False,
     initialization: DriverInitialization | None = None,
     single_claim: bool = False,
-    arguments: str = "",
 ) -> Session:
     """Start the procedure's agent in the home's folder and return its session.
 
-    An unattended procedure's agent is stamped unattended in the creating write. ``arguments`` are the arguments the
-    activation supplies to the procedure's declared parameters: a lifecycle driver's item slug, which the request
-    names, so a driver that declares the slug as a required parameter is started for exactly that item.
+    An unattended procedure's agent is stamped unattended in the creating write. A procedure that declares
+    parameters and is activated for a subject receives the subject's identity as its argument (a lifecycle driver is
+    started for exactly the item the request names), and its session is titled by that identity; a procedure that
+    declares none receives no argument.
     """
     procedure_id = cmd.procedure_id
     session_id = str(uuid.uuid4())
     initialization = initialization or driver_initialization(procedure_id)
     try:
+        declared = declared_parameters(
+            procedure_token=procedure_id, project_root=folder, pinned=initialization.declarations
+        )
+        arguments = EventRef.from_token(subject).identity if subject is not None and declared else ""
         resolved = resolve_entry(
             procedure_token=procedure_id,
             arguments=arguments,
@@ -268,7 +274,11 @@ async def _create_agent(
         session_id=session_id,
         project_path=str(folder),
         origin=InputOrigin.TERMINAL.value,
-        initial_input=_INITIAL_INPUT_TEMPLATE.format(procedure_id=procedure_id, home=home.to_token()),
+        initial_input=(
+            _INITIAL_INPUT_ARGUMENTS_TEMPLATE.format(procedure_id=procedure_id, arguments=arguments)
+            if arguments
+            else _INITIAL_INPUT_TEMPLATE.format(procedure_id=procedure_id, home=home.to_token())
+        ),
         command=resolved.procedure_id,
         role=resolved.role.name.value,
         job=resolved.entry.job,
@@ -409,7 +419,6 @@ async def _resolve_single_claim(
         own_row_only=True,
         initialization=initialization,
         single_claim=True,
-        arguments=facts.slug,
     )
     return _Resolution(created, ActivationOutcome.STARTED, 0)
 
