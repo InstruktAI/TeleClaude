@@ -174,6 +174,75 @@ provide. An unexecuted journey remains unverified.
 
 <!-- /planned:issue-128 -->
 
+<!-- planned:issue-128 -->
+
+### Enclosed full-profile execution
+
+The full profile has one outside supervisor and one inside payload in the same
+harness. Their explicit roles are bound to one exclusively owned run, source
+commit and tree. Operational setup qualification is a separate purpose of that
+harness; its result supplies no application-journey or full-profile credit.
+The cold profile keeps its existing entry path. The physical enclosure and its
+static provisioning and qualification contract are owned by
+`local/projects/teleclaude/design/architecture/runtime-acceptance/overview`.
+
+The outside owner exists before any profile-capable creator and owns the final
+result. Product installation, native fixtures and every application operation
+execute inside the disposable boundary. Workflow, caller identity, claims,
+operation receipts and application events retain their public owners. Physical
+observations supply containment evidence, never substitute application state
+or authentication decisions (`sdlc/policy/ai-agent-security`).
+
+The inner report is an immutable provisional result. A typed deferred physical
+closure condition is distinct from a failed assertion, unknown operation,
+missing public fact, failed daemon stop, corrupt evidence or missing scenario.
+Only the outside finalizer can resolve that typed condition, using the proof
+and release contract in
+`local/projects/teleclaude/design/architecture/runtime-acceptance/finalization`.
+It preserves the inner bytes and digest, original functional verdicts and
+every independent retention cause. An old final failed report stays failed;
+adding a witness never upgrades it. Eligibility requires successful final
+aggregation, evidence readback and owned-resource release; an export or release
+failure prevents an accepted result (`general/principle/verification-independence`).
+
+The supervisor preserves an incremental, bounded, secret-free recovery record
+before privileged effects. Its intent/result records, observation generation,
+inner report, outer witness and final report bind the same source/tree/run and
+static lock. Partial initialization, interruption, timeout, shutdown failure,
+report-write/readback failure and export failure preserve the original outcome
+and available verified evidence. Missing facts stay unknown. Another run or a
+restarted controller cannot adopt retained resources, reopen admission or
+replace a lost observation object in order to complete the old proof.
+
+The workflow's own primary-report address anchors explicit witness and recovery
+siblings. Each workflow preserves its existing report, authorized sidecars,
+candidate artifacts, artifact eligibility guard, missing-file policy and
+retention declaration. No rootfs, product home, credentials, control/plan tree,
+clone or origin archive is uploaded. Retained disposable resources last only
+for the hosted job's lifetime; afterwards only successfully exported named
+diagnostics are available. Cancellation, runner loss, ineligible upload and
+upload failure provide no evidence-survival guarantee
+(`general/principle/verification-independence`).
+
+One monotonic deadline covers provisioning through evidence preservation and
+fits the existing workflow runtime-step budget. A closure/export reserve is
+deducted before payload admission; phase budgets use remaining time and never
+reset the outer deadline. Existing scenario, step and job limits retain their
+owners. Insufficient time prevents another start and preserves partial failure;
+timing and shutdown fit require actual measured qualification.
+
+Design/control approval, approval of the exact contract and complete static
+locks/recipes, exact-SHA implementation review, authorization of a finite
+qualification attempt, its observed result and actual acceptance evidence are
+separate records. None substitutes for another. Changed proof controls require
+explicit no-stake review under `sdlc/policy/process-change-authority` before
+implementation. Qualification is authorized against the reviewed source,
+static package and finite setup assertions; installation and application
+journeys require their own ensuing execution authority. Every unexecuted
+required journey remains unverified.
+
+<!-- /planned:issue-128 -->
+
 ### Use cases
 
 #### UC-RA1: Cold public entry points execute from the checked source
@@ -347,6 +416,16 @@ Then each operation is refused
 And a fresh authorized memory listing reports no memory added by those attempts
 ```
 
+<!-- planned:issue-128 -->
+
+UC-RA9 applies to both provisional payload and outside finalization. A payload
+exit, empty process observation or completed upload alone is insufficient for
+its cleanup result. UC-RA10 consumes only the final aggregate at the immutable
+candidate commit and tree; neither setup qualification nor selected journeys
+discharge the full profile or full installation proof.
+
+<!-- /planned:issue-128 -->
+
 ## Known caveats
 
 - These journeys establish their named observable behavior, not exhaustive CLI,
@@ -355,3 +434,16 @@ And a fresh authorized memory listing reports no memory added by those attempts
   proof, and it uses no live subscription credentials or external messaging.
 - Existing installation proof and target-specific worktree help checks retain
   their own contracts.
+
+<!-- planned:issue-128 -->
+
+- Physical extinction cannot establish a missing session close, consumed launch,
+  receipt result or delivered event. Those omissions remain independently
+  blocking even when a diagnostic observation reports no remaining processes.
+- Hosted retention preserves bounded diagnostics when eligible upload succeeds;
+  it supplies no remotely recoverable rootfs or continuation after VM disposal.
+- A runner label and vendor documentation do not establish compatible package,
+  privilege, namespace, activation, observation or shutdown behavior. A new
+  substrate requires separately reviewed static bindings and qualification.
+
+<!-- /planned:issue-128 -->
