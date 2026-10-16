@@ -1038,8 +1038,8 @@ def _require_nothing_written(
         changed = differences(before, after)
         if changed:
             raise platform_failure(DETAIL_WRITE_LANDED.format(case=case, when=when, paths=changed))
-        require_sessions_equal(sessions, observer.sessions(retain=False), when)
-    now = observer.slugs(retain=False)
+        require_sessions_equal(sessions, observer.sessions(), when)
+    now = observer.slugs()
     if now != slugs:
         raise platform_failure(DETAIL_SLUGS_CHANGED.format(case=case, before=sorted(slugs), after=sorted(now)))
 

@@ -32,7 +32,7 @@ import os
 import re
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from dataclasses import field as dataclass_field
 from enum import StrEnum
 from pathlib import Path
@@ -527,6 +527,7 @@ def freeze_b13_evidence(
     authorized_bootstrap: bool = False,
     authorized_append: bytes | None = None,
     authorized_refresh: bytes | None = None,
+    authorized_completion: bool = False,
     authorized_failure: bool = False,
 ) -> None:
     """Refresh a durable seal only when its previous bytes and one authorized append are verified."""
@@ -544,6 +545,7 @@ def freeze_b13_evidence(
             or carrier_path.read_bytes()
             or authorized_append is not None
             or authorized_refresh is not None
+            or authorized_completion
             or authorized_failure
         ):
             raise ValueError(B13_ERROR_SEAL)
@@ -555,6 +557,24 @@ def freeze_b13_evidence(
             or hashlib.sha256(attempts_raw).hexdigest() != prior.get(B13_LEDGER_ORIGINAL_SHA_FIELD)
             or len(attempts_raw) != prior.get(B13_LEDGER_ORIGINAL_BYTES_FIELD)
             or not verify_b13_seal(evidence, marker_path, carrier_path)
+            or authorized_append is not None
+            or authorized_refresh is not None
+            or authorized_completion
+        ):
+            raise ValueError(B13_ERROR_SEAL)
+    elif authorized_completion:
+        prior_size = prior.get(B13_LEDGER_ORIGINAL_BYTES_FIELD)
+        prior_hash = prior.get(B13_LEDGER_ORIGINAL_SHA_FIELD)
+        prior_evidence = replace(evidence, status=B13_STATUS_PARTIAL)
+        if (
+            evidence.status != B13_STATUS_COMPLETE
+            or type(prior_size) is not int
+            or not isinstance(prior_hash, str)
+            or hashlib.sha256(attempts_raw).hexdigest() != prior_hash
+            or len(attempts_raw) != prior_size
+            or carrier_path.read_bytes() != _b13_json_bytes(_b13_safe(_b13_payload(prior_evidence), sanitize))
+            or marker_path.read_bytes() != _b13_json_bytes(_b13_safe(_b13_marker_record(prior_evidence), sanitize))
+            or not verify_b13_seal(prior_evidence, marker_path, carrier_path)
             or authorized_append is not None
             or authorized_refresh is not None
         ):
@@ -714,6 +734,19 @@ def verify_b13_delivery(
         )
     except (OSError, ValueError, TypeError):
         return False
+
+
+def complete_b13_evidence(
+    evidence: WaitingKickbackEvidence,
+    marker_path: Path,
+    carrier_path: Path,
+    sanitize: Callable[[str], str],
+) -> None:
+    """Commit the verified partial seal's single status transition to complete."""
+    if evidence.status != B13_STATUS_PARTIAL or not verify_b13_seal(evidence, marker_path, carrier_path):
+        raise ValueError(B13_ERROR_SEAL)
+    evidence.status = B13_STATUS_COMPLETE
+    freeze_b13_evidence(evidence, marker_path, carrier_path, sanitize, authorized_completion=True)
 
 
 def log_entries(log: str) -> list[tuple[str, str]]:
@@ -1302,7 +1335,7 @@ class _Waiting:
             if evidence.status != B13_STATUS_PARTIAL:
                 raise ValueError(evidence.primary_failure or B13_ERROR_DEADLINE)
             _require_b13_snapshot(outcome.output)
-            evidence.status = B13_STATUS_COMPLETE
+            complete_b13_evidence(evidence, marker_path, carrier_path, self.sanitize)
             if not verify_b13_delivery(evidence, marker_path, carrier_path, self.sanitize):
                 raise ValueError(B13_ERROR_SEAL)
             if time.monotonic() - started > B13_SCENARIO_SECONDS:
