@@ -6,6 +6,9 @@ The journey\'s assertions are the independently reviewed ones recorded in the sh
 8139046b04adbf9219f29b472e8bb49e513da9cd7946ee60ddfaf0bb964df1e6 with its act-row amendment
 d7270641fcb963b66f58c79201ac936d293358665b967f493a7e625a3eac0728 and title amendment
 f9a4d846c18e44c8d5a65082532a2e0245ab357b4f33254843977e6db81e600f, the B2 pool, and the B3 late-bound argument lists;
+the fixture preparation of amendment B4G, `journeys/b4g-docs-capability-fixture-amendment-draft.md` at exact SHA-256
+781033c73aab429302e5716df959c089b8e34ccbcb871212f93097ac1af02d2b (the owned project declares the docs capability, with
+code and agents disabled, committed and published before the item branch opens);
 authority the pending `local/projects/teleclaude/spec/feature/workflow/item-lifecycle` and `.../procedure-entry`
 contracts of issue 128).
 
@@ -306,9 +309,12 @@ class _Prepared:
                 raise creation.binding_failure(
                     DETAIL_PROJECT_PATCH.format(status=patch.exit_status, output=patch.output[-300:])
                 )
-        again = foundation.json_object(
-            self.observer.run((TELEC, CONFIG, PROJECT, GET, project_slug, FORMAT_OPTION, JSON_FORMAT)).output
-        )
+        read_back = self.observer.run((TELEC, CONFIG, PROJECT, GET, project_slug, FORMAT_OPTION, JSON_FORMAT))
+        if read_back.exit_status != 0:
+            raise creation.binding_failure(
+                DETAIL_PROJECT_READ.format(status=read_back.exit_status, output=read_back.output[-300:])
+            )
+        again = foundation.json_object(read_back.output)
         after = again.get(PROJECT_SECTION) if again is not None else None
         if (
             not isinstance(after, Mapping)
