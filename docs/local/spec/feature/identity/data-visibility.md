@@ -231,3 +231,11 @@ And the people whose reach admits the desk's home see those same memories, as re
 - Acting on one named object — ending, messaging, or tailing a session — stays
   with command clearance and per-session access, which this contract does not
   change.
+- A session record that carries a human email but no stored principal, which is
+  how a session a person opens directly is recorded, is not admitted as that
+  person's own record by session listings or conversation history. Those
+  surfaces match the stored principal, not the principal the email resolves to
+  (`local/projects/teleclaude/spec/feature/identity/principal-resolution`), so
+  such a session and its conversation history reach the person only through
+  subject reach, and platform administrators and the system principal through
+  their own reach.
