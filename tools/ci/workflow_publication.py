@@ -76,6 +76,8 @@ PUBLISH_TIMEOUT_SECONDS: Final = 120
 POLL_SECONDS: Final = 2.0
 SETTLE_SECONDS: Final = 120.0
 PROCESS_EXIT_SECONDS: Final = 30.0
+LOG_TAIL_LINES: Final = 200
+LOG_TAIL_BYTES: Final = 3500
 
 DETAIL_COMMAND: Final = "`{command}` exited {status}: {output!r}"
 DETAIL_FOLD_PATHS: Final = (
@@ -446,14 +448,25 @@ class Publication:
 
 
 def log_evidence(host: FoundationHost, terms: Sequence[str]) -> None:
-    """Retain the daemon\'s recent log lines for each term as evidence of a failed case; never an oracle."""
+    """Retain the daemon\'s recent log lines as evidence of a failed case; never an oracle.
+
+    The matching lines for the terms come from the supported log reader; the newest lines of every log file of the
+    installation are retained as well, for the case that the terms match nothing or the reader finds no directory.
+    """
     home = host.environment.get("HOME", "")
     tool = Path(home) / ".local" / "bin" / "instrukt-ai-logs"
     executable = str(tool) if tool.exists() else "instrukt-ai-logs"
-    for term in terms:
+    pattern = "|".join(terms)
+    commands = (
+        (executable, "teleclaude", "--since", "60m", "--grep", pattern),
+        (
+            "sh",
+            "-c",
+            f'tail -n {LOG_TAIL_LINES} "$HOME"/.local/state/instrukt-ai/teleclaude/*.log 2>&1 | tail -c {LOG_TAIL_BYTES}',
+        ),
+    )
+    for argv in commands:
         try:
-            host.process(
-                (executable, "teleclaude", "--since", "40m", "--grep", term), Path(home or "."), host.environment, 60
-            )
+            host.process(argv, Path(home or "."), host.environment, 60)
         except BaseException:  # evidence gathering must not replace the failure it explains
             continue

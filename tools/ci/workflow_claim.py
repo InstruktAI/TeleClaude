@@ -73,7 +73,7 @@ CLAIM_NAME: Final = "claim"
 CLAIM_FRAME: Final = "cmd_claim"
 CLAIM_ARGV: Final = ("telec", TODO, PREPARE, ITEM)
 PLAN_FILE: Final = "plan.json"
-LOG_TERMS: Final = ("preparation_requested", "subscription", "activation", "procedure")
+LOG_TERMS: Final = ("preparation_requested", "subscri", "activat", "procedure", "driver", "launch", "workflow")
 NO_DRIVER_PHRASE: Final = "no published procedure drives preparation"
 NOT_ACTIVATED_PHRASE: Final = "is not activated yet"
 CLAIM_HEADER_SUFFIX: Final = " · claim"
@@ -472,9 +472,12 @@ class _Steps:
                 self.journey.session_id = holder
                 return
             time.sleep(POLL_SECONDS)
-        self.claim.operation_state(self.starter, retain=True)
+        starter = self.claim.operation_state(self.starter, retain=True)
         publication.log_evidence(self.host, LOG_TERMS)
-        raise creation.platform_failure(DETAIL_START_TIMEOUT.format(item=ITEM, seconds=int(START_CAP_SECONDS)))
+        raise creation.platform_failure(
+            DETAIL_START_TIMEOUT.format(item=ITEM, seconds=int(START_CAP_SECONDS))
+            + f" (the starter reads {dict(starter)!r})"
+        )
 
     def check_startup(self) -> str:
         """Step 3: the session is the platform's, with a real startup through the installed hooks."""
