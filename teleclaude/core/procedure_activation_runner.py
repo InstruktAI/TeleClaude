@@ -224,10 +224,13 @@ async def _create_agent(
     own_row_only: bool = False,
     initialization: DriverInitialization | None = None,
     single_claim: bool = False,
+    arguments: str = "",
 ) -> Session:
     """Start the procedure's agent in the home's folder and return its session.
 
-    An unattended procedure's agent is stamped unattended in the creating write.
+    An unattended procedure's agent is stamped unattended in the creating write. ``arguments`` are the arguments the
+    activation supplies to the procedure's declared parameters: a lifecycle driver's item slug, which the request
+    names, so a driver that declares the slug as a required parameter is started for exactly that item.
     """
     procedure_id = cmd.procedure_id
     session_id = str(uuid.uuid4())
@@ -235,7 +238,7 @@ async def _create_agent(
     try:
         resolved = resolve_entry(
             procedure_token=procedure_id,
-            arguments="",
+            arguments=arguments,
             project_root=folder,
             caller=None,
             entry=activation_entry(
@@ -406,6 +409,7 @@ async def _resolve_single_claim(
         own_row_only=True,
         initialization=initialization,
         single_claim=True,
+        arguments=facts.slug,
     )
     return _Resolution(created, ActivationOutcome.STARTED, 0)
 
