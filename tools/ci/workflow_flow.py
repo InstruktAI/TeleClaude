@@ -13,6 +13,7 @@ import os
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Final, NotRequired, TypedDict, cast
 
@@ -129,15 +130,20 @@ RECORD_POLL_SECONDS: Final = 2.0
 BINDING_WITNESS_SCHEMA_VERSION: Final = 1
 BINDING_WITNESS_JSON_LIMIT: Final = 3400
 BINDING_WITNESS_FIELD_LIMIT: Final = 128
-BINDING_LAUNCH_READ_STATES: Final = (
-    "missing",
-    "valid",
-    "unreadable",
-    "invalid_encoding",
-    "malformed_json",
-    "invalid_shape",
-    "invalid_native",
-)
+BINDING_READ_FAILURE_EVIDENCE: Final = "public session read failed or returned undecodable output"
+
+
+class BindingLaunchReadState(StrEnum):
+    """Closed controller classifications for reading an owned launch record."""
+
+    MISSING = "missing"
+    VALID = "valid"
+    UNREADABLE = "unreadable"
+    INVALID_ENCODING = "invalid_encoding"
+    MALFORMED_JSON = "malformed_json"
+    INVALID_SHAPE = "invalid_shape"
+    INVALID_NATIVE = "invalid_native"
+
 
 DETAIL_ITEM: Final = "the shared flow item is absent from the prepared disposable project"
 DETAIL_CANDIDATE: Final = "the candidate checkout identity changed during the chained workflow"
@@ -182,14 +188,14 @@ class BindingLaunchRecord(TypedDict, total=False):
     key_kind: JsonValue
     key: JsonValue
     index: JsonValue
-    read_status: str
+    read_status: BindingLaunchReadState
 
 
 class BindingReadError(TypedDict, total=False):
     """A path-free classification of an owned launch record read."""
 
     slot: int
-    status: str
+    status: BindingLaunchReadState
     error_type: str
     value_type: str
     native_type: str
@@ -199,7 +205,7 @@ class BindingLaunchScan(TypedDict):
     """Bounded control-pool classification retained only on a binding failure."""
 
     pool_size: int
-    read_counts: dict[str, int]
+    read_counts: dict[BindingLaunchReadState, int]
     classification_complete: bool
     read_errors: list[BindingReadError]
     launch_records: list[BindingLaunchRecord]
@@ -641,7 +647,7 @@ class WorkflowFlow:
         return f"<{type(value).__name__}>"
 
     def _launch_scan(self, native: str | None) -> tuple[list[tuple[FixtureSetup, Json]], BindingLaunchScan]:
-        read_counts = {state: 0 for state in BINDING_LAUNCH_READ_STATES}
+        read_counts = {state: 0 for state in BindingLaunchReadState}
         records: list[BindingLaunchRecord] = []
         read_errors: list[BindingReadError] = []
         matches: list[tuple[FixtureSetup, Json]] = []
@@ -651,25 +657,37 @@ class WorkflowFlow:
             try:
                 raw = path.read_text(encoding=ENCODING)
             except FileNotFoundError:
-                read_counts["missing"] += 1
+                read_counts[BindingLaunchReadState.MISSING] += 1
                 continue
             except UnicodeError as error:
-                read_counts["invalid_encoding"] += 1
-                read_errors.append({"slot": slot, "status": "invalid_encoding", "error_type": type(error).__name__})
+                read_counts[BindingLaunchReadState.INVALID_ENCODING] += 1
+                read_errors.append(
+                    {
+                        "slot": slot,
+                        "status": BindingLaunchReadState.INVALID_ENCODING,
+                        "error_type": type(error).__name__,
+                    }
+                )
                 continue
             except OSError as error:
-                read_counts["unreadable"] += 1
-                read_errors.append({"slot": slot, "status": "unreadable", "error_type": type(error).__name__})
+                read_counts[BindingLaunchReadState.UNREADABLE] += 1
+                read_errors.append(
+                    {"slot": slot, "status": BindingLaunchReadState.UNREADABLE, "error_type": type(error).__name__}
+                )
                 continue
             try:
                 value = json.loads(raw)
             except ValueError as error:
-                read_counts["malformed_json"] += 1
-                read_errors.append({"slot": slot, "status": "malformed_json", "error_type": type(error).__name__})
+                read_counts[BindingLaunchReadState.MALFORMED_JSON] += 1
+                read_errors.append(
+                    {"slot": slot, "status": BindingLaunchReadState.MALFORMED_JSON, "error_type": type(error).__name__}
+                )
                 continue
             if not isinstance(value, Mapping):
-                read_counts["invalid_shape"] += 1
-                read_errors.append({"slot": slot, "status": "invalid_shape", "value_type": type(value).__name__})
+                read_counts[BindingLaunchReadState.INVALID_SHAPE] += 1
+                read_errors.append(
+                    {"slot": slot, "status": BindingLaunchReadState.INVALID_SHAPE, "value_type": type(value).__name__}
+                )
                 continue
             launch = {str(key): entry for key, entry in value.items()}
             native_value = launch.get(FIELD_NATIVE)
@@ -684,14 +702,18 @@ class WorkflowFlow:
             }
             records.append(launch_record)
             if not isinstance(native_value, str) or not native_value:
-                read_counts["invalid_native"] += 1
-                launch_record["read_status"] = "invalid_native"
+                read_counts[BindingLaunchReadState.INVALID_NATIVE] += 1
+                launch_record["read_status"] = BindingLaunchReadState.INVALID_NATIVE
                 read_errors.append(
-                    {"slot": slot, "status": "invalid_native", "native_type": type(native_value).__name__}
+                    {
+                        "slot": slot,
+                        "status": BindingLaunchReadState.INVALID_NATIVE,
+                        "native_type": type(native_value).__name__,
+                    }
                 )
                 continue
-            read_counts["valid"] += 1
-            launch_record["read_status"] = "valid"
+            read_counts[BindingLaunchReadState.VALID] += 1
+            launch_record["read_status"] = BindingLaunchReadState.VALID
             if native is not None and native_value == native:
                 matches.append((setup, launch))
                 matched_records.append(launch_record)
@@ -709,7 +731,7 @@ class WorkflowFlow:
     def _empty_launch_scan(self) -> BindingLaunchScan:
         return {
             "pool_size": len(self.control_setups),
-            "read_counts": {state: 0 for state in BINDING_LAUNCH_READ_STATES},
+            "read_counts": {state: 0 for state in BindingLaunchReadState},
             "classification_complete": False,
             "read_errors": [],
             "launch_records": [],
@@ -753,6 +775,12 @@ class WorkflowFlow:
         attempts: int = 1,
         native_history: Sequence[str] = (),
     ) -> creation.JourneyFailure:
+        if public_outcome is not None and public_record is None and session_id is not None:
+            self.host.note(
+                (TELEC, SESSIONS, SHOW, session_id, FULL_FLAG),
+                public_outcome,
+                BINDING_READ_FAILURE_EVIDENCE,
+            )
         witness: BindingWitness = {
             "schema_version": BINDING_WITNESS_SCHEMA_VERSION,
             "relation": relation,

@@ -302,6 +302,10 @@ _PROFILE_FULL = "full"
 _UNKNOWN_REVISION = "unknown"
 _EMPTY = ""
 _DIAGNOSTIC_LIMIT = 4096
+_EVIDENCE_SEPARATOR = "\n"
+_EVIDENCE_STDOUT_TRUNCATION = "stdout truncated at diagnostic limit"
+_EVIDENCE_STDERR_TRUNCATION = "stderr truncated at diagnostic limit"
+_EVIDENCE_DIAGNOSTICS_TRUNCATION = "diagnostics truncated at diagnostic limit"
 _INSTALLER_LOG_PATH = Path("install.log")
 _INSTALLER_LOG_LABEL = "Installer log (end): "
 _INSTALLER_LOG_UNAVAILABLE = "Installer log unavailable ({error_class})."
@@ -2236,9 +2240,11 @@ class _FoundationRunner:
     def cli(self, argv: Sequence[str], timeout_seconds: float, *, retain: bool = True) -> foundation.Outcome:
         """Run one fresh public CLI process on the authenticated owner terminal."""
         terminal = self._resources.open_admin_terminal()
-        evidence = self._evidence if retain else []
-        status, output = _record_terminal_command(self._resources, terminal, argv, evidence, timeout_seconds)
-        recorded = evidence[-1] if evidence else None
+        command_evidence: list[CommandEvidence] = []
+        status, output = _record_terminal_command(self._resources, terminal, argv, command_evidence, timeout_seconds)
+        if retain:
+            self._evidence.extend(command_evidence)
+        recorded = command_evidence[-1] if command_evidence else None
         return foundation.Outcome(
             status,
             output,
@@ -2266,13 +2272,34 @@ class _FoundationRunner:
 
     def note(self, argv: Sequence[str], outcome: foundation.Outcome, diagnostics: str) -> None:
         """Retain bounded evidence of a command the fixture ran inside its pane."""
+        stdout = self._resources.sanitize(outcome.output)
+        stderr = self._resources.sanitize(outcome.stderr)
+        detail = self._resources.sanitize(diagnostics)
+        command_diagnostics = self._resources.sanitize(outcome.diagnostics)
+        truncations: list[str] = []
+        if len(stdout) > _DIAGNOSTIC_LIMIT:
+            truncations.append(_EVIDENCE_STDOUT_TRUNCATION)
+        if len(stderr) > _DIAGNOSTIC_LIMIT:
+            truncations.append(_EVIDENCE_STDERR_TRUNCATION)
+        if len(detail) > _DIAGNOSTIC_LIMIT or len(command_diagnostics) > _DIAGNOSTIC_LIMIT:
+            truncations.append(_EVIDENCE_DIAGNOSTICS_TRUNCATION)
+        diagnostic_parts = tuple(value for value in (detail, command_diagnostics, *truncations) if value)
+        retained_diagnostics = _EVIDENCE_SEPARATOR.join(diagnostic_parts)
+        if len(retained_diagnostics) > _DIAGNOSTIC_LIMIT:
+            marker_size = len(_EVIDENCE_SEPARATOR) + len(_EVIDENCE_DIAGNOSTICS_TRUNCATION)
+            retained_diagnostics = (
+                retained_diagnostics[: _DIAGNOSTIC_LIMIT - marker_size]
+                + _EVIDENCE_SEPARATOR
+                + _EVIDENCE_DIAGNOSTICS_TRUNCATION
+            )
         self._evidence.append(
             CommandEvidence(
                 argv=tuple(self._resources.sanitize(value) for value in argv),
                 exit_status=outcome.exit_status,
-                duration_seconds=0.0,
-                stdout=self._resources.sanitize(outcome.output)[:_DIAGNOSTIC_LIMIT],
-                diagnostics=self._resources.sanitize(diagnostics)[:_DIAGNOSTIC_LIMIT],
+                duration_seconds=outcome.duration_seconds,
+                stdout=stdout[:_DIAGNOSTIC_LIMIT],
+                stderr=stderr[:_DIAGNOSTIC_LIMIT],
+                diagnostics=retained_diagnostics[:_DIAGNOSTIC_LIMIT],
             )
         )
 
