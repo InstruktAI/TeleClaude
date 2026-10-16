@@ -38,6 +38,8 @@ TAR_EXTRACT: Final = "--extract"
 TAR_FILE: Final = "--file"
 TAR_DIRECTORY: Final = "--directory"
 TAR_NUMERIC_OWNER: Final = "--numeric-owner"
+TAR_STRIP_ONE: Final = "--strip-components=1"
+TAR_NO_SAME_OWNER: Final = "--no-same-owner"
 DPKG_EXTRACT: Final = "--extract"
 GIT: Final = "/usr/bin/git"
 GIT_OPTIONS: Final = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.autocrlf=false")
@@ -62,6 +64,14 @@ CONTROL_ROOT: Final = Path("var/lib/teleclaude-runtime-acceptance")
 STATIC_SUBDIRECTORY: Final = "static"
 SOURCE_DIRECTORY: Final = Path("srv/teleclaude-candidate")
 GUEST_ARCHIVE_DIRECTORY: Final = Path("/var/lib/teleclaude-runtime-acceptance/archives")
+GUEST_TOOL_DIRECTORY: Final = Path("/var/lib/teleclaude-runtime-acceptance/tools")
+TOOL_PREFIX: Final = Path("usr/local")
+BIN_DIRECTORY: Final = "bin"
+NODE_BINARY: Final = "node"
+UV_BINARY: Final = "uv"
+UV_ARCHIVE: Final = "uv.tar.gz"
+NODE_ARCHIVE: Final = "node.tar.xz"
+TGZ_SUFFIX: Final = ".tgz"
 DEB_SUFFIX: Final = ".deb"
 NANOSECONDS: Final = 1_000_000_000
 ERROR_DATA: Final = "a declared guest archive is missing or disagrees with its byte lock: {digest}"
@@ -86,6 +96,13 @@ class Key(StrEnum):
     PACKAGE_SERVICE_POLICY = "package_service_policy"
     PROSPECTIVE_SOURCE = "prospective_source"
     INSTALLED_PATH = "installed_path"
+    NODE = "node"
+    TOOL_ARCHIVES = "tool_archives"
+    TOOL_BINARIES = "tool_binaries"
+    NPM_TOOLS = "npm_tools"
+    FILE = "file"
+    ARCHIVE = "archive"
+    MEMBER = "member"
 
 
 def _require_time(deadline: AdmittedDeadline) -> None:
@@ -253,6 +270,85 @@ def stage_candidate(
     package.validate_source(target)
     _require_time(deadline)
     return target
+
+
+def stage_bootstrap_tools(
+    rootfs: Path,
+    package: StaticPackage,
+    run_token: str,
+    inputs: Mapping[str, Path],
+    run: NativeCommand,
+    deadline: AdmittedDeadline,
+) -> None:
+    """Stage fixed Node/uv bytes and npm archives, executing no tool outside the guest."""
+    require_hex(run_token, 32)
+    recipe = parse_object(package.recipe_bytes)
+    expected_root = Path(text(object_value(recipe[Key.HOST]), Key.ROOTFS).format(run_token=run_token))
+    if os.geteuid() != 0 or rootfs != expected_root:
+        raise ValueError(ERROR_ROOT)
+    lock = parse_object(package.lock_bytes)
+    cap = positive_integer(object_value(recipe[Field.BUDGET_SECONDS]), Field.NORMAL_COMMAND_MAX)
+    node = _archive(object_value(lock[Key.NODE]), inputs, deadline)
+    archives, npm = lock[Key.TOOL_ARCHIVES], lock[Key.NPM_TOOLS]
+    if not isinstance(archives, list) or not isinstance(npm, list):
+        raise ValueError(ERROR_DATA.format(digest=UV_ARCHIVE))
+    uv_rows = [object_value(row) for row in archives if object_value(row).get(Key.FILE) == UV_ARCHIVE]
+    if len(uv_rows) != 1:
+        raise ValueError(ERROR_DATA.format(digest=UV_ARCHIVE))
+    uv = _archive(uv_rows[0], inputs, deadline)
+    prefix = _guest_path(rootfs, GUEST_PREFIX + str(TOOL_PREFIX))
+    prefix.mkdir(parents=True, exist_ok=True)
+    bin_directory = prefix / BIN_DIRECTORY
+    if any(path.exists() or path.is_symlink() for path in (bin_directory / NODE_BINARY, bin_directory / UV_BINARY)):
+        raise ValueError(ERROR_ROOT)
+    _command(
+        (TAR, TAR_EXTRACT, TAR_FILE, str(node), TAR_DIRECTORY, str(prefix), TAR_STRIP_ONE, TAR_NO_SAME_OWNER),
+        run,
+        deadline,
+        cap,
+    )
+    bin_directory.mkdir(exist_ok=True)
+    _command(
+        (TAR, TAR_EXTRACT, TAR_FILE, str(uv), TAR_DIRECTORY, str(bin_directory), TAR_STRIP_ONE, TAR_NO_SAME_OWNER),
+        run,
+        deadline,
+        cap,
+    )
+    verify_bootstrap_binaries(package, prefix, deadline)
+    for value in npm:
+        row = object_value(value)
+        source = _archive(row, inputs, deadline)
+        guest_path = GUEST_TOOL_DIRECTORY / (text(row, Field.SHA256) + TGZ_SUFFIX)
+        target = _guest_path(rootfs, GUEST_PREFIX + str(guest_path.relative_to(guest_path.anchor)))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with source.open(mode=READ_BINARY) as original, target.open(mode=EXCLUSIVE_BINARY) as copied:
+            os.fchmod(copied.fileno(), 0o644)
+            shutil.copyfileobj(original, copied)
+            copied.flush()
+            os.fsync(copied.fileno())
+        _require_time(deadline)
+
+
+def verify_bootstrap_binaries(package: StaticPackage, prefix: Path, deadline: AdmittedDeadline) -> None:
+    """Bind the explicitly locked native images at staging and after guest OS package configuration."""
+    binaries = parse_object(package.lock_bytes)[Key.TOOL_BINARIES]
+    if not isinstance(binaries, list):
+        raise ValueError(ERROR_ROOT)
+    for value in binaries:
+        row = object_value(value)
+        archive_name = text(row, Key.ARCHIVE)
+        member = Path(text(row, Key.MEMBER))
+        if member.is_absolute() or len(member.parts) < 2:
+            raise ValueError(ERROR_ROOT)
+        base = (
+            prefix if archive_name == NODE_ARCHIVE else prefix / BIN_DIRECTORY if archive_name == UV_ARCHIVE else None
+        )
+        if base is None:
+            raise ValueError(ERROR_ROOT)
+        binary = base.joinpath(*member.parts[1:]).resolve(strict=True)
+        if not binary.is_relative_to(base.resolve(strict=True)) or binary.stat().st_uid != 0:
+            raise ValueError(ERROR_ROOT)
+        _archive(row, {text(row, Field.SHA256): binary}, deadline)
 
 
 def stage_guest_declarations(
