@@ -211,6 +211,33 @@ async def earlier_claim_sessions(
     return tuple(found)
 
 
+async def earlier_group_heads(record: WorkflowRecord, holder: str, item: str = "", project_root: str = "") -> list[str]:
+    """The sessions that headed an earlier claiming group of the item, ended or not, outside the current holder's group.
+
+    The item's ledger and claimers name the v2 heads; a session that held it by its persisted working slug and project
+    without any ledger act is the head of a previous machine's group. A session that descends from one of them belongs
+    to that group whether or not anything of the group is still known to be running.
+    """
+    retained = record.remote_members
+    recorded = [entry.session_id for entry in record.ledger if entry.act is Act.CLAIM]
+    heads = [
+        claimer
+        for claimer in dict.fromkeys([*recorded, *record.claimers])
+        if claimer and claimer != holder and not (holder and await in_claiming_group(claimer, holder, retained))
+    ]
+    if item and project_root:
+        tracked = [claimer for claimer in dict.fromkeys([*recorded, *record.claimers, holder]) if claimer]
+        for former in await db.list_sessions(include_closed=True, include_headless=True, working_slug=item):
+            if former.session_id in heads or former.session_id == holder:
+                continue
+            if not _same_project(former.project_path, project_root) or former.session_id in tracked:
+                continue
+            if holder and await in_claiming_group(former.session_id, holder, retained):
+                continue
+            heads.append(former.session_id)
+    return heads
+
+
 async def register_helper_start(
     project_root: str,
     item: str,
@@ -616,6 +643,12 @@ async def _register_for_group(
             carry_deadline,
         )
     earlier = await earlier_claim_sessions(state.workflow, holder, item, project_root)
-    if initiator_session_id in earlier or (via_ancestor and via_ancestor in earlier):
-        raise HelperStartRefused(EARLIER_GROUP.format(item=item, session=initiator_session_id))
+    heads = await earlier_group_heads(state.workflow, holder, item, project_root)
+    for session in (initiator_session_id, via_ancestor):
+        if session and (
+            session in earlier
+            or session in heads
+            or any([await session_descends_from(session, head) for head in heads])
+        ):
+            raise HelperStartRefused(EARLIER_GROUP.format(item=item, session=initiator_session_id))
     return ""

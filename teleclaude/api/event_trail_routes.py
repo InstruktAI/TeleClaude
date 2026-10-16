@@ -26,6 +26,7 @@ from teleclaude.events.item_trail import (
     Selection,
     TrailError,
     TrailRequest,
+    daemon_seal,
     read_trail,
 )
 from teleclaude.events.producer import configured_producer
@@ -68,7 +69,11 @@ async def item_trail(
     reach = resolve_reach(caller_for_role_resolution(identity))
     try:
         result = await read_trail(
-            producer.stream_reader(), selection, reach, TrailRequest(limit=limit, mark=mark, since=since, cursor=cursor)
+            producer.stream_reader(),
+            selection,
+            reach,
+            TrailRequest(limit=limit, mark=mark, since=since, cursor=cursor),
+            daemon_seal(),
         )
     except TrailError as error:
         raise HTTPException(status_code=STATUS_BY_KIND[error.kind], detail=str(error)) from error

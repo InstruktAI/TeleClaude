@@ -31,9 +31,16 @@ def _text(value: bytes | str) -> str:
 class RedisStreamReader:
     """The retained platform stream, read through the producer\'s own client."""
 
-    def __init__(self, redis_client: Any, stream: str) -> None:
+    def __init__(self, redis_client: Any, stream: str, capacity: int) -> None:
         self._redis = redis_client
         self._stream = stream
+        self.capacity = capacity
+
+    async def length(self) -> int:
+        try:
+            return int(await self._redis.xlen(self._stream))
+        except (RedisError, OSError, RuntimeError, ValueError) as error:
+            raise StreamUnavailable(str(error) or type(error).__name__) from error
 
     async def oldest(self) -> str | None:
         try:

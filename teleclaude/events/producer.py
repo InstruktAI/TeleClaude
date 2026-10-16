@@ -142,7 +142,7 @@ class EventProducer:
 
     def stream_reader(self) -> RedisStreamReader:
         """Read the retained stream this producer appends to, through its own client."""
-        return RedisStreamReader(self._redis, self._stream)
+        return RedisStreamReader(self._redis, self._stream, self._maxlen)
 
     def stream_name(self) -> str:
         """Return the Redis stream used by this producer."""

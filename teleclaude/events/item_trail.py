@@ -13,7 +13,10 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import hmac
 import json
+import os
+import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Final, Protocol
@@ -23,6 +26,7 @@ from teleclaude.events.envelope import home_owner_token, home_token
 from teleclaude.events.stream_reader import STREAM_ID_SEPARATOR, StreamUnavailable
 from teleclaude.events.wire import StreamEntry, StreamEvent, decode
 from teleclaude.identity_reach import Reach
+from teleclaude.paths import STATE_DIR
 
 TRAIL_EVENT_TYPES: Final = frozenset(
     {
@@ -38,7 +42,10 @@ DEFAULT_LIMIT: Final = 50
 MAXIMUM_LIMIT: Final = 200
 SCAN_CHUNK: Final = 1000
 SCAN_ATTEMPTS: Final = 3
-CURSOR_VERSION: Final = 1
+CURSOR_VERSION: Final = 2
+CURSOR_KEY_FILE: Final = "event-trail-cursor.key"
+CURSOR_KEY_BYTES: Final = 32
+CURSOR_KEY_MODE: Final = 0o600
 NO_POSITION: Final = "0-0"
 
 LIMIT_PRUNED: Final = "history_pruned_from_interval"
@@ -75,6 +82,15 @@ class StreamReader(Protocol):
         """Up to ``count`` entries with a position after ``after`` (exclusive) and up to ``through`` (inclusive)."""
         ...
 
+    async def length(self) -> int:
+        """How many entries are retained."""
+        ...
+
+    @property
+    def capacity(self) -> int:
+        """The length at which the stream starts trimming its oldest entries."""
+        ...
+
 
 @dataclass(frozen=True)
 class Selection:
@@ -98,40 +114,98 @@ class TrailRequest:
     cursor: str | None = None
 
 
+class CursorSeal:
+    """Seals a cursor so its holder can neither read the stream positions inside it nor forge another.
+
+    The cursor carries a watermark of the whole stream, which the caller\'s reach does not admit. It is sealed with a
+    key only the daemon holds: a stream cipher built from HMAC-SHA256 and a message authentication code over the result.
+    """
+
+    NONCE_BYTES: Final = 12
+    MAC_BYTES: Final = 16
+    BLOCK_BYTES: Final = 32
+
+    def __init__(self, key: bytes) -> None:
+        self._key = key
+
+    def _keystream(self, nonce: bytes, length: int) -> bytes:
+        blocks = (
+            hmac.new(self._key, b"enc" + nonce + counter.to_bytes(4, "big"), hashlib.sha256).digest()
+            for counter in range(-(-length // self.BLOCK_BYTES))
+        )
+        return b"".join(blocks)[:length]
+
+    def seal(self, body: bytes) -> str:
+        nonce = secrets.token_bytes(self.NONCE_BYTES)
+        cipher = bytes(left ^ right for left, right in zip(body, self._keystream(nonce, len(body)), strict=True))
+        mac = hmac.new(self._key, b"mac" + nonce + cipher, hashlib.sha256).digest()[: self.MAC_BYTES]
+        return base64.urlsafe_b64encode(nonce + cipher + mac).decode()
+
+    def open(self, token: str) -> bytes:
+        raw = base64.urlsafe_b64decode(token.encode())
+        if len(raw) < self.NONCE_BYTES + self.MAC_BYTES:
+            raise ValueError("too short")
+        nonce, cipher, mac = raw[: self.NONCE_BYTES], raw[self.NONCE_BYTES : -self.MAC_BYTES], raw[-self.MAC_BYTES :]
+        expected = hmac.new(self._key, b"mac" + nonce + cipher, hashlib.sha256).digest()[: self.MAC_BYTES]
+        if not hmac.compare_digest(mac, expected):
+            raise ValueError("not sealed by this daemon")
+        return bytes(left ^ right for left, right in zip(cipher, self._keystream(nonce, len(cipher)), strict=True))
+
+
+def daemon_seal() -> CursorSeal:
+    """The seal of this daemon: a random key kept in its state directory, created on first use."""
+    path = STATE_DIR / CURSOR_KEY_FILE
+    try:
+        key = path.read_bytes()
+    except FileNotFoundError:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        key = secrets.token_bytes(CURSOR_KEY_BYTES)
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, CURSOR_KEY_MODE)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(key)
+    return CursorSeal(key)
+
+
 @dataclass(frozen=True)
 class Cursor:
-    """A pinned position in the caller\'s own view of the stream, never a position of a record the caller may not see.
+    """A pinned position in the caller\'s own view of the stream, never a position the caller can read of a hidden one.
 
     ``anchor`` and ``anchor_id`` name the last admitted entry the read consumed (or none), ``floor`` the oldest admitted
-    entry retained when the cursor was captured, and ``end`` the admitted entry a paged read is pinned to.
+    entry retained when the cursor was captured, ``end`` the admitted entry a paged read is pinned to, and
+    ``watermark`` the newest entry of the whole stream when the interval began (none for an empty stream): an interval
+    whose entries after the watermark may have been trimmed is reported incomplete even when none of them was visible.
+    The cursor is sealed, so none of these positions is readable by its holder.
     """
 
     selection: str
     anchor: str
     anchor_id: str
     floor: str
+    watermark: str
     end: str | None = None
 
-    def encode(self) -> str:
+    def encode(self, seal: CursorSeal) -> str:
         body = {
             "v": CURSOR_VERSION,
             "s": self.selection,
             "p": self.anchor,
             "i": self.anchor_id,
             "f": self.floor,
+            "w": self.watermark,
             "e": self.end,
         }
-        return base64.urlsafe_b64encode(json.dumps(body, separators=(",", ":")).encode()).decode()
+        return seal.seal(json.dumps(body, separators=(",", ":")).encode())
 
     @classmethod
-    def decode(cls, value: str, selection: Selection) -> Cursor:
+    def decode(cls, value: str, selection: Selection, seal: CursorSeal) -> Cursor:
         try:
-            body = json.loads(base64.urlsafe_b64decode(value.encode()))
+            body = json.loads(seal.open(value))
             parsed = cls(
                 selection=str(body["s"]),
                 anchor=_stream_id(str(body["p"])),
                 anchor_id=str(body["i"]),
                 floor=_stream_id(str(body["f"])),
+                watermark=_stream_id(str(body["w"])),
                 end=_stream_id(str(body["e"])) if body["e"] is not None else None,
             )
             version = body["v"]
@@ -257,7 +331,12 @@ async def _pass(reader: StreamReader, selection: Selection, reach: Reach, throug
     first_copy: set[str] = set()
     after: str | None = None
     while True:
+        resumed_from = after
         chunk = await reader.entries(after, through, SCAN_CHUNK)
+        if resumed_from is not None:
+            oldest = await reader.oldest()
+            if oldest is not None and _key(oldest) > _key(resumed_from):
+                raise _Unstable  # entries after the last one read, before this chunk, were trimmed unread
         if not chunk:
             break
         if snapshot.first_position is None:
@@ -277,9 +356,6 @@ async def _pass(reader: StreamReader, selection: Selection, reach: Reach, throug
         after = chunk[-1][0]
         if len(chunk) < SCAN_CHUNK:
             break
-        oldest = await reader.oldest()
-        if oldest is not None and _key(oldest) > _key(after):
-            raise _Unstable  # entries between the last one read and the oldest retained were trimmed unread
     return snapshot
 
 
@@ -307,25 +383,41 @@ def _ordering_holds(cursor: Cursor, snapshot: _Snapshot) -> bool:
     return bool(snapshot.admitted) and _key(snapshot.admitted[0][0]) <= _key(cursor.floor)
 
 
-def _cursor_from(selection: Selection, last: tuple[str, str] | None, floor: str, end: str | None) -> Cursor:
+def _cursor_from(
+    selection: Selection, last: tuple[str, str] | None, floor: str, watermark: str, end: str | None
+) -> Cursor:
     position, event_id = last if last is not None else (NO_POSITION, "")
-    return Cursor(selection.digest(), position, event_id, floor, end)
+    return Cursor(selection.digest(), position, event_id, floor, watermark, end)
 
 
-async def read_trail(reader: StreamReader, selection: Selection, reach: Reach, request: TrailRequest) -> TrailResult:
+async def _possibly_trimmed_since(reader: StreamReader, cursor: Cursor, snapshot: _Snapshot) -> bool:
+    """Whether entries emitted after the cursor\'s watermark may have left the retained stream, visible or not.
+
+    With a watermark, entries after it are lost exactly when the oldest retained entry is newer than it. A cursor taken
+    of an empty stream has no watermark; trimming can only have happened if the stream has since reached its capacity.
+    """
+    if cursor.watermark != NO_POSITION:
+        return snapshot.first_position is not None and _key(snapshot.first_position) > _key(cursor.watermark)
+    return await reader.length() >= reader.capacity
+
+
+async def read_trail(
+    reader: StreamReader, selection: Selection, reach: Reach, request: TrailRequest, seal: CursorSeal
+) -> TrailResult:
     """Read one page (or a mark) of an item\'s trail; raises TrailError for the reads that establish nothing.
 
     Every position, bound and count published is derived from the entries the caller\'s reach admits, so records the
-    caller may not see neither appear in nor move any part of the result.
+    caller may not see neither appear in nor move any part of the result; the stream positions a cursor must keep to
+    detect their loss travel sealed inside it.
     """
     limit = min(max(request.limit, 1), MAXIMUM_LIMIT)
     cursor = None
     if request.cursor is not None:
-        cursor = Cursor.decode(request.cursor, selection)
+        cursor = Cursor.decode(request.cursor, selection, seal)
         if cursor.end is None:
             raise TrailError(CURSOR_INVALID, "a mark cannot continue a read; pass it as --since")
     elif request.since is not None:
-        cursor = Cursor.decode(request.since, selection)
+        cursor = Cursor.decode(request.since, selection, seal)
     try:
         newest = await reader.newest()
     except StreamUnavailable as error:
@@ -343,13 +435,18 @@ async def read_trail(reader: StreamReader, selection: Selection, reach: Reach, r
     if snapshot.undecodable and reach.everything:
         result.limits.append(f"{LIMIT_UNDECODABLE}:{snapshot.undecodable}")
     floor = first or NO_POSITION
+    watermark = cursor.watermark if cursor is not None else (newest or NO_POSITION)
     if request.mark:
-        result.observation_cursor = _cursor_from(selection, last, floor, None).encode()
+        result.observation_cursor = _cursor_from(selection, last, floor, newest or NO_POSITION, None).encode(seal)
         return result
     if cursor is None:
         shown = snapshot.occurrences
     else:
-        if not _ordering_holds(cursor, snapshot):
+        try:
+            trimmed = await _possibly_trimmed_since(reader, cursor, snapshot)
+        except StreamUnavailable as error:
+            raise TrailError(UNAVAILABLE, str(error)) from error
+        if trimmed or not _ordering_holds(cursor, snapshot):
             result.complete = False
             result.limits.append(LIMIT_PRUNED)
             return result
@@ -359,5 +456,5 @@ async def read_trail(reader: StreamReader, selection: Selection, reach: Reach, r
     if len(shown) > limit:
         tail = result.occurrences[-1]
         end = cursor.end if cursor is not None and cursor.end is not None else (last[0] if last is not None else None)
-        result.next_cursor = _cursor_from(selection, (tail.position, tail.event.id), floor, end).encode()
+        result.next_cursor = _cursor_from(selection, (tail.position, tail.event.id), floor, watermark, end).encode(seal)
     return result
