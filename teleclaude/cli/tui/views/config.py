@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
-from instrukt_ai_logging import get_logger
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
@@ -16,13 +16,13 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from teleclaude.cli.config_handlers import EnvVarStatus, ValidationResult
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
     _SUBTABS,
     AdapterSectionProjection,
     ConfigTuiOutcome,
+    ConfigTuiRowAction,
     Subtab,
     observe_config_tui,
     project_adapter_sections,
@@ -31,104 +31,38 @@ from teleclaude.cli.tui.views.config_editing import ConfigContentEditingMixin
 from teleclaude.cli.tui.views.config_operations import (
     ConfigOperationFailed,
     ConfigOperations,
-    PersonSecretInventory,
-    SubjectSnapshot,
+    EditorViewAnswer,
+    EnvVarStatus,
+    ValidationResult,
 )
 from teleclaude.cli.tui.views.config_render import ConfigContentRenderMixin
-from teleclaude.cli.tui.views.lenient_model import lenient_model
-from teleclaude.cli.tui.views.reflection import (
-    EnvironmentProvenance,
-    ReflectedField,
-    apply_machine_environment,
-    bind_environment_references,
-    mark_write_only,
-    reflect_schema,
-)
-from teleclaude.config._chiptunes import ChiptunesConfig
-from teleclaude.config._defaults import DEFAULT_CONFIG
-from teleclaude.config._machine_build import deep_merge
-from teleclaude.config._models import (
-    BackupConfig,
-    ComputerConfig,
-    DaemonConfig,
-    DiscordConfig,
-    EmailConfig,
-    RedisConfig,
-    STTConfig,
-    TelegramConfig,
-    TTSConfig,
-    WhatsAppConfig,
-)
-from teleclaude.config._summarizer import SummarizerConfig
-from teleclaude.config.identity_schema import PersonEntry
-from teleclaude.config.operation_answers import EnvironmentReferenceRow
-from teleclaude.config.person_resource import IDENTITY_SECTION, SETTINGS_SECTION
-from teleclaude.config.schema import PersonConfig
-from teleclaude.config.subject_operations import ConfigFailureKind
-from teleclaude.config.tiers import Tier
-from teleclaude.config_subjects import ConfigEnvironment, ConfigSubjectKind
-from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
-from teleclaude.project_manifest import ConfigKind
+from teleclaude.config.operation_answers import EditorFieldAnswer
+from teleclaude.config.operation_requests import ConfigFailureKind
+from teleclaude.config_subjects import ConfigSubjectKind
 
 __all__ = ["ConfigContent", "ConfigView"]
 
-logger = get_logger(__name__)
 
-_TELEGRAM_SECTION = "telegram"
-_WHATSAPP_SECTION = "whatsapp"
-_EMAIL_SECTION = "email"
+@dataclass(frozen=True)
+class PersonRow:
+    """The identity fields the People list presents."""
 
-
-def _default_section(name: str) -> dict[str, Any]:  # guard: loose-dict - DEFAULT_CONFIG holds the untyped YAML defaults
-    """Return a DEFAULT_CONFIG section as a plain dict for safe merge/unpack."""
-    section = DEFAULT_CONFIG.get(name, {})
-    return section if isinstance(section, dict) else {}
+    slug: str
+    name: str
+    role: str | None
+    email: str | None
 
 
-def _apply_tts_applicability(tts: TTSConfig, fields: list[ReflectedField]) -> list[ReflectedField]:
-    """Drop engine-inapplicable TTS leaves and surface the built-in session_start default.
-
-    Engine capabilities are derived from the data, not a fixed registry (MLX engines
-    are any service with a ``model``): name-based engines never use ``voice_id``,
-    static engines never consume ``model``/``params``/``cli_bin``/``instruct``, and
-    an engine without a voice list has no ``voices`` leaf.
-    """
-    drop: set[str] = set()
-    for name, svc in (tts.services or {}).items():
-        base = f"tts.services.{name}"
-        if not svc.model:
-            drop.add(f"{base}.model")
-            drop.add(f"{base}.params")
-            drop.add(f"{base}.cli_bin")
-            drop.add(f"{base}.instruct")
-        voices = svc.voices
-        if not voices:
-            drop.add(f"{base}.voices")
-        elif not any(voice.voice_id for voice in voices):
-            drop.update(f"{base}.voices.{index}.voice_id" for index in range(len(voices)))
-
-    kept = [f for f in fields if f.key not in drop]
-    for field in kept:
-        if field.key == "tts.events.session_start.messages" and not field.value:
-            field.value = list(SESSION_START_MESSAGES)
-    return kept
-
-
-_COMPUTER_SECTION = "computer"
-_KIND_FIELD = "kind"
-_SLUG_FIELD = "slug"
-_OVERLAY_UNPRESENTABLE = "The overlay of {slug} cannot be presented"
-_IDENTITY_PREFIX = "identity"
-_OVERLAY_PREFIX = "overlay"
-_IDENTITY_SECTION_LABEL = "Global Identity"
-_OVERLAY_SECTION_LABEL = "Overlay Settings"
-_SECRETS_SECTION_LABEL = "Secrets"
-_IDENTITY_SOURCE = "global"
-_OVERLAY_SOURCE = "per-person"
-_SECRET_SOURCE = "personal-mcp-secret"
-_SECRET_KEY_PREFIX = "secrets."
+_TAB_ROOTS: dict[Subtab, tuple[str, ...]] = {
+    Subtab.INFRA: ("computer", "daemon", "redis", "chiptunes"),
+    Subtab.ADAPTERS: ("telegram", "discord", "whatsapp"),
+    Subtab.PROVIDERS: ("backup", "email"),
+    Subtab.SUMMARIZER: ("summarizer",),
+    Subtab.TTS_STT: ("stt", "tts"),
+    Subtab.PEOPLE: (),
+    Subtab.ENV: (),
+}
 _PERSON_CACHE_KEY = "person:{slug}"
-_OUTPUT_VISIBILITY_FIELDS = ("system_messages", "tool_calls")
 _STATUS_TEMPLATE = "{prefix}: {error}"
 _LOAD_MACHINE_FAILED = "Failed to load machine configuration"
 _LOAD_ENV_FAILED = "Failed to load env vars"
@@ -139,17 +73,27 @@ _LOAD_GROUP = "config-load"
 _SECRETS_GROUP = "config-secrets"
 _VALIDATE_GROUP = "config-validate"
 _DAEMON_UNAVAILABLE = "The daemon is not reachable."
+_PERSON_NAME_ID = "identity.name"
+_PERSON_ROLE_ID = "identity.role"
+_PERSON_EMAIL_ID = "identity.email"
+_FIELD_PATH_SEPARATOR = "."
 
 
-def _person_entry(slug: str, identity: dict[str, object]) -> PersonEntry:  # guard: loose-dict - effective view
-    """The identity entry of a person, built from the effective identity section the daemon answered."""
-    declared = {name: value for name, value in identity.items() if name in PersonEntry.model_fields}
-    return PersonEntry.model_construct(**declared, slug=slug)
+def _editor_value(editor: EditorViewAnswer, identity: str) -> object:
+    field = next((item for item in editor.fields if item.identity == identity), None)
+    return field.value if field is not None else None
 
 
-def _person_overlay(slug: str, settings: dict[str, object]) -> PersonConfig:  # guard: loose-dict - effective view
-    """The typed overlay of a person from its effective settings; a partial projection keeps the values it holds."""
-    return lenient_model(PersonConfig, {**settings, _KIND_FIELD: ConfigKind.PERSON.value, _SLUG_FIELD: slug})
+def _person_row(slug: str, editor: EditorViewAnswer) -> PersonRow:
+    name = _editor_value(editor, _PERSON_NAME_ID)
+    role = _editor_value(editor, _PERSON_ROLE_ID)
+    email = _editor_value(editor, _PERSON_EMAIL_ID)
+    return PersonRow(
+        slug=slug,
+        name=name if isinstance(name, str) else slug,
+        role=role if isinstance(role, str) else None,
+        email=email if isinstance(email, str) else None,
+    )
 
 
 class ConfigView(Widget, can_focus=True):
@@ -428,7 +372,7 @@ class ConfigContent(
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self._env_data: list[EnvVarStatus] = []
-        self._people_data: list[PersonEntry] = []
+        self._people_data: list[PersonRow] = []
         self._validation_results: list[ValidationResult] = []
         self._adapter_sections: list[AdapterSectionProjection] = []
         self._outside_scope: tuple[str, ...] = ()
@@ -440,212 +384,38 @@ class ConfigContent(
         self._guided_mode = False
         self._guided_step_index = 0
         self._tab_click_regions: list[tuple[int, int, int, int]] = []  # (row, x_start, x_end, subtab_idx)
-        self._row_click_map: dict[int, tuple[str, Any]] = {}  # {content_row: action_tuple}
+        self._row_click_map: dict[int, tuple[ConfigTuiRowAction, Any]] = {}  # {content_row: action_tuple}
         self._expanded_person: str | None = None
         self._person_field_cursor: int = 0
-        self._raw_config: dict[str, Any] = {}  # guard: loose-dict - the daemon's effective machine document
+        self._machine_editor: EditorViewAnswer | None = None
         self._machine_revision: str | None = None
-        self._machine_references: dict[str, EnvironmentReferenceRow] = {}
-        self._variable_is_set: dict[str, bool] = {}
-        self._people: dict[str, SubjectSnapshot] = {}
-        self._person_secrets: dict[str, PersonSecretInventory] = {}
+        self._people: dict[str, EditorViewAnswer] = {}
         self._write_lock = asyncio.Lock()
         self._load_pending = True
         self._list_element_idx: int = 0
-        self._reflected_cache: dict[Subtab, list[ReflectedField]] = {}
+        self._reflected_cache: dict[Subtab | str, list[EditorFieldAnswer]] = {}
 
     @property
-    def reflected_fields(self) -> list[ReflectedField]:
-        """Reflected fields for the active subtab, cached until the config reloads.
-
-        Reflection rebuilds typed objects and resolves type hints — too costly to
-        recompute on every render and keystroke, so results are memoized per subtab
-        and invalidated by refresh_data when the underlying config changes.
-        """
+    def reflected_fields(self) -> list[EditorFieldAnswer]:
+        """Return the owner-supplied fields for the active configuration tab."""
         tab = _SUBTABS[self.active_subtab]
         cached = self._reflected_cache.get(tab)
         if cached is not None:
             return cached
+        editor = self._machine_editor
+        if editor is None:
+            return []
         render_cycle_id = str(uuid4())
         observe_config_tui(ConfigTuiOutcome.RENDER_REQUESTED, render_cycle_id=render_cycle_id, subtab=tab.value)
-        fields = self._build_reflected_fields(tab)
-        apply_machine_environment(fields, self._machine_references, self._variable_is_set)
+        roots = _TAB_ROOTS[tab]
+        fields = [field for field in editor.fields if field.identity.split(_FIELD_PATH_SEPARATOR, 1)[0] in roots]
         observe_config_tui(
             ConfigTuiOutcome.RENDERED,
             render_cycle_id=render_cycle_id,
-            field_paths=[field.key for field in fields],
-            source_kinds={field.key: self._field_source_kind(field) for field in fields},
+            field_paths=[field.identity for field in fields],
         )
         self._reflected_cache[tab] = fields
         return fields
-
-    def _field_source_kind(self, field: ReflectedField) -> str:
-        """Classify a rendered field source without exposing its value."""
-        if field.env_var:
-            return "placeholder"
-        node: object = self._raw_config
-        for part in field.key.split("."):
-            if not isinstance(node, dict) or part not in node:
-                return "default"
-            node = node[part]
-        return "literal"
-
-    def _build_reflected_fields(self, tab: Subtab) -> list[ReflectedField]:
-        """Construct the reflected fields for a subtab from the current raw config."""
-        if tab == Subtab.INFRA:
-            computer_data = self._raw_config.get("computer", {})
-            computer_fields = set(ComputerConfig.model_fields)
-            filtered_computer = {k: v for k, v in computer_data.items() if k in computer_fields}
-            computer_obj = ComputerConfig.model_construct(
-                name=filtered_computer.get("name", "Mac"),
-                user=filtered_computer.get("user", ""),
-                role=filtered_computer.get("role", "development"),
-                timezone=filtered_computer.get("timezone", "Europe/Amsterdam"),
-                default_working_dir=filtered_computer.get("default_working_dir", ""),
-                is_master=filtered_computer.get("is_master", True),
-                is_ingress_node=filtered_computer.get("is_ingress_node", False),
-                host=filtered_computer.get("host", None),
-            )
-            fields = reflect_schema(
-                computer_obj, prefix="computer", section="Computer", owning_source="machine", inherited_tier=Tier.TUI
-            )
-
-            daemon_data = deep_merge(_default_section("daemon"), self._raw_config.get("daemon", {}))
-            daemon_obj: DaemonConfig = DaemonConfig.model_validate(daemon_data)
-            fields.extend(
-                reflect_schema(
-                    daemon_obj,
-                    prefix="daemon",
-                    section="Daemon",
-                    owning_source="machine",
-                    inherited_tier=Tier.TUI,
-                )
-            )
-
-            redis_data = self._raw_config.get("redis", {})
-            merged_redis = deep_merge(_default_section("redis"), redis_data)
-            redis_fields = set(RedisConfig.model_fields)
-            filtered_redis = {k: v for k, v in merged_redis.items() if k in redis_fields}
-            redis_obj = RedisConfig.model_construct(**filtered_redis)
-            fields.extend(
-                reflect_schema(
-                    redis_obj, prefix="redis", section="Redis", owning_source="machine", inherited_tier=Tier.TUI
-                )
-            )
-
-            chiptunes_data = self._raw_config.get("chiptunes", {})
-            merged_chiptunes = deep_merge(_default_section("chiptunes"), chiptunes_data)
-            chiptunes_fields = set(ChiptunesConfig.model_fields)
-            filtered_chiptunes = {k: v for k, v in merged_chiptunes.items() if k in chiptunes_fields}
-            chiptunes_obj = ChiptunesConfig.model_construct(**filtered_chiptunes)
-            fields.extend(
-                reflect_schema(
-                    chiptunes_obj,
-                    prefix="chiptunes",
-                    section="Chiptunes",
-                    owning_source="machine",
-                    inherited_tier=Tier.TUI,
-                )
-            )
-            return fields
-
-        if tab == Subtab.ADAPTERS:
-            fields: list[ReflectedField] = []
-            if _TELEGRAM_SECTION not in self._outside_scope:
-                telegram_data = self._raw_config.get("telegram", {})
-                merged_telegram = deep_merge(_default_section("telegram"), telegram_data)
-                telegram_fields = set(TelegramConfig.model_fields)
-                filtered_telegram = {k: v for k, v in merged_telegram.items() if k in telegram_fields}
-                telegram_obj = TelegramConfig.model_construct(**filtered_telegram)
-                fields.extend(
-                    reflect_schema(
-                        telegram_obj,
-                        prefix="telegram",
-                        section="Telegram",
-                        owning_source="machine",
-                        inherited_tier=Tier.TUI,
-                    )
-                )
-
-            discord_data = self._raw_config.get("discord", {})
-            merged_discord = deep_merge(_default_section("discord"), discord_data)
-            discord_fields = set(DiscordConfig.model_fields)
-            filtered_discord = {k: v for k, v in merged_discord.items() if k in discord_fields}
-            discord_obj = DiscordConfig.model_construct(**filtered_discord)
-            fields.extend(
-                reflect_schema(
-                    discord_obj, prefix="discord", section="Discord", owning_source="machine", inherited_tier=Tier.TUI
-                )
-            )
-
-            if _WHATSAPP_SECTION not in self._outside_scope:
-                whatsapp_data = self._raw_config.get("whatsapp", {})
-                merged_whatsapp = deep_merge(_default_section("whatsapp"), whatsapp_data)
-                whatsapp_fields = set(WhatsAppConfig.model_fields)
-                filtered_whatsapp = {k: v for k, v in merged_whatsapp.items() if k in whatsapp_fields}
-                whatsapp_obj = WhatsAppConfig.model_construct(**filtered_whatsapp)
-                fields.extend(
-                    reflect_schema(
-                        whatsapp_obj,
-                        prefix="whatsapp",
-                        section="WhatsApp",
-                        owning_source="machine",
-                        inherited_tier=Tier.TUI,
-                    )
-                )
-            return fields
-
-        if tab == Subtab.PROVIDERS:
-            backup_data = deep_merge(_default_section("backup"), self._raw_config.get("backup", {}))
-            backup_fields = set(BackupConfig.model_fields)
-            backup_obj = BackupConfig.model_construct(
-                **{key: value for key, value in backup_data.items() if key in backup_fields}
-            )
-            fields = reflect_schema(
-                backup_obj, prefix="backup", section="Providers", owning_source="machine", inherited_tier=Tier.TUI
-            )
-            if _EMAIL_SECTION not in self._outside_scope:
-                email_data = self._raw_config.get("email", {})
-                merged_email = deep_merge(_default_section("email"), email_data)
-                email_fields = set(EmailConfig.model_fields)
-                email_obj = EmailConfig.model_construct(
-                    **{key: value for key, value in merged_email.items() if key in email_fields}
-                )
-                fields.extend(
-                    reflect_schema(
-                        email_obj, prefix="email", section="Email", owning_source="machine", inherited_tier=Tier.TUI
-                    )
-                )
-            return fields
-
-        if tab == Subtab.SUMMARIZER:
-            summarizer_raw = self._raw_config.get("summarizer") or {}
-            summarizer_obj = SummarizerConfig.model_validate(summarizer_raw) if summarizer_raw else SummarizerConfig()
-            fields = reflect_schema(
-                summarizer_obj,
-                prefix="summarizer",
-                section="Summarizer",
-                owning_source="machine",
-                inherited_tier=Tier.TUI,
-            )
-            return fields
-
-        if tab == Subtab.TTS_STT:
-            merged_stt = deep_merge(_default_section("stt"), self._raw_config.get("stt", {}))
-            merged_tts = deep_merge(_default_section("tts"), self._raw_config.get("tts", {}))
-            stt_obj = STTConfig.model_validate(merged_stt) if merged_stt else STTConfig(enabled=False)
-            tts_obj = TTSConfig.model_validate(merged_tts) if merged_tts else TTSConfig(enabled=False)
-
-            fields = reflect_schema(
-                stt_obj, prefix="stt", section="STT", owning_source="machine", inherited_tier=Tier.TUI
-            )
-            tts_fields = reflect_schema(
-                tts_obj, prefix="tts", section="TTS", owning_source="machine", inherited_tier=Tier.TUI
-            )
-            fields.extend(_apply_tts_applicability(tts_obj, tts_fields))
-            return fields
-
-        return []
 
     @property
     def guided_mode(self) -> bool:
@@ -663,96 +433,23 @@ class ConfigContent(
         return self._expanded_person is not None
 
     @property
-    def person_reflected_fields(self) -> list[ReflectedField]:
-        """Return the reflected fields for the expanded person."""
+    def person_reflected_fields(self) -> list[EditorFieldAnswer]:
+        """Return the selected person's owner-supplied editor fields."""
         if self._expanded_person is None:
             return []
-
         cache_key = _PERSON_CACHE_KEY.format(slug=self._expanded_person)
-        cached = self._reflected_cache.get(cache_key)  # type: ignore[call-overload]
+        cached = self._reflected_cache.get(cache_key)
         if cached is not None:
             return cached
-
-        slug = self._expanded_person
-        person_entry = next((p for p in self._people_data if (p.slug or p.name) == slug), None)
-        snapshot = self._people.get(slug)
-        if person_entry is None or snapshot is None:
-            return []
-
-        render_cycle_id = str(uuid4())
-        logger.info("config_tui_person_overlay_requested", schema="PersonConfig", render_cycle_id=render_cycle_id)
-
-        entry_fields = reflect_schema(
-            person_entry,
-            prefix=_IDENTITY_PREFIX,
-            section=_IDENTITY_SECTION_LABEL,
-            owning_source=_IDENTITY_SOURCE,
-            inherited_tier=Tier.TUI,
-        )
-        try:
-            overlay_fields = reflect_schema(
-                _person_overlay(slug, snapshot.section(SETTINGS_SECTION)),
-                prefix=_OVERLAY_PREFIX,
-                section=_OVERLAY_SECTION_LABEL,
-                owning_source=_OVERLAY_SOURCE,
-                inherited_tier=Tier.TUI,
-            )
-        except (TypeError, ValueError, AttributeError) as error:
-            self._report_failure(_OVERLAY_UNPRESENTABLE.format(slug=slug), error)
-            return []
-        bind_environment_references(entry_fields, snapshot.references_under(IDENTITY_SECTION), _IDENTITY_PREFIX)
-        bind_environment_references(overlay_fields, snapshot.references_under(SETTINGS_SECTION), _OVERLAY_PREFIX)
-        mark_write_only(entry_fields)
-        mark_write_only(overlay_fields)
-        secret_fields = self._person_secret_fields(self._person_secrets.get(slug))
-        fields = entry_fields + overlay_fields + secret_fields
-        logger.info(
-            "config_tui_person_overlay_rendered",
-            render_cycle_id=render_cycle_id,
-            output_visibility_fields=list(_OUTPUT_VISIBILITY_FIELDS),
-        )
-        self._reflected_cache[cache_key] = fields  # type: ignore[index]
+        editor = self._people.get(self._expanded_person)
+        fields = list(editor.fields) if editor is not None else []
+        self._reflected_cache[cache_key] = fields
         return fields
-
-    @staticmethod
-    def _person_secret_fields(inventory: PersonSecretInventory | None) -> list[ReflectedField]:
-        """The write-only secret rows of a person: their inventory, or the note that their store is unavailable."""
-        if inventory is None:
-            return []
-        if not inventory.available:
-            return [
-                ReflectedField(
-                    key="secrets.unavailable",
-                    name="Personal MCP secrets",
-                    field_type=str,
-                    value="",
-                    section="Secrets",
-                    owning_source="personal-mcp-secret",
-                    write_only=True,
-                    secret_available=False,
-                    description="Personal secret storage is unavailable.",
-                )
-            ]
-        return [
-            ReflectedField(
-                key=f"{_SECRET_KEY_PREFIX}{secret.name}",
-                name=secret.name,
-                field_type=str,
-                value="",
-                section=_SECRETS_SECTION_LABEL,
-                owning_source=_SECRET_SOURCE,
-                environment=EnvironmentProvenance(secret.name, ConfigEnvironment.PERSON),
-                write_only=True,
-                secret_is_set=secret.is_set,
-                requiring_services=secret.requiring_servers,
-            )
-            for secret in inventory.secrets
-        ]
 
     @property
     def person_editable_fields(self) -> list[str]:
-        """Return the keys of person_reflected_fields."""
-        return [f.key for f in self.person_reflected_fields]
+        """Return the identities of the selected person's supplied editor fields."""
+        return [field.identity for field in self.person_reflected_fields]
 
     def _operations(self) -> ConfigOperations | None:
         """The daemon requests of this tab, or None while the TUI has not connected to the daemon."""
@@ -778,24 +475,20 @@ class ConfigContent(
     async def _load_snapshot(self, operations: ConfigOperations) -> None:
         """Read the subjects this tab shows, each failure reported where it happened."""
         try:
-            machine = await operations.get(ConfigSubjectKind.COMPUTER)
-            self._raw_config = machine.section(_COMPUTER_SECTION)
+            machine = await operations.editor(ConfigSubjectKind.COMPUTER)
+            self._machine_editor = machine
             self._machine_revision = machine.revision
-            self._machine_references = machine.references_under(_COMPUTER_SECTION)
-            self._outside_scope = machine.outside_scope
+            self._outside_scope = tuple(machine.outside_scope)
         except Exception as exc:
-            self._raw_config = {}
+            self._machine_editor = None
             self._machine_revision = None
-            self._machine_references = {}
             self._outside_scope = ()
             self._report_failure(_LOAD_MACHINE_FAILED, exc)
 
         try:
             statuses = await operations.environment_variables()
-            self._variable_is_set = {status.info.name: status.is_set for status in statuses}
             self._env_data = [status for status in statuses if status.info.adapter not in self._outside_scope]
         except Exception as exc:
-            self._variable_is_set = {}
             self._env_data = []
             self._report_failure(_LOAD_ENV_FAILED, exc)
 
@@ -824,39 +517,30 @@ class ConfigContent(
                 if own_slug is None:
                     raise
                 slugs = [own_slug]
-            snapshots = await asyncio.gather(*(operations.get(ConfigSubjectKind.PERSON, slug) for slug in slugs))
+            editors = await asyncio.gather(*(operations.editor(ConfigSubjectKind.PERSON, slug) for slug in slugs))
         except Exception as exc:
             self._report_failure(_LOAD_PEOPLE_FAILED, exc)
             return
-        self._people = dict(zip(slugs, snapshots, strict=True))
-        self._people_data = [
-            _person_entry(slug, snapshot.section(IDENTITY_SECTION)) for slug, snapshot in self._people.items()
-        ]
-        if self._expanded_person is not None and self._expanded_person in self._people:
-            await self._load_person_secrets(operations, self._expanded_person)
-
-    async def _load_person_secrets(self, operations: ConfigOperations, slug: str) -> None:
-        try:
-            self._person_secrets[slug] = await operations.person_secrets(slug)
-        except Exception as exc:
-            self._report_failure(_LOAD_SECRETS_FAILED, exc)
-        self._reflected_cache.pop(_PERSON_CACHE_KEY.format(slug=slug), None)  # type: ignore[call-overload]
-
-    def _person_overlay_model(self, slug: str) -> PersonConfig:
-        """The typed overlay of a person, as the daemon's effective settings give it."""
-        snapshot = self._people.get(slug)
-        return _person_overlay(slug, snapshot.section(SETTINGS_SECTION) if snapshot is not None else {})
+        self._people = dict(zip(slugs, editors, strict=True))
+        self._people_data = [_person_row(slug, editor) for slug, editor in self._people.items()]
+        if self._expanded_person is not None:
+            self._reflected_cache.pop(_PERSON_CACHE_KEY.format(slug=self._expanded_person), None)
 
     def load_expanded_person_secrets(self) -> None:
-        """Read the expanded person's personal secret inventory from the daemon."""
+        """Refresh the expanded person's owner-supplied fields and secret inventory."""
         operations = self._operations()
         slug = self._expanded_person
         if operations is None or slug is None:
             return
-        self.run_worker(self._reload_person_secrets(operations, slug), exclusive=True, group=_SECRETS_GROUP)
+        self.run_worker(self._reload_person_editor(operations, slug), exclusive=True, group=_SECRETS_GROUP)
 
-    async def _reload_person_secrets(self, operations: ConfigOperations, slug: str) -> None:
-        await self._load_person_secrets(operations, slug)
+    async def _reload_person_editor(self, operations: ConfigOperations, slug: str) -> None:
+        try:
+            self._people[slug] = await operations.editor(ConfigSubjectKind.PERSON, slug)
+            self._people_data = [_person_row(person.slug, self._people[person.slug]) for person in self._people_data]
+        except Exception as exc:
+            self._report_failure(_LOAD_SECRETS_FAILED, exc)
+        self._reflected_cache.pop(_PERSON_CACHE_KEY.format(slug=slug), None)
         self.refresh(layout=True)
 
     def _report_failure(self, prefix: str, error: Exception) -> None:

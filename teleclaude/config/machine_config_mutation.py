@@ -81,10 +81,15 @@ def _computed_revision(raw: Mapping[object, object]) -> str:
 def inspect_machine_config() -> MachineConfigInspection:
     """Read the machine configuration without requiring effective-config construction."""
     with file_transaction(config_path) as transaction:
-        stored = _read_mapping(transaction)
+        return inspect_machine_config_transaction(transaction)
+
+
+def inspect_machine_config_transaction(transaction: FileTransaction) -> MachineConfigInspection:
+    """Inspect machine configuration under a caller-held file transaction."""
+    stored = _read_mapping(transaction)
     raw = cast(
         Mapping[object, object],
-        upcast_for_read(config_path, cast(Mapping[str, object], stored), subject=_COMPUTER_SUBJECT),
+        upcast_for_read(transaction.path, cast(Mapping[str, object], stored), subject=_COMPUTER_SUBJECT),
     )
     return MachineConfigInspection(raw=raw, revision=_computed_revision(raw))
 
@@ -144,24 +149,55 @@ def _mutate(
 ) -> MachineConfigMutationResult:
     """Apply one mutation under the stable file lock and validate before replacement."""
     with file_transaction(config_path) as transaction:
-        stored = _read_mapping(transaction)
-        committed = cast(dict[object, object], upcast(cast(Mapping[str, object], stored), _COMPUTER_SUBJECT))
-        if expected_revision is not None:
-            actual_revision = _computed_revision(cast(Mapping[object, object], committed))
-            if actual_revision != expected_revision:
-                raise StaleRevision(expected=expected_revision, actual=actual_revision)
-        candidate = mutation(deepcopy(dict(committed)))
-        if candidate.get(_KIND) != committed.get(_KIND):
-            raise ReadOnlyDeclaration(_READ_ONLY_DECLARATION_ERROR)
-        if candidate.get(_SCHEMA_VERSION) != committed.get(_SCHEMA_VERSION):
-            raise ReadOnlyDeclaration(_READ_ONLY_SCHEMA_VERSION_ERROR)
-        candidate[_SCHEMA_VERSION] = CURRENT_SCHEMA_VERSION
-        resolved = build_config_from_raw(candidate, config_path.parent, config_source=config_path)
+        result, stored = prepare_machine_mutation_transaction(
+            transaction,
+            operation,
+            mutation,
+            expected_revision=expected_revision,
+        )
         carry_pending(cast(Mapping[str, object], stored), _COMPUTER_SUBJECT, delivered=delivered or _ignore_delivery)
-        _write_mapping(transaction, candidate)
-    return MachineConfigMutationResult(
-        operation=operation, raw=candidate, resolved=resolved, revision=_computed_revision(candidate)
+        _write_mapping(transaction, result.raw)
+    return result
+
+
+def prepare_machine_mutation_transaction(
+    transaction: FileTransaction,
+    operation: MachineConfigOperation,
+    mutation: Callable[[dict[object, object]], dict[object, object]],
+    *,
+    expected_revision: str | None = None,
+    environment: Mapping[str, str] | None = None,
+) -> tuple[MachineConfigMutationResult, Mapping[object, object]]:
+    """Prepare and validate a machine candidate without writing it through the held transaction."""
+    stored = _read_mapping(transaction)
+    committed = cast(dict[object, object], upcast(cast(Mapping[str, object], stored), _COMPUTER_SUBJECT))
+    actual_revision = _computed_revision(cast(Mapping[object, object], committed))
+    if expected_revision is not None and actual_revision != expected_revision:
+        raise StaleRevision(expected=expected_revision, actual=actual_revision)
+    candidate = mutation(deepcopy(dict(committed)))
+    if candidate.get(_KIND) != committed.get(_KIND):
+        raise ReadOnlyDeclaration(_READ_ONLY_DECLARATION_ERROR)
+    if candidate.get(_SCHEMA_VERSION) != committed.get(_SCHEMA_VERSION):
+        raise ReadOnlyDeclaration(_READ_ONLY_SCHEMA_VERSION_ERROR)
+    candidate[_SCHEMA_VERSION] = CURRENT_SCHEMA_VERSION
+    resolved = build_config_from_raw(
+        candidate,
+        config_path.parent,
+        config_source=config_path,
+        environment=environment,
     )
+    result = MachineConfigMutationResult(
+        operation=operation,
+        raw=candidate,
+        resolved=resolved,
+        revision=_computed_revision(candidate),
+    )
+    return result, stored
+
+
+def write_machine_config_transaction(transaction: FileTransaction, raw: Mapping[object, object]) -> None:
+    """Persist a prepared machine document through its already-held transaction."""
+    _write_mapping(transaction, raw)
 
 
 def _reject_schema_version_write(patch: Mapping[object, object]) -> None:

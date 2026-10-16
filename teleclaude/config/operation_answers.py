@@ -7,6 +7,7 @@ build adds.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,6 +23,56 @@ class OperationAnswer(BaseModel):
     """Base of the answers: immutable, ignoring fields a newer daemon adds."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
+
+
+class EditorInputKind(StrEnum):
+    """Portable widget hint for a projected configuration value."""
+
+    BOOLEAN = "boolean"
+    INTEGER = "integer"
+    NUMBER = "number"
+    STRING = "string"
+    ENUM = "enum"
+    STRING_LIST = "string-list"
+    VALUE_LIST = "value-list"
+    JSON = "json"
+
+
+class EditorValueState(StrEnum):
+    """Owner-derived state of a supplied field value for presentation and guided flow."""
+
+    DEFAULT = "default"
+    CONFIGURED = "configured"
+    UNRESOLVED = "unresolved"
+    MASKED = "masked"
+
+
+class EditorFieldAnswer(OperationAnswer):
+    """One rendered configuration leaf, with schema metadata and its effective value."""
+
+    identity: str
+    label: str
+    value: object
+    input_kind: EditorInputKind
+    value_state: EditorValueState = EditorValueState.CONFIGURED
+    choices: list[str] = Field(default_factory=list)
+    description: str = ""
+    section: str
+    required: bool = False
+    editable: bool = True
+    sensitive: bool = False
+    available: bool = True
+    requiring_services: list[str] = Field(default_factory=list)
+
+
+class EditorViewAnswer(OperationAnswer):
+    """The complete display-ready editor projection and the revision for subsequent field edits."""
+
+    fields: list[EditorFieldAnswer]
+    revision: str
+    editor_revision: str
+    outside_scope: list[str] = Field(default_factory=list)
+    secret_store_available: bool | None = None
 
 
 class ViewAnswer(OperationAnswer):

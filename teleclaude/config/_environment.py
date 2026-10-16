@@ -7,13 +7,14 @@ import re
 import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 from typing import Final
 
 from dotenv import dotenv_values
 
 from teleclaude.config._coerce import as_bool
-from teleclaude.file_transaction import file_transaction
+from teleclaude.file_transaction import FileTransaction, file_transaction
 
 _ENV_REFERENCE_PATTERN: Final = re.compile(r"\$\{([^}]*)\}")
 _NAME_GROUP: Final = "name"
@@ -32,6 +33,7 @@ _INVALID_REFERENCE_MESSAGE: Final = (
 _ENV_ASSIGNMENT: Final = "="
 _ENV_EXPORT_PREFIX: Final = "export "
 _NEWLINE: Final = "\n"
+_EMPTY_TEXT: Final = ""
 _OWNER_ONLY_MODE: Final = 0o600
 _LIST_IDENTITY_KEYS: Final = ("id", "slug", "key", "name", "email", "address")
 
@@ -183,22 +185,46 @@ def mutate_environment_value(path: Path, name: str, value: str | None, *, creati
     else:
         _validate_environment_values({name: value})
     with file_transaction(path) as transaction:
-        lines = transaction.read_text().splitlines(keepends=True)
-        rewritten: list[str] = []
-        found = False
-        for line in lines:
-            assignment = _environment_assignment(line)
-            if assignment is None or assignment.name != name:
-                rewritten.append(line)
-                continue
-            if not found and value is not None:
-                rewritten.append(_assignment_line(name, value, assignment.prefix))
-            found = True
-        if rewritten and not rewritten[-1].endswith(_NEWLINE):
-            rewritten[-1] = f"{rewritten[-1]}{_NEWLINE}"
-        if value is not None and not found:
-            rewritten.append(_assignment_line(name, value))
-        transaction.replace_text("".join(rewritten), creation_mode=creation_mode)
+        replace_environment_value(transaction, name, value, creation_mode=creation_mode)
+
+
+def read_environment_transaction(transaction: FileTransaction, *, owner_only: bool = False) -> dict[str, str]:
+    """Read environment values from an already-held file transaction."""
+    if owner_only and transaction.path.exists():
+        _require_owner_only_environment(transaction.path)
+    parsed = dotenv_values(stream=StringIO(transaction.read_text()))
+    return {key: value for key, value in parsed.items() if value is not None}
+
+
+def prepare_environment_value(transaction: FileTransaction, name: str, value: str | None) -> str:
+    """Prepare one line-preserving environment update without writing through the held transaction."""
+    if value is None:
+        _validate_environment_name(name)
+    else:
+        _validate_environment_values({name: value})
+    lines = transaction.read_text().splitlines(keepends=True)
+    rewritten: list[str] = []
+    found = False
+    for line in lines:
+        assignment = _environment_assignment(line)
+        if assignment is None or assignment.name != name:
+            rewritten.append(line)
+            continue
+        if not found and value is not None:
+            rewritten.append(_assignment_line(name, value, assignment.prefix))
+        found = True
+    if rewritten and not rewritten[-1].endswith(_NEWLINE):
+        rewritten[-1] = f"{rewritten[-1]}{_NEWLINE}"
+    if value is not None and not found:
+        rewritten.append(_assignment_line(name, value))
+    return _EMPTY_TEXT.join(rewritten)
+
+
+def replace_environment_value(
+    transaction: FileTransaction, name: str, value: str | None, *, creation_mode: int | None = None
+) -> None:
+    """Replace one environment value through the held transaction using the canonical line-preserving writer."""
+    transaction.replace_text(prepare_environment_value(transaction, name, value), creation_mode=creation_mode)
 
 
 def write_environment_values(

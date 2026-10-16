@@ -471,6 +471,7 @@ def build_config_from_raw(
     sibling_dir: Path,
     *,
     config_source: Path | None = None,
+    environment: Mapping[str, str] | None = None,
 ) -> TeleclaudeConfig:
     """Build the typed config from raw YAML and adjacent machine-config files."""
     source = config_source or sibling_dir / ConfigFileName.MACHINE
@@ -495,7 +496,7 @@ def build_config_from_raw(
         field_sources_input = raw_document
         user_config: object = expand_environment_references(
             raw_document,
-            machine_runtime_environment(),
+            machine_runtime_environment() if environment is None else environment,
             preserve_unresolved=True,
         )
         if isinstance(user_config, Mapping):

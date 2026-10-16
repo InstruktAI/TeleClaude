@@ -1,32 +1,24 @@
-"""The Config tab's daemon requests: what it reads and how it writes, as configuration operations.
-
-The tab holds no write authority over a backing file. Every read is a `get`, `list`, `env-list`,
-`person-secrets` or `validate` request and every write a `patch` or `env-set` request, run by the
-daemon under the target clearance of the person operating the tab.
-"""
+"""The Config tab's typed editor, environment, list and validation requests to the daemon."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Final
 from uuid import uuid4
 
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.cli.config_handlers import EnvVarInfo, EnvVarStatus, ValidationResult
 from teleclaude.config.operation_answers import (
-    EnvironmentReferenceRow,
+    EditorViewAnswer,
     EnvironmentVariablesAnswer,
     InstancesAnswer,
-    PersonSecretsAnswer,
     RevisionAnswer,
     ValidationAnswer,
-    ViewAnswer,
 )
-from teleclaude.config.subject_operations import (
-    ENVIRONMENT_REFERENCES_KEY,
+from teleclaude.config.operation_requests import (
+    ConfigEditIntent,
     ConfigFailureKind,
     ConfigOutcome,
     ConfigRequest,
@@ -35,6 +27,35 @@ from teleclaude.config.subject_operations import (
 from teleclaude.config_subjects import ConfigEnvironment, ConfigSubjectKind
 
 type Document = dict[str, object]  # guard: loose-dict - configuration view as the daemon answers it
+
+
+@dataclass(frozen=True)
+class EnvVarInfo:
+    """Display metadata for one required environment variable."""
+
+    name: str
+    adapter: str
+    description: str
+
+
+@dataclass(frozen=True)
+class EnvVarStatus:
+    """One environment row projected from the daemon's presence-only answer."""
+
+    info: EnvVarInfo
+    is_set: bool
+
+
+@dataclass(frozen=True)
+class ValidationResult:
+    """One validation area as the TUI presents it."""
+
+    area: str
+    passed: bool
+    errors: list[str] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
 
 _COMMAND_GET: Final = "config {kind} get"
 _COMMAND_LIST: Final = "config {kind} list"
@@ -48,12 +69,9 @@ _ENVIRONMENT_COMMAND: Final = {
     ConfigEnvironment.GLOBAL: _COMMAND_PATCH.format(kind=ConfigSubjectKind.GLOBAL.value),
     ConfigEnvironment.PERSON: _COMMAND_PATCH.format(kind=ConfigSubjectKind.PERSON.value),
 }
-_MASTER_SCOPED_KEY: Final = "master_scoped_not_applicable"
 _JSON_MODE: Final = "json"
-_SECTION_PATH_SEPARATOR: Final = "."
 _NO_PAYLOAD: Final = "the daemon's configuration answer carries no payload"
 _MALFORMED_ANSWER: Final = "the daemon's configuration answer does not match {answer}"
-_REFERENCES: Final = TypeAdapter(list[EnvironmentReferenceRow])
 
 
 class ConfigOperationFailed(Exception):
@@ -62,52 +80,6 @@ class ConfigOperationFailed(Exception):
     def __init__(self, kind: ConfigFailureKind, message: str) -> None:
         super().__init__(message)
         self.kind = kind
-
-
-@dataclass(frozen=True)
-class SubjectSnapshot:
-    """One subject as `get` answered: its effective sections, its revision, and its environment references."""
-
-    view: Document
-    revision: str
-    references: tuple[EnvironmentReferenceRow, ...] = field(default_factory=tuple)
-
-    def section(self, name: str) -> Document:
-        """One effective section of the subject, empty when the subject holds none."""
-        section = self.view.get(name)
-        return dict(section) if isinstance(section, Mapping) else {}
-
-    def references_under(self, section: str) -> dict[str, EnvironmentReferenceRow]:
-        """The section's references keyed by their path inside the section."""
-        prefix = f"{section}{_SECTION_PATH_SEPARATOR}"
-        return {
-            reference.path.removeprefix(prefix): reference
-            for reference in self.references
-            if reference.path.startswith(prefix)
-        }
-
-    @property
-    def outside_scope(self) -> tuple[str, ...]:
-        """The master-scoped sections that do not apply to this computer."""
-        value = self.view.get(_MASTER_SCOPED_KEY)
-        return tuple(str(name) for name in value) if isinstance(value, list) else ()
-
-
-@dataclass(frozen=True)
-class PersonSecret:
-    """One personal MCP secret's set state and the servers that require it; never its value."""
-
-    name: str
-    is_set: bool
-    requiring_servers: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class PersonSecretInventory:
-    """The registry-derived inventory of a person's personal secrets, or its storage being unavailable."""
-
-    available: bool
-    secrets: tuple[PersonSecret, ...] = field(default_factory=tuple)
 
 
 def _payload(outcome: ConfigOutcome) -> Document:
@@ -129,13 +101,6 @@ def _answer[AnswerT: BaseModel](answer: type[AnswerT], payload: Document) -> Ans
         ) from error
 
 
-def _snapshot(payload: Document) -> SubjectSnapshot:
-    answer = _answer(ViewAnswer, payload)
-    entries = answer.view.get(ENVIRONMENT_REFERENCES_KEY)
-    references = tuple(_REFERENCES.validate_python(entries)) if isinstance(entries, list) else ()
-    return SubjectSnapshot(view=answer.view, revision=answer.revision, references=references)
-
-
 class ConfigOperations:
     """The Config tab's requests to the daemon's configuration operations."""
 
@@ -146,10 +111,34 @@ class ConfigOperations:
         answer = await self._api.run_config_operation(request.model_dump(mode=_JSON_MODE), command_path)
         return _payload(ConfigOutcome.model_validate_json(answer))
 
-    async def get(self, kind: ConfigSubjectKind, instance: str | None = None) -> SubjectSnapshot:
-        """Read one subject's effective view, its revision, and its environment references."""
-        request = ConfigRequest(verb=ConfigVerb.GET, kind=kind, instance=instance, request_id=str(uuid4()))
-        return _snapshot(await self._run(request, _COMMAND_GET.format(kind=kind.value)))
+    async def editor(self, kind: ConfigSubjectKind, instance: str | None = None) -> EditorViewAnswer:
+        """Read the configuration owner's display-ready editor projection."""
+        request = ConfigRequest(verb=ConfigVerb.EDITOR_GET, kind=kind, instance=instance, request_id=str(uuid4()))
+        return _answer(EditorViewAnswer, await self._run(request, _COMMAND_GET.format(kind=kind.value)))
+
+    async def edit_field(
+        self,
+        kind: ConfigSubjectKind,
+        instance: str | None,
+        revision: str,
+        editor_revision: str,
+        field_id: str,
+        intent: ConfigEditIntent,
+        value: object = None,
+    ) -> EditorViewAnswer:
+        """Submit one field identity and its explicit write intent to the configuration owner."""
+        request = ConfigRequest(
+            verb=ConfigVerb.FIELD_EDIT,
+            kind=kind,
+            instance=instance,
+            revision=revision,
+            editor_revision=editor_revision,
+            field_id=field_id,
+            edit_intent=intent,
+            value=value,
+            request_id=str(uuid4()),
+        )
+        return _answer(EditorViewAnswer, await self._run(request, _COMMAND_PATCH.format(kind=kind.value)))
 
     async def list_instances(self, kind: ConfigSubjectKind) -> list[str]:
         """The registered instances of a kind; a refusal is raised, never read as an empty roster."""
@@ -184,22 +173,6 @@ class ConfigOperations:
             )
             for row in answer.results
         ]
-
-    async def person_secrets(self, slug: str) -> PersonSecretInventory:
-        """A person's personal secret inventory."""
-        request = ConfigRequest(
-            verb=ConfigVerb.PERSON_SECRETS, kind=ConfigSubjectKind.PERSON, instance=slug, request_id=str(uuid4())
-        )
-        answer = _answer(
-            PersonSecretsAnswer, await self._run(request, _COMMAND_GET.format(kind=ConfigSubjectKind.PERSON.value))
-        )
-        return PersonSecretInventory(
-            available=answer.available,
-            secrets=tuple(
-                PersonSecret(name=row.name, is_set=row.is_set, requiring_servers=tuple(row.requiring_servers))
-                for row in answer.secrets
-            ),
-        )
 
     async def patch(self, kind: ConfigSubjectKind, instance: str | None, revision: str, patch: Document) -> str:
         """Apply a merge patch built from the revision last read; answers the subject's new revision."""

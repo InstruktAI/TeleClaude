@@ -9,19 +9,17 @@ and exits non-zero before any configuration is read.
 
 from __future__ import annotations
 
-import asyncio
 import dataclasses
 import json
 import sys
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
+from http import HTTPMethod
 from pathlib import Path
 from typing import Any, TextIO, cast
 
 import yaml
-from redis.exceptions import RedisError
 
-from teleclaude.cli.session_auth import ResolvedCliIdentity, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.addressing import address_computer, addressed_computer, explicit_computer
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
@@ -53,28 +51,17 @@ from teleclaude.cli.telec.surface import (
     CONFIG_PROJECT_LIST,
     CONFIG_PROJECT_PATCH,
 )
-from teleclaude.config.project_subject_init import adopt_project_subject
-from teleclaude.config.resource_contract import InvalidCandidate, PartialCommitFailure, SubjectNotFound, SubjectView
-from teleclaude.config.subject_operations import (
+from teleclaude.cli.tool_client import tool_api_call
+from teleclaude.config.operation_requests import (
     INVITE_EMAIL_ENABLED_KEY,
     INVITE_UNAVAILABLE_PROVIDERS_KEY,
     ConfigFailureKind,
     ConfigOutcome,
     ConfigRequest,
     ConfigVerb,
-    run_config_operation,
 )
 from teleclaude.config_subjects import ConfigSubjectKind
-from teleclaude.core.configuration_clearance import (
-    ConfigurationOperation,
-    ConfigurationTarget,
-    ProjectCreationForm,
-    decide,
-    standing_for,
-)
-from teleclaude.core.inbound.fleet import observe_fleet_from_heartbeats
-from teleclaude.invite import InvitationOwnerUnavailable, invitation_owner
-from teleclaude.project_root import resolve_invocation_cwd, resolve_invocation_roots
+from teleclaude.project_root import resolve_invocation_cwd
 
 _YAML = "yaml"
 _JSON = "json"
@@ -134,6 +121,7 @@ _INSTANCES_KEY = "instances"
 _VIEW_KEY = "view"
 _SECTIONS_KEY = "sections"
 _REVISION_KEY = "revision"
+_COMPUTER_KEY = "computer"
 
 _KIND_TO_SUBJECT: dict[str, ConfigSubjectKind] = {
     "computer": ConfigSubjectKind.COMPUTER,
@@ -211,43 +199,6 @@ def handle_config_kind_command(kind: str, args: list[str]) -> None:
         raise SystemExit(1)
 
 
-# --- Shared gate ---
-
-
-def _gate(
-    kind: str,
-    verb: str,
-    subject_kind: ConfigSubjectKind,
-    *,
-    instance: str | None,
-    operation: ConfigurationOperation,
-    sections: frozenset[str],
-    request_id: str,
-    creation_form: ProjectCreationForm | None = None,
-) -> ResolvedCliIdentity:
-    """Verb band, then target clearance. Refuses and exits before any config is read."""
-    identity = resolve_cli_identity()
-    standing = standing_for(identity)
-    target = ConfigurationTarget(
-        kind=subject_kind,
-        instance=instance,
-        operation=operation,
-        sections=sections,
-        creation_form=creation_form,
-    )
-    decision = decide(standing, target, request_id=request_id)
-    if not decision.allowed:
-        print(
-            _REFUSED_MESSAGE.format(
-                required_standing=decision.required_standing.value,
-                reason=decision.reason,
-                request=_REQUEST_SUFFIX.format(request_id=request_id),
-            )
-        )
-        raise SystemExit(1)
-    return identity
-
-
 def _require_instance(
     kind: str, subject_kind: ConfigSubjectKind, positionals: tuple[str, ...]
 ) -> tuple[str | None, tuple[str, ...]]:
@@ -264,14 +215,11 @@ def _require_instance(
 
 
 def _perform(request: ConfigRequest) -> ConfigOutcome:
-    """Run one configuration operation in this process, or ask the addressed computer to run it."""
-    if addressed_computer() is not None:
-        from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - remote path: daemon API client.
-
-        answer = tool_api_call("POST", _OPERATIONS_PATH, json_body=request.model_dump(mode=_JSON_MODE), timeout=60.0)
-        return ConfigOutcome.model_validate(answer)
-    standing = standing_for(resolve_cli_identity())
-    return asyncio.run(run_config_operation(standing, request))
+    """Submit the typed request to the daemon on this computer or its addressed owner."""
+    answer = tool_api_call(
+        HTTPMethod.POST, _OPERATIONS_PATH, json_body=request.model_dump(mode=_JSON_MODE), timeout=60.0
+    )
+    return ConfigOutcome.model_validate(answer)
 
 
 def _succeeded(
@@ -424,51 +372,20 @@ def _handle_create(args: list[str], request_id: str) -> None:
     _render_view(payload, _output_format(None), request_id, _PROJECT_CREATE_COMPLETE)
 
 
-def _run_init(
-    compute: Callable[[], SubjectView],
-    output_format: str,
-    request_id: str,
-    *,
-    completion_line: str | None = None,
-) -> None:
-    """Run one in-process init call, rendering its view or a clean error for every typed refusal."""
-    try:
-        view = compute()
-    except PartialCommitFailure as error:
-        print(_PARTIAL_COMMIT_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
-    except SubjectNotFound as error:
-        print(_NOT_FOUND_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
-    except (InvalidCandidate, ValueError) as error:
-        print(_INVALID_MESSAGE.format(message=str(error), request=_REQUEST_SUFFIX.format(request_id=request_id)))
-        raise SystemExit(1) from error
-    if completion_line is not None:
-        print(completion_line)
-    _render({**view.sections, "revision": view.revision, "request_id": request_id}, output_format)
-
-
 def _handle_adopt(args: list[str], request_id: str) -> None:
     parsed = parse_command_args(CONFIG_PROJECT_ADOPT, args)
     if parsed.positionals:
         print(_UNEXPECTED_ARGUMENT_ERROR.format(argument=parsed.positionals[0]))
         raise SystemExit(1)
-    adoption_root = resolve_invocation_roots().adoption_root()
-    _gate(
-        ConfigSubjectKind.PROJECT.value,
-        _ADOPT_VERB,
-        ConfigSubjectKind.PROJECT,
-        instance=None,
-        operation=ConfigurationOperation.ADOPT,
-        sections=frozenset(),
-        request_id=request_id,
+    payload = run_config_request(
+        ConfigRequest(
+            verb=ConfigVerb.PROJECT_ADOPT,
+            kind=ConfigSubjectKind.PROJECT,
+            invocation_cwd=str(resolve_invocation_cwd()),
+            request_id=request_id,
+        )
     )
-    _run_init(
-        lambda: adopt_project_subject(adoption_root, request_id=request_id),
-        _output_format(None),
-        request_id,
-        completion_line=_PROJECT_ADOPT_COMPLETE,
-    )
+    _render_view(payload, _output_format(None), request_id, _PROJECT_ADOPT_COMPLETE)
 
 
 # --- patch ---
@@ -518,26 +435,6 @@ def _handle_patch(kind: str, subject_kind: ConfigSubjectKind, args: list[str], r
 # --- person invite / discord-voice-bot ---
 
 
-def _address_invitation_owner() -> None:
-    """With no computer named, address the invitation to the mesh master, or stop when there is none.
-
-    An explicit selection, this computer's own name and the local sentinel included, is kept as
-    given: the executing computer admits or refuses it. Selection only picks the destination for
-    an omitted one, and nothing is sent or issued while no owner can be named.
-    """
-    if explicit_computer() is not None:
-        return
-    try:
-        owner = invitation_owner(asyncio.run(observe_fleet_from_heartbeats()))
-    except InvitationOwnerUnavailable as error:
-        print(_PLAIN_ERROR.format(message=error))
-        raise SystemExit(1) from error
-    except (OSError, RedisError) as error:
-        print(_PLAIN_ERROR.format(message=_INVITE_FLEET_UNOBSERVABLE.format(error=error)))
-        raise SystemExit(1) from error
-    address_computer(owner)
-
-
 def _handle_invite(args: list[str], request_id: str) -> None:
     parsed = parse_command_args(CONFIG_PERSON_INVITE, args)
     if not parsed.positionals:
@@ -545,7 +442,16 @@ def _handle_invite(args: list[str], request_id: str) -> None:
         raise SystemExit(1)
     slug = parsed.positionals[0]
     use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
-    _address_invitation_owner()
+    if explicit_computer() is None:
+        destination = run_config_request(
+            ConfigRequest(
+                verb=ConfigVerb.INVITATION_DESTINATION,
+                kind=ConfigSubjectKind.PERSON,
+                instance=slug,
+                request_id=request_id,
+            )
+        )
+        address_computer(cast(str, destination[_COMPUTER_KEY]))
     outcome = run_config_request(
         ConfigRequest(verb=ConfigVerb.INVITE, kind=ConfigSubjectKind.PERSON, instance=slug, request_id=request_id)
     )
