@@ -60,7 +60,6 @@ POWER_ENVIRONMENT: Final = {
     "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/run/dbus/system_bus_socket",
 }
 SCHEMA_VERSION: Final = 1
-QUALIFICATION_Q4: Final = "Q4"
 REQUIRED_HELPER_SOURCES: Final = frozenset(
     {"tools/ci/runtime_acceptance.py", "tools/ci/enclosure_guest.py", "tools/ci/enclosure_contract.py"}
 )
@@ -86,6 +85,10 @@ class Role(StrEnum):
     PRIVILEGED = "privileged"
     QUALIFICATION = "qualification"
     ROLLING_INPUT_OBSERVER = "rolling-input-observer"
+
+
+ROOT_GUEST_ROLES: Final = frozenset({Role.GUEST_SETUP, Role.GUEST_POWEROFF})
+QUALIFICATION_GUEST_VECTORS: Final = {Role.GUEST_SETUP: "Q2", Role.GUEST_POWEROFF: "Q4"}
 
 
 class Key(StrEnum):
@@ -153,14 +156,14 @@ class GuestContext:
         return parse_object(self.manifest_bytes)
 
     @classmethod
-    def load(cls, manifest: Path) -> GuestContext:
+    def load(cls, manifest: Path, role: Role = Role.GUEST_POWEROFF) -> GuestContext:
         """Read only the declared root-owned guest manifest and its exact static/source basis."""
-        if manifest != MANIFEST or os.geteuid() != 0:
+        if manifest != MANIFEST or os.geteuid() != 0 or role not in ROOT_GUEST_ROLES:
             raise ValueError(ERROR_CONTEXT)
         data = _read_manifest()
         package = StaticPackage.load(STATIC_DIRECTORY, SOURCE_ROOT)
         context = cls(data, package)
-        context.verify()
+        context.verify(role)
         return context
 
     @classmethod
@@ -174,8 +177,10 @@ class GuestContext:
         context.verify_payload()
         return context
 
-    def verify(self) -> None:
+    def verify(self, role: Role) -> None:
         """Require actual nonidentity namespaces, exact source bytes and the original deadline."""
+        if role not in ROOT_GUEST_ROLES and role is not Role.PAYLOAD:
+            raise ValueError(ERROR_CONTEXT)
         if _read_manifest() != self.manifest_bytes or (
             hashlib.sha256(self.package.lock_bytes).hexdigest() != STATIC_DIGEST
             or hashlib.sha256(self.package.recipe_bytes).hexdigest() != RECIPE_DIGEST
@@ -200,8 +205,10 @@ class GuestContext:
         ):
             raise ValueError(ERROR_CONTEXT)
         purpose = Purpose(text(record, Key.PURPOSE))
-        if purpose is Purpose.QUALIFICATION and record.get(Key.QUALIFICATION_VECTOR) != QUALIFICATION_Q4:
-            raise ValueError(ERROR_CONTEXT)
+        if purpose is Purpose.QUALIFICATION:
+            expected_vector = QUALIFICATION_GUEST_VECTORS.get(role)
+            if expected_vector is None or record.get(Key.QUALIFICATION_VECTOR) != expected_vector:
+                raise ValueError(ERROR_CONTEXT)
         if GUEST_BOOT.read_text(encoding=UTF8).strip() != text(record, Key.GUEST_BOOT_ID):
             raise ValueError(ERROR_CONTEXT)
         for path, key in ((UID_MAP, Key.UID_MAP), (GID_MAP, Key.GID_MAP)):
@@ -243,7 +250,7 @@ class GuestContext:
 
     def verify_payload(self) -> None:
         """Require application purpose and the recipe's actual ordinary UID/GID before product work."""
-        self.verify()
+        self.verify(Role.PAYLOAD)
         recipe = parse_object(self.package.recipe_bytes)
         account = object_value(object_value(recipe[Key.GUEST])[Key.ACCOUNT])
         if (
@@ -363,7 +370,7 @@ def request_guest_poweroff(context: GuestContext) -> Record:
     """Request the declared endpoint once, for Q4 or payload cleanup, without claiming exit."""
     if os.geteuid() != 0:
         raise ValueError(ERROR_CONTEXT)
-    context.verify()
+    context.verify(Role.GUEST_POWEROFF)
     admitted = context.admitted_deadline()
     command_end = context.command_end()
     directory_fd = os.open(MANIFEST.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)

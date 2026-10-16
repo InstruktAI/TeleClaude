@@ -24,7 +24,7 @@ from tools.ci.enclosure_contract import (
     text,
 )
 from tools.ci.enclosure_data import DEB_SUFFIX, GUEST_ARCHIVE_DIRECTORY, NativeCommand, _archive, _command
-from tools.ci.enclosure_guest import ERROR_CONTEXT, SOURCE_ROOT, GuestContext
+from tools.ci.enclosure_guest import ERROR_CONTEXT, SOURCE_ROOT, GuestContext, Role
 from tools.ci.enclosure_guest import Key as GuestKey
 
 SETUP_UNIT: Final = "guest-setup.service"
@@ -153,7 +153,7 @@ def configure_guest_os(context: GuestContext, run: NativeCommand, query: NativeQ
     """Configure only staged exact packages, create the declared account and request native linger."""
     if os.geteuid() != 0:
         raise ValueError(ERROR_CONTEXT)
-    context.verify()
+    context.verify(Role.GUEST_SETUP)
     if not REQUIRED_SOURCES <= set(object_value(context.record[GuestKey.SOURCE_FILES])):
         raise ValueError(ERROR_CONTEXT)
     original = context.admitted_deadline()
