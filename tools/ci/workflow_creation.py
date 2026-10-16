@@ -130,6 +130,7 @@ FIELD_STANDING: Final = "standing"
 FIELD_STANDING_PHASE: Final = "phase"
 FIELD_ARTIFACTS: Final = "artifacts"
 FIELD_ARTIFACT_CONTENT: Final = "artifact_content"
+FIELD_COMPUTER_SECTION: Final = "computer"
 FIELD_WORKFLOW: Final = "workflow"
 FIELD_RUNNER_MODE: Final = "runner"
 
@@ -341,7 +342,8 @@ def _require_manual_runner(observer: _Observer) -> None:
     """P1: the public configuration readback shows the manual workflow runner."""
     outcome = observer.run((TELEC, CONFIG, COMPUTER, GET, FORMAT_OPTION, JSON_FORMAT))
     payload = decode_object(outcome.output)
-    found, runner = dig(payload, f"{FIELD_WORKFLOW}{DOT}{FIELD_RUNNER_MODE}") if payload is not None else (False, None)
+    path = f"{FIELD_COMPUTER_SECTION}{DOT}{FIELD_WORKFLOW}{DOT}{FIELD_RUNNER_MODE}"
+    found, runner = dig(payload, path) if payload is not None else (False, None)
     if outcome.exit_status != 0 or not found or runner != RUNNER_MANUAL:
         raise _binding(DETAIL_RUNNER.format(output=outcome.output[-300:]))
 
