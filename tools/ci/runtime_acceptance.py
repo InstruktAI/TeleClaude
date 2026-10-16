@@ -223,6 +223,7 @@ _REPORT_WRITE_ERROR = "Could not write runtime acceptance report: {error}"
 _SCENARIO_NOT_RUN = "No scenario action was registered."
 _FIXTURE_INSTALLER_WHERE = "the installer environment"
 _FIXTURE_LOGIN_WHERE = "the owner login shell"
+_LOGIN_PROFILE_NOTE = "owner-login-profile"
 _MACHINE_WORKFLOW_SECTION = "workflow"
 _MACHINE_WORKFLOW_RUNNER_FIELD = "runner"
 _WORKFLOW_RUNNER_MANUAL = "manual"
@@ -1870,6 +1871,12 @@ def _full_workflow_foundation(resources: FullRuntimeResources, evidence: list[Co
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
     runner = _FoundationRunner(resources, evidence)
     _require_manual_runner(resources, evidence)
+    home = resources.environment.get(_COLD_HOME_VARIABLE)
+    if not home:
+        raise RuntimeError(_FULL_HOME_REQUIRED)
+    written = foundation.put_user_bin_on_login_path(Path(home), setup)
+    if written:
+        runner.note((_LOGIN_PROFILE_NOTE,), foundation.Outcome(_PROCESS_SUCCESS, written), _EMPTY)
     foundation.require_owned_resolution(
         runner,
         setup,

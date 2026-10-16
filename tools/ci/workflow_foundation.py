@@ -48,6 +48,9 @@ GIT_EXECUTABLE: Final = "git"
 GIT_INIT_ARGUMENTS: Final = ("init", "-q")
 GIT_DIRECTORY: Final = ".git"
 PROCESS_TIMEOUT_SECONDS: Final = 30
+LOGIN_PROFILE_NAMES: Final = (".bash_profile", ".bash_login", ".profile")
+LOGIN_PATH_LINE: Final = 'export PATH="{directory}:$PATH"'
+LINE_FEED: Final = "\n"
 CLI_TIMEOUT_SECONDS: Final = 60
 START_OBSERVATION_CAP_SECONDS: Final = 900
 POLL_SECONDS: Final = 1.0
@@ -247,6 +250,30 @@ def require_owned_resolution(
     if Path(found).resolve() != setup.executable.resolve():
         detail = DETAIL_PATH_MISMATCH.format(where=where, found=found, owned=str(setup.executable))
         raise FixtureBindingFailure(BINDING_FAILURE.format(detail=detail))
+
+
+def put_user_bin_on_login_path(home: Path, setup: FixtureSetup) -> str:
+    """Make the owner\'s login shell find the pinned user-bin directory, as a user\'s own login profile does.
+
+    Login shells of the disposable home start from the system PATH and add what the user\'s profile adds. A profile
+    that already puts the directory on PATH is left alone; otherwise the line is appended to the file bash reads first
+    for a login shell, in the disposable home only. Returns the file and line written, or an empty string.
+    """
+    directory = str(setup.executable.parent)
+    for name in LOGIN_PROFILE_NAMES:
+        profile = home / name
+        if profile.exists():
+            break
+    else:
+        profile = home / LOGIN_PROFILE_NAMES[-1]
+    existing = profile.read_text(encoding="utf-8") if profile.exists() else ""
+    line = LOGIN_PATH_LINE.format(directory=directory)
+    if line in existing:
+        return ""
+    with profile.open("a", encoding="utf-8") as handle:
+        handle.write((existing and not existing.endswith(LINE_FEED) and LINE_FEED) or "")
+        handle.write(line + LINE_FEED)
+    return f"{profile.name}: {line}"
 
 
 def owner_login_environment(base: Mapping[str, str]) -> dict[str, str]:
