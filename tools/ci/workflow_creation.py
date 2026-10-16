@@ -142,6 +142,7 @@ ABSENCE_POLL_SECONDS: Final = 5.0
 DETAIL_RUNNER: Final = "`telec config computer get --format json` does not read workflow.runner == manual: {output!r}"
 DETAIL_DIRECTORY: Final = "the owner terminal is in {found!r}, not the owned project {project!r}"
 DETAIL_UNDECODABLE: Final = "{what} output is not a decodable JSON object: {output!r}"
+DETAIL_SESSION_RECORD: Final = "a session listing row is not an object carrying a session_id: {record!r}"
 DETAIL_UNDECODABLE_LIST: Final = "{what} output is not a decodable JSON array: {output!r}"
 DETAIL_NOT_FOUND_AMBIGUOUS: Final = "`todo show {slug}` failed without the not-found phrase: exit {status}, {output!r}"
 DETAIL_SLUG_PRESENT: Final = "slug {slug} exists before the journey: {slugs!r}"
@@ -328,13 +329,14 @@ class _Observer:
         working: dict[str, str] = {}
         for record in records:
             if not isinstance(record, Mapping):
-                continue
+                raise _binding(DETAIL_SESSION_RECORD.format(record=record))
             session_id = record.get(FIELD_SESSION_ID)
-            if isinstance(session_id, str):
-                ids.add(session_id)
-                slug = record.get(FIELD_WORKING_SLUG)
-                if isinstance(slug, str) and slug:
-                    working[session_id] = slug
+            if not isinstance(session_id, str) or not session_id:
+                raise _binding(DETAIL_SESSION_RECORD.format(record=record))
+            ids.add(session_id)
+            slug = record.get(FIELD_WORKING_SLUG)
+            if isinstance(slug, str) and slug:
+                working[session_id] = slug
         return SessionView(frozenset(ids), working)
 
 
