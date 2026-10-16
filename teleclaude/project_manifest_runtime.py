@@ -8,18 +8,18 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.config.checkout_association import RegistryCheckout, parse_registry_checkouts, render_registry_checkouts
 from teleclaude.config.machine_config_mutation import stored_machine_document
 from teleclaude.config.migrations._chain import Destination, in_transit
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
 from teleclaude.file_transaction import file_transaction
 from teleclaude.project_manifest import (
-    _PROJECTS_FIELD,
     MANIFEST_PATH,
     ConfigKind,
     RegisteredProjectEntry,
     _manifest_path_exists,
     _normalize_manifest_path,
-    _parse_manifest_data,
+    load_registry_checkouts,
 )
 from teleclaude.project_manifest import (
     load_registered_entries as _load_manifest_entries,
@@ -30,6 +30,9 @@ _MANIFEST_READ_ERROR = "Unable to read the project registry."
 _ADOPTION_LOCK_SUFFIX = ".adoption"
 _TRANSIT_PATH_FIELD = "path"
 _TRANSIT_NAME_FIELD = "name"
+_SCHEMA_VERSION_FIELD = "schema_version"
+_CURRENT_REGISTRY_SCHEMA_VERSION = 1
+_ASSOCIATION_REFUSAL = "Development checkout association conflicts with the registered project registry."
 
 
 @contextmanager
@@ -88,18 +91,69 @@ def register_root(*, path: Path | None = None, project_root: Path) -> bool:
     normalized = project_root.expanduser().resolve()
     with file_transaction(manifest_path) as transaction:
         if _manifest_path_exists(manifest_path):
-            try:
-                existing_raw: object = yaml.safe_load(transaction.read_text(encoding=_UTF8))
-            except (yaml.YAMLError, OSError, UnicodeError) as exc:
-                raise RuntimeError(_MANIFEST_READ_ERROR) from exc
-            roots = _parse_manifest_data(existing_raw)
+            existing = list(load_registry_checkouts(manifest_path))
         else:
-            roots = []
-        if normalized in roots:
+            existing = []
+        if any(entry.project_root == normalized for entry in existing):
             return False
-        roots.append(normalized)
-        payload = {_PROJECTS_FIELD: [str(root) for root in roots]}
+        existing.append(RegistryCheckout(normalized, None))
+        payload = render_registry_checkouts(existing)
         transaction.replace_text(yaml.safe_dump(payload, sort_keys=False), encoding=_UTF8)
+    return True
+
+
+def migrate_project_registry(path: Path | None = None) -> bool:
+    """Persist the current registry shape during installation, preserving legacy order."""
+    manifest_path = _normalize_manifest_path(path if path is not None else MANIFEST_PATH)
+    with project_adoption_lock(manifest_path):
+        if not _manifest_path_exists(manifest_path):
+            return False
+        with file_transaction(manifest_path) as transaction:
+            try:
+                raw: object = yaml.safe_load(transaction.read_text(encoding=_UTF8))
+                entries = parse_registry_checkouts(raw)
+            except (yaml.YAMLError, OSError, UnicodeError, ValueError) as exc:
+                raise RuntimeError(_MANIFEST_READ_ERROR) from exc
+            if isinstance(raw, dict) and raw.get(_SCHEMA_VERSION_FIELD) == _CURRENT_REGISTRY_SCHEMA_VERSION:
+                return False
+            transaction.replace_text(
+                yaml.safe_dump(render_registry_checkouts(entries), sort_keys=False),
+                encoding=_UTF8,
+            )
+    return True
+
+
+def write_development_association(
+    *,
+    path: Path | None = None,
+    project_root: Path,
+    development_checkout: Path,
+) -> bool:
+    """Add a development location to its registered primary entry atomically."""
+    manifest_path = _normalize_manifest_path(path if path is not None else MANIFEST_PATH)
+    primary = project_root.expanduser().resolve()
+    development = development_checkout.expanduser().resolve()
+    with file_transaction(manifest_path) as transaction:
+        try:
+            raw: object = yaml.safe_load(transaction.read_text(encoding=_UTF8))
+            entries = list(parse_registry_checkouts(raw))
+        except (yaml.YAMLError, OSError, UnicodeError, ValueError) as exc:
+            raise RuntimeError(_MANIFEST_READ_ERROR) from exc
+        matching_index = next((index for index, entry in enumerate(entries) if entry.project_root == primary), None)
+        if matching_index is None:
+            raise ValueError(_ASSOCIATION_REFUSAL)
+        current = entries[matching_index]
+        if current.development_checkout == development:
+            return False
+        if current.development_checkout is not None or any(
+            entry.project_root == development or entry.development_checkout == development for entry in entries
+        ):
+            raise ValueError(_ASSOCIATION_REFUSAL)
+        entries[matching_index] = RegistryCheckout(primary, development)
+        transaction.replace_text(
+            yaml.safe_dump(render_registry_checkouts(entries), sort_keys=False),
+            encoding=_UTF8,
+        )
     return True
 
 
