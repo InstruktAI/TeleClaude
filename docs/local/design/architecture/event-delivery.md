@@ -48,8 +48,8 @@ coordination capability under
 - **Compatibility at the boundary:** required earlier wire representations are
   translated at transport boundaries under
   `local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`.
-  Translation retains occurrence identity and one execution path per current
-  consumer. Source authority and recipient reach survive translation.
+  The earlier internal wire and its named capability gate are defined below.
+  Translation retains occurrence identity, source authority and recipient reach.
 - **Preserved exposure:** a domain notification retains its source's payload
   reach, notification visibility, procedure-activation meaning and retention
   contract. Moving a control signal into an event does not grant a new reader
@@ -68,10 +68,36 @@ project changes and error reporting use this same relationship when they are
 domain notifications.
 
 Existing declarations represent the same fact wherever it is produced;
-compatibility carriers do not create a second lifecycle occurrence. Earlier
-wire handling is confined to an interoperability boundary with an explicit
-fleet-capability retirement condition. Current consumers execute through the
-platform path throughout that coexistence.
+compatibility carriers do not create a second lifecycle occurrence. Current
+consumers execute through the platform path throughout wire coexistence.
+
+### Earlier internal wire interoperability
+
+The compatibility surface is the earlier `InternalEventEnvelope` representation
+on the stream owned by `INTERNAL_EVENT_STREAM`. Its ingress and any egress
+needed by earlier peers belong to a transport adapter; the general emitter's
+local dispatch and subscriber registry are not compatibility surfaces.
+
+The feature-ID registry owns the domain-event-delivery capability named
+`DOMAIN_EVENT_DELIVERY_FEATURE_ID`, marked `MUST_NEGOTIATE`. A node advertises
+this capability when it supports the migrated domain notifications through
+platform consumers and preserves occurrence identity across the canonical and
+earlier wire representations. Publishing a pending contract does not advertise
+implementation support.
+
+Earlier wire handling remains available while the live fleet requires it.
+Its withdrawal uses the existing fleet capability map's contraction answer for
+`DOMAIN_EVENT_DELIVERY_FEATURE_ID`: every live node, including the slowest
+channel, advertises that capability. A missing map, an empty live set or a live
+node lacking the advertisement leaves withdrawal closed. Release numbers alone
+do not open it. This applies the retirement contract in
+`local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`.
+
+The adapter carries the same occurrence identity across representations and
+does not turn a translated copy into newly originated work. A current consumer
+has one effective reaction path for that occurrence. Wire compatibility does
+not preserve the earlier general-purpose event execution machinery, and the
+separate peer cache replication protocol retains its existing contract.
 
 ### Runtime and command coordination
 
