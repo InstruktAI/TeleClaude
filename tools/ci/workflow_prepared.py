@@ -404,10 +404,11 @@ class _Prepared:
 
     def preconditions(self) -> None:
         shown = self._shown()
-        for path, expected in (
-            ("state.lifecycle_phase", PREPARATION_PHASE),
-            ("state.hold", False),
-        ):
+        # The earlier journey ended its last driver, which can leave the item held; a driver start clears that brake in
+        # its own write, so the starting hold is recorded, not asserted.
+        _, hold = creation.dig(shown, "state.hold")
+        self.host.note(("starting-hold", repr(hold)), foundation.Outcome(0, repr(hold)), "")
+        for path, expected in (("state.lifecycle_phase", PREPARATION_PHASE),):
             found, value = creation.dig(shown, path)
             if not found or value != expected:
                 raise creation.binding_failure(
