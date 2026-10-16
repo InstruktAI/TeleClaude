@@ -48,6 +48,7 @@ from tools.ci import workflow_waiting as waiting
 from tools.ci.enclosure_contract import Action
 from tools.ci.enclosure_guest import GuestContext, Role, request_guest_poweroff
 from tools.ci.enclosure_guest import Record as GuestShutdownRecord
+from tools.ci.enclosure_setup import run_guest_setup
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
 _UTF8 = "utf-8"
@@ -6048,6 +6049,14 @@ def main(arguments: list[str] | None = None) -> int:
             print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
             return _PROCESS_FAILURE
         return _PROCESS_SUCCESS if outcome is GuestShutdownRecord.ACKNOWLEDGED else _PROCESS_FAILURE
+    if role is Role.GUEST_SETUP:
+        try:
+            facts = run_guest_setup(GuestContext.load(parsed.enclosure_manifest, Role.GUEST_SETUP))
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            print(_ENCLOSURE_ENTRY_FAILED.format(error_class=type(error).__name__, detail=error), file=sys.stderr)
+            return _PROCESS_FAILURE
+        print(json.dumps(asdict(facts), sort_keys=True))
+        return _PROCESS_SUCCESS
     if role is not None and role is not Role.PAYLOAD:
         print(_ENCLOSURE_UNAVAILABLE.format(role=role), file=sys.stderr)
         return _PROCESS_FAILURE

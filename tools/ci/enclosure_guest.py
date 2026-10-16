@@ -14,12 +14,14 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
+from tools.ci.acceptance_interpreter_metadata import IMAGE_REFERENCE, _file_identity
 from tools.ci.enclosure_contract import (
     QUALIFICATION_DIGEST,
     RECIPE_DIGEST,
     STATIC_DIGEST,
     AdmittedDeadline,
     Cutoff,
+    Field,
     JsonObject,
     StaticPackage,
     object_value,
@@ -52,16 +54,24 @@ NANOSECONDS: Final = 1_000_000_000
 JSON_SEPARATORS: Final = (",", ":")
 DECODE_REPLACEMENT: Final = "replace"
 SECONDARY_ERROR: Final = "preserving guest shutdown uncertainty also failed: {error_class}"
-CLOSE_ERROR: Final = "closing guest shutdown evidence failed: {error_class}"
-CLOSE_FAILURES: Final = "guest shutdown evidence descriptor failures"
+CLOSE_ERROR: Final = "closing guest evidence failed: {error_class}"
+CLOSE_FAILURES: Final = "guest evidence descriptor failures"
 POWER_ENVIRONMENT: Final = {
     "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
     "LANG": "C.UTF-8",
     "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/run/dbus/system_bus_socket",
 }
 SCHEMA_VERSION: Final = 1
+GUEST_PYTHON_RELATIVE: Final = "usr/bin/python3.12"
+IMAGE_SHA256: Final = "sha256"
+IMAGE_SIZE_BYTES: Final = "size_bytes"
 REQUIRED_HELPER_SOURCES: Final = frozenset(
-    {"tools/ci/runtime_acceptance.py", "tools/ci/enclosure_guest.py", "tools/ci/enclosure_contract.py"}
+    {
+        "tools/ci/runtime_acceptance.py",
+        "tools/ci/enclosure_guest.py",
+        "tools/ci/enclosure_contract.py",
+        "tools/ci/acceptance_interpreter_metadata.py",
+    }
 )
 ERROR_CONTEXT: Final = "guest role identity, source, namespace or protected manifest does not match admission"
 ERROR_DUPLICATE: Final = "the guest poweroff endpoint already has an intent; no second call is admitted"
@@ -131,6 +141,7 @@ class Key(StrEnum):
     TRUNCATED = "truncated"
     AVAILABLE_BYTES = "available_bytes"
     TEXT = "text"
+    PYTHON_BINARY = "python_binary"
 
 
 class Record(StrEnum):
@@ -239,6 +250,17 @@ class GuestContext:
             ):
                 raise ValueError(ERROR_CONTEXT)
         self.package.validate_source(root)
+        images = parse_object(self.package.lock_bytes)[Key.PYTHON_BINARY]
+        if not isinstance(images, list) or len(images) != 1:
+            raise ValueError(ERROR_CONTEXT)
+        expected_image = object_value(images[0])
+        image = _file_identity(IMAGE_REFERENCE)
+        if (
+            expected_image.get(Field.PATH) != GUEST_PYTHON_RELATIVE
+            or image[IMAGE_SHA256] != text(expected_image, Field.SHA256)
+            or image[IMAGE_SIZE_BYTES] != positive_integer(expected_image, Field.BYTES)
+        ):
+            raise ValueError(ERROR_CONTEXT)
         if time.monotonic_ns() >= self.admitted_deadline().effective_end():
             raise TimeoutError(ERROR_BUDGET)
 
@@ -467,16 +489,21 @@ def request_guest_poweroff(context: GuestContext) -> Record:
         )
         return result
     finally:
-        original = sys.exception()
-        failures: list[OSError] = []
-        for descriptor in (stderr_fd, stdout_fd, journal_fd, directory_fd):
-            if descriptor >= 0:
-                try:
-                    os.close(descriptor)
-                except OSError as secondary:
-                    if original is not None:
-                        original.add_note(CLOSE_ERROR.format(error_class=type(secondary).__name__))
-                    else:
-                        failures.append(secondary)
-        if failures:
-            raise ExceptionGroup(CLOSE_FAILURES, failures)
+        close_evidence_descriptors(stderr_fd, stdout_fd, journal_fd, directory_fd)
+
+
+def close_evidence_descriptors(*descriptors: int) -> None:
+    """Preserve the active primary error when guest evidence descriptors also fail to close."""
+    original = sys.exception()
+    failures: list[OSError] = []
+    for descriptor in descriptors:
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError as secondary:
+                if original is not None:
+                    original.add_note(CLOSE_ERROR.format(error_class=type(secondary).__name__))
+                else:
+                    failures.append(secondary)
+    if failures:
+        raise ExceptionGroup(CLOSE_FAILURES, failures)

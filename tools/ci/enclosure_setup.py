@@ -5,18 +5,21 @@ from __future__ import annotations
 import base64
 import grp
 import hashlib
+import json
 import os
 import pwd
 import stat
+import subprocess
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
 from tools.ci.enclosure_contract import (
     AdmittedDeadline,
+    Cutoff,
     Field,
     JsonObject,
     StaticPackage,
@@ -36,11 +39,28 @@ from tools.ci.enclosure_data import (
     _command,
     verify_bootstrap_binaries,
 )
-from tools.ci.enclosure_guest import ERROR_CONTEXT, SOURCE_ROOT, GuestContext, Role
+from tools.ci.enclosure_guest import (
+    ERROR_CONTEXT,
+    MANIFEST,
+    NANOSECONDS,
+    SOURCE_ROOT,
+    GuestContext,
+    Purpose,
+    Record,
+    Role,
+    _append,
+    _output,
+    close_evidence_descriptors,
+)
 from tools.ci.enclosure_guest import Key as GuestKey
 from tools.ci.enclosure_journal import Controller
 
 SETUP_UNIT: Final = "guest-setup.service"
+SETUP_JOURNAL: Final = "guest-setup.jsonl"
+COMMAND_STDOUT: Final = "guest-setup-{sequence}.stdout"
+COMMAND_STDERR: Final = "guest-setup-{sequence}.stderr"
+ERROR_DUPLICATE: Final = "the guest setup intent already exists; no second execution is admitted"
+ERROR_JOURNAL: Final = "preserving guest setup uncertainty also failed: {error_class}"
 APT_ARGUMENTS: Final = (
     "/usr/bin/apt-get",
     "--yes",
@@ -196,6 +216,20 @@ class Key(StrEnum):
     DATA = "data"
     UNIX_UID = "UnixUserID"
     PROCESS_ID = "ProcessID"
+    SCOPE = "scope"
+    SEQUENCE = "sequence"
+    ADMISSION = "admission"
+    SETUP = "setup"
+    COMMAND = "command"
+    UNIT_END_NS = "unit_end_ns"
+    COMMAND_END_NS = "command_end_ns"
+    REQUESTED_COMMAND_END_NS = "requested_command_end_ns"
+    STDOUT_DIAGNOSTIC = "stdout_diagnostic"
+    STDERR_DIAGNOSTIC = "stderr_diagnostic"
+    STDOUT_COMPLETE = "stdout_complete"
+    STDOUT_SHA256 = "stdout_sha256"
+    FACTS = "facts"
+    ROLE = "role"
 
 
 @dataclass(frozen=True)
@@ -237,6 +271,7 @@ class GuestOSFacts:
     corepack_metadata_sha256: str
     system_manager: GuestManagerFacts
     user_manager: GuestManagerFacts
+    package_service_policy_removed: bool
 
 
 def _query_native(argv: tuple[str, ...], query: NativeQuery, deadline: AdmittedDeadline, cap: int) -> bytes:
@@ -279,6 +314,7 @@ def _manager_facts(
     credentials = object_value(body[0])
     uid, pid = _credential(credentials, Key.UNIX_UID), _credential(credentials, Key.PROCESS_ID)
     identity = Controller.capture(pid)
+    admission = context.record
     socket_status = socket.lstat()
     pid_namespace = os.readlink(PROCESS_PID_NS.format(pid=pid))
     cgroup_namespace = os.readlink(PROCESS_CGROUP_NS.format(pid=pid))
@@ -287,9 +323,9 @@ def _manager_facts(
         or identity.uid != expected_uid
         or (expected_uid == 0 and pid != 1)
         or (expected_uid != 0 and pid <= 1)
-        or identity.boot_id != text(context.record, GuestKey.GUEST_BOOT_ID)
-        or pid_namespace != text(context.record, GuestKey.PID_NAMESPACE)
-        or cgroup_namespace != text(context.record, GuestKey.CGROUP_NAMESPACE)
+        or identity.boot_id != text(admission, GuestKey.GUEST_BOOT_ID)
+        or pid_namespace != text(admission, GuestKey.PID_NAMESPACE)
+        or cgroup_namespace != text(admission, GuestKey.CGROUP_NAMESPACE)
         or not stat.S_ISSOCK(socket_status.st_mode)
         or socket_status.st_uid != expected_uid
     ):
@@ -378,7 +414,9 @@ def _configure_bootstrap_tools(
     return tuple(packages[name][2] for name in (COREPACK, PRETTIER, PNPM)), hashlib.sha256(raw).hexdigest()
 
 
-def configure_guest_os(context: GuestContext, run: NativeCommand, query: NativeQuery) -> GuestOSFacts:
+def configure_guest_os(
+    context: GuestContext, run: NativeCommand, query: NativeQuery, *, unit_end_ns: int | None = None
+) -> GuestOSFacts:
     """Configure exact guest packages/tools, create the declared account/source owner and request native linger."""
     if os.geteuid() != 0:
         raise ValueError(ERROR_CONTEXT)
@@ -386,7 +424,10 @@ def configure_guest_os(context: GuestContext, run: NativeCommand, query: NativeQ
     if not REQUIRED_SOURCES <= set(object_value(context.record[GuestKey.SOURCE_FILES])):
         raise ValueError(ERROR_CONTEXT)
     original = context.admitted_deadline()
-    deadline = AdmittedDeadline(original.outer_end_ns, original.vector_end_ns, context.command_end(SETUP_UNIT))
+    unit_end = context.command_end(SETUP_UNIT)
+    if unit_end_ns is not None:
+        unit_end = min(unit_end, unit_end_ns)
+    deadline = AdmittedDeadline(original.outer_end_ns, original.vector_end_ns, unit_end)
     recipe = parse_object(context.package.recipe_bytes)
     cap = positive_integer(object_value(recipe[Field.BUDGET_SECONDS]), Field.NORMAL_COMMAND_MAX)
     guest = object_value(recipe[Key.GUEST])
@@ -394,13 +435,14 @@ def configure_guest_os(context: GuestContext, run: NativeCommand, query: NativeQ
     # This policy remains installed through package configuration and is removed only before the real product installer.
     installed_policy = Path(text(policy, Key.INSTALLED_PATH).removeprefix(GUEST_SCHEME))
     expected_policy = SOURCE_ROOT / text(policy, Key.PROSPECTIVE_SOURCE)
+    expected_policy_bytes = expected_policy.read_bytes()
     policy_status = installed_policy.lstat()
     if (
         not stat.S_ISREG(policy_status.st_mode)
         or policy_status.st_uid != 0
         or stat.S_IMODE(policy_status.st_mode) & 0o022
         or not stat.S_IMODE(policy_status.st_mode) & 0o111
-        or installed_policy.read_bytes() != expected_policy.read_bytes()
+        or installed_policy.read_bytes() != expected_policy_bytes
     ):
         raise ValueError(ERROR_CONTEXT)
     rows = object_value(parse_object(context.package.lock_bytes)[Key.GUEST_CLOSURE])[Key.FINAL_PACKAGES]
@@ -483,6 +525,13 @@ def configure_guest_os(context: GuestContext, run: NativeCommand, query: NativeQ
         deadline,
         cap,
     )
+    policy_removed = Purpose(text(context.record, GuestKey.PURPOSE)) is Purpose.APPLICATION
+    if policy_removed:
+        if installed_policy.is_symlink() or installed_policy.read_bytes() != expected_policy_bytes:
+            raise ValueError(ERROR_CONTEXT)
+        if time.monotonic_ns() >= deadline.effective_end():
+            raise TimeoutError(ERROR_BUDGET)
+        installed_policy.unlink()
     return GuestOSFacts(
         inventory_digest,
         name,
@@ -494,4 +543,220 @@ def configure_guest_os(context: GuestContext, run: NativeCommand, query: NativeQ
         corepack_metadata_digest,
         system_manager,
         user_manager,
+        policy_removed,
     )
+
+
+class _SetupCommands:
+    """The concrete guest-only subprocess boundary for the existing closed setup sequence."""
+
+    def __init__(self, context: GuestContext) -> None:
+        self.context = context
+        self.unit_end_ns = context.command_end(SETUP_UNIT)
+        self.directory_fd = -1
+        self.journal_fd = -1
+        self.sequence = 0
+
+    def _open(self) -> None:
+        # configure_guest_os verifies the role/source/namespace before its first native callback.
+        if self.journal_fd >= 0:
+            return
+        self.directory_fd = os.open(MANIFEST.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        if os.fstat(self.directory_fd).st_uid != 0:
+            raise ValueError(ERROR_CONTEXT)
+        try:
+            self.journal_fd = os.open(
+                SETUP_JOURNAL,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600,
+                dir_fd=self.directory_fd,
+            )
+        except FileExistsError as error:
+            raise RuntimeError(ERROR_DUPLICATE) from error
+        admission = self.context.record
+        binding = {
+            str(key): admission[key]
+            for key in (
+                GuestKey.RUN_TOKEN,
+                GuestKey.SOURCE_COMMIT,
+                GuestKey.SOURCE_TREE,
+                GuestKey.REALIZATION_SHA256,
+                GuestKey.STATIC_LOCK_SHA256,
+                GuestKey.RECIPE_SHA256,
+                GuestKey.QUALIFICATION_SHA256,
+                GuestKey.ADMISSION_SEAL_SHA256,
+                GuestKey.PURPOSE,
+                GuestKey.GUEST_BOOT_ID,
+                GuestKey.UID_MAP,
+                GuestKey.GID_MAP,
+                GuestKey.PID_NAMESPACE,
+                GuestKey.CGROUP_NAMESPACE,
+                Cutoff.OUTER_END_NS,
+                Cutoff.VECTOR_END_NS,
+                Cutoff.COMMAND_END_NS,
+            )
+        }
+        binding[GuestKey.QUALIFICATION_VECTOR] = admission.get(GuestKey.QUALIFICATION_VECTOR)
+        _append(
+            self.journal_fd,
+            {
+                Key.SCOPE: Key.ADMISSION.value,
+                GuestKey.RECORD: Record.INTENT.value,
+                GuestKey.MONOTONIC_NS: time.monotonic_ns(),
+                Key.UNIT_END_NS: self.unit_end_ns,
+                GuestKey.MANIFEST_SHA256: hashlib.sha256(self.context.manifest_bytes).hexdigest(),
+                Key.ROLE: Role.GUEST_SETUP.value,
+                Key.ADMISSION: binding,
+            },
+        )
+        os.fsync(self.directory_fd)
+
+    def run(self, argv: tuple[str, ...], end_ns: int) -> int | None:
+        """Execute the fixed producer's real command and retain its native status."""
+        return self.query(argv, end_ns).status
+
+    def query(self, argv: tuple[str, ...], end_ns: int) -> NativeRead:
+        """Keep the exact admitted cutoff across journal creation, spawn and native wait."""
+        end = min(end_ns, self.unit_end_ns)
+        if time.monotonic_ns() >= end:
+            raise TimeoutError(ERROR_BUDGET)
+        self._open()
+        self.sequence += 1
+        stdout_fd = -1
+        stderr_fd = -1
+        try:
+            stdout_fd = os.open(
+                COMMAND_STDOUT.format(sequence=self.sequence),
+                os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600,
+                dir_fd=self.directory_fd,
+            )
+            stderr_fd = os.open(
+                COMMAND_STDERR.format(sequence=self.sequence),
+                os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600,
+                dir_fd=self.directory_fd,
+            )
+            _append(
+                self.journal_fd,
+                {
+                    Key.SCOPE: Key.COMMAND.value,
+                    GuestKey.RECORD: Record.INTENT.value,
+                    Key.SEQUENCE: self.sequence,
+                    GuestKey.COMMAND: list(argv),
+                    Key.REQUESTED_COMMAND_END_NS: end_ns,
+                    Key.COMMAND_END_NS: end,
+                    GuestKey.MONOTONIC_NS: time.monotonic_ns(),
+                },
+            )
+            os.fsync(self.directory_fd)
+            try:
+                remaining = (end - time.monotonic_ns()) / NANOSECONDS
+                if remaining <= 0:
+                    raise TimeoutError(ERROR_BUDGET)
+                process = subprocess.Popen(
+                    argv,
+                    cwd=SOURCE_ROOT,
+                    env=SETUP_ENVIRONMENT,
+                    stdin=subprocess.DEVNULL,
+                    stdout=stdout_fd,
+                    stderr=stderr_fd,
+                    close_fds=True,
+                    umask=0o022,
+                )
+                _append(
+                    self.journal_fd,
+                    {
+                        Key.SCOPE: Key.COMMAND.value,
+                        GuestKey.RECORD: Record.STARTED.value,
+                        Key.SEQUENCE: self.sequence,
+                        GuestKey.PID: process.pid,
+                        GuestKey.MONOTONIC_NS: time.monotonic_ns(),
+                    },
+                )
+                remaining = (end - time.monotonic_ns()) / NANOSECONDS
+                if remaining <= 0:
+                    raise TimeoutError(ERROR_BUDGET)
+                status = process.wait(timeout=remaining)
+            except BaseException as error:
+                try:
+                    _append(
+                        self.journal_fd,
+                        {
+                            Key.SCOPE: Key.COMMAND.value,
+                            GuestKey.RECORD: Record.UNKNOWN.value,
+                            Key.SEQUENCE: self.sequence,
+                            GuestKey.ERROR_CLASS: type(error).__name__,
+                            GuestKey.MONOTONIC_NS: time.monotonic_ns(),
+                        },
+                    )
+                except (OSError, ValueError) as secondary:
+                    error.add_note(ERROR_JOURNAL.format(error_class=type(secondary).__name__))
+                raise
+            before = os.fstat(stdout_fd)
+            stdout = os.pread(stdout_fd, INVENTORY_LIMIT + 1, 0)
+            after = os.fstat(stdout_fd)
+            complete = (
+                len(stdout) <= INVENTORY_LIMIT
+                and len(stdout) == after.st_size
+                and (before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+                == (after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+            )
+            late = time.monotonic_ns() >= end
+            outcome = Record.UNKNOWN if late else Record.ACKNOWLEDGED if status == 0 else Record.FAILED
+            _append(
+                self.journal_fd,
+                {
+                    Key.SCOPE: Key.COMMAND.value,
+                    GuestKey.RECORD: outcome.value,
+                    Key.SEQUENCE: self.sequence,
+                    GuestKey.EXIT_STATUS: status,
+                    GuestKey.MONOTONIC_NS: time.monotonic_ns(),
+                    Key.STDOUT_DIAGNOSTIC: _output(stdout_fd),
+                    Key.STDERR_DIAGNOSTIC: _output(stderr_fd),
+                    Key.STDOUT_COMPLETE: complete,
+                    Key.STDOUT_SHA256: hashlib.sha256(stdout).hexdigest() if complete else None,
+                },
+            )
+            if late:
+                raise TimeoutError(ERROR_BUDGET)
+            return NativeRead(status, stdout, complete)
+        finally:
+            close_evidence_descriptors(stderr_fd, stdout_fd)
+
+    def finish(self, facts: GuestOSFacts | None, error: BaseException | None) -> None:
+        """Record only an actual final result; pre-admission failure creates no journal."""
+        if self.journal_fd < 0:
+            return
+        result = None if facts is None else parse_object(json.dumps(asdict(facts), allow_nan=False).encode(UTF8))
+        _append(
+            self.journal_fd,
+            {
+                Key.SCOPE: Key.SETUP.value,
+                GuestKey.RECORD: Record.ACKNOWLEDGED.value if error is None else Record.FAILED.value,
+                Key.FACTS: result,
+                GuestKey.ERROR_CLASS: type(error).__name__ if error is not None else None,
+                GuestKey.MONOTONIC_NS: time.monotonic_ns(),
+            },
+        )
+
+    def close(self) -> None:
+        """Close only this invocation's original evidence descriptors."""
+        close_evidence_descriptors(self.journal_fd, self.directory_fd)
+
+
+def run_guest_setup(context: GuestContext) -> GuestOSFacts:
+    """Compose the protected guest setup with its real one-shot journal and native commands."""
+    commands = _SetupCommands(context)
+    try:
+        facts = configure_guest_os(context, commands.run, commands.query, unit_end_ns=commands.unit_end_ns)
+        commands.finish(facts, None)
+        return facts
+    except BaseException as error:
+        try:
+            commands.finish(None, error)
+        except (OSError, ValueError) as secondary:
+            error.add_note(ERROR_JOURNAL.format(error_class=type(secondary).__name__))
+        raise
+    finally:
+        commands.close()
