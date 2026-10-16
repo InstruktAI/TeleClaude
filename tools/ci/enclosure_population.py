@@ -122,6 +122,7 @@ class PopulationObserver:
         ):
             raise ValueError(ERROR_PATH)
         self._lock = threading.RLock()
+        self._control_group = control_group
         self._faults: dict[Invalidation, Fault] = {}
         self._sequence = 0
         self._closed = False
@@ -154,6 +155,11 @@ class PopulationObserver:
         except BaseException:
             self.close()
             raise
+
+    @property
+    def control_group(self) -> str:
+        """The original manager-provided address used at descriptor construction."""
+        return self._control_group
 
     def invalidate(
         self,
