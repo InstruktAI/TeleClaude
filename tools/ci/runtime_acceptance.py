@@ -321,8 +321,10 @@ _SOURCE_REVISION_OPTION = "--source-revision"
 _SOURCE_TREE_OPTION = "--source-tree"
 _CLI_DESCRIPTION = "Run the bounded real-process CLI acceptance profile."
 _REPORT_WRITE_ERROR = "Could not write runtime acceptance report: {error}"
-_B13_REPORT_SEAL_FAILURE = "B13 report delivery seal failed; candidate controls and profile state were retained."
+_B13_REPORT_SEAL_FAILURE = "B13 report delivery seal failed."
 _B13_REPORT_WRITE_FAILURE = "B13 report write failed: {error}"
+_B13_REPORT_READBACK_FAILURE = "B13 report read-back failed: {error}"
+_B13_FAILURE_SEPARATOR = "; "
 _SCENARIO_NOT_RUN = "No scenario action was registered."
 _FIXTURE_INSTALLER_WHERE = "the installer environment"
 _FIXTURE_LOGIN_WHERE = "the owner login shell"
@@ -5324,18 +5326,40 @@ def _write_report_payload(report_path: Path, temporary_path: Path, payload: Mapp
         raise RuntimeError(_REPORT_WRITE_ERROR.format(error=exc)) from exc
 
 
-def _b13_report_unproven(report: AcceptanceReport, detail: str = _B13_REPORT_SEAL_FAILURE) -> AcceptanceReport:
-    """Downgrade a report whose complete B13 delivery seal did not survive read-back."""
+def _append_b13_failure(existing: str, addition: str) -> str:
+    """Preserve an earlier B13 failure while recording an independent later cause."""
+    if not existing:
+        return addition
+    if addition in existing:
+        return existing
+    return existing + _B13_FAILURE_SEPARATOR + addition
+
+
+def _b13_report_unproven(
+    report: AcceptanceReport,
+    *,
+    evidence_failure: str = _EMPTY,
+    export_failure: str = _EMPTY,
+) -> AcceptanceReport:
+    """Downgrade B13 without replacing cleanup facts or claiming unobserved retention."""
     evidence = report.workflow_waiting_retired_kickback_evidence
     evidence.status = waiting.B13_STATUS_UNPROVEN
-    evidence.evidence_failure = detail
+    evidence.evidence_failure = _append_b13_failure(evidence.evidence_failure, evidence_failure)
+    evidence.export_failure = _append_b13_failure(evidence.export_failure, export_failure)
+    detail = export_failure or evidence_failure or _B13_REPORT_SEAL_FAILURE
+    scenarios = tuple(
+        replace(
+            result,
+            status=ScenarioStatus.FAILED,
+            diagnostics=_append_b13_failure(result.diagnostics, detail),
+        )
+        if result.scenario_id == _SCENARIO_WORKFLOW_WAITING
+        else result
+        for result in report.scenarios
+    )
     return replace(
         report,
-        cleanup=CleanupResult(
-            status=ScenarioStatus.FAILED,
-            detail=detail,
-            commands=report.cleanup.commands,
-        ),
+        scenarios=scenarios,
     )
 
 
@@ -5355,7 +5379,11 @@ def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceRepor
             lambda value: value,
         )
     ):
-        report = _b13_report_unproven(report)
+        report = _b13_report_unproven(
+            report,
+            evidence_failure=waiting.B13_ERROR_SEAL,
+            export_failure=_B13_REPORT_SEAL_FAILURE,
+        )
     temporary_path = report_path.with_suffix(f"{report_path.suffix}{_REPORT_TEMP_SUFFIX}")
     payload = asdict(report)
     delivery_path = payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
@@ -5367,7 +5395,7 @@ def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceRepor
         if report.workflow_waiting_retired_kickback_evidence.status != waiting.B13_STATUS_COMPLETE:
             raise
         safe_error = str(error).replace(str(report_path.parent), _SYNTHETIC_RUNTIME_PLACEHOLDER)
-        report = _b13_report_unproven(report, _B13_REPORT_WRITE_FAILURE.format(error=safe_error))
+        report = _b13_report_unproven(report, export_failure=_B13_REPORT_WRITE_FAILURE.format(error=safe_error))
         failure_payload = asdict(report)
         failure_payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
         failure_payload.pop(_B13_REPORT_DELIVERY_PATH_FIELD, None)
@@ -5385,7 +5413,8 @@ def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceRepor
     except (OSError, ValueError, TypeError) as error:
         if report.workflow_waiting_retired_kickback_evidence.status != waiting.B13_STATUS_COMPLETE:
             raise RuntimeError(waiting.B13_ERROR_SEAL) from error
-        report = _b13_report_unproven(report)
+        safe_error = str(error).replace(str(report_path.parent), _SYNTHETIC_RUNTIME_PLACEHOLDER)
+        report = _b13_report_unproven(report, export_failure=_B13_REPORT_READBACK_FAILURE.format(error=safe_error))
         failure_payload = asdict(report)
         failure_payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
         failure_payload.pop(_B13_REPORT_DELIVERY_PATH_FIELD, None)
@@ -5403,7 +5432,11 @@ def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceRepor
             lambda value: value,
         )
     ):
-        report = _b13_report_unproven(report)
+        report = _b13_report_unproven(
+            report,
+            evidence_failure=waiting.B13_ERROR_SEAL,
+            export_failure=_B13_REPORT_SEAL_FAILURE,
+        )
         failure_payload = asdict(report)
         failure_payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
         failure_payload.pop(_B13_REPORT_DELIVERY_PATH_FIELD, None)
@@ -5450,6 +5483,7 @@ def _validate_b13_report(report: Mapping[str, object], source_revision: str, sou
         "duration_seconds",
         "primary_failure",
         "evidence_failure",
+        waiting.B13_EXPORT_FAILURE_FIELD,
     }
     b13_carrier = b13.get("carrier")
     b13_response = b13.get("response")
@@ -5481,6 +5515,7 @@ def _validate_b13_report(report: Mapping[str, object], source_revision: str, sou
         or b13["duration_seconds"] > waiting.B13_SCENARIO_SECONDS
         or b13.get("primary_failure") != _EMPTY
         or b13.get("evidence_failure") != _EMPTY
+        or b13.get(waiting.B13_EXPORT_FAILURE_FIELD) != _EMPTY
         or not isinstance(prerequisites, dict)
         or actor_data.get("owner") is None
         or not isinstance(owner_slug, str)

@@ -152,7 +152,7 @@ B13_TEMP_SUFFIX: Final = ".tmp"
 B13_FILE_MODE: Final = 0o600
 B13_SUCCESS_EXIT: Final = 0
 B13_SETTLE_SECONDS: Final = 5.0
-B13_SCHEMA_VERSION: Final = 1
+B13_SCHEMA_VERSION: Final = 2
 B13_ATTEMPT_OPEN: Final = B13AttemptEvent.OPEN
 B13_ATTEMPT_RESULT: Final = B13AttemptEvent.RESULT
 B13_OBSERVATION_BEFORE: Final = "before"
@@ -215,6 +215,7 @@ B13_BYTE_NEWLINE: Final = b"\n"
 B13_EVIDENCE_FIELD: Final = "evidence"
 B13_PRIMARY_FAILURE_FIELD: Final = "primary_failure"
 B13_EVIDENCE_FAILURE_FIELD: Final = "evidence_failure"
+B13_EXPORT_FAILURE_FIELD: Final = "export_failure"
 B13_DIAGNOSTIC_LIMIT: Final = 65536
 
 FRAME_CLAIM: Final = "cmd_claim"
@@ -306,6 +307,7 @@ class WaitingKickbackEvidence:
     duration_seconds: float = 0.0
     primary_failure: str = ""
     evidence_failure: str = ""
+    export_failure: str = ""
 
 
 def empty_b13_evidence(
@@ -506,8 +508,10 @@ def freeze_b13_evidence(
     carrier_path: Path,
     sanitize: Callable[[str], str],
     *,
+    authorized_bootstrap: bool = False,
     authorized_append: bytes | None = None,
     authorized_refresh: bytes | None = None,
+    authorized_failure: bool = False,
 ) -> None:
     """Refresh a durable seal only when its previous bytes and one authorized append are verified."""
     if evidence.carrier.get("owned") is not True:
@@ -515,7 +519,31 @@ def freeze_b13_evidence(
     attempts_path = marker_path.parent / B13_ATTEMPTS_FILE
     attempts_raw = attempts_path.read_bytes()
     prior = evidence.attempt_ledger
-    if authorized_refresh is not None:
+    if authorized_bootstrap:
+        if (
+            prior
+            or attempts_raw
+            or evidence.status != B13_STATUS_PARTIAL
+            or marker_path.exists()
+            or carrier_path.read_bytes()
+            or authorized_append is not None
+            or authorized_refresh is not None
+            or authorized_failure
+        ):
+            raise ValueError(B13_ERROR_SEAL)
+    elif authorized_failure:
+        if (
+            not prior
+            or evidence.status != B13_STATUS_UNPROVEN
+            or not evidence.primary_failure
+            or hashlib.sha256(attempts_raw).hexdigest() != prior.get(B13_LEDGER_ORIGINAL_SHA_FIELD)
+            or len(attempts_raw) != prior.get(B13_LEDGER_ORIGINAL_BYTES_FIELD)
+            or not verify_b13_seal(evidence, marker_path, carrier_path)
+            or authorized_append is not None
+            or authorized_refresh is not None
+        ):
+            raise ValueError(B13_ERROR_SEAL)
+    elif authorized_refresh is not None:
         if (
             not prior
             or not attempts_raw.endswith(authorized_refresh)
@@ -1087,6 +1115,7 @@ class _Waiting:
             }
             evidence.prerequisites = cast(creation.EvidenceObject, _b13_safe(evidence.prerequisites, self.sanitize))
             evidence.before = {"argv": [list(argv) for argv in B13_READ_ARGV]}
+            freeze_b13_evidence(evidence, marker_path, carrier_path, self.sanitize, authorized_bootstrap=True)
             before_item = observer.show(ITEM)
             clean_before_item = _b13_safe(dict(before_item), self.sanitize) if before_item is not None else None
             evidence.before["item"] = clean_before_item
@@ -1278,8 +1307,17 @@ class _Waiting:
             evidence.primary_failure = self.sanitize(f"{type(error).__name__}: {error}")
             evidence.duration_seconds = time.monotonic() - started
             if evidence.carrier.get("owned") is True and marker_path.exists() and carrier_path.exists():
-                if not verify_b13_seal(evidence, marker_path, carrier_path):
-                    evidence.evidence_failure = B13_ERROR_SEAL
+                try:
+                    if verify_b13_seal(evidence, marker_path, carrier_path):
+                        freeze_b13_evidence(evidence, marker_path, carrier_path, self.sanitize, authorized_failure=True)
+                    else:
+                        evidence.evidence_failure = B13_ERROR_SEAL
+                        capture_b13_attempt_ledger(evidence, marker_path, self.sanitize)
+                except Exception as seal_error:
+                    evidence.evidence_failure = self.sanitize(
+                        B13_ERROR_DETAIL_FORMAT.format(error_class=type(seal_error).__name__, detail=seal_error)
+                    )
+                    evidence.export_failure = B13_ERROR_SEAL
                     capture_b13_attempt_ledger(evidence, marker_path, self.sanitize)
             raise creation.binding_failure(B13_ERROR_PREFIX + evidence.primary_failure) from error
 
@@ -1546,16 +1584,21 @@ def _cleanup(waiting: _Waiting, failure: BaseException | None) -> None:
     """Settle the sessions the journey owns, restore the candidate publication and the sidecar, report every failure."""
     b13_safe = waiting.b13_marker is None
     if waiting.b13_marker is not None and waiting.b13_carrier is not None:
+        b13_seal_valid = False
         try:
-            if waiting.b13_evidence.carrier.get("owned") is True and waiting.b13_evidence.status == B13_STATUS_COMPLETE:
-                b13_safe = verify_b13_delivery(
-                    waiting.b13_evidence, waiting.b13_marker, waiting.b13_carrier, waiting.sanitize
-                )
+            if waiting.b13_evidence.carrier.get("owned") is True:
+                b13_seal_valid = verify_b13_seal(waiting.b13_evidence, waiting.b13_marker, waiting.b13_carrier)
+                if waiting.b13_evidence.status == B13_STATUS_COMPLETE:
+                    b13_safe = b13_seal_valid and verify_b13_delivery(
+                        waiting.b13_evidence, waiting.b13_marker, waiting.b13_carrier, waiting.sanitize
+                    )
+                    if not b13_safe and not waiting.b13_evidence.evidence_failure:
+                        waiting.b13_evidence.evidence_failure = B13_ERROR_SEAL
         except BaseException as error:
             waiting.b13_evidence.status = B13_STATUS_UNPROVEN
             waiting.b13_evidence.evidence_failure = waiting.sanitize(f"{type(error).__name__}: {error}")
             b13_safe = False
-        if not b13_safe:
+        if waiting.b13_evidence.carrier.get("owned") is True and not b13_seal_valid:
             if not waiting.b13_evidence.evidence_failure:
                 waiting.b13_evidence.evidence_failure = B13_ERROR_SEAL
             capture_b13_attempt_ledger(waiting.b13_evidence, waiting.b13_marker, waiting.sanitize)
