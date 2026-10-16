@@ -243,9 +243,10 @@ class EventProcessor[DecodedT: BaseModel]:
                 if self._ordered:
                     raise
                 return
-            if not entries:
+            pending_count = sum(len(messages) for _, messages in entries)
+            if not pending_count:
                 return
-            logger.info("EventProcessor recovering pending entries", pending=len(entries), consumer=self._consumer)
+            logger.info("EventProcessor recovering pending entries", pending=pending_count, consumer=self._consumer)
             await self._process_entries(entries)
 
     async def _reclaim_stale_pending(self, *, pending_depth: int) -> None:
