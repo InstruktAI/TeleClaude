@@ -153,6 +153,9 @@ DETAIL_OPERATION_READ: Final = (
     "the public read of operation {operation} is unreadable or names an unknown state: {output!r}"
 )
 DETAIL_ACT_ROW: Final = "the instruction has no row `telec todo act {item} {act}` -> {phase}: {rows!r}"
+DETAIL_CONTROLS_KEPT: Final = (
+    "closure was not proven, so the control directory {control} and the sidecar are kept for diagnosis"
+)
 DETAIL_COMPANION: Final = "the companion {path} has no readable workflow header"
 NOT_EVALUATED_STARTER: Final = "step 6 not evaluated: {reason}"
 NOT_EVALUATED_LABEL: Final = "step-6-not-evaluated"
@@ -231,6 +234,7 @@ class _Claim:
             host, self.observer, setup.control.parent, source_root, register_company
         )
         self.baseline: creation.SessionView | None = None
+        self.accepted: list[str] = []
         self.setup = setup
         self.project = project.resolve()
         self.source_root = source_root
@@ -439,6 +443,7 @@ class _Steps:
         if start.exit_status != 0 or not isinstance(starter, str) or not starter:
             raise creation.platform_failure(DETAIL_RECEIPT.format(status=start.exit_status, output=start.output[-300:]))
         self.starter = starter
+        self.claim.accepted.append(starter)
 
     def await_claim(self) -> None:
         """Step 2: a real session is created and claims; a failed or unreadable starter ends the wait at once."""
@@ -608,6 +613,7 @@ class _Steps:
             raise creation.platform_failure(
                 DETAIL_RECEIPT.format(status=competitor.exit_status, output=competitor.output[-300:])
             )
+        self.claim.accepted.append(operation)
         refused = self.claim._await_terminal(operation, COMPETITOR_SECONDS)
         error = refused.get(FIELD_ERROR)
         if refused.get(FIELD_STATE) != STATE_FAILED or not isinstance(error, str):
@@ -641,9 +647,13 @@ class _Steps:
 
 def _cleanup(claim: _Claim, failure: BaseException | None) -> None:
     """Settle the sessions the journey owns, restore the candidate publication and the sidecar, report every failure."""
-    problems = publication.settle_sessions(claim.observer, claim.baseline)
+    settlement = publication.settle_sessions(claim.observer, claim.baseline, claim.accepted)
+    problems = list(settlement.problems)
     problems.extend(claim.publication.restore())
-    problems.extend(claim.restore_control())
+    if settlement.proven:
+        problems.extend(claim.restore_control())
+    else:
+        problems.append(DETAIL_CONTROLS_KEPT.format(control=claim.control))
     try:
         creation.leave_project(claim.observer, claim.source_root)
     except BaseException as error:

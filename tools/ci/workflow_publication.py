@@ -16,6 +16,7 @@ from __future__ import annotations
 import shutil
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -72,6 +73,8 @@ LINT_TIMEOUT_SECONDS: Final = 180
 PUBLISH_TIMEOUT_SECONDS: Final = 120
 POLL_SECONDS: Final = 2.0
 SETTLE_SECONDS: Final = 120.0
+SETTLE_WINDOW_SECONDS: Final = 240.0
+SETTLE_QUIET_SECONDS: Final = 20.0
 
 DETAIL_COMMAND: Final = "`{command}` exited {status}: {output!r}"
 DETAIL_FOLD_PATHS: Final = (
@@ -87,6 +90,7 @@ DETAIL_OPERATION_TIMEOUT: Final = (
     "operation {operation} did not reach a terminal state within {seconds} seconds: {last!r}"
 )
 DETAIL_IDENTITY_MOVED: Final = "the candidate checkout changed during the journey: {before!r} became {after!r}"
+DETAIL_UNSETTLED: Final = "closure was not proven: operations still open {pending!r}, sessions still owned {owned!r}"
 DETAIL_SESSION_OPEN: Final = "session {session} could not be closed: {detail}"
 
 
@@ -138,19 +142,17 @@ def _session_record(observer: creation.Observer, session_id: str) -> Mapping[str
     return foundation.json_object(outcome.output) if outcome.exit_status == 0 else None
 
 
-def settle_sessions(observer: creation.Observer, baseline: creation.SessionView | None) -> list[str]:
-    """End every session created since the baseline that is not closed, and prove each closed; return what failed.
+@dataclass(frozen=True)
+class Settlement:
+    """What the settlement of a journey\'s actors found: the failures, and whether closure was proven."""
 
-    The journey owns every session that exists beyond its baseline, whether or not it ever claimed or was recorded as
-    the journey\'s own: a driver that was created and then failed to claim is still running when the journey ends.
-    """
-    if baseline is None:
-        return []
-    problems: list[str] = []
-    try:
-        owned = sorted(observer.sessions(retain=False).ids - baseline.ids)
-    except BaseException as error:  # settlement reports the listing failure beside the journey's own
-        return [f"listing the sessions to settle failed: {error}"]
+    problems: list[str]
+    proven: bool
+
+
+def _close_owned(observer: creation.Observer, owned: Sequence[str], problems: list[str]) -> bool:
+    """End each owned session that is not closed and prove it closed; True when none was left open."""
+    clean = True
     for session_id in owned:
         try:
             if _session_closed(_session_record(observer, session_id)):
@@ -160,15 +162,55 @@ def settle_sessions(observer: creation.Observer, baseline: creation.SessionView 
             operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
             if ended.exit_status != 0 or not isinstance(operation, str) or not operation:
                 problems.append(DETAIL_SESSION_OPEN.format(session=session_id, detail=ended.output[-200:]))
+                clean = False
                 continue
             outcome = await_terminal(observer, operation, SETTLE_SECONDS)
             if outcome.get(FIELD_STATE) != STATE_COMPLETED or not _session_closed(
                 _session_record(observer, session_id)
             ):
                 problems.append(DETAIL_SESSION_OPEN.format(session=session_id, detail=str(outcome.get(FIELD_ERROR))))
+                clean = False
         except BaseException as error:
             problems.append(DETAIL_SESSION_OPEN.format(session=session_id, detail=str(error)))
-    return problems
+            clean = False
+    return clean
+
+
+def settle_sessions(
+    observer: creation.Observer, baseline: creation.SessionView | None, accepted: Sequence[str] = ()
+) -> Settlement:
+    """End every session beyond the baseline and prove closure, including those an accepted start has yet to create.
+
+    The journey owns every session that exists beyond its baseline, claimed or not, and every start the platform
+    accepted from it: an accepted start may create its driver after any single listing. Settlement therefore waits for
+    each accepted operation to reach a terminal state and then for a quiet period in which no new owned session appears,
+    ending whatever appears. When closure cannot be proven within the bound, ``proven`` is False and the caller keeps the
+    resources needed to settle or diagnose what may still run.
+    """
+    if baseline is None:
+        return Settlement([], True)
+    problems: list[str] = []
+    deadline = time.monotonic() + SETTLE_WINDOW_SECONDS
+    quiet_since: float | None = None
+    proven = True
+    while True:
+        try:
+            owned = sorted(observer.sessions(retain=False).ids - baseline.ids)
+            pending = [op for op in accepted if operation_state(observer, op).get(FIELD_STATE) not in TERMINAL_STATES]
+        except BaseException as error:  # settlement reports the read failure beside the journey's own
+            return Settlement([*problems, f"reading the actors to settle failed: {error}"], False)
+        if owned and not _close_owned(observer, owned, problems):
+            proven = False
+        if not owned and not pending:
+            quiet_since = quiet_since if quiet_since is not None else time.monotonic()
+            if time.monotonic() - quiet_since >= SETTLE_QUIET_SECONDS:
+                return Settlement(problems, proven)
+        else:
+            quiet_since = None
+        if time.monotonic() >= deadline:
+            problems.append(DETAIL_UNSETTLED.format(pending=pending, owned=owned))
+            return Settlement(problems, False)
+        time.sleep(POLL_SECONDS)
 
 
 class Publication:
