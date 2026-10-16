@@ -304,7 +304,8 @@ class Publication:
         return f"commit {head.output.strip()} tree {tree.output.strip()}"
 
     def note(self, label: str, text: str) -> None:
-        self.host.note((label,), Outcome(0, text), "")
+        """Retain a fact of the journey; the text rides in the argv, which the report keeps when output is stripped."""
+        self.host.note((label, text), Outcome(0, text), "")
 
     def body_of(self, identity: str, *, pending: bool) -> str:
         """The body a public `telec docs get` prints for the identity, read from the candidate checkout."""
