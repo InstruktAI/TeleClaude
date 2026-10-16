@@ -55,6 +55,7 @@ ERROR_PHASE: Final = "the reviewed action edge does not admit {action} from {pha
 ERROR_STOPPED: Final = "an unsuccessful enclosure action permits no subsequent normal-path mutation"
 ERROR_LATE: Final = "the native action result arrived after its original command allowance"
 ERROR_APPEND: Final = "recording the unknown effect also failed: {error_class}"
+ERROR_RECORDED: Final = "a terminal receipt already exists; consume it through the read-only receipt query: {action}"
 CLOSURE_ACTIONS: Final = frozenset({Action.POWEROFF, Action.OBSERVE, Action.EXTRACT, Action.RELEASE})
 START_ACTIONS: Final = frozenset({Action.START_GUEST, Action.START_PAYLOAD})
 
@@ -106,6 +107,14 @@ class Outcome(StrEnum):
     UNKNOWN = "unknown"
 
 
+class TerminalProcessState(StrEnum):
+    """Native process states which cannot own a new enclosure effect."""
+
+    ZOMBIE = "Z"
+    DEAD = "X"
+    DEAD_LOWER = "x"
+
+
 @dataclass(frozen=True)
 class Controller:
     """Native Linux process identity of the original outside supervisor."""
@@ -123,7 +132,7 @@ class Controller:
         raw = Path(PROC_STAT.format(pid=pid)).read_text(encoding=UTF8)
         end = raw.rfind(PROC_STAT_END)
         fields = raw[end + 1 :].split()
-        if end < 0 or len(fields) <= PROC_START_INDEX:
+        if end < 0 or len(fields) <= PROC_START_INDEX or fields[0] in set(TerminalProcessState):
             raise ValueError(ERROR_OWNER)
         start = int(fields[PROC_START_INDEX])
         boot = BOOT_ID.read_text(encoding=UTF8).strip()
@@ -193,6 +202,15 @@ class ActionResult:
     def record(self, action: Action) -> JsonObject:
         """Freeze result data before the journal append crosses the durability boundary."""
         return {Key.ACTION: action.value, Key.STATUS: self.status.value, Key.EVIDENCE: dict(self.evidence)}
+
+
+class ActionAlreadyRecorded(RuntimeError):
+    """A new mutation was refused; the exact prior receipt remains separately consumable."""
+
+    def __init__(self, action: Action, receipt: ActionResult) -> None:
+        super().__init__(ERROR_RECORDED.format(action=action))
+        self.action = action
+        self.receipt = receipt
 
 
 @dataclass(frozen=True)
@@ -371,14 +389,14 @@ class ActionJournal:
         maximum_seconds: float,
         vector_end_ns: int | None = None,
     ) -> ActionResult:
-        """Issue an admitted effect once; replay only its receipt, never an ambiguous call."""
+        """Issue an admitted effect once; every second mutation is refused before its callback."""
         with self._exclusive():
             self.binding.controller.require_alive()
             view = self.read()
             if view.pending is not None or any(result.status is Outcome.UNKNOWN for result in view.outcomes.values()):
                 raise RuntimeError(ERROR_UNKNOWN.format(action=view.pending or action))
             if action in view.outcomes:
-                return view.outcomes[action]
+                raise ActionAlreadyRecorded(action, view.outcomes[action])
             if any(result.status is not Outcome.SUCCEEDED for result in view.outcomes.values()):
                 raise RuntimeError(ERROR_STOPPED)
             transition = self.transitions[action]
@@ -410,6 +428,11 @@ class ActionJournal:
             self._append(committed.rows, Event.OUTCOME, result.record(action))
             self.read()
             return result
+
+    def receipt(self, action: Action) -> ActionResult | None:
+        """Consume a recorded acknowledgment without acquiring authority to invoke an effect."""
+        with self._exclusive():
+            return self.read().outcomes.get(action)
 
 
 def _apply_row(
