@@ -57,6 +57,8 @@ MODE: Final = "--mode"
 MESSAGE: Final = "--message"
 CLAUDE: Final = "claude"
 FAST: Final = "fast"
+RUNNING_EARLIER_FIELD: Final = "standing.running_sessions_of_earlier_claims"
+EARLIER_DOOR_FIELD: Final = "standing.door"
 MSG_ONE: Final = "b7 session one"
 MSG_TWO: Final = "b7 session two"
 REASON_ONE: Final = "b7 reason one"
@@ -566,9 +568,13 @@ def run_b7(flow: flow_module.WorkflowFlow) -> None:
         final_item = flow.item()
         while time.monotonic() < deadline:
             final_item = flow.item()
-            running_found, running = creation.dig(final_item, "standing.running_sessions_of_earlier_claims")
-            door_found, door = creation.dig(final_item, "standing.door")
-            if running_found and isinstance(running, list) and not running and (not door_found or not door):
+            running_found, running = creation.dig(final_item, RUNNING_EARLIER_FIELD)
+            door_found, door = creation.dig(final_item, EARLIER_DOOR_FIELD)
+            if running_found and not isinstance(running, list):
+                _fail(f"B7 earlier-session field is malformed: {final_item!r}")
+            if not running_found or not running:
+                if door_found and door not in (None, ""):
+                    _fail(f"B7 earlier-session door remains after all sessions ended: {final_item!r}")
                 break
             time.sleep(POLL_SECONDS)
         else:

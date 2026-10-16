@@ -125,6 +125,7 @@ DETAIL_EVENT: Final = "a required visible positive event occurrence is not estab
 DETAIL_LOG: Final = "the final public item log is malformed or does not preserve the observed B3 state"
 DETAIL_LOG_HEADER: Final = "the public item log contains a malformed ledger header"
 DETAIL_LOG_SECTION: Final = "the public item log contains a malformed ledger section"
+WORK_CLAIM_BODY: Final = "{item} claimed by {role} session {session} on branch {branch}."
 
 
 @dataclass(frozen=True)
@@ -318,13 +319,17 @@ def _current_computer(observer: creation.Observer) -> str:
 def _initial_log(shown: Mapping[str, object]) -> ledger.JsonObject:
     names = shown.get(FIELD_ARTIFACTS)
     content = shown.get(FIELD_CONTENT)
-    if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+    if (
+        not isinstance(names, list)
+        or not all(isinstance(name, str) for name in names)
+        or not isinstance(content, Mapping)
+    ):
         raise creation.binding_failure(DETAIL_LOG)
     has_name = FIELD_LOG in names
-    has_content = isinstance(content, Mapping) and FIELD_LOG in content
+    has_content = FIELD_LOG in content
     if not has_name and not has_content:
         return {"presence": "absent"}
-    value = content.get(FIELD_LOG) if isinstance(content, Mapping) else None
+    value = content.get(FIELD_LOG)
     if has_name and has_content and isinstance(value, str):
         return {"presence": "present", "type": "string", "value": value}
     raise creation.binding_failure(DETAIL_LOG)
@@ -521,7 +526,15 @@ def profile_report(profile_root: Path) -> ledger.JsonObject:
     path = profile_root.resolve() / CASE_REPORT_FILE
     if not path.is_file():
         return {FIELD_STATUS: "not_started", FIELD_CASES: {}}
-    report = dict(_read_object(path, str(path)))
+    try:
+        report = dict(_read_object(path, str(path)))
+    except creation.JourneyFailure as error:
+        return {
+            FIELD_STATUS: "unproven",
+            FIELD_CASES: {},
+            "case_report_path": str(path),
+            "error": str(error),
+        }
     cases = report.get(FIELD_CASES)
     complete = isinstance(cases, Mapping) and all(
         isinstance(cases.get(case), Mapping) and cases[case].get(FIELD_STATUS) == "complete" for case in CASE_SEQUENCE
@@ -931,7 +944,14 @@ def _assert_log_payloads(case: str, data: Mapping[str, object], log: str) -> Non
     if case == "B4":
         _require_witness_text(data, "author", "worker", "R1")
         _require_log_record(entries, ROLE_PREPARE, str(data["author"]), "prepared", str(data["R1"]), "")
-        _require_log_record(entries, ROLE_WORK, str(data["worker"]), ACT_CLAIM, None, f"on branch {ITEM}")
+        _require_log_record(
+            entries,
+            ROLE_WORK,
+            str(data["worker"]),
+            ACT_CLAIM,
+            None,
+            WORK_CLAIM_BODY.format(item=ITEM, role=ROLE_WORK, session=data["worker"], branch=ITEM),
+        )
         return
     if case == "B5":
         _require_witness_text(data, "w2", "builder", "w3", "C1", "C2", "C3", "finding_key")
@@ -944,7 +964,14 @@ def _assert_log_payloads(case: str, data: Mapping[str, object], log: str) -> Non
         _require_log_record(entries, ROLE_WORK, w2, ACT_FINDING, f"{c1}:{finding_digest}", FINDING_TEXT)
         _require_log_record(entries, ROLE_BUILDER, builder, ACT_REPLY, f"{finding_key}:{reply_digest}", REPLY_TEXT)
         _require_log_record(entries, ROLE_WORK, w2, ACT_STAMP, c2, LANE_ONE)
-        _require_log_record(entries, ROLE_WORK, w3, ACT_CLAIM, None, f"on branch {ITEM}")
+        _require_log_record(
+            entries,
+            ROLE_WORK,
+            w3,
+            ACT_CLAIM,
+            None,
+            WORK_CLAIM_BODY.format(item=ITEM, role=ROLE_WORK, session=w3, branch=ITEM),
+        )
         _require_log_record(entries, ROLE_WORK, w3, ACT_STAMP, c3, LANE_TWO)
         return
     if case == "B7":
@@ -956,8 +983,8 @@ def _assert_log_payloads(case: str, data: Mapping[str, object], log: str) -> Non
         reason_two = str(data["reason_two"])
         first_digest = hashlib.sha256(reason_one.encode(ENCODING)).hexdigest()[:16]
         second_digest = hashlib.sha256(reason_two.encode(ENCODING)).hexdigest()[:16]
-        _require_log_record(entries, "", first, "note", f"{first}:{first_digest}", reason_one)
-        _require_log_record(entries, "", second, "note", f"{second}:{second_digest}", reason_two)
+        _require_log_record(entries, "", first, "note", first_digest, reason_one)
+        _require_log_record(entries, "", second, "note", second_digest, reason_two)
         _require_log_record(entries, ROLE_WORK, w4, "release", w4, "")
 
 

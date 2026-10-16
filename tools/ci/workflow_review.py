@@ -77,6 +77,7 @@ B11_SENTINEL_BYTES: Final = b"b11 dirty sentinel\n"
 B11_SENTINEL_LINE: Final = "b11 dirty sentinel"
 B11_BASE_FEATURE_BYTES: Final = b"b5 file one\nb5 file two\n"
 B11_STATUS_MODIFIED: Final = " M feature.txt"
+B11_STATUS_MODIFIED_BYTES: Final = b" M feature.txt\n"
 B11_NUMSTAT: Final = "1\t0\tfeature.txt"
 B11_DIRTY_REFUSAL: Final = "stamp: the worktree has uncommitted changes"
 B11_LOCAL_COMMIT_MESSAGE: Final = flow_module.B11_LOCAL_HEAD_MESSAGE
@@ -338,7 +339,7 @@ def _end(flow: flow_module.WorkflowFlow, session: str) -> None:
 
 def _start_work(
     flow: flow_module.WorkflowFlow,
-) -> tuple[creation.SessionView, Path, str, str, str, str, int]:
+) -> tuple[creation.SessionView, Path, str, str, str, str, int, driver.DriverCase]:
     baseline = flow.observer.sessions()
     item = flow.item()
     artifact = item.get("artifact_content")
@@ -365,7 +366,7 @@ def _start_work(
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))
         )
     w2 = flow.plan_actor(PROC_WORK, 1, ROLE_WORK)
-    _startup(flow, w2, ROLE_WORK, PROC_WORK)
+    w2_record, _w2_launch = _startup(flow, w2, ROLE_WORK, PROC_WORK)
     child_frame = _frame_success(flow, w2, "child")
     child_run = child_frame.get("run")
     child_stdout = child_run.get("stdout") if isinstance(child_run, Mapping) else None
@@ -393,11 +394,11 @@ def _start_work(
         verb=WORK,
         phase=flow_module.WORK_PHASE,
     )
-    case.require_title_stable(w2)
+    case.titles[w2] = case.require_title(w2_record, ROLE_WORK)
     instruction = case.claim_call((operation,))
     case.check_instruction(w2, instruction)
     case.observe_claim(w2, known_entries=known_claims)
-    return baseline, worktree, w2, builder, operation, parent_id, known_claims
+    return baseline, worktree, w2, builder, operation, parent_id, known_claims, case
 
 
 def _build_and_review(
@@ -643,14 +644,14 @@ def _b11_assert_clean_c2(
 
 
 def _b11_assert_owned_append(flow: flow_module.WorkflowFlow, worktree: Path) -> None:
-    status = _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
+    status = _git_bytes(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
     additions = _git(flow, "diff", "--numstat", "--", B11_FEATURE_PATH, cwd=worktree)
     diff = _git(flow, "diff", "--no-ext-diff", "--unified=0", "--", B11_FEATURE_PATH, cwd=worktree)
     changed_lines = [
         line for line in diff.splitlines() if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
     ]
     if (
-        status != B11_STATUS_MODIFIED
+        status != B11_STATUS_MODIFIED_BYTES
         or _git(flow, "diff", "--cached", "--name-only", cwd=worktree)
         or additions != B11_NUMSTAT
         or changed_lines != [f"+{B11_SENTINEL_LINE}"]
@@ -765,7 +766,6 @@ def _b11_unclean_probe(flow: flow_module.WorkflowFlow, w2: str, builder: str, co
         effect,
         f"feature.txt append bytes={B11_EXPECTED_APPEND_COUNT} sha256={flow_module.B11_SENTINEL_SHA256}",
     )
-    failure: BaseException | None = None
     try:
         _b11_refused_stamp(
             flow,
@@ -780,16 +780,14 @@ def _b11_unclean_probe(flow: flow_module.WorkflowFlow, w2: str, builder: str, co
             parsed_log,
             refs,
         )
-    except BaseException as error:
-        failure = error
+    except BaseException:
+        flow.retain(flow_module.RETAINED_MARKER.format(path=flow.root))
+        raise
     try:
         _b11_restore_dirty_sentinel(flow, worktree, effect, snapshot, parsed_log, refs, staged_paths)
     except BaseException:
         flow.retain(flow_module.RETAINED_MARKER.format(path=flow.root))
-        if failure is None:
-            raise
-    if failure is not None:
-        raise failure
+        raise
 
 
 def _b11_restore_local_head(
@@ -855,7 +853,6 @@ def _b11_worktree_head_probe(flow: flow_module.WorkflowFlow, w2: str, c2: str, w
     ):
         raise creation.binding_failure(DETAIL_BINDING.format(detail="B11 local-only commit is not isolated from C2"))
     flow.require_ledger().record_effect(effect, f"temporary local-only head {temporary} with parent C2 {c2}")
-    failure: BaseException | None = None
     try:
         expected_error = f"stamp: the worktree branch head {temporary} differs from {c2}"
         _b11_refused_stamp(
@@ -871,16 +868,14 @@ def _b11_worktree_head_probe(flow: flow_module.WorkflowFlow, w2: str, c2: str, w
             parsed_log,
             current_refs,
         )
-    except BaseException as error:
-        failure = error
+    except BaseException:
+        flow.retain(flow_module.RETAINED_MARKER.format(path=flow.root))
+        raise
     try:
         _b11_restore_local_head(flow, worktree, effect, c2, temporary, snapshot, parsed_log, original_refs)
     except BaseException:
         flow.retain(flow_module.RETAINED_MARKER.format(path=flow.root))
-        if failure is None:
-            raise
-    if failure is not None:
-        raise failure
+        raise
 
 
 def _exercise_b11_stamp_refusals(
@@ -978,7 +973,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))
         )
     w3 = flow.plan_actor(PROC_WORK, 2, ROLE_WORK)
-    _startup(flow, w3, ROLE_WORK, PROC_WORK)
+    w3_record, _w3_launch = _startup(flow, w3, ROLE_WORK, PROC_WORK)
     case = driver.DriverCase(
         host=flow.host,
         observer=flow.observer,
@@ -991,7 +986,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
         verb=WORK,
         phase=flow_module.WORK_PHASE,
     )
-    case.require_title_stable(w3)
+    case.titles[w3] = case.require_title(w3_record, ROLE_WORK)
     instruction = case.claim_call((operation,))
     case.check_instruction(w3, instruction)
     case.observe_claim(w3, known_entries=known_claims + 1)
@@ -1036,6 +1031,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
     ready_since = ready_standing.get("ready_since")
     if not isinstance(ready_since, str) or not ready_since:
         raise creation.binding_failure("B10 requires the public C3 ready_since witness before B7 handover")
+    case.require_title_stable(w3)
     _end(flow, w3)
     flow.sessions[w3] = ROLE_WORK
     return w3, ready_since
@@ -1057,10 +1053,11 @@ def run_b5(flow: flow_module.WorkflowFlow) -> None:
             )
         ):
             raise creation.binding_failure(DETAIL_PRECONDITION.format(item=item))
-        baseline, worktree, w2, builder, operation, parent_id, known_claims = _start_work(flow)
+        baseline, worktree, w2, builder, operation, parent_id, known_claims, w2_case = _start_work(flow)
         commit_one, commit_two, finding_key = _build_and_review(flow, worktree, w2, builder, operation)
         ready_since_c2 = _exercise_stamps(flow, w2, builder, commit_one, commit_two)
         integrators = _observe_integrators(flow, baseline, w2, builder)
+        w2_case.require_title_stable(w2)
         _end(flow, w2)
         commit_three = _move_head(flow, worktree)
         w3, ready_since_c3 = _restamp(flow, commit_three, known_claims)

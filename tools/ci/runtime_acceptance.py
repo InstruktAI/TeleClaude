@@ -4840,7 +4840,15 @@ def run_profile(
             selection=selection,
         )
         if resources is not None:
-            return replace(report, workflow_event_evidence=events.profile_report(temporary_root))
+            try:
+                event_evidence = events.profile_report(temporary_root)
+            except Exception as error:
+                event_evidence = {
+                    "status": "unproven",
+                    "case_report_path": str(temporary_root / events.CASE_REPORT_FILE),
+                    "error": str(error),
+                }
+            return replace(report, workflow_event_evidence=event_evidence)
         return report
     except BaseException:
         if temporary_root.exists() and (resources is None or not resources.retained):
