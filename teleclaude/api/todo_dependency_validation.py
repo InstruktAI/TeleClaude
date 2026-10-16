@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
 
-from teleclaude.core.todos_db import GroupDependencyConflict
+from teleclaude.core.todos_db._errors import GroupDependencyConflict
 
 if TYPE_CHECKING:
     from teleclaude.core.workflow_store.store import WorkflowStore

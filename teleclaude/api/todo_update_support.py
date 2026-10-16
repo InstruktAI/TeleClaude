@@ -26,7 +26,7 @@ from teleclaude.core.next_machine.unclaim import (
     format_claim_release_outcome,
     unclaim_todo_for_caller,
 )
-from teleclaude.core.todos_db import (
+from teleclaude.core.todos_db._errors import (
     GroupCycleRefused,
     GroupDependencyConflict,
     HolderReconciliationRefused,

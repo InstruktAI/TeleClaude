@@ -8,7 +8,9 @@ CREATION_VALIDITY_GATE_ITEM = (
 PENDING_DOCS_GATE_ITEM = (
     "- Pending docs - functionality or process-contract work? Its pending\n"
     "   snippets are written before planning by whoever holds the context\n"
-    "   (general/policy/documentation-discipline).\n\n"
+    "   (general/policy/documentation-discipline). Associate their commit with\n"
+    "   telec code commit --todo <slug>, complete independent review, then\n"
+    "   submit a fresh create request if evidence was missing or stale.\n\n"
 )
 OWNERSHIP_AUTHORITY_GATE_ITEM = (
     "- Ownership & authority - owning project of the changed files correct\n"

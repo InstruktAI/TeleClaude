@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from teleclaude.core.todos_db import (
+from teleclaude.core.todos_db._adapter import (
     TodosDb,
     close_todos_db_instances,
     get_todos_db,

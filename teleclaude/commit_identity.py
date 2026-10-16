@@ -23,8 +23,11 @@ _LINE_SEP = "\n"
 _PARAGRAPH_SEP = _LINE_SEP * 2
 _BLANK_LINE = ""
 SESSION_TRAILER_KEY = "Session"
+TODO_TRAILER_KEY = "Todo"
+PLANNED_TODO_TRAILER_KEY = "Planned-Todo"
 _SESSION_LINE_TEMPLATE = SESSION_TRAILER_KEY + ": {session_id}"
 _HUMAN_INVOLVED_LINE_TEMPLATE = "Human-Involved: {label}"
+_TODO_ASSOCIATION_LINE_TEMPLATE = "{key}: {slug}"
 _HUMAN_INVOLVED_LABELS: MappingProxyType[bool, str] = MappingProxyType({True: "true", False: "false"})
 
 _ERR_ACTIVE_AGENT_UNRESOLVED = "agent session {session_id!r} exists but its active agent could not be resolved"
@@ -103,7 +106,13 @@ def resolve_commit_identity_from_caller(identity: ResolvedCliIdentity) -> tuple[
     raise CommitIdentityUnresolvable(_ERR_NO_CALLER_PRINCIPAL)
 
 
-def compose_commit_footer(message: str, *, session_id: str | None, human_involved: bool) -> str:
+def compose_commit_footer(
+    message: str,
+    *,
+    session_id: str | None,
+    human_involved: bool,
+    todo_association: tuple[str, str] | None = None,
+) -> str:
     """Append the mandated footer to *message*, never reading a byte of it.
 
     Appends, in order: the original message exactly as given (subject and body,
@@ -116,4 +125,7 @@ def compose_commit_footer(message: str, *, session_id: str | None, human_involve
     if session_id is not None:
         footer_lines.append(_SESSION_LINE_TEMPLATE.format(session_id=session_id))
     footer_lines.append(_HUMAN_INVOLVED_LINE_TEMPLATE.format(label=_HUMAN_INVOLVED_LABELS[human_involved]))
+    if todo_association is not None:
+        key, slug = todo_association
+        footer_lines.append(_TODO_ASSOCIATION_LINE_TEMPLATE.format(key=key, slug=slug))
     return message + _PARAGRAPH_SEP + _LINE_SEP.join(footer_lines) + _LINE_SEP

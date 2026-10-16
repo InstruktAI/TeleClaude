@@ -1,10 +1,4 @@
-"""The commit-review stamp surface.
-
-One daemon-side mutation route that records the outcome of reviewing commits on
-main. It runs here, against the initialized session DB, because the stamp's
-target todo is derived from the stamping session's chain in the session
-registry.
-"""
+"""The commit-review stamp surface backed by repository-scoped workflow evidence."""
 
 from __future__ import annotations
 
@@ -42,7 +36,7 @@ async def commit_review_stamp(
     reason: Annotated[str, Body()] = "",
     identity: CallerIdentity = Depends(carried_caller),
 ) -> CommitReviewStampResponse:
-    """Record one commit-review stamp per SHA on the todo the caller's chain claims.
+    """Record one repository-scoped commit-review stamp per SHA.
 
     The stamping session is the verified request identity, never the body. A
     caller with no session id is refused: the record must name who stamped.
