@@ -48,6 +48,7 @@ GIT_EXECUTABLE: Final = "git"
 GIT_INIT_ARGUMENTS: Final = ("init", "-q")
 GIT_DIRECTORY: Final = ".git"
 PROCESS_TIMEOUT_SECONDS: Final = 30
+PATH_ROOT: Final = "/"
 LOGIN_PROFILE_NAMES: Final = (".bash_profile", ".bash_login", ".profile")
 LOGIN_PATH_LINE: Final = 'export PATH="{directory}:$PATH"'
 LINE_FEED: Final = "\n"
@@ -237,7 +238,8 @@ def require_owned_resolution(
         else (SHELL_EXECUTABLE, SHELL_COMMAND_OPTION, COMMAND_V_SCRIPT)
     )
     outcome = host.process(argv, cwd, environment, PROCESS_TIMEOUT_SECONDS)
-    found = outcome.output.strip().splitlines()[-1] if outcome.output.strip() else ""
+    paths = [line.strip() for line in outcome.output.splitlines() if line.strip().startswith(PATH_ROOT)]
+    found = paths[-1] if paths else ""
     if outcome.exit_status != 0 or not found:
         context = host.process(
             (LOGIN_SHELL_EXECUTABLE, LOGIN_SHELL_OPTION, LOGIN_CONTEXT_SCRIPT),
