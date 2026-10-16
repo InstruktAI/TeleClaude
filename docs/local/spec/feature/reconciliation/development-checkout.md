@@ -40,6 +40,7 @@ unpublished work before releasing the resource. Project cleanup and backup
 classification treat it as retained development state rather than a cache.
 
 Registration uses config's association operation
+after its installation registration request has succeeded
 (`local/projects/teleclaude/spec/feature/config/project-registry`). A provisioning
 receipt records progress through clone creation, environment preparation and
 registration, so retry converges on the same resource after an interruption.

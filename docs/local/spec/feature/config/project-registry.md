@@ -77,11 +77,15 @@ from inside a linked worktree, and the registry still names the checkout that
 owns it, so an ephemeral worktree path is never enumerated as a project.
 <!-- change:release-development-checkouts -->
 
-Creation and adoption own registry writes. Installation provisioning calls
-the adoption owner's checkout-association operation to register its companion
-atomically with the existing logical project. It neither appends an unrelated
-duplicate project nor writes the backing file itself. Retry preserves the same
-association. Ordinary publication and synchronization do not adopt folders.
+Creation and adoption own registry writes. Installation requests registration
+of its installed project through the adoption owner before requesting companion
+association. That registration validates the installed declaration and existing
+identity ownership, records an absent primary entry, and reuses a matching entry
+without changing installed source, history or ownership. An identity held by
+another entry remains a conflict. Companion association atomically extends that
+registered logical project. Installation writes no backing file itself, and
+retry preserves the same entry and association. Ordinary publication and
+synchronization do not adopt folders.
 
 Person and company homes retain their existing tier identities and session
 placement behavior. Project creation/adoption retains its owner and declaration
