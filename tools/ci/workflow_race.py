@@ -721,7 +721,7 @@ def run_race(
         _require_unclaimed(ITEM_R, driver.shown_with_content(observer, ITEM_R))
         race.clone = race.publication.prepare()
         creation.enter_project(observer, project)
-        publication.negative_control(observer, ITEM_W, race.baseline, before)
+        publication.negative_control(observer, ITEM_W, race.baseline, before, race.starts)
         race.publication.publish()
         race.publication.verify_parity()
         creation.enter_project(observer, project)

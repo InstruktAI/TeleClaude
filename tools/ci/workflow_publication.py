@@ -18,7 +18,7 @@ import os
 import re
 import shutil
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -104,6 +104,9 @@ DETAIL_UNRESOLVED_START: Final = "accepted starts {operations!r} were never obse
 DETAIL_SESSION_OPEN: Final = "session {session} could not be closed: {detail}"
 
 
+PENDING_NOTE_MARKER: Final = "\n# NOTE: This snippet has pending changes."
+
+
 def _text(output: str) -> str:
     return output.replace("\r\n", "\n")
 
@@ -114,7 +117,8 @@ def docs_body(output: str) -> str | None:
     dividers = [index for index, line in enumerate(lines) if line.strip() == "---"]
     if len(dividers) < 2:
         return None
-    return "\n".join(lines[dividers[1] + 1 :]).strip()
+    body = "\n".join(lines[dividers[1] + 1 :])
+    return body.split(PENDING_NOTE_MARKER)[0].strip()
 
 
 def operation_state(observer: creation.Observer, operation: str, *, retain: bool = False) -> Mapping[str, object]:
@@ -354,6 +358,10 @@ class Publication:
         }
         return GENERATION_INCONSISTENT, repr(detail)
 
+    def release_candidate_files(self) -> None:
+        """Take the candidate\'s live bodies from its checkout, so a restoration can be verified from the start."""
+        self.live_bodies = {identity: self._file_body(identity) for identity in FOLD_IDS}
+
     def ensure_candidate(self) -> str:
         """Own the starting generation: reuse nothing, restore the candidate first when the fold is installed.
 
@@ -364,6 +372,7 @@ class Publication:
         state, evidence = self.classify_generation()
         path = f"generation {state}: {evidence}"
         if state == GENERATION_FIXTURE:
+            self.attempted = True  # the attempt is owned before the bounded command that may exchange the generation
             self._publish(self._fresh_copy(self.source_root, "ensure"))
             state, evidence = self.classify_generation()
             path += f"; restored the candidate, then generation {state}: {evidence}"
@@ -378,6 +387,7 @@ class Publication:
         self.note("candidate-identity", self.candidate)
         self.register_company()
         if own_generation:
+            self.release_candidate_files()
             self.ensure_candidate()
         self.live_bodies = {identity: self.body_of(identity, pending=False) for identity in FOLD_IDS}
 
@@ -603,11 +613,57 @@ DETAIL_NEGATIVE_WRITE: Final = "the pre-publication prepare changed the item or 
 DETAIL_RECEIPT: Final = "`telec todo prepare` printed no operation receipt: exit {status}, {output!r}"
 
 
+ATTEMPT_PREFIX: Final = "attempt:"
+
+
+def receipt_operation(output: str) -> str | None:
+    """The operation id a receipt-backed verb printed, or None."""
+    receipt = foundation.json_object(output)
+    operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
+    return operation if isinstance(operation, str) and operation else None
+
+
+def begin_attempt(starts: MutableMapping[str, str], label: str) -> str:
+    """Own an attempted start before the call or the gate that may cause it is crossed.
+
+    A timeout, a lost exit frame or a malformed answer proves nothing about acceptance, so the attempt stays open (and
+    closure stays unproven) until a receipt names the operation it became.
+    """
+    key = f"{ATTEMPT_PREFIX}{label}:{len(starts)}"
+    starts[key] = START_OPEN
+    return key
+
+
+def settle_attempt(starts: MutableMapping[str, str], key: str, operation: str | None) -> None:
+    """A parsed operation id replaces its attempt, whatever the exit status or frame completeness said."""
+    if operation is None:
+        return
+    starts.pop(key, None)
+    starts.setdefault(operation, START_OPEN)
+
+
+def release_attempt(starts: MutableMapping[str, str], key: str) -> None:
+    """An attempt whose outcome public evidence has settled (consumed, refused or established) is no longer open."""
+    starts.pop(key, None)
+
+
+def start_call(
+    starts: MutableMapping[str, str], observer: creation.Observer, argv: Sequence[str], label: str
+) -> tuple[Outcome, str | None]:
+    """One public start verb on the owner terminal, owned before it runs; the operation is parsed whatever its status."""
+    key = begin_attempt(starts, label)
+    outcome = observer.run(argv)
+    operation = receipt_operation(outcome.output)
+    settle_attempt(starts, key, operation)
+    return outcome, operation
+
+
 def negative_control(
     observer: creation.Observer,
     item: str,
     baseline: creation.SessionView,
     before: Mapping[str, object],
+    starts: MutableMapping[str, str],
 ) -> None:
     """B-P5: the unpublished installation is refused at the driver lookup, writing nothing; the store is activated.
 
@@ -618,13 +674,13 @@ def negative_control(
     deadline = time.monotonic() + ACTIVATION_WAIT_SECONDS
     last = ""
     while True:
-        outcome = observer.run((TELEC, TODO, PREPARE, item))
-        receipt = foundation.json_object(outcome.output)
-        operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
-        if outcome.exit_status == 0 and isinstance(operation, str) and operation:
+        outcome, operation = start_call(starts, observer, (TELEC, TODO, PREPARE, item), "negative-control")
+        if outcome.exit_status == 0 and operation is not None:
             state = await_terminal(observer, operation, NEGATIVE_OPERATION_SECONDS)
             error = state.get(FIELD_ERROR)
             failed = state.get(FIELD_STATE) == STATE_FAILED and isinstance(error, str)
+            if failed:
+                starts[operation] = START_REFUSED
             if failed and NO_DRIVER_PHRASE in str(error):
                 break
             if not (failed and NOT_ACTIVATED_PHRASE in str(error)):

@@ -148,7 +148,7 @@ def run_claim(
         _require_item_unclaimed(before)
         clone = claim.publication.prepare()
         creation.enter_project(observer, project)
-        publication.negative_control(observer, ITEM, baseline, before)
+        publication.negative_control(observer, ITEM, baseline, before, claim.starts)
         claim.publication.publish()
         claim.publication.verify_parity()
         creation.enter_project(observer, project)

@@ -76,6 +76,7 @@ ARGV_REFUSED: Final = "xdecision.argv"
 ARGV_DECISION: Final = "decision.argv"
 
 STARTED_CHILD: Final = re.compile(r"Started (?P<procedure>\S+) as session (?P<session>\S+)")
+WAIT_COMPLETE: Final = re.compile(r"^Performed waiting on " + re.escape(ITEM) + r".*, complete\s*$", re.MULTILINE)
 WAIT_KEY: Final = re.compile(r"wait key: (?P<key>\S+)")
 PERFORMED: Final = "Performed {act} on {item}"
 
@@ -114,6 +115,11 @@ DETAIL_CHANGED: Final = "{when}: the item differs from before at {paths}"
 DETAIL_NOT_DRIVER: Final = "session {session} holds the driver role {role!r}; only the second driver may"
 DETAIL_POOL: Final = "the pool directories claimed are {found!r}, not the planned {expected!r}"
 DETAIL_NOT_STARTED: Final = "{actor} {session} never showed a completed startup within {seconds} seconds: {record!r}"
+LATE_ARGV_UNREADABLE: Final = "late argument list unreadable"
+DETAIL_LATE_UNREADABLE: Final = "the fixture could not read the late-bound argument list of {name}: {frame!r}"
+DETAIL_MAPPING: Final = (
+    "{actor} {session}: the record names native session {recorded!r}, but its pool directory launched {launched!r}"
+)
 DETAIL_LATE_ARGV: Final = "the late-bound argument list {name} could not be written: {error}"
 DETAIL_RECEIPT: Final = "`telec todo prepare` printed no operation receipt: exit {status}, {output!r}"
 DETAIL_CONTROLS_KEPT: Final = "closure was not proven, so the control directories {control} are kept for diagnosis"
@@ -187,6 +193,7 @@ class _Waiting:
         self.person = ""
         self.key = ""
         self.snapshot: Json = {}
+        self.decision_attempt = ""
 
     # -- helpers ---------------------------------------------------------------------------------------------------
     def _known(self, *sessions: str) -> frozenset[str]:
@@ -220,6 +227,8 @@ class _Waiting:
         run = frame.get("run")
         if not isinstance(run, dict):
             raise creation.platform_failure(DETAIL_FRAME.format(name=name, frame=frame))
+        if run.get("error") == LATE_ARGV_UNREADABLE:
+            raise creation.binding_failure(DETAIL_LATE_UNREADABLE.format(name=name, frame=frame))
         return frame
 
     @staticmethod
@@ -261,6 +270,11 @@ class _Waiting:
             record = journey.record(retain=False)
             if journey.started(record, native):
                 return
+            recorded = record.get(foundation.FIELD_NATIVE) if record is not None else None
+            if isinstance(recorded, str) and recorded and recorded != native:
+                raise creation.binding_failure(
+                    DETAIL_MAPPING.format(actor=actor, session=session, recorded=recorded, launched=native)
+                )
             time.sleep(POLL_SECONDS)
         raise creation.platform_failure(
             DETAIL_NOT_STARTED.format(actor=actor, session=session, seconds=int(START_CAP_SECONDS), record=record)
@@ -314,8 +328,10 @@ class _Waiting:
     # -- steps -----------------------------------------------------------------------------------------------------
     def step1_owner_session(self) -> str:
         journey = self._journey("owner", 0)
+        attempt = driver.begin_attempt(self.starts, "session-owner")
         started = journey.start_session()
         owner = journey.session_id
+        driver.release_attempt(self.starts, attempt)  # the public answer named the session; settlement closes it
         journey.positive_start(started)
         record = self._record(owner)
         facts = {
@@ -342,6 +358,7 @@ class _Waiting:
         return owner
 
     def step2_first_driver(self, owner: str) -> tuple[driver.DriverCase, str, str]:
+        child_attempt = driver.begin_attempt(self.starts, "session-child")  # the driver\'s plan starts it unsupervised
         outcome, starter = driver.start_call(self.starts, self.observer, (TELEC, TODO, "prepare", ITEM), "start")
         if outcome.exit_status != 0 or starter is None:
             raise creation.platform_failure(
@@ -361,6 +378,7 @@ class _Waiting:
         if status != 0 or started is None or started.group("procedure") != CHILD_PROCEDURE:
             raise creation.platform_failure(DETAIL_CHILD.format(stdout=text[-300:], procedure=CHILD_PROCEDURE))
         child = started.group("session")
+        driver.release_attempt(self.starts, child_attempt)
         child_journey = self._journey("child", 2)
         self._startup("child", child, child_journey, 2)
         record = self._record(child)
@@ -398,8 +416,11 @@ class _Waiting:
         frame = self._frame(self.journeys["first"], FRAME_WAITING)
         status, text = self._output(frame)
         performed = PERFORMED.format(act="waiting", item=ITEM)
-        if status != 0 or performed not in text or "complete" not in text:
-            raise creation.platform_failure(DETAIL_WAIT.format(stdout=text[-300:], needle=performed + " ... complete"))
+        completed = WAIT_COMPLETE.search(text.replace("\r\n", "\n"))
+        if status != 0 or performed not in text or completed is None:
+            raise creation.platform_failure(
+                DETAIL_WAIT.format(stdout=text[-300:], needle=performed + " ... , complete")
+            )
         key = WAIT_KEY.search(text)
         if key is None:
             raise creation.binding_failure(DETAIL_WAIT.format(stdout=text[-300:], needle="wait key: <key>"))
@@ -462,13 +483,21 @@ class _Waiting:
         self._require_unchanged("after the refused entry")
 
     def step6_dispatched(self, owner: str, first: str, child: str) -> str:
+        dispatch_attempt = driver.begin_attempt(self.starts, "session-dispatched")
         self._gate(0, GATE_DISPATCH)
         frame = self._frame(self.journeys["owner"], FRAME_DISPATCH)
         status, text = self._output(frame)
         result = foundation.json_object(text)
         dispatched = result.get(foundation.FIELD_SESSION_ID) if result is not None else None
-        if status != 0 or not isinstance(dispatched, str) or not dispatched:
+        if (
+            status != 0
+            or result is None
+            or result.get(foundation.FIELD_STATUS) != foundation.STATUS_SUCCESS
+            or not isinstance(dispatched, str)
+            or not dispatched
+        ):
             raise creation.platform_failure(DETAIL_FRAME.format(name=FRAME_DISPATCH, frame=frame))
+        driver.release_attempt(self.starts, dispatch_attempt)
         journey = self._journey("dispatched", 3)
         self._startup("dispatched", dispatched, journey, 3)
         self._require_pool(4)
@@ -483,6 +512,7 @@ class _Waiting:
         self._late_argv(
             3, ARGV_REFUSED, ["telec", TODO, "act", ITEM, "decision", "--wait", self.key, ANSWER_DISPATCHED]
         )
+        refused_attempt = driver.begin_attempt(self.starts, "decision-dispatched")
         self._gate(3, GATE_REFUSED)
         refusal = self._frame(journey, FRAME_REFUSED)
         status, text = self._output(refusal)
@@ -504,6 +534,7 @@ class _Waiting:
                     when="after the refused decision", needle="no decision header", log=self._log()[-600:]
                 )
             )
+        driver.release_attempt(self.starts, refused_attempt)  # refused, nothing cleared, no driver reserved
         self._gate(3, GATE_NOTE)
         noted = self._frame(journey, FRAME_NOTE)
         status, text = self._output(noted)
@@ -531,6 +562,7 @@ class _Waiting:
 
     def step8_decide(self, owner: str) -> None:
         self._late_argv(0, ARGV_DECISION, ["telec", TODO, "act", ITEM, "decision", "--wait", self.key, ANSWER])
+        self.decision_attempt = driver.begin_attempt(self.starts, "decision-owner")
         self._gate(0, GATE_DECISION)
         frame = self._frame(self.journeys["owner"], FRAME_DECISION)
         status, text = self._output(frame)
@@ -565,6 +597,7 @@ class _Waiting:
         instruction = case.claim_call([])
         case.check_instruction(second, instruction)
         case.observe_claim(second, holds_nothing=[owner, dispatched], earlier=[first])
+        driver.release_attempt(self.starts, self.decision_attempt)  # consumed by the second driver\'s claim
         for session in (owner, child, dispatched):
             role = self._record(session).get(FIELD_ROLE)
             if role == DRIVER_ROLE:
@@ -607,7 +640,7 @@ def run_waiting(
         creation.require_standing_clear(ITEM, before)
         waiting.clone = waiting.publication.prepare()
         creation.enter_project(observer, project)
-        publication.negative_control(observer, ITEM, waiting.baseline, before)
+        publication.negative_control(observer, ITEM, waiting.baseline, before, waiting.starts)
         waiting.publication.publish()
         waiting.publication.verify_parity()
         creation.enter_project(observer, project)
