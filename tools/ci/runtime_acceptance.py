@@ -28,6 +28,7 @@ from pathlib import Path
 from types import FrameType
 from typing import cast
 
+from tools.ci import workflow_foundation as foundation
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
 _UTF8 = "utf-8"
@@ -156,6 +157,7 @@ _SCENARIO_RELEASE_DEVELOPMENT_CLONE = "UC-RC6"
 _SCENARIO_RELEASE_DECLARATION = "UC-CFG-MIG-17"
 _SCENARIO_RELEASE_PUBLICATION = "UC-SPO34"
 _SCENARIO_RELEASE_BLUEPRINT = "UC-BPF1"
+_SCENARIO_WORKFLOW_FOUNDATION = "UC-WF-F0"
 _COLD_PROFILE_SCENARIOS = (_SCENARIO_COLD,)
 _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_COLD,
@@ -185,7 +187,15 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_RELEASE_DECLARATION,
     _SCENARIO_RELEASE_BLUEPRINT,
     _SCENARIO_RELEASE_PUBLICATION,
+    _SCENARIO_WORKFLOW_FOUNDATION,
 )
+_SCENARIO_PREREQUISITES = {
+    _SCENARIO_WORKFLOW_FOUNDATION: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+    ),
+}
 _PROFILE_COLD = "cold"
 _PROFILE_FULL = "full"
 _UNKNOWN_REVISION = "unknown"
@@ -199,12 +209,27 @@ _DIAGNOSTIC_SEPARATOR = "\n"
 _BINARY_READ_MODE = "rb"
 _PROFILE_OPTION = "--profile"
 _REPORT_OPTION = "--report"
+_SELECT_OPTION = "--select"
+_SELECT_HELP = "Comma-separated scenario ids to run (with their prerequisites); the report is never a full pass."
+_SELECTION_SEPARATOR = ","
+_SELECTION_UNKNOWN = "Unknown scenario id in the selection: {scenario_id}"
+_PARTIAL_PASSED = "PARTIAL: the selected scenarios passed; the full profile did not run and is not claimed."
+_EXIT_PARTIAL = 2
 _ROOT_OPTION = "--root"
 _SOURCE_REVISION_OPTION = "--source-revision"
 _SOURCE_TREE_OPTION = "--source-tree"
 _CLI_DESCRIPTION = "Run the bounded real-process CLI acceptance profile."
 _REPORT_WRITE_ERROR = "Could not write runtime acceptance report: {error}"
 _SCENARIO_NOT_RUN = "No scenario action was registered."
+_FIXTURE_INSTALLER_WHERE = "the installer environment"
+_FIXTURE_LOGIN_WHERE = "the owner login shell"
+_MACHINE_WORKFLOW_SECTION = "workflow"
+_MACHINE_WORKFLOW_RUNNER_FIELD = "runner"
+_WORKFLOW_RUNNER_MANUAL = "manual"
+_FULL_WORKFLOW_RUNNER_NOT_MANUAL = "The public machine configuration does not report workflow.runner=manual."
+_FULL_FOUNDATION_PREREQUISITES = "Journey F0 needs the installed fixture and the registered disposable project."
+_FULL_FIXTURE_CLEANUP_ERROR = "The installed native fixture could not be removed."
+_SCENARIO_NOT_SELECTED = "Not selected for this run; the scenario was not executed."
 _INTERRUPTED = "The profile was interrupted."
 _SYNTHETIC_HOME_DIRECTORY = "home"
 _SYNTHETIC_STATE_DIRECTORY = "state"
@@ -619,13 +644,28 @@ class AcceptanceReport:
     scenarios: tuple[ScenarioResult, ...]
     cleanup: CleanupResult
     duration_seconds: float
+    selection: tuple[str, ...] = ()
 
     @property
     def passed(self) -> bool:
+        """A pass of the whole inventory; a run that selected a subset never is one."""
         return (
-            self.cleanup.status is ScenarioStatus.PASSED
+            not self.selection
+            and self.cleanup.status is ScenarioStatus.PASSED
             and len(self.scenarios) == len(self.scenario_inventory)
             and all(result.status is ScenarioStatus.PASSED for result in self.scenarios)
+        )
+
+    @property
+    def selection_passed(self) -> bool:
+        """Whether every scenario a selected run executed passed and its cleanup did; says nothing of the rest."""
+        executed = [result for result in self.scenarios if result.status is not ScenarioStatus.NOT_RUN]
+        return (
+            bool(self.selection)
+            and self.cleanup.status is ScenarioStatus.PASSED
+            and bool(executed)
+            and all(result.status is ScenarioStatus.PASSED for result in executed)
+            and {result.scenario_id for result in executed} == set(self.selection)
         )
 
 
@@ -656,12 +696,27 @@ def execute_profile(
     scenario_inventory: Sequence[str],
     scenario_actions: Mapping[str, ScenarioAction],
     cleanup_action: CleanupAction,
+    selection: frozenset[str] = frozenset(),
 ) -> AcceptanceReport:
-    """Run required scenarios in order and retain failures, omissions and cleanup."""
+    """Run required scenarios in order and retain failures, omissions and cleanup.
+
+    A non-empty ``selection`` runs only those scenarios; the others are reported as not run because they were not
+    selected, and the report is never a pass of the whole inventory.
+    """
     started = time.monotonic()
     outcomes: list[ScenarioResult] = []
     cleanup = CleanupResult(status=ScenarioStatus.NOT_RUN)
     for scenario_id in scenario_inventory:
+        if selection and scenario_id not in selection:
+            outcomes.append(
+                ScenarioResult(
+                    scenario_id=scenario_id,
+                    status=ScenarioStatus.NOT_RUN,
+                    duration_seconds=0,
+                    diagnostics=_SCENARIO_NOT_SELECTED,
+                )
+            )
+            continue
         action = scenario_actions.get(scenario_id)
         if action is None:
             outcomes.append(
@@ -710,7 +765,9 @@ def execute_profile(
                         scenario_id=not_run_id,
                         status=ScenarioStatus.NOT_RUN,
                         duration_seconds=0,
-                        diagnostics=_SCENARIO_NOT_RUN,
+                        diagnostics=_SCENARIO_NOT_SELECTED
+                        if selection and not_run_id not in selection
+                        else _SCENARIO_NOT_RUN,
                     )
                 )
             break
@@ -739,6 +796,7 @@ def execute_profile(
         scenarios=tuple(outcomes),
         cleanup=cleanup,
         duration_seconds=time.monotonic() - started,
+        selection=tuple(sorted(selection)),
     )
 
 
@@ -775,6 +833,7 @@ class FullRuntimeResources:
     expected_timezone: str | None = None
     unrelated_computer_role: str | None = None
     release_world: object | None = None
+    fixture_setup: foundation.FixtureSetup | None = None
 
     def open_admin_terminal(self) -> PersistentTerminal:
         """Create the one administrator PTY retained for fresh CLI processes."""
@@ -1121,6 +1180,7 @@ def _record_terminal_command(
     terminal: PersistentTerminal,
     argv: Sequence[str],
     evidence: list[CommandEvidence],
+    timeout_seconds: float | None = None,
 ) -> tuple[int | None, str]:
     """Run one fresh CLI command on an owned PTY and retain bounded sanitized evidence."""
     started = time.monotonic()
@@ -1128,7 +1188,7 @@ def _record_terminal_command(
     if argv_tuple and argv_tuple[0] == str(_CLI_EXECUTABLE):
         argv_tuple = (str(resources.source_root / _CLI_EXECUTABLE), *argv_tuple[1:])
     try:
-        result = terminal.run(argv_tuple)
+        result = terminal.run(argv_tuple, timeout_seconds=timeout_seconds)
     except TerminalFailure as exc:
         evidence.append(
             CommandEvidence(
@@ -1624,6 +1684,8 @@ def _close_full_profile_resources(
             _close_release_world(resources.release_world, cleanup_evidence)
         except Exception:
             failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
+    if resources.fixture_setup is not None and foundation.remove_fixture(resources.fixture_setup):
+        failures.append(_FULL_FIXTURE_CLEANUP_ERROR)
     try:
         shutil.rmtree(resources.temporary_root)
     except OSError:
@@ -1720,12 +1782,112 @@ def _await_config_restart(
     raise RuntimeError(_HEALTH_INSTANCE_UNCHANGED)
 
 
+class _FoundationRunner:
+    """The profile\'s side of journey F0: the owner terminal, bounded child processes and retained evidence."""
+
+    def __init__(self, resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+        self._resources = resources
+        self._evidence = evidence
+
+    @property
+    def environment(self) -> Mapping[str, str]:
+        """The profile\'s allowlisted child environment."""
+        return self._resources.environment
+
+    def cli(self, argv: Sequence[str], timeout_seconds: float, *, retain: bool = True) -> foundation.Outcome:
+        """Run one fresh public CLI process on the authenticated owner terminal."""
+        terminal = self._resources.open_admin_terminal()
+        evidence = self._evidence if retain else []
+        status, output = _record_terminal_command(self._resources, terminal, argv, evidence, timeout_seconds)
+        return foundation.Outcome(status, output)
+
+    def process(
+        self, argv: Sequence[str], cwd: Path, environment: Mapping[str, str], timeout_seconds: float
+    ) -> foundation.Outcome:
+        """Run one bounded child process and retain its sanitized evidence."""
+        result = _run_bounded_process(argv, cwd=cwd, environment=environment, timeout_seconds=timeout_seconds)
+        self._evidence.append(
+            CommandEvidence(
+                argv=tuple(self._resources.sanitize(value) for value in argv),
+                exit_status=result.exit_status,
+                duration_seconds=result.duration_seconds,
+                stdout=self._resources.sanitize(result.stdout)[:_DIAGNOSTIC_LIMIT],
+                stderr=self._resources.sanitize(result.stderr)[:_DIAGNOSTIC_LIMIT],
+                diagnostics=result.diagnostics,
+            )
+        )
+        return foundation.Outcome(result.exit_status, f"{result.stdout}{result.stderr}")
+
+    def note(self, argv: Sequence[str], outcome: foundation.Outcome, diagnostics: str) -> None:
+        """Retain bounded evidence of a command the fixture ran inside its pane."""
+        self._evidence.append(
+            CommandEvidence(
+                argv=tuple(self._resources.sanitize(value) for value in argv),
+                exit_status=outcome.exit_status,
+                duration_seconds=0.0,
+                stdout=self._resources.sanitize(outcome.output)[:_DIAGNOSTIC_LIMIT],
+                diagnostics=self._resources.sanitize(diagnostics)[:_DIAGNOSTIC_LIMIT],
+            )
+        )
+
+
+def _install_native_fixture(
+    resources: FullRuntimeResources, installer_environment: dict[str, str], evidence: list[CommandEvidence]
+) -> None:
+    """Install the inert agent executable before the supported installation, and prove the installer will find it."""
+    home = installer_environment.get(_COLD_HOME_VARIABLE)
+    if not home:
+        raise RuntimeError(_FULL_HOME_REQUIRED)
+    setup = foundation.fixture_paths(Path(home), resources.temporary_root)
+    foundation.install_fixture(resources.source_root, setup)
+    resources.fixture_setup = setup
+    installer_environment[_PATH_VARIABLE] = _PATH_SEPARATOR.join(
+        (str(setup.executable.parent), installer_environment.get(_PATH_VARIABLE, _EMPTY))
+    )
+    foundation.require_owned_resolution(
+        _FoundationRunner(resources, evidence),
+        setup,
+        installer_environment,
+        resources.source_root,
+        _FIXTURE_INSTALLER_WHERE,
+        login=False,
+    )
+
+
+def _require_manual_runner(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Read the machine configuration through the public path and require the manual workflow runner."""
+    terminal = resources.open_admin_terminal()
+    computer, _, _ = _read_computer_config(resources, terminal, evidence)
+    workflow = _mapping_value(computer.get(_MACHINE_WORKFLOW_SECTION))
+    if workflow is None or workflow.get(_MACHINE_WORKFLOW_RUNNER_FIELD) != _WORKFLOW_RUNNER_MANUAL:
+        raise ValueError(_FULL_WORKFLOW_RUNNER_NOT_MANUAL)
+
+
+def _full_workflow_foundation(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey F0: native fixture binding, public self identity, startup admission and close."""
+    setup = resources.fixture_setup
+    if setup is None or resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    runner = _FoundationRunner(resources, evidence)
+    _require_manual_runner(resources, evidence)
+    foundation.require_owned_resolution(
+        runner,
+        setup,
+        foundation.owner_login_environment(resources.environment),
+        resources.source_root,
+        _FIXTURE_LOGIN_WHERE,
+        login=True,
+    )
+    foundation.run_foundation(runner, setup, resources.project_path, _OWNER_SEED_EMAIL)
+
+
 def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
     resources.install_attempted = True
     installer_environment = dict(resources.environment)
     installer_environment[_ENV_OWNER_NAME_VARIABLE] = _OWNER_SEED_NAME
     installer_environment[_ENV_OWNER_EMAIL_VARIABLE] = _OWNER_SEED_EMAIL
     installer_environment.pop(_CI_VARIABLE, None)
+    _install_native_fixture(resources, installer_environment, evidence)
     install_result = _run_bounded_process(
         (str(resources.source_root / _INSTALLER_COMMAND[0]), *_INSTALLER_COMMAND[1:]),
         cwd=resources.source_root,
@@ -1859,18 +2021,22 @@ def _full_configuration_change(resources: FullRuntimeResources, evidence: list[C
     }
     patch: JSONObject = {
         _CONFIG_COMPUTER_FIELD: {_MACHINE_TIMEZONE_FIELD: timezone},
+        _MACHINE_WORKFLOW_SECTION: {_MACHINE_WORKFLOW_RUNNER_FIELD: _WORKFLOW_RUNNER_MANUAL},
         **adapter_patch,
     }
     _patch_configuration(resources, terminal, _CONFIG_COMPUTER_PATCH_PREFIX, revision, patch, evidence)
     verified_terminal = resources.open_admin_terminal()
-    verified, new_revision, _ = _read_computer_config(resources, verified_terminal, evidence)
-    verified = _computer_identity(verified)
+    verified_machine, new_revision, _ = _read_computer_config(resources, verified_terminal, evidence)
+    verified = _computer_identity(verified_machine)
     if verified.get(_MACHINE_TIMEZONE_FIELD) != timezone:
         raise ValueError(_EXPECTED_VALID_PATCH_ERROR)
     if verified.get(_COMPUTER_ROLE_FIELD) != unrelated_role:
         raise ValueError(_FULL_STATE_CHANGED)
     if new_revision == revision:
         raise ValueError(_EXPECTED_REVISION_CHANGE_ERROR)
+    verified_workflow = _mapping_value(verified_machine.get(_MACHINE_WORKFLOW_SECTION))
+    if verified_workflow is None or verified_workflow.get(_MACHINE_WORKFLOW_RUNNER_FIELD) != _WORKFLOW_RUNNER_MANUAL:
+        raise ValueError(_FULL_WORKFLOW_RUNNER_NOT_MANUAL)
     _await_config_restart(resources, evidence, previous_instance)
 
 
@@ -4185,6 +4351,7 @@ def run_profile(
     source_root: Path,
     source_revision: str,
     source_tree: str,
+    selection: frozenset[str] = frozenset(),
 ) -> AcceptanceReport:
     """Run the selected profile with disposable state and report cleanup separately."""
     resolved_root = source_root.expanduser().resolve()
@@ -4286,6 +4453,9 @@ def run_profile(
                     _SCENARIO_RELEASE_BLUEPRINT: _bind_full_scenario(
                         _SCENARIO_RELEASE_BLUEPRINT, resources, _release_blueprint
                     ),
+                    _SCENARIO_WORKFLOW_FOUNDATION: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_FOUNDATION, resources, _full_workflow_foundation
+                    ),
                 }
             )
             inventory = _FULL_PROFILE_SCENARIOS
@@ -4301,6 +4471,7 @@ def run_profile(
             scenario_inventory=inventory,
             scenario_actions=actions,
             cleanup_action=cleanup_action,
+            selection=selection,
         )
     except BaseException:
         if temporary_root.exists():
@@ -4332,6 +4503,7 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             "scenarios",
             "cleanup",
             "duration_seconds",
+            "selection",
         }
         if (
             not isinstance(report, dict)
@@ -4341,6 +4513,7 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             or report["source_revision"] != source_revision
             or report["source_tree"] != source_tree
             or report["profile"] != _PROFILE_FULL
+            or report["selection"] != []
             or report["scenario_inventory"] != list(_FULL_PROFILE_SCENARIOS)
             or type(report["duration_seconds"]) not in (int, float)
             or not math.isfinite(report["duration_seconds"])
@@ -4397,7 +4570,23 @@ def _parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser.add_argument(_SOURCE_TREE_OPTION, required=True)
     default_report = Path(tempfile.gettempdir()) / _REPORT_NAME_TEMPLATE.format(identifier=uuid.uuid4().hex)
     parser.add_argument(_REPORT_OPTION, type=Path, default=default_report)
+    parser.add_argument(_SELECT_OPTION, default=_EMPTY, help=_SELECT_HELP)
     return parser.parse_args(arguments)
+
+
+def _selection_with_prerequisites(requested: str, profile: Profile) -> frozenset[str]:
+    """The scenarios a selected run executes: those asked for and everything they need first."""
+    asked = [part.strip() for part in requested.split(_SELECTION_SEPARATOR) if part.strip()]
+    if not asked:
+        return frozenset()
+    inventory = _FULL_PROFILE_SCENARIOS if profile is Profile.FULL else _COLD_PROFILE_SCENARIOS
+    selected: set[str] = set()
+    for scenario_id in asked:
+        if scenario_id not in inventory:
+            raise SystemExit(_SELECTION_UNKNOWN.format(scenario_id=scenario_id))
+        selected.add(scenario_id)
+        selected.update(_SCENARIO_PREREQUISITES.get(scenario_id, ()))
+    return frozenset(selected)
 
 
 def _handle_profile_termination(_signum: int, _frame: FrameType | None) -> None:
@@ -4411,13 +4600,20 @@ def main(arguments: list[str] | None = None) -> int:
     selected_profile = Profile(parsed.profile)
     previous_termination_handler = signal.signal(signal.SIGTERM, _handle_profile_termination)
     try:
+        selection = _selection_with_prerequisites(parsed.select, selected_profile)
         report = run_profile(
             selected_profile,
             source_root=parsed.root,
             source_revision=parsed.source_revision,
             source_tree=parsed.source_tree,
+            selection=selection,
         )
         write_report(report, parsed.report)
+        if report.selection:
+            if report.selection_passed:
+                print(_PARTIAL_PASSED, file=sys.stderr)
+                return _EXIT_PARTIAL
+            return _PROCESS_FAILURE
         return 0 if report.passed else 1
     finally:
         signal.signal(signal.SIGTERM, previous_termination_handler)

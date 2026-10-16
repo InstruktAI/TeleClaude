@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      select:
+        description: Comma-separated acceptance scenario ids for a bounded partial run (never reported as a full pass)
+        required: false
+        default: ''
 
 jobs:
   lint-test:
@@ -70,6 +75,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
           SOURCE_REVISION: ${{ steps.source.outputs.revision }}
           SOURCE_TREE: ${{ steps.source.outputs.tree }}
+          SELECTION: ${{ inputs.select }}
         run: |
           mkdir -p "$RUNNER_TEMP/runtime-acceptance"
           uv run --no-project --python 3.12 python -P tools/ci/runtime_acceptance.py \
@@ -77,6 +83,7 @@ jobs:
             --root "$GITHUB_WORKSPACE" \
             --source-revision "$SOURCE_REVISION" \
             --source-tree "$SOURCE_TREE" \
+            --select "$SELECTION" \
             --report "$RUNNER_TEMP/runtime-acceptance/report.json"
 
       - name: Verify the checked candidate remained unchanged
