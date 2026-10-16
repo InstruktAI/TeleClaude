@@ -116,7 +116,7 @@ DETAIL_EVIDENCE: Final = "B10 event evidence is unproven: {detail}"
 DETAIL_CARRIER: Final = "B10 profile event carrier is incomplete: {detail}"
 DETAIL_PROJECTS: Final = "the public projects list does not identify the registered workflow project"
 DETAIL_PROJECT_CONFIG: Final = "the public project config does not match the registered slug and name"
-DETAIL_COMPUTER: Final = "the public computer config has no current computer name"
+DETAIL_COMPUTER: Final = "the public computers list does not identify exactly one online local computer"
 DETAIL_MARK: Final = "the public event mark does not match the independently derived project selection"
 DETAIL_WINDOW: Final = "the original event window is missing, unreadable, changed, or malformed"
 DETAIL_SEAL: Final = "the previous case witness seal does not match the complete append-only file"
@@ -278,19 +278,8 @@ def _config_view(observer: creation.Observer, kind: str, *argv: str) -> Mapping[
 
 
 def _registered_project(
-    observer: creation.Observer, project: Path, project_slug: str, project_name: str
+    observer: creation.Observer, project: Path, project_slug: str, project_name: str, computer: str
 ) -> tuple[str, str]:
-    rows = _run_json(observer, (TELEC, "projects", "list"), "projects list")
-    if not isinstance(rows, list):
-        raise creation.binding_failure(DETAIL_PROJECTS)
-    expected_path = str(project.resolve())
-    matches = [
-        row
-        for row in rows
-        if isinstance(row, Mapping) and row.get("name") == project_name and row.get("path") == expected_path
-    ]
-    if not matches:
-        raise creation.binding_failure(DETAIL_PROJECTS)
     project_payload = _config_view(observer, "project", project_slug)
     project_config = project_payload.get("project")
     revision = project_payload.get("revision")
@@ -299,19 +288,45 @@ def _registered_project(
         or not isinstance(revision, str)
         or not revision
         or project_config.get("project_slug") != project_slug
-        or project_config.get("project_name") != project_name
     ):
         raise creation.binding_failure(DETAIL_PROJECT_CONFIG)
+    configured_name = project_config.get("project_name")
+    if configured_name is None or configured_name == "":
+        catalog_name = project_slug
+    elif isinstance(configured_name, str):
+        catalog_name = configured_name
+    else:
+        raise creation.binding_failure(DETAIL_PROJECT_CONFIG)
+    if catalog_name != project_name:
+        raise creation.binding_failure(DETAIL_PROJECT_CONFIG)
+
+    rows = _run_json(observer, (TELEC, "projects", "list"), "projects list")
+    if not isinstance(rows, list):
+        raise creation.binding_failure(DETAIL_PROJECTS)
+    expected_path = str(project.resolve())
+    matches = [
+        row
+        for row in rows
+        if isinstance(row, Mapping)
+        and row.get("name") == catalog_name
+        and row.get("path") == expected_path
+        and row.get("computer") == computer
+    ]
+    if len(matches) != 1:
+        raise creation.binding_failure(DETAIL_PROJECTS)
     return expected_path, f"project:{project_slug}"
 
 
 def _current_computer(observer: creation.Observer) -> str:
-    payload = _config_view(observer, "computer")
-    machine = payload.get("computer")
-    config = machine.get("computer") if isinstance(machine, Mapping) else None
-    name = config.get("name") if isinstance(config, Mapping) else None
-    revision = payload.get("revision")
-    if not isinstance(name, str) or not name or not isinstance(revision, str) or not revision:
+    rows = _run_json(observer, (TELEC, "computers", "list"), "computers list")
+    if not isinstance(rows, list):
+        raise creation.binding_failure(DETAIL_COMPUTER)
+    local_rows = [row for row in rows if isinstance(row, Mapping) and row.get("is_local") is True]
+    if len(local_rows) != 1:
+        raise creation.binding_failure(DETAIL_COMPUTER)
+    local = local_rows[0]
+    name = local.get("name")
+    if local.get("status") != "online" or not isinstance(name, str) or not name:
         raise creation.binding_failure(DETAIL_COMPUTER)
     return name
 
@@ -344,8 +359,8 @@ def begin_b3_window(
     shown: Mapping[str, object],
 ) -> EventWindowBinding:
     """Ground public registration, capture initial log semantics, and create the one original event mark."""
-    project_path, project_home = _registered_project(observer, project, project_slug, project_name)
     computer = _current_computer(observer)
+    project_path, project_home = _registered_project(observer, project, project_slug, project_name, computer)
     result = _run_json(observer, (TELEC, "events", "trail", ITEM, "--mark"), "events trail mark")
     if not isinstance(result, Mapping):
         raise creation.binding_failure(DETAIL_MARK)
