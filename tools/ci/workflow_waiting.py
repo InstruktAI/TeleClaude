@@ -34,6 +34,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from dataclasses import field as dataclass_field
+from enum import StrEnum
 from pathlib import Path
 from typing import Final, cast
 
@@ -72,11 +73,38 @@ PHASE_PREPARATION: Final = "preparation"
 B13_ASSERTION_PATH: Final = "journeys/b13-waiting-retired-kickback-budget-final.md"
 B13_ASSERTION_SHA: Final = "475e83482b23a70873dbb62d8e40ce8fb9185e4ee38708a2a8e9de9fb76ab2b0"
 B13_ISSUE_REVISION: Final = "UCE_lAHOQMTdPc8AAAABXPR6wc8AAAABB_Nr9Q"
-B13_STATUS_NOT_SELECTED: Final = "not_selected"
-B13_STATUS_NOT_RUN: Final = "not_run"
-B13_STATUS_PARTIAL: Final = "partial"
-B13_STATUS_COMPLETE: Final = "complete"
-B13_STATUS_UNPROVEN: Final = "unproven"
+
+
+class B13Status(StrEnum):
+    """Closed B13 report status vocabulary."""
+
+    NOT_SELECTED = "not_selected"
+    NOT_RUN = "not_run"
+    PARTIAL = "partial"
+    COMPLETE = "complete"
+    UNPROVEN = "unproven"
+
+
+class B13AttemptEvent(StrEnum):
+    """Closed B13 append-only ledger event vocabulary."""
+
+    OPEN = "open"
+    RESULT = "result"
+    PUBLIC_READ = "public_read"
+
+
+class B13Framing(StrEnum):
+    """Closed B13 attempt-ledger framing vocabulary."""
+
+    COMPLETE = "complete_newline_terminated_jsonl"
+    PARTIAL = "partial_trailing_record"
+
+
+B13_STATUS_NOT_SELECTED: Final = B13Status.NOT_SELECTED
+B13_STATUS_NOT_RUN: Final = B13Status.NOT_RUN
+B13_STATUS_PARTIAL: Final = B13Status.PARTIAL
+B13_STATUS_COMPLETE: Final = B13Status.COMPLETE
+B13_STATUS_UNPROVEN: Final = B13Status.UNPROVEN
 B13_SCENARIO_SECONDS: Final = 600.0
 B13_REASON_TEXT: Final = "b13 waiting door"
 B13_DIRECTORY: Final = "b13-waiting-kickback"
@@ -118,15 +146,15 @@ B13_FILE_MODE: Final = 0o600
 B13_SUCCESS_EXIT: Final = 0
 B13_SETTLE_SECONDS: Final = 5.0
 B13_SCHEMA_VERSION: Final = 1
-B13_ATTEMPT_OPEN: Final = "open"
-B13_ATTEMPT_RESULT: Final = "result"
+B13_ATTEMPT_OPEN: Final = B13AttemptEvent.OPEN
+B13_ATTEMPT_RESULT: Final = B13AttemptEvent.RESULT
 B13_OBSERVATION_BEFORE: Final = "before"
 B13_OBSERVATION_IMMEDIATE: Final = "immediate"
 B13_OBSERVATION_SETTLED: Final = "settled"
 B13_EVENT: Final = "event"
 B13_PRECALL: Final = "pre_call"
 B13_RESPONSE: Final = "response"
-B13_PUBLIC_READ: Final = "public_read"
+B13_PUBLIC_READ: Final = B13AttemptEvent.PUBLIC_READ
 B13_STATUS_FIELD: Final = "status"
 B13_REASON_FIELD: Final = "reason"
 B13_SOURCE_REVISION_FIELD: Final = "source_revision"
@@ -148,8 +176,8 @@ B13_ATTEMPTS_TEXT_TRUNCATED_FIELD: Final = "attempts_text_truncated"
 B13_ATTEMPTS_FRAMING_FIELD: Final = "attempts_framing"
 B13_ATTEMPTS_COUNT_FIELD: Final = "attempts_record_count"
 B13_ATTEMPTS_EXPECTED_RECORDS: Final = 11
-B13_FRAMING_COMPLETE: Final = "complete_newline_terminated_jsonl"
-B13_FRAMING_PARTIAL: Final = "partial_trailing_record"
+B13_FRAMING_COMPLETE: Final = B13Framing.COMPLETE
+B13_FRAMING_PARTIAL: Final = B13Framing.PARTIAL
 B13_ITEM_FIELD: Final = "item"
 B13_ARGV_FIELD: Final = "argv"
 B13_BEFORE_FIELD: Final = "before"
@@ -242,7 +270,7 @@ class WaitingKickbackEvidence:
     """Typed report evidence for B13's waiting-door retired kickback assertion."""
 
     schema_version: int
-    status: str
+    status: B13Status
     assertion_path: str
     assertion_sha256: str
     issue_revision: str
@@ -262,7 +290,7 @@ class WaitingKickbackEvidence:
 
 
 def empty_b13_evidence(
-    *, status: str = B13_STATUS_NOT_SELECTED, source_revision: str = "", source_tree: str = ""
+    *, status: B13Status = B13_STATUS_NOT_SELECTED, source_revision: str = "", source_tree: str = ""
 ) -> WaitingKickbackEvidence:
     """Create a fail-closed typed B13 state for every report profile."""
     return WaitingKickbackEvidence(
@@ -967,7 +995,7 @@ class _Waiting:
                 "stdout_sanitized": True,
                 "stderr_sanitized": True,
                 "diagnostics_sanitized": True,
-                "output_truncated": False,
+                "output_truncated": outcome.diagnostics == creation.B12_OUTPUT_LIMIT_DIAGNOSTIC,
                 "stderr_truncated": False,
             }
             _b13_append(marker_root / B13_ATTEMPTS_FILE, {B13_EVENT: B13_ATTEMPT_RESULT, **evidence.response})
