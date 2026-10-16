@@ -21,12 +21,13 @@ import json
 import re
 import shutil
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Final
 
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
+from tools.ci import workflow_publication as publication
 from tools.ci.workflow_foundation import FoundationHost, Outcome
 
 TELEC: Final = "bin/telec"
@@ -215,126 +216,27 @@ class _Claim:
     """One run of journey B1."""
 
     def __init__(
-        self, host: FoundationHost, setup: foundation.FixtureSetup, project: Path, source_root: Path, owner_email: str
+        self,
+        host: FoundationHost,
+        setup: foundation.FixtureSetup,
+        project: Path,
+        source_root: Path,
+        owner_email: str,
+        register_company: Callable[[], None],
     ) -> None:
         self.host = host
         self.observer = creation.Observer(host)
+        self.publication = publication.Publication(
+            host, self.observer, setup.control.parent, source_root, register_company
+        )
+        self.baseline: creation.SessionView | None = None
         self.setup = setup
         self.project = project.resolve()
         self.source_root = source_root
         self.owner_email = owner_email
         self.control = setup.control.parent / CONTROL_NAME
-        self.clone: Path | None = None
-        self.published = False
         self.original_configuration = setup.configuration.read_text(encoding="utf-8")
-        self.live_bodies: dict[str, str] = {}
         self.journey: foundation.Journey | None = None
-
-    # -- process helpers -------------------------------------------------------------------------------------------
-    def _run(self, argv: Sequence[str], cwd: Path, timeout: float, *, what: str) -> Outcome:
-        outcome = self.host.process(argv, cwd, self.host.environment, timeout)
-        if outcome.exit_status != 0:
-            raise creation.binding_failure(
-                DETAIL_COMMAND.format(command=what, status=outcome.exit_status, output=outcome.output[-400:])
-            )
-        return outcome
-
-    def _identity(self) -> str:
-        head = self._run((GIT, "rev-parse", "HEAD"), self.source_root, CLONE_TIMEOUT_SECONDS, what="git rev-parse HEAD")
-        tree = self._run(
-            (GIT, "rev-parse", "HEAD^{tree}"), self.source_root, CLONE_TIMEOUT_SECONDS, what="git rev-parse tree"
-        )
-        return f"commit {head.output.strip()} tree {tree.output.strip()}"
-
-    def _note(self, label: str, text: str) -> None:
-        self.host.note((label,), Outcome(0, text), "")
-
-    # -- documentation reads ---------------------------------------------------------------------------------------
-    def _body_of(self, identity: str, *, pending: bool, cwd: Path) -> str:
-        self.observer.run(("cd", str(cwd)))
-        argv = [TELEC, DOCS, GET, identity]
-        if pending:
-            argv.extend((TARGET_OPTION, PENDING_TARGET))
-        outcome = self.observer.run(argv, retain=False)
-        body = docs_body(outcome.output) if outcome.exit_status == 0 else None
-        if not body:
-            raise creation.binding_failure(DETAIL_NO_BODY.format(identity=identity, output=outcome.output[-300:]))
-        return body
-
-    # -- section 0: disposable publication -------------------------------------------------------------------------
-    def prepare_clone(self) -> Path:
-        temporary = self.setup.control.parent
-        clone = temporary / CLONE_NAME
-        shutil.rmtree(clone, ignore_errors=True)
-        self._run(
-            (GIT, "clone", "--quiet", "--shared", str(self.source_root), str(clone)),
-            temporary,
-            CLONE_TIMEOUT_SECONDS,
-            what="git clone --shared",
-        )
-        environment = self.source_root / ENVIRONMENT_DIRECTORY
-        if not (environment / "bin" / "python").is_file():
-            raise creation.binding_failure("the dependency environment of the source checkout is missing")
-        (clone / ENVIRONMENT_DIRECTORY).symlink_to(environment, target_is_directory=True)
-        self._run((GIT, "config", "user.name", GIT_AUTHOR), clone, CLONE_TIMEOUT_SECONDS, what="git config user.name")
-        self._run((GIT, "config", "user.email", GIT_EMAIL), clone, CLONE_TIMEOUT_SECONDS, what="git config user.email")
-        self.clone = clone
-        return clone
-
-    def fold(self, clone: Path) -> None:
-        """B-P2: each companion's bytes over its live file, the companions removed, one commit of exactly eight paths."""
-        for identity in FOLD_IDS:
-            live = clone / DOCS_ROOT / f"{identity}{LIVE_SUFFIX}"
-            companion = clone / DOCS_ROOT / f"{identity}{COMPANION_SUFFIX}"
-            live.write_bytes(companion.read_bytes())
-            self._run(
-                (GIT, "rm", "--quiet", str(companion.relative_to(clone))),
-                clone,
-                CLONE_TIMEOUT_SECONDS,
-                what="git rm",
-            )
-            self._run((GIT, "add", str(live.relative_to(clone))), clone, CLONE_TIMEOUT_SECONDS, what="git add")
-        self._run(
-            (GIT, "commit", "--quiet", "-m", "fold the four driver procedures"),
-            clone,
-            CLONE_TIMEOUT_SECONDS,
-            what="git commit",
-        )
-        status = self._run((GIT, "status", "--porcelain"), clone, CLONE_TIMEOUT_SECONDS, what="git status")
-        if status.output.strip():
-            raise creation.binding_failure(DETAIL_FOLD_DIRTY.format(status=status.output.strip()))
-        changed = self._run(
-            (GIT, "diff", "--name-status", "HEAD~1", "HEAD"), clone, CLONE_TIMEOUT_SECONDS, what="git diff"
-        )
-        found = sorted(line.split() for line in changed.output.strip().splitlines() if line.strip())
-        expected = sorted(
-            [
-                *(["M", f"{DOCS_ROOT / identity}{LIVE_SUFFIX}"] for identity in FOLD_IDS),
-                *(["D", f"{DOCS_ROOT / identity}{COMPANION_SUFFIX}"] for identity in FOLD_IDS),
-            ]
-        )
-        if found != expected:
-            raise creation.binding_failure(DETAIL_FOLD_PATHS.format(found=found))
-        sha = self._run((GIT, "rev-parse", "HEAD"), clone, CLONE_TIMEOUT_SECONDS, what="git rev-parse HEAD")
-        self._note("fixture-publication-sha", sha.output.strip())
-
-    def lint(self, clone: Path) -> None:
-        """B-P3: the public documentation validation passes on the fold before it is published."""
-        self._run(
-            (str(self.source_root / TELEC), CODE, LINT, ALL_FLAG),
-            clone,
-            LINT_TIMEOUT_SECONDS,
-            what="telec code lint --all",
-        )
-
-    def publish(self, checkout: Path) -> None:
-        """Run the supported installation publication entry point for one committed checkout."""
-        self._run(
-            (UV, "run", "--project", str(self.source_root), "--no-sync", "python", "-m", INSTALL_MODULE),
-            checkout,
-            PUBLISH_TIMEOUT_SECONDS,
-            what="install_publication",
-        )
 
     def _prepared_item(self) -> Json:
         shown = self.observer.show(ITEM)
@@ -380,28 +282,10 @@ class _Claim:
             raise creation.binding_failure(DETAIL_NEGATIVE_WRITE.format(detail=changed or sorted(sessions.ids)))
 
     def operation_state(self, operation: str, *, retain: bool = False) -> Json:
-        """One public read of an operation; an unreadable read or a state outside the known set fails the case."""
-        outcome = self.observer.run((TELEC, OPERATIONS, GET, operation), retain=retain)
-        state = foundation.json_object(outcome.output)
-        value = state.get(FIELD_STATE) if state is not None else None
-        if outcome.exit_status != 0 or state is None or value not in KNOWN_STATES:
-            raise creation.binding_failure(
-                DETAIL_OPERATION_READ.format(operation=operation, output=outcome.output[-300:])
-            )
-        return state
+        return publication.operation_state(self.observer, operation, retain=retain)
 
     def _await_terminal(self, operation: str, seconds: float) -> Json:
-        deadline = time.monotonic() + seconds
-        last: Json = {}
-        while time.monotonic() < deadline:
-            state = self.operation_state(operation)
-            last = state
-            if state.get(FIELD_STATE) in TERMINAL_STATES:
-                return self.operation_state(operation, retain=True)
-            time.sleep(POLL_SECONDS)
-        raise creation.platform_failure(
-            DETAIL_OPERATION_TIMEOUT.format(operation=operation, seconds=int(seconds), last=last)
-        )
+        return publication.await_terminal(self.observer, operation, seconds)
 
     # -- per-launch control ----------------------------------------------------------------------------------------
     def install_control(self) -> foundation.FixtureSetup:
@@ -476,39 +360,26 @@ def run_claim(
     ``register_company`` registers, through the public command, the synthetic company the candidate checkout\'s project
     declaration names: a documentation read run from that checkout needs it, exactly as the closure journey does.
     """
-    claim = _Claim(host, setup, project, source_root, owner_email)
+    claim = _Claim(host, setup, project, source_root, owner_email, register_company)
     observer = claim.observer
-    candidate = claim._identity()
-    claim._note("candidate-identity", candidate)
     failure: BaseException | None = None
-    journey: foundation.Journey | None = None
-    live_ids: dict[str, str] = {}
     try:
         creation.require_manual_runner(observer)
-        register_company()
+        claim.publication.begin()
         creation.enter_project(observer, project)
         baseline = observer.sessions()
+        claim.baseline = baseline
         launch_setup = claim.install_control()
         journey = foundation.Journey(host, launch_setup, project, owner_email)
         claim.journey = journey
         creation.require_created(creation.create_item(observer, ITEM, CONTENT, "feature", approved=True), ITEM)
         before = _shown_with_content(observer)
         _require_item_unclaimed(before)
-        live_ids.update({identity: claim._body_of(identity, pending=False, cwd=source_root) for identity in FOLD_IDS})
-        clone = claim.prepare_clone()
-        claim.fold(clone)
-        claim.lint(clone)
-        pending = {identity: claim._body_of(identity, pending=True, cwd=source_root) for identity in FOLD_IDS}
+        clone = claim.publication.prepare()
         creation.enter_project(observer, project)
         claim.negative_control(baseline, before)
-        claim.publish(clone)
-        claim.published = True
-        for identity in FOLD_IDS:
-            published = claim._body_of(identity, pending=False, cwd=source_root)
-            if published != pending[identity]:
-                raise creation.binding_failure(
-                    DETAIL_BODY_MISMATCH.format(identity=identity, expected="pending body captured before publication")
-                )
+        claim.publication.publish()
+        claim.publication.verify_parity()
         creation.enter_project(observer, project)
         quiet = _fresh_snapshot(observer)
         if creation.differences(before, quiet):
@@ -520,7 +391,7 @@ def run_claim(
         failure = error
         raise
     finally:
-        _cleanup(claim, journey, candidate, failure, live_ids)
+        _cleanup(claim, failure)
 
 
 class _Steps:
@@ -765,40 +636,17 @@ class _Steps:
         creation.require_value(ITEM, _shown_with_content(self.observer), "state.lifecycle_phase", PHASE)
 
 
-def _cleanup(
-    claim: _Claim,
-    journey: foundation.Journey | None,
-    candidate: str,
-    failure: BaseException | None,
-    live_bodies: dict[str, str],
-) -> None:
-    """Close what the journey left open, restore the candidate publication and the sidecar, report every failure."""
-    problems: list[str] = []
-    if journey is not None:
-        journey.release_session()
-    if claim.published:
-        try:
-            claim.publish(claim.source_root)
-            for identity, body in live_bodies.items():
-                restored = claim._body_of(identity, pending=False, cwd=claim.source_root)
-                if restored != body:
-                    problems.append(DETAIL_BODY_MISMATCH.format(identity=identity, expected="candidate's live body"))
-        except BaseException as error:  # the restore must report, not hide, the journey's own failure
-            problems.append(f"restoring the candidate publication failed: {error}")
+def _cleanup(claim: _Claim, failure: BaseException | None) -> None:
+    """Settle the sessions the journey owns, restore the candidate publication and the sidecar, report every failure."""
+    problems = publication.settle_sessions(claim.observer, claim.baseline)
+    problems.extend(claim.publication.restore())
     problems.extend(claim.restore_control())
-    if claim.clone is not None:
-        shutil.rmtree(claim.clone, ignore_errors=True)
     try:
         creation.leave_project(claim.observer, claim.source_root)
     except BaseException as error:
         problems.append(f"returning the owner terminal failed: {error}")
-    try:
-        after = claim._identity()
-        if after != candidate:
-            problems.append(DETAIL_IDENTITY_MOVED.format(before=candidate, after=after))
-    except BaseException as error:
-        problems.append(f"re-reading the candidate identity failed: {error}")
+    problems.extend(claim.publication.candidate_unchanged())
     if problems and failure is None:
         raise creation.binding_failure("; ".join(problems))
     if problems:
-        claim._note("cleanup-problems", "; ".join(problems))
+        claim.publication.note("cleanup-problems", "; ".join(problems))
