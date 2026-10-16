@@ -27,6 +27,7 @@ BUS_PATH: Final = "/org/freedesktop/DBus"
 MANAGER_PATH: Final = "/org/freedesktop/systemd1"
 SYSTEMD_NAME: Final = "org.freedesktop.systemd1"
 ACTIVE: Final = "active"
+JOB_DONE: Final = "done"
 PATH_SEPARATOR: Final = "/"
 BOOT_IDENTITY_ERROR: Final = "the original boot identity changed or is unavailable"
 CALL_ERROR: Final = "invalid or failed native manager reply for {member}: {error}"
@@ -98,6 +99,20 @@ class Property(StrEnum):
     UNIT = "Unit"
     JOB_TYPE = "JobType"
     STATE = "State"
+    VERSION = "Version"
+    UNIT_PATH = "UnitPath"
+
+
+@dataclass(frozen=True)
+class ManagerRead:
+    """Properties of the original subscribed manager, positioned in its native event stream."""
+
+    identity: ManagerIdentity
+    version: str
+    unit_paths: tuple[str, ...]
+    begin_sequence: int
+    sequence: int
+    observed_ns: int
 
 
 class DisconnectLifecycle(Protocol):
@@ -155,6 +170,34 @@ class JobRead:
     unit_path: str
     properties: Mapping[str, JsonValue]
     begin_sequence: int
+    sequence: int
+    observed_ns: int
+
+
+@dataclass(frozen=True)
+class AcceptedJob:
+    """The exact native job address acknowledged by one admitted manager call."""
+
+    identifier: int
+    object_path: str
+    unit_name: str
+
+
+@dataclass(frozen=True)
+class SettledJob:
+    """An acknowledged job's actual ordered lifecycle on the original subscription."""
+
+    accepted: AcceptedJob
+    new_sequence: int
+    removed_sequence: int
+    result: str
+
+
+@dataclass(frozen=True)
+class JobBoundary:
+    """A finite reconciliation point, not a fence against future accepted activation."""
+
+    settled: tuple[SettledJob, ...]
     sequence: int
     observed_ns: int
 
@@ -323,6 +366,92 @@ class ManagerObserver:
         ):
             self.invalidate(Invalidation.MANAGER_CHANGED)
             raise ValueError(BINDING_ERROR)
+
+    async def read_manager(self, deadline_ns: int) -> ManagerRead:
+        """Read running-manager metadata through the existing original connection and GetAll boundary."""
+        if self._identity is None or self._faults:
+            raise RuntimeError(CONNECTION_ERROR)
+        begin = self._sequence
+        reply = await self._call(
+            Interface.PROPERTIES,
+            MANAGER_PATH,
+            Member.GET_ALL,
+            Signature.STRING,
+            [Interface.MANAGER.value],
+            Signature.PROPERTIES,
+            deadline_ns,
+        )
+        try:
+            properties = _properties(reply)
+            version = properties.get(Property.VERSION)
+            paths = properties.get(Property.UNIT_PATH)
+            if (
+                not isinstance(version, str)
+                or not version
+                or not isinstance(paths, list)
+                or not paths
+                or any(not isinstance(path, str) or not path.startswith(PATH_SEPARATOR) for path in paths)
+            ):
+                raise ValueError(BODY_ERROR)
+        except ValueError:
+            self.invalidate(Invalidation.MALFORMED_STREAM)
+            raise
+        # GetAll also contains the manager environment; retain only the metadata this admission consumes.
+        return ManagerRead(
+            self.identity, version, tuple(cast(list[str], paths)), begin, self._sequence, time.monotonic_ns()
+        )
+
+    def reconcile_jobs(self, units: frozenset[str], accepted: tuple[AcceptedJob, ...]) -> JobBoundary:
+        """Match every scoped native activation to its original call receipt and ordered terminal signal."""
+        if self._identity is None or self._faults:
+            raise RuntimeError(CONNECTION_ERROR)
+        if not units or not units <= self._expected_units:
+            raise ValueError(BINDING_ERROR)
+        expected: dict[int, AcceptedJob] = {}
+        for job in accepted:
+            if (
+                type(job.identifier) is not int
+                or job.identifier <= 0
+                or not job.object_path.startswith(PATH_SEPARATOR)
+                or job.unit_name not in units
+                or job.identifier in expected
+            ):
+                raise ValueError(BINDING_ERROR)
+            expected[job.identifier] = job
+        started: dict[int, int] = {}
+        settled: dict[int, SettledJob] = {}
+        for event in self._events:
+            if (
+                event.interface != Interface.MANAGER
+                or event.member not in (Member.JOB_NEW, Member.JOB_REMOVED)
+                or event.body[2] not in units
+            ):
+                continue
+            identifier, path, unit_name = event.body[:3]
+            if (
+                type(identifier) is not int
+                or identifier not in expected
+                or path != expected[identifier].object_path
+                or unit_name != expected[identifier].unit_name
+                or identifier in settled
+            ):
+                self.invalidate(Invalidation.UNKNOWN_ACTIVATOR)
+                raise ValueError(BINDING_ERROR)
+            if event.member == Member.JOB_NEW:
+                if identifier in started:
+                    self.invalidate(Invalidation.UNKNOWN_ACTIVATOR)
+                    raise ValueError(BINDING_ERROR)
+                started[identifier] = event.sequence
+            else:
+                result = event.body[3]
+                if identifier not in started or result != JOB_DONE:
+                    self.invalidate(Invalidation.UNKNOWN_ACTIVATOR)
+                    raise ValueError(BINDING_ERROR)
+                settled[identifier] = SettledJob(expected[identifier], started[identifier], event.sequence, JOB_DONE)
+        if set(settled) != set(expected):
+            # An unfinished acknowledged job remains unresolved; a later explicit boundary may see its signal.
+            raise ValueError(BINDING_ERROR)
+        return JobBoundary(tuple(settled[job.identifier] for job in accepted), self._sequence, time.monotonic_ns())
 
     async def read_unit(
         self, name: str, specific: Interface | None, deadline_ns: int, *, original_path: str | None = None
@@ -502,7 +631,17 @@ class ManagerObserver:
                     return
             elif message.member in (Member.JOB_NEW, Member.JOB_REMOVED):
                 expected = Signature.JOB_NEW if message.member == Member.JOB_NEW else Signature.JOB_REMOVED
-                if message.signature != expected or len(body) != (3 if message.member == Member.JOB_NEW else 4):
+                if (
+                    message.signature != expected
+                    or len(body) != (3 if message.member == Member.JOB_NEW else 4)
+                    or type(body[0]) is not int
+                    or not 0 < body[0] <= 0xFFFFFFFF
+                    or not isinstance(body[1], str)
+                    or not body[1].startswith(PATH_SEPARATOR)
+                    or not isinstance(body[2], str)
+                    or not body[2]
+                    or (message.member == Member.JOB_REMOVED and (not isinstance(body[3], str) or not body[3]))
+                ):
                     raise ValueError(BODY_ERROR)
                 if body[2] not in self._expected_units:
                     return
