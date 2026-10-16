@@ -27,7 +27,7 @@ from teleclaude.core.workflow_machine.caller import (
     remote_snapshots_present,
 )
 from teleclaude.core.workflow_machine.dispatch import OrchestratorSpec, orchestrator_session_id, start_orchestrator
-from teleclaude.core.workflow_machine.helpers import unsettled_helper_starts
+from teleclaude.core.workflow_machine.helpers import settled_remote_starts, unsettled_helper_starts
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange, PendingEffectItem
 from teleclaude.events.catalog import PlatformEvent
@@ -332,7 +332,7 @@ async def _sweep_helpers(context: EffectContext, effect: PendingEffect) -> None:
     for _ in range(SWEEP_ROUNDS):
         state = await context.store.read_state_by_id(context.item.todo_id)
         record = workflow_record_of(state) if state is not None else None
-        in_flight = record is not None and bool(unsettled_helper_starts(record))
+        in_flight = record is not None and bool(unsettled_helper_starts(record, await settled_remote_starts(record)))
         view = await group_view_of(
             holder,
             record.remote_members if record is not None else (),

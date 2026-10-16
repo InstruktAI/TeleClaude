@@ -24,7 +24,11 @@ from teleclaude.core.workflow_machine.caller import child_sessions_of, load_call
 from teleclaude.core.workflow_machine.dependencies import unmet_for_preparation, unmet_for_work
 from teleclaude.core.workflow_machine.effects import reconcile_slug_supervised
 from teleclaude.core.workflow_machine.heads import observe_item_supervised
-from teleclaude.core.workflow_machine.helpers import earlier_claim_sessions, unsettled_helper_starts
+from teleclaude.core.workflow_machine.helpers import (
+    earlier_claim_sessions,
+    settled_remote_starts,
+    unsettled_helper_starts,
+)
 from teleclaude.core.workflow_machine.instruction import InstructionFacts, render_instruction
 from teleclaude.core.workflow_machine.lane import resolve_lane
 from teleclaude.core.workflow_machine.ledger_log import render_log_entry
@@ -152,6 +156,7 @@ class EntryRequest:
     lane: LaneFacts | None = None
     creative_snapshot: str = ""
     starts_seen: tuple[tuple[str, str], ...] = ()
+    settled_starts: frozenset[str] = frozenset()
 
     @property
     def resolved_lane(self) -> LaneFacts:
@@ -350,7 +355,7 @@ def _check_starts(request: EntryRequest, record: WorkflowRecord) -> None:
     since have named its session, and that session would be missed by the scan, so any change of the recorded starts
     refuses the write and the verb is repeated.
     """
-    if unsettled_helper_starts(record) or _starts_snapshot(record) != request.starts_seen:
+    if unsettled_helper_starts(record, request.settled_starts) or _starts_snapshot(record) != request.starts_seen:
         raise _refuse(EntryRefusal.EARLIER_START, item=request.item)
 
 
@@ -725,6 +730,7 @@ async def enter(request: EntryRequest) -> EntryResult:
         lane=await resolve_lane(store, request.project_root, request.item, raw, state),
         creative_snapshot=creative_snapshot(raw),
         starts_seen=_starts_snapshot(state.workflow),
+        settled_starts=await settled_remote_starts(state.workflow),
     )
     reading = read_phase(state, request.resolved_lane)
     other_holder = holder is not None and holder != request.caller_session_id

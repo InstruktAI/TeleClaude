@@ -40,6 +40,30 @@ OWNER_UNREACHABLE: Final = (
     "nothing was created. Retry when {computer} answers."
 )
 SETTLE_FAILED_LOG: Final = "helper_start_settle_failed"
+KEYS_FIELD: Final = "keys"
+
+# The start keys whose creation this computer is performing right now; the creation runs in this process, so a key
+# is in progress exactly while its fence is open and never after the process has ended.
+_IN_FLIGHT: dict[str, int] = {}
+
+
+def mark_in_flight(keys: Sequence[str]) -> None:
+    for key in keys:
+        _IN_FLIGHT[key] = _IN_FLIGHT.get(key, 0) + 1
+
+
+def release_in_flight(keys: Sequence[str]) -> None:
+    for key in keys:
+        remaining = _IN_FLIGHT.get(key, 0) - 1
+        if remaining > 0:
+            _IN_FLIGHT[key] = remaining
+        else:
+            _IN_FLIGHT.pop(key, None)
+
+
+def in_flight_among(keys: Sequence[str]) -> list[str]:
+    """The keys among ``keys`` whose creation this computer is performing now."""
+    return [key for key in keys if key in _IN_FLIGHT]
 
 
 class PeerStartRequest(StrEnum):
@@ -47,6 +71,7 @@ class PeerStartRequest(StrEnum):
 
     REGISTER = "register_helper_start"
     SETTLE = "settle_helper_start"
+    IN_FLIGHT = "helper_start_in_flight"
 
 
 @dataclass(frozen=True)
@@ -133,3 +158,14 @@ async def settle_with_owners(
             await _ask(owner, PeerStartRequest.SETTLE, request)
         except Exception:  # supervision boundary: an unsettled start stays recorded and the creation stands
             logger.warning(SETTLE_FAILED_LOG, computer=owner, session=session_id, exc_info=True)
+
+
+async def keys_in_flight_at(owner: str, keys: Sequence[str]) -> set[str] | None:
+    """The keys among ``keys`` that ``owner`` is still creating sessions for; None when it did not answer."""
+    from teleclaude.core.command_dispatch import RemoteDispatchError  # noqa: PLC0415 - deferred cycle
+
+    try:
+        answer = await _ask(owner, PeerStartRequest.IN_FLIGHT, {KEYS_FIELD: list(keys)})
+    except (RemoteDispatchError, RuntimeError, ValueError, OSError):
+        return None
+    return {key for key in answer if isinstance(key, str)} if isinstance(answer, list) else None

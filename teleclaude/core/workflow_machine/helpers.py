@@ -24,7 +24,14 @@ from teleclaude.core.operation_caller_identity import relayed_caller_computer
 from teleclaude.core.process_identity import ProcessState, probe_process, start_identity
 from teleclaude.core.session_utils import cached_remote_session
 from teleclaude.core.workflow_machine.caller import group_view_of, in_claiming_group
-from teleclaude.core.workflow_machine.peer_starts import StartEntry, register_with_owner, settle_with_owners
+from teleclaude.core.workflow_machine.peer_starts import (
+    StartEntry,
+    keys_in_flight_at,
+    mark_in_flight,
+    register_with_owner,
+    release_in_flight,
+    settle_with_owners,
+)
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.events.envelope import occurrence_id
@@ -53,7 +60,28 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def unsettled_helper_starts(record: WorkflowRecord) -> list[HelperStart]:
+async def settled_remote_starts(record: WorkflowRecord) -> frozenset[str]:
+    """The keys of unnamed starts whose creating computer says it is no longer creating for them.
+
+    A start recorded for a creation that another computer performs is settled by that computer\'s own answer, not by
+    anything this computer\'s process does: it is settled when the computer answers that it is not creating for the
+    key. The answer cannot be a promise about the future: the creation runs in a process of that computer, and the key
+    leaves its in-progress set only when that creation has an outcome or the process has ended. A session the creation
+    produced is found by the listing of the group; a computer that does not answer leaves its starts unsettled.
+    """
+    by_owner: dict[str, list[str]] = {}
+    for start in record.helper_starts:
+        if not start.session_id and start.owner_computer:
+            by_owner.setdefault(start.owner_computer, []).append(start.key)
+    settled: set[str] = set()
+    for owner, keys in by_owner.items():
+        creating = await keys_in_flight_at(owner, keys)
+        if creating is not None:
+            settled.update(key for key in keys if key not in creating)
+    return frozenset(settled)
+
+
+def unsettled_helper_starts(record: WorkflowRecord, settled_remote: frozenset[str] = frozenset()) -> list[HelperStart]:
     """The recorded helper starts that name no session and whose creating process may still run.
 
     Time is no evidence that a creation ended. The creation runs in the process that recorded the start, so only that
@@ -65,7 +93,12 @@ def unsettled_helper_starts(record: WorkflowRecord) -> list[HelperStart]:
         start
         for start in record.helper_starts
         if not start.session_id
-        and (not start.owner_identity or probe_process(start.owner_pid, start.owner_identity) is not ProcessState.ENDED)
+        and (
+            start.key not in settled_remote
+            if start.owner_computer
+            else not start.owner_identity
+            or probe_process(start.owner_pid, start.owner_identity) is not ProcessState.ENDED
+        )
     ]
 
 
@@ -136,7 +169,9 @@ async def earlier_claim_sessions(
     return tuple(found)
 
 
-async def register_helper_start(project_root: str, item: str, caller_session_id: str, computer: str = "") -> str:
+async def register_helper_start(
+    project_root: str, item: str, caller_session_id: str, computer: str = "", owner_computer: str = ""
+) -> str:
     """Record the start on the item, in one conditional write, and return its key.
 
     A start that will be created on another computer names it, so a start whose reply never came back still tells the
@@ -145,8 +180,8 @@ async def register_helper_start(project_root: str, item: str, caller_session_id:
     store = await get_workflow_store(project_root)
     item_id = store.resolve_store_address_sync(item)
     keys: list[str] = []
-    owner_identity = start_identity(os.getpid())
-    if not owner_identity:
+    owner_identity = "" if owner_computer else start_identity(os.getpid())
+    if not owner_computer and not owner_identity:
         raise HelperStartRefused(NO_IDENTITY.format(item=item))
 
     def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
@@ -166,9 +201,10 @@ async def register_helper_start(project_root: str, item: str, caller_session_id:
                 key=key,
                 epoch=record.claim_epoch,
                 requested_at=_now(),
-                owner_pid=os.getpid(),
+                owner_pid=0 if owner_computer else os.getpid(),
                 owner_identity=owner_identity,
                 computer=computer,
+                owner_computer=owner_computer,
             )
         )
         keys.append(key)
@@ -251,14 +287,19 @@ async def helper_start_fence(
         if initiator_session_id
         else []
     )
+    held_elsewhere = [entry.key for entry in entries if entry.computer and entry.computer != local]
+    mark_in_flight(held_elsewhere)
     try:
-        yield fence
-    except BaseException:
-        if not fence.ambiguous:
-            await settle_entries(entries, "", computer or local, initiator_session_id or "")
-        raise
-    if fence.session_id or not fence.ambiguous:
-        await settle_entries(entries, fence.session_id, computer or local, initiator_session_id or "")
+        try:
+            yield fence
+        except BaseException:
+            if not fence.ambiguous:
+                await settle_entries(entries, "", computer or local, initiator_session_id or "")
+            raise
+        if fence.session_id or not fence.ambiguous:
+            await settle_entries(entries, fence.session_id, computer or local, initiator_session_id or "")
+    finally:
+        release_in_flight(held_elsewhere)
 
 
 @dataclass
@@ -347,7 +388,14 @@ async def register_from_ancestor(
     try:
         lineage = await _creation_lineage("", None, ancestor_session_id)
         for root, item in lineage.items:
-            key = await _register_for_group(root, item, creator_session_id, elsewhere, creator_computer)
+            key = await _register_for_group(
+                root,
+                item,
+                creator_session_id,
+                elsewhere,
+                creator_computer,
+                performed_elsewhere=creator_computer != local,
+            )
             if key:
                 entries.append(StartEntry(local, root, item, key))
         for ancestor, owner in lineage.remote:
@@ -406,7 +454,13 @@ def _session_items(session: Session) -> list[tuple[str, str]]:
 
 
 async def _register_for_group(
-    project_root: str, item: str, initiator_session_id: str, computer: str = "", creator_computer: str = ""
+    project_root: str,
+    item: str,
+    initiator_session_id: str,
+    computer: str = "",
+    creator_computer: str = "",
+    *,
+    performed_elsewhere: bool = False,
 ) -> str:
     """Register the start when the creator is in the item\'s holder\'s group; refuse it when in an earlier group\'s.
 
@@ -424,7 +478,9 @@ async def _register_for_group(
     holder = state.active_runner or ""
     source = creator_computer if creator_computer and creator_computer != config.computer.name else None
     if holder and await in_claiming_group(initiator_session_id, holder, state.workflow.remote_members, source=source):
-        return await register_helper_start(project_root, item, holder, computer)
+        return await register_helper_start(
+            project_root, item, holder, computer, creator_computer if performed_elsewhere else ""
+        )
     if initiator_session_id in await earlier_claim_sessions(state.workflow, holder, item, project_root):
         raise HelperStartRefused(EARLIER_GROUP.format(item=item, session=initiator_session_id))
     return ""

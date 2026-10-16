@@ -21,12 +21,14 @@ from teleclaude.core.workflow_machine.peer_starts import (
     CREATOR_COMPUTER_FIELD,
     CREATOR_FIELD,
     ENTRIES_FIELD,
+    KEYS_FIELD,
     NEW_COMPUTER_FIELD,
     PARENT_FIELD,
     SESSION_COMPUTER_FIELD,
     SESSION_FIELD,
     PeerStartRequest,
     StartEntry,
+    in_flight_among,
 )
 from teleclaude.types.workflow_record import RemoteMember
 
@@ -59,6 +61,11 @@ async def serve_peer_start(command: str, message: RedisInboundMessage) -> JsonVa
         except HelperStartRefused as refusal:
             raise PermissionError(str(refusal)) from refusal
         return cast(JsonValue, [entry.to_wire() for entry in entries])
+    if command == PeerStartRequest.IN_FLIGHT.value:
+        asked = request.get(KEYS_FIELD)
+        if not isinstance(asked, list):
+            raise PermissionError(MALFORMED.format(request=command, computer=local, field=KEYS_FIELD))
+        return cast(JsonValue, in_flight_among([key for key in asked if isinstance(key, str)]))
     session_id = request.get(SESSION_FIELD)
     session_computer = request.get(SESSION_COMPUTER_FIELD)
     parent = request.get(PARENT_FIELD)

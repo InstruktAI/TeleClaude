@@ -207,8 +207,13 @@ async def _open_sessions_of(computer: str) -> tuple[SessionSnapshot, ...] | None
         data = await relay_caller_read(
             get_command_service().client, computer, RelayRead.SESSIONS.value, principal=SYSTEM_DAEMON_PRINCIPAL
         )
-        listing = [entry for entry in data if isinstance(entry, dict)] if isinstance(data, list) else []
-        return tuple(s for s in parse_peer_session_snapshots(listing, computer) if s.closed_at is None)
+        if not isinstance(data, list) or not all(isinstance(entry, dict) for entry in data):
+            return None  # a listing that cannot be read whole proves nothing about what is absent from it
+        listing = [entry for entry in data if isinstance(entry, dict)]
+        parsed = parse_peer_session_snapshots(listing, computer)
+        if len(parsed) != len(listing):
+            return None
+        return tuple(s for s in parsed if s.closed_at is None)
     except (RemoteDispatchError, RuntimeError, ValueError, OSError):
         return None
 

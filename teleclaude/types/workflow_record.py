@@ -315,7 +315,9 @@ class HelperStart(BaseModel):
 
     ``owner_pid`` and ``owner_identity`` name the process that creates the session: the creation runs inside it, so a
     start that no session names after that process has ended can never produce one. A start whose owner cannot be
-    named is never proven ended.
+    named is never proven ended. A start recorded for a creation that another computer performs names that computer in
+    ``owner_computer`` and no process: only the computer that performs the creation can say whether it is still
+    in progress, so the start is settled when that computer answers that it is not.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -327,6 +329,7 @@ class HelperStart(BaseModel):
     owner_pid: int = 0
     owner_identity: str = ""
     computer: str = ""
+    owner_computer: str = ""
 
 
 class WorkflowRecord(BaseModel):
