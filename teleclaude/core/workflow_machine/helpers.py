@@ -54,6 +54,7 @@ EARLIER_GROUP = (
 )
 ANCESTOR_WALK_CAP = 32
 UNANSWERED_PREFIX = "unanswered:"
+ANY_COMPUTER = "*"
 NO_IDENTITY = "{item}: the creating process cannot be named, so a helper start cannot be recorded"
 UNKNOWN_ITEM = "no item {item} in this project"
 START_ACT = "helper-start"
@@ -421,8 +422,10 @@ async def _creation_lineage(project_root: str, working_slug: str | None, start_s
         if not held_by:
             open_ancestor = cached_remote_session(current)
             held_by = str(open_ancestor.computer) if open_ancestor is not None and open_ancestor.computer else ""
-        if held_by and held_by != local:
-            lineage.remote.append((current, held_by))
+        # An ancestor no record here places is not unrelated: its holder is asked of every known computer. A creator
+        # whose lineage reaches a session this computer does not hold, and which nothing locates, is never let through
+        # unfenced.
+        lineage.remote.append((current, held_by if held_by and held_by != local else ANY_COMPUTER))
         break
     return lineage
 
@@ -457,11 +460,18 @@ async def register_for_creation(
             if key:
                 entries.append(StartEntry("", root, item, key))
         for ancestor, owner in lineage.remote:
-            entries.extend(
-                await register_with_owner(
-                    owner, initiator_session_id, carried_from, ancestor, computer or local, creation_id, deadline_at
+            for target in sorted(peer_computers()) if owner == ANY_COMPUTER else [owner]:
+                entries.extend(
+                    await register_with_owner(
+                        target,
+                        initiator_session_id,
+                        carried_from,
+                        ancestor,
+                        computer or local,
+                        creation_id,
+                        deadline_at,
+                    )
                 )
-            )
     except BaseException:
         await settle_entries(entries, "", computer or local, initiator_session_id)
         raise
@@ -496,10 +506,13 @@ async def register_from_ancestor(
                 performed_elsewhere=creator_computer != local,
                 start_key=start_key,
                 carry_deadline=deadline_at,
+                via_ancestor=ancestor_session_id,
             )
             if key:
                 entries.append(StartEntry(local, root, item, key))
         for ancestor, owner in lineage.remote:
+            if owner == ANY_COMPUTER:
+                continue  # an ancestor this computer cannot place is not asked of the others from here
             entries.extend(
                 await register_with_owner(
                     owner, creator_session_id, creator_computer, ancestor, new_computer, start_key, deadline_at
@@ -566,8 +579,13 @@ async def _register_for_group(
     performed_elsewhere: bool = False,
     start_key: str = "",
     carry_deadline: float = 0.0,
+    via_ancestor: str = "",
 ) -> str:
     """Register the start when the creator is in the item\'s holder\'s group; refuse it when in an earlier group\'s.
+
+    ``via_ancestor`` is the session of this computer the creator\'s own computer found at the end of the creator\'s
+    recorded chain: the creator descends from it by that computer\'s own records, so the creator belongs wherever that
+    ancestor does, even before this computer has heard of the creator.
 
     A creator another computer holds is judged as that computer\'s session: its id counts only where the cluster or
     the item shows that computer holding it.
@@ -582,7 +600,12 @@ async def _register_for_group(
     state = TodoState.model_validate(raw)
     holder = state.active_runner or ""
     source = creator_computer if creator_computer and creator_computer != config.computer.name else None
-    if holder and await in_claiming_group(initiator_session_id, holder, state.workflow.remote_members, source=source):
+    retained = state.workflow.remote_members
+    in_group = bool(holder) and (
+        await in_claiming_group(initiator_session_id, holder, retained, source=source)
+        or (bool(via_ancestor) and await in_claiming_group(via_ancestor, holder, retained))
+    )
+    if in_group:
         return await register_helper_start(
             project_root,
             item,
@@ -592,6 +615,7 @@ async def _register_for_group(
             start_key,
             carry_deadline,
         )
-    if initiator_session_id in await earlier_claim_sessions(state.workflow, holder, item, project_root):
+    earlier = await earlier_claim_sessions(state.workflow, holder, item, project_root)
+    if initiator_session_id in earlier or (via_ancestor and via_ancestor in earlier):
         raise HelperStartRefused(EARLIER_GROUP.format(item=item, session=initiator_session_id))
     return ""
