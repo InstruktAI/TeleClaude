@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import cast
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import update
+from sqlalchemy import Update, update
 from sqlmodel import Session as SqlSession
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
@@ -67,6 +67,20 @@ def _rename_breakdown_todos(
     renamed_state = dict(state)
     renamed_state["breakdown"] = renamed_breakdown
     return renamed_state
+
+
+def _v2_upcycle_statement(todo_id: str, original_json: str, payload: dict[str, StateValue], now: str) -> Update:
+    """Persist an upcycled payload only while the row still holds the JSON the read upcycled.
+
+    The read upcycled a state it saw; a writer that committed since holds newer state, and the old JSON upcycled would
+    overwrite it. The expected-original condition makes the persistence a no-op then; the next read upcycles again.
+    """
+    return (
+        update(TODO_STATE_TABLE)
+        .where(TODO_STATE_TABLE.c.id == todo_id)
+        .where(TODO_STATE_TABLE.c.state == original_json)
+        .values(state=json.dumps(payload, default=str), updated_at=now)
+    )
 
 
 class TodosDbStateMixin:
@@ -284,11 +298,14 @@ class TodosDbStateMixin:
             raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
             payload = upcycle_state_dict(raw_state)
             if self._record_v2_to_v3_if_needed(slug, raw_state, payload):
-                state_model.state = json.dumps(payload, default=str)
-                state_model.updated_at = datetime.now(UTC).isoformat()
-                session.add(state_model)
+                persisted = await session.exec(
+                    _v2_upcycle_statement(
+                        str(state_model.id), state_model.state, payload, datetime.now(UTC).isoformat()
+                    )
+                )
                 await session.commit()
-                self._on_mutation("todo_updated", None)
+                if persisted.rowcount:
+                    self._on_mutation("todo_updated", None)
             return payload
 
     async def read_state_in_session(self, slug: str, session: SqlAsyncSession) -> dict[str, StateValue] | None:
@@ -314,11 +331,14 @@ class TodosDbStateMixin:
             raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
             payload = upcycle_state_dict(raw_state)
             if self._record_v2_to_v3_if_needed(entry.slug, raw_state, payload):
-                state_model.state = json.dumps(payload, default=str)
-                state_model.updated_at = datetime.now(UTC).isoformat()
-                session.add(state_model)
+                persisted = await session.exec(
+                    _v2_upcycle_statement(
+                        str(state_model.id), state_model.state, payload, datetime.now(UTC).isoformat()
+                    )
+                )
                 await session.commit()
-                self._on_mutation("todo_updated", None)
+                if persisted.rowcount:
+                    self._on_mutation("todo_updated", None)
             return payload
 
     async def read_status_and_state_by_id(self, todo_id: str) -> TodoStatusStateRead:
@@ -336,11 +356,14 @@ class TodosDbStateMixin:
             raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
             payload = upcycle_state_dict(raw_state)
             if self._record_v2_to_v3_if_needed(entry.slug, raw_state, payload):
-                state_model.state = json.dumps(payload, default=str)
-                state_model.updated_at = datetime.now(UTC).isoformat()
-                session.add(state_model)
+                persisted = await session.exec(
+                    _v2_upcycle_statement(
+                        str(state_model.id), state_model.state, payload, datetime.now(UTC).isoformat()
+                    )
+                )
                 await session.commit()
-                self._on_mutation("todo_updated", None)
+                if persisted.rowcount:
+                    self._on_mutation("todo_updated", None)
             return TodoStatusStateRead(status=entry.status, state=payload, is_structural_group_holder=is_holder)
 
     async def read_status_and_states_by_id(self, todo_ids: list[str]) -> dict[str, TodoStatusStateRead]:
@@ -366,10 +389,12 @@ class TodosDbStateMixin:
                 raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
                 payload = upcycle_state_dict(raw_state)
                 if self._record_v2_to_v3_if_needed(entry.slug, raw_state, payload):
-                    state_model.state = json.dumps(payload, default=str)
-                    state_model.updated_at = datetime.now(UTC).isoformat()
-                    session.add(state_model)
-                    migrated = True
+                    persisted = await session.exec(
+                        _v2_upcycle_statement(
+                            str(state_model.id), state_model.state, payload, datetime.now(UTC).isoformat()
+                        )
+                    )
+                    migrated = migrated or bool(persisted.rowcount)
                 reads[entry.id] = TodoStatusStateRead(
                     status=entry.status, state=payload, is_structural_group_holder=False
                 )
@@ -673,11 +698,14 @@ class TodosDbStateMixin:
             raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
             payload = upcycle_state_dict(raw_state)
             if self._record_v2_to_v3_if_needed(slug, raw_state, payload):
-                state_model.state = json.dumps(payload, default=str)
-                state_model.updated_at = datetime.now(UTC).isoformat()
-                session.add(state_model)
+                persisted = session.exec(
+                    _v2_upcycle_statement(
+                        str(state_model.id), state_model.state, payload, datetime.now(UTC).isoformat()
+                    )
+                )
                 session.commit()
-                self._on_mutation("todo_updated", None)
+                if persisted.rowcount:
+                    self._on_mutation("todo_updated", None)
             return payload
 
     def write_state_sync(
