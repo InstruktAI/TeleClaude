@@ -13,6 +13,10 @@ launch the fixture holds before its SessionStart. While that start is in progres
 item is refused naming the owner terminal and writes nothing, the owner\'s repeated start attaches, and after the hold
 one driver claims. A second item then takes two requesters at once: exactly one start fails and one driver claims.
 
+Its close follows amendment A4, `journeys/b2-b3-b4-close-hold-handover-amendment-rev2-draft.md` at exact SHA-256
+6871ce0dae59a98e6c24f3de945b3f2e2cb51c74daf847a2ee96820f8f522b21 (see `workflow_handover`): the owner\'s manual end of
+a holding driver sets the session-close hold, which the case classifies and releases explicitly before it ends.
+
 It proves one racing interleaving and the deterministic start-in-progress refusal, not statistical or exhaustive
 concurrency, no model following, no event count and no whole delivery. A negative sample is judged only when the
 one-way barrier latch, read last, proves the sample was taken while the start was held; a window that expired is a failed
@@ -33,6 +37,7 @@ from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
 from tools.ci import workflow_foundation as foundation
+from tools.ci import workflow_handover as handover
 from tools.ci import workflow_publication as publication
 from tools.ci.workflow_foundation import FoundationHost, Outcome
 
@@ -274,6 +279,7 @@ class _Race:
         self.cases: list[driver.DriverCase] = []
         self.driver_w = ""
         self.driver_r = ""
+        self.handover = handover.Handover(self.observer, host)
 
     # -- helpers ---------------------------------------------------------------------------------------------------
     def _known(self, *sessions: str) -> frozenset[str]:
@@ -688,11 +694,13 @@ class _Race:
 
     def close(self) -> None:
         """Step 12: the drivers and the requester end; the claims are released and the items return unheld."""
-        for case, session in zip(self.cases, (self.driver_w, self.driver_r), strict=True):
+        for case, session, item in zip(self.cases, (self.driver_w, self.driver_r), (ITEM_W, ITEM_R), strict=True):
+            self.handover.before(item, session, driver.PHASE)
             case.close(session)
         assert self.requester_journey is not None
         self.requester_journey.session_id = self.requester
         self.requester_journey.end_session()
+        self.handover.after([ITEM_W, ITEM_R])
 
 
 def run_race(
@@ -748,10 +756,12 @@ def _cleanup(race: _Race, failure: BaseException | None) -> None:
     settlement = publication.settle_sessions(race.observer, race.baseline, race.starts, race.controls.directories)
     problems = list(settlement.problems)
     problems.extend(race.publication.restore())
-    if settlement.proven:
+    if settlement.proven and not race.handover.unrelated:
         problems.extend(race.controls.restore())
     else:
         kept = DETAIL_CONTROLS_KEPT.format(control=race.controls.root)
+        if race.handover.unrelated:
+            kept = f"{kept}; {race.handover.unrelated}"
         problems.append(kept)
         race.retain(kept)
     try:

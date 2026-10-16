@@ -14,6 +14,10 @@ session dispatched from the owner\'s own session carries the owner\'s lineage an
 the log. After the owner ends the first driver, the owner\'s own roleless session decides and exactly one next driver
 starts and claims.
 
+Its close follows amendment A4, `journeys/b2-b3-b4-close-hold-handover-amendment-rev2-draft.md` at exact SHA-256
+6871ce0dae59a98e6c24f3de945b3f2e2cb51c74daf847a2ee96820f8f522b21 (see `workflow_handover`): the owner\'s manual end of
+a holding driver sets the session-close hold, which the case classifies and releases explicitly before it ends.
+
 It proves no event, no stored waited phase, no prepared/work/ready/delivery, no racing decisions and no model
 following; the order of the child\'s end and the claim\'s release inside the act is a source-review obligation. This
 controller creates no session record, role, reservation, identity or authentication state, reads no private store and
@@ -33,6 +37,7 @@ from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
 from tools.ci import workflow_foundation as foundation
+from tools.ci import workflow_handover as handover
 from tools.ci import workflow_publication as publication
 from tools.ci.workflow_foundation import FoundationHost
 
@@ -173,6 +178,7 @@ class _Waiting:
         self.key = ""
         self.snapshot: Json = {}
         self.decision_attempt = ""
+        self.handover = handover.Handover(self.observer, host)
 
     # -- helpers ---------------------------------------------------------------------------------------------------
     def _known(self, *sessions: str) -> frozenset[str]:
@@ -602,11 +608,13 @@ class _Waiting:
         return case, second
 
     def step10_close(self, case: driver.DriverCase, second: str, owner: str, dispatched: str) -> None:
+        self.handover.before(ITEM, second, PHASE_PREPARATION)
         case.close(second)
         for name, session in (("dispatched", dispatched), ("owner", owner)):
             journey = self.journeys[name]
             journey.session_id = session
             journey.end_session()
+        self.handover.after([ITEM])
 
 
 def run_waiting(
@@ -665,10 +673,12 @@ def _cleanup(waiting: _Waiting, failure: BaseException | None) -> None:
     )
     problems = list(settlement.problems)
     problems.extend(waiting.publication.restore())
-    if settlement.proven:
+    if settlement.proven and not waiting.handover.unrelated:
         problems.extend(waiting.controls.restore())
     else:
         kept = DETAIL_CONTROLS_KEPT.format(control=waiting.controls.root)
+        if waiting.handover.unrelated:
+            kept = f"{kept}; {waiting.handover.unrelated}"
         problems.append(kept)
         waiting.retain(kept)
     try:

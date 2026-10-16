@@ -18,6 +18,10 @@ closes the live author and releases the claim; after the owner ends the driver, 
 naming both digests and starts nothing; the exact prepared body is restored; and one real work driver claims, with its
 worktree and opening commit read by real `git`.
 
+Its close follows amendment A4, `journeys/b2-b3-b4-close-hold-handover-amendment-rev2-draft.md` at exact SHA-256
+6871ce0dae59a98e6c24f3de945b3f2e2cb51c74daf847a2ee96820f8f522b21 (see `workflow_handover`): the owner\'s manual end of
+a holding driver sets the session-close hold, which the case classifies and releases explicitly before it ends.
+
 It proves no event, no stamp, ready or delivery, no builder child, no model following and no intermediate sweep order.
 The Git base, main branch and owned bare origin are controller-owned fixture preparation by the real `git`
 executable. This controller creates no session record, role, reservation, identity or authentication state, reads no
@@ -40,6 +44,7 @@ from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
 from tools.ci import workflow_foundation as foundation
+from tools.ci import workflow_handover as handover
 from tools.ci import workflow_items as items
 from tools.ci import workflow_publication as publication
 from tools.ci import workflow_waiting as waiting
@@ -193,6 +198,7 @@ class _Prepared:
         self.initial_headers: list[str] = []
         self.known_claims = 0
         self.known_sessions: list[str] = []
+        self.handover = handover.Handover(self.observer, host, worktree=self._worktree_block)
 
     # -- helpers ---------------------------------------------------------------------------------------------------
     def _known(self, *sessions: str) -> frozenset[str]:
@@ -404,10 +410,9 @@ class _Prepared:
 
     def preconditions(self) -> None:
         shown = self._shown()
-        # The earlier journey ended its last driver, which can leave the item held; a driver start clears that brake in
-        # its own write, so the starting hold is recorded, not asserted.
-        _, hold = creation.dig(shown, "state.hold")
-        self.host.note(("starting-hold", repr(hold)), foundation.Outcome(0, repr(hold)), "")
+        # The derived handoff of amendment A4: B3 released the close hold of its last driver, so the item starts unheld
+        # with an empty audit; a failure here is a binding failure of the chain.
+        self.handover.assert_start_unheld(ITEM, "B4 start")
         for path, expected in (("state.lifecycle_phase", PREPARATION_PHASE),):
             found, value = creation.dig(shown, path)
             if not found or value != expected:
@@ -727,6 +732,14 @@ class _Prepared:
         self.worktree(worker)
         return case, worker
 
+    def _worktree_block(self) -> str:
+        """The expected worktree\'s block of the porcelain listing, or an empty text when it is not listed."""
+        expected = str(self.project / "trees" / ITEM)
+        listing = self._git("worktree list", "worktree", "list", "--porcelain")
+        blocks = [chunk.split("\n") for chunk in listing.replace("\r\n", "\n").split("\n\n")]
+        block = next((lines for lines in blocks if lines and lines[0] == f"worktree {expected}"), [])
+        return "\n".join(block)
+
     def worktree(self, worker: str) -> None:
         """The worktree and the opening commit the claim queued, read with real `git`."""
         deadline = time.monotonic() + WORKTREE_SECONDS
@@ -773,7 +786,9 @@ class _Prepared:
             )
 
     def step9_close(self, case: driver.DriverCase, worker: str) -> None:
+        self.handover.before(ITEM, worker, WORK_PHASE)
         case.close(worker)
+        self.handover.after([ITEM])
 
 
 def run_prepared(
@@ -829,10 +844,12 @@ def _cleanup(prepared: _Prepared, failure: BaseException | None) -> None:
     )
     problems = list(settlement.problems)
     problems.extend(prepared.publication.restore())
-    if settlement.proven:
+    if settlement.proven and not prepared.handover.unrelated:
         problems.extend(prepared.controls.restore())
     else:
         kept = DETAIL_CONTROLS_KEPT.format(control=prepared.controls.root)
+        if prepared.handover.unrelated:
+            kept = f"{kept}; {prepared.handover.unrelated}"
         problems.append(kept)
         prepared.retain(kept)
     try:
