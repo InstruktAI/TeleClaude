@@ -196,6 +196,10 @@ async def resolve_session_creation_identity(
     parent_company = parent_session.company if parent_session else None
     company, company_source = resolve_session_creation_company(cmd.request_id, cmd.company, human_email, parent_company)
     human_role = _creation_human_role(cmd, identity, human_email, principal)
+    if principal is None and human_email:
+        # A session a person opens themselves has no parent to inherit from; its record still carries the person as
+        # its principal, which is what a session reads as "the person\'s own session" (it resolves to the same value).
+        principal = human_principal_for_email(human_email)
     prepare_interactive_create_command(cmd, human_role, session_id)
     subfolder = cmd.subdir
     working_slug = resolve_working_slug_from_subdir(subfolder) or cmd.working_slug
