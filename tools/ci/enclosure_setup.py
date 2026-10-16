@@ -18,6 +18,7 @@ from typing import Final
 from tools.ci.enclosure_contract import (
     AdmittedDeadline,
     Field,
+    JsonObject,
     StaticPackage,
     object_value,
     parse_object,
@@ -37,6 +38,7 @@ from tools.ci.enclosure_data import (
 )
 from tools.ci.enclosure_guest import ERROR_CONTEXT, SOURCE_ROOT, GuestContext, Role
 from tools.ci.enclosure_guest import Key as GuestKey
+from tools.ci.enclosure_journal import Controller
 
 SETUP_UNIT: Final = "guest-setup.service"
 APT_ARGUMENTS: Final = (
@@ -101,6 +103,37 @@ HASH_PREFIX: Final = "sha512."
 SPEC_SEPARATOR: Final = "@"
 BUILD_SEPARATOR: Final = "+"
 OWNER_SEPARATOR: Final = ":"
+SYSTEMCTL: Final = "/usr/bin/systemctl"
+START: Final = "start"
+SYSTEM_START: Final = (SYSTEMCTL, START, "dbus.service", "systemd-logind.service")
+NETWORK_START: Final = (SYSTEMCTL, START, "systemd-networkd.service", "systemd-resolved.service")
+NETWORK_WAIT: Final = (SYSTEMCTL, START, "systemd-networkd-wait-online.service")
+USER_UNIT: Final = "user@{uid}.service"
+BUSCTL: Final = "/usr/bin/busctl"
+JSON_SHORT: Final = "--json=short"
+SYSTEM_BUS: Final = "--system"
+USER_ADDRESS: Final = "--address=unix:path=/run/user/{uid}/bus"
+RUNUSER: Final = "/usr/sbin/runuser"
+RUNUSER_USER: Final = "--user"
+BUS_CREDENTIALS: Final = (
+    "call",
+    "org.freedesktop.DBus",
+    "/org/freedesktop/DBus",
+    "org.freedesktop.DBus",
+    "GetConnectionCredentials",
+    "s",
+    "org.freedesktop.systemd1",
+)
+SYSTEM_SOCKET: Final = Path("/run/dbus/system_bus_socket")
+USER_SOCKET: Final = "/run/user/{uid}/bus"
+PROCESS_PID_NS: Final = "/proc/{pid}/ns/pid"
+PROCESS_CGROUP_NS: Final = "/proc/{pid}/ns/cgroup"
+PROCESS_CGROUP: Final = "/proc/{pid}/cgroup"
+UINT32_MAX: Final = 2**32 - 1
+UINT_SIGNATURE: Final = "u"
+CREDENTIALS_SIGNATURE: Final = "a{sv}"
+SUDO_ID: Final = ("/usr/bin/sudo", "--non-interactive", "--", "/usr/bin/id", "--user")
+GUEST_ROOT_UID: Final = b"0"
 END_OPTIONS: Final = "--"
 INSTALLED: Final = "install ok installed"
 TAB: Final = "\t"
@@ -109,12 +142,19 @@ GUEST_SCHEME: Final = "guest:"
 NANOSECONDS: Final = 1_000_000_000
 INVENTORY_LIMIT: Final = 1024 * 1024
 REQUIRED_SOURCES: Final = frozenset(
-    {"tools/ci/enclosure_setup.py", "tools/ci/enclosure_data.py", "tools/ci/acceptance_package_policy.py"}
+    {
+        "tools/ci/enclosure_setup.py",
+        "tools/ci/enclosure_data.py",
+        "tools/ci/enclosure_journal.py",
+        "tools/ci/acceptance_package_policy.py",
+    }
 )
 ERROR_INVENTORY: Final = "the native configured guest package inventory is missing or differs from the fixed closure"
 ERROR_ACCOUNT: Final = "the created guest account does not match its reviewed identity"
 ERROR_BUDGET: Final = "guest setup exhausted the original admitted unit/command/vector/outer allowance"
 ERROR_TOOLS: Final = "the fixed guest bootstrap tools or native Corepack cache differ from the reviewed inputs"
+ERROR_BUS: Final = "the native guest system/user bus manager credentials or namespace are unavailable or inconsistent"
+ERROR_NATIVE_READ: Final = "native guest read was incomplete or failed: {executable}, exit {status}"
 SETUP_ENVIRONMENT: Final = {
     "PATH": "/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "LANG": "C.UTF-8",
@@ -153,6 +193,10 @@ class Key(StrEnum):
     HASH = "hash"
     LOCATOR = "locator"
     REFERENCE = "reference"
+    TYPE = "type"
+    DATA = "data"
+    UNIX_UID = "UnixUserID"
+    PROCESS_ID = "ProcessID"
 
 
 @dataclass(frozen=True)
@@ -168,8 +212,21 @@ type NativeQuery = Callable[[tuple[str, ...], float], NativeRead]
 
 
 @dataclass(frozen=True)
+class GuestManagerFacts:
+    """Native guest-bus ownership and process placement at the stated capture point, not P4 continuity."""
+
+    uid: int
+    pid: int
+    start_ticks: int
+    pid_namespace: str
+    cgroup_namespace: str
+    cgroup: str
+    observed_ns: int
+
+
+@dataclass(frozen=True)
 class GuestOSFacts:
-    """Configured package/account and fixed bootstrap facts; user-bus and application outcomes remain separate."""
+    """Configured package/account/tools and captured native manager facts, without an application verdict."""
 
     inventory_sha256: str
     account: str
@@ -179,6 +236,73 @@ class GuestOSFacts:
     shell: str
     bootstrap_archive_digests: tuple[str, ...]
     corepack_metadata_sha256: str
+    system_manager: GuestManagerFacts
+    user_manager: GuestManagerFacts
+
+
+def _query_native(argv: tuple[str, ...], query: NativeQuery, deadline: AdmittedDeadline, cap: int) -> bytes:
+    end = deadline.command_end(cap)
+    remaining = (end - time.monotonic_ns()) / NANOSECONDS
+    if remaining <= 0:
+        raise TimeoutError(ERROR_BUDGET)
+    result = query(argv, remaining)
+    if time.monotonic_ns() >= end:
+        raise TimeoutError(ERROR_BUDGET)
+    if result.status != 0 or not result.complete or len(result.stdout) > INVENTORY_LIMIT:
+        raise ValueError(ERROR_NATIVE_READ.format(executable=argv[0], status=result.status))
+    return result.stdout
+
+
+def _credential(credentials: JsonObject, key: Key) -> int:
+    # Native busctl preserves the variant's wire type and scalar value in its JSON representation.
+    value = credentials.get(key)
+    if not isinstance(value, dict) or value.get(Key.TYPE) != UINT_SIGNATURE:
+        raise ValueError(ERROR_BUS)
+    number = value.get(Key.DATA)
+    if type(number) is not int or not 0 <= number <= UINT32_MAX:
+        raise ValueError(ERROR_BUS)
+    return number
+
+
+def _manager_facts(
+    context: GuestContext,
+    argv: tuple[str, ...],
+    socket: Path,
+    expected_uid: int,
+    query: NativeQuery,
+    deadline: AdmittedDeadline,
+    cap: int,
+) -> GuestManagerFacts:
+    raw = _query_native(argv, query, deadline, cap)
+    response = parse_object(raw)
+    body = response.get(Key.DATA)
+    if response.get(Key.TYPE) != CREDENTIALS_SIGNATURE or not isinstance(body, list) or len(body) != 1:
+        raise ValueError(ERROR_BUS)
+    credentials = object_value(body[0])
+    uid, pid = _credential(credentials, Key.UNIX_UID), _credential(credentials, Key.PROCESS_ID)
+    identity = Controller.capture(pid)
+    socket_status = socket.lstat()
+    pid_namespace = os.readlink(PROCESS_PID_NS.format(pid=pid))
+    cgroup_namespace = os.readlink(PROCESS_CGROUP_NS.format(pid=pid))
+    if (
+        uid != expected_uid
+        or identity.uid != expected_uid
+        or (expected_uid == 0 and pid != 1)
+        or (expected_uid != 0 and pid <= 1)
+        or identity.boot_id != text(context.record, GuestKey.GUEST_BOOT_ID)
+        or pid_namespace != text(context.record, GuestKey.PID_NAMESPACE)
+        or cgroup_namespace != text(context.record, GuestKey.CGROUP_NAMESPACE)
+        or not stat.S_ISSOCK(socket_status.st_mode)
+        or socket_status.st_uid != expected_uid
+    ):
+        raise ValueError(ERROR_BUS)
+    with Path(PROCESS_CGROUP.format(pid=pid)).open(encoding=UTF8) as handle:
+        cgroup = handle.read(INVENTORY_LIMIT + 1)
+    if not cgroup or len(cgroup) > INVENTORY_LIMIT or time.monotonic_ns() >= deadline.effective_end():
+        raise ValueError(ERROR_BUS)
+    return GuestManagerFacts(
+        uid, pid, identity.start_ticks, pid_namespace, cgroup_namespace, cgroup, time.monotonic_ns()
+    )
 
 
 def _verify_inventory(package: StaticPackage, raw: bytes) -> str:
@@ -292,16 +416,9 @@ def configure_guest_os(context: GuestContext, run: NativeCommand, query: NativeQ
             archive = GUEST_ARCHIVE_DIRECTORY / (digest + DEB_SUFFIX)
             archives.append(str(_archive(row, {digest: archive}, deadline)))
     _command((*APT_ARGUMENTS, *archives), run, deadline, cap)
-    end = deadline.command_end(cap)
-    remaining = (end - time.monotonic_ns()) / NANOSECONDS
-    if remaining <= 0:
-        raise TimeoutError(ERROR_BUDGET)
-    inventory = query(INVENTORY_ARGUMENTS, remaining)
-    if time.monotonic_ns() >= end:
-        raise TimeoutError(ERROR_BUDGET)
-    if inventory.status != 0 or not inventory.complete:
-        raise ValueError(ERROR_INVENTORY)
-    inventory_digest = _verify_inventory(context.package, inventory.stdout)
+    inventory_digest = _verify_inventory(context.package, _query_native(INVENTORY_ARGUMENTS, query, deadline, cap))
+    _command(NETWORK_START, run, deadline, cap)
+    _command(NETWORK_WAIT, run, deadline, cap)
     bootstrap_digests, corepack_metadata_digest = _configure_bootstrap_tools(context, run, deadline, cap)
     account = object_value(guest[Key.ACCOUNT])
     name = text(account, Key.NAME)
@@ -341,5 +458,42 @@ def configure_guest_os(context: GuestContext, run: NativeCommand, query: NativeQ
         (path.stat().st_uid, path.stat().st_gid) != (uid, gid) for path in (SOURCE_ROOT, SOURCE_ROOT / GIT_DIRECTORY)
     ):
         raise ValueError(ERROR_ACCOUNT)
+    _command(SYSTEM_START, run, deadline, cap)
     _command((LOGINCTL, ENABLE_LINGER, END_OPTIONS, name), run, deadline, cap)
-    return GuestOSFacts(inventory_digest, name, uid, gid, home, shell, bootstrap_digests, corepack_metadata_digest)
+    # Native start waits for the existing or newly admitted user-manager job; it never retries an unknown result.
+    _command((SYSTEMCTL, START, USER_UNIT.format(uid=uid)), run, deadline, cap)
+    if (
+        _query_native((RUNUSER, RUNUSER_USER, name, END_OPTIONS, *SUDO_ID), query, deadline, cap).strip()
+        != GUEST_ROOT_UID
+    ):
+        raise ValueError(ERROR_ACCOUNT)
+    system_manager = _manager_facts(
+        context,
+        (BUSCTL, JSON_SHORT, SYSTEM_BUS, *BUS_CREDENTIALS),
+        SYSTEM_SOCKET,
+        0,
+        query,
+        deadline,
+        cap,
+    )
+    user_manager = _manager_facts(
+        context,
+        (RUNUSER, RUNUSER_USER, name, END_OPTIONS, BUSCTL, JSON_SHORT, USER_ADDRESS.format(uid=uid), *BUS_CREDENTIALS),
+        Path(USER_SOCKET.format(uid=uid)),
+        uid,
+        query,
+        deadline,
+        cap,
+    )
+    return GuestOSFacts(
+        inventory_digest,
+        name,
+        uid,
+        gid,
+        home,
+        shell,
+        bootstrap_digests,
+        corepack_metadata_digest,
+        system_manager,
+        user_manager,
+    )
