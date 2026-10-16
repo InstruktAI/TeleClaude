@@ -4,12 +4,16 @@ The journey's assertions are the independently reviewed ones recorded in the sha
 (`journeys/b1-claim-assertion-draft.md`, approved at exact SHA-256
 8139046b04adbf9219f29b472e8bb49e513da9cd7946ee60ddfaf0bb964df1e6, amended for step 4's act rows by
 `journeys/b1-instruction-act-pairs-amendment-draft.md` at exact SHA-256
-d7270641fcb963b66f58c79201ac936d293358665b967f493a7e625a3eac0728; authority the pending
+d7270641fcb963b66f58c79201ac936d293358665b967f493a7e625a3eac0728, and for the driver\'s title by
+`journeys/b1-driver-title-amendment-draft.md` at exact SHA-256
+f9a4d846c18e44c8d5a65082532a2e0245ab357b4f33254843977e6db81e600f; authority the pending
 `local/projects/teleclaude/spec/feature/workflow/item-lifecycle` and `.../procedure-entry` contracts of issue 128).
 It proves, on a disposable installation whose published drivers are the four folded procedures, that the public
 `telec todo prepare` starts one platform-created driver session, that the driver's own fresh public `telec todo prepare`
 claim is accepted with its reservation and renders the instruction, that exactly one claim note exists, that a second
 caller is refused naming the holder without any write, and that ending the session releases the claim.
+
+The driver\'s title (catalog role, one space, the item, stable before the end) is asserted by amendment A2.
 
 It proves no racing start, no start-in-progress refusal, no model following of procedures, no event count, no whole
 delivery and no starter-result coverage when step 6 is not evaluated. The driver runs as the inert external executable of

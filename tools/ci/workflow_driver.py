@@ -1,7 +1,8 @@
 """The evidence one platform-created preparation driver is held to, shared by the native B journeys.
 
 For one driver session of one item (B1 steps 3, 4, 5 and 8 of the approved draft, amended for step 4's act rows by
-`journeys/b1-instruction-act-pairs-amendment-draft.md`): the session is the platform\'s and shows a real startup through
+`journeys/b1-instruction-act-pairs-amendment-draft.md` and for the title by `journeys/b1-driver-title-amendment-draft.md`,
+base 8139046b, A1 d7270641, A2 f9a4d846): the session is the platform\'s and shows a real startup through
 the installed hooks of the fixture\'s own launch; the driver\'s own fresh public claim call completes and returns the
 instruction naming the item, phase, session, child procedure and each declared ending act with its phase; the item
 shows the claim and exactly one claim note; closing the session releases the claim. Every observation is a public
@@ -55,6 +56,7 @@ _CHILD_LINE = re.compile(r"^\s+child:\s*(?P<child>\S+)\s*$")
 _ACT_LINE = re.compile(r"^\s+-\s+act:\s*(?P<act>\S+)\s*$")
 _LEADS_LINE = re.compile(r"^\s+leads_to:\s*(?P<phase>\S+)\s*$")
 _ACTS_KEY = re.compile(r"^\s+acts:\s*$")
+_ROLE_LINE = re.compile(r"^role:\s*(?P<role>\S+)\s*$")
 
 START_CAP_SECONDS: Final = 900.0
 CLAIM_OPERATION_SECONDS: Final = 120.0
@@ -84,6 +86,12 @@ DETAIL_LOG_CLAIMS: Final = "the log holds {count} claim entries, not exactly one
 DETAIL_LOG_ENTRY: Final = "the claim entry does not name {needle!r}: {entry!r}"
 DETAIL_LOG_FORBIDDEN: Final = "a claim entry of the log names {session!r}, which holds nothing: {entry!r}"
 DETAIL_RELEASE: Final = "the claim was not released within {seconds} seconds: {holder!r}"
+DETAIL_TITLE: Final = "the driver's title is {found!r}, not {expected!r} (catalog role, one space, the item){diagnosis}"
+DETAIL_TITLE_ABSENT: Final = "the driver's record has no `title` key (a source-traced field): {record!r}"
+DETAIL_TITLE_MOVED: Final = "the driver's title changed before its end: first reading {first!r}, then {second!r}"
+DETAIL_ROLE_UNREADABLE: Final = "the folded companion {path} declares no readable `role:`"
+DIAGNOSIS_HOME_TOKEN: Final = "; the title ends with the activation's home token instead of the item"
+DIAGNOSIS_NO_ITEM: Final = "; the title lacks the item"
 DETAIL_COMPANION: Final = "the companion {path} has no readable workflow header"
 DETAIL_NOT_QUIESCENT: Final = "the item is being written by something else; differing paths: {paths}"
 
@@ -122,6 +130,16 @@ def declared_acts(path: Path) -> tuple[list[tuple[str, str]], str]:
     if not names or len(names) != len(phases):
         raise creation.binding_failure(DETAIL_COMPANION.format(path=path))
     return list(zip(names, phases, strict=True)), child
+
+
+def declared_role(path: Path) -> str:
+    """The `role:` the folded driver's header declares, read line by line from its first `---` block."""
+    parts = path.read_text(encoding="utf-8").split("---", 2)
+    lines = parts[1].splitlines() if len(parts) >= 3 else []
+    role = next((m.group("role") for m in map(_ROLE_LINE.match, lines) if m), None)
+    if role is None:
+        raise creation.trace_failure(DETAIL_ROLE_UNREADABLE.format(path=path))
+    return role
 
 
 def claim_entries(log: str) -> list[tuple[str, str]]:
@@ -183,6 +201,7 @@ class DriverCase:
         self.clone = clone
         self.baseline = baseline
         self.claim_argv = ("telec", TODO, PREPARE, item)
+        self.titles: dict[str, str] = {}
 
     def check_startup(self, session: str, expected_new: frozenset[str]) -> str:
         """The sessions beyond the baseline are exactly those expected; the driver\'s startup is real; returns its native id."""
@@ -205,16 +224,40 @@ class DriverCase:
         record = journey.record()
         if record is None or not journey.started(record, native):
             raise creation.platform_failure(DETAIL_RECORD_START.format(record=record))
-        for field, expected in ((FIELD_ROLE, ROLE), (FIELD_JOB, DRIVER_ID)):
+        role = declared_role(self.clone / DOCS_ROOT / f"{DRIVER_ID}{LIVE_SUFFIX}")
+        for field, expected in ((FIELD_ROLE, role), (FIELD_JOB, DRIVER_ID)):
             if record.get(field) != expected:
                 raise creation.platform_failure(
                     DETAIL_RECORD_FIELD.format(field=field, found=record.get(field), expected=expected)
                 )
+        self.titles[session] = self.require_title(record, role)
         inputs = journey.inputs()
         first = inputs[0].get("text") if inputs else None
         if not isinstance(first, str) or DRIVER_ID not in first:
             raise creation.platform_failure(DETAIL_FIRST_INPUT.format(identity=DRIVER_ID, text=first))
         return native
+
+    def require_title(self, record: Json, role: str) -> str:
+        """Amendment A2: the title is the folded catalog role, one ASCII space and the item, byte for byte."""
+        if "title" not in record:
+            raise creation.trace_failure(DETAIL_TITLE_ABSENT.format(record=dict(record)))
+        title = record["title"]
+        expected = f"{role} {self.item}"
+        if title != expected:
+            diagnosis = ""
+            if isinstance(title, str) and self.item not in title:
+                diagnosis = DIAGNOSIS_HOME_TOKEN if title.startswith(DRIVER_ID) else DIAGNOSIS_NO_ITEM
+            raise creation.platform_failure(DETAIL_TITLE.format(found=title, expected=expected, diagnosis=diagnosis))
+        return expected
+
+    def require_title_stable(self, session: str) -> None:
+        """A2-2: read again just before the driver ends; the title equals the first reading."""
+        first = self.titles.get(session)
+        record = self.journey.record()
+        if first is None or record is None or "title" not in record:
+            raise creation.trace_failure(DETAIL_TITLE_ABSENT.format(record=record))
+        if record["title"] != first:
+            raise creation.platform_failure(DETAIL_TITLE_MOVED.format(first=first, second=record["title"]))
 
     def claim_call(self, distinct_from: Sequence[str]) -> str:
         """The driver\'s own claim, run in its pane, completes and returns the instruction text."""
@@ -296,6 +339,7 @@ class DriverCase:
     def close(self, session: str) -> None:
         """Ending the session releases the claim and leaves the phase unchanged."""
         self.journey.session_id = session
+        self.require_title_stable(session)
         self.journey.end_session()
         deadline = time.monotonic() + RELEASE_SECONDS
         holder: object = session
