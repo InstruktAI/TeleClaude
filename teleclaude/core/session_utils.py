@@ -401,6 +401,27 @@ def session_display_title(session: object, *, fallback: str = "Untitled") -> str
 _CLAIM_GROUP_WALK_DEPTH_CAP = 64
 
 
+def _cached_initiator(session_id: str) -> str | None:
+    """The initiator of a session this computer does not hold, from the cluster cache of the others\' sessions.
+
+    A session of another computer is not in this computer\'s store; its snapshot in the cache records who started it,
+    so a claiming group that spans computers is followed the same way as one on this computer. None when the session
+    is unknown to the cache or there is no cache.
+    """
+    from teleclaude.core.command_registry import get_command_service  # noqa: PLC0415 - deferred cycle
+
+    try:
+        cache = get_command_service().client.cache
+    except RuntimeError:
+        return None
+    if cache is None:
+        return None
+    for snapshot in cache.get_sessions():
+        if snapshot.session_id == session_id:
+            return snapshot.initiator_session_id
+    return None
+
+
 async def session_descends_from(descendant_session_id: str, ancestor_session_id: str) -> bool:
     """Return whether ``descendant_session_id`` strictly descends from ``ancestor_session_id``.
 
@@ -413,9 +434,10 @@ async def session_descends_from(descendant_session_id: str, ancestor_session_id:
     visited = {current_id}
     for _ in range(_CLAIM_GROUP_WALK_DEPTH_CAP):
         session = await db.get_session(current_id)
-        if session is None or not session.initiator_session_id:
+        initiator = session.initiator_session_id if session is not None else _cached_initiator(current_id)
+        if not initiator:
             return False
-        current_id = session.initiator_session_id
+        current_id = initiator
         if current_id == ancestor_session_id:
             return True
         if current_id in visited:
