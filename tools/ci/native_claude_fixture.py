@@ -59,6 +59,12 @@ FRAME_COMPLETE_SUFFIX: Final = ".complete"
 FRAME_SESSION_START: Final = "session_start"
 FRAME_PROMPT_SUBMIT: Final = "prompt_submit"
 FRAME_SELF_PROBE: Final = "self_probe"
+PLAN_FILE: Final = "plan.json"
+PLAN_COMMANDS_FIELD: Final = "commands"
+PLAN_NAME_FIELD: Final = "name"
+PLAN_ARGV_FIELD: Final = "argv"
+PLAN_FRAME_PREFIX: Final = "cmd_"
+PLAN_TIMEOUT_SECONDS: Final = 60
 
 HOOK_SESSION_START: Final = "SessionStart"
 HOOK_PROMPT_SUBMIT: Final = "UserPromptSubmit"
@@ -153,6 +159,13 @@ class _Control:
             return float((self.directory / name).read_text(encoding=ENCODING).strip())
         except (OSError, ValueError):
             return None
+
+    def read_json(self, name: str) -> JsonObject | None:
+        try:
+            value = json.loads((self.directory / name).read_text(encoding=ENCODING))
+        except (OSError, ValueError):
+            return None
+        return value if isinstance(value, dict) else None
 
     def exists(self, name: str) -> bool:
         return (self.directory / name).exists()
@@ -317,6 +330,34 @@ class _Fixture:
         telec = shutil.which(TELEC_COMMAND)
         probe = _run([telec or TELEC_COMMAND, *SELF_PROBE_ARGUMENTS], timeout_seconds=PROBE_TIMEOUT_SECONDS)
         self.control.write_frame(FRAME_SELF_PROBE, {"telec": telec, "run": probe})
+        self._run_plan()
+
+    def _run_plan(self) -> None:
+        """Run the controller\'s reviewed public commands, each as a fresh process of this pane, and report each.
+
+        The plan names only the public ``telec`` executable with its arguments. It carries no identity, token, header
+        or environment: the pane\'s own environment is the caller\'s identity, as for any command a driver runs.
+        """
+        plan = self.control.read_json(PLAN_FILE)
+        commands = plan.get(PLAN_COMMANDS_FIELD) if plan is not None else None
+        if not isinstance(commands, list):
+            return
+        for command in commands:
+            if not isinstance(command, dict):
+                continue
+            name = command.get(PLAN_NAME_FIELD)
+            argv = command.get(PLAN_ARGV_FIELD)
+            if not isinstance(name, str) or not name.isalnum() or not isinstance(argv, list) or not argv:
+                continue
+            arguments = [part for part in argv if isinstance(part, str)]
+            if len(arguments) != len(argv) or arguments[0] != TELEC_COMMAND:
+                continue
+            resolved = shutil.which(TELEC_COMMAND)
+            run = _run([resolved or TELEC_COMMAND, *arguments[1:]], timeout_seconds=PLAN_TIMEOUT_SECONDS)
+            reported: list[JsonValue] = [*arguments]
+            self.control.write_frame(
+                f"{PLAN_FRAME_PREFIX}{name}", {"name": name, "argv": reported, "telec": resolved, "run": run}
+            )
 
     def feed(self, data: str, state: _InputState) -> None:
         """Consume terminal input: pasted or typed text builds the draft, Enter submits it."""
