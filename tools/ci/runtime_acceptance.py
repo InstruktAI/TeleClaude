@@ -416,6 +416,8 @@ _FULL_PROJECT_RESTORE_ERROR = "The supported config surface could not restore th
 _FULL_UNPROVEN_RETAINED = (
     "Closure of the journey's actors is UNPROVEN, so the disposable home and fixture controls are retained: {reasons}"
 )
+_FULL_RETENTION_KEY_COLLISION = "A retention key was reused for a different reason."
+_FULL_RETENTION_KEY_MISSING = "A retention key no longer owns its exact recorded reason."
 _FULL_STOP_UNPROVEN = "the supported stop did not record that the services are down (outcome: {outcome})"
 _STOP_OUTCOME_NAME = "stop-outcome"
 _STOP_OUTCOME_VARIABLE = "STOP_OUTCOME_FILE"
@@ -757,7 +759,12 @@ class AcceptanceReport:
     selection: tuple[str, ...] = ()
     workflow_event_evidence: JSONObject = field(default_factory=dict)
     retired_act_evidence: creation.RetiredActEvidence = field(default_factory=creation.empty_retired_act_evidence)
+    workflow_waiting_retired_kickback_evidence: waiting.WaitingKickbackEvidence = field(
+        default_factory=waiting.empty_b13_evidence
+    )
     retired_act_delivery_path: Path | None = field(default=None, repr=False)
+    workflow_waiting_retired_kickback_delivery_path: Path | None = field(default=None, repr=False)
+    workflow_waiting_retired_kickback_marker_directory: Path | None = field(default=None, repr=False)
 
     @property
     def passed(self) -> bool:
@@ -954,6 +961,11 @@ class FullRuntimeResources:
     retired_act_selected: bool = False
     retired_act_evidence: creation.RetiredActEvidence = field(default_factory=creation.empty_retired_act_evidence)
     retired_act_deadline: float | None = None
+    b13_selected: bool = False
+    b13_evidence: waiting.WaitingKickbackEvidence = field(default_factory=waiting.empty_b13_evidence)
+    b13_marker_path: Path | None = None
+    b13_carrier_path: Path | None = None
+    retained_keys: dict[str, str] = field(default_factory=dict)
     owner_identity_facts: JSONObject = field(default_factory=dict)
 
     def open_admin_terminal(self) -> PersistentTerminal:
@@ -989,6 +1001,27 @@ class FullRuntimeResources:
         if self.project_path is not None:
             text = text.replace(str(self.project_path), _DISPOSABLE_PROJECT_PLACEHOLDER)
         return text
+
+    def retain_key(self, key: str, reason: str) -> None:
+        """Register an independently owned retention reason without conflating other journeys' holds."""
+        existing = self.retained_keys.get(key)
+        if existing is not None:
+            if existing != reason:
+                raise ValueError(_FULL_RETENTION_KEY_COLLISION)
+            return
+        self.retained_keys[key] = reason
+        self.retained.append(reason)
+
+    def release_key(self, key: str) -> None:
+        """Clear only the exact reason owned by this retention key."""
+        reason = self.retained_keys.pop(key, None)
+        if reason is None:
+            return
+        try:
+            self.retained.remove(reason)
+        except ValueError as error:
+            self.retained_keys[key] = reason
+            raise ValueError(_FULL_RETENTION_KEY_MISSING) from error
 
 
 def _run_bounded_process(
@@ -1774,6 +1807,8 @@ def _record_retained_workflow_markers(resources: FullRuntimeResources) -> bool:
             record = json.loads(marker_bytes)
             if _is_b12_delivery_marker(resources, marker, record, marker_bytes):
                 continue
+            if _is_b13_delivery_marker(resources, marker, record, marker_bytes):
+                continue
             reason = record.get(creation.B12Field.REASON) if isinstance(record, Mapping) else None
             resources.retained.append(
                 f"retained marker {marker}: {reason if isinstance(reason, str) else 'unreadable status'}"
@@ -1783,6 +1818,38 @@ def _record_retained_workflow_markers(resources: FullRuntimeResources) -> bool:
             resources.retained.append(f"retained marker {marker} cannot be read: {type(error).__name__}")
             unresolved_marker = True
     return unresolved_marker
+
+
+def _is_b13_delivery_marker(resources: FullRuntimeResources, marker: Path, record: object, marker_bytes: bytes) -> bool:
+    """Allow only a complete B13 evidence seal to pass the marker scan before report delivery."""
+    expected = resources.b13_marker_path
+    carrier = resources.b13_carrier_path
+    evidence = resources.b13_evidence
+    if expected is None or carrier is None or marker != expected or not isinstance(record, Mapping):
+        return False
+    if not waiting.verify_b13_delivery(evidence, marker, carrier, resources.sanitize):
+        return False
+    return (
+        record.get("schema_version") == waiting.B13_SCHEMA_VERSION
+        and record.get(waiting.B13_STATUS_FIELD) == waiting.B13_STATUS_COMPLETE
+        and record.get(waiting.B13_REASON_FIELD) == waiting.B13_RETENTION_REASON
+        and record.get(waiting.B13_SOURCE_REVISION_FIELD) == resources.source_revision
+        and record.get(waiting.B13_SOURCE_TREE_FIELD) == resources.source_tree
+        and record.get(waiting.B13_ISSUE_REVISION_FIELD) == waiting.B13_ISSUE_REVISION
+        and record.get(waiting.B13_ASSERTION_SHA_FIELD) == waiting.B13_ASSERTION_SHA
+        and record.get(waiting.B13_ITEM_FIELD) == evidence.item
+        and record.get(waiting.B13_ARGV_FIELD) == evidence.argv
+        and record.get(waiting.B13_ACTORS_FIELD) == evidence.prerequisites.get(waiting.B13_ACTORS_FIELD)
+        and record.get(waiting.B13_CANDIDATE_FIELD) == evidence.prerequisites.get(waiting.B13_CANDIDATE_FIELD)
+        and record.get(waiting.B13_CONTROL_PATHS_FIELD) == evidence.prerequisites.get(waiting.B13_CONTROL_PATHS_FIELD)
+        and record.get(waiting.B13_ATTEMPTS_PATH_FIELD) == evidence.carrier.get(waiting.B13_ATTEMPTS_PATH_FIELD)
+        and record.get(waiting.B13_ATTEMPTS_SHA_FIELD) == evidence.attempt_ledger.get("original_sha256")
+        and record.get(waiting.B13_ATTEMPTS_BYTES_FIELD) == evidence.attempt_ledger.get("original_byte_count")
+        and record.get(waiting.B13_CARRIER_SHA_FIELD) == evidence.carrier.get(waiting.B13_CARRIER_SHA_FIELD)
+        and record.get(waiting.B13_CARRIER_BYTES_FIELD) == evidence.carrier.get(waiting.B13_CARRIER_BYTES_FIELD)
+        and hashlib.sha256(marker_bytes).hexdigest() == evidence.carrier.get(waiting.B13_MARKER_SHA_FIELD)
+        and len(marker_bytes) == evidence.carrier.get(waiting.B13_MARKER_BYTES_FIELD)
+    )
 
 
 def _is_b12_delivery_marker(resources: FullRuntimeResources, marker: Path, record: object, marker_bytes: bytes) -> bool:
@@ -1823,11 +1890,13 @@ def _is_b12_delivery_marker(resources: FullRuntimeResources, marker: Path, recor
     )
 
 
-def _remove_temporary_root_except_b12(resources: FullRuntimeResources) -> None:
-    """Remove ordinary disposable profile contents while preserving B12's pending report carrier."""
-    retained_carrier = resources.temporary_root / creation.B12_MATRIX_DIRECTORY
+def _remove_temporary_root_except_delivery_carriers(resources: FullRuntimeResources) -> None:
+    """Remove ordinary disposable profile contents while preserving complete report-delivery carriers."""
+    retained_carriers = {resources.temporary_root / creation.B12_MATRIX_DIRECTORY}
+    if resources.b13_marker_path is not None:
+        retained_carriers.add(resources.b13_marker_path.parent)
     for child in resources.temporary_root.iterdir():
-        if child == retained_carrier:
+        if child in retained_carriers:
             continue
         if child.is_symlink() or not child.is_dir():
             child.unlink()
@@ -1836,10 +1905,21 @@ def _remove_temporary_root_except_b12(resources: FullRuntimeResources) -> None:
 
 
 def _remove_temporary_profile_root(resources: FullRuntimeResources) -> None:
-    """Preserve only the complete B12 report-delivery carrier until write_report succeeds."""
+    """Preserve complete B12/B13 report-delivery carriers until write_report succeeds."""
     delivery_marker = resources.temporary_root / creation.B12_MATRIX_DIRECTORY / creation.B12_MARKER_FILE
-    if resources.retired_act_evidence.status == creation.B12_STATUS_COMPLETE and delivery_marker.is_file():
-        _remove_temporary_root_except_b12(resources)
+    b12_delivery = resources.retired_act_evidence.status == creation.B12_STATUS_COMPLETE and delivery_marker.is_file()
+    b13_delivery = (
+        resources.b13_marker_path is not None
+        and resources.b13_marker_path.is_file()
+        and _is_b13_delivery_marker(
+            resources,
+            resources.b13_marker_path,
+            json.loads(resources.b13_marker_path.read_bytes()),
+            resources.b13_marker_path.read_bytes(),
+        )
+    )
+    if b12_delivery or b13_delivery:
+        _remove_temporary_root_except_delivery_carriers(resources)
     else:
         shutil.rmtree(resources.temporary_root)
 
@@ -1951,6 +2031,24 @@ def _freeze_retired_act_evidence(resources: FullRuntimeResources) -> None:
             snapshot.carrier[creation.B12Field.COMPLETED_READ_ERROR] = snapshot.evidence_failure
 
 
+def _freeze_b13_profile_evidence(resources: FullRuntimeResources) -> None:
+    """Freeze B13's external report carrier before any full-profile removal branch."""
+    marker = resources.b13_marker_path
+    carrier = resources.b13_carrier_path
+    if marker is None or carrier is None or resources.b13_evidence.carrier.get("owned") is not True:
+        return
+    try:
+        waiting.freeze_b13_evidence(resources.b13_evidence, marker, carrier, resources.sanitize)
+        if resources.b13_evidence.status == waiting.B13_STATUS_COMPLETE and not waiting.verify_b13_delivery(
+            resources.b13_evidence, marker, carrier, resources.sanitize
+        ):
+            raise ValueError(waiting.B13_ERROR_SEAL)
+    except Exception as error:
+        resources.b13_evidence.status = waiting.B13_STATUS_UNPROVEN
+        resources.b13_evidence.evidence_failure = resources.sanitize(f"{type(error).__name__}: {error}")
+        resources.retain_key(waiting.B13_RETENTION_KEY, waiting.B13_RETENTION_REASON)
+
+
 def _close_full_profile_resources(
     resources: FullRuntimeResources,
     cleanup_evidence: list[CommandEvidence],
@@ -1963,6 +2061,7 @@ def _close_full_profile_resources(
         and resources.retired_act_evidence.status != creation.B12_STATUS_COMPLETE
     ):
         resources.retained.append(creation.B12_DETAIL_POSTFREEZE)
+    _freeze_b13_profile_evidence(resources)
     failures: list[str] = []
     stop_outcome = resources.temporary_root / _STOP_OUTCOME_NAME
     if resources.install_attempted:
@@ -2360,6 +2459,11 @@ def _full_workflow_waiting(resources: FullRuntimeResources, evidence: list[Comma
         or resources.project_name is None
     ):
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    resources.b13_marker_path = setup.control.parent / waiting.B13_DIRECTORY / waiting.B13_MARKER_FILE
+    if resources.report_path is not None:
+        resources.b13_carrier_path = resources.report_path.with_name(
+            resources.report_path.name + waiting.B13_CARRIER_SUFFIX
+        )
     waiting.run_waiting(
         _FoundationRunner(resources, evidence),
         setup,
@@ -2371,6 +2475,13 @@ def _full_workflow_waiting(resources: FullRuntimeResources, evidence: list[Comma
         resources.project_name,
         lambda: _register_procedure_fixture_company(resources, evidence),
         resources.retained.append,
+        resources.retain_key,
+        resources.release_key,
+        resources.report_path,
+        resources.source_revision,
+        resources.source_tree,
+        resources.b13_evidence,
+        resources.sanitize,
     )
 
 
@@ -4969,11 +5080,21 @@ def run_profile(
                 source_tree=source_tree,
                 report_path=report_path.resolve() if report_path is not None else None,
                 retired_act_selected=not selection or _SCENARIO_WORKFLOW_RETIRED_ACTS_B12 in selection,
+                b13_selected=not selection or _SCENARIO_WORKFLOW_WAITING in selection,
                 retired_act_evidence=creation.empty_retired_act_evidence(
                     status=(
                         creation.B12_STATUS_NOT_RUN
                         if not selection or _SCENARIO_WORKFLOW_RETIRED_ACTS_B12 in selection
                         else creation.B12_STATUS_NOT_SELECTED
+                    ),
+                    source_revision=source_revision,
+                    source_tree=source_tree,
+                ),
+                b13_evidence=waiting.empty_b13_evidence(
+                    status=(
+                        waiting.B13_STATUS_NOT_RUN
+                        if not selection or _SCENARIO_WORKFLOW_WAITING in selection
+                        else waiting.B13_STATUS_NOT_SELECTED
                     ),
                     source_revision=source_revision,
                     source_tree=source_tree,
@@ -5132,11 +5253,30 @@ def run_profile(
                         delivery_path = delivery_marker.parent.resolve()
                 except (OSError, ValueError):
                     delivery_path = None
+            b13_delivery_path: Path | None = None
+            b13_marker_directory: Path | None = None
+            if (
+                resources.b13_marker_path is not None
+                and resources.b13_carrier_path is not None
+                and resources.b13_marker_path.is_file()
+            ):
+                try:
+                    marker_bytes = resources.b13_marker_path.read_bytes()
+                    marker_record = json.loads(marker_bytes)
+                    if _is_b13_delivery_marker(resources, resources.b13_marker_path, marker_record, marker_bytes):
+                        b13_delivery_path = resources.b13_carrier_path.resolve()
+                        b13_marker_directory = resources.b13_marker_path.parent.resolve()
+                except (OSError, ValueError):
+                    b13_delivery_path = None
+                    b13_marker_directory = None
             return replace(
                 report,
                 workflow_event_evidence=event_evidence,
                 retired_act_evidence=resources.retired_act_evidence,
+                workflow_waiting_retired_kickback_evidence=resources.b13_evidence,
                 retired_act_delivery_path=delivery_path,
+                workflow_waiting_retired_kickback_delivery_path=b13_delivery_path,
+                workflow_waiting_retired_kickback_marker_directory=b13_marker_directory,
             )
         return report
     except BaseException:
@@ -5165,14 +5305,185 @@ def write_report(report: AcceptanceReport, report_path: Path) -> None:
     temporary_path = report_path.with_suffix(f"{report_path.suffix}{_REPORT_TEMP_SUFFIX}")
     payload = asdict(report)
     delivery_path = payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
+    b13_delivery_path = payload.pop("workflow_waiting_retired_kickback_delivery_path", None)
+    b13_marker_directory = payload.pop("workflow_waiting_retired_kickback_marker_directory", None)
     try:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         temporary_path.write_text(json.dumps(payload, indent=2) + _LINE_BREAK, encoding=_UTF8)
         temporary_path.replace(report_path)
     except OSError as exc:
         raise RuntimeError(_REPORT_WRITE_ERROR.format(error=exc)) from exc
+    report_bytes = report_path.read_bytes()
+    report_value = json.loads(report_bytes)
+    b13_value = report_value.get("workflow_waiting_retired_kickback_evidence")
+    if b13_value != asdict(report.workflow_waiting_retired_kickback_evidence):
+        raise RuntimeError(waiting.B13_ERROR_SEAL)
+    if report.workflow_waiting_retired_kickback_evidence.status == waiting.B13_STATUS_COMPLETE:
+        if (
+            not isinstance(b13_delivery_path, Path)
+            or not isinstance(b13_marker_directory, Path)
+            or not (b13_marker_directory / waiting.B13_MARKER_FILE).is_file()
+            or not waiting.verify_b13_delivery(
+                report.workflow_waiting_retired_kickback_evidence,
+                b13_marker_directory / waiting.B13_MARKER_FILE,
+                b13_delivery_path,
+                lambda value: value,
+            )
+        ):
+            raise RuntimeError(waiting.B13_ERROR_SEAL)
+        shutil.rmtree(b13_marker_directory)
+        b13_delivery_path.unlink()
+        descriptor = os.open(b13_delivery_path.parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
     if isinstance(delivery_path, Path):
         _retire_delivered_b12_carrier(delivery_path)
+
+
+def _validate_b13_report(report: Mapping[str, object], source_revision: str, source_tree: str) -> None:
+    """Validate B13's exact ten-call evidence and embedded external-carrier seal."""
+    b13_value = report.get("workflow_waiting_retired_kickback_evidence")
+    if not isinstance(b13_value, dict):
+        raise ValueError
+    b13 = b13_value
+    b13_fields = {
+        "schema_version",
+        "status",
+        "assertion_path",
+        "assertion_sha256",
+        "issue_revision",
+        "source_revision",
+        "source_tree",
+        "item",
+        "argv",
+        "prerequisites",
+        "before",
+        "response",
+        "readbacks",
+        "attempt_ledger",
+        "carrier",
+        "duration_seconds",
+        "primary_failure",
+        "evidence_failure",
+    }
+    b13_carrier = b13.get("carrier")
+    b13_response = b13.get("response")
+    b13_before = b13.get("before")
+    b13_reads = b13.get("readbacks")
+    b13_ledger = b13.get("attempt_ledger")
+    b13_payload = {key: value for key, value in b13.items() if key != "carrier"}
+    b13_payload_bytes = (
+        json.dumps(b13_payload, sort_keys=True, separators=waiting.B13_JSON_SEPARATORS) + waiting.B13_NEWLINE
+    ).encode(_UTF8)
+    prerequisites = b13.get("prerequisites")
+    actor_data = prerequisites.get(waiting.B13_ACTORS_FIELD, {}) if isinstance(prerequisites, dict) else {}
+    owner_slug = actor_data.get("owner_slug", "") if isinstance(actor_data, dict) else ""
+    waiting_snapshot = b13_before.get("item") if isinstance(b13_before, dict) else None
+    has_admitted, _ = creation.dig(waiting_snapshot, "standing.admitted")
+    if (
+        set(b13) != b13_fields
+        or b13.get("schema_version") != waiting.B13_SCHEMA_VERSION
+        or b13.get("status") != waiting.B13_STATUS_COMPLETE
+        or b13.get("assertion_path") != waiting.B13_ASSERTION_PATH
+        or b13.get("assertion_sha256") != waiting.B13_ASSERTION_SHA
+        or b13.get("issue_revision") != waiting.B13_ISSUE_REVISION
+        or b13.get("source_revision") != source_revision
+        or b13.get("source_tree") != source_tree
+        or b13.get("item") != "b3-item"
+        or b13.get("argv") != list(waiting.B13_CALL_ARGV)
+        or type(b13.get("duration_seconds")) not in (int, float)
+        or not math.isfinite(b13["duration_seconds"])
+        or b13["duration_seconds"] > waiting.B13_SCENARIO_SECONDS
+        or b13.get("primary_failure") != _EMPTY
+        or b13.get("evidence_failure") != _EMPTY
+        or not isinstance(prerequisites, dict)
+        or actor_data.get("owner") is None
+        or not isinstance(owner_slug, str)
+        or not owner_slug
+        or not isinstance(actor_data.get("first_driver"), str)
+        or not isinstance(actor_data.get("child"), str)
+        or prerequisites.get("first_claim_positive") is not True
+        or prerequisites.get("waiting_act_positive") is not True
+        or prerequisites.get("child_closed") is not True
+        or prerequisites.get("first_driver_live") is not True
+        or prerequisites.get("unresolved_start_attempts") != []
+        or not isinstance(prerequisites.get(waiting.B13_CANDIDATE_FIELD), str)
+        or not prerequisites.get(waiting.B13_CANDIDATE_FIELD)
+        or not isinstance(prerequisites.get(waiting.B13_CONTROL_PATHS_FIELD), list)
+        or not isinstance(b13_before, dict)
+        or creation.dig(waiting_snapshot, "state.lifecycle_phase") != (True, waiting.PHASE_WAITING)
+        or creation.dig(waiting_snapshot, "standing.phase") != (True, waiting.PHASE_WAITING)
+        or creation.dig(waiting_snapshot, "standing.waiting_on") != (True, owner_slug)
+        or creation.dig(waiting_snapshot, "state.active_runner")[1] not in (None, "")
+        or has_admitted
+        or not isinstance(b13_response, dict)
+        or b13_response.get("argv") != list(waiting.B13_CALL_ARGV)
+        or type(b13_response.get("exit_status")) is not int
+        or b13_response.get("exit_status") == 0
+        or b13_response.get("diagnostics") != _EMPTY
+        or b13_response.get(waiting.B13_OPERATION_FIELD) is not None
+        or b13_response.get(waiting.B13_OPERATION_STATUS_FIELD) != waiting.B13_OPERATION_NOT_APPLICABLE
+        or b13_response.get("stdout_sanitized") is not True
+        or b13_response.get("stderr_sanitized") is not True
+        or b13_response.get("diagnostics_sanitized") is not True
+        or b13_response.get("output_truncated") is not False
+        or b13_response.get("stderr_truncated") is not False
+        or not all(isinstance(b13_response.get(key), str) for key in ("output", "stderr", "diagnostics"))
+        or waiting.B13_ERROR_409 not in b13_response.get("output", "")
+        or waiting.B13_REFUSAL_SENTENCE not in creation.normalized(b13_response.get("output", ""))
+        or creation.normalized(waiting.B13_DOOR_SENTENCE.format(owner=owner_slug))
+        not in creation.normalized(b13_response.get("output", ""))
+        or not isinstance(b13_reads, list)
+        or len(b13_reads) != 2
+        or not isinstance(b13_ledger, dict)
+        or b13_ledger.get("framing") != waiting.B13_FRAMING_COMPLETE
+        or b13_ledger.get("record_count") != waiting.B13_ATTEMPTS_EXPECTED_RECORDS
+        or b13_ledger.get("read_error") != _EMPTY
+        or b13_ledger.get("parse_error") != _EMPTY
+        or type(b13_ledger.get("original_byte_count")) is not int
+        or b13_ledger.get("original_byte_count") <= 0
+        or not isinstance(b13_ledger.get("original_sha256"), str)
+        or not isinstance(b13_ledger.get("sanitized_text"), str)
+        or type(b13_ledger.get("sanitized_text_truncated")) is not bool
+        or not isinstance(b13_carrier, dict)
+        or b13_carrier.get("carrier_sha256") != hashlib.sha256(b13_payload_bytes).hexdigest()
+        or b13_carrier.get("carrier_byte_count") != len(b13_payload_bytes)
+        or b13_carrier.get("owned") is not True
+        or b13_carrier.get(waiting.B13_ATTEMPTS_PATH_FIELD) != b13_ledger.get("path")
+        or b13_carrier.get(waiting.B13_ATTEMPTS_SHA_FIELD) != b13_ledger.get("original_sha256")
+        or b13_carrier.get(waiting.B13_ATTEMPTS_BYTES_FIELD) != b13_ledger.get("original_byte_count")
+        or type(b13_carrier.get("marker_byte_count")) is not int
+        or b13_carrier.get("marker_byte_count") <= 0
+        or not isinstance(b13_carrier.get("marker_sha256"), str)
+        or b13_carrier.get("sanitized") is not True
+        or b13_carrier.get("carrier_truncated") is not False
+    ):
+        raise ValueError
+    baseline_item = b13_before.get("item")
+    baseline_sessions = b13_before.get("session_ids")
+    baseline_slugs = b13_before.get("slugs")
+    expected_read_argv = [list(argv) for argv in waiting.B13_READ_ARGV]
+    if (
+        b13_before.get("argv") != expected_read_argv
+        or not isinstance(baseline_item, dict)
+        or not isinstance(baseline_sessions, list)
+        or not isinstance(baseline_slugs, list)
+    ):
+        raise ValueError
+    for expected_when, readback in zip(
+        (waiting.B13_OBSERVATION_IMMEDIATE, waiting.B13_OBSERVATION_SETTLED), b13_reads, strict=True
+    ):
+        if (
+            not isinstance(readback, dict)
+            or readback.get("argv") != expected_read_argv
+            or readback.get("when") != expected_when
+            or readback.get("item") != baseline_item
+            or readback.get("session_ids") != baseline_sessions
+            or readback.get("slugs") != baseline_slugs
+        ):
+            raise ValueError
 
 
 def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, source_tree: str) -> None:
@@ -5191,6 +5502,7 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             "selection",
             "workflow_event_evidence",
             creation.B12Field.RETIRED_ACT_EVIDENCE,
+            "workflow_waiting_retired_kickback_evidence",
         }
         if (
             not isinstance(report, dict)
@@ -5207,6 +5519,7 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             or report["duration_seconds"] < 0
             or not isinstance(report["workflow_event_evidence"], dict)
             or not isinstance(report[creation.B12Field.RETIRED_ACT_EVIDENCE], dict)
+            or not isinstance(report["workflow_waiting_retired_kickback_evidence"], dict)
         ):
             raise ValueError
         retired = report[creation.B12Field.RETIRED_ACT_EVIDENCE]
@@ -5379,6 +5692,7 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             or carrier.get(creation.B12Field.READ_ERROR) != _EMPTY
         ):
             raise ValueError
+        _validate_b13_report(report, source_revision, source_tree)
         scenarios = report["scenarios"]
         if not isinstance(scenarios, list) or len(scenarios) != len(_FULL_PROFILE_SCENARIOS):
             raise ValueError
