@@ -18,13 +18,35 @@ from teleclaude.core.workflow_machine.phase_reading import read_phase
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store_sync
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
-from teleclaude.types.workflow_record import Phase
+from teleclaude.types.workflow_record import AdmittedCandidate, Phase
 
 logger = get_logger(__name__)
 
 _WORKFLOW_STATUSES = (TodoStatus.ACTIVE, TodoStatus.ICEBOX)
 _RESERVED_TREE_PREFIX = "_"
 UNMARKED_STORE_LOG = "candidate scan skipped: the store is not activated yet, the next tick of the daemon activates it"
+
+
+@dataclass(frozen=True)
+class RetiringAdmissions:
+    """The row admissions the pending retirement intents name.
+
+    An intent names an attempt identity; one written for an admission that carries none (recorded before attempt
+    identities existed) names the item and commit instead. Either way the scan and the admission write recognise the
+    admission it means, and no other.
+    """
+
+    attempts: frozenset[str] = frozenset()
+    unattributed: frozenset[tuple[str, str]] = frozenset()
+
+    def names(self, slug: str, admitted: AdmittedCandidate) -> bool:
+        """Whether a pending retirement is for this row admission."""
+        if admitted.attempt:
+            return admitted.attempt in self.attempts
+        return (slug, admitted.sha) in self.unattributed
+
+
+NO_RETIREMENTS = RetiringAdmissions()
 
 
 @dataclass(frozen=True, order=True)
@@ -112,7 +134,7 @@ def _admitted_candidate(slug: str, typed: TodoState) -> ScannedCandidate | None:
 
 
 def _candidate_from_state(
-    cwd: str, slug: str, state: dict[str, StateValue], todos_db: WorkflowStore, retiring: frozenset[str]
+    cwd: str, slug: str, state: dict[str, StateValue], todos_db: WorkflowStore, retiring: RetiringAdmissions
 ) -> ScannedCandidate | None:
     """The candidate an item's canonical phase establishes, or None.
 
@@ -125,7 +147,7 @@ def _candidate_from_state(
     typed = TodoState.model_validate(state)
     if bool(state.get("hold")):
         return None
-    if typed.workflow.admitted is not None and typed.workflow.admitted.attempt in retiring:
+    if typed.workflow.admitted is not None and retiring.names(slug, typed.workflow.admitted):
         return None  # its retirement is pending: a row admission is neither prioritized nor read as ready meanwhile
     admitted = _admitted_candidate(slug, typed)
     if admitted is not None:
@@ -160,7 +182,7 @@ def _scan_finalize_ready_candidates(
     *,
     parked_slugs: set[str],
     exclude_slug: str | None = None,
-    retiring: frozenset[str] = frozenset(),
+    retiring: RetiringAdmissions = NO_RETIREMENTS,
 ) -> list[ScannedCandidate]:
     """Scan the store's items for the ones whose canonical phase reads ready at the head of their branch.
 
@@ -199,7 +221,7 @@ def _scan_finalize_ready_candidates(
 
 
 def _verify_slug_ready(
-    cwd: str, slug: str, *, parked_slugs: set[str], retiring: frozenset[str] = frozenset()
+    cwd: str, slug: str, *, parked_slugs: set[str], retiring: RetiringAdmissions = NO_RETIREMENTS
 ) -> ScannedCandidate | None:
     """Check whether a specific slug's canonical phase still reads ready at the head of its branch.
 
@@ -253,7 +275,9 @@ def _sweep_stale_artifacts(cwd: str) -> list[str]:
 
 
 __all__ = [
+    "NO_RETIREMENTS",
     "CandidateStateReadError",
+    "RetiringAdmissions",
     "ScannedCandidate",
     "_scan_finalize_ready_candidates",
     "_sweep_stale_artifacts",

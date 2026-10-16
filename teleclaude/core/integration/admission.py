@@ -19,7 +19,12 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.integration.candidate_scan import CandidateKey, candidate_is_held
+from teleclaude.core.integration.candidate_scan import (
+    NO_RETIREMENTS,
+    CandidateKey,
+    RetiringAdmissions,
+    candidate_is_held,
+)
 from teleclaude.core.integration.checkpoint import RetirementIntent
 from teleclaude.core.integration.git_ops import _run_git
 from teleclaude.core.workflow_machine.lane import resolve_lane_sync
@@ -129,7 +134,7 @@ def admit_candidate(
     session_id: str,
     loop: asyncio.AbstractEventLoop | None,
     *,
-    retiring: frozenset[str] = frozenset(),
+    retiring: RetiringAdmissions = NO_RETIREMENTS,
 ) -> Admission:
     """Commit the admission of one candidate on its item, or report why the item no longer qualifies.
 
@@ -150,7 +155,7 @@ def admit_candidate(
     if admitted is not None:
         if admitted.sha != key.sha:
             return Admission(AdmissionRefusal.OTHER_ADMISSION.value.format(item=key.slug, sha=admitted.sha[:8]))
-        if admitted.attempt and admitted.attempt in retiring:
+        if retiring.names(key.slug, admitted):
             return Admission(AdmissionRefusal.RETIRING.value.format(item=key.slug, sha=admitted.sha[:8]))
         return Admission(attempt=admitted.attempt)
     head = _branch_head(cwd, key.branch)

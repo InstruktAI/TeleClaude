@@ -73,6 +73,7 @@ class ActiveCandidate:
     slug: str
     branch: str
     sha: str
+    attempt: str = ""
 
 
 @dataclass(frozen=True)
@@ -103,7 +104,9 @@ def read_checkpoint_strictly(project_root: str) -> ActiveCandidate | None:
     slug, branch, sha = data.get("candidate_slug"), data.get("candidate_branch"), data.get("candidate_sha")
     if data.get("phase", IntegrationPhase.IDLE.value) in INACTIVE_PHASES or not (slug and branch and sha):
         return None
-    return ActiveCandidate(slug=str(slug), branch=str(branch), sha=str(sha))
+    return ActiveCandidate(
+        slug=str(slug), branch=str(branch), sha=str(sha), attempt=str(data.get("candidate_attempt") or "")
+    )
 
 
 def _rewrite(row: ActivationRow, record: WorkflowRecord, phase: LifecyclePhase | None) -> dict[str, StateValue]:
@@ -133,7 +136,10 @@ def _admission_of(
             )
         return recorded, False
     if named is not None:
-        return AdmittedCandidate(branch=named.branch, sha=named.sha, at=facts.now, session_id=NO_SESSION), True
+        admission = AdmittedCandidate(
+            branch=named.branch, sha=named.sha, at=facts.now, session_id=NO_SESSION, attempt=named.attempt
+        )
+        return admission, True
     return None, False
 
 

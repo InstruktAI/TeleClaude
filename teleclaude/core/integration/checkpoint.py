@@ -15,7 +15,7 @@ from typing import Any, TypedDict
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.integration.candidate_scan import CandidateKey
+from teleclaude.core.integration.candidate_scan import NO_RETIREMENTS, CandidateKey, RetiringAdmissions
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 
 logger = get_logger(__name__)
@@ -271,9 +271,13 @@ def record_retirement(checkpoint: IntegrationCheckpoint) -> None:
     checkpoint.retirements = intents
 
 
-def pending_attempts(checkpoint: IntegrationCheckpoint) -> frozenset[str]:
-    """The attempt identities a pending retirement intent names."""
-    return frozenset(intent["attempt"] for intent in checkpoint.retirements or [] if intent["attempt"])
+def pending_retirements(checkpoint: IntegrationCheckpoint) -> RetiringAdmissions:
+    """The row admissions a pending retirement intent of the checkpoint names."""
+    intents = checkpoint.retirements or []
+    return RetiringAdmissions(
+        attempts=frozenset(intent["attempt"] for intent in intents if intent["attempt"]),
+        unattributed=frozenset((intent["slug"], intent["sha"]) for intent in intents if not intent["attempt"]),
+    )
 
 
 def _get_candidate_key(checkpoint: IntegrationCheckpoint) -> CandidateKey | None:
@@ -289,11 +293,13 @@ def _get_candidate_key(checkpoint: IntegrationCheckpoint) -> CandidateKey | None
 
 __all__ = [
     "CHECKPOINT_STATE_FILENAME",
+    "NO_RETIREMENTS",
     "_CHECKPOINT_VERSION",
     "IntegrationCheckpoint",
     "IntegrationPhase",
     "ParkedCandidate",
     "RetirementIntent",
+    "RetiringAdmissions",
     "_CheckpointPayload",
     "_default_state_dir",
     "_get_candidate_key",
@@ -301,6 +307,6 @@ __all__ = [
     "_read_checkpoint",
     "_reset_candidate",
     "_write_checkpoint",
-    "pending_attempts",
+    "pending_retirements",
     "record_retirement",
 ]

@@ -34,7 +34,7 @@ from teleclaude.core.integration.checkpoint import (
     _get_candidate_key,
     _now_iso,
     _write_checkpoint,
-    pending_attempts,
+    pending_retirements,
 )
 from teleclaude.core.integration.delivery_fold import assert_clean_before_push, reassert_delivered_fold
 from teleclaude.core.integration.formatters import (
@@ -192,7 +192,7 @@ def _step_idle(
     complete_retirements(checkpoint, checkpoint_path, cwd)
     exclude = checkpoint.candidate_slug
     parked_slugs = {parked["slug"] for parked in checkpoint.parked}
-    retiring = pending_attempts(checkpoint)
+    retiring = pending_retirements(checkpoint)
 
     try:
         if slug is not None:
