@@ -11,6 +11,8 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:mirror-archive-live-source-conflict -->
+
 The session_mirrors service owns its own store with five logical
 objects: the mirrors record table, the session attributions table that
 mirrors link to (`mirror-identity-enrichment`), the tombstones table for
@@ -18,6 +20,17 @@ empty-transcript memory, retained-after-shrink observations keyed by
 source identity, and a full-text index over the mirrors' conversation
 text. Sync triggers keep the full-text index aligned with the row table
 on insert, delete, and update.
+<!-- change:mirror-archive-live-source-conflict -->
+
+The session_mirrors service owns conversation mirrors, session attribution,
+conversation-owned source observations and messages, negative file observations,
+and a full-text index. Each conversation retains its source observations
+independently when another session records the same native source. Shrink
+refusals and unreprojectable observations belong to that conversation's source;
+tombstones describe the native file. Sync triggers keep the full-text index
+aligned with conversation inserts, deletes and updates
+(`sdlc/policy/code-quality`).
+<!-- /planned-change:mirror-archive-live-source-conflict -->
 
 Schema bootstrap is lazy on first use and guarded so a given store path
 runs through the create-if-missing flow only once per process. A store that
