@@ -120,6 +120,21 @@ project to the project-acting consumers.
 
 ## Canonical fields
 
+<!-- planned:reviewed-pr-contributions -->
+
+### Contribution enrollment declaration
+
+The registry retains computer-local contribution enrollment with the registered
+logical project's checkout association. Configuration's project operation
+validates and atomically changes that declaration, and exposes its effective
+value to workflow through the association query. Cloned project declarations
+and provider-returned observations do not change enrollment. Existing registry
+documents migrate forward before consumers read the current declaration
+(`sdlc/policy/backward-compatibility-hygiene`). Publication authority and
+proposal lifecycle belong to the contribution contract
+(`local/projects/teleclaude/spec/feature/workflow/contribution-export`).
+<!-- /planned:reviewed-pr-contributions -->
+
 <!-- planned-change:release-development-checkouts -->
 
 - **Entry.** One adopted folder, addressed by its durable main checkout.
