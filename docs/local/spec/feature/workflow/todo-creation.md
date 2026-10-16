@@ -414,8 +414,8 @@ When the agent acknowledges them and requests lifecycle entry with declared pend
 But any declared pending document lacks a matching commit association, independent approval, or a current reviewed version
 Then creation is refused before any todo state, artifact or dispatch is produced
 And the refusal identifies the missing, unresolved or stale evidence and the commit or review action required
-When the documentation evidence is independently approved and current
-Then that evidence admits the creation through the existing remaining creation checks
+When the documentation evidence is independently approved and current and the agent submits a new acknowledged creation request
+Then that new request passes the documentation evidence check and proceeds through the existing remaining creation checks
 And work genuinely declaring no documentation delta keeps its existing creation route
 And icebox filing keeps its parking route with the evidence check at lifecycle entry
 ```
