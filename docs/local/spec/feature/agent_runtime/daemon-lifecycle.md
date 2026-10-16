@@ -438,6 +438,10 @@ And the agent never finds the capability silently absent while the daemon report
 
 Runtime-owned readiness coordination scopes a waiter to its target session and
 launch identity. Registration precedes the action that can satisfy the waiter.
+Managed launch identity originates before child execution and returns with the
+normalized hook from that child. The runtime validates this correlation before
+applying managed-start evidence; the current record alone does not establish
+which launch produced an arriving hook.
 An already persisted matching start can satisfy a resumed wait; another
 session's start or a distinct compaction launch cannot satisfy it. Success,
 timeout, cancellation and shutdown settle and release the registration under
