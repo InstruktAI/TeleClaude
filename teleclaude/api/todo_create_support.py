@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
-from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, adopt_prepare_handoff_phase
 from teleclaude.core.next_machine.state_mutation import ApprovalsManager, StateWriter
 
 if TYPE_CHECKING:
@@ -53,12 +53,17 @@ async def seed_task_plan_authorization(
         raise RuntimeError(msg)
     writer = StateWriter(raw_state)
     artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
-    phase = adopt_prepare_handoff_phase(
-        writer.state,
-        report_digests={},
-        artifact_write_timestamps=artifact_write_timestamps,
-        prepared_session_id=prepared_session_id,
-    )
+    if prepared_session_id:
+        phase = adopt_prepare_handoff_phase(
+            writer.state,
+            report_digests={},
+            artifact_write_timestamps=artifact_write_timestamps,
+            prepared_session_id=prepared_session_id,
+        )
+    else:
+        # A person at a terminal carries no session, so no completing session exists to record. The task-plan this
+        # request just wrote makes the task prepared by construction; the derivation would refuse without a session.
+        phase = LifecyclePhase.PREPARED
     writer.state.lifecycle_phase = phase
     ApprovalsManager(writer).approve(
         "task_approved",
