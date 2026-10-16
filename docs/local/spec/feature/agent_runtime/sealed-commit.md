@@ -39,8 +39,6 @@ On the repo-root `main` branch, a non-integrator agent invoking `telec code comm
 
 ## Canonical fields
 
-<!-- planned:todo-doc-review-evidence -->
-
 ### Todo association
 
 The optional `--todo <slug>` commit argument supplies the association described
@@ -56,8 +54,6 @@ provenance is read. The footer records commit-time evidence; it does not track
 the todo's later lifecycle or authorize work. Existing identity, human
 involvement, declared-file scoping and commit-review behavior keep their own
 contracts.
-
-<!-- /planned:todo-doc-review-evidence -->
 
 ### Use cases
 

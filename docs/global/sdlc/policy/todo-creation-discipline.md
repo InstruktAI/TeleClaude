@@ -13,8 +13,6 @@ description: Decide whether a todo should exist, audit that decision at preparat
 
 ### Decide before creating
 
-<!-- planned:todo-doc-review-evidence -->
-
 - **Documentation evidence precedes lifecycle entry.** Pending contracts are
   authored, committed under their intended todo slug, and independently reviewed
   with all required changes resolved before that todo enters its lifecycle.
@@ -36,8 +34,6 @@ description: Decide whether a todo should exist, audit that decision at preparat
   documentation delta keeps its existing route. Iceboxed forming work keeps its
   existing parking route; its documentation evidence is required when it enters
   the lifecycle, under the same validity rule as unfreezing.
-
-<!-- /planned:todo-doc-review-evidence -->
 
 - **A todo enters the lifecycle valid; the icebox parks ideas at any stage.** A
   todo is valid when its intended outcome and every known contract that Prepare
