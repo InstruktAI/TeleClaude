@@ -24,11 +24,13 @@ follows `sdlc/policy/security-awareness` and the identity-owned reach below.
 The view selects the item's canonical subject in the registered project resolved
 by ordinary item addressing. It reads events emitted on the reading computer;
 the recorded emitting computer, project origin and item subject all match that
-selection. An item need not remain active for its retained trail to be read.
+selection. Selection uses the recorded canonical item identity rather than an active-row
+lookup; delivered or removed status leaves the retained trail addressable.
 
 Command clearance is the ordinary item-read clearance. On each read, the
 receiving computer applies identity's current reach to each occurrence's
-recorded project subject and owner, under
+recorded project origin and owner as its data-visibility subject, distinct from
+the item reference used for selection, under
 `local/projects/teleclaude/spec/feature/identity/data-visibility`.
 Results, counts, continuation and coverage metadata follow that same visibility
 boundary. This view defines no reader grant of its own.
@@ -44,9 +46,14 @@ clearance and reach.
 Occurrences appear in retained append order. Each carries its declared event
 identity, type, time, source, subject and data under
 `local/projects/teleclaude/spec/feature/event-catalog/event-envelope`.
-Repeated transport copies with the same event identity represent one logical
-occurrence. The view identifies the retained interval its result covers and
-whether a continuation remains within that interval.
+A logical occurrence occupies the append position of its first retained copy
+in the read snapshot, including a copy before an observation cursor. The shown
+envelope is that copy's envelope; later copies add no occurrence to any interval
+or page. A cursor pins that logical ordering and the snapshot's retained
+boundary. If retention loses evidence needed to preserve the ordering across
+pages or an observation window, coverage is incomplete rather than moving a
+later copy into that window. The view identifies the retained interval its
+result covers and whether a continuation remains within that interval.
 
 A successful empty result states that the covered retained interval contains no
 matching visible occurrence. An unavailable event platform, an invalid or lost
@@ -73,6 +80,7 @@ And data outside the operator's reach is neither shown nor counted
 
 ## Known caveats
 
+- Events another computer emitted are outside this computer-local view.
 - The view covers the five workflow occurrence kinds above and retained history,
   rather than other platform events or an item's complete lifetime.
 - The recorded project and item subjects define the trail. Reusing an item
