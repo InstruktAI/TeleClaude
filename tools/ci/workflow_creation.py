@@ -28,6 +28,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final, cast
 
+from tools.ci.terminal import TerminalFailureCause
 from tools.ci.workflow_foundation import FoundationHost, Outcome
 
 TELEC: Final = "bin/telec"
@@ -97,28 +98,83 @@ B12_SCENARIO_SECONDS: Final = 600.0
 B12_CASE_TIMEOUT_SECONDS: Final = 60.0
 B12_INITIAL_STABILITY_SECONDS: Final = 2.0
 B12_SETTLE_SECONDS: Final = 5.0
-B12_STATUS_NOT_SELECTED: Final = "not_selected"
-B12_STATUS_NOT_RUN: Final = "not_run"
-B12_STATUS_PARTIAL: Final = "partial"
-B12_STATUS_COMPLETE: Final = "complete"
-B12_STATUS_UNPROVEN: Final = "unproven"
-B12_CLASS_OPEN: Final = "open"
-B12_CLASS_VERIFIED: Final = "verified_refusal"
-B12_CLASS_UNPROVEN: Final = "unproven"
-B12_CLASS_NOT_RUN: Final = "not_run"
-B12_EVENT_OPEN: Final = "open"
-B12_EVENT_RESULT: Final = "result"
-B12_EVENT_VERIFIED: Final = "verified_refusal"
+
+
+class B12Status(StrEnum):
+    """Closed durable/report status vocabulary for the B12 amendment."""
+
+    NOT_SELECTED = "not_selected"
+    NOT_RUN = "not_run"
+    PARTIAL = "partial"
+    COMPLETE = "complete"
+    UNPROVEN = "unproven"
+
+
+class B12Classification(StrEnum):
+    """Closed per-case classification vocabulary for B12."""
+
+    OPEN = "open"
+    VERIFIED = "verified_refusal"
+    UNPROVEN = "unproven"
+    NOT_RUN = "not_run"
+
+
+class B12AttemptEvent(StrEnum):
+    """Closed append-only attempt-ledger event vocabulary for B12."""
+
+    OPEN = "open"
+    RESULT = "result"
+    VERIFIED = "verified_refusal"
+
+
+class B12Outcome(StrEnum):
+    """Closed terminal outcome vocabulary for an individual B12 public call."""
+
+    COMPLETED = "completed"
+    TIMEOUT = "timeout"
+    TRANSPORT = "transport"
+
+
+class B12Framing(StrEnum):
+    """Closed byte-framing vocabulary for B12's durable attempts carrier."""
+
+    COMPLETE = "complete newline-terminated JSONL"
+    PARTIAL = "partial trailing record"
+    MISSING = "missing_attempt_file"
+    NOT_CREATED = "not_created"
+
+
+class B12OperationReceiptState(StrEnum):
+    """Closed B12 receipt status values used when a refusal unexpectedly returns an operation."""
+
+    NOT_APPLICABLE = "not_applicable"
+    UNKNOWN = "unknown"
+
+
+B12_STATUS_NOT_SELECTED: Final = B12Status.NOT_SELECTED
+B12_STATUS_NOT_RUN: Final = B12Status.NOT_RUN
+B12_STATUS_PARTIAL: Final = B12Status.PARTIAL
+B12_STATUS_COMPLETE: Final = B12Status.COMPLETE
+B12_STATUS_UNPROVEN: Final = B12Status.UNPROVEN
+B12_CLASS_OPEN: Final = B12Classification.OPEN
+B12_CLASS_VERIFIED: Final = B12Classification.VERIFIED
+B12_CLASS_UNPROVEN: Final = B12Classification.UNPROVEN
+B12_CLASS_NOT_RUN: Final = B12Classification.NOT_RUN
+B12_EVENT_OPEN: Final = B12AttemptEvent.OPEN
+B12_EVENT_RESULT: Final = B12AttemptEvent.RESULT
+B12_EVENT_VERIFIED: Final = B12AttemptEvent.VERIFIED
 B12_REASON: Final = "B12 retired-act matrix evidence is incomplete; retain the full profile resources"
 B12_ERROR_PREFIX: Final = "B12 matrix evidence is unproven: "
 B12_JSON_SCHEMA: Final = 1
 B12_LINE_ENDING: Final = "\n"
 B12_ERROR_409: Final = "Error: 409 —"
-B12_OUTCOME_COMPLETED: Final = "completed"
-B12_OUTCOME_TIMEOUT: Final = "timeout"
-B12_OUTCOME_TRANSPORT: Final = "transport"
-B12_TIMEOUT_DIAGNOSTIC: Final = "The command exceeded its deadline."
-B12_OUTPUT_LIMIT_DIAGNOSTIC: Final = "The command exceeded its output limit."
+B12_OUTCOME_COMPLETED: Final = B12Outcome.COMPLETED
+B12_OUTCOME_TIMEOUT: Final = B12Outcome.TIMEOUT
+B12_OUTCOME_TRANSPORT: Final = B12Outcome.TRANSPORT
+B12_TIMEOUT_DIAGNOSTIC: Final = TerminalFailureCause.TIMEOUT.value
+B12_TERMINAL_EXIT_DIAGNOSTIC: Final = TerminalFailureCause.EXITED.value
+B12_TERMINAL_NOT_STARTED_DIAGNOSTIC: Final = TerminalFailureCause.NOT_STARTED.value
+B12_OUTPUT_LIMIT_DIAGNOSTIC: Final = TerminalFailureCause.OUTPUT_LIMIT.value
 B12_PTY_CAPTURE: Final = "stdout/stderr are merged by the authenticated PTY"
 B12_UTF8: Final = "utf-8"
 B12_JSON_SEPARATORS: Final = (",", ":")
@@ -149,14 +205,14 @@ B12_REFUSAL_NO_TERMINAL: Final = "the public request timed out or did not return
 B12_REFUSAL_ZERO_EXIT: Final = "the public refusal command returned success"
 B12_REFUSAL_DIAGNOSTIC: Final = "the public request carried an unresolved command diagnostic: {detail}"
 B12_MARKER_MISSING_ATTEMPT: Final = "the attempt file is missing while its retention marker exists"
-B12_FRAMING_COMPLETE: Final = "complete newline-terminated JSONL"
-B12_FRAMING_PARTIAL: Final = "partial trailing record"
-B12_FRAMING_MISSING: Final = "missing_attempt_file"
-B12_FRAMING_NOT_CREATED: Final = "not_created"
+B12_FRAMING_COMPLETE: Final = B12Framing.COMPLETE
+B12_FRAMING_PARTIAL: Final = B12Framing.PARTIAL
+B12_FRAMING_MISSING: Final = B12Framing.MISSING
+B12_FRAMING_NOT_CREATED: Final = B12Framing.NOT_CREATED
 B12_CAPTURE_IMMEDIATE: Final = "immediate"
 B12_CAPTURE_SETTLED: Final = "settled"
-B12_OUTCOME_UNKNOWN: Final = "not_applicable"
-B12_OPERATION_UNKNOWN: Final = "unknown"
+B12_OUTCOME_UNKNOWN: Final = B12OperationReceiptState.NOT_APPLICABLE
+B12_OPERATION_UNKNOWN: Final = B12OperationReceiptState.UNKNOWN
 B12_STATUS_JSON: Final = "status"
 B12_COMPLETED_VALIDATION_FAILED: Final = "the completed report failed read-back validation"
 B12_SNAPSHOT_INCOMPLETE: Final = "the in-memory upload snapshot is incomplete"
@@ -165,7 +221,7 @@ B12_DETAIL_PRECALL_STATE_CHANGED: Final = "public state changed before case {cas
 B12_DETAIL_MODE: Final = "B12 matrix was selected without complete evidence"
 B12_DETAIL_SIXTEEN: Final = "B12 matrix snapshot does not contain sixteen verified refusals"
 B12_AMENDMENT: Final = "B12"
-B12_OPERATION_NOT_APPLICABLE: Final = "not_applicable"
+B12_OPERATION_NOT_APPLICABLE: Final = B12OperationReceiptState.NOT_APPLICABLE
 B12_CASE_IMMEDIATE: Final = "immediate"
 B12_CASE_SETTLED: Final = "settled"
 B12_CARRIER_ERROR_MARKER: Final = "the attempt file is missing while its retention marker exists"
@@ -560,7 +616,7 @@ class RetiredActEvidence:
     """Typed, upload-carried B12 evidence retained independently of temporary files."""
 
     schema_version: int
-    status: str
+    status: B12Status
     selected_amendment: str
     assertion_path: str
     assertion_sha256: str
@@ -580,7 +636,7 @@ class RetiredActEvidence:
 
 def empty_retired_act_evidence(
     *,
-    status: str = B12_STATUS_NOT_SELECTED,
+    status: B12Status = B12_STATUS_NOT_SELECTED,
     source_revision: str = EMPTY,
     source_tree: str = EMPTY,
 ) -> RetiredActEvidence:

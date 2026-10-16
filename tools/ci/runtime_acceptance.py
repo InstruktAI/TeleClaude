@@ -1355,7 +1355,7 @@ def _record_terminal_command(
                 exit_status=None,
                 duration_seconds=time.monotonic() - started,
                 stdout=resources.sanitize(exc.output)[:_DIAGNOSTIC_LIMIT],
-                diagnostics=_PROCESS_TIMEOUT_DETAIL,
+                diagnostics=exc.cause.value if exc.cause is not None else str(exc),
             )
         )
         return None, exc.output
@@ -2365,18 +2365,24 @@ def _full_workflow_retired_acts(resources: FullRuntimeResources, evidence: list[
                 started_at=started_at,
             )
         except KeyboardInterrupt as error:
-            resources.retired_act_evidence.status = creation.B12_STATUS_UNPROVEN
-            resources.retired_act_evidence.primary_failure = resources.sanitize(
-                creation.B12_INTERRUPT_DETAIL.format(detail=error)
+            if not resources.retired_act_evidence.primary_failure:
+                resources.retired_act_evidence.status = creation.B12_STATUS_UNPROVEN
+                resources.retired_act_evidence.primary_failure = resources.sanitize(
+                    creation.B12_INTERRUPT_DETAIL.format(detail=error)
+                )
+            resources.retired_act_evidence.duration_seconds = max(
+                resources.retired_act_evidence.duration_seconds, time.monotonic() - started_at
             )
-            resources.retired_act_evidence.duration_seconds = time.monotonic() - started_at
             raise
         except Exception as error:
-            resources.retired_act_evidence.status = creation.B12_STATUS_UNPROVEN
-            resources.retired_act_evidence.primary_failure = resources.sanitize(
-                creation.B12_EXCEPTION_DETAIL.format(error_class=type(error).__name__, detail=error)
+            if not resources.retired_act_evidence.primary_failure:
+                resources.retired_act_evidence.status = creation.B12_STATUS_UNPROVEN
+                resources.retired_act_evidence.primary_failure = resources.sanitize(
+                    creation.B12_EXCEPTION_DETAIL.format(error_class=type(error).__name__, detail=error)
+                )
+            resources.retired_act_evidence.duration_seconds = max(
+                resources.retired_act_evidence.duration_seconds, time.monotonic() - started_at
             )
-            resources.retired_act_evidence.duration_seconds = time.monotonic() - started_at
             raise
         finally:
             resources.retired_act_deadline = None
@@ -5536,7 +5542,6 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             creation.B12Field.ORDERED_CASE_PLAN,
             creation.B12Field.PREREQUISITES,
             creation.B12Field.BASELINES,
-            creation.B12Field.INITIAL_SHOW_READS,
             creation.B12Field.CASES,
             creation.B12Field.CARRIER,
             creation.B12Field.DURATION_SECONDS,

@@ -15,6 +15,7 @@ import time
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Self
 
 _UTF8 = "utf-8"
@@ -40,6 +41,15 @@ _TERMINAL_OUTPUT_LIMIT = "The persistent terminal output exceeded its configured
 _TERMINAL_LOCAL_FLAGS_INDEX = 3
 
 
+class TerminalFailureCause(StrEnum):
+    """Closed causes for a terminal command that produced no ordinary result."""
+
+    NOT_STARTED = _TERMINAL_NOT_STARTED
+    EXITED = _TERMINAL_EXITED
+    TIMEOUT = _TERMINAL_TIMED_OUT
+    OUTPUT_LIMIT = _TERMINAL_OUTPUT_LIMIT
+
+
 @dataclass(frozen=True)
 class CommandResult:
     """Captured result from one command sent through a persistent terminal."""
@@ -51,9 +61,10 @@ class CommandResult:
 class TerminalFailure(RuntimeError):
     """A terminal command failed to produce a bounded result."""
 
-    def __init__(self, message: str, *, output: str = "") -> None:
+    def __init__(self, message: str, *, output: str = "", cause: TerminalFailureCause | None = None) -> None:
         super().__init__(message)
         self.output = output
+        self.cause = cause
 
 
 class PersistentTerminal:
@@ -110,7 +121,7 @@ class PersistentTerminal:
     def run(self, command: Sequence[str], *, timeout_seconds: float | None = None) -> CommandResult:
         """Run one fresh command; ``timeout_seconds`` bounds this command alone, else the terminal's own bound."""
         if self._process is None or self._master_fd is None:
-            raise TerminalFailure(_TERMINAL_NOT_STARTED)
+            raise TerminalFailure(_TERMINAL_NOT_STARTED, cause=TerminalFailureCause.NOT_STARTED)
         marker = f"{_EXIT_MARKER_PREFIX}{uuid.uuid4().hex}"
         shell_command = _SHELL_COMMAND_FORMAT.format(command=shlex.join(list(command)), marker=marker)
         os.write(self._master_fd, (shell_command + _NEWLINE).encode(_UTF8))
@@ -129,7 +140,11 @@ class PersistentTerminal:
             marker_index = self._buffer.rfind(encoded_marker, start)
             if marker_index >= 0:
                 if marker_index - start > self._output_limit_bytes:
-                    raise TerminalFailure(_TERMINAL_OUTPUT_LIMIT, output=self._captured_output(start))
+                    raise TerminalFailure(
+                        _TERMINAL_OUTPUT_LIMIT,
+                        output=self._captured_output(start),
+                        cause=TerminalFailureCause.OUTPUT_LIMIT,
+                    )
                 suffix = bytes(self._buffer[marker_index + len(encoded_marker) :])
                 line_end = suffix.find(_BYTE_NEWLINE)
                 status_line = suffix[:line_end] if line_end >= 0 else _EMPTY_BYTES
@@ -138,7 +153,11 @@ class PersistentTerminal:
                     self._buffer = bytearray(suffix[line_end + 1 :])
                     return output, int(status_line.strip())
             if self._process.poll() is not None:
-                raise TerminalFailure(_TERMINAL_EXITED, output=self._captured_output(start))
+                raise TerminalFailure(
+                    _TERMINAL_EXITED,
+                    output=self._captured_output(start),
+                    cause=TerminalFailureCause.EXITED,
+                )
             ready, _, _ = select.select([self._master_fd], [], [], _PTY_WAIT_POLL_SECONDS)
             if not ready:
                 continue
@@ -148,14 +167,26 @@ class PersistentTerminal:
                 continue
             except OSError as exc:
                 if self._process.poll() is not None:
-                    raise TerminalFailure(_TERMINAL_EXITED, output=self._captured_output(start)) from exc
+                    raise TerminalFailure(
+                        _TERMINAL_EXITED,
+                        output=self._captured_output(start),
+                        cause=TerminalFailureCause.EXITED,
+                    ) from exc
                 break
             if not chunk:
                 break
             self._buffer.extend(chunk)
             if len(self._buffer) - start > self._output_limit_bytes + _MAX_MARKER_OVERHEAD:
-                raise TerminalFailure(_TERMINAL_OUTPUT_LIMIT, output=self._captured_output(start))
-        raise TerminalFailure(_TERMINAL_TIMED_OUT, output=self._captured_output(start))
+                raise TerminalFailure(
+                    _TERMINAL_OUTPUT_LIMIT,
+                    output=self._captured_output(start),
+                    cause=TerminalFailureCause.OUTPUT_LIMIT,
+                )
+        raise TerminalFailure(
+            _TERMINAL_TIMED_OUT,
+            output=self._captured_output(start),
+            cause=TerminalFailureCause.TIMEOUT,
+        )
 
     def _captured_output(self, start: int) -> str:
         return bytes(self._buffer[start:]).decode(_UTF8, errors=_ERROR_REPLACE_MODE)
