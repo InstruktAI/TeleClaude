@@ -23,6 +23,7 @@ from teleclaude.events.envelope import (
 )
 from teleclaude.events.envelope_facts import EnvelopeFactResolver, cli_envelope_fact_resolver, home_owner_of
 from teleclaude.events.references import EventRef, InboundSourceRef, SessionRef
+from teleclaude.events.stream_reader import RedisStreamReader
 from teleclaude.events.wire import LegacyFacts, StreamEvent, encode
 from teleclaude.transport.redis_client import create_redis_client
 
@@ -139,6 +140,10 @@ class EventProducer:
         logger.info("EventProducer.emit OK: event=%s entry_id=%s", event_type, result)
         return result
 
+    def stream_reader(self) -> RedisStreamReader:
+        """Read the retained stream this producer appends to, through its own client."""
+        return RedisStreamReader(self._redis, self._stream)
+
     def stream_name(self) -> str:
         """Return the Redis stream used by this producer."""
         return self._stream
@@ -151,6 +156,11 @@ class EventProducer:
 def configure_producer(producer: EventProducer) -> None:
     """Install the process-wide producer used by `publish_event`."""
     _PRODUCER_STATE["producer"] = producer
+
+
+def configured_producer() -> EventProducer | None:
+    """The process-wide producer, or None while none is configured."""
+    return _PRODUCER_STATE["producer"]
 
 
 def _build_producer_from_config() -> EventProducer:

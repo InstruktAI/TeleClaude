@@ -32,6 +32,7 @@ class EventCommand(StrEnum):
 
     LIST = "list"
     SCHEMA = "schema"
+    TRAIL = "trail"
 
 
 def export_surface_markdown() -> str:
@@ -1182,6 +1183,29 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[F.FLAG_HELP],
                 auth=CommandAuth(human=_HR_MEMBER, caller_independent=True),
             ),
+            EventCommand.TRAIL.value: CommandDef(
+                desc="Read an item's retained workflow event trail: claim, head, waiting, ready and phase occurrences",
+                args="<item> [--mark | --since <cursor> | --cursor <cursor>] [--limit <n>]",
+                flags=[
+                    F.FLAG_HELP,
+                    F.FLAG_EVENTS_TRAIL_MARK,
+                    F.FLAG_EVENTS_TRAIL_SINCE,
+                    F.FLAG_EVENTS_TRAIL_CURSOR,
+                    F.FLAG_EVENTS_TRAIL_LIMIT,
+                ],
+                notes=[
+                    "Reads the retained event stream of the computer that runs the command, for the project of the invocation directory.",
+                    "A result states the retained interval it covers and any limit on what it establishes; an empty covered interval is not the absence of an emitted event.",
+                    "Capture a cursor with --mark before an operation, then read the finite interval after it with --since; --cursor continues a page inside the interval it pinned.",
+                    "Cursors grant nothing: every read applies the caller's current clearance and reach.",
+                ],
+                examples=[
+                    "telec events trail my-item",
+                    "telec events trail my-item --mark",
+                    "telec events trail my-item --since <cursor>",
+                ],
+                auth=CommandAuth(capability=Capability.TODO_READ, human=_HR_MEMBER),
+            ),
         },
     ),
     "signals": CommandDef(
@@ -2164,6 +2188,7 @@ CONTENT_DUMP = CLI_SURFACE["content"].subcommands["dump"]
 
 EVENTS_LIST = CLI_SURFACE["events"].subcommands[EventCommand.LIST.value]
 EVENTS_SCHEMA = CLI_SURFACE["events"].subcommands[EventCommand.SCHEMA.value]
+EVENTS_TRAIL = CLI_SURFACE["events"].subcommands[EventCommand.TRAIL.value]
 
 MCP_LIST = CLI_SURFACE["mcp"].subcommands["list"]
 MCP_LIST_TOOLS = CLI_SURFACE["mcp"].subcommands["list-tools"]

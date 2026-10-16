@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import sys
 from typing import Any, cast
 
@@ -13,10 +14,11 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import (
     EVENTS_LIST,
     EVENTS_SCHEMA,
+    EVENTS_TRAIL,
     EventCommand,
 )
 from teleclaude.events.catalog import EventCatalog, EventDeclaration
-from teleclaude.paths import EVENTS_DB_PATH
+from teleclaude.paths import EVENTS_DB_PATH, invocation_cwd
 
 __all__ = [
     "_handle_events",
@@ -29,6 +31,8 @@ __all__ = [
 _EVENT_SCHEMA_NOT_FOUND = "Unknown event type {event}; see telec events list."
 _EVENTS_LIST_SCHEMA_FOOTER = "Inspect declared fields with: telec events schema <event>"
 _SCHEMA_EVENT_USAGE = "telec events schema <event>"
+_TRAIL_USAGE = "Usage: telec events trail <item> [--mark | --since <cursor> | --cursor <cursor>] [--limit <n>]"
+_TRAIL_LIMIT_INVALID = "--limit must be a positive whole number, got {value!r}"
 _UNKNOWN_EVENTS_SUBCOMMAND_TEMPLATE = "Unknown events subcommand: {subcommand}"
 _UNEXPECTED_ARGUMENT_TEMPLATE = "Unexpected argument: {argument}"
 _NO_EVENT_TYPES = "No event types found."
@@ -69,6 +73,8 @@ def _handle_events(args: list[str]) -> None:
         _handle_events_list(args[1:])
     elif subcommand == EventCommand.SCHEMA.value:
         _handle_events_schema(args[1:])
+    elif subcommand == EventCommand.TRAIL.value:
+        _handle_events_trail(args[1:])
     else:
         print(_UNKNOWN_EVENTS_SUBCOMMAND_TEMPLATE.format(subcommand=subcommand))
         print(_usage("events"))
@@ -143,6 +149,32 @@ def _handle_events_schema(args: list[str]) -> None:
         return
     for field in declaration.data_fields:
         print(_SCHEMA_FIELD_TEMPLATE.format(name=field.name, kind=field.kind.value, nullable=field.nullable))
+
+
+def _handle_events_trail(args: list[str]) -> None:
+    """Read one item's retained workflow event trail from the daemon of this computer."""
+    from teleclaude.cli.tool_client import tool_api_call  # noqa: PLC0415 - command boundary: daemon API client.
+
+    parsed = parse_command_args(EVENTS_TRAIL, args)
+    if len(parsed.positionals) != 1:
+        print(_TRAIL_USAGE, file=sys.stderr)
+        raise SystemExit(1)
+    limit = parsed.value(F.FLAG_EVENTS_TRAIL_LIMIT)
+    params: dict[str, str | int | bool] = {"cwd": str(invocation_cwd())}
+    if limit is not None:
+        if not limit.isdigit() or int(limit) < 1:
+            print(_TRAIL_LIMIT_INVALID.format(value=limit), file=sys.stderr)
+            raise SystemExit(1)
+        params["limit"] = int(limit)
+    if parsed.has(F.FLAG_EVENTS_TRAIL_MARK):
+        params["mark"] = True
+    since = parsed.value(F.FLAG_EVENTS_TRAIL_SINCE)
+    if since is not None:
+        params["since"] = since
+    cursor = parsed.value(F.FLAG_EVENTS_TRAIL_CURSOR)
+    if cursor is not None:
+        params["cursor"] = cursor
+    print(json.dumps(tool_api_call("GET", f"/events/trail/{parsed.positionals[0]}", params=params), indent=2))
 
 
 def _handle_signals(args: list[str]) -> None:

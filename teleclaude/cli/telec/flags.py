@@ -520,6 +520,14 @@ FLAG_JOB_STATE_JSON = Flag("--state-json", desc="Opaque checkpoint replacement a
 # =============================================================================
 
 FLAG_EVENTS_DOMAIN = Flag("--domain", desc="Filter by owner: the first segment of the type name", arity=VALUE)
+FLAG_EVENTS_TRAIL_MARK = Flag(
+    "--mark", desc="Capture an observation cursor at the end of the retained stream; read nothing", arity=SWITCH
+)
+FLAG_EVENTS_TRAIL_SINCE = Flag(
+    "--since", desc="Read the finite interval after an observation cursor captured with --mark", arity=VALUE
+)
+FLAG_EVENTS_TRAIL_CURSOR = Flag("--cursor", desc="Continue a read inside the interval it pinned", arity=VALUE)
+FLAG_EVENTS_TRAIL_LIMIT = Flag("--limit", desc="Occurrences per page (1-200, default 50)", arity=VALUE)
 
 FLAG_MCP_EXCLUDE = Flag("--exclude", desc="Server slug to omit; repeat for specialized procedures", arity=REPEATED)
 FLAG_MCP_JSON = Flag("--json", desc="Print raw JSON response", arity=SWITCH)

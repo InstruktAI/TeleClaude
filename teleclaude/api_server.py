@@ -55,6 +55,7 @@ from teleclaude.api.bugs_routes import router as bugs_router
 from teleclaude.api.commit_review_stamp_routes import router as commit_review_stamp_router
 from teleclaude.api.config_routes import router as config_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
+from teleclaude.api.event_trail_routes import router as event_trail_router
 from teleclaude.api.ingress_listener import WebhookIngressListener
 from teleclaude.api.operations_routes import router as operations_router
 from teleclaude.api.relay_boundary import relay_boundary
@@ -231,6 +232,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
         self.app.include_router(todo_router)
         self.app.include_router(todo_slug_router)
+        self.app.include_router(event_trail_router)
         self.app.include_router(bugs_router)
         self.app.include_router(config_router)
         self.app.include_router(todo_by_id_router)
