@@ -34,6 +34,7 @@ FIELD_ROLE: Final = "role"
 FIELD_NATIVE: Final = "native_session_id"
 FIELD_INITIATOR: Final = "initiator_session_id"
 FIELD_PROJECT: Final = "project_path"
+FIELD_SUBDIR: Final = "subdir"
 FIELD_ACTIVE: Final = "active_runner"
 FIELD_PHASE: Final = "lifecycle_phase"
 FIELD_STANDING_PHASE: Final = "phase"
@@ -74,8 +75,14 @@ DETAIL_STATE: Final = "operation {operation} ended in {state!r}: {detail!r}"
 DETAIL_KEY: Final = "finding returned no key: {result!r}"
 DETAIL_LEDGER: Final = "B5 ledger declaration failed: {detail}"
 DETAIL_PRECONDITION: Final = "B5 began outside the approved unclaimed work state: {item!r}"
-DETAIL_WRITE_SCOPE: Final = "builder expected worktree {worktree}; public project_path {project!r}, launch cwd {cwd!r}"
+DETAIL_WRITE_SCOPE: Final = (
+    "builder {session} write-scope mismatch: expected base {base!r}, subdir {subdir!r}, effective {effective!r}, "
+    "owned worktree {owned!r}; "
+    "public project_path {project!r}, public subdir {actual_subdir!r}, effective {actual_effective!r}, "
+    "launch cwd {cwd!r}, public native {native!r}, launch native {launch_native!r}"
+)
 DETAIL_WRITE_FRAME_SCOPE: Final = "builder write frame cwd {cwd!r} does not name worktree {worktree}; frame {frame!r}"
+B5_BUILDER_SUBDIR: Final = f"{flow_module.WORKTREE_DIRECTORY}/{flow_module.ITEM}"
 DETAIL_INTEGRATOR: Final = "no started integrator has a public session record and mapped native control"
 B11_SENTINEL_BYTES: Final = b"b11 dirty sentinel\n"
 B11_SENTINEL_LINE: Final = "b11 dirty sentinel"
@@ -144,7 +151,6 @@ def _startup(
     session: str,
     expected_role: str,
     procedure: str,
-    expected_project: Path,
 ) -> tuple[Mapping[str, object], Mapping[str, object], str]:
     role_path = flow.publication.clone / driver.DOCS_ROOT / f"{procedure}{driver.LIVE_SUFFIX}"
     folded_role = driver.declared_role(role_path)
@@ -159,8 +165,7 @@ def _startup(
     native = initial_record.get(FIELD_NATIVE)
     if not isinstance(native, str) or launch.get(FIELD_NATIVE) != native:
         raise creation.binding_failure(DETAIL_BINDING.format(detail="native session identity mismatch"))
-    journey = foundation.Journey(flow.host, flow.setup_for_session(session), expected_project, flow.owner_email)
-    journey.session_id = session
+    journey = flow.journey(session)
     deadline = time.monotonic() + START_SECONDS
     for hook in (foundation.FRAME_SESSION_START, foundation.FRAME_PROMPT_SUBMIT):
         journey.require_hook(hook, journey.await_frame(hook, deadline))
@@ -223,6 +228,66 @@ def _operation_command(
     flow.require_ledger().record_operation(attempt_id, operation)
     terminal = publication.await_terminal(flow.observer, operation, OPERATION_SECONDS)
     return frame, terminal
+
+
+def _require_builder_write_scope(
+    session: str,
+    builder_record: Mapping[str, object],
+    builder_launch: Mapping[str, object],
+    base_project: Path,
+    expected_subdir: str,
+    expected_worktree: Path,
+) -> None:
+    """Bind the public base/subdir projection and independent native cwd to the owned worktree."""
+    expected_base = base_project.resolve()
+    expected_effective = (expected_base / expected_subdir).resolve()
+    owned_worktree = expected_worktree.resolve()
+    raw_project = builder_record.get(FIELD_PROJECT)
+    actual_subdir = builder_record.get(FIELD_SUBDIR)
+    raw_cwd = builder_launch.get("cwd")
+    native = builder_record.get(FIELD_NATIVE)
+    launch_native = builder_launch.get(FIELD_NATIVE)
+    actual_effective: Path | None = None
+    base_matches = False
+    if isinstance(raw_project, str) and Path(raw_project).is_absolute():
+        try:
+            actual_base = Path(raw_project).resolve()
+            base_matches = actual_base == expected_base
+            if isinstance(actual_subdir, str) and not Path(actual_subdir).is_absolute():
+                actual_effective = (Path(raw_project) / actual_subdir).resolve()
+        except (OSError, RuntimeError, ValueError):
+            actual_effective = None
+    cwd_matches = False
+    if isinstance(raw_cwd, str) and Path(raw_cwd).is_absolute():
+        try:
+            cwd_matches = Path(raw_cwd).resolve() == expected_effective
+        except (OSError, RuntimeError, ValueError):
+            cwd_matches = False
+    if (
+        not base_matches
+        or actual_subdir != expected_subdir
+        or actual_effective != expected_effective
+        or owned_worktree != expected_effective
+        or not cwd_matches
+        or not isinstance(native, str)
+        or not native
+        or launch_native != native
+    ):
+        raise creation.binding_failure(
+            DETAIL_WRITE_SCOPE.format(
+                session=session,
+                base=expected_base,
+                subdir=expected_subdir,
+                effective=expected_effective,
+                owned=owned_worktree,
+                project=raw_project,
+                actual_subdir=actual_subdir,
+                actual_effective=actual_effective,
+                cwd=raw_cwd,
+                native=native,
+                launch_native=launch_native,
+            )
+        )
 
 
 def _git_bytes(flow: flow_module.WorkflowFlow, *arguments: str, cwd: Path) -> bytes:
@@ -409,7 +474,7 @@ def _start_work(
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))
         )
     w2 = flow.plan_actor(PROC_WORK, 1, ROLE_WORK)
-    w2_record, _w2_launch, w2_role = _startup(flow, w2, ROLE_WORK, PROC_WORK, flow.project)
+    w2_record, _w2_launch, w2_role = _startup(flow, w2, ROLE_WORK, PROC_WORK)
     child_frame = _frame_success(flow, w2, "child")
     child_run = child_frame.get("run")
     child_stdout = child_run.get("stdout") if isinstance(child_run, Mapping) else None
@@ -418,19 +483,17 @@ def _start_work(
         _fail(f"B5 builder child start text is absent: {child_frame!r}")
     builder = match.group(1)
     flow.require_ledger().record_session(child_attempt, builder)
-    builder_record, builder_launch, _builder_role = _startup(flow, builder, ROLE_BUILDER, PROC_BUILD, flow.project)
+    builder_record, builder_launch, _builder_role = _startup(flow, builder, ROLE_BUILDER, PROC_BUILD)
     if builder_record.get(FIELD_INITIATOR) != w2:
         _fail(f"builder initiator is {builder_record.get(FIELD_INITIATOR)!r}, not {w2}")
-    if builder_record.get(FIELD_PROJECT) != str(worktree.resolve()) or builder_launch.get("cwd") != str(
-        worktree.resolve()
-    ):
-        raise creation.binding_failure(
-            DETAIL_WRITE_SCOPE.format(
-                worktree=worktree.resolve(),
-                project=builder_record.get(FIELD_PROJECT),
-                cwd=builder_launch.get("cwd"),
-            )
-        )
+    _require_builder_write_scope(
+        builder,
+        builder_record,
+        builder_launch,
+        flow.project,
+        B5_BUILDER_SUBDIR,
+        worktree,
+    )
     case = driver.DriverCase(
         host=flow.host,
         observer=flow.observer,
@@ -948,7 +1011,7 @@ def _observe_integrators(
             record = flow.session_record(session, retain=False)
             if record.get(FIELD_ROLE) != ROLE_INTEGRATOR:
                 _fail(f"unexpected B5 session {session}: {record!r}")
-            record, _launch, _role = _startup(flow, session, ROLE_INTEGRATOR, flow_module.PROC_INTEGRATE, flow.project)
+            record, _launch, _role = _startup(flow, session, ROLE_INTEGRATOR, flow_module.PROC_INTEGRATE)
             if record.get(FIELD_INITIATOR) not in (None, ""):
                 _fail(f"standing integrator {session} has an initiator: {record!r}")
             flow.control_for_session(session)
@@ -1024,7 +1087,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))
         )
     w3 = flow.plan_actor(PROC_WORK, 2, ROLE_WORK)
-    w3_record, _w3_launch, w3_role = _startup(flow, w3, ROLE_WORK, PROC_WORK, flow.project)
+    w3_record, _w3_launch, w3_role = _startup(flow, w3, ROLE_WORK, PROC_WORK)
     case = driver.DriverCase(
         host=flow.host,
         observer=flow.observer,

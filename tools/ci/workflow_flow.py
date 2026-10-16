@@ -638,13 +638,15 @@ class WorkflowFlow:
         return setup
 
     def journey(self, session_id: str, *, message: str | None = None) -> foundation.Journey:
-        return foundation.Journey(
+        journey = foundation.Journey(
             self.host,
             self.setup_for_session(session_id),
             self.project,
             self.owner_email,
             message=message,
         )
+        journey.session_id = session_id
+        return journey
 
     def frame(self, session_id: str, name: str, timeout_seconds: float = FLOW_COMMAND_SECONDS) -> Json:
         journey = self.journey(session_id)
