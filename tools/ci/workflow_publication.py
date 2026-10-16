@@ -348,8 +348,7 @@ class Publication:
             identity: {
                 "equals_pending": current[identity] == pending[identity],
                 "equals_candidate_file": current[identity] == files[identity],
-                "current_head": current[identity][:80],
-                "file_head": files[identity][:80],
+                "first_difference": _first_difference(current[identity], files[identity]),
             }
             for identity in FOLD_IDS
         }
@@ -528,6 +527,12 @@ class Publication:
         return [] if after == self.candidate else [DETAIL_IDENTITY_MOVED.format(before=self.candidate, after=after)]
 
 
+def _first_difference(left: str, right: str) -> str:
+    """Where two texts first differ, with a window of each, for a failure message only."""
+    index = next((i for i, (a, b) in enumerate(zip(left, right, strict=False)) if a != b), min(len(left), len(right)))
+    return f"at {index} of {len(left)}/{len(right)}: {left[max(0, index - 40) : index + 80]!r} vs {right[max(0, index - 40) : index + 80]!r}"
+
+
 def log_evidence(host: FoundationHost, terms: Sequence[str]) -> str:
     """The daemon\'s recent log text for a failed case, bounded, for the failure message itself; never an oracle.
 
@@ -563,7 +568,7 @@ GENERATION_INCONSISTENT: Final = "inconsistent"
 DETAIL_GENERATION: Final = (
     "the installed publication is not a verified candidate generation, so no prepare was issued: {path}"
 )
-EXCEPTION_LINE: Final = re.compile(r"^[\s|]*(?:[A-Za-z_][\w.]*\.)?[A-Za-z_]\w*(?:Error|Exception|Exit)\b.*$")
+EXCEPTION_TEXT: Final = re.compile(r"[A-Za-z_][\w.]*(?:Error|Exception)\b:?[^\\\n]{0,200}")
 EXCEPTION_LINES: Final = 6
 EXCEPTION_LINE_BYTES: Final = 260
 
@@ -577,8 +582,8 @@ def exception_evidence(host: FoundationHost) -> str:
         outcome = host.process((executable, "teleclaude", "--since", "15m"), Path(home or "."), host.environment, 60)
     except BaseException as error:  # evidence gathering must not replace the failure it explains
         return f"[{executable} failed: {type(error).__name__}]"
-    lines = [line.strip() for line in outcome.output.splitlines() if EXCEPTION_LINE.match(line)]
-    return " || ".join(line[-EXCEPTION_LINE_BYTES:] for line in lines[-EXCEPTION_LINES:]) or "[no exception line found]"
+    found = [match.group(0).strip() for match in EXCEPTION_TEXT.finditer(outcome.output)]
+    return " || ".join(text[-EXCEPTION_LINE_BYTES:] for text in found[-EXCEPTION_LINES:]) or "[no exception text found]"
 
 
 NO_DRIVER_PHRASE: Final = "no published procedure drives preparation"
