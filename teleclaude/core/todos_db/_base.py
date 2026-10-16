@@ -7,7 +7,7 @@ import sqlite3
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import cast
+from typing import NamedTuple, cast
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
@@ -37,6 +37,7 @@ logger = get_logger(__name__)
 _TODO_STATE_TABLE = "todo_state"
 _COMMIT_REVIEW_TABLE = "commit_review"
 _LEGACY_STATE_QUERY = "SELECT id, state FROM todo_state"
+_IMPORTED_REVIEW_SOURCES_QUERY = "SELECT migration_source FROM commit_review WHERE migration_source IS NOT NULL"
 _LEGACY_EVENTS_FIELD = "events"
 _LEGACY_DETAILS_FIELD = "details"
 _LEGACY_EVENT_KIND_FIELD = "kind"
@@ -56,6 +57,16 @@ _COMMIT_REVIEW_INSERT_SQL = (
     "(sha, verdict, reviewer_session_id, producer_session_ids, stamped_at, reason, migration_source) "
     "VALUES (?, ?, ?, ?, ?, ?, ?)"
 )
+
+
+class _LegacyCommitReviewInsert(NamedTuple):
+    sha: str
+    verdict: str
+    reviewer_session_id: str
+    producer_session_ids: str | None
+    stamped_at: str
+    reason: str
+    migration_source: str
 
 
 def _generate_id() -> str:
@@ -627,10 +638,38 @@ def _migrate_commit_review_events(conn: sqlite3.Connection, project_root: Path) 
     """
     if not _table_exists(conn, _TODO_STATE_TABLE) or not _table_exists(conn, _COMMIT_REVIEW_TABLE):
         return
+    pending_rows = _pending_commit_review_events(conn)
+    if not pending_rows:
+        return
     try:
         repo: Repo | None = Repo(str(project_root))
     except (InvalidGitRepositoryError, NoSuchPathError):
         repo = None
+    prepared_rows: list[_LegacyCommitReviewInsert] = []
+    for row in pending_rows:
+        producer_sessions: list[str] | None = None
+        if repo is not None:
+            try:
+                trailer = repo.git.log(_GIT_NO_WALK, _GIT_SESSION_TRAILER_FORMAT, row.sha)
+                parsed_sessions = [
+                    value.strip() for value in trailer.split(_SESSION_TRAILER_SEPARATOR) if value.strip()
+                ]
+                producer_sessions = parsed_sessions or None
+            except GitCommandError:
+                logger.warning(_LEGACY_PROVENANCE_WARNING, **{_LEGACY_PROVENANCE_WARNING_SHA: row.sha})
+        prepared_rows.append(
+            row._replace(producer_session_ids=json.dumps(producer_sessions) if producer_sessions is not None else None)
+        )
+    # The bootstrap caller supplies a fresh connection; all Git work precedes writer acquisition.
+    for row in prepared_rows:
+        conn.execute(_COMMIT_REVIEW_INSERT_SQL, row)
+    conn.commit()
+
+
+def _pending_commit_review_events(conn: sqlite3.Connection) -> list[_LegacyCommitReviewInsert]:
+    """Read missing source identities in legacy traversal order without acquiring a writer."""
+    imported_sources = {row[0] for row in conn.execute(_IMPORTED_REVIEW_SOURCES_QUERY).fetchall()}
+    pending_rows: list[_LegacyCommitReviewInsert] = []
     for todo_id, raw_state in conn.execute(_LEGACY_STATE_QUERY).fetchall():
         try:
             payload = json.loads(str(raw_state))
@@ -659,30 +698,21 @@ def _migrate_commit_review_events(conn: sqlite3.Connection, project_root: Path) 
                 typed_verdict = CommitReviewVerdict(verdict)
             except ValueError:
                 continue
-            producer_sessions: list[str] | None = None
-            if repo is not None:
-                try:
-                    trailer = repo.git.log(_GIT_NO_WALK, _GIT_SESSION_TRAILER_FORMAT, str(sha))
-                    parsed_sessions = [
-                        value.strip() for value in trailer.split(_SESSION_TRAILER_SEPARATOR) if value.strip()
-                    ]
-                    producer_sessions = parsed_sessions or None
-                except GitCommandError:
-                    logger.warning(_LEGACY_PROVENANCE_WARNING, **{_LEGACY_PROVENANCE_WARNING_SHA: str(sha)})
             migration_source = _MIGRATION_SOURCE_TEMPLATE.format(todo_id=todo_id, event_index=event_index)
-            conn.execute(
-                _COMMIT_REVIEW_INSERT_SQL,
-                (
-                    sha,
+            if migration_source in imported_sources:
+                continue
+            pending_rows.append(
+                _LegacyCommitReviewInsert(
+                    cast(str, sha),
                     typed_verdict.value,
-                    reviewer,
-                    json.dumps(producer_sessions) if producer_sessions is not None else None,
-                    stamped_at,
+                    cast(str, reviewer),
+                    None,
+                    cast(str, stamped_at),
                     str(details.get(CommitReviewDetail.REASON.value, _EMPTY_REASON)),
                     migration_source,
                 ),
             )
-    conn.commit()
+    return pending_rows
 
 
 def _bootstrap_todos_db(db_path: str) -> None:
