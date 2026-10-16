@@ -36,6 +36,12 @@ by a handler:
 
 ## Canonical fields
 
+Zsh completion groups short and long option forms under one description when
+the shell's native grouping style is enabled. Each form remains independently
+selectable and inserts only that form. Completion consumes the shared option
+declarations; the shell owns display grouping and alignment
+(`sdlc/principle/design-fundamentals`, DRY and separation of responsibilities).
+
 ### Use cases
 
 #### UC-CFR-1: A declared short alias behaves as its long form on every command
