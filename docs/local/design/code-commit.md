@@ -206,9 +206,15 @@ names files explicitly.
 
 ## Inputs / Outputs
 
+<!-- planned-change:todo-doc-review-evidence -->
+
+Sealed contract — exactly:
+<!-- change:todo-doc-review-evidence -->
+
 The arguments below compose with the optional todo association owned by
 `local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`; its
 association follows `general/policy/commits`.
+<!-- /planned-change:todo-doc-review-evidence -->
 
 - `"<message>"` — one quoted commit message (required when `--approved`).
 - `--approved` — agent-owned sealed-gate acknowledgment. Absence triggers
