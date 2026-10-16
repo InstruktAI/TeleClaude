@@ -28,6 +28,9 @@ from pathlib import Path
 from types import FrameType
 from typing import Final, cast
 
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 from tools.ci import workflow_claim as claim
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_events as events
