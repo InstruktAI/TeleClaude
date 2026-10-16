@@ -194,6 +194,7 @@ class Publication:
         self.live_bodies: dict[str, str] = {}
         self.pending_bodies: dict[str, str] = {}
         self.candidate = ""
+        self.copies = 0
 
     def _run(self, argv: Sequence[str], cwd: Path, timeout: float, *, what: str) -> Outcome:
         outcome = self.host.process(argv, cwd, self.host.environment, timeout)
@@ -313,6 +314,25 @@ class Publication:
         if found != expected:
             raise creation.binding_failure(DETAIL_FOLD_PATHS.format(found=found))
 
+    def _fresh_copy(self, origin: Path, purpose: str) -> Path:
+        """A new repository of the origin\'s committed tree: publication is owed once per repository, never twice.
+
+        The supported publication records the commit it published per repository, and publishes nothing when that
+        commit is recorded already. A copy that has never published is owed again, whatever the deployed generation
+        currently holds, which is what installing and restoring the fold require.
+        """
+        self.copies += 1
+        copy = self.temporary_root / f"{CLONE_NAME}-{purpose}-{self.copies}"
+        shutil.rmtree(copy, ignore_errors=True)
+        self._run(
+            (GIT, "clone", "--quiet", "--shared", str(origin), str(copy)),
+            self.temporary_root,
+            CLONE_TIMEOUT_SECONDS,
+            what="git clone --shared",
+        )
+        (copy / ENVIRONMENT_DIRECTORY).symlink_to(self.source_root / ENVIRONMENT_DIRECTORY, target_is_directory=True)
+        return copy
+
     def _publish(self, checkout: Path) -> None:
         self._run(
             (UV, "run", "--project", str(self.source_root), "--no-sync", "python", "-m", INSTALL_MODULE),
@@ -324,7 +344,7 @@ class Publication:
     def publish(self) -> None:
         """B-P6: publish the fold. The attempt is recorded first: a bounded command that fails may have exchanged it."""
         self.attempted = True
-        self._publish(self.clone)
+        self._publish(self._fresh_copy(self.clone, "fold"))
 
     def verify_parity(self) -> None:
         """B-P7: every published body equals the pending body captured before publication."""
@@ -340,7 +360,7 @@ class Publication:
             return []
         problems: list[str] = []
         try:
-            self._publish(self.source_root)
+            self._publish(self._fresh_copy(self.source_root, "restore"))
             for identity, body in self.live_bodies.items():
                 if self.body_of(identity, pending=False) != body:
                     problems.append(DETAIL_BODY_MISMATCH.format(identity=identity, expected="candidate's live body"))
@@ -357,3 +377,17 @@ class Publication:
         except BaseException as error:
             return [f"re-reading the candidate identity failed: {error}"]
         return [] if after == self.candidate else [DETAIL_IDENTITY_MOVED.format(before=self.candidate, after=after)]
+
+
+def log_evidence(host: FoundationHost, terms: Sequence[str]) -> None:
+    """Retain the daemon\'s recent log lines for each term as evidence of a failed case; never an oracle."""
+    home = host.environment.get("HOME", "")
+    tool = Path(home) / ".local" / "bin" / "instrukt-ai-logs"
+    executable = str(tool) if tool.exists() else "instrukt-ai-logs"
+    for term in terms:
+        try:
+            host.process(
+                (executable, "teleclaude", "--since", "40m", "--grep", term), Path(home or "."), host.environment, 60
+            )
+        except BaseException:  # evidence gathering must not replace the failure it explains
+            continue
