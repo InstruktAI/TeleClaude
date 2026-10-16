@@ -80,6 +80,9 @@ And data outside the operator's reach is neither shown nor counted
 
 ## Known caveats
 
+- Observation and continuation handles live in the issuing daemon's bounded,
+  shared cursor cache. A daemon restart or eviction of an older handle makes it
+  invalid; an observation spanning that loss establishes no event absence.
 - Events another computer emitted are outside this computer-local view.
 - The view covers the five workflow occurrence kinds above and retained history,
   rather than other platform events or an item's complete lifetime.
