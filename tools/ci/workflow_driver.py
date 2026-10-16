@@ -13,14 +13,14 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from pathlib import Path
 from typing import Final
 
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_publication as publication
-from tools.ci.workflow_foundation import FoundationHost
+from tools.ci.workflow_foundation import FoundationHost, Outcome
 
 TELEC: Final = "bin/telec"
 TODO: Final = "todo"
@@ -177,6 +177,39 @@ def receipt_operation(output: str) -> str | None:
     receipt = foundation.json_object(output)
     operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
     return operation if isinstance(operation, str) and operation else None
+
+
+ATTEMPT_PREFIX: Final = "attempt:"
+
+
+def begin_attempt(starts: MutableMapping[str, str], label: str) -> str:
+    """Own an attempted start before the call or the gate that may cause it is crossed.
+
+    A timeout, a lost exit frame or a malformed answer proves nothing about acceptance, so the attempt stays open (and
+    closure stays unproven) until a receipt names the operation it became.
+    """
+    key = f"{ATTEMPT_PREFIX}{label}:{len(starts)}"
+    starts[key] = publication.START_OPEN
+    return key
+
+
+def settle_attempt(starts: MutableMapping[str, str], key: str, operation: str | None) -> None:
+    """A parsed operation id replaces its attempt, whatever the exit status or frame completeness said."""
+    if operation is None:
+        return
+    starts.pop(key, None)
+    starts.setdefault(operation, publication.START_OPEN)
+
+
+def start_call(
+    starts: MutableMapping[str, str], observer: creation.Observer, argv: Sequence[str], label: str
+) -> tuple[Outcome, str | None]:
+    """One public start verb on the owner terminal, owned before it runs; the operation is parsed whatever its status."""
+    key = begin_attempt(starts, label)
+    outcome = observer.run(argv)
+    operation = receipt_operation(outcome.output)
+    settle_attempt(starts, key, operation)
+    return outcome, operation
 
 
 class DriverCase:

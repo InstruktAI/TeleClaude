@@ -105,6 +105,10 @@ DETAIL_STARTER: Final = "the winner's operation result does not contain the sess
 DETAIL_RESULT_TYPE: Final = "operation {operation} result is not a string: {result!r}"
 DETAIL_OPERATION_FAILED: Final = "operation {operation} failed: {error!r}"
 DETAIL_CONTROLS_KEPT: Final = "closure was not proven, so the control directories {control} are kept for diagnosis"
+DETAIL_WITNESS_UNREADABLE: Final = (
+    "the witness read of driver {session} is unreadable, so the hold is unproven: {output!r}"
+)
+DETAIL_HEADER_NAMES: Final = "the log of {item} holds a header naming {session!r}, which holds nothing: {header!r}"
 DETAIL_SESSIONS_MOVED: Final = "the sessions changed during the hold: {found!r}"
 DETAIL_ONE_DRIVER: Final = "the sessions beyond the known set are {found!r}, not exactly one driver"
 WHEN_REFUSED: Final = "after the refusal"
@@ -276,14 +280,12 @@ class _Race:
         assert self.baseline is not None
         return self.baseline.ids | frozenset(sessions)
 
-    def _receipt(self, observer: creation.Observer, item: str) -> str:
-        outcome = observer.run((TELEC, TODO, PREPARE, item))
-        operation = driver.receipt_operation(outcome.output)
+    def _receipt(self, observer: creation.Observer, item: str, label: str) -> str:
+        outcome, operation = driver.start_call(self.starts, observer, (TELEC, TODO, PREPARE, item), label)
         if outcome.exit_status != 0 or operation is None:
             raise creation.platform_failure(
                 DETAIL_RECEIPT.format(item=item, status=outcome.exit_status, output=outcome.output[-300:])
             )
-        self.starts[operation] = publication.START_OPEN
         return operation
 
     def _discover(self, known: frozenset[str]) -> str:
@@ -319,14 +321,22 @@ class _Race:
                 DETAIL_POOL.format(found=[p.name for p in found], expected=[p.name for p in expected])
             )
 
-    def _frame(self, window: Window, name: str) -> Json:
-        """A completed frame of the requester, awaited under the guard of the hold."""
+    def _frame(self, window: Window, name: str, attempt: str) -> Json:
+        """A completed frame of the requester, awaited under the guard of the hold.
+
+        The attempt it stands for was owned before its gate opened; a parsed receipt replaces it even when the frame
+        reports a failure, and a frame that never completes leaves the attempt open.
+        """
         assert self.requester_journey is not None
         marker = self.setups[0].control / foundation.FRAMES_DIRECTORY / f"{name}{foundation.FRAME_COMPLETE_SUFFIX}"
         while not marker.exists():
             window.sleep(FRAME_POLL_SECONDS)
         frame = self.requester_journey.await_frame(name, time.monotonic() + FRAME_READ_SECONDS)
         run = frame.get("run")
+        stdout = run.get("stdout") if isinstance(run, dict) else None
+        driver.settle_attempt(
+            self.starts, attempt, driver.receipt_operation(stdout) if isinstance(stdout, str) else None
+        )
         if not isinstance(run, dict) or run.get("exit_status") != 0 or run.get("timed_out") is True:
             text = f"{run.get('stdout', '')}{run.get('stderr', '')}" if isinstance(run, dict) else ""
             if DENIED in text.lower():
@@ -340,17 +350,18 @@ class _Race:
         operation = driver.receipt_operation(stdout) if isinstance(stdout, str) else None
         if operation is None:
             raise creation.platform_failure(DETAIL_FRAME.format(name="receipt", frame=frame))
-        self.starts[operation] = publication.START_OPEN
         return operation
 
     def _witness(self, guarded: creation.Observer, session: str, item: str, control: Path) -> Witness:
         """The W-end witness: state reads first, the one-way latch read last."""
-        record = guarded.run((TELEC, SESSIONS, SHOW, session, FULL_FLAG))
+        outcome = guarded.run((TELEC, SESSIONS, SHOW, session, FULL_FLAG))
+        record = foundation.json_object(outcome.output) if outcome.exit_status == 0 else None
+        if record is None:
+            raise creation.binding_failure(
+                DETAIL_WITNESS_UNREADABLE.format(session=session, output=outcome.output[-300:])
+            )
         shown = driver.shown_with_content(guarded, item)
-        witness = Witness(
-            record=foundation.json_object(record.output) if record.exit_status == 0 else None,
-            holder=creation.dig(shown, "state.active_runner")[1],
-        )
+        witness = Witness(record=record, holder=creation.dig(shown, "state.active_runner")[1])
         witness.latch_present = (control / foundation.BARRIER_FILE).exists()
         return witness
 
@@ -473,7 +484,7 @@ class _Race:
 
     # -- phase W ---------------------------------------------------------------------------------------------------
     def phase_w(self) -> None:
-        owner_operation = self._receipt(self.observer, ITEM_W)
+        owner_operation = self._receipt(self.observer, ITEM_W, "owner-w")
         started_at = time.monotonic()
         held_driver = self._discover(self._known(self.requester))
         control = self.setups[1].control
@@ -494,6 +505,7 @@ class _Race:
         seen = self.driver_evidence(
             case, held_driver, frozenset({self.requester, held_driver}), [*distinct, str(sample.loser)]
         )
+        self._require_requester_unnamed(ITEM_W, self._headers(ITEM_W))
         for operation in distinct:
             self.starter_result(operation, held_driver, started_at, seen)
         self.driver_w = held_driver
@@ -507,8 +519,9 @@ class _Race:
             raise creation.binding_failure(DETAIL_QUIET.format(paths=changed))
         sample.s_b = second
         sample.b_w = guarded.sessions().ids
+        attempt = driver.begin_attempt(self.starts, "requester-w")
         (self.setups[0].control / GO_W).write_text("1\n", encoding="utf-8")
-        loser = self._frame_operation(self._frame(window, FRAME_W))
+        loser = self._frame_operation(self._frame(window, FRAME_W, attempt))
         if loser == owner_operation:
             raise creation.platform_failure(DETAIL_SAME_OPERATION.format(operation=loser))
         sample.loser = loser
@@ -519,10 +532,11 @@ class _Race:
         sample.loser_state = state
         sample.s_1 = driver.shown_with_content(guarded, ITEM_W)
         sample.sessions_1 = guarded.sessions().ids
-        attach = driver.receipt_operation(guarded.run((TELEC, TODO, PREPARE, ITEM_W)).output)
-        if attach is None:
-            raise creation.platform_failure(DETAIL_RECEIPT.format(item=ITEM_W, status=0, output=""))
-        self.starts[attach] = self.starts.get(attach, publication.START_OPEN)
+        again, attach = driver.start_call(self.starts, guarded, (TELEC, TODO, PREPARE, ITEM_W), "attach")
+        if again.exit_status != 0 or attach is None:
+            raise creation.platform_failure(
+                DETAIL_RECEIPT.format(item=ITEM_W, status=again.exit_status, output=again.output[-300:])
+            )
         sample.attach = attach
         length = min(COMMAND_BOUND_SECONDS, window.guard() - ATTACH_RESERVE_SECONDS)
         if length < ATTACH_MINIMUM_SECONDS:
@@ -569,8 +583,9 @@ class _Race:
     # -- phase R ---------------------------------------------------------------------------------------------------
     def phase_r(self) -> None:
         assert self.requester_journey is not None
+        attempt = driver.begin_attempt(self.starts, "requester-r")
         (self.setups[0].control / GO_R).write_text("1\n", encoding="utf-8")
-        owner_operation = self._receipt(self.observer, ITEM_R)
+        owner_operation = self._receipt(self.observer, ITEM_R, "owner-r")
         fired = time.monotonic()
         held_driver = self._discover(self._known(self.requester, self.driver_w))
         control = self.setups[2].control
@@ -580,12 +595,12 @@ class _Race:
         sample = RaceSample()
         with held(control):
             try:
-                self._collect_r(guarded, window, sample, owner_operation)
+                self._collect_r(guarded, window, sample, owner_operation, attempt)
                 sample.witness = self._witness(guarded, held_driver, ITEM_R, control)
             except WindowExceeded as error:
                 sample.exceeded = str(error)
         self._judge_hold(sample, held_driver)
-        winner = self._judge_r(sample, owner_operation)
+        winner = self._judge_r(sample, owner_operation, held_driver)
         case = self.driver_case(2, ITEM_R)
         seen = self.driver_evidence(
             case,
@@ -594,22 +609,32 @@ class _Race:
             [owner_operation, str(sample.requester_operation)],
         )
         headers = self._headers(ITEM_R)
-        if headers != 1:
-            shown = driver.shown_with_content(self.observer, ITEM_R)
-            log = creation.dig(shown, "artifact_content.log")[1]
-            raise creation.platform_failure(DETAIL_HEADERS.format(item=ITEM_R, count=headers, log=str(log)[-600:]))
+        if len(headers) != 1:
+            raise creation.platform_failure(DETAIL_HEADERS.format(item=ITEM_R, count=len(headers), log=headers))
+        self._require_requester_unnamed(ITEM_R, headers)
         self.starter_result(winner, held_driver, fired, seen)
         self.driver_r = held_driver
 
-    def _headers(self, item: str) -> int:
+    def _headers(self, item: str) -> list[str]:
+        """Every section header line of the item\'s log, in order."""
         shown = driver.shown_with_content(self.observer, item)
         log = creation.dig(shown, "artifact_content.log")[1]
-        return sum(1 for line in str(log).split("\n") if line.startswith(HEADER_PREFIX))
+        return [line for line in str(log).replace("\r\n", "\n").split("\n") if line.startswith(HEADER_PREFIX)]
 
-    def _collect_r(self, guarded: creation.Observer, window: Window, sample: RaceSample, owner_operation: str) -> None:
+    def _require_requester_unnamed(self, item: str, headers: Sequence[str]) -> None:
+        """No header line of the log names the requester, which held nothing."""
+        for header in headers:
+            if self.requester in header:
+                raise creation.platform_failure(
+                    DETAIL_HEADER_NAMES.format(item=item, session=self.requester, header=header)
+                )
+
+    def _collect_r(
+        self, guarded: creation.Observer, window: Window, sample: RaceSample, owner_operation: str, attempt: str
+    ) -> None:
         sample.s_r0 = driver.shown_with_content(guarded, ITEM_R)
         sample.sessions_0 = guarded.sessions().ids
-        requester_operation = self._frame_operation(self._frame(window, FRAME_R))
+        requester_operation = self._frame_operation(self._frame(window, FRAME_R, attempt))
         sample.requester_operation = requester_operation
         while True:
             owner_state = publication.operation_state(guarded, owner_operation)
@@ -622,7 +647,7 @@ class _Race:
         sample.s_r1 = driver.shown_with_content(guarded, ITEM_R)
         sample.sessions_1 = guarded.sessions().ids
 
-    def _judge_r(self, sample: RaceSample, owner_operation: str) -> str:
+    def _judge_r(self, sample: RaceSample, owner_operation: str, held_driver: str) -> str:
         owner_state, requester_state = sample.owner_state, sample.requester_state
         pair = (owner_state.get(FIELD_STATE), requester_state.get(FIELD_STATE))
         failed = [state == STATE_FAILED for state in pair]
@@ -657,7 +682,7 @@ class _Race:
         expected = self._known(self.requester, self.driver_w)
         for found in (sample.sessions_0, sample.sessions_1):
             extra = found - expected
-            if len(extra) != 1:
+            if extra != frozenset({held_driver}):
                 raise creation.platform_failure(DETAIL_ONE_DRIVER.format(found=sorted(extra)))
         return winner
 

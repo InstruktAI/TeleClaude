@@ -208,12 +208,10 @@ class _Steps:
     def start(self) -> None:
         """Step 1: the public start returns a receipt."""
         self.started_at = time.monotonic()
-        start = self.observer.run((TELEC, TODO, PREPARE, ITEM))
-        starter = driver.receipt_operation(start.output)
+        start, starter = driver.start_call(self.claim.starts, self.observer, (TELEC, TODO, PREPARE, ITEM), "start")
         if start.exit_status != 0 or starter is None:
             raise creation.platform_failure(DETAIL_RECEIPT.format(status=start.exit_status, output=start.output[-300:]))
         self.starter = starter
-        self.claim.starts[starter] = publication.START_OPEN
 
     def await_claim(self) -> None:
         """Step 2: a real session is created and claims; a failed or unreadable starter ends the wait at once."""
@@ -277,13 +275,13 @@ class _Steps:
         observer = self.observer
         snapshot = driver.fresh_snapshot(observer, ITEM)
         held_sessions = observer.sessions()
-        competitor = observer.run((TELEC, TODO, PREPARE, ITEM))
-        operation = driver.receipt_operation(competitor.output)
+        competitor, operation = driver.start_call(
+            self.claim.starts, observer, (TELEC, TODO, PREPARE, ITEM), "competitor"
+        )
         if competitor.exit_status != 0 or operation is None:
             raise creation.platform_failure(
                 DETAIL_RECEIPT.format(status=competitor.exit_status, output=competitor.output[-300:])
             )
-        self.claim.starts[operation] = publication.START_OPEN
         refused = publication.await_terminal(observer, operation, COMPETITOR_SECONDS)
         error = refused.get(FIELD_ERROR)
         if refused.get(FIELD_STATE) != STATE_FAILED or not isinstance(error, str):
