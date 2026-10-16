@@ -28,6 +28,7 @@ from pathlib import Path
 from types import FrameType
 from typing import cast
 
+from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
@@ -158,6 +159,8 @@ _SCENARIO_RELEASE_DECLARATION = "UC-CFG-MIG-17"
 _SCENARIO_RELEASE_PUBLICATION = "UC-SPO34"
 _SCENARIO_RELEASE_BLUEPRINT = "UC-BPF1"
 _SCENARIO_WORKFLOW_FOUNDATION = "UC-WF-F0"
+_SCENARIO_WORKFLOW_CREATION = "UC-WF-R1"
+_SCENARIO_WORKFLOW_RETIRED_ACTS = "UC-WF-R4"
 _COLD_PROFILE_SCENARIOS = (_SCENARIO_COLD,)
 _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_COLD,
@@ -188,12 +191,25 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_RELEASE_BLUEPRINT,
     _SCENARIO_RELEASE_PUBLICATION,
     _SCENARIO_WORKFLOW_FOUNDATION,
+    _SCENARIO_WORKFLOW_CREATION,
+    _SCENARIO_WORKFLOW_RETIRED_ACTS,
 )
 _SCENARIO_PREREQUISITES = {
     _SCENARIO_WORKFLOW_FOUNDATION: (
         _SCENARIO_RUNTIME_READY,
         _SCENARIO_CONFIG_PATCH,
         _SCENARIO_PROJECT_REGISTRATION,
+    ),
+    _SCENARIO_WORKFLOW_CREATION: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+    ),
+    _SCENARIO_WORKFLOW_RETIRED_ACTS: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+        _SCENARIO_WORKFLOW_CREATION,
     ),
 }
 _PROFILE_COLD = "cold"
@@ -1890,6 +1906,20 @@ def _full_workflow_foundation(resources: FullRuntimeResources, evidence: list[Co
         login=True,
     )
     foundation.run_foundation(runner, setup, resources.project_path, _OWNER_SEED_EMAIL)
+
+
+def _full_workflow_creation(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey R1: plain creation, the acknowledgement gate and the manual runner's absence of sessions."""
+    if resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    creation.run_creation(_FoundationRunner(resources, evidence), resources.project_path, resources.source_root)
+
+
+def _full_workflow_retired_acts(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey R4: a retired previous-machine act is refused naming the door, and writes nothing."""
+    if resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    creation.run_retired_acts(_FoundationRunner(resources, evidence), resources.project_path, resources.source_root)
 
 
 def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -4466,6 +4496,12 @@ def run_profile(
                     ),
                     _SCENARIO_WORKFLOW_FOUNDATION: _bind_full_scenario(
                         _SCENARIO_WORKFLOW_FOUNDATION, resources, _full_workflow_foundation
+                    ),
+                    _SCENARIO_WORKFLOW_CREATION: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_CREATION, resources, _full_workflow_creation
+                    ),
+                    _SCENARIO_WORKFLOW_RETIRED_ACTS: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_RETIRED_ACTS, resources, _full_workflow_retired_acts
                     ),
                 }
             )
