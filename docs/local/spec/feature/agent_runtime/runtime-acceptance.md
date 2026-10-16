@@ -90,8 +90,11 @@ These journeys run the real installer, Git and public CLI entry points against a
 disposable release-channel installation, its upstream repository and its sibling
 development location. Conflicting and interrupted destinations are fixture
 states supplied before the public entry point runs; they replace no application
-decision. The controller owns cleanup of both locations and reports which
-development checkout journeys ran.
+decision. The controller owns resource settlement for both locations and reports
+which development checkout journeys ran. It removes disposable state only after
+the owned runtime, actors and start attempts are settled. Unresolved ownership or
+start evidence retains the affected resources and sanitized diagnostics, with
+cleanup reported incomplete; failure never erases that evidence.
 
 <!-- /planned:release-development-checkouts -->
 
