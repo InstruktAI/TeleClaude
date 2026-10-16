@@ -246,7 +246,7 @@ class DriverCase:
         if title != expected:
             diagnosis = ""
             if isinstance(title, str) and self.item not in title:
-                diagnosis = DIAGNOSIS_HOME_TOKEN if title.startswith(DRIVER_ID) else DIAGNOSIS_NO_ITEM
+                diagnosis = DIAGNOSIS_HOME_TOKEN if title.startswith(f"{role} ") else DIAGNOSIS_NO_ITEM
             raise creation.platform_failure(DETAIL_TITLE.format(found=title, expected=expected, diagnosis=diagnosis))
         return expected
 

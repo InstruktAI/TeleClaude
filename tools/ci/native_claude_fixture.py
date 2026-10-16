@@ -89,6 +89,7 @@ HOOK_TIMEOUT_SECONDS: Final = 60
 PROBE_TIMEOUT_SECONDS: Final = 60
 CAPTURE_LIMIT: Final = 4096
 POLL_SECONDS: Final = 0.05
+WORKER_JOIN_SECONDS: Final = 10.0
 READ_SIZE: Final = 65536
 DEFAULT_COLUMNS: Final = 120
 ENCODING: Final = "utf-8"
@@ -271,8 +272,7 @@ class _Fixture:
         plan = control.read_json(PLAN_FILE)
         hold = plan.get(PLAN_HOLD_FIELD) if plan is not None else None
         self.hold_seconds = float(hold) if isinstance(hold, int | float) and not isinstance(hold, bool) else None
-        self.gated: list[tuple[str, str, list[str]]] = []
-        self.threads: list[threading.Thread] = []
+        self.worker: threading.Thread | None = None
 
     def _transcript_path(self) -> Path:
         project_directory = self.cwd.replace(os.sep, "-")
@@ -384,13 +384,15 @@ class _Fixture:
 
         The plan names only the public ``telec`` executable with its arguments. It carries no identity, token, header
         or environment: the pane\'s own environment is the caller\'s identity, as for any command a driver runs. A
-        command that names a file to wait for is held until the controller creates that file in this directory, and
-        then runs beside the terminal loop; the others run now, in order.
+        command that names a file to wait for is held until the controller creates that file in this directory. From
+        the first such command on, the whole remaining plan runs in its written order on one worker beside the terminal
+        loop, each command only after the previous one has finished; before it, commands run now, in order.
         """
         plan = self.control.read_json(PLAN_FILE)
         commands = plan.get(PLAN_COMMANDS_FIELD) if plan is not None else None
         if not isinstance(commands, list):
             return
+        deferred: list[tuple[str | None, str, list[str]]] = []
         for command in commands:
             if self.control.exists(STOP_FILE):
                 return  # the controller has asked this launch to run nothing more
@@ -404,10 +406,25 @@ class _Fixture:
             arguments = [part for part in argv if isinstance(part, str)]
             if len(arguments) != len(argv) or arguments[0] != TELEC_COMMAND:
                 continue
-            if isinstance(wait, str) and wait.isidentifier():
-                self.gated.append((wait, name, arguments))
+            gate = wait if isinstance(wait, str) and wait.isidentifier() else None
+            if gate is not None or deferred:
+                deferred.append((gate, name, arguments))
             else:
                 self._execute(name, arguments)
+        if deferred:
+            self.worker = threading.Thread(target=self._drain, args=(deferred,), daemon=True)
+            self.worker.start()
+
+    def _drain(self, queue: list[tuple[str | None, str, list[str]]]) -> None:
+        """Run the deferred commands one at a time in plan order, each after its gate file exists."""
+        for gate, name, arguments in queue:
+            while gate is not None and not self.control.exists(gate):
+                if self.control.exists(STOP_FILE) or not self.running:
+                    return
+                time.sleep(POLL_SECONDS)
+            if self.control.exists(STOP_FILE) or not self.running:
+                return
+            self._execute(name, arguments)
 
     def _execute(self, name: str, arguments: list[str]) -> None:
         resolved = shutil.which(TELEC_COMMAND)
@@ -417,17 +434,10 @@ class _Fixture:
             f"{PLAN_FRAME_PREFIX}{name}", {"name": name, "argv": reported, "telec": resolved, "run": run}
         )
 
-    def release_gated(self) -> None:
-        """Start each held command whose file now exists, beside the terminal loop, never twice."""
-        if self.control.exists(STOP_FILE):
-            self.gated.clear()
-            return
-        due = [entry for entry in self.gated if self.control.exists(entry[0])]
-        for entry in due:
-            self.gated.remove(entry)
-            thread = threading.Thread(target=self._execute, args=(entry[1], entry[2]), daemon=True)
-            thread.start()
-            self.threads.append(thread)
+    def join_worker(self) -> None:
+        """Give the worker a bounded moment to finish; an exited fixture still proves nothing about its children."""
+        if self.worker is not None:
+            self.worker.join(timeout=WORKER_JOIN_SECONDS)
 
     def feed(self, data: str, state: _InputState) -> None:
         """Consume terminal input: pasted or typed text builds the draft, Enter submits it."""
@@ -484,7 +494,6 @@ def _interactive(control: _Control) -> int:
             if control.exists(STOP_FILE):
                 break
             fixture.release_if_due()
-            fixture.release_gated()
             if not selector.select(POLL_SECONDS):
                 continue
             chunk = os.read(descriptor, READ_SIZE)
@@ -498,6 +507,8 @@ def _interactive(control: _Control) -> int:
             pending = b""
             fixture.feed(text, state)
     finally:
+        fixture.running = False
+        fixture.join_worker()
         sys.stdout.write(BRACKETED_PASTE_OFF)
         sys.stdout.flush()
         termios.tcsetattr(descriptor, termios.TCSADRAIN, saved)
