@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, caller_from_carried_identity, carried_caller
 from teleclaude.config.machine import config
 from teleclaude.constants import LOGIN_REQUIRED_DETAIL
+from teleclaude.core.runtime_events import publish_runtime_error
 from teleclaude.history.search_payload import HistorySearchPayload
 from teleclaude.history.service import (
     HistoryDetailPayload,
@@ -24,6 +26,7 @@ _HISTORY_DETAIL_NOT_FOUND = "No transcript found for session '{session_id}'"
 _UNKNOWN_AGENT_FILTER = "Unknown agent filter: {agent}"
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 @router.get("/history/search")
@@ -86,6 +89,7 @@ async def show_history(
     reach = await asyncio.to_thread(resolve_history_reach, resolved_caller)
     if reach is None:
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
+    transcript_mismatches: list[tuple[str, str]] = []
     payload: HistoryDetailPayload | None = await asyncio.to_thread(
         build_history_detail_payload,
         parsed_session_id,
@@ -93,7 +97,20 @@ async def show_history(
         agents=agents,
         include_thinking=thinking,
         raw=raw,
+        on_format_mismatch=lambda agent_name, path, _error: transcript_mismatches.append((agent_name, path.name)),
     )
+    for agent_name, filename in transcript_mismatches:
+        try:
+            await publish_runtime_error(
+                source="transcript_reader",
+                message=(
+                    f"Transcript parser can't read {agent_name} session file {filename} — file shape may have changed "
+                    "in the agent CLI. Output/summary/title for this session will be empty until the parser is updated."
+                ),
+                severity="warning",
+            )
+        except Exception:
+            logger.warning("Transcript format error publication failed", exc_info=True)
     if payload is None:
         raise HTTPException(
             status_code=404,

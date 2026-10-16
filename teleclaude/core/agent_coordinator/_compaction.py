@@ -8,19 +8,17 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentDistressPayload,
     AgentEventContext,
     AgentHookEvents,
     AgentIdlePayload,
-    AgentReadyContext,
     AgentSessionStartPayload,
     AgentStopPayload,
-    TeleClaudeEvents,
 )
 from teleclaude.core.idle_close import close_completed_conversation
 from teleclaude.core.models import Session
+from teleclaude.core.runtime_readiness import RuntimeReadiness, RuntimeReadinessKey
 from teleclaude.core.session_compaction import (
     SessionCompactionOwner,
     is_current_compaction_launch,
@@ -30,7 +28,6 @@ from teleclaude.core.session_compaction import (
 )
 from teleclaude.core.session_idle_compaction import compaction_completed
 from teleclaude.core.session_runtime_gate import RuntimeMutationInProgress
-from teleclaude.events.envelope import EventVisibility
 
 logger = get_logger(__name__)
 
@@ -51,6 +48,7 @@ async def _close_after_completion(session: Session, client: AdapterClient, owner
 async def handle_compaction_event(
     context: AgentEventContext,
     client: AdapterClient,
+    runtime_readiness: RuntimeReadiness,
     owner: SessionCompactionOwner = default_compaction_owner,
 ) -> None:
     """Route a temporary launch's signals without applying visitor-turn effects.
@@ -68,14 +66,7 @@ async def handle_compaction_event(
         start_payload = cast(AgentSessionStartPayload, context.data)
         if start_payload.session_id is not None and start_payload.session_id != launch_context.native_session_id:
             return
-        event_bus.emit(
-            TeleClaudeEvents.AGENT_READY,
-            AgentReadyContext(
-                session_id=context.session_id,
-                compaction_launch_context=launch_context,
-            ),
-            visibility=EventVisibility.LOCAL,
-        )
+        runtime_readiness.observe_start(RuntimeReadinessKey.compaction(context.session_id, launch_context))
         return
     if context.event_type == AgentHookEvents.AGENT_IDLE:
         idle_payload = cast(AgentIdlePayload, context.data)

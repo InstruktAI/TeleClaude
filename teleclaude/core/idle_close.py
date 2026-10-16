@@ -33,10 +33,9 @@ from teleclaude.core.agent_startup_delivery import (
 from teleclaude.core.agents import get_compaction_agent_command
 from teleclaude.core.conversation_close import CloseOutcome, NotDueReason, close_when_settled, unsettled_reason
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import AgentReadyContext, TeleClaudeEvents
 from teleclaude.core.injected_text import InjectedInputAuthority
 from teleclaude.core.models import Session
+from teleclaude.core.runtime_readiness import RuntimeReadiness, RuntimeReadinessKey
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_compaction import (
     CompactionAttempt,
@@ -125,21 +124,12 @@ async def _launch_temporary_compaction_runtime(
     tmux_session_name: str,
     attempt: CompactionAttempt,
     command: str,
+    readiness: RuntimeReadiness,
 ) -> None:
     """Resume the recorded native transcript and submit its declared command."""
     launch_context = launch_context_for_attempt(attempt)
-    loop = asyncio.get_running_loop()
-    ready_future: asyncio.Future[None] = loop.create_future()
-
-    async def _on_ready(_event_type: str, context: AgentReadyContext) -> None:
-        if (
-            context.session_id == session.session_id
-            and context.compaction_launch_context == launch_context
-            and not ready_future.done()
-        ):
-            ready_future.set_result(None)
-
-    ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
+    readiness_key = RuntimeReadinessKey.compaction(session.session_id, launch_context)
+    ready_future = readiness.register(readiness_key)
     mark_relaunch_awaiting_readiness(session.session_id)
     try:
         voice = await db.get_voice(session.session_id)
@@ -165,11 +155,12 @@ async def _launch_temporary_compaction_runtime(
             quiet_s=AGENT_START_STABILIZE_QUIET_S,
             timeout_s=_COMPACTION_READY_TIMEOUT_S,
             delivery_mode=AgentStartupDeliveryMode.FRESH_START,
+            readiness=readiness,
         )
         if delivery.outcome is not UserTurnDeliveryOutcome.SUBMITTED:
             raise RuntimeError(_COMPACTION_LAUNCH_NOT_STARTED)
     finally:
-        event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
+        readiness.release(readiness_key, ready_future)
         clear_relaunch_awaiting_readiness(session.session_id)
 
 
@@ -298,6 +289,7 @@ class ConversationIdleCycle:
                     tmux_session_name,
                     attempt,
                     command,
+                    self._client.runtime_readiness,
                 )
                 current = await db.get_session(session_id)
                 if current is not None:

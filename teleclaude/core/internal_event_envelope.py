@@ -15,11 +15,12 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from teleclaude.core.models import JsonDict
-from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.envelope import EventLevel, EventVisibility, occurrence_id
 from teleclaude.events.wire import StreamEntry
 
 #: Wire generation of the internal event stream.
 INTERNAL_STREAM_VERSION: int = 5
+INTERNAL_EVENT_STREAM = "teleclaude:internal-events"
 
 _EMPTY = ""
 _NO_HOME = "none"
@@ -65,12 +66,15 @@ class InternalEventEnvelope(BaseModel):
         }
 
     @classmethod
-    def from_stream_dict(cls, data: StreamEntry) -> InternalEventEnvelope:
+    def from_stream_dict(cls, data: StreamEntry, *, entry_id: str | None = None) -> InternalEventEnvelope:
         """Deserialize from an internal stream entry; keys this envelope does not use are ignored."""
         entry = {_text(key): _text(value) for key, value in data.items()}
+        stable_id = entry.get("event_id") or (
+            occurrence_id("internal-stream-entry", entry_id) if entry_id is not None else str(uuid4())
+        )
         return cls(
             event=entry["event"],
-            event_id=entry.get("event_id") or str(uuid4()),
+            event_id=stable_id,
             source=entry["source"],
             originating_computer=entry.get("originating_computer") or None,
             timestamp=datetime.fromisoformat(entry["timestamp"]),

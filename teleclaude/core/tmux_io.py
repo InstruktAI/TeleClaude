@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 from dataclasses import dataclass
 from enum import StrEnum
 from signal import Signals
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -24,17 +24,13 @@ from teleclaude.core.agent_readiness import (
 )
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import (
-    AgentReadyContext,
-    TeleClaudeEvents,
-)
 from teleclaude.core.injected_text import (
     InjectedInputAuthority,
     construct_delivered_text,
     prepare_composer_submission,
 )
 from teleclaude.core.models import Session
+from teleclaude.core.runtime_readiness import RuntimeReadiness, RuntimeReadinessKey
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_cleanup import TMUX_SESSION_NAME_UNBOUND, host_pane_name
 from teleclaude.core.session_environment import build_agent_session_environment
@@ -42,6 +38,7 @@ from teleclaude.core.session_launch_profile import resolve_session_launch_profil
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.runtime.environment import runtime_run_command
 
 logger = get_logger(__name__)
 
@@ -119,6 +116,7 @@ async def _revive_headless_and_send(
     active_agent: str | None,
     authority: InjectedInputAuthority,
     working_dir: str,
+    readiness: RuntimeReadiness,
 ) -> bool | UserTurnDeliveryResult:
     """Create a tmux session for a headless session on the fly and send text to it.
 
@@ -173,23 +171,19 @@ async def _revive_headless_and_send(
             launch_flags=launch_profile.flags,
             resolved_flags=launch.flags if launch else None,
         )
+        runtime_run_id = str(uuid4())
+        if not await db.install_runtime_run(session.session_id, runtime_run_id):
+            await _teardown_failed_adoption(
+                session,
+                tmux_name,
+                agent_name=session.active_agent,
+                timeout_s=ADOPTION_READINESS_TIMEOUT_S,
+            )
+            return False
+        resume_cmd = runtime_run_command(resume_cmd, runtime_run_id)
 
-        # Subscribe BEFORE issuing the resume command — the agent's SessionStart
-        # hook can race the send and emit AGENT_READY before this coroutine
-        # resumes; subscribing after the send loses the event (event_bus does
-        # not replay).
-        loop = asyncio.get_running_loop()
-        ready_future: asyncio.Future[None] = loop.create_future()
-
-        async def _on_ready(_event_type: str, ctx: AgentReadyContext) -> None:
-            if (
-                ctx.session_id == session.session_id
-                and ctx.compaction_launch_context is None
-                and not ready_future.done()
-            ):
-                ready_future.set_result(None)
-
-        ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
+        readiness_key = RuntimeReadinessKey.ordinary(session.session_id, runtime_run_id)
+        ready_future = readiness.register(readiness_key)
         try:
             await tmux_bridge.send_keys_existing_tmux(
                 session_name=tmux_name,
@@ -209,6 +203,7 @@ async def _revive_headless_and_send(
                     ready_future=ready_future,
                     quiet_s=ADOPTION_STABILIZE_QUIET_S,
                     timeout_s=ADOPTION_READINESS_TIMEOUT_S,
+                    readiness=readiness,
                 )
             except NoComposerReadinessTimeout:
                 # The resumed agent shows a screen other than its composer. Keep
@@ -238,7 +233,7 @@ async def _revive_headless_and_send(
                 )
                 return False
         finally:
-            event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
+            readiness.release(readiness_key, ready_future)
 
     if active_agent:
         delivery_result = await inject_user_turn(
@@ -246,6 +241,7 @@ async def _revive_headless_and_send(
             text,
             active_agent=active_agent,
             authority=authority,
+            readiness=readiness,
         )
         return delivery_result
     return await tmux_bridge.send_keys_existing_tmux(session_name=tmux_name, text=text)
@@ -293,6 +289,7 @@ async def _send_to_tmux(
     active_agent: str | None = None,
     authority: InjectedInputAuthority,
     working_dir: str,
+    readiness: RuntimeReadiness,
 ) -> bool | UserTurnDeliveryResult:
     tmux_name = session.tmux_session_name
     if tmux_name and await tmux_bridge.session_exists(tmux_name, log_missing=False):
@@ -302,6 +299,7 @@ async def _send_to_tmux(
                 text,
                 active_agent=active_agent,
                 authority=authority,
+                readiness=readiness,
             )
         return await tmux_bridge.send_keys_existing_tmux(
             session_name=tmux_name,
@@ -315,6 +313,7 @@ async def _send_to_tmux(
             active_agent=active_agent,
             authority=authority,
             working_dir=working_dir,
+            readiness=readiness,
         )
 
     logger.warning(
@@ -331,6 +330,7 @@ async def route_text(
     active_agent: str | None = None,
     authority: InjectedInputAuthority,
     working_dir: str,
+    readiness: RuntimeReadiness,
 ) -> bool | UserTurnDeliveryResult:
     """Route text input to the appropriate tmux session and return the delivery decision as made.
 
@@ -351,6 +351,7 @@ async def route_text(
         active_agent=active_agent,
         authority=authority,
         working_dir=working_dir,
+        readiness=readiness,
     )
     write_failed = (
         result.outcome is UserTurnDeliveryOutcome.FAILED if isinstance(result, UserTurnDeliveryResult) else not result
@@ -372,6 +373,7 @@ async def process_text(
     active_agent: str | None = None,
     authority: InjectedInputAuthority,
     working_dir: str,
+    readiness: RuntimeReadiness,
 ) -> bool | UserTurnDeliveryResult:
     """Route text input; interface authority collapses a typed delivery result to whether it succeeded."""
     result = await route_text(
@@ -380,6 +382,7 @@ async def process_text(
         active_agent=active_agent,
         authority=authority,
         working_dir=working_dir,
+        readiness=readiness,
     )
     if authority is InjectedInputAuthority.INTERFACE and isinstance(result, UserTurnDeliveryResult):
         return result.succeeded
@@ -392,6 +395,7 @@ async def inject_user_turn(
     *,
     active_agent: str | None = None,
     authority: InjectedInputAuthority,
+    readiness: RuntimeReadiness,
 ) -> UserTurnDeliveryResult:
     """Deliver text without allowing platform Enter to submit occupied input."""
     delivered_text = text
@@ -417,7 +421,7 @@ async def inject_user_turn(
     if before_delivery.state is PromptDeliveryState.AMBIGUOUS:
         # The pane shows a screen other than the composer: nothing is pasted or
         # pressed into it, for any authority, and the input waits as a hold.
-        publish_delivery_no_composer(session.session_id, observation.text)
+        await publish_delivery_no_composer(session.session_id, observation.text, readiness)
         return _no_composer_hold()
 
     if before_delivery.state is PromptDeliveryState.OCCUPIED:

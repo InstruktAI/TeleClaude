@@ -11,11 +11,10 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import ColumnElement, func
 from sqlmodel import select
 
-from teleclaude.core.event_bus import event_bus
-from teleclaude.events.envelope import EventVisibility
+from teleclaude.core.runtime_events import publish_session_source_change
+from teleclaude.events.schemas.system import RuntimeSessionChange
 
 from .. import db_models
-from ..events import SessionLifecycleContext, TeleClaudeEvents
 from ..models._adapter import ARCHIVE_SECTION, ArchiveStampField
 from ..origins import InputOrigin
 from ..session_status import SessionLifecycleStatus
@@ -81,11 +80,7 @@ class DbSessionRetentionMixin:
             db_session.add(row)
             await db_session.commit()
         logger.debug(_SOFT_DELETED_EVENT, session_id=session_id)
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_CLOSED,
-            SessionLifecycleContext(session_id=session_id),
-            visibility=EventVisibility.CLUSTER,
-        )
+        await publish_session_source_change(session_id, RuntimeSessionChange.CLOSED)
 
     async def adopt_archive_session(self, record: ArchiveSessionRecord) -> str:
         """Retain history as a closed, non-running session record and return its TeleClaude id.

@@ -11,8 +11,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import OutputGeneration, db
 from teleclaude.core.delivery import Router
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents
 from teleclaude.core.identity import (
     get_identity_resolver,
     resolve_discord_author_alias,
@@ -25,8 +23,8 @@ from teleclaude.core.models import (
     Session,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.runtime_events import publish_session_status
 from teleclaude.core.status_contract import serialize_status_event
-from teleclaude.events.envelope import EventVisibility
 
 from ._reflection_observability import (
     UserReflectionPresentationOutcome,
@@ -702,9 +700,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
 
-        self._emit_input_accepted_status(session_to_use.session_id)
+        await self._emit_input_accepted_status(session_to_use.session_id)
 
-    def _emit_input_accepted_status(self, session_id: str) -> None:
+    async def _emit_input_accepted_status(self, session_id: str) -> None:
         """Emit the canonical accepted status for a UI input acceptance boundary."""
         try:
             now_ts = datetime.now(UTC).isoformat()
@@ -717,18 +715,14 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             )
             if canonical is None:
                 return
-            event_bus.emit(
-                TeleClaudeEvents.SESSION_STATUS,
-                SessionStatusContext(
-                    session_id=session_id,
-                    status="accepted",
-                    reason="user_prompt_accepted",
-                    timestamp=now_ts,
-                    last_activity_at=now_ts,
-                    message_intent=canonical.message_intent,
-                    delivery_scope=canonical.delivery_scope,
-                ),
-                visibility=EventVisibility.CLUSTER,
+            await publish_session_status(
+                session_id,
+                "accepted",
+                "user_prompt_accepted",
+                now_ts,
+                last_activity_at=now_ts,
+                message_intent=canonical.message_intent,
+                delivery_scope=canonical.delivery_scope,
             )
         except Exception as exc:
             logger.error(

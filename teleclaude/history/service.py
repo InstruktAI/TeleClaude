@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -287,6 +287,7 @@ def build_history_detail_payload(
     agents: Sequence[AgentName],
     include_thinking: bool,
     raw: bool,
+    on_format_mismatch: Callable[[str, Path, object], None] | None = None,
 ) -> HistoryDetailPayload | None:
     """Resolve one history detail within the caller's mirror access scope."""
     transcript_fallback_allowed = reach.everything
@@ -314,6 +315,7 @@ def build_history_detail_payload(
         tail_chars=0,
         include_thinking=include_thinking,
         include_tools=False,
+        on_format_mismatch=on_format_mismatch,
     )
     return _detail_json_payload(resolution, body=rendered, raw=False)
 

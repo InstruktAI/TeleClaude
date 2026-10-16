@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Callable, Coroutine, Mapping
+from collections.abc import Callable, Coroutine, Mapping, MutableMapping
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal, cast
 
 from instrukt_ai_logging import get_logger
+from pydantic import JsonValue
 
 from teleclaude.config.machine import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HeadlessBootstrapField
@@ -20,14 +21,10 @@ from teleclaude.core.codex_transcript import is_codex_subagent_transcript
 from teleclaude.core.command_handlers import SessionCreationRefused
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import HookOutboxRow, db
-from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     ALL_AGENT_HOOK_EVENTS,
     AgentEventContext,
     AgentHookEvents,
-    ErrorEventContext,
-    SessionLifecycleContext,
-    TeleClaudeEvents,
     build_agent_payload,
 )
 from teleclaude.core.hook_outbox_handlers import (
@@ -41,12 +38,17 @@ from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import AgentDispatchMode, Session, SessionEntryPoint, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.runtime_events import publish_runtime_error, publish_session_source_change
 from teleclaude.core.session_compaction import is_current_compaction_launch, session_compaction_owner
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.core.shutdown_drain import ShutdownRefusal
-from teleclaude.events.envelope import EventVisibility
+from teleclaude.events.envelope import occurrence_id
+from teleclaude.events.schemas.system import RuntimeSessionChange
 from teleclaude.project_manifest_runtime import load_registered_entries
-from teleclaude.runtime.environment import COMPACTION_LAUNCH_CONTEXT_FIELD, decode_compaction_launch_context
+from teleclaude.runtime.environment import (
+    runtime_run_mismatch,
+    take_normalized_launch_context,
+)
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types.commands import CreateSessionCommand
 
@@ -58,11 +60,11 @@ logger = get_logger(__name__)
 _HOOK_OUTBOX_BATCH_FAILED_MESSAGE = "Hook outbox batch failed; retrying after the poll interval"
 _HOOK_OUTBOX_ROW_FAILED_MESSAGE = "Hook outbox row processing failed; continuing with the next row"
 _HEADLESS_BOOTSTRAP_AUTHORITY_ABSENT = "Ignoring headless session bootstrap without receiver authorization"
+_RUNTIME_HOOK_RUN_MISMATCH_EVENT = "Ignoring hook event from a superseded launch"
 # Headless hook events carry no mode; the launch intent requires one, and "med"
 # is the platform's standard mode.
 _HEADLESS_DEFAULT_THINKING_MODE = "med"
 
-# Hook outbox worker
 HOOK_OUTBOX_POLL_INTERVAL_S = config.hook_outbox.poll_interval_s
 HOOK_OUTBOX_BATCH_SIZE = config.hook_outbox.batch_size
 HOOK_OUTBOX_LOCK_TTL_S = config.hook_outbox.lock_ttl_s
@@ -133,7 +135,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         client: AdapterClient
 
         def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None: ...
-        async def _handle_agent_event(self, _event: str, context: AgentEventContext) -> None: ...
+        async def _handle_agent_event_direct(self, context: AgentEventContext) -> None: ...
         async def _ensure_output_polling(self, session: Session) -> None: ...
 
     async def _schedule_projection_from_signal(self, session_id: str, session: Session) -> None:
@@ -434,11 +436,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         session = await db.get_session(created_session_id)
         if not session:
             raise ValueError(f"Headless session creation returned missing session: {created_session_id}")
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_STARTED,
-            SessionLifecycleContext(session_id=created_session_id),
-            visibility=EventVisibility.CLUSTER,
-        )
+        await publish_session_source_change(created_session_id, RuntimeSessionChange.CREATED)
         return session
 
     def _resolve_headless_project_context(self, workdir: str | None) -> tuple[str | None, str | None]:
@@ -474,11 +472,13 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         session_id: str,
         event_type: str,
         data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
+        *,
+        outbox_row_id: int,
     ) -> None:
         """Dispatch a hook event directly global Event Bus."""
         raw_caller_email = data.pop(HeadlessBootstrapField.CALLER_EMAIL, None)
         caller_email = raw_caller_email if isinstance(raw_caller_email, str) else None
-        launch_context = decode_compaction_launch_context(data.pop(COMPACTION_LAUNCH_CONTEXT_FIELD, None))
+        launch_context, runtime_run_id = take_normalized_launch_context(cast(MutableMapping[str, JsonValue], data))
         session = await db.get_session(session_id)
         if not session:
             if launch_context is not None:
@@ -499,6 +499,15 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 return
             session = await self._ensure_headless_session(session_id, data, caller_email)
         if launch_context is not None and not is_current_compaction_launch(session, launch_context):
+            return
+        if runtime_run_mismatch(
+            launch_context,
+            runtime_run_id,
+            session.runtime_run_id,
+            native_identity_event=event_type
+            in {AgentHookEvents.NATIVE_METADATA_UPDATE, AgentHookEvents.NATIVE_SESSION_REFRESH},
+        ):
+            logger.info(_RUNTIME_HOOK_RUN_MISMATCH_EVENT, session_id=session_id)
             return
         if launch_context is not None and event_type == AgentHookEvents.AGENT_ERROR:
             await session_compaction_owner.restore_ordinary(session.session_id, launch_context.attempt_id)
@@ -564,29 +573,29 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             retryable = data.get("retryable")
             code = data.get("code")
             details = data.get("details")
-            context = ErrorEventContext(
+            await publish_runtime_error(
                 session_id=session_id,
                 message=str(data.get("message", "")),
-                source=str(data.get("source")) if "source" in data else None,
+                event_id=occurrence_id(AgentHookEvents.AGENT_ERROR, session_id, str(outbox_row_id)),
+                source=str(data.get("source")) if isinstance(data.get("source"), str) else None,
                 details=cast(Mapping[str, object] | None, details if isinstance(details, dict) else None),
-                severity=severity if isinstance(severity, str) else "error",  # type: ignore[arg-type]
+                severity=severity if isinstance(severity, str) else "error",
                 retryable=retryable if isinstance(retryable, bool) else False,
                 code=code if isinstance(code, str) else None,
             )
-            event_bus.emit(TeleClaudeEvents.ERROR, context, visibility=EventVisibility.CLUSTER)
         else:
             # Outbox rows store the event as text; consumers compare by enum identity.
             hook_event = AgentHookEvents(event_type)
             payload = build_agent_payload(hook_event, data)
-            context = AgentEventContext(  # type: ignore[assignment]
+            context = AgentEventContext(
                 session_id=session_id,
                 event_type=hook_event,
                 data=payload,
+                runtime_run_id=runtime_run_id,
                 compaction_launch_context=launch_context,
             )
-            # Directly await coordinator — outbox serialization depends on this completing
-            # before the item is marked delivered. event_bus.emit would fire-and-forget.
-            await self._handle_agent_event(TeleClaudeEvents.AGENT_EVENT, context)  # type: ignore[arg-type]
+            # Settle the outbox item only after the coordinator finishes handling this owner event.
+            await self._handle_agent_event_direct(context)
 
     async def _wal_checkpoint_loop(self) -> None:
         """Periodically checkpoint the SQLite WAL to prevent unbounded growth."""
@@ -951,7 +960,12 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             return
 
         try:
-            await self._dispatch_hook_event(str(row["session_id"]), str(row["event_type"]), payload)
+            await self._dispatch_hook_event(
+                str(row["session_id"]),
+                str(row["event_type"]),
+                payload,
+                outbox_row_id=row_id,
+            )
             await db.delete_hook_outbox_row(row_id)
             self._hook_outbox_processed_count += 1
             self._record_hook_lag_sample(row)

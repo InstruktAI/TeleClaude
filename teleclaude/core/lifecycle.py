@@ -21,20 +21,18 @@ from teleclaude.core.conversation_delivery import reconcile_outstanding_conversa
 from teleclaude.core.db import db
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import ProjectRefreshTrigger, ProjectsChangedContext, TeleClaudeEvents
+from teleclaude.core.events import ProjectRefreshTrigger
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
-from teleclaude.core.operations import OperationsService, get_operations_service, set_operations_service
+from teleclaude.core.operations.service import OperationsService, get_operations_service, set_operations_service
 from teleclaude.core.restart_budget import RestartBudget
 from teleclaude.core.session_cleanup import end_legacy_restricted_sessions
 from teleclaude.core.session_config_subject import (
     backfill_session_config_subjects,
     backfill_session_subject_owners,
 )
-from teleclaude.core.session_snapshot import project_session_snapshot
+from teleclaude.core.session_materialization import SessionMaterializer
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
 from teleclaude.core.workflow_store.store import close_workflow_stores
-from teleclaude.events.envelope import EventVisibility
 from teleclaude.memory.store import MemoryStore
 from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
 from teleclaude.runtime.agy_workspace_trust import remove_vanished_worktree_trust
@@ -106,6 +104,7 @@ class DaemonLifecycle:
     ) -> None:
         self.client = client
         self.cache = cache
+        self.session_materializer = SessionMaterializer(db, cache, computer=config.computer.name)
         self.runtime_settings = runtime_settings
         self.shutdown_event = shutdown_event
         self.task_registry = task_registry
@@ -137,6 +136,27 @@ class DaemonLifecycle:
         logger.info("[STARTUP] Initializing database (usually <1s)")
         await db.initialize()
         logger.info("Database initialized in %.3fs", time.perf_counter() - startup_started_at)
+
+        # Build the current request surface before event consumers are composed.
+        # The surface is not listening yet; the platform can prepare its producer
+        # and reader positions without allowing a reaction to call an unbound API.
+        self.api_server = APIServer(
+            self.client,
+            cache=self.cache,
+            session_materializer=self.session_materializer,
+            task_registry=self.task_registry,
+            runtime_settings=self.runtime_settings,
+            reminder_service=self.reminder_service,
+            refresh_local_projects=self.refresh_local_projects,
+        )
+
+        event_platform_started_at = time.perf_counter()
+        logger.info("[STARTUP] Preparing event platform and reader positions (usually <1s)")
+        await self._event_platform_init()
+        logger.info("Event platform prepared in %.3fs", time.perf_counter() - event_platform_started_at)
+
+        # These startup writes can publish invalidations, so the producer and
+        # every reader position are established before they run.
         await backfill_session_config_subjects()
         await backfill_session_subject_owners()
         await MemoryStore().backfill_observation_subjects()
@@ -149,36 +169,17 @@ class DaemonLifecycle:
         await operations_service.start()
         logger.info("Operations service started in %.3fs", time.perf_counter() - operations_started_at)
 
+        self.session_materializer.start(self.task_registry)
+
         session_warm_started_at = time.perf_counter()
         logger.info("[STARTUP] Warming local session cache (usually 1-4s)")
         await self._warm_local_sessions_cache()
         logger.info("Local session cache warm completed in %.3fs", time.perf_counter() - session_warm_started_at)
 
-        # Construct the API server early so the event platform's websocket push
-        # callback can wire into it, but DO NOT start it yet — adapters and the
-        # event producer must be ready before any /todos/* operation can land.
-        # The event *consumer* (stream processor + scheduler minute-clock) is the
-        # inverse constraint: it must not start until this socket is bound, since
-        # a consumer that self-calls the daemon's own API before the socket
-        # exists fails with a connect error. See `_event_consumer_start` below.
-        self.api_server = APIServer(
-            self.client,
-            cache=self.cache,
-            task_registry=self.task_registry,
-            runtime_settings=self.runtime_settings,
-            reminder_service=self.reminder_service,
-            refresh_local_projects=self.refresh_local_projects,
-        )
-
         adapter_start_started_at = time.perf_counter()
         logger.info("[STARTUP] Starting adapters (usually 3-12s total)")
         await self.client.start()
         logger.info("Adapter startup completed in %.3fs", time.perf_counter() - adapter_start_started_at)
-
-        event_platform_started_at = time.perf_counter()
-        logger.info("[STARTUP] Initializing event platform (usually <1s)")
-        await self._event_platform_init()
-        logger.info("Event platform initialized in %.3fs", time.perf_counter() - event_platform_started_at)
 
         await self._complete_startup_after_adapters()
         self._reminder_scheduler = self.task_registry.supervise(
@@ -197,6 +198,15 @@ class DaemonLifecycle:
         logger.info("[STARTUP] Starting event consumers (usually <1s)")
         await self._event_consumer_start()
         logger.info("Event consumers started in %.3fs", time.perf_counter() - event_consumers_started_at)
+
+        # Close the startup snapshot/live gap through the same identity-based
+        # materializer after the readers are active. Each ID is re-read at its
+        # turn; no captured startup row can overtake a newer cache publication.
+        session_reconcile_started_at = time.perf_counter()
+        await self._warm_local_sessions_cache()
+        logger.info(
+            "Post-reader session reconciliation completed in %.3fs", time.perf_counter() - session_reconcile_started_at
+        )
 
         project_warm_started_at = time.perf_counter()
         logger.info("[STARTUP] Warming local project cache (usually 2-5s)")
@@ -305,24 +315,18 @@ class DaemonLifecycle:
             )
             return
 
-        snapshot_total_dt = 0.0
-        cache_update_total_dt = 0.0
+        materialize_total_dt = 0.0
         for idx, session in enumerate(sessions, start=1):
-            snapshot_started_at = time.perf_counter()
-            snapshot = await project_session_snapshot(db, session, computer=config.computer.name)
-            snapshot_dt = time.perf_counter() - snapshot_started_at
-            snapshot_total_dt += snapshot_dt
-            cache_update_started_at = time.perf_counter()
-            self.cache.update_session(snapshot)
-            cache_update_dt = time.perf_counter() - cache_update_started_at
-            cache_update_total_dt += cache_update_dt
+            materialize_started_at = time.perf_counter()
+            await self.session_materializer.reconcile(session.session_id)
+            materialize_dt = time.perf_counter() - materialize_started_at
+            materialize_total_dt += materialize_dt
             logger.trace(
-                "[PERF] _warm_local_sessions_cache session=%s index=%d/%d snapshot_dt=%.3f cache_update_dt=%.3f",
+                "[PERF] _warm_local_sessions_cache session=%s index=%d/%d reconcile_dt=%.3f",
                 session.session_id,
                 idx,
                 len(sessions),
-                snapshot_dt,
-                cache_update_dt,
+                materialize_dt,
             )
 
         warm_total_dt = time.perf_counter() - warm_started_at
@@ -336,14 +340,13 @@ class DaemonLifecycle:
             logger.warning(
                 (
                     "Local session cache warm was slow: total=%.3fs count=%d computer=%s "
-                    "snapshot_total=%.3fs cache_update_total=%.3fs other=%.3fs"
+                    "reconcile_total=%.3fs other=%.3fs"
                 ),
                 warm_total_dt,
                 len(sessions),
                 config.computer.name,
-                snapshot_total_dt,
-                cache_update_total_dt,
-                max(0.0, warm_total_dt - snapshot_total_dt - cache_update_total_dt),
+                materialize_total_dt,
+                max(0.0, warm_total_dt - materialize_total_dt),
             )
         logger.info("Seeded cache with %d local sessions", len(sessions))
 
@@ -369,12 +372,6 @@ class DaemonLifecycle:
         todos_updated = self.cache.apply_todos_snapshot(computer_name, todos_by_project)
         if todos_updated:
             logger.info("Seeded cache with todos for %d projects", len(todos_by_project))
-        if updated:
-            await event_bus.emit(
-                TeleClaudeEvents.PROJECTS_CHANGED,
-                ProjectsChangedContext(trigger=trigger),
-                visibility=EventVisibility.LOCAL,
-            )
 
     async def shutdown(self) -> None:
         """Stop core components in a defined order."""
@@ -398,6 +395,8 @@ class DaemonLifecycle:
             logger.info("Stopping %s adapter...", adapter_name)
             with cleanup_step(adapter_name):
                 await adapter.stop()
+
+        await self.session_materializer.stop()
 
         with cleanup_step(_STORAGE_SHUTDOWN_COMPONENT):
             await db.close()

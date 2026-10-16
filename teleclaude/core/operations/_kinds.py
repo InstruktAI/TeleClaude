@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from teleclaude.core.events import EventType
 from teleclaude.types.commands import CommandType
 
 
@@ -25,7 +24,7 @@ class OperationKind(StrEnum):
     JOB_RUN = "job_run"
 
 
-_OUTCOME_EVENTS: dict[OperationKind, tuple[EventType, EventType]] = {
+_OUTCOME_EVENTS: dict[OperationKind, tuple[str, str]] = {
     OperationKind.TODO_WORK: ("operation.todo_work.completed", "operation.todo_work.failed"),
     OperationKind.TASK_RUN: ("operation.task_run.completed", "operation.task_run.failed"),
     OperationKind.TODO_INTEGRATE: ("operation.todo_integrate.completed", "operation.todo_integrate.failed"),
@@ -50,7 +49,7 @@ _COMMAND_TYPE_TO_OPERATION_KIND: dict[CommandType, OperationKind] = {
 }
 
 
-def outcome_events_for(kind: str) -> tuple[EventType, EventType] | None:
+def outcome_events_for(kind: str) -> tuple[str, str] | None:
     """The success and failure events of a stored kind, or None for a kind that is no longer declared."""
     try:
         return _OUTCOME_EVENTS[OperationKind(kind)]
@@ -58,11 +57,11 @@ def outcome_events_for(kind: str) -> tuple[EventType, EventType] | None:
         return None
 
 
-def all_outcome_events() -> tuple[EventType, ...]:
-    """Return every outcome event — both members of every kind's success/failure pair.
-
-    The published bridge subscribes to this rather than to ``_OUTCOME_EVENTS``
-    directly, so a new kind's pair is picked up without the subscriber module
-    knowing the map's shape.
-    """
-    return tuple(event for pair in _OUTCOME_EVENTS.values() for event in pair)
+def kind_for_outcome_event(event_name: str) -> tuple[OperationKind, bool] | None:
+    """Return the owning kind and success flag for one declared outcome event."""
+    for kind, (success_event, failure_event) in _OUTCOME_EVENTS.items():
+        if event_name == success_event:
+            return kind, True
+        if event_name == failure_event:
+            return kind, False
+    return None

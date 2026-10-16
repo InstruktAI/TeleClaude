@@ -13,9 +13,14 @@ from pydantic import BaseModel, ConfigDict
 
 from teleclaude.config.machine import config
 from teleclaude.core.inbound.fleet import contraction_answer_from_heartbeats
+from teleclaude.core.internal_event_envelope import INTERNAL_EVENT_STREAM
 from teleclaude.core.models import JsonDict
 from teleclaude.core.operation_caller_identity import get_caller_session_id
-from teleclaude.core.reconciliation import INCIDENT_ALERTS_FEATURE_ID, ContractionAnswer
+from teleclaude.core.reconciliation import (
+    DOMAIN_EVENT_DELIVERY_FEATURE_ID,
+    INCIDENT_ALERTS_FEATURE_ID,
+    ContractionAnswer,
+)
 from teleclaude.events.catalog import PlatformEvent
 from teleclaude.events.envelope import (
     EventHome,
@@ -24,15 +29,22 @@ from teleclaude.events.envelope import (
 from teleclaude.events.envelope_facts import EnvelopeFactResolver, cli_envelope_fact_resolver, home_owner_of
 from teleclaude.events.references import EventRef, InboundSourceRef, SessionRef
 from teleclaude.events.wire import LegacyFacts, StreamEvent, encode
+from teleclaude.transport.internal_event_compat import encode_internal_compatibility
 from teleclaude.transport.redis_client import create_redis_client
 
 logger = get_logger(__name__)
 
-# Process-wide singleton producer. The daemon registers one eagerly at startup
+# The public platform stream is the default for existing producer callers.
+DEFAULT_EVENT_STREAM = "teleclaude:events"
+_PRODUCER_MISSING_EVENT_TEMPLATE = "event emitted but EventProducer not configured: event=%s stream=%s"
+_PRODUCER_NOT_CONFIGURED_TEMPLATE = "EventProducer not configured for stream {stream}. Call configure_producer() first."
+_CONFIGURED_PRODUCER_ACCESS_EVENT = "configured producer access"
+
+# Process-wide producers by source stream. The daemon registers them at startup,
 # via `configure_producer`; short-lived CLI processes opt in to lazy construction
 # at their own boundary by calling `ensure_event_producer`. Loop-local callers use
 # `loop_local_producer` so their Redis client cannot outlive its event loop.
-_PRODUCER_STATE: dict[str, EventProducer | None] = {"producer": None}
+_PRODUCER_STATE: dict[str, EventProducer] = {}
 
 
 class RelayedEvent(BaseModel):
@@ -60,7 +72,7 @@ class EventProducer:
         redis_client: Any,
         fact_resolver: EnvelopeFactResolver,
         contraction_answer: ContractionAnswer | None = None,
-        stream: str = "teleclaude:events",
+        stream: str = DEFAULT_EVENT_STREAM,
         maxlen: int = 10000,
     ) -> None:
         self._redis = redis_client
@@ -81,11 +93,26 @@ class EventProducer:
         entry = encode(received, legacy, omit_notification_facts=omit_notification_facts)
         return await self._append(received.type, entry, received.subject)
 
+    async def emit_internal(self, event: PlatformEvent[Any, Any], legacy: LegacyFacts, /) -> str:
+        """Append a typed runtime fact with its earlier wire form while the fleet still requires it."""
+        if self._stream != INTERNAL_EVENT_STREAM:
+            raise RuntimeError("Runtime event publication requires the internal stream producer")
+        received = self._received_event(event)
+        omit_notification_facts = await self._notification_facts_unread()
+        entry = encode(received, legacy, omit_notification_facts=omit_notification_facts)
+        if not await self._feature_is_contracted(DOMAIN_EVENT_DELIVERY_FEATURE_ID):
+            entry = encode_internal_compatibility(received, entry, legacy)
+        return await self._append(received.type, entry, received.subject)
+
     async def _notification_facts_unread(self) -> bool:
         """Whether the fleet answers, now, that no live computer reads an event's notification facts."""
+        return await self._feature_is_contracted(INCIDENT_ALERTS_FEATURE_ID)
+
+    async def _feature_is_contracted(self, feature_id: str) -> bool:
+        """Fail closed when the live fleet answer is not available."""
         if self._contraction_answer is None:
             return False
-        return await self._contraction_answer(INCIDENT_ALERTS_FEATURE_ID)
+        return await self._contraction_answer(feature_id)
 
     def _received_event(self, event: PlatformEvent[Any, Any] | RelayedEvent) -> ReceivedEvent:
         """Add the facts only the boundary knows: source, time, caller session, project owner, and an id."""
@@ -149,11 +176,11 @@ class EventProducer:
 
 
 def configure_producer(producer: EventProducer) -> None:
-    """Install the process-wide producer used by `publish_event`."""
-    _PRODUCER_STATE["producer"] = producer
+    """Install the process-wide producer for its declared stream."""
+    _PRODUCER_STATE[producer.stream_name()] = producer
 
 
-def _build_producer_from_config() -> EventProducer:
+def _build_producer_from_config(stream: str = DEFAULT_EVENT_STREAM) -> EventProducer:
     """Construct an `EventProducer` from `config.redis` via the shared client factory."""
     redis_cfg = config.redis
     if not redis_cfg.url:
@@ -164,7 +191,7 @@ def _build_producer_from_config() -> EventProducer:
         max_connections=redis_cfg.max_connections,
         socket_timeout=redis_cfg.socket_timeout,
     )
-    return EventProducer(client, cli_envelope_fact_resolver(), contraction_answer_from_heartbeats)
+    return EventProducer(client, cli_envelope_fact_resolver(), contraction_answer_from_heartbeats, stream=stream)
 
 
 def ensure_event_producer() -> EventProducer:
@@ -176,11 +203,11 @@ def ensure_event_producer() -> EventProducer:
     daemon's startup is the sole authoritative `configure_producer` site, and
     `publish_event` failing fast on its absence is how startup regressions surface.
     """
-    producer = _PRODUCER_STATE["producer"]
+    producer = _PRODUCER_STATE.get(DEFAULT_EVENT_STREAM)
     if producer is not None:
         return producer
     producer = _build_producer_from_config()
-    _PRODUCER_STATE["producer"] = producer
+    configure_producer(producer)
     return producer
 
 
@@ -194,12 +221,17 @@ async def loop_local_producer() -> AsyncIterator[EventProducer]:
         await producer.aclose()
 
 
-def _configured_producer(event_name: str) -> EventProducer:
-    producer = _PRODUCER_STATE["producer"]
+def _configured_producer(stream: str, event_name: str) -> EventProducer:
+    producer = _PRODUCER_STATE.get(stream)
     if producer is None:
-        logger.error("event emitted but EventProducer not configured: event=%s", event_name)
-        raise RuntimeError("EventProducer not configured. Call configure_producer() first.")
+        logger.error(_PRODUCER_MISSING_EVENT_TEMPLATE, event_name, stream)
+        raise RuntimeError(_PRODUCER_NOT_CONFIGURED_TEMPLATE.format(stream=stream))
     return producer
+
+
+def configured_producer(stream: str = DEFAULT_EVENT_STREAM) -> EventProducer:
+    """Return the daemon-composed producer for one stream without fallback construction."""
+    return _configured_producer(stream, _CONFIGURED_PRODUCER_ACCESS_EVENT)
 
 
 async def publish_event(
@@ -209,5 +241,5 @@ async def publish_event(
     producer: EventProducer | None = None,
 ) -> str:
     """Publish a typed event through the configured producer."""
-    target = producer if producer is not None else _configured_producer(event.type_name())
+    target = producer if producer is not None else _configured_producer(DEFAULT_EVENT_STREAM, event.type_name())
     return await target.emit(event, legacy)

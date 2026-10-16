@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -24,9 +23,7 @@ from teleclaude.core.control_delivery import TurnEndBoundary, wake_if_pending
 from teleclaude.core.conversation_delivery import schedule_debounced_delivery
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
-    AgentActivityEvent,
     AgentDistressPayload,
     AgentEventContext,
     AgentEventPayload,
@@ -34,20 +31,16 @@ from teleclaude.core.events import (
     AgentHookEventType,
     AgentIdlePayload,
     AgentOutputPayload,
-    AgentReadyContext,
     AgentSessionStartPayload,
-    AgentStopActivityEvent,
     AgentStopPayload,
     DeliveryNoComposerContext,
-    ErrorEventContext,
-    SessionStatusContext,
-    TeleClaudeEvents,
-    ToolUseActivityEvent,
-    UserPromptSubmitActivityEvent,
     UserPromptSubmitPayload,
 )
+from teleclaude.core.models import JsonDict
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.reminders.models import ReminderEvent, ReminderEventAnchor
+from teleclaude.core.runtime_events import publish_agent_activity, publish_session_status
+from teleclaude.core.runtime_readiness import RuntimeReadiness, RuntimeReadinessKey
 from teleclaude.core.session_compaction import SessionCompactionOwner, session_compaction_owner
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_listeners import (
@@ -65,7 +58,6 @@ from teleclaude.core.session_transcript import session_transcript
 from teleclaude.core.session_transcript_chain import native_log_binding_updates
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
-from teleclaude.events.envelope import EventVisibility
 from teleclaude.session_scoping._git import read_head_sha
 from teleclaude.tts.manager import TTSManager
 from teleclaude.utils import strip_ansi_codes
@@ -111,51 +103,15 @@ class AgentCoordinator(
         self,
         client: AdapterClient,
         tts_manager: TTSManager,
+        runtime_readiness: RuntimeReadiness,
         reminder_service: ReminderService | None = None,
         compaction_owner: SessionCompactionOwner | None = None,
     ) -> None:
         self.client = client
         self.tts_manager = tts_manager
+        self.runtime_readiness = runtime_readiness
         self.reminder_service = reminder_service
         self.compaction_owner = compaction_owner or session_compaction_owner
-        self._background_tasks: set[asyncio.Task[object]] = set()
-
-    def _queue_background_task(
-        self,
-        coro: Coroutine[object, object, object],
-        label: str,
-    ) -> None:
-        """Run non-critical work without blocking hook event handling."""
-        task = asyncio.create_task(coro, name=label)
-        self._background_tasks.add(task)
-
-        def _on_done(done: asyncio.Task[object]) -> None:
-            self._background_tasks.discard(done)
-            try:
-                done.result()
-            except asyncio.CancelledError:
-                return
-            except Exception as exc:
-                logger.error("Background task '%s' failed: %s", label, exc, exc_info=True)
-
-                # Emit error event for user-visible failures (title updates, TTS)
-                # Other background failures are logged but don't require user notification
-                if "title" in label.lower():
-                    try:
-                        event_bus.emit(
-                            TeleClaudeEvents.ERROR,
-                            ErrorEventContext(
-                                session_id=None,
-                                message=f"Failed to update session title: {exc}",
-                                source="agent_coordinator",
-                                severity="warning",
-                            ),
-                            visibility=EventVisibility.CLUSTER,
-                        )
-                    except Exception:
-                        pass
-
-        task.add_done_callback(_on_done)
 
     async def _signal_projection_activity(self, session_id: str, final_version: datetime | None = None) -> None:
         """Drive one transcript projection pass from agent activity.
@@ -174,7 +130,7 @@ class AgentCoordinator(
         else:
             await polling_coordinator.schedule_session_projection(session_id, self.client, final_version=final_version)
 
-    def _emit_activity_event(
+    async def _emit_activity_event(
         self,
         session_id: str,
         event_type: AgentHookEventType,
@@ -208,21 +164,27 @@ class AgentCoordinator(
                 summary=summary,
                 message=message,
             )
-            event_bus.emit(
-                TeleClaudeEvents.AGENT_ACTIVITY,
-                self._build_activity_event(
-                    session_id=session_id,
-                    event_type=event_type,
-                    timestamp=timestamp,
-                    tool_name=tool_name,
-                    tool_preview=tool_preview,
-                    summary=summary,
-                    message=message,
-                    canonical_type=canonical.canonical_type if canonical else None,
-                    message_intent=canonical.message_intent if canonical else None,
-                    delivery_scope=canonical.delivery_scope if canonical else None,
-                ),
-                visibility=EventVisibility.CLUSTER,
+            details = cast(
+                JsonDict,
+                {
+                    key: value
+                    for key, value in {
+                        "tool_name": tool_name,
+                        "tool_preview": tool_preview,
+                        "summary": summary,
+                        "message": message,
+                    }.items()
+                    if value is not None
+                },
+            )
+            await publish_agent_activity(
+                session_id,
+                event_type,
+                timestamp=timestamp,
+                canonical_type=canonical.canonical_type if canonical else None,
+                message_intent=canonical.message_intent if canonical else None,
+                delivery_scope=canonical.delivery_scope if canonical else None,
+                details=details,
             )
         except Exception as exc:
             logger.error(
@@ -232,58 +194,12 @@ class AgentCoordinator(
                 extra={"session_id": session_id, "event_type": event_type},
             )
 
-    @staticmethod
-    def _build_activity_event(
-        *,
-        session_id: str,
-        event_type: AgentHookEventType,
-        timestamp: str,
-        tool_name: str | None,
-        tool_preview: str | None,
-        summary: str | None,
-        message: str | None,
-        canonical_type: str | None,
-        message_intent: str | None,
-        delivery_scope: str | None,
-    ) -> AgentActivityEvent:
-        if event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
-            return UserPromptSubmitActivityEvent(
-                session_id=session_id,
-                event_type=event_type,
-                timestamp=timestamp,
-                canonical_type=canonical_type,
-                message_intent=message_intent,
-                delivery_scope=delivery_scope,
-            )
-        if event_type == AgentHookEvents.PRE_TOOL_USE:
-            return ToolUseActivityEvent(
-                session_id=session_id,
-                event_type=event_type,
-                tool_name=tool_name,
-                tool_preview=tool_preview,
-                timestamp=timestamp,
-                canonical_type=canonical_type,
-                message_intent=message_intent,
-                delivery_scope=delivery_scope,
-            )
-        if event_type == AgentHookEvents.AGENT_STOP:
-            return AgentStopActivityEvent(
-                session_id=session_id,
-                event_type=event_type,
-                summary=summary,
-                message=message,
-                timestamp=timestamp,
-                canonical_type=canonical_type,
-                message_intent=message_intent,
-                delivery_scope=delivery_scope,
-            )
-        raise ValueError(f"Unsupported activity event_type: {event_type}")
-
     async def _apply_agent_status(
         self,
         context: AgentEventContext,
         payload: AgentEventPayload,
         *,
+        expected_runtime_run_id: str | None = None,
         tool_call_id: str | None = None,
         tool_batch_resolved: bool = False,
         blocked_reason: AgentStatusReason | None = None,
@@ -302,9 +218,10 @@ class AgentCoordinator(
                 new_turn=new_turn,
             ),
             at=received_at,
+            expected_runtime_run_id=expected_runtime_run_id,
         )
 
-    def _emit_accepted_status_event(self, session_id: str) -> bool:
+    async def _emit_accepted_status_event(self, session_id: str) -> bool:
         """Emit the independent accepted signal for terminal-origin input."""
         try:
             timestamp = datetime.now(UTC).isoformat()
@@ -317,18 +234,14 @@ class AgentCoordinator(
             )
             if canonical is None:
                 return False
-            event_bus.emit(
-                TeleClaudeEvents.SESSION_STATUS,
-                SessionStatusContext(
-                    session_id=session_id,
-                    status=_ACCEPTED_STATUS,
-                    reason=_USER_PROMPT_ACCEPTED_REASON,
-                    timestamp=timestamp,
-                    last_activity_at=timestamp,
-                    message_intent=canonical.message_intent,
-                    delivery_scope=canonical.delivery_scope,
-                ),
-                visibility=EventVisibility.CLUSTER,
+            await publish_session_status(
+                session_id,
+                _ACCEPTED_STATUS,
+                _USER_PROMPT_ACCEPTED_REASON,
+                timestamp,
+                last_activity_at=timestamp,
+                message_intent=canonical.message_intent,
+                delivery_scope=canonical.delivery_scope,
             )
             logger.debug(
                 "status transition: session=%s %s (reason=%s)",
@@ -349,7 +262,7 @@ class AgentCoordinator(
     async def handle_event(self, context: AgentEventContext) -> None:
         """Handle any agent lifecycle event."""
         if context.compaction_launch_context is not None:
-            await handle_compaction_event(context, self.client, self.compaction_owner)
+            await handle_compaction_event(context, self.client, self.runtime_readiness, self.compaction_owner)
             return
         if context.event_type == AgentHookEvents.AGENT_SESSION_START:
             logger.info(
@@ -383,7 +296,7 @@ class AgentCoordinator(
             last_agent_idle_at=idle_at.isoformat(),
             last_activity=idle_at.isoformat(),
         )
-        await self._apply_agent_status(context, payload)
+        await self._apply_agent_status(context, payload, expected_runtime_run_id=context.runtime_run_id)
         logger.info(
             _AGENT_IDLE_OBSERVED_EVENT,
             session_id=context.session_id,
@@ -405,6 +318,7 @@ class AgentCoordinator(
         transition = await self._apply_agent_status(
             context,
             payload,
+            expected_runtime_run_id=context.runtime_run_id,
             blocked_reason=payload.blocked_reason,
         )
         if notification_kind is NotificationKind.TURN_FAILED:
@@ -485,6 +399,14 @@ class AgentCoordinator(
             update_kwargs["native_session_id"] = str(native_session_id)
 
         session = await db.get_session(context.session_id)
+        run_matches = (
+            context.runtime_run_id is not None
+            and session is not None
+            and context.runtime_run_id == session.runtime_run_id
+        )
+        if context.runtime_run_id is not None and session is not None and not run_matches:
+            return
+        process_observation = context.runtime_run_id is None or run_matches
         if session and native_log_file:
             update_kwargs.update(
                 native_log_binding_updates(
@@ -499,21 +421,41 @@ class AgentCoordinator(
                 update_kwargs["project_path"] = raw_cwd
                 update_kwargs["subdir"] = None
         if update_kwargs:
-            await db.update_session(context.session_id, **update_kwargs)
+            if context.runtime_run_id is None:
+                await db.update_session(context.session_id, **update_kwargs)
+            else:
+                updated = await db.update_session_if_runtime_run(
+                    context.session_id,
+                    context.runtime_run_id,
+                    **update_kwargs,
+                )
+                if updated is None:
+                    return
 
         # A headless session has no adoption boundary to cross into ACTIVE;
         # runtime start stays observable through session data, not status.
-        if not session or session.lifecycle_status != SessionLifecycleStatus.HEADLESS:
-            await transition_session(
+        if run_matches and session and session.lifecycle_status != SessionLifecycleStatus.HEADLESS:
+            transitioned = await transition_session(
                 db,
                 context.session_id,
                 LifecycleTransition(
                     SessionLifecycleStatus.ACTIVE,
                     LifecycleTransitionReason.RUNTIME_SESSION_START,
-                    runtime_start_observed=True,
+                    runtime_start_observed=run_matches,
+                    expected_runtime_run_id=context.runtime_run_id,
                 ),
             )
-        await self._apply_agent_status(context, payload)
+            if run_matches and not transitioned:
+                return
+        if process_observation:
+            await self._apply_agent_status(context, payload, expected_runtime_run_id=context.runtime_run_id)
+
+        if context.runtime_run_id is not None:
+            current = await db.get_session(context.session_id)
+            if current is None or current.runtime_run_id != context.runtime_run_id:
+                return
+            if current.lifecycle_status != SessionLifecycleStatus.HEADLESS and not current.runtime_start_observed:
+                return
 
         voice = await db.get_voice(context.session_id)
         if voice:
@@ -533,19 +475,18 @@ class AgentCoordinator(
         await self.compaction_owner.settle_restoring(context.session_id)
 
         # A relaunched agent announcing its start is ready for input.
-        clear_relaunch_awaiting_readiness(context.session_id)
+        if run_matches:
+            clear_relaunch_awaiting_readiness(context.session_id)
 
-        # Normalized runtime start is an observed lifecycle fact. Consumers with
-        # native startup authority subscribe to AGENT_READY here.
-        event_bus.emit(
-            TeleClaudeEvents.AGENT_READY,
-            AgentReadyContext(session_id=context.session_id),
-            visibility=EventVisibility.LOCAL,
-        )
+        # Settle a waiter only for the launch identity this source observed.
+        if run_matches and context.runtime_run_id is not None:
+            self.runtime_readiness.observe_start(
+                RuntimeReadinessKey.ordinary(context.session_id, context.runtime_run_id)
+            )
 
         # Speak only on the first normalized session_start for this session.
-        # TTS is scheduled (debounced, cancelable) so it never blocks the
-        # AGENT_READY emit above or any subsequent event on this session.
+        # TTS is scheduled (debounced, cancelable) so it never blocks this
+        # boundary or any subsequent event on this session.
         already_started_before = bool(session and session.native_session_id)
         if not already_started_before:
             schedule_slow_work(
@@ -592,7 +533,7 @@ class AgentCoordinator(
             prompt_text = await self._backfill_prompt_from_transcript(session) or ""
         if not prompt_text.strip():
             # Transcript not flushed yet; let the projection cadence reflect it.
-            await self._apply_agent_status(context, payload)
+            await self._apply_agent_status(context, payload, expected_runtime_run_id=context.runtime_run_id)
             logger.debug("No prompt text available yet for session %s; deferring to projection", session_id)
             if session.lifecycle_status == "headless":
                 await polling_coordinator.schedule_session_projection(session_id, self.client, headless_only=True)
@@ -602,11 +543,16 @@ class AgentCoordinator(
 
         # System-injected checkpoint — not real user input, skip entirely
         if _is_checkpoint_prompt(prompt_text, raw_payload=payload.raw):
-            await self._apply_agent_status(context, payload)
+            await self._apply_agent_status(context, payload, expected_runtime_run_id=context.runtime_run_id)
             logger.debug("Checkpoint prompt detected, skipping user input persistence for session %s", session_id)
             return
 
-        await self._apply_agent_status(context, payload, new_turn=True)
+        await self._apply_agent_status(
+            context,
+            payload,
+            expected_runtime_run_id=context.runtime_run_id,
+            new_turn=True,
+        )
         logger.info("turn_notification_gate_cleared", session_id=session_id)
 
         # Snapshot HEAD as the turn-start anchor for scoped path resolution.
@@ -655,10 +601,10 @@ class AgentCoordinator(
         )
 
         # Emit activity event for all sessions
-        self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
+        await self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
         if session.lifecycle_status != "headless" and terminal_origin_recorded:
-            self._emit_accepted_status_event(session_id)
+            await self._emit_accepted_status_event(session_id)
 
     async def handle_agent_stop(self, context: AgentEventContext) -> None:
         """Handle stop event - Agent session stopped.
@@ -702,7 +648,7 @@ class AgentCoordinator(
             owed_lanes=owed_lanes,
             known_ui_lanes=self.client.canonical_ui_lanes(),
         )
-        await self._apply_agent_status(context, payload)
+        await self._apply_agent_status(context, payload, expected_runtime_run_id=context.runtime_run_id)
         if self.reminder_service is not None:
             await self.reminder_service.handle_agent_event(
                 ReminderEvent(
@@ -715,7 +661,7 @@ class AgentCoordinator(
 
         # Activity event without summary; the slow runner re-emits with the
         # computed summary once it lands.
-        self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=None)
+        await self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=None)
 
         # Immediate projection pull on stop — final output must be captured.
         await self._signal_projection_activity(
@@ -867,7 +813,7 @@ class AgentCoordinator(
             # summary surfaces should not paint stale or blank state on the
             # downstream UI lanes.
             if summary:
-                self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
+                await self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
                 await self._speak_agent_stop_summary(session_id, summary)
 
         session = await db.get_session(session_id)
@@ -931,6 +877,7 @@ class AgentCoordinator(
         await self._apply_agent_status(
             context,
             payload,
+            expected_runtime_run_id=context.runtime_run_id,
             tool_call_id=payload.tool_call_id,
             tool_batch_resolved=payload.tool_batch_resolved,
         )
@@ -940,7 +887,7 @@ class AgentCoordinator(
 
         if context.event_type is AgentHookEvents.PRE_TOOL_USE:
             # Tool starts remain UI activity; completions only fold into stored status.
-            self._emit_activity_event(
+            await self._emit_activity_event(
                 session_id,
                 AgentHookEvents.PRE_TOOL_USE,
                 tool_name,

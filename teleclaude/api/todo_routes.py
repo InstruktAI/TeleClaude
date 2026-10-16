@@ -76,8 +76,7 @@ from teleclaude.core.next_machine.provenance import sync_artifact_provenance
 from teleclaude.core.next_machine.session_hold import emit_todo_updated
 from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
-from teleclaude.core.operations import get_operations_service
-from teleclaude.core.operations.service import SerializedOperation
+from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db._errors import HolderReconciliationRefused, HolderTransitionRefused
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused

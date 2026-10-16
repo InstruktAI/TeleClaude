@@ -31,6 +31,8 @@ _STREAM_ENTRY_IDENTITY = "{stream}/{entry_id}"
 _CONSUME_TASK_NAME = "event-consume"
 _RECOVERY_SWEEP_TASK_NAME = "event-recovery-sweep"
 _RECOVERY_SWEEP_ENDED = "The stale-pending recovery sweep ended while the processor was running"
+_PENDING_PAGE_SIZE = 100
+_PENDING_READ_BATCH_SIZE = 50
 
 
 class RecoverySweepEnded(Exception):
@@ -117,17 +119,25 @@ class EventProcessor[DecodedT: BaseModel]:
         self._pending_info: dict[str, _PendingEntryInfo] = {}
         self._first_attempt_observed_at: int | None = None
         self._ack_failure_reclaiming = False
+        self._group_position_prepared = False
 
     def consumer_name(self) -> str:
         """Return the consumer name used for this processor instance."""
         return self._consumer
+
+    async def prepare_group_position(self) -> None:
+        """Idempotently establish this reader's Redis group position without executing any entries."""
+        if self._group_position_prepared:
+            return
+        await self._ensure_consumer_group()
+        self._group_position_prepared = True
 
     async def start(self, shutdown_event: asyncio.Event) -> None:
         """Run the stream consumption loop until shutdown is requested."""
         if self._first_attempt_observed_at is None:
             self._first_attempt_observed_at = int(time.time())
         self._shutdown_event = shutdown_event
-        await self._ensure_consumer_group()
+        await self.prepare_group_position()
         await self._recover_pending(include_current_consumer=True)
 
         logger.info(
@@ -166,6 +176,8 @@ class EventProcessor[DecodedT: BaseModel]:
                 break
             except Exception:
                 logger.exception("EventProcessor read loop error; sleeping 1s")
+                if self._ordered:
+                    raise
                 await asyncio.sleep(1.0)
 
     async def _sweep_until_shutdown(self, shutdown_event: asyncio.Event) -> None:
@@ -216,21 +228,23 @@ class EventProcessor[DecodedT: BaseModel]:
 
     async def _recover_current_consumer_pending(self) -> None:
         """Recover pending entries already assigned to this consumer."""
-        for _ in range(max(1, self._max_attempts + 1)):
+        while True:
             try:
                 entries = await self._redis.xreadgroup(
                     self._group,
                     self._consumer,
                     {self._stream: "0"},
-                    count=50,
+                    count=_PENDING_READ_BATCH_SIZE,
                 )
             except asyncio.CancelledError:
-                break
+                raise
             except Exception:
                 logger.exception("EventProcessor current-consumer pending recovery failed")
-                break
+                if self._ordered:
+                    raise
+                return
             if not entries:
-                break
+                return
             logger.info("EventProcessor recovering pending entries", pending=len(entries), consumer=self._consumer)
             await self._process_entries(entries)
 
@@ -305,14 +319,11 @@ class EventProcessor[DecodedT: BaseModel]:
         try:
             decoded = self._codec.decode(data, entry_id)
             await self._pipeline.execute(decoded)
-            try:
-                await self._redis.xack(self._stream, self._group, entry_id)
-            except Exception:
-                logger.exception("EventProcessor failed to ACK entry", entry_id=entry_id)
-            return True
         except Exception as exc:
             if decoded is None:
                 logger.exception("EventProcessor failed to deserialize entry", entry_id=entry_id)
+                if self._ordered:
+                    raise
                 return True
             return await self._handle_processing_failure(
                 stream=stream,
@@ -320,6 +331,13 @@ class EventProcessor[DecodedT: BaseModel]:
                 decoded=decoded,
                 exc=exc,
             )
+        try:
+            await self._redis.xack(self._stream, self._group, entry_id)
+        except Exception:
+            logger.exception("EventProcessor failed to ACK entry", entry_id=entry_id)
+            if self._ordered:
+                raise
+        return True
 
     async def _handle_processing_failure(
         self,
@@ -398,6 +416,8 @@ class EventProcessor[DecodedT: BaseModel]:
             await self._redis.xack(self._stream, self._group, entry_id)
         except Exception:
             logger.exception("EventProcessor failed to ACK dead-lettered entry", entry_id=entry_id)
+            if self._ordered:
+                return False
             if not self._ordered and not self._ack_failure_reclaiming:
                 self._ack_failure_reclaiming = True
                 try:
@@ -480,28 +500,47 @@ class EventProcessor[DecodedT: BaseModel]:
         )
 
     async def _read_pending_info(self) -> dict[str, _PendingEntryInfo]:
-        try:
-            rows = await self._redis.xpending_range(self._stream, self._group, "-", "+", 100)
-        except AttributeError:
-            return {}
-        except Exception:
-            logger.exception("EventProcessor pending metadata read failed")
-            return {}
-
         info_by_id: dict[str, _PendingEntryInfo] = {}
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            raw_message_id = row.get("message_id")
-            if raw_message_id is None:
-                continue
-            entry_id = self._decode(raw_message_id)
-            info_by_id[entry_id] = _PendingEntryInfo(
-                entry_id=entry_id,
-                consumer_id=self._optional_decode(row.get("consumer")),
-                time_since_delivered_ms=self._optional_int(row.get("time_since_delivered")),
-                times_delivered=self._optional_int(row.get("times_delivered")) or 0,
-            )
+        cursor = "-"
+        while True:
+            try:
+                rows = await self._redis.xpending_range(
+                    self._stream,
+                    self._group,
+                    cursor,
+                    "+",
+                    _PENDING_PAGE_SIZE,
+                )
+            except AttributeError:
+                if self._ordered:
+                    raise RuntimeError("Ordered EventProcessor requires paged pending metadata support") from None
+                return info_by_id
+            except Exception:
+                logger.exception("EventProcessor pending metadata read failed")
+                if self._ordered:
+                    raise
+                return info_by_id
+
+            if not rows:
+                break
+            last_id: str | None = None
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                raw_message_id = row.get("message_id")
+                if raw_message_id is None:
+                    continue
+                entry_id = self._decode(raw_message_id)
+                last_id = entry_id
+                info_by_id[entry_id] = _PendingEntryInfo(
+                    entry_id=entry_id,
+                    consumer_id=self._optional_decode(row.get("consumer")),
+                    time_since_delivered_ms=self._optional_int(row.get("time_since_delivered")),
+                    times_delivered=self._optional_int(row.get("times_delivered")) or 0,
+                )
+            if last_id is None or len(rows) < _PENDING_PAGE_SIZE:
+                break
+            cursor = f"({last_id}"
         return info_by_id
 
     def _extract_claimed_messages(self, result: object) -> list[tuple[object, object]]:

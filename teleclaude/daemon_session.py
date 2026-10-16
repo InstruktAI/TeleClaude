@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -25,18 +26,11 @@ from teleclaude.core.agents import _get_agent_config
 from teleclaude.core.cleanup_step import cleanup_step
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
-from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
-    AgentReadyContext,
-    DeliveryNoComposerContext,
     ErrorEventContext,
-    SessionLifecycleContext,
-    SessionStatusContext,
-    SystemCommand,
     SystemCommandContext,
-    TeleClaudeEvents,
 )
 from teleclaude.core.injected_text import (
     InjectedInputAuthority,
@@ -47,10 +41,10 @@ from teleclaude.core.injected_text import (
 from teleclaude.core.models import HumanActionIntent, MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._session import authority_for_entry_point
 from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
+from teleclaude.core.runtime_readiness import RuntimeReadinessKey
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_continuation import ContinuationRefused, rebuild_continuation_loader
 from teleclaude.core.session_environment import build_agent_session_environment
-from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_runtime_gate import session_runtime_owner
 from teleclaude.core.session_startup import (
     BOOTSTRAP_OWNED_STATES,
@@ -63,10 +57,9 @@ from teleclaude.core.session_startup import (
     launch_is_owed,
     recovery_for,
 )
-from teleclaude.core.session_status import SessionLifecycleStatus
+from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.shutdown_drain import get_shutdown_drain
-from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tmux_bridge import input_effect_scope
 from teleclaude.core.tmux_io import UserTurnDeliveryOutcome
 from teleclaude.core.voice_assignment import get_voice_env_vars
@@ -166,108 +159,47 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         except Exception as exc:
             logger.error("Mirror AGENT_STOP handler failed: %s", exc, exc_info=True)
 
-    async def _handle_delivery_no_composer(self, _event: str, context: DeliveryNoComposerContext) -> None:
-        """Hand the delivery-observed no-composer fact to the coordinator, which owns status and distress."""
-        await self.agent_coordinator.handle_delivery_no_composer(context)
-
-    async def _handle_session_closed(self, _event: str, context: SessionLifecycleContext) -> None:
-        """Observer-only handler for session_closed events.
+    async def _handle_session_closed(self, session_id: str) -> None:
+        """Clean up final session state only while the source row remains terminal.
 
         SESSION_CLOSED is a fact: the session record is now closed in DB.
         This handler cleans up in-memory state. It MUST NOT call
         terminate_session — doing so causes duplicate channel deletion
         (Topic_id_invalid). The close-intent path is SESSION_CLOSE_REQUESTED.
 
-        Args:
-            _event: Event type (always "session_closed") - unused but required by event handler signature
-            context: Session lifecycle context
         """
-        ctx = context
-        logger.debug("session_closed observer: cleaning in-memory state for %s", ctx.session_id)
+        async with session_runtime_owner(session_id, wait=True):
+            current = await db.get_session(session_id)
+            if current is not None and not (
+                current.deleted_at
+                or is_session_terminal(lifecycle_status=current.lifecycle_status, closed_at=current.closed_at)
+            ):
+                logger.debug("Skipping delayed close cleanup for revived session %s", session_id)
+                return
 
-        self._session_outbox_queues.pop(ctx.session_id, None)
-        self._hook_outbox_claim_paused_sessions.discard(ctx.session_id)
-        worker = self._session_outbox_workers.pop(ctx.session_id, None)
-        if worker and not worker.done():
-            worker.cancel()
-            with cleanup_step(_SESSION_OUTBOX_WORKER_CLEANUP_COMPONENT):
-                try:
-                    await worker
-                except asyncio.CancelledError:
-                    pass
-        polling_coordinator._cleanup_codex_input_state(ctx.session_id)
-        try:
-            await clear_active_runner_for_session_end(db, ctx.session_id)
-        except Exception as exc:
-            logger.error("Workflow active_runner clear failed for session %s: %s", ctx.session_id, exc, exc_info=True)
+            logger.debug("session_closed observer: cleaning in-memory state for %s", session_id)
+            self._session_outbox_queues.pop(session_id, None)
+            self._hook_outbox_claim_paused_sessions.discard(session_id)
+            worker = self._session_outbox_workers.pop(session_id, None)
+            if worker and not worker.done():
+                worker.cancel()
+                with cleanup_step(_SESSION_OUTBOX_WORKER_CLEANUP_COMPONENT):
+                    try:
+                        await worker
+                    except asyncio.CancelledError:
+                        pass
+            polling_coordinator._cleanup_codex_input_state(session_id)
+            try:
+                await clear_active_runner_for_session_end(db, session_id)
+            except Exception as exc:
+                logger.error("Workflow active_runner clear failed for session %s: %s", session_id, exc, exc_info=True)
 
-    async def _handle_session_close_requested(self, _event: str, context: SessionLifecycleContext) -> None:
-        """Handler for session_close_requested events — performs termination exactly once.
-
-        SESSION_CLOSE_REQUESTED is an intent: something wants this session closed.
-        This handler calls terminate_session, which deletes channels and closes
-        the DB record (emitting SESSION_CLOSED as a fact afterwards).
-
-        Args:
-            _event: Event type (always "session_close_requested") - unused but required by event handler signature
-            context: Session lifecycle context
-        """
-        ctx = context
-
-        session = await db.get_session(ctx.session_id)
-        if not session:
-            logger.warning("Session %s not found for session_close_requested", ctx.session_id)
-            return
-
-        logger.info("Handling session_close_requested for %s", ctx.session_id)
-        try:
-            await session_cleanup.terminate_session(
-                ctx.session_id,
-                self.client,
-                reason="close_requested",
-                session=session,
-            )
-        except Exception as exc:
-            logger.error("Failed to close session %s: %s", ctx.session_id, exc, exc_info=True)
-
-            restored = await db.get_session(ctx.session_id)
-            if restored and not restored.closed_at:
-                await transition_session(
-                    db,
-                    ctx.session_id,
-                    LifecycleTransition(SessionLifecycleStatus.ACTIVE, LifecycleTransitionReason.CLOSE_FAILED),
-                )
-                timestamp = datetime.now(UTC).isoformat()
-                canonical = serialize_status_event(
-                    session_id=ctx.session_id,
-                    status="error",
-                    reason="close_failed",
-                    timestamp=timestamp,
-                )
-                if canonical is not None:
-                    event_bus.emit(
-                        TeleClaudeEvents.SESSION_STATUS,
-                        SessionStatusContext(
-                            session_id=ctx.session_id,
-                            status="error",
-                            reason="close_failed",
-                            timestamp=timestamp,
-                            message_intent=canonical.message_intent,
-                            delivery_scope=canonical.delivery_scope,
-                        ),
-                        visibility=EventVisibility.CLUSTER,
-                    )
-
-    async def _handle_session_started(self, _event: str, _context: SessionLifecycleContext) -> None:
-        """No-op handler; headless snapshot delivery is event-driven via the coordinator."""
-
-    async def _handle_system_command(self, _event: str, context: SystemCommandContext) -> None:
-        """Handler for SYSTEM_COMMAND events.
+    async def _handle_system_command_direct(self, context: SystemCommandContext) -> None:
+        """Handle system commands routed directly to the runtime owner.
 
         System commands are daemon-level operations (restart, health_check, etc.)
 
         Args:
-            _event: Event type (always "system_command") - unused but required by event handler signature
             context: System command context
         """
         ctx = context
@@ -276,14 +208,8 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
         if ctx.command == "health_check":
             await self._handle_health_check()
-        elif ctx.command == SystemCommand.SESSION_OUTPUT_STOPPED:
-            pass  # Subscriber-delivered: the voice playback module owns this command.
         else:
             logger.warning("Unknown system command: %s", ctx.command)
-
-    async def _handle_agent_event(self, _event: str, context: AgentEventContext) -> None:
-        """Central handler for AGENT_EVENT."""
-        await self.agent_coordinator.handle_event(context)
 
     async def _take_startup_mark(
         self,
@@ -640,18 +566,16 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
         logger.debug("agent_then_message: agent=%s mode=%s msg=%s", agent_name, thinking_mode, message[:50])
 
-        # Subscribe BEFORE issuing start_agent. The agent's SessionStart hook
-        # can race the daemon's command-dispatch overhead and emit AGENT_READY
-        # before this coroutine resumes — subscribing after the launch loses
-        # the event (event_bus does not replay).
-        loop = asyncio.get_running_loop()
-        ready_future: asyncio.Future[None] = loop.create_future()
-
-        async def _on_ready(_event_type: str, ctx: AgentReadyContext) -> None:
-            if ctx.session_id == session_id and ctx.compaction_launch_context is None and not ready_future.done():
-                ready_future.set_result(None)
-
-        ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
+        runtime_run_id = str(uuid4()) if launch_owed else None
+        if not launch_owed:
+            existing_session = await db.get_session(session_id)
+            runtime_run_id = existing_session.runtime_run_id if existing_session is not None else None
+        readiness_key = RuntimeReadinessKey.ordinary(session_id, runtime_run_id) if runtime_run_id is not None else None
+        ready_future = (
+            self.client.runtime_readiness.register(readiness_key)
+            if readiness_key is not None
+            else asyncio.get_running_loop().create_future()
+        )
         try:
             t0 = time.time()
             if launch_owed:
@@ -662,6 +586,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                             agent_name=agent_name,
                             thinking_mode=thinking_mode,
                             args=start_args,
+                            runtime_run_id=runtime_run_id,
                             resolved_model_flags=launch_intent.resolved_model_flags,
                             visible_input_source_text=launch_intent.command_input_source_text,
                         )
@@ -679,7 +604,12 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             session = await db.get_session(session_id)
             if not session:
                 return {"status": "error", "message": "Session not found after creation"}
-            if session.runtime_start_observed and not ready_future.done():
+            if (
+                runtime_run_id is not None
+                and session.runtime_run_id == runtime_run_id
+                and session.runtime_start_observed
+                and not ready_future.done()
+            ):
                 # The runtime's start boundary was recorded before this wait began (a
                 # bootstrap resumed after the start signal arrived). Reading the
                 # record writes no start evidence.
@@ -698,18 +628,14 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     session_id,
                     AGENT_PROMPT_READY_TIMEOUT_S,
                 )
-                event_bus.emit(
-                    TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
-                    SessionLifecycleContext(session_id=session_id),
-                    visibility=EventVisibility.LOCAL,
-                )
                 return {
                     "status": "error",
                     "message": "Agent readiness timed out — session kept alive for inspection",
                 }
             logger.debug("agent_then_message: readiness opened in %.3fs", time.time() - t1)
         finally:
-            event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
+            if readiness_key is not None:
+                self.client.runtime_readiness.release(readiness_key, ready_future)
 
         if starts_with_prompt:
             await db.update_last_activity(session_id)
@@ -728,6 +654,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                 quiet_s=AGENT_START_STABILIZE_QUIET_S,
                 timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
                 delivery_mode=AgentStartupDeliveryMode.FRESH_START,
+                readiness=self.client.runtime_readiness,
             )
         if not delivery_result.succeeded:
             return {"status": "error", "message": "Failed to submit message into agent prompt"}
@@ -768,9 +695,10 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             ready_future=ready_future,
             quiet_s=AGENT_START_STABILIZE_QUIET_S,
             timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
+            readiness=self.client.runtime_readiness,
         )
 
-    async def _handle_error(self, _event: str, context: ErrorEventContext) -> None:
+    async def _handle_error(self, context: ErrorEventContext) -> None:
         """Handle error events (fail-fast contract violations, hook issues)."""
         if not context.session_id:
             logger.error("Error event without session: %s", context.message)

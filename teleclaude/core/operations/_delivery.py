@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from enum import StrEnum
@@ -14,9 +15,15 @@ from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db_models import Operation
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.injected_text import EnvelopeName, occurrence_fields, semantic_envelope
+from teleclaude.core.operations._kinds import outcome_events_for
 from teleclaude.core.operations._remote_delivery import forward_outcome_to_caller_computer
+from teleclaude.core.runtime_events import publish_operation_outcome
+from teleclaude.events.envelope import EventHomeMarker, home_from_token
+from teleclaude.events.schemas.system import RuntimeOperationResult
 
 logger = get_logger(__name__)
+_OUTCOME_PUBLICATION_FAILED_EVENT = "operation_outcome_publication_failed"
+_OUTCOME_DELIVERY_FAILED_EVENT = "operation_outcome_delivery_failed"
 
 
 class DeliveryReason(StrEnum):
@@ -36,10 +43,19 @@ class DeliveryOutcome(StrEnum):
     FAILED = "failed"
 
 
+async def emit_operation_outcome(operation: Operation, *, error: str | None = None) -> None:
+    """Publish the declared terminal event for a receipt-backed operation."""
+    if outcome_events_for(operation.kind) is None:
+        return
+    result = RuntimeOperationResult.COMPLETED if error is None else RuntimeOperationResult.FAILED
+    home = home_from_token(operation.subject or EventHomeMarker.UNKNOWN.value)
+    await publish_operation_outcome(operation.operation_id, operation.kind, result, home=home, error=error)
+
+
 async def deliver_recovered_operations(
     operations: list[Operation],
     *,
-    emit: Callable[..., None],
+    emit: Callable[..., Awaitable[None]],
     deliver: Callable[..., Awaitable[None]],
 ) -> None:
     """Emit and deliver each retained operation's outcome, containing per-row faults.
@@ -50,9 +66,13 @@ async def deliver_recovered_operations(
     """
     for operation in operations:
         try:
-            emit(operation.kind, operation.operation_id, error=operation.error_text)
-            await deliver(
-                operation, outcome=DeliveryOutcome.STALE, occurred_at=parse_iso_datetime(operation.completed_at)
+            await emit_and_deliver_operation_outcome(
+                operation,
+                outcome=DeliveryOutcome.STALE,
+                occurred_at=parse_iso_datetime(operation.completed_at),
+                emit=emit,
+                deliver=deliver,
+                error=operation.error_text,
             )
         except Exception as exc:
             logger.info(
@@ -64,6 +84,39 @@ async def deliver_recovered_operations(
                 error=f"{type(exc).__name__}: {exc}",
                 exc_info=True,
             )
+
+
+async def emit_and_deliver_operation_outcome(
+    operation: Operation,
+    *,
+    outcome: DeliveryOutcome,
+    occurred_at: datetime | None,
+    emit: Callable[..., Awaitable[None]],
+    deliver: Callable[..., Awaitable[None]],
+    error: str | None = None,
+) -> None:
+    """Attempt event publication and then hand off the committed row outcome."""
+    try:
+        await emit(operation, error=error)
+    except asyncio.CancelledError:
+        try:
+            await deliver(operation, outcome=outcome, occurred_at=occurred_at)
+        except Exception:
+            logger.exception(
+                _OUTCOME_DELIVERY_FAILED_EVENT,
+                operation_id=operation.operation_id,
+                kind=operation.kind,
+                outcome=outcome,
+            )
+        raise
+    except Exception:
+        logger.exception(
+            _OUTCOME_PUBLICATION_FAILED_EVENT,
+            operation_id=operation.operation_id,
+            kind=operation.kind,
+            outcome=outcome,
+        )
+    await deliver(operation, outcome=outcome, occurred_at=occurred_at)
 
 
 async def deliver_operation_outcome(

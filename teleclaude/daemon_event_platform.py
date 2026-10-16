@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
@@ -13,15 +13,23 @@ from instrukt_ai_logging import get_logger
 from redis.exceptions import ResponseError
 
 from teleclaude.config.machine import config
-from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus
+from teleclaude.core.command_dispatch import run_local_command
+from teleclaude.core.db import db
+from teleclaude.core.events import (
+    AgentEventContext,
+    SystemCommandContext,
+)
 from teleclaude.core.integration.event_bound_maintenance import build_event_bound_maintenance_consumer
 from teleclaude.core.integration.incident_alerts import build_incident_alerts_consumer
 from teleclaude.core.integration.subscribed_domain_events import build_subscribed_domain_events_consumer
 from teleclaude.core.integration.trigger_consumer import build_integration_trigger_consumer
+from teleclaude.core.internal_event_envelope import INTERNAL_EVENT_STREAM
 from teleclaude.core.next_machine.lifecycle_router import build_lifecycle_router_consumer
 from teleclaude.core.next_machine.runtime.clock import TaskScheduleClock
 from teleclaude.core.procedure_routing import build_procedure_activation_consumer
 from teleclaude.core.reconciliation import FleetCapabilityMap, contraction_answer_from_live_map
+from teleclaude.core.runtime_event_consumers import build_runtime_event_consumers
+from teleclaude.core.runtime_events import INTERNAL_RUNTIME_EVENT_STREAM
 from teleclaude.core.session_cleanup import terminate_session
 from teleclaude.events import (
     Consumer,
@@ -36,13 +44,14 @@ from teleclaude.events import (
     configure_producer,
     get_event_db,
 )
+from teleclaude.events.consumer_handover import prepare_internal_event_handover
 from teleclaude.events.correlation import CorrelationConfig, build_correlation_consumer
-from teleclaude.events.envelope import EventHomeMarker
+from teleclaude.events.envelope import EventHomeMarker, ReceivedEvent, occurrence_id
 from teleclaude.events.envelope_facts import EnvelopeFactResolver
 from teleclaude.events.processor import CONSUMER_GROUP as EVENT_PROCESSOR_GROUP
 from teleclaude.events.processor import STREAM_NAME as PLATFORM_STREAM_NAME
 from teleclaude.events.references import ComputerRef
-from teleclaude.events.schemas.system import DaemonRestarted, DaemonRestartedData
+from teleclaude.events.schemas.system import DaemonRestarted, DaemonRestartedData, RuntimeSessionStatusData
 from teleclaude.events.wire import PLATFORM_ENTRY_CODEC, LegacyFacts
 from teleclaude.hooks.dispatcher import HookDispatcher
 from teleclaude.hooks.handlers import HandlerRegistry
@@ -55,11 +64,19 @@ from teleclaude.memory.closure import build_memory_closure_consumer
 from teleclaude.memory.transition import run_transition, run_transition_until_complete
 from teleclaude.mirrors.closure import build_mirror_closure_consumer
 from teleclaude.services.project_catalog.ownership import load_project_ownership_index
-from teleclaude.transport.redis_transport import RedisTransport
+from teleclaude.transport.internal_event_compat import (
+    InternalEventCompatIngressData,
+    SessionLifecycleContext,
+    decode_compat_ingress_context,
+    internal_event_entry_codec,
+)
+from teleclaude.transport.redis_client import create_redis_client
+from teleclaude.types.commands import CloseSessionCommand
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
+    from teleclaude.core.events import ErrorEventContext
     from teleclaude.core.lifecycle import DaemonLifecycle
     from teleclaude.core.task_registry import SupervisedTask, TaskRegistry
 
@@ -73,7 +90,6 @@ _RELAY_DELIVERY_STARTED_EVENT = "Relay delivery processor started"
 _RETIRED_GROUP_TEMPLATE = "{group}-{computer}"
 _RETIRED_GROUP_DESTROYED_EVENT = "Retired system pipeline consumer group destroyed"
 _RETIRED_GROUP_ABSENT_EVENT = "No stream yet; no retired system pipeline consumer group to destroy"
-_INTERNAL_EVENT_BUS_TASK_NAME = "internal-event-bus"
 _TASK_SCHEDULE_CLOCK_TASK_NAME = "task-schedule-clock"
 _EVENT_CONSUMERS_STARTED_EVENT = "Event consumer runtime started"
 _MEMORY_TRANSITION_TASK_NAME = "memory-transition"
@@ -85,7 +101,9 @@ _API_SERVER_ATTRIBUTE = "api_server"
 _API_APP_ATTRIBUTE = "app"
 _INBOUND_ROUTES_INSTALLED_EVENT = "Inbound endpoints installed on the ingress computer"
 _INBOUND_ROUTES_UNAVAILABLE_EVENT = "API app or event producer unavailable; inbound endpoints are not installed"
-_RELAY_DELIVERY_NO_REDIS_EVENT = "Event Redis client unavailable; relayed external events are not delivered here"
+_DUPLICATE_RUNTIME_CONSUMER_NAMES_ERROR = "runtime and platform event consumers must have unique names"
+_DISCORD_VOICE_ADAPTER_REQUIRED = "Discord runtime voice consumer has no active adapter capability"
+_RUNTIME_EVENT_PRODUCER_CONFIGURED_EVENT = "Internal runtime EventProducer configured"
 
 
 @dataclass
@@ -111,24 +129,58 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         task_registry: TaskRegistry
         _event_consumer_tasks: tuple[SupervisedTask, ...]
         _relay_delivery_task: SupervisedTask | None
-        _internal_event_bus_task: SupervisedTask | None
+        _platform_consumer_runtime: ConsumerRuntime | None
+        _runtime_consumer_runtime: ConsumerRuntime | None
+        _relay_delivery_processor: EventProcessor[Any] | None
         _task_schedule_clock_task: SupervisedTask | None
         _hook_dispatcher: HookDispatcher | None
         cache: DaemonCache
 
         def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]: ...
 
+        async def _handle_session_closed(self, session_id: str) -> None: ...
+
+        async def _handle_error(self, context: ErrorEventContext) -> None: ...
+
     async def _init_event_db_storage(self) -> None:
         """Initialize event storage."""
         self._event_db = await get_event_db()
         logger.info("EventDB initialized")
 
-    async def _get_event_redis_client(self) -> object | None:
-        """Return the Redis client backing the event platform."""
-        redis_adapter = self.client.transport
-        if not isinstance(redis_adapter, RedisTransport):
-            return None
-        return await redis_adapter._get_redis()
+    async def _open_event_redis_client(self) -> object:
+        """Open the event platform's owned connection independently of adapter startup."""
+        redis_configured = bool(config.redis.url)
+        if not redis_configured:
+            raise RuntimeError("Event platform startup failed: config.redis.url is empty")
+        if self._event_redis_client is not None:
+            redis_client = self._event_redis_client
+            try:
+                await cast(Any, redis_client).ping()
+            except Exception:
+                await cast(Any, redis_client).aclose()
+                self._event_redis_client = None
+                raise
+            return redis_client
+        redis_client = create_redis_client(
+            config.redis.url,
+            password=config.redis.password,
+            max_connections=config.redis.max_connections,
+            socket_timeout=config.redis.socket_timeout,
+        )
+        try:
+            await cast(Any, redis_client).ping()
+        except Exception:
+            await cast(Any, redis_client).aclose()
+            raise
+        self._event_redis_client = redis_client
+        return redis_client
+
+    async def _close_event_platform_redis(self) -> None:
+        """Close the event platform's owned Redis pool after every consumer has settled."""
+        redis_client = self._event_redis_client
+        self._event_redis_client = None
+        if redis_client is not None:
+            await cast(Any, redis_client).aclose()
 
     def _live_capability_map(self) -> FleetCapabilityMap | None:
         """The daemon's current fleet capability map; none until the cluster bridge is attached."""
@@ -144,7 +196,15 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             fact_resolver=resolver,
             contraction_answer=contraction_answer_from_live_map(self._live_capability_map),
         )
+        runtime_event_producer = EventProducer(
+            redis_client=redis_client,
+            fact_resolver=resolver,
+            contraction_answer=contraction_answer_from_live_map(self._live_capability_map),
+            stream=INTERNAL_EVENT_STREAM,
+        )
         configure_producer(event_producer)
+        configure_producer(runtime_event_producer)
+        logger.info(_RUNTIME_EVENT_PRODUCER_CONFIGURED_EVENT, stream=INTERNAL_EVENT_STREAM)
         logger.info("EventProducer configured")
         return event_producer
 
@@ -182,25 +242,108 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             return
         logger.info(_RETIRED_GROUP_DESTROYED_EVENT, group=group)
 
-    def _start_event_consumers_runtime(self, redis_client: object) -> None:
-        """Start the consumer runtime: one ordered reader of the platform stream per declared consumer."""
+    async def _prepare_event_consumer_runtimes(self, redis_client: object) -> None:
+        """Build and prepare both source sets without allowing a handler to execute."""
         assert self._event_db is not None  # initialized by _start_event_platform_prepare
-        consumers = self._event_consumers()
-        runtime = ConsumerRuntime(
-            consumers,
+        platform_consumers = self._event_consumers()
+        runtime_consumers = build_runtime_event_consumers(
+            lifecycle=self.lifecycle,
+            client=self.client,
+            close_housekeeping=self._handle_session_closed,
+            report_error=self._handle_error,
+            discord_voice_status=self._handle_discord_runtime_status,
+            compatibility_ingress=self._handle_internal_compat_ingress,
+        )
+        names = [consumer.name for consumer in (*platform_consumers, *runtime_consumers)]
+        if len(names) != len(set(names)):
+            raise ValueError(_DUPLICATE_RUNTIME_CONSUMER_NAMES_ERROR)
+        await prepare_internal_event_handover(
+            redis_client,
+            stream=INTERNAL_RUNTIME_EVENT_STREAM,
+            computer=config.computer.name,
+            consumers=runtime_consumers,
+            event_db=self._event_db,
+        )
+        platform_runtime = ConsumerRuntime(
+            platform_consumers,
             redis_client=redis_client,
             db=self._event_db,
             computer=config.computer.name,
         )
-        self._event_consumer_tasks = runtime.supervise(self.task_registry, self.shutdown_event)
-        logger.info(_EVENT_CONSUMERS_STARTED_EVENT, consumers=[consumer.name for consumer in consumers])
+        runtime_runtime = ConsumerRuntime(
+            runtime_consumers,
+            redis_client=redis_client,
+            db=self._event_db,
+            computer=config.computer.name,
+            stream=INTERNAL_RUNTIME_EVENT_STREAM,
+            codec=internal_event_entry_codec(),
+        )
+        await platform_runtime.prepare_group_positions()
+        await runtime_runtime.prepare_group_positions()
+        self._platform_consumer_runtime = platform_runtime
+        self._runtime_consumer_runtime = runtime_runtime
+        logger.info(
+            "event_consumer_positions_prepared",
+            consumers=[consumer.name for consumer in (*platform_consumers, *runtime_consumers)],
+        )
 
-    def _start_relay_delivery_consumer(self, dispatcher: HookDispatcher) -> None:
-        """Start the per-computer group that delivers relayed external events to the local hook dispatcher."""
+    def _start_event_consumers_runtime(self) -> None:
+        """Execute the prepared source sets after their request surface and adapters are bound."""
+        platform_runtime = self._platform_consumer_runtime
+        runtime_runtime = self._runtime_consumer_runtime
+        if platform_runtime is None or runtime_runtime is None:
+            raise RuntimeError("Event consumer positions must be prepared before execution")
+        self._event_consumer_tasks = (
+            *platform_runtime.supervise(self.task_registry, self.shutdown_event),
+            *runtime_runtime.supervise(self.task_registry, self.shutdown_event),
+        )
+        logger.info(_EVENT_CONSUMERS_STARTED_EVENT)
+
+    async def _handle_discord_runtime_status(self, data: RuntimeSessionStatusData) -> None:
+        """Deliver status facts to the active Discord voice capability."""
+        adapter = self.client.adapters.get("discord")
+        handler = getattr(adapter, "handle_runtime_session_status", None) if adapter is not None else None
+        if not callable(handler):
+            if config.discord.token:
+                raise RuntimeError(_DISCORD_VOICE_ADAPTER_REQUIRED)
+            return
+        await cast(Callable[[RuntimeSessionStatusData], Awaitable[None]], handler)(data)
+
+    async def _handle_internal_compat_ingress(
+        self,
+        data: InternalEventCompatIngressData,
+        event: ReceivedEvent,
+    ) -> None:
+        """Hand retained command carriers to their runtime owner; interrupted handling may be replayed."""
+        context = decode_compat_ingress_context(data)
+        if data.event_name == "agent_event" and isinstance(context, AgentEventContext):
+            if event.source != config.computer.name:
+                return
+            handler = self.client.agent_event_handler
+            if handler is None:
+                raise RuntimeError("Retained agent event has no runtime coordinator capability")
+            await handler(context)
+            return
+        if data.event_name == "session_close_requested" and isinstance(context, SessionLifecycleContext):
+            if await db.get_session(context.session_id) is None:
+                return
+            command = CloseSessionCommand(
+                session_id=context.session_id,
+                request_id=occurrence_id(data.occurrence_id, "legacy-session-close", context.session_id),
+            )
+            await run_local_command(command)
+            return
+        if data.event_name == "system_command" and isinstance(context, SystemCommandContext):
+            if event.source == config.computer.name:
+                await self.client.dispatch_system_command(context)
+            return
+        logger.debug("No active reaction for retained internal event", event_name=data.event_name, event_id=event.id)
+
+    async def _prepare_relay_delivery_consumer(self, dispatcher: HookDispatcher) -> None:
+        """Prepare the relay reader position before any ingress can publish to its stream."""
         redis_client = self._event_redis_client
         if redis_client is None:
-            logger.warning(_RELAY_DELIVERY_NO_REDIS_EVENT)
-            return
+            raise RuntimeError("Relay delivery reader requires the event platform Redis connection")
         computer_label = config.computer.name
         reliability = config.event_reliability
         processor = EventProcessor(
@@ -215,18 +358,18 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             sweep_interval_ms=reliability.sweep_interval_ms,
             dlq_destination=reliability.dlq_destination,
         )
+        await processor.prepare_group_position()
+        self._relay_delivery_processor = processor
+
+    def _start_relay_delivery_consumer(self) -> None:
+        """Start the prepared relay reader after the API request surface is bound."""
+        processor = self._relay_delivery_processor
+        if processor is None:
+            return
         self._relay_delivery_task = self.task_registry.supervise(
             _RELAY_DELIVERY_TASK_NAME, partial(processor.start, self.shutdown_event), restart=True
         )
-        logger.info(_RELAY_DELIVERY_STARTED_EVENT, computer=computer_label)
-
-    def _start_internal_event_bus(self, redis_client: object) -> None:
-        """Configure and start the daemon role's internal EventBus consumer."""
-        bus = configure_event_bus(role="daemon", redis_client=cast(RedisStreamsClient, redis_client))
-        self._internal_event_bus_task = self.task_registry.supervise(
-            _INTERNAL_EVENT_BUS_TASK_NAME, partial(bus.start, self.shutdown_event), restart=True
-        )
-        logger.info("Internal EventBus started", role="daemon")
+        logger.info(_RELAY_DELIVERY_STARTED_EVENT, computer=config.computer.name)
 
     async def _emit_daemon_restarted_event(
         self,
@@ -259,36 +402,25 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         logger.info("Task schedule minute clock started")
 
     async def _start_event_platform_prepare(self) -> None:
-        """Prepare the event platform's producer side before the API socket binds.
-
-        Redis is required. If it is unreachable, the daemon must not continue —
-        downstream code (operations, integration, signals) emits events
-        unconditionally and treating a missing producer as "degraded but
-        running" hides real failures behind ERROR-log spam.
-
-        Builds the producer, pipeline, and context only. Consumer tasks (the
-        stream processor, the scheduler minute-clock, and everything downstream
-        of them) start later, in ``_start_event_consumers``, once the API socket
-        is bound — a consumer live before the socket exists can self-call the
-        daemon's own API and fail with a connect error.
-        """
+        """Prepare the owned producer, both reader positions, and ingress boundary before startup producers run."""
         redis_configured = bool(config.redis.url)
         self._event_platform_status = _EventPlatformStatus(redis_configured=redis_configured)
         await self._init_event_db_storage()
         event_catalog = build_default_catalog()
-        redis_client = await self._get_event_redis_client()
-        if redis_client is None:
-            raise RuntimeError(
-                f"Event platform startup failed: Redis unreachable (redis_configured={redis_configured})"
-            )
-
+        self._event_platform_status.pending_recovery_progress = "reader_positions_preparing"
+        redis_client = await self._open_event_redis_client()
         self._event_platform_status.redis_reachable = True
-        self._event_platform_status.pending_recovery_progress = "processor_starting"
-        self._start_internal_event_bus(redis_client)
         event_producer = self._configure_event_producer(redis_client)
         self._event_catalog = event_catalog
         self._event_producer = event_producer
-        self._event_redis_client = redis_client
+        await self._prepare_event_consumer_runtimes(redis_client)
+        try:
+            await self._init_webhook_service()
+        except Exception:
+            self._hook_dispatcher = None
+            self._relay_delivery_processor = None
+            logger.error("Webhook service initialization failed, continuing without webhooks", exc_info=True)
+        self._event_platform_status.pending_recovery_progress = "reader_positions_prepared"
 
     async def _end_for_memory_transition(self, session_id: str) -> bool:
         """End a pre-transition conversation-memory worker through agent runtime's termination flow."""
@@ -322,7 +454,8 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         await self._destroy_retired_system_group(redis_client)
         computer_label = config.computer.name
         await self._run_conversation_memory_transition()
-        self._start_event_consumers_runtime(redis_client)
+        self._start_event_consumers_runtime()
+        self._start_relay_delivery_consumer()
         self._event_platform_status.pending_recovery_progress = "processor_started"
         logger.info(
             "event_platform_redis_available: pending recovery scheduled",
@@ -334,7 +467,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._start_task_schedule_clock(event_producer)
 
     async def _init_webhook_service(self) -> None:
-        """Initialize the hook service: register the built-in handlers and contracts and start the dispatcher's feeds."""
+        """Prepare the hook dispatcher, inbound routes and its reader position before startup producers run."""
 
         contract_registry = ContractRegistry()
         handler_registry = HandlerRegistry()
@@ -352,7 +485,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             )
         )
 
-        self._start_relay_delivery_consumer(dispatcher)
+        await self._prepare_relay_delivery_consumer(dispatcher)
         self._install_inbound_routes()
 
         logger.info("Webhook service initialized")

@@ -19,7 +19,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import nullcontext
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import uvicorn
 from fastapi import Depends, FastAPI, Request, WebSocket
@@ -91,28 +91,28 @@ from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.configuration_clearance import standing_for_caller
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
-from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
-    AgentActivityEvent,
-    AgentAvailabilityContext,
+    AgentHookEvents,
     ErrorEventContext,
-    OperationFailedContext,
-    OperationSucceededContext,
+    ErrorSeverity,
     ProjectRefreshTrigger,
-    SessionLifecycleContext,
-    SessionStatusContext,
-    SessionUpdatedContext,
-    TeleClaudeEvents,
 )
 from teleclaude.core.models import JsonDict, MessageMetadata
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
-from teleclaude.core.operations._kinds import all_outcome_events
+from teleclaude.core.operations._kinds import outcome_events_for
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.relay_carrier import configure as configure_relay_carrier
 from teleclaude.core.relayed_request import configure as configure_relayed_request
 from teleclaude.core.session_lifecycle import LifecycleTransitionReason
-from teleclaude.core.session_snapshot import project_session_snapshot
+from teleclaude.core.session_materialization import SessionMaterializer
 from teleclaude.core.shutdown_drain import CONTINUATION_HEADER, ShutdownRefusal, get_shutdown_drain
+from teleclaude.events.schemas.system import (
+    RuntimeAgentActivityData,
+    RuntimeAgentAvailabilityData,
+    RuntimeErrorData,
+    RuntimeOperationOutcomeData,
+    RuntimeSessionStatusData,
+)
 from teleclaude.hooks.inbound import INBOUND_PATH_PREFIX
 from teleclaude.identity_reach import ReachCache
 from teleclaude.mcp.runtime import McpRuntimePool
@@ -164,6 +164,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self,
         client: AdapterClient,
         task_registry: TaskRegistry,
+        session_materializer: SessionMaterializer,
         cache: DaemonCache | None = None,
         socket_path: str | None = None,
         runtime_settings: RuntimeSettings | None = None,
@@ -173,6 +174,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.client = client
         self._start_commit = read_checkout_head(REPO_ROOT)
         self._cache: DaemonCache | None = None  # Initialize private variable
+        self.session_materializer = session_materializer
         self.task_registry = task_registry
         self.runtime_settings = runtime_settings
         self.mcp_runtimes = McpRuntimePool(
@@ -259,19 +261,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._refresh_debounce_task: asyncio.Task[object] | None = None
         self._refresh_pending_payloads: dict[WebSocket, JsonDict] = {}
 
-        # Subscribe to local session updates
-        event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated_event)
-        event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started_event)
-        event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed_event)
-        event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status_event)
-        event_bus.subscribe(TeleClaudeEvents.AGENT_AVAILABILITY, self._handle_agent_availability_event)
-        event_bus.subscribe(TeleClaudeEvents.AGENT_ACTIVITY, self._handle_agent_activity_event)
-        event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error_event)
-
-        # Bridge operation outcome events to WebSocket clients
-        for _op_event in all_outcome_events():
-            event_bus.subscribe(_op_event, self._handle_operation_completed_event)
-
         # Set cache through property to trigger subscription
         self.cache = cache
 
@@ -300,70 +289,15 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         projects_routes.configure(cache=value)
         tui_routes.configure(cache=value)
 
-    async def _handle_session_updated_event(
-        self,
-        _event: str,
-        context: SessionUpdatedContext,
-    ) -> None:
-        """Handle local session update by updating cache."""
-        if not self.cache:
-            logger.warning("Cache unavailable, cannot update session in cache")
-            return
-        session = await db.get_session(context.session_id)
-        if not session:
-            return
-        if session.closed_at:
-            self.cache.remove_session(context.session_id)
-            return
-        snapshot = await project_session_snapshot(db, session, computer=config.computer.name)
-        self.cache.update_session(snapshot)
-
-    async def _handle_session_started_event(
-        self,
-        _event: str,
-        context: SessionLifecycleContext,
-    ) -> None:
-        """Handle local session creation by updating cache."""
-        if not self.cache:
-            logger.warning("Cache unavailable, cannot create session in cache")
-            return
-        session = await db.get_session(context.session_id)
-        if not session:
-            return
-        snapshot = await project_session_snapshot(db, session, computer=config.computer.name)
-        self.cache.update_session(snapshot)
-
-    async def _handle_session_closed_event(
-        self,
-        _event: str,
-        context: SessionLifecycleContext,
-    ) -> None:
-        """Handle local session removal by updating cache and broadcasting closed status."""
-        if not self.cache:
-            logger.warning("Cache unavailable, cannot remove session from cache")
-            return
-        self.cache.remove_session(context.session_id)
-
-    async def _handle_session_status_event(
-        self,
-        _event: str,
-        context: SessionStatusContext,
-    ) -> None:
+    async def handle_runtime_session_status(self, context: RuntimeSessionStatusData) -> None:
         """Broadcast canonical lifecycle status transition events to WS clients.
 
         Delivers the contract-defined status vocabulary (R2) directly to connected
         clients whose current role reaches the session. Clients use this to render truthful
         session status without adapter-local heuristics (R1, R3).
         """
-        session = await db.get_session(context.session_id)
-        if session is None:
-            return
-        snapshot = await project_session_snapshot(db, session, computer=config.computer.name)
         close_failed = context.reason == LifecycleTransitionReason.CLOSE_FAILED
-        if close_failed and self.cache:
-            # The failed close restored the record; the snapshot below must carry that state.
-            self.cache.update_session(snapshot)
-        targets = self._session_event_targets(snapshot)
+        targets = await self._session_event_targets_for_id(context.session_id)
         if not targets:
             return
         dto = SessionLifecycleStatusEventDTO(
@@ -383,17 +317,15 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         """Resolve a session's current reach before delivering its event."""
         if session_id is None:
             return []
-        session = await db.get_session(session_id)
-        if session is None:
+        cached = self.cache.get_session(session_id) if self.cache is not None else None
+        if cached is not None and cached.computer != config.computer.name:
+            return self._session_event_targets(cached)
+        snapshot = await self.session_materializer.reconcile(session_id)
+        if snapshot is None:
             return []
-        snapshot = await project_session_snapshot(db, session, computer=config.computer.name)
         return self._session_event_targets(snapshot)
 
-    async def _handle_agent_activity_event(
-        self,
-        _event: str,
-        context: AgentActivityEvent,
-    ) -> None:
+    async def handle_runtime_agent_activity(self, context: RuntimeAgentActivityData) -> None:
         """Broadcast agent activity events to WS clients (no cache, no DB re-read).
 
         The DTO preserves hook event type in 'type' for consumer compatibility and
@@ -407,16 +339,18 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             "message_intent": context.message_intent,
             "delivery_scope": context.delivery_scope,
         }
-        if context.event_type == "user_prompt_submit":
+        details = context.details
+        if context.event_type is AgentHookEvents.USER_PROMPT_SUBMIT:
             dto = UserPromptSubmitActivityEventDTO(**common)
-        elif context.event_type == "pre_tool_use":
+        elif context.event_type is AgentHookEvents.PRE_TOOL_USE:
             dto = ToolUseActivityEventDTO(
-                tool_name=getattr(context, "tool_name", None),
-                tool_preview=getattr(context, "tool_preview", None),
+                tool_name=details.get("tool_name") if isinstance(details.get("tool_name"), str) else None,
+                tool_preview=details.get("tool_preview") if isinstance(details.get("tool_preview"), str) else None,
                 **common,
             )
-        elif context.event_type == "agent_stop":
-            dto = AgentStopActivityEventDTO(summary=getattr(context, "summary", None), **common)
+        elif context.event_type is AgentHookEvents.AGENT_STOP:
+            summary = details.get("summary") if isinstance(details.get("summary"), str) else None
+            dto = AgentStopActivityEventDTO(summary=summary, **common)
         else:
             return
         targets = await self._session_event_targets_for_id(context.session_id)
@@ -424,21 +358,22 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             return
         self._broadcast_payload("agent_activity", dto.model_dump(exclude_none=True), targets=targets)
 
-    async def _handle_agent_availability_event(
-        self,
-        _event: str,
-        context: AgentAvailabilityContext,
-    ) -> None:
+    async def handle_runtime_agent_availability(self, context: RuntimeAgentAvailabilityData) -> None:
         """Broadcast live agent availability changes to WS clients."""
         dto = agent_availability_event_dto(context)
         self._broadcast_payload("agent_availability", dto.model_dump(exclude_none=True))
 
-    async def _handle_error_event(
-        self,
-        _event: str,
-        context: ErrorEventContext,
-    ) -> None:
+    async def handle_runtime_error(self, data: RuntimeErrorData) -> None:
         """Broadcast error events to WS clients."""
+        context = ErrorEventContext(
+            session_id=data.session_id,
+            message=data.message,
+            source=data.source,
+            details=data.details,
+            severity=cast(ErrorSeverity, data.severity),
+            retryable=data.retryable,
+            code=data.code,
+        )
         if context.source == _HOOK_RECEIVER_ERROR_SOURCE:
             logger.debug(
                 "Suppressing technical hook feedback from TUI websocket delivery",
@@ -473,13 +408,12 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         }
         self._broadcast_payload("error", payload, targets=targets)
 
-    async def _handle_operation_completed_event(
-        self,
-        event: str,
-        context: OperationSucceededContext | OperationFailedContext,
-    ) -> None:
+    async def handle_runtime_operation_outcome(self, data: RuntimeOperationOutcomeData, *, succeeded: bool) -> None:
         """Broadcast an operation outcome (success or failure) to WebSocket clients."""
-        operation = await db.get_operation(context.operation_id)
+        outcome_events = outcome_events_for(data.operation_kind)
+        if outcome_events is None:
+            return
+        operation = await db.get_operation(data.operation_id)
         if operation is None:
             return
         targets = self._subject_event_targets(
@@ -490,17 +424,19 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         if not targets:
             return
         dto: OperationSucceededEventDTO | OperationFailedEventDTO
-        if isinstance(context, OperationFailedContext):
+        if not succeeded:
+            event = outcome_events[1]
             dto = OperationFailedEventDTO(
                 event=event,
-                operation_id=context.operation_id,
-                error=context.error,
+                operation_id=data.operation_id,
+                error=data.error or operation.error_text or "",
                 work_feedback=operation.work_feedback,
             )
         else:
+            event = outcome_events[0]
             dto = OperationSucceededEventDTO(
                 event=event,
-                operation_id=context.operation_id,
+                operation_id=data.operation_id,
                 work_feedback=operation.work_feedback,
             )
         self._broadcast_payload(event, dto.model_dump(exclude_none=True), targets=targets)

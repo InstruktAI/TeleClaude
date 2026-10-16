@@ -7,7 +7,9 @@ import json
 import os
 import re
 from collections import deque
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -19,10 +21,7 @@ import zstandard
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import ErrorEventContext, TeleClaudeEvents
 from teleclaude.core.models import JsonDict, JsonValue
-from teleclaude.events.envelope import EventVisibility
 
 from ._checkpoint_anchors import find_last_checkpoint_anchor
 from ._parsers import normalize_transcript_entry_message
@@ -32,16 +31,31 @@ from ._utils import CHECKPOINT_JSONL_TAIL_READ_BYTES, _apply_tail_limit, _apply_
 logger = get_logger(__name__)
 
 _REPORTED_TRANSCRIPT_FORMAT_MISMATCHES: set[tuple[str, str]] = set()
+_FORMAT_MISMATCH_SINK: ContextVar[Callable[[str, Path, json.JSONDecodeError], None] | None] = ContextVar(
+    "transcript_format_mismatch_sink", default=None
+)
+
+
+@contextmanager
+def collect_transcript_format_mismatches(
+    sink: Callable[[str, Path, json.JSONDecodeError], None] | None,
+) -> Iterator[None]:
+    """Bind an explicit caller-owned sink for mismatches found in this parse."""
+    token = _FORMAT_MISMATCH_SINK.set(sink)
+    try:
+        yield
+    finally:
+        _FORMAT_MISMATCH_SINK.reset(token)
 
 
 def _report_transcript_format_mismatch(agent: str, path: Path, exc: json.JSONDecodeError) -> None:
-    """Surface third-party transcript shape drift to the TUI exactly once per (agent, path).
+    """Report third-party transcript shape drift exactly once per (agent, path).
 
     External agent CLIs (Gemini, Codex) change their on-disk session-state format without
     a stability contract. When our reader can't parse a transcript, that is a high-signal
     integration-drift event: the agent shipped a new shape and our parser is now stale.
-    Emit an `ERROR` event so the TUI surfaces a toast; the user sees the breakage live
-    instead of having to dig through daemon logs.
+    The active parse owner can collect this diagnostic and publish it through its
+    awaited runtime error boundary. Parsers with no such owner still log it.
     """
     key = (agent, str(path))
     if key in _REPORTED_TRANSCRIPT_FORMAT_MISMATCHES:
@@ -53,23 +67,12 @@ def _report_transcript_format_mismatch(agent: str, path: Path, exc: json.JSONDec
         path=str(path),
         error=str(exc),
     )
-    try:
-        event_bus.emit(
-            TeleClaudeEvents.ERROR,
-            ErrorEventContext(
-                session_id=None,
-                message=(
-                    f"Transcript parser can't read {agent} session file "
-                    f"{path.name} — file shape may have changed in the agent CLI. "
-                    "Output/summary/title for this session will be empty until the parser is updated."
-                ),
-                source="transcript_reader",
-                severity="warning",
-            ),
-            visibility=EventVisibility.CLUSTER,
-        )
-    except Exception as emit_exc:
-        logger.debug("ERROR event emission failed (non-fatal): %s", emit_exc)
+    sink = _FORMAT_MISMATCH_SINK.get()
+    if sink is not None:
+        try:
+            sink(agent, path, exc)
+        except Exception as sink_exc:
+            logger.debug("Transcript mismatch reporting failed (non-fatal): %s", sink_exc)
 
 
 __all__ = [

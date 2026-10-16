@@ -5,11 +5,10 @@ from datetime import datetime
 
 from sqlalchemy import text
 
-from teleclaude.core.event_bus import event_bus
+from teleclaude.core.runtime_events import publish_session_source_change
 from teleclaude.core.session_output import StopOutputDisposition
-from teleclaude.events.envelope import EventVisibility
+from teleclaude.events.schemas.system import RuntimeSessionChange
 
-from ..events import SessionUpdatedContext, TeleClaudeEvents
 from ..models import SessionField
 
 _PERSIST_AGENT_STOP_SUMMARY_SQL = (
@@ -108,13 +107,10 @@ class DbAgentStopsMixin:
         if not accepted:
             return False
 
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_UPDATED,
-            SessionUpdatedContext(
-                session_id=session_id,
-                updated_fields=updated_fields,
-            ),
-            visibility=EventVisibility.CLUSTER,
+        await publish_session_source_change(
+            session_id,
+            RuntimeSessionChange.UPDATED,
+            changed_fields=tuple(updated_fields),
         )
         return True
 
@@ -151,12 +147,9 @@ class DbAgentStopsMixin:
         if not accepted:
             return False
 
-        event_bus.emit(
-            TeleClaudeEvents.SESSION_UPDATED,
-            SessionUpdatedContext(
-                session_id=session_id,
-                updated_fields=updated_fields,
-            ),
-            visibility=EventVisibility.CLUSTER,
+        await publish_session_source_change(
+            session_id,
+            RuntimeSessionChange.UPDATED,
+            changed_fields=tuple(updated_fields),
         )
         return True

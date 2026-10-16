@@ -24,8 +24,6 @@ from teleclaude.core.agent_readiness import AGENT_START_STABILIZE_QUIET_S, await
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handoff_control_payload
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import AgentReadyContext, TeleClaudeEvents
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.injected_text import (
     EnvelopeName,
@@ -38,8 +36,9 @@ from teleclaude.core.next_machine.delivery import (
     parse_git_porcelain_paths,
     reclaim_worktree_trash,
 )
-from teleclaude.core.operations import get_operations_service
+from teleclaude.core.operations.service import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
+from teleclaude.core.runtime_readiness import RuntimeReadinessKey
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_cleanup import TMUX_SESSION_NAME_UNBOUND
 from teleclaude.core.session_compaction import (
@@ -64,6 +63,7 @@ from teleclaude.hooks.session_map import prune_session_map
 from teleclaude.project_manifest import load_roots
 from teleclaude.project_root import is_project_checkout
 from teleclaude.resource_validation._todo_status import build_todo_status_map
+from teleclaude.runtime.environment import runtime_run_command
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -100,6 +100,7 @@ class _RestoreTmuxFailureReason(StrEnum):
     TMUX_CREATION_FAILED = "tmux_creation_failed"
     MISSING_AGENT_IDENTITY = "missing_agent_identity"
     RESTORE_COMMAND_REJECTED = "restore_command_rejected"
+    SESSION_CLOSED = "session_closed"
     READY_TIMEOUT = "ready_timeout"
     CONTINUATION_REJECTED = "continuation_rejected"
     UNEXPECTED_EXCEPTION = "unexpected_exception"
@@ -469,7 +470,7 @@ class MaintenanceService:
                 await self._cleanup_worktree_trash()
                 await self._cleanup_inactive_sessions()
                 await self._cleanup_removed_todos()
-                await session_cleanup.emit_recently_closed_session_events()
+                await session_cleanup.retry_recently_closed_session_cleanup(self._client)
                 await session_cleanup.cleanup_orphan_tmux_sessions()
                 await session_cleanup.cleanup_orphan_workspaces()
                 await session_cleanup.cleanup_orphan_session_tmpdirs()
@@ -728,22 +729,13 @@ class MaintenanceService:
                     launch_flags=launch_profile.flags,
                     resolved_flags=launch.flags if launch else None,
                 )
-
-                # Subscribe BEFORE the restore paste — the agent's SessionStart
-                # hook can race the paste pipeline and emit AGENT_READY before
-                # this coroutine subscribes. event_bus has no replay.
-                loop = asyncio.get_running_loop()
-                ready_future: asyncio.Future[None] = loop.create_future()
-
-                async def _on_ready(_event_type: str, ctx: AgentReadyContext) -> None:
-                    if (
-                        ctx.session_id == session.session_id
-                        and ctx.compaction_launch_context is None
-                        and not ready_future.done()
-                    ):
-                        ready_future.set_result(None)
-
-                ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
+                runtime_run_id = str(uuid4())
+                if not await db.install_runtime_run(session.session_id, runtime_run_id):
+                    await _finish_failed_restore(_RestoreTmuxFailureReason.SESSION_CLOSED)
+                    return
+                cmd = runtime_run_command(cmd, runtime_run_id)
+                readiness_key = RuntimeReadinessKey.ordinary(session.session_id, runtime_run_id)
+                ready_future = self._client.runtime_readiness.register(readiness_key)
                 try:
                     if not await tmux_bridge.send_keys_existing_tmux(
                         session_name=session.tmux_session_name,
@@ -767,6 +759,7 @@ class MaintenanceService:
                             ready_future=ready_future,
                             quiet_s=AGENT_START_STABILIZE_QUIET_S,
                             timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
+                            readiness=self._client.runtime_readiness,
                         )
                     except TimeoutError:
                         await _finish_failed_restore(_RestoreTmuxFailureReason.READY_TIMEOUT)
@@ -774,7 +767,7 @@ class MaintenanceService:
                     current = await db.get_session(session.session_id)
                     await self._compaction_owner.settle_restoring_under_owner(current)
                 finally:
-                    event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
+                    self._client.runtime_readiness.release(readiness_key, ready_future)
 
                 try:
                     occurrence_key = f"restore-continuation:{session.session_id}:{uuid4().hex}"

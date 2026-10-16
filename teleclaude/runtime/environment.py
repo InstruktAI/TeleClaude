@@ -5,14 +5,16 @@ from __future__ import annotations
 import json
 import os
 import pwd
+import shlex
 import subprocess
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
 from instrukt_ai_logging import get_logger
+from pydantic import JsonValue
 
 from teleclaude.paths import BIN_DIR
 
@@ -78,6 +80,9 @@ _PLATFORM_SESSION_ENV_EXTRA_ALLOWLIST = frozenset(
 )
 COMPACTION_LAUNCH_CONTEXT_FIELD = "compaction_launch_context"
 _COMPACTION_LAUNCH_CONTEXT_ENV = "TELECLAUDE_COMPACTION_LAUNCH_CONTEXT"
+RUNTIME_RUN_ID_FIELD = "runtime_run_id"
+_RUNTIME_RUN_ID_ENV = "TELECLAUDE_RUNTIME_RUN_ID"
+_RUNTIME_RUN_COMMAND = "{name}={value} {command}"
 _COMPACTION_CONTEXT_JSON_INVALID = "Temporary compaction launch context is invalid JSON"
 _COMPACTION_CONTEXT_SHAPE_INVALID = "Temporary compaction launch context has an invalid shape"
 
@@ -117,6 +122,44 @@ def compaction_launch_environment(context: CompactionLaunchContext) -> tuple[tup
     return ((_COMPACTION_LAUNCH_CONTEXT_ENV, value),)
 
 
+def runtime_run_command(command: str, runtime_run_id: str) -> str:
+    """Bind an immutable run id to the launched child process environment."""
+    return _RUNTIME_RUN_COMMAND.format(
+        name=_RUNTIME_RUN_ID_ENV,
+        value=shlex.quote(runtime_run_id),
+        command=command,
+    )
+
+
+def read_runtime_run_id(env: Mapping[str, str] | None = None) -> str | None:
+    """Read an ordinary managed launch identity from the receiver process environment."""
+    source = env if env is not None else os.environ  # fmt: skip  # guard: direct-env-read - allowed: typed child startup context
+    value = source.get(_RUNTIME_RUN_ID_ENV)
+    return value if value else None
+
+
+def take_runtime_run_id(payload: MutableMapping[str, JsonValue]) -> str | None:
+    """Remove and decode a launch identity from one normalized hook payload."""
+    value = payload.pop(RUNTIME_RUN_ID_FIELD, None)
+    return value if isinstance(value, str) and value else None
+
+
+def runtime_run_mismatch(
+    compaction_context: CompactionLaunchContext | None,
+    incoming_run_id: str | None,
+    current_run_id: str | None,
+    *,
+    native_identity_event: bool = False,
+) -> bool:
+    """Identify an ordinary hook carrying a superseded run id, except native identity refreshes."""
+    return (
+        compaction_context is None
+        and not native_identity_event
+        and incoming_run_id is not None
+        and incoming_run_id != current_run_id
+    )
+
+
 def decode_compaction_launch_context(value: object) -> CompactionLaunchContext | None:
     """Decode the known launch-context wire object or its environment JSON form."""
     if value is None:
@@ -138,6 +181,14 @@ def decode_compaction_launch_context(value: object) -> CompactionLaunchContext |
     ):
         raise ValueError(_COMPACTION_CONTEXT_SHAPE_INVALID)
     return CompactionLaunchContext(attempt_id=attempt_id, native_session_id=native_session_id)
+
+
+def take_normalized_launch_context(
+    payload: MutableMapping[str, JsonValue],
+) -> tuple[CompactionLaunchContext | None, str | None]:
+    """Remove and decode immutable ordinary and temporary launch identities."""
+    compaction = decode_compaction_launch_context(payload.pop(COMPACTION_LAUNCH_CONTEXT_FIELD, None))
+    return compaction, take_runtime_run_id(payload)
 
 
 def read_compaction_launch_context(env: Mapping[str, str] | None = None) -> CompactionLaunchContext | None:

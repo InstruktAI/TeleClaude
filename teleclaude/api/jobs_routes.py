@@ -13,8 +13,7 @@ from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api_models import JobDTO
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.config.schema import JobScheduleConfig
-from teleclaude.core.operations import get_operations_service
-from teleclaude.core.operations.service import SerializedOperation
+from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.cron import state as cron_state_module
 from teleclaude.cron.listing import compose_job_listing
 from teleclaude.services.project_catalog import get_project_catalog_service

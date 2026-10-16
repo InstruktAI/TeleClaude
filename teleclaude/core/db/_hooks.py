@@ -8,10 +8,9 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy import delete, or_, true, update
 from sqlmodel import select
 
+from teleclaude.config.machine import config
 from teleclaude.core.agent_availability import AgentAvailabilityStatus, AvailabilityState
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import AgentAvailabilityContext, TeleClaudeEvents
-from teleclaude.events.envelope import EventVisibility
+from teleclaude.core.runtime_events import publish_agent_availability
 
 from .. import db_models
 from ._rows import HookOutboxRow
@@ -32,7 +31,7 @@ class DbHooksMixin:
         return AvailabilityState(AgentAvailabilityStatus(row.status), row.status_until, row.reason)
 
     @staticmethod
-    def _emit_agent_availability_event(
+    async def _emit_agent_availability_event(
         *,
         agent: str,
         status: AgentAvailabilityStatus | None,
@@ -45,20 +44,17 @@ class DbHooksMixin:
         model_reason: str | None = None,
     ) -> None:
         """Broadcast a live agent availability change event."""
-        event_bus.emit(
-            TeleClaudeEvents.AGENT_AVAILABILITY,
-            AgentAvailabilityContext(
-                agent=agent,
-                status=status,
-                status_until=status_until,
-                reason=reason,
-                error=error,
-                model=model,
-                model_status=model_status,
-                model_status_until=model_status_until,
-                model_reason=model_reason,
-            ),
-            visibility=EventVisibility.CLUSTER,
+        await publish_agent_availability(
+            config.computer.name,
+            agent,
+            status=status,
+            status_until=status_until,
+            reason=reason,
+            error=error,
+            model=model,
+            model_status=model_status,
+            model_status_until=model_status_until,
+            model_reason=model_reason,
         )
 
     async def get_agent_availability(self, agent: str) -> AvailabilityState | None:
@@ -138,7 +134,7 @@ class DbHooksMixin:
         await self.set_agent_availability(agent, model, state)
         if model:
             agent_info = await self.get_agent_availability(agent)
-            self._emit_agent_availability_event(
+            await self._emit_agent_availability_event(
                 agent=agent,
                 status=agent_info.status if agent_info else AgentAvailabilityStatus.AVAILABLE,
                 status_until=agent_info.status_until if agent_info else None,
@@ -149,7 +145,7 @@ class DbHooksMixin:
                 model_reason=reason,
             )
         else:
-            self._emit_agent_availability_event(
+            await self._emit_agent_availability_event(
                 agent=agent,
                 status=AgentAvailabilityStatus.UNAVAILABLE,
                 status_until=unavailable_until,
@@ -168,7 +164,7 @@ class DbHooksMixin:
         )
         if model:
             agent_info = await self.get_agent_availability(agent)
-            self._emit_agent_availability_event(
+            await self._emit_agent_availability_event(
                 agent=agent,
                 status=agent_info.status if agent_info else AgentAvailabilityStatus.AVAILABLE,
                 status_until=agent_info.status_until if agent_info else None,
@@ -177,7 +173,7 @@ class DbHooksMixin:
                 model_status=AgentAvailabilityStatus.AVAILABLE,
             )
         else:
-            self._emit_agent_availability_event(agent=agent, status=AgentAvailabilityStatus.AVAILABLE)
+            await self._emit_agent_availability_event(agent=agent, status=AgentAvailabilityStatus.AVAILABLE)
         logger.info("Marked agent %s available", agent)
 
     async def mark_agent_degraded(
@@ -193,7 +189,7 @@ class DbHooksMixin:
         await self.set_agent_availability(agent, model, state)
         if model:
             agent_info = await self.get_agent_availability(agent)
-            self._emit_agent_availability_event(
+            await self._emit_agent_availability_event(
                 agent=agent,
                 status=agent_info.status if agent_info else AgentAvailabilityStatus.AVAILABLE,
                 status_until=agent_info.status_until if agent_info else None,
@@ -204,7 +200,7 @@ class DbHooksMixin:
                 model_reason=reason,
             )
         else:
-            self._emit_agent_availability_event(
+            await self._emit_agent_availability_event(
                 agent=agent,
                 status=AgentAvailabilityStatus.DEGRADED,
                 status_until=degraded_until,
@@ -239,10 +235,10 @@ class DbHooksMixin:
         if cleared > 0:
             for agent, model in expired_agents:
                 if model == _AGENT_WIDE_MODEL:
-                    self._emit_agent_availability_event(agent=agent, status=AgentAvailabilityStatus.AVAILABLE)
+                    await self._emit_agent_availability_event(agent=agent, status=AgentAvailabilityStatus.AVAILABLE)
                 else:
                     agent_info = await self.get_agent_availability(agent)
-                    self._emit_agent_availability_event(
+                    await self._emit_agent_availability_event(
                         agent=agent,
                         status=agent_info.status if agent_info else AgentAvailabilityStatus.AVAILABLE,
                         status_until=agent_info.status_until if agent_info else None,

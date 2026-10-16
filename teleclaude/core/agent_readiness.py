@@ -15,10 +15,9 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import AgentName, AgentStartupSignal, resolve_parser_agent
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import DeliveryNoComposerContext, TeleClaudeEvents
+from teleclaude.core.events import DeliveryNoComposerContext
+from teleclaude.core.runtime_readiness import RuntimeReadiness
 from teleclaude.core.tmux_bridge import PaneObservation
-from teleclaude.events.envelope import EventVisibility
 from teleclaude.utils import strip_ansi_codes
 
 if TYPE_CHECKING:
@@ -96,22 +95,23 @@ class PromptDeliveryObservation:
     state: PromptDeliveryState
 
 
-def publish_delivery_no_composer(session_id: str, surface_text: str) -> None:
+async def publish_delivery_no_composer(
+    session_id: str,
+    surface_text: str,
+    readiness: RuntimeReadiness,
+) -> None:
     """Publish the fact that a captured pane shows no recognized composer.
 
     The fact carries the bounded last lines of the surface so the session's
     watchers can see what it displays. What the status owner and the watchers
     do with it is theirs; observers publish and move on.
     """
-    event_bus.emit(
-        TeleClaudeEvents.DELIVERY_NO_COMPOSER,
-        DeliveryNoComposerContext(
-            session_id=session_id,
-            observed_at=datetime.now(UTC).isoformat(),
-            pane_tail=tmux_bridge.pane_evidence_tail(surface_text),
-        ),
-        visibility=EventVisibility.LOCAL,
+    context = DeliveryNoComposerContext(
+        session_id=session_id,
+        observed_at=datetime.now(UTC).isoformat(),
+        pane_tail=tmux_bridge.pane_evidence_tail(surface_text),
     )
+    await readiness.report_no_composer(context)
 
 
 def _log_readiness_decision(
@@ -457,6 +457,7 @@ async def wait_for_agent_ready(
     session: Session,
     timeout_s: float,
     quiet_s: float,
+    readiness: RuntimeReadiness,
     poll_interval_s: float = 0.2,
 ) -> PaneReadiness:
     """Wait for the agent's visible activity to settle, then for its identified composer.
@@ -507,7 +508,7 @@ async def wait_for_agent_ready(
             elif screen_since is not None and now - screen_since >= AGENT_START_STABILIZE_QUIET_S:
                 on_settled_screen = True
                 if not screen_published:
-                    publish_delivery_no_composer(session.session_id, observation.text)
+                    await publish_delivery_no_composer(session.session_id, observation.text, readiness)
                     screen_published = True
         else:
             screen_digest = None
@@ -564,6 +565,7 @@ async def await_agent_readiness(
     ready_future: asyncio.Future[None],
     quiet_s: float,
     timeout_s: float,
+    readiness: RuntimeReadiness,
 ) -> ReadinessSignal:
     """Open the launch/relaunch gate on its provider-declared readiness authority.
 
@@ -602,16 +604,16 @@ async def await_agent_readiness(
         return ReadinessSignal.HOOK
 
     pane_task = asyncio.create_task(
-        wait_for_agent_ready(agent_name, session, timeout_s, quiet_s),
+        wait_for_agent_ready(agent_name, session, timeout_s, quiet_s, readiness=readiness),
         name=f"agent-readiness-pane:{session_id}",
     )
     try:
-        readiness = await pane_task
+        pane_readiness = await pane_task
     finally:
         if not pane_task.done():
             pane_task.cancel()
 
-    if readiness is PaneReadiness.TIMED_OUT_ON_SCREEN:
+    if pane_readiness is PaneReadiness.TIMED_OUT_ON_SCREEN:
         _log_readiness_decision(
             agent_name=agent_name,
             session_id=session_id,
@@ -623,7 +625,7 @@ async def await_agent_readiness(
             f"agent readiness: pane shows a screen with no composer at timeout (agent={agent_name})"
         )
 
-    if readiness is PaneReadiness.TIMED_OUT:
+    if pane_readiness is PaneReadiness.TIMED_OUT:
         _log_readiness_decision(
             agent_name=agent_name,
             session_id=session_id,

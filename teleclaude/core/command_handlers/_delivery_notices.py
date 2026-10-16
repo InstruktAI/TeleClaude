@@ -11,8 +11,6 @@ from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.delivery.models import InvalidDestinationOverrideError
 from teleclaude.core.delivery.router import Router, resolve_destination
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.inbound_queue import (
     DeliveryTerminalCause,
@@ -28,7 +26,6 @@ from teleclaude.core.injected_text import (
 from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_status import is_session_terminal
-from teleclaude.events.envelope import EventVisibility
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -244,11 +241,6 @@ async def notify_delivery_exhausted(
         closed_at=session.closed_at,
     ):
         return
-    event_bus.emit(
-        TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
-        SessionLifecycleContext(session_id=session.session_id),
-        visibility=EventVisibility.LOCAL,
-    )
     await client.send_message(session, _CONTINUATION_DELIVERY_FAILURE_NOTICE)
     logger.info(
         "agent_restart_continuation_delivery_failed",

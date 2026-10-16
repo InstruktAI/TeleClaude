@@ -14,6 +14,7 @@ from teleclaude.core import tmux_io
 from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.inbound_queue import _HELD_MESSAGE_TIMEOUT_S
 from teleclaude.core.injected_text import InjectedInputAuthority
+from teleclaude.core.runtime_readiness import RuntimeReadiness
 
 logger = get_logger(__name__)
 
@@ -71,6 +72,7 @@ async def deliver_startup_message(
     quiet_s: float,
     timeout_s: float,
     delivery_mode: AgentStartupDeliveryMode,
+    readiness: RuntimeReadiness,
 ) -> UserTurnDeliveryResult:
     """Wait on the provider's readiness authority, then submit one startup message."""
     await await_agent_readiness(
@@ -80,6 +82,7 @@ async def deliver_startup_message(
         ready_future=ready_future,
         quiet_s=quiet_s,
         timeout_s=timeout_s,
+        readiness=readiness,
     )
     if not await tmux_io.is_process_running(session):
         raise RuntimeError(AGENT_STARTUP_DELIVERY_PROCESS_EXITED_ERROR)
@@ -88,6 +91,7 @@ async def deliver_startup_message(
         message,
         active_agent=agent_name,
         authority=authority,
+        readiness=readiness,
     )
     held_at: datetime | None = None
     while result.outcome is tmux_io.UserTurnDeliveryOutcome.HELD:
@@ -106,6 +110,7 @@ async def deliver_startup_message(
             message,
             active_agent=agent_name,
             authority=authority,
+            readiness=readiness,
         )
     emit_agent_startup_delivery_decision(
         session_id=session.session_id,

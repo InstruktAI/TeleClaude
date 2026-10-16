@@ -33,7 +33,7 @@ from teleclaude.core.command_dispatch import execute_command_envelope
 from teleclaude.core.db import SessionRecordAbsent, SessionRecordFound, SessionRecordOutsideReach, db
 from teleclaude.core.models import JsonDict, JsonValue, RedisInboundMessage, SessionEntryPoint
 from teleclaude.core.models._types import json_int
-from teleclaude.core.operations import get_operations_service
+from teleclaude.core.operations.service import get_operations_service
 from teleclaude.core.session_inspection import OUTSIDE_REACH_DETAIL_TEMPLATE, inspect_local
 from teleclaude.core.session_listing import (
     SESSION_IDS_FIELD,
