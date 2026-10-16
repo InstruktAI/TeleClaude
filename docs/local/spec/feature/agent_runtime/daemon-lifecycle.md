@@ -30,6 +30,8 @@ And the lock release is idempotent
 
 #### Staged startup ordering
 
+<!-- planned-change:retire-legacy-event-bus -->
+
 ```
 Given the service has acquired the single-instance lock and obtained its event loop
 When startup runs (guarded by an idempotent started flag)
@@ -47,6 +49,30 @@ Then it executes in this strict order:
 And on completion the started flag is set and total elapsed is logged
 And total elapsed >=30s triggers a slow-startup warning
 ```
+
+<!-- change:retire-legacy-event-bus -->
+
+Storage migration and initialization precede operations startup and local source
+materialization. Adapters receive the local session state their startup
+requires. Domain-event publication is ready before producers can emit, and
+each required consumer's progress is established before the source activity it
+must observe. Registering or scheduling a reader alone does not establish that
+handover.
+
+The request surface is constructed before its event callbacks are wired, and
+its listener is bound before consumers that call it execute. Source seeding and
+live session materialization share an explicit coverage handover before the
+runtime declares startup complete. The handover reconciles current source
+state through the cache owner under
+`local/projects/teleclaude/design/architecture/cache`; it does not publish
+previously captured startup rows after newer live materialization.
+
+Post-adapter reconciliation, request-surface recovery and project warmup retain
+their owner contracts. Startup remains idempotent and reports completion and
+slow stages through the lifecycle's configured observations. These readiness
+boundaries follow `sdlc/principle/architectural-defaults` and
+`sdlc/policy/domain-ownership`.
+<!-- /planned-change:retire-legacy-event-bus -->
 
 #### UC-DL6: Post-adapter completion tasks
 
@@ -405,6 +431,26 @@ And when the task cannot be replaced in place, or its restart budget is exhauste
 And the service manager relaunches the service on its installed code
 And the agent never finds the capability silently absent while the daemon reports itself healthy
 ```
+
+<!-- planned:retire-legacy-event-bus -->
+
+### Runtime-local coordination
+
+Runtime-owned readiness coordination scopes a waiter to its target session and
+launch identity. Registration precedes the action that can satisfy the waiter.
+An already persisted matching start can satisfy a resumed wait; another
+session's start or a distinct compaction launch cannot satisfy it. Success,
+timeout, cancellation and shutdown settle and release the registration under
+the caller's existing launch or continuation contract. This ownership follows
+`sdlc/policy/domain-ownership`.
+
+Hook-outbox processing that awaits its runtime owner retains that completion
+boundary before the hook is settled. Local readiness and continuations use
+their owning runtime capability, independently of domain-notification
+consumption. Command execution retains the command or operation owner's
+acceptance and completion contract, as composed by
+`local/projects/teleclaude/design/architecture/event-delivery`.
+<!-- /planned:retire-legacy-event-bus -->
 
 ### Graceful admission and settlement
 

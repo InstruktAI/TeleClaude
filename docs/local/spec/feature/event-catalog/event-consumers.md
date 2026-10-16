@@ -69,6 +69,22 @@ the project's canonical checkout performs the bound actions on its own checkout
 
 ## Canonical fields
 
+<!-- planned:retire-legacy-event-bus -->
+
+### Domain notification delivery
+
+Domain notifications between the runtime, integration and adapters use the
+platform's declared events and independent consumers. The consumer runtime is
+the sole executor of their reactions; producers hold no immediate
+subscriber-dispatch path. This division
+follows `sdlc/principle/architectural-defaults` and
+`sdlc/policy/domain-ownership`.
+
+Commands and runtime-local coordination retain their owning capabilities; the
+relationship is defined by
+`local/projects/teleclaude/design/architecture/event-delivery`.
+<!-- /planned:retire-legacy-event-bus -->
+
 ### Use cases
 
 #### UC-EC1: One consumer's failure does not hold back another

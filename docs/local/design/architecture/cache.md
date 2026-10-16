@@ -45,9 +45,47 @@ change does not republish it as locally originated work.
 
 ### Local state
 
+<!-- planned-change:retire-legacy-event-bus -->
+
 Startup warmup reads local authoritative sources. Local domain changes update
 their cache snapshots, notify local consumers, and publish the corresponding
 cluster state.
+<!-- change:retire-legacy-event-bus -->
+
+The cache owner reconciles local sessions from their current authoritative
+source. Startup supplies session identities to the same materialization
+capability that consumes local session-change notifications. Started, updated,
+closed and failed-close notifications request reconciliation; a historical
+notification does not determine the current row's existence or lifecycle.
+
+The materialization operation owns source reads, projection and cache
+publication as one serialized operation for a session. Source reads occur
+inside that operation; callers supply identities rather than captured rows.
+An older materialization cannot overtake a newer published materialization.
+Source mutations remain independent transactions, so later invalidations
+converge the projection rather than providing a synchronous read-after-write
+barrier. This separation follows `sdlc/principle/architectural-defaults` and
+`sdlc/policy/domain-ownership`.
+
+A missing local source record permits removal of a locally owned cached row;
+it supplies no deletion evidence for a peer-owned record. Retention, deletion,
+revival and failed close are read from the owning source's current contract.
+Runtime supplies host access under
+`local/projects/teleclaude/spec/feature/agent_runtime/host-pane-access`.
+
+Optional external enrichment contributes metadata applicable to the current
+assignment. It does not retain publication authority over a captured session
+snapshot or establish row existence. Lifecycle materialization proceeds
+without awaiting the external provider. Source and assignment reads are
+arranged coherently, with lifecycle facts read after other awaited metadata
+where the source contract permits. A failed source read preserves the available
+cache and remains an observable failed reconciliation.
+
+API connections consume cache notifications and apply viewer projection; local
+cache materialization is independent of the request server's lifetime. The
+cache publishes the corresponding peer state through its existing replication
+contract after local application.
+<!-- /planned-change:retire-legacy-event-bus -->
 
 ### Remote state
 
