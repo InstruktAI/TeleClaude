@@ -290,8 +290,9 @@ class Deadline:
         """Return the least command/vector/outer allowance without resetting any end."""
         if not math.isfinite(maximum_seconds) or maximum_seconds <= 0:
             raise ValueError(ERROR_BUDGET)
-        end = min(self.end_ns, vector_end_ns) if vector_end_ns is not None else self.end_ns
-        remaining = end - time.monotonic_ns() - (self.reserve_ns if preserve_reserve else 0)
+        outer_available_end = self.end_ns - (self.reserve_ns if preserve_reserve else 0)
+        end = min(outer_available_end, vector_end_ns) if vector_end_ns is not None else outer_available_end
+        remaining = end - time.monotonic_ns()
         allowance = min(maximum_seconds, remaining / NANOSECONDS)
         if allowance <= 0:
             raise TimeoutError(ERROR_BUDGET)
