@@ -520,7 +520,9 @@ async def _sync_artifact_provenance_state(
     repo_root: str,
     artifact_body: str,
     prepared_session_id: str | None,
+    adopt_phase: bool = True,
 ) -> None:
+    """Sync one artifact's provenance; a task-plan also moves the phase unless the caller adopts it itself."""
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
         return
@@ -534,7 +536,7 @@ async def _sync_artifact_provenance_state(
         artifact_body=artifact_body,
         snippet_digest_fn=snippet_body_digest_for(repo_root),
     )
-    if artifact_name == ARTIFACT_TASK_PLAN:
+    if artifact_name == ARTIFACT_TASK_PLAN and adopt_phase:
         artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
         writer.state.lifecycle_phase = adopt_prepare_handoff_phase(
             writer.state,
@@ -674,6 +676,8 @@ async def todo_content_create(
                 repo_root=effective_cwd,
                 artifact_body=written_artifact_body,
                 prepared_session_id=identity.session_id,
+                # A task created with its plan is placed and pre-authorized by seed_task_plan_authorization below.
+                adopt_phase=not (request.plan and request.kind == TodoKind.TASK),
             )
 
         if request.plan and request.kind == TodoKind.CHANGE:
