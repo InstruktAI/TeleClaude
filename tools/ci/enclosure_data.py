@@ -29,6 +29,7 @@ from tools.ci.enclosure_contract import (
 type NativeCommand = Callable[[tuple[str, ...], float], int | None]
 
 READ_BINARY: Final = "rb"
+UTF8: Final = "utf-8"
 SHA256: Final = "sha256"
 EXCLUSIVE_BINARY: Final = "xb"
 TAR: Final = "/usr/bin/tar"
@@ -38,6 +39,23 @@ TAR_FILE: Final = "--file"
 TAR_DIRECTORY: Final = "--directory"
 TAR_NUMERIC_OWNER: Final = "--numeric-owner"
 DPKG_EXTRACT: Final = "--extract"
+GIT: Final = "/usr/bin/git"
+GIT_OPTIONS: Final = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.autocrlf=false")
+GIT_CLONE: Final = ("clone", "--no-checkout", "--no-local", "--no-tags", "--template=", "--")
+GIT_DIRECTORY: Final = "-C"
+GIT_CHECKOUT: Final = ("checkout", "--detach")
+GIT_CHECK_INDEX: Final = ("diff-index", "--quiet", "--cached", "--no-ext-diff")
+GIT_CHECK_FILES: Final = ("diff", "--quiet", "--no-ext-diff", "--no-textconv")
+END_OPTIONS: Final = "--"
+GIT_HEAD: Final = Path(".git/HEAD")
+PROVISION_ENVIRONMENT: Final = {
+    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+    "LANG": "C.UTF-8",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_GLOBAL": "/dev/null",
+    "GIT_ATTR_NOSYSTEM": "1",
+    "GIT_TERMINAL_PROMPT": "0",
+}
 GUEST_PREFIX: Final = "guest:/"
 SUDOERS: Final = "guest.sudoers"
 CONTROL_ROOT: Final = Path("var/lib/teleclaude-runtime-acceptance")
@@ -51,6 +69,7 @@ ERROR_ROOT: Final = "guest file-data materialization requires its new declared r
 ERROR_COMMAND: Final = "native file-data extraction did not complete: {executable}, exit {status}"
 ERROR_DEADLINE: Final = "native file-data materialization exhausted its original admitted allowance"
 ERROR_DESTINATION: Final = "a guest declaration resolves outside the owned rootfs"
+ERROR_SOURCE: Final = "the new guest candidate does not match its admitted commit, tree and source basis"
 
 
 class Key(StrEnum):
@@ -195,6 +214,45 @@ def stage_guest_archives(
             copied.flush()
             os.fsync(copied.fileno())
         _require_time(deadline)
+
+
+def stage_candidate(
+    rootfs: Path,
+    package: StaticPackage,
+    run_token: str,
+    source_root: Path,
+    commit: str,
+    tree: str,
+    run: NativeCommand,
+    deadline: AdmittedDeadline,
+) -> Path:
+    """Materialize the checked candidate through native Git with no provisioning-time hooks."""
+    require_hex(run_token, 32)
+    require_hex(commit, 40)
+    require_hex(tree, 40)
+    recipe = parse_object(package.recipe_bytes)
+    expected_root = Path(text(object_value(recipe[Key.HOST]), Key.ROOTFS).format(run_token=run_token))
+    if os.geteuid() != 0 or rootfs != expected_root:
+        raise ValueError(ERROR_ROOT)
+    _require_time(deadline)
+    source_root = source_root.resolve(strict=True)
+    package.validate_source(source_root)
+    target = _guest_path(rootfs, GUEST_PREFIX + str(SOURCE_DIRECTORY))
+    if target.exists() or target.is_symlink():
+        raise ValueError(ERROR_SOURCE)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    cap = positive_integer(object_value(recipe[Field.BUDGET_SECONDS]), Field.NORMAL_COMMAND_MAX)
+    # The native adapter supplies PROVISION_ENVIRONMENT, with no ambient user/system Git config.
+    _command((GIT, *GIT_OPTIONS, *GIT_CLONE, str(source_root), str(target)), run, deadline, cap)
+    prefix = (GIT, *GIT_OPTIONS, GIT_DIRECTORY, str(target))
+    _command((*prefix, *GIT_CHECKOUT, commit, END_OPTIONS), run, deadline, cap)
+    if (target / GIT_HEAD).read_text(encoding=UTF8).strip() != commit:
+        raise ValueError(ERROR_SOURCE)
+    _command((*prefix, *GIT_CHECK_INDEX, tree, END_OPTIONS), run, deadline, cap)
+    _command((*prefix, *GIT_CHECK_FILES, tree, END_OPTIONS), run, deadline, cap)
+    package.validate_source(target)
+    _require_time(deadline)
+    return target
 
 
 def stage_guest_declarations(
