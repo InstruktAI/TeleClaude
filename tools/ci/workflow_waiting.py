@@ -77,6 +77,7 @@ ARGV_DECISION: Final = "decision.argv"
 
 STARTED_CHILD: Final = re.compile(r"Started (?P<procedure>\S+) as session (?P<session>\S+)")
 WAIT_COMPLETE: Final = re.compile(r"^Performed waiting on " + re.escape(ITEM) + r".*, complete\s*$", re.MULTILINE)
+NOTE_HEADER: Final = re.compile(r" · note(?: \(|$)")
 WAIT_KEY: Final = re.compile(r"wait key: (?P<key>\S+)")
 PERFORMED: Final = "Performed {act} on {item}"
 
@@ -535,7 +536,8 @@ class _Waiting:
         status, text = self._output(noted)
         if status != 0 or PERFORMED.format(act="note", item=ITEM) not in text:
             raise creation.platform_failure(DETAIL_FRAME.format(name=FRAME_NOTE, frame=noted))
-        notes = [entry for entry in log_entries(self._log()) if entry[0].rstrip().endswith(" · note")]
+        entries = log_entries(self._log())
+        notes = [entry for entry in entries if NOTE_HEADER.search(entry[0].rstrip())]
         if len(notes) != 1 or dispatched not in notes[0][0] or notes[0][1] != NOTE_TEXT:
             raise creation.platform_failure(
                 DETAIL_LOG_COUNT.format(
@@ -543,7 +545,7 @@ class _Waiting:
                     count=len(notes),
                     kind="note",
                     expected="exactly one naming the dispatched session",
-                    headers=notes,
+                    headers=notes or entries[-6:],
                 )
             )
         creation.require_value(ITEM, self._shown(), "state.lifecycle_phase", PHASE_WAITING)
