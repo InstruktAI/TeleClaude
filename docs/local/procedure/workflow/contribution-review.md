@@ -3,9 +3,9 @@ description: Corroborate an imported proposal from trusted upstream context befo
 visibility: internal
 delivered_by:
   - reviewed-pr-contributions
-role: reviewer
+role: work-orchestrator
 parameters:
-  - name: slug
+  - name: adoption_id
     required: true
 dispatch:
   agent:
@@ -29,7 +29,7 @@ governing context.
 
 ## Preconditions
 
-- The dispatch identifies the local todo and retained proposal revision.
+- The dispatch identifies the adoption record and retained proposal revision.
 - The session starts with upstream-owned instructions and configuration.
 - The contribution inspection surface exposes the proposed source, contracts
   and report identities.
@@ -44,15 +44,16 @@ governing context.
    review material. Keep inspection read-only until the admission decision.
 3. Record which obligations the evidence satisfies, unresolved findings,
    preparation gaps, whether executable preparation may proceed and which
-   native checks remain owed. Write the complete assessment in the local
-   todo's versioned review-findings artifact.
+   native checks remain owed. Submit the complete assessment through the
+   contribution operation against the assigned adoption identity.
 4. Record the declared admission result through the contribution review
    operation, binding the report digest and proposal revision. A changed
    subject returns for assessment under the contribution-adoption contract.
-5. Return the assessment in this session's output. On an orchestrator's
-   continuation, review the remaining native evidence and actual repair delta
-   through the ordinary build-review procedure. The initial admission result
-   remains distinguishable from that completed build-review verdict.
+5. Return the assessment in this session's output. The intake operation retains
+   source and evidence, settles this assignment and its waiting builder, and
+   completes the ordinary-item handoff. The ordinary preparation/work owner
+   consumes the assessment as evidence under the contribution-adoption
+   contract. This assignment performs no item phase, claim or readiness act.
 
 ## Outputs
 
@@ -60,7 +61,7 @@ governing context.
   preparation gaps, execution readiness and outstanding native checks.
 - A revision-bound admission result recorded through workflow's contribution
   operation.
-- On continuation, the ordinary build-review report and verdict.
+- A retained-source handoff to the ordinary upstream item lifecycle.
 
 ## Recovery
 

@@ -32,6 +32,17 @@ every commit and places findings against commits; you answer each of them.
 
 ## Steps
 
+<!-- planned:reviewed-pr-contributions -->
+
+### Contributor assignments
+
+For a contributor-proposal assignment, commit through the sealed surface and
+report the exact local commits to the work driver. Its contribution contract
+governs assembly and publication of the reviewed subject. The driver receives
+the local completion notices before public branch publication and retains
+review authority (`sdlc/policy/process-change-authority`).
+<!-- /planned:reviewed-pr-contributions -->
+
 1. **Mechanism note.** Record a note with the mechanism you intend and the
    invariants you commit to, including behavior on failure midway, concurrent
    actors and restart. Report and stop your turn; the delivering session

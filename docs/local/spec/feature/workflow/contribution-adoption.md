@@ -19,13 +19,18 @@ claimed role and report formatting supply no approval.
 ### Adoption identity and intent
 
 One adoption record associates the upstream repository and PR with its pinned
-head and base, local todo, worktree and review history. Repeated notifications
+head and base, retained source, assessment sessions and review history. Before
+ordinary item entry, the contribution intake operation owns that assessment
+assignment and its output, with no local item phase, claim or approval. The
+assignment binds the adoption identity; a local item is associated only through
+the ordinary handoff. Repeated notifications
 for the same revision resume that record. A newer PR head is a new review
 subject; an earlier verdict cannot accept it implicitly. The existing qualified
-content-preserving automatic-upstream-merge rule in
-`local/projects/teleclaude/spec/feature/workflow/work-state-machine` remains
-applicable where its exact conditions hold; this contract creates no broader
-equivalence rule. A concurrent head
+content-preserving automatic-upstream-merge relation remains applicable to prior
+review evidence only where its exact conditions hold. Readiness and admission
+still bind the current exact head under
+`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`; this contract
+creates no broader equivalence rule. A concurrent head
 change is reconciled before publishing a verdict or delivering the proposal.
 
 Adoption establishes the upstream intent and governing contracts that the
@@ -64,7 +69,9 @@ configuration before admission.
 
 The upstream reviewer records corroborated obligations, unresolved findings,
 preparation gaps, execution readiness and remaining native checks in its
-versioned review report. The admission decision binds that report and the exact
+immutable contribution assessment report. The assigned reviewer submits it
+through the contribution operation, which authenticates the assignment and
+records its report digest and exact subject atomically. The admission decision binds that report and the exact
 proposal subject. Admission readiness and completed build review are separate
 facts: read-only admission records no claim that an outstanding check ran.
 The workflow consumes the reviewer's declared decision, never inferring it
@@ -72,13 +79,28 @@ from report prose (`general/principle/intelligence-boundaries`).
 
 ### Continuation inside the lifecycle
 
-The adopted proposal owns a normal todo worktree. Its reviewer starts with the
-review assignment; its builder starts with an explicit waiting assignment and
-acts on the reviewer's findings through the existing work orchestrator. Reviewer
-and builder separation follows `sdlc/procedure/lifecycle/review`. Initial
+The proposal's intake reviewer starts with the review assignment; its builder
+starts with an explicit waiting assignment. Both use trusted upstream entry
+and bind the adoption identity. Initial
 materialization and later execution preparation are distinct operations; a
 waiting builder runs neither setup nor proposed code before the review permits
 that continuation.
+
+The intake operation retains its report and source handoff before ending its
+assigned sessions. It verifies that their recorded starts and sessions settled
+before completing the ordinary-item handoff. Uncertain settlement retains the
+operation and source. A genuine preparation handoff ends the intake assignment;
+workers are not transferred into a later claiming group
+(`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`).
+
+The handoff creates an ordinary unprepared item or reuses existing approved work
+that owns the proposal. Preparation and work enter through their ordinary
+reservation-bound drivers. The normal work driver is the independent reviewer
+and its child builder belongs to that driver's claiming group. They resume the
+retained implementation and findings, consume the intake report as bound
+evidence and review only the remaining obligations and actual delta. No second
+mandatory intake review is inserted
+(`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`).
 
 Accepted proposal contracts are associated with the local todo and made
 available through the upstream authoring doc layer before ordinary lifecycle

@@ -48,6 +48,23 @@ flattening unrelated pending material. Dependency changes not yet accepted upstr
 proposal dependencies. The candidate's full code-and-documentation revision is
 the review subject before publication.
 
+The complete proposal is assembled on the item's actual work branch before its
+approving review. The independent work driver can review local commits from
+the builder's completion notices before public branch publication. Its report
+binds the composed code, documentation and evidence subject. The recorded
+contributor delivery purpose makes ordinary per-commit publication local until
+that review is current.
+
+The holding work driver then invokes the contribution branch-publication
+operation, which publishes the exact reviewed commit to the enrolled writable
+ref through the normal leased update and publish-intent contract. The ordinary
+readiness stamp checks that published ref, the worktree and the proposed commit
+before and after native gates. A ready contributor item triggers PR and report
+handoff against the already-published subject. Publication failure leaves the
+item unready and its branch resumable. Upstream-main comparison remains
+independent of that writable ref
+(`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`).
+
 Every proposal records its upstream base, head revision, local todo identity,
 upstream PR identity and review-evidence identity. Retry of the same handoff
 finds and updates that proposal rather than opening another. The contributor
@@ -64,8 +81,8 @@ alone never supplies that confirmation.
 The contribution command surface offers proposal publication, inspection and
 reconciliation by local todo. Its inspection identifies retained work, the
 current proposal revision, publication failures and the independent delivery,
-release and installation facts. Automatic finalize-ready handling invokes the
-same publication operation as an explicit retry.
+release and installation facts. Branch publication precedes readiness; ready
+handling and an explicit retry invoke the same resumable PR/report handoff.
 
 Standing enrollment is a computer-local declaration for the registered logical
 project, changed through the configuration owner's semantic operation. The
