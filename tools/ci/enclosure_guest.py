@@ -18,6 +18,8 @@ from tools.ci.enclosure_contract import (
     QUALIFICATION_DIGEST,
     RECIPE_DIGEST,
     STATIC_DIGEST,
+    AdmittedDeadline,
+    Cutoff,
     JsonObject,
     StaticPackage,
     object_value,
@@ -96,12 +98,11 @@ class Key(StrEnum):
     CGROUP_NAMESPACE = "cgroup_namespace"
     HOST_PID_NAMESPACE = "host_pid_namespace"
     HOST_CGROUP_NAMESPACE = "host_cgroup_namespace"
-    OUTER_END_NS = "outer_end_ns"
     SOURCE_FILES = "source_files"
     RECORD = "record"
     MONOTONIC_NS = "monotonic_ns"
     COMMAND = "command"
-    COMMAND_END_NS = "command_end_ns"
+    EFFECTIVE_COMMAND_END_NS = "effective_command_end_ns"
     PID = "pid"
     EXIT_STATUS = "exit_status"
     ERROR_CLASS = "error_class"
@@ -203,11 +204,17 @@ class GuestContext:
             ):
                 raise ValueError(ERROR_CONTEXT)
         self.package.validate_source(root)
-        if time.monotonic_ns() >= positive_integer(record, Key.OUTER_END_NS):
+        if time.monotonic_ns() >= self.admitted_deadline().effective_end():
             raise TimeoutError(ERROR_BUDGET)
 
+    def admitted_deadline(self) -> AdmittedDeadline:
+        """Read the original outside-admitted outer/vector/command bounds without substitution."""
+        return AdmittedDeadline.from_record(
+            self.record, require_vector=Purpose(text(self.record, Key.PURPOSE)) is Purpose.QUALIFICATION
+        )
+
     def command_end(self) -> int:
-        """Intersect the original outer end with the static cleanup unit's own allowance."""
+        """Intersect all admitted cutoffs with the static cleanup unit's own allowance."""
         rendered = self.package.render(
             run_token=text(self.record, Key.RUN_TOKEN),
             candidate_sha=text(self.record, Key.SOURCE_COMMIT),
@@ -224,7 +231,7 @@ class GuestContext:
         seconds = int(declarations[0][: -len(SECONDS_SUFFIX)])
         if seconds <= 0:
             raise ValueError(ERROR_CONTEXT)
-        return min(positive_integer(self.record, Key.OUTER_END_NS), time.monotonic_ns() + seconds * NANOSECONDS)
+        return self.admitted_deadline().command_end(seconds)
 
 
 def _read_manifest() -> bytes:
@@ -296,6 +303,7 @@ def _output(descriptor: int) -> JsonObject:
 def request_guest_poweroff(context: GuestContext) -> Record:
     """Request the declared endpoint once, for Q4 or payload cleanup, without claiming exit."""
     context.verify()
+    admitted = context.admitted_deadline()
     command_end = context.command_end()
     directory_fd = os.open(MANIFEST.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
     journal_fd = -1
@@ -324,7 +332,10 @@ def request_guest_poweroff(context: GuestContext) -> Record:
             Key.RECORD: Record.INTENT.value,
             Key.MONOTONIC_NS: time.monotonic_ns(),
             Key.COMMAND: list(POWER_COMMAND),
-            Key.COMMAND_END_NS: command_end,
+            Cutoff.OUTER_END_NS: admitted.outer_end_ns,
+            Cutoff.VECTOR_END_NS: admitted.vector_end_ns,
+            Cutoff.COMMAND_END_NS: admitted.command_end_ns,
+            Key.EFFECTIVE_COMMAND_END_NS: command_end,
         }
         _append(journal_fd, identity)
         os.fsync(directory_fd)

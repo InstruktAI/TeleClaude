@@ -99,6 +99,14 @@ class Parameter(StrEnum):
     SELECTION = "selection"
 
 
+class Cutoff(StrEnum):
+    """Independent absolute cutoffs preserved at an admitted process boundary."""
+
+    OUTER_END_NS = "outer_end_ns"
+    VECTOR_END_NS = "vector_end_ns"
+    COMMAND_END_NS = "command_end_ns"
+
+
 def _json_value(value: object) -> JsonValue:
     if value is None or isinstance(value, (str, bool, int)):
         return value
@@ -266,6 +274,48 @@ class StaticPackage:
 
 
 @dataclass(frozen=True)
+class AdmittedDeadline:
+    """Original absolute bounds, composed without relabelling or resetting any of them."""
+
+    outer_end_ns: int
+    vector_end_ns: int | None
+    command_end_ns: int | None
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, JsonValue], *, require_vector: bool) -> AdmittedDeadline:
+        """Require explicit nullable cutoffs; a missing handoff field is never an open allowance."""
+        outer = positive_integer(record, Cutoff.OUTER_END_NS)
+        optional: list[int | None] = []
+        for key in (Cutoff.VECTOR_END_NS, Cutoff.COMMAND_END_NS):
+            if key not in record:
+                raise ValueError(ERROR_FIELD.format(field=key))
+            value = record[key]
+            if value is None:
+                optional.append(None)
+            elif type(value) is int and value > 0:
+                optional.append(value)
+            else:
+                raise ValueError(ERROR_FIELD.format(field=key))
+        if require_vector and optional[0] is None:
+            raise ValueError(ERROR_FIELD.format(field=Cutoff.VECTOR_END_NS))
+        return cls(outer, optional[0], optional[1])
+
+    def effective_end(self) -> int:
+        """Keep all original fields and return only their intersection."""
+        return min(value for value in (self.outer_end_ns, self.vector_end_ns, self.command_end_ns) if value is not None)
+
+    def command_end(self, maximum_seconds: float) -> int:
+        """Intersect the admitted bounds with the current command's own cap."""
+        if not math.isfinite(maximum_seconds) or maximum_seconds <= 0:
+            raise ValueError(ERROR_BUDGET)
+        now = time.monotonic_ns()
+        end = min(self.effective_end(), now + int(maximum_seconds * NANOSECONDS))
+        if end <= now:
+            raise TimeoutError(ERROR_BUDGET)
+        return end
+
+
+@dataclass(frozen=True)
 class Deadline:
     """One boot-local monotonic end, shared by every action of the owned run."""
 
@@ -291,9 +341,9 @@ class Deadline:
         if not math.isfinite(maximum_seconds) or maximum_seconds <= 0:
             raise ValueError(ERROR_BUDGET)
         outer_available_end = self.end_ns - (self.reserve_ns if preserve_reserve else 0)
-        end = min(outer_available_end, vector_end_ns) if vector_end_ns is not None else outer_available_end
-        remaining = end - time.monotonic_ns()
-        allowance = min(maximum_seconds, remaining / NANOSECONDS)
+        now = time.monotonic_ns()
+        end = AdmittedDeadline(outer_available_end, vector_end_ns, None).command_end(maximum_seconds)
+        allowance = min(maximum_seconds, (end - now) / NANOSECONDS)
         if allowance <= 0:
             raise TimeoutError(ERROR_BUDGET)
         return allowance
