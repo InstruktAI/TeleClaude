@@ -22,6 +22,7 @@ from teleclaude.cli.tui.tree import (
     SessionDisplayInfo,
     build_tree,
     is_computer_node,
+    is_project_location_node,
     is_project_node,
     is_session_node,
     parse_collapsed_projects,
@@ -53,6 +54,13 @@ class _PendingSelect(NamedTuple):
 
     session_id: str
     request_focus: bool
+
+
+def _count_sessions(node: TreeNode) -> int:
+    """Count every session nested beneath one logical project header."""
+    if is_session_node(node):
+        return 1
+    return sum(_count_sessions(child) for child in node.children)
 
 
 def _keep_only[VT](mapping: dict[str, VT], live_ids: set[str]) -> None:
@@ -527,7 +535,7 @@ class SessionsView(
                     self._mount_node(container, child)
 
         elif is_project_node(node):
-            session_count = len([c for c in node.children if is_session_node(c)])
+            session_count = _count_sessions(node)
             collapsed = project_collapse_key(node.data.computer, node.data.path) in self._collapsed_projects
             widget = ProjectHeader(project=node.data, session_count=session_count, collapsed=collapsed)
             container.mount(widget)
@@ -538,6 +546,29 @@ class SessionsView(
                 # Closing separator after the last session in the group.
                 # The last SessionRow skips its own bottom connector (└---) to
                 # avoid a double line with the GroupSeparator.
+                if session_count > 0 and not any(is_project_location_node(child) for child in node.children):
+                    last_session_row = self._find_last_session_row_in_group(node)
+                    container.mount(
+                        GroupSeparator(
+                            connector_col=self._project_group_separator_col(last_session_row),
+                        )
+                    )
+
+        elif is_project_location_node(node):
+            session_count = len([child for child in node.children if is_session_node(child)])
+            collapsed = project_collapse_key(node.data.computer, node.data.path) in self._collapsed_projects
+            widget = ProjectHeader(
+                project=node.data,
+                session_count=session_count,
+                collapsed=collapsed,
+                purpose=node.purpose,
+                depth=node.depth,
+            )
+            container.mount(widget)
+            self._nav_items.append(widget)
+            if not collapsed:
+                for child in node.children:
+                    self._mount_node(container, child)
                 if session_count > 0:
                     last_session_row = self._find_last_session_row_in_group(node)
                     container.mount(

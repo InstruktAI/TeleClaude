@@ -10,6 +10,7 @@ from teleclaude.api_models_chiptunes import ChiptunesStatusDTO
 from teleclaude.api_models_identity import OwnershipSurfaceDTO, PersonChipDTO
 from teleclaude.api_session_attachment import SessionAttachmentDestinationDTO
 from teleclaude.api_session_readiness import SessionReadinessDTOFields
+from teleclaude.config.checkout_association import CheckoutPurpose
 from teleclaude.config.job_scope import JobScope
 from teleclaude.config.schema import JobType, MessagingChannel
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
@@ -300,6 +301,15 @@ class ComputerDTO(BaseModel):
     tmux_binary: str | None = None
 
 
+class ProjectLocationDTO(BaseModel):
+    """One selectable checkout location associated with a logical project."""
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    purpose: CheckoutPurpose
+
+
 class ProjectDTO(BaseModel):
     """DTO for project info."""
 
@@ -311,6 +321,7 @@ class ProjectDTO(BaseModel):
     description: str | None = None
     subject: str | None = None
     owner: str | None = None
+    locations: list[ProjectLocationDTO] = Field(default_factory=list)
 
 
 class AddProjectRequest(BaseModel):

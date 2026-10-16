@@ -4,8 +4,9 @@ import os
 from dataclasses import dataclass, field
 from typing import TypeGuard
 
-from teleclaude.api_models import ComputerDTO, ProjectDTO, SessionDTO
+from teleclaude.api_models import ComputerDTO, ProjectDTO, ProjectLocationDTO, SessionDTO
 from teleclaude.cli.tui.types import NodeType
+from teleclaude.config.checkout_association import CheckoutPurpose
 from teleclaude.constants import WORKTREE_DIR
 
 
@@ -90,6 +91,18 @@ class ProjectNode:
 
 
 @dataclass
+class ProjectLocationNode:
+    """A selectable physical checkout nested under its logical project."""
+
+    type: NodeType
+    data: ProjectDTO
+    purpose: CheckoutPurpose
+    depth: int
+    children: list["TreeNode"] = field(default_factory=list)
+    parent: "TreeNode | None" = None
+
+
+@dataclass
 class SessionNode:
     """A tree node representing a session."""
 
@@ -100,7 +113,7 @@ class SessionNode:
     parent: "TreeNode | None" = None
 
 
-TreeNode = ComputerNode | ProjectNode | SessionNode
+TreeNode = ComputerNode | ProjectNode | ProjectLocationNode | SessionNode
 
 
 def is_computer_node(node: TreeNode) -> TypeGuard[ComputerNode]:
@@ -111,6 +124,11 @@ def is_computer_node(node: TreeNode) -> TypeGuard[ComputerNode]:
 def is_project_node(node: TreeNode) -> TypeGuard[ProjectNode]:
     """Return True when the tree node is a project node."""
     return node.type == NodeType.PROJECT
+
+
+def is_project_location_node(node: TreeNode) -> TypeGuard[ProjectLocationNode]:
+    """Return True when the tree node is a checkout placement."""
+    return node.type == NodeType.PROJECT_LOCATION
 
 
 def is_session_node(node: TreeNode) -> TypeGuard[SessionNode]:
@@ -136,6 +154,19 @@ def _same_project(path_a: str | None, path_b: str | None) -> bool:
     if not path_a or not path_b:
         return path_a == path_b
     return _base_project_path(path_a) == _base_project_path(path_b)
+
+
+def _registered_project_root(path: str | None, projects: list[ProjectDTO]) -> str | None:
+    """Return one logical project's root for paths in either associated checkout or worktree."""
+    if not path:
+        return None
+    matches = [
+        (root, project.path)
+        for project in projects
+        for root in ([location.path for location in project.locations] or [project.path])
+        if path == root or path.startswith(root + os.sep + WORKTREE_DIR + os.sep)
+    ]
+    return max(matches, key=lambda match: len(match[0]))[1] if matches else None
 
 
 def _created_at_key(session: SessionDTO) -> str:
@@ -217,7 +248,12 @@ def build_tree(
         initiator_id = session.initiator_session_id
         if initiator_id and initiator_id in session_lookup and not session.detached:
             initiator = session_lookup[initiator_id]
-            if _same_project(session.project_path, initiator.project_path):
+            session_project_root = _registered_project_root(session.project_path, projects)
+            initiator_project_root = _registered_project_root(initiator.project_path, projects)
+            same_registered_project = (
+                session_project_root is not None and session_project_root == initiator_project_root
+            )
+            if _same_project(session.project_path, initiator.project_path) or same_registered_project:
                 sessions_by_initiator.setdefault(initiator_id, []).append(session)
             else:
                 root_sessions.append(session)
@@ -234,21 +270,29 @@ def build_tree(
 
         comp_name = computer.computer.name
         comp_projects = [p for p in projects if p.computer == comp_name]
-        # Sort projects by path length descending so most-specific matches first
-        comp_projects_sorted = sorted(comp_projects, key=lambda p: len(p.path), reverse=True)
+        project_locations: dict[str, list[ProjectLocationDTO]] = {
+            project.path: project.locations
+            or [ProjectLocationDTO(path=project.path, purpose=CheckoutPurpose.INSTALLED)]
+            for project in comp_projects
+        }
+        location_paths = sorted(
+            {location.path for locations in project_locations.values() for location in locations},
+            key=len,
+            reverse=True,
+        )
 
         # Track matched sessions to find orphans later
         matched_session_ids: set[str] = set()
 
         # Match sessions to most-specific project via prefix
-        project_sessions: dict[str, list[SessionDTO]] = {p.path: [] for p in comp_projects}
+        project_sessions: dict[str, list[SessionDTO]] = {path: [] for path in location_paths}
         for s in root_sessions:
             if s.computer != comp_name or not s.project_path:
                 continue
-            for p in comp_projects_sorted:
-                worktree_prefix = p.path + os.sep + WORKTREE_DIR + os.sep
-                if s.project_path == p.path or s.project_path.startswith(worktree_prefix):
-                    project_sessions[p.path].append(s)
+            for path in location_paths:
+                worktree_prefix = path + os.sep + WORKTREE_DIR + os.sep
+                if s.project_path == path or s.project_path.startswith(worktree_prefix):
+                    project_sessions[path].append(s)
                     matched_session_ids.add(s.session_id)
                     break
 
@@ -257,7 +301,9 @@ def build_tree(
         # in a stable order.
         comp_projects_by_recency = sorted(
             comp_projects,
-            key=lambda p: _newest_created_at(project_sessions[p.path]),
+            key=lambda project: _newest_created_at(
+                [session for location in project_locations[project.path] for session in project_sessions[location.path]]
+            ),
             reverse=True,
         )
         for project in comp_projects_by_recency:
@@ -269,14 +315,32 @@ def build_tree(
                 parent=comp_node,
             )
 
-            ordered_sessions = sorted(
-                project_sessions[project.path],
-                key=_created_at_key,
-                reverse=True,
-            )
-            for idx, session in enumerate(ordered_sessions, 1):
-                sess_node = _build_session_node(session, idx, 2, proj_node, sessions_by_initiator)
-                proj_node.children.append(sess_node)
+            locations = project_locations[project.path]
+            if project.locations:
+                for location in locations:
+                    location_project = project.model_copy(update={"path": location.path, "locations": []})
+                    location_node = ProjectLocationNode(
+                        type=NodeType.PROJECT_LOCATION,
+                        data=location_project,
+                        purpose=location.purpose,
+                        depth=2,
+                        children=[],
+                        parent=proj_node,
+                    )
+                    ordered_sessions = sorted(
+                        project_sessions[location.path],
+                        key=_created_at_key,
+                        reverse=True,
+                    )
+                    for idx, session in enumerate(ordered_sessions, 1):
+                        location_node.children.append(
+                            _build_session_node(session, idx, 3, location_node, sessions_by_initiator)
+                        )
+                    proj_node.children.append(location_node)
+            else:
+                ordered_sessions = sorted(project_sessions[project.path], key=_created_at_key, reverse=True)
+                for idx, session in enumerate(ordered_sessions, 1):
+                    proj_node.children.append(_build_session_node(session, idx, 2, proj_node, sessions_by_initiator))
 
             comp_node.children.append(proj_node)
 

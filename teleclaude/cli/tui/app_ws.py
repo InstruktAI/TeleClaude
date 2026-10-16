@@ -96,6 +96,7 @@ class TelecAppWsMixin:
                     name=p.name,
                     path=p.path,
                     description=p.description,
+                    locations=p.locations,
                     todos=getattr(p, "todos", []),
                 )
                 for p in event.data.projects
@@ -115,6 +116,7 @@ class TelecAppWsMixin:
                         name=project.name,
                         path=project.path,
                         description=project.description,
+                        locations=project.locations,
                     )
                     for project in projects_with_todos
                 ],

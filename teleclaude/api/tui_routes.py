@@ -107,6 +107,7 @@ async def _load_projects_with_todos(
             description=project.description,
             subject=project.subject,
             owner=project.owner,
+            locations=project.locations,
             todos=with_person_chips_on_todos(todo_map.get((project.computer, project.path), [])),
         )
         for project in projects

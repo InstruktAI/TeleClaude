@@ -653,6 +653,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     name=project.name,
                     path=project.path,
                     description=project.description,
+                    locations=project.locations,
                 )
                 proj_collapsed = project_collapse_key(project.computer, project.path) in self._collapsed_projects
                 header = ProjectHeader(project=proj_info, session_count=0, collapsed=proj_collapsed)

@@ -11,6 +11,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude import __version__
 from teleclaude.agent_registry import LaunchProfile
 from teleclaude.api_models import TodoDTO
+from teleclaude.config.checkout_association import CheckoutPurpose
 from teleclaude.config.machine import config
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
@@ -48,6 +49,7 @@ from teleclaude.core.models import (
     ComputerInfo,
     JsonDict,
     ProjectInfo,
+    ProjectLocationInfo,
     Session,
     SessionEntryPoint,
     SessionLaunchKind,
@@ -580,6 +582,17 @@ async def list_projects() -> list[ProjectInfo]:
                 else EventHomeMarker.UNKNOWN.value
             ),
             owner=entry.owner,
+            locations=(
+                [
+                    ProjectLocationInfo(path=str(entry.root), purpose=CheckoutPurpose.INSTALLED),
+                    ProjectLocationInfo(
+                        path=str(entry.development_checkout),
+                        purpose=CheckoutPurpose.DEVELOPMENT,
+                    ),
+                ]
+                if entry.development_checkout is not None
+                else []
+            ),
         )
         for entry in catalog.list_entries()
     ]
