@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 
 _title_projection_signatures: dict[str, tuple[tuple[str, str], ...]] = {}
 _COMMAND_TITLE_TEMPLATE = "{command} {args}"
+_MISSING_TITLE_ROLE = "Cannot compose assignment title for {command}: role {role!r} is not a catalog role"
 _USER_ROLE = "user"
 _ASSISTANT_ROLE = "assistant"
 _REPLY_SEPARATOR = "\n\n"
@@ -33,15 +34,16 @@ def compose_command_session_title(
     command: str,
     args: str,
     *,
-    role: str | None = None,
+    role: str | None,
     invocation: ProcedureInvocation | None = None,
 ) -> str:
-    """Render a command session title from its catalog role when available, otherwise its command."""
+    """Render an assignment's catalog role and recorded subject."""
     if invocation is not None and invocation.entry_kind is ProcedureEntryKind.DIRECT:
         args = dict(invocation.parameters).get(WorkSubjectParameter.BRANCH, args)
     resolved_role = resolve_role(role)
-    title_identity = resolved_role.name.value if isinstance(resolved_role, Role) else command
-    return _COMMAND_TITLE_TEMPLATE.format(command=title_identity, args=args).strip()
+    if not isinstance(resolved_role, Role):
+        raise ValueError(_MISSING_TITLE_ROLE.format(command=command, role=role))
+    return _COMMAND_TITLE_TEMPLATE.format(command=resolved_role.name.value, args=args).strip()
 
 
 def clear_title_projection_state(session_id: str) -> None:
