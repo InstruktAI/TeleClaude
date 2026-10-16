@@ -31,7 +31,10 @@ from typing import cast
 from tools.ci import workflow_claim as claim
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
+from tools.ci import workflow_holds as holds
+from tools.ci import workflow_plans as plans
 from tools.ci import workflow_race as race
+from tools.ci import workflow_removal as removal
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
 _UTF8 = "utf-8"
@@ -163,6 +166,9 @@ _SCENARIO_RELEASE_BLUEPRINT = "UC-BPF1"
 _SCENARIO_WORKFLOW_FOUNDATION = "UC-WF-F0"
 _SCENARIO_WORKFLOW_CREATION = "UC-WF-R1"
 _SCENARIO_WORKFLOW_RETIRED_ACTS = "UC-WF-R4"
+_SCENARIO_WORKFLOW_PLANS = "UC-WF-R2"
+_SCENARIO_WORKFLOW_HOLDS = "UC-WF-R3"
+_SCENARIO_WORKFLOW_REMOVAL = "UC-WF-R5"
 _SCENARIO_WORKFLOW_CLAIM = "UC-WF-B1"
 _SCENARIO_WORKFLOW_RACE = "UC-WF-B2"
 _COLD_PROFILE_SCENARIOS = (_SCENARIO_COLD,)
@@ -197,6 +203,9 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_WORKFLOW_FOUNDATION,
     _SCENARIO_WORKFLOW_CREATION,
     _SCENARIO_WORKFLOW_RETIRED_ACTS,
+    _SCENARIO_WORKFLOW_PLANS,
+    _SCENARIO_WORKFLOW_HOLDS,
+    _SCENARIO_WORKFLOW_REMOVAL,
     _SCENARIO_WORKFLOW_CLAIM,
     _SCENARIO_WORKFLOW_RACE,
 )
@@ -216,6 +225,21 @@ _SCENARIO_PREREQUISITES = {
         _SCENARIO_CONFIG_PATCH,
         _SCENARIO_PROJECT_REGISTRATION,
         _SCENARIO_WORKFLOW_CREATION,
+    ),
+    _SCENARIO_WORKFLOW_PLANS: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+    ),
+    _SCENARIO_WORKFLOW_HOLDS: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+    ),
+    _SCENARIO_WORKFLOW_REMOVAL: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
     ),
     _SCENARIO_WORKFLOW_CLAIM: (
         _SCENARIO_RUNTIME_READY,
@@ -1953,6 +1977,27 @@ def _full_workflow_retired_acts(resources: FullRuntimeResources, evidence: list[
     if resources.project_path is None:
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
     creation.run_retired_acts(_FoundationRunner(resources, evidence), resources.project_path, resources.source_root)
+
+
+def _full_workflow_plans(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey R2: plan creation and the task lane outside the v2 machine."""
+    if resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    plans.run_plans(_FoundationRunner(resources, evidence), resources.project_path, resources.source_root)
+
+
+def _full_workflow_holds(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey R3: the public hold and release, with no phase override."""
+    if resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    holds.run_holds(_FoundationRunner(resources, evidence), resources.project_path, resources.source_root)
+
+
+def _full_workflow_removal(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey R5: soft removal and restoration of a plain preparation item."""
+    if resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    removal.run_removal(_FoundationRunner(resources, evidence), resources.project_path, resources.source_root)
 
 
 def _full_workflow_claim(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -4581,6 +4626,15 @@ def run_profile(
                     ),
                     _SCENARIO_WORKFLOW_RETIRED_ACTS: _bind_full_scenario(
                         _SCENARIO_WORKFLOW_RETIRED_ACTS, resources, _full_workflow_retired_acts
+                    ),
+                    _SCENARIO_WORKFLOW_PLANS: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_PLANS, resources, _full_workflow_plans
+                    ),
+                    _SCENARIO_WORKFLOW_HOLDS: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_HOLDS, resources, _full_workflow_holds
+                    ),
+                    _SCENARIO_WORKFLOW_REMOVAL: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_REMOVAL, resources, _full_workflow_removal
                     ),
                     _SCENARIO_WORKFLOW_CLAIM: _bind_full_scenario(
                         _SCENARIO_WORKFLOW_CLAIM, resources, _full_workflow_claim

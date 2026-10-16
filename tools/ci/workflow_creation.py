@@ -450,7 +450,7 @@ def require_sessions_equal(baseline: SessionView, now: SessionView, when: str) -
         )
 
 
-def _absence_window(observer: Observer, baseline: SessionView, slugs: Sequence[str]) -> None:
+def absence_window(observer: Observer, baseline: SessionView, slugs: Sequence[str]) -> None:
     """R1 step 5: no session appears in the window, and none works on any of the journey's items."""
     deadline = time.monotonic() + ABSENCE_WINDOW_SECONDS
     while True:
@@ -496,7 +496,7 @@ def run_creation(host: FoundationHost, project: Path, source_root: Path) -> None
                 DETAIL_VALUE.format(slug=SLUG_GATE, path="existence", found="absent", expected="present")
             )
         require_value(SLUG_GATE, gated, f"{FIELD_STATE}{DOT}{FIELD_PHASE}", PHASE_PREPARATION)
-        _absence_window(observer, baseline, journey_slugs)
+        absence_window(observer, baseline, journey_slugs)
     finally:
         leave_project(observer, source_root)
 
