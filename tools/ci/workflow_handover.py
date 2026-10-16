@@ -66,6 +66,17 @@ DETAIL_AFTER: Final = "A4-5: {item} {what} is {found!r}, not {expected!r}"
 DETAIL_SESSION: Final = "A4-6: a session appeared after the release: {found!r}"
 DETAIL_SESSION_LOG: Final = "A4-2: the log headers of {item} changed: {before!r} became {after!r}"
 DETAIL_WITNESS: Final = "A4-2: {item} has no typed {what} witness before its holder ends: {found!r}"
+DETAIL_BEFORE_PHASE: Final = "A4-2: {item} before-close {path} is {found!r}, not expected string {expected!r}"
+DETAIL_CLASSIFICATION_INCOMPLETE: Final = "A4 hold classification incomplete for items: {items}"
+ITEM_SEPARATOR: Final = ", "
+STRING_FIELD: Final = "string "
+INPUT_BODY: Final = "input body"
+ARTIFACT_LOG: Final = "artifact log"
+B4_WORKTREE: Final = "B4 worktree bound to its branch"
+STANDING_OBJECT: Final = "standing object"
+WORKTREE_PREFIX: Final = "worktree "
+BRANCH_PREFIX: Final = "branch refs/heads/"
+PATH_SEPARATOR: Final = "/"
 
 type Json = Mapping[str, object]
 
@@ -74,7 +85,7 @@ def log_headers(shown: Json, item: str) -> list[str]:
     """The section header lines of the item\'s log, in order."""
     found, log = creation.dig(shown, "artifact_content.log")
     if not found or not isinstance(log, str):
-        raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what="artifact log", found=log))
+        raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what=ARTIFACT_LOG, found=log))
     return [line for line in log.replace("\r\n", "\n").split("\n") if line.startswith(HEADER_PREFIX)]
 
 
@@ -103,31 +114,34 @@ class Handover:
 
     def before(self, item: str, ended: str, phase: str) -> None:
         """A fresh strict public snapshot of the item, immediately before its holder is ended."""
+        unclassified = list(dict.fromkeys((*self.pending, item)))
+        self.unrelated = DETAIL_CLASSIFICATION_INCOMPLETE.format(items=ITEM_SEPARATOR.join(unclassified))
         snapshot = driver.fresh_snapshot(self.observer, item)
         for path in (PHASE_PATH, STANDING_PHASE_PATH):
             found, value = creation.dig(snapshot, path)
-            if not found or not isinstance(value, str) or value != phase:
+            if not found or not isinstance(value, str):
+                raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what=path, found=value))
+            if value != phase:
                 raise creation.binding_failure(
-                    DETAIL_WITNESS.format(item=item, what=f"{path} equal to {phase!r}", found=value)
+                    DETAIL_BEFORE_PHASE.format(item=item, path=path, found=value, expected=phase)
                 )
         found, input_text = creation.dig(snapshot, INPUT_PATH)
         if not found or not isinstance(input_text, str):
-            raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what="input body", found=input_text))
+            raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what=INPUT_BODY, found=input_text))
         headers = log_headers(snapshot, item)
         worktree: str | None = None
         if self.worktree is not None:
             worktree = self.worktree()
-            expected_branch = f"branch refs/heads/{item}"
+            expected_branch = f"{BRANCH_PREFIX}{item}"
             lines = worktree.splitlines() if isinstance(worktree, str) else []
             if (
                 not isinstance(worktree, str)
                 or not lines
-                or not lines[0].startswith("worktree /")
+                or not lines[0].startswith(WORKTREE_PREFIX)
+                or not lines[0][len(WORKTREE_PREFIX) :].startswith(PATH_SEPARATOR)
                 or expected_branch not in lines[1:]
             ):
-                raise creation.binding_failure(
-                    DETAIL_WITNESS.format(item=item, what="B4 worktree bound to its branch", found=worktree)
-                )
+                raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what=B4_WORKTREE, found=worktree))
         self.pending[item] = Pending(
             item=item,
             ended=ended,
@@ -155,14 +169,16 @@ class Handover:
         for path, expected in ((PHASE_PATH, pending.phase), (STANDING_PHASE_PATH, pending.phase)):
             found, value = creation.dig(shown, path)
             if not found or not isinstance(value, str):
-                raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what=f"string {path}", found=value))
+                raise creation.binding_failure(
+                    DETAIL_WITNESS.format(item=item, what=f"{STRING_FIELD}{path}", found=value)
+                )
             if value != expected:
                 raise creation.platform_failure(
                     DETAIL_INVARIANT.format(item=item, what=path, found=value, expected=expected)
                 )
         found, input_text = creation.dig(shown, INPUT_PATH)
         if not found or not isinstance(input_text, str):
-            raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what="input body", found=input_text))
+            raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what=INPUT_BODY, found=input_text))
         if input_text != pending.input_text:
             raise creation.platform_failure(
                 DETAIL_INVARIANT.format(item=item, what=INPUT_PATH, found=input_text, expected=pending.input_text)
@@ -172,13 +188,7 @@ class Handover:
             raise creation.platform_failure(DETAIL_SESSION_LOG.format(item=item, before=pending.headers, after=headers))
         if self.worktree is not None:
             listing = self.worktree()
-            lines = listing.splitlines() if isinstance(listing, str) else []
-            if (
-                not isinstance(listing, str)
-                or not lines
-                or not lines[0].startswith("worktree /")
-                or f"branch refs/heads/{item}" not in lines[1:]
-            ):
+            if not isinstance(listing, str):
                 raise creation.binding_failure(
                     DETAIL_WITNESS.format(item=item, what="B4 worktree bound to its branch", found=listing)
                 )
@@ -219,7 +229,7 @@ class Handover:
 
     def after(self, items_ended: list[str]) -> None:
         """Run A4-1 to A4-6 for the items whose holders were just ended; classify all before releasing any."""
-        self.unrelated = f"A4 hold classification incomplete for items: {', '.join(items_ended)}"
+        self.unrelated = DETAIL_CLASSIFICATION_INCOMPLETE.format(items=ITEM_SEPARATOR.join(items_ended))
         creation.require_manual_runner(self.observer)
         views: dict[str, Json] = {}
         classes: dict[str, str | None] = {}
@@ -230,7 +240,7 @@ class Handover:
             found, runner = creation.dig(shown, "state.active_runner")
             standing_found, standing = creation.dig(shown, "standing")
             if not standing_found or not isinstance(standing, Mapping):
-                raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what="standing object", found=standing))
+                raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what=STANDING_OBJECT, found=standing))
             if not found or runner not in (None, creation.EMPTY) or "held_by" in standing:
                 raise creation.binding_failure(DETAIL_STILL_HELD.format(item=item, found=runner))
             self._invariant(pending, shown)
