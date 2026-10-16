@@ -88,6 +88,8 @@ FIELD_LOG: Final = "log"
 STATE_COMPLETED: Final = "completed"
 STATE_FAILED: Final = "failed"
 TERMINAL_STATES: Final = frozenset({"completed", "failed", "stale", "cancelled"})
+KNOWN_STATES: Final = TERMINAL_STATES | frozenset({"queued", "running"})
+ACT_ROW: Final = re.compile(r"^-\s+`telec todo act (?P<item>\S+) (?P<act>\S+)[^`]*`\s+->\s+(?P<phase>\S+)\s*$")
 
 CLI_TIMEOUT_SECONDS: Final = 60
 CLONE_TIMEOUT_SECONDS: Final = 60
@@ -145,6 +147,10 @@ DETAIL_COMPETITOR_TEXT: Final = "the refusal does not name {needle!r}: {error!r}
 DETAIL_WRITE: Final = "the item shown {when} differs from before the competing prepare; differing paths: {paths}"
 DETAIL_RELEASE: Final = "the claim was not released within {seconds} seconds: {holder!r}"
 DETAIL_PHASE_AFTER: Final = "after the close the item reads {found!r}, not {expected!r}"
+DETAIL_OPERATION_READ: Final = (
+    "the public read of operation {operation} is unreadable or names an unknown state: {output!r}"
+)
+DETAIL_ACT_ROW: Final = "the instruction has no row `telec todo act {item} {act}` -> {phase}: {rows!r}"
 DETAIL_COMPANION: Final = "the companion {path} has no readable workflow header"
 NOT_EVALUATED_STARTER: Final = "step 6 not evaluated: {reason}"
 NOT_EVALUATED_LABEL: Final = "step-6-not-evaluated"
@@ -373,17 +379,25 @@ class _Claim:
         if changed or sessions.ids != baseline.ids:
             raise creation.binding_failure(DETAIL_NEGATIVE_WRITE.format(detail=changed or sorted(sessions.ids)))
 
+    def operation_state(self, operation: str, *, retain: bool = False) -> Json:
+        """One public read of an operation; an unreadable read or a state outside the known set fails the case."""
+        outcome = self.observer.run((TELEC, OPERATIONS, GET, operation), retain=retain)
+        state = foundation.json_object(outcome.output)
+        value = state.get(FIELD_STATE) if state is not None else None
+        if outcome.exit_status != 0 or state is None or value not in KNOWN_STATES:
+            raise creation.binding_failure(
+                DETAIL_OPERATION_READ.format(operation=operation, output=outcome.output[-300:])
+            )
+        return state
+
     def _await_terminal(self, operation: str, seconds: float) -> Json:
         deadline = time.monotonic() + seconds
         last: Json = {}
         while time.monotonic() < deadline:
-            outcome = self.observer.run((TELEC, OPERATIONS, GET, operation), retain=False)
-            state = foundation.json_object(outcome.output)
-            if outcome.exit_status == 0 and state is not None:
-                last = state
-                if state.get(FIELD_STATE) in TERMINAL_STATES:
-                    self.observer.run((TELEC, OPERATIONS, GET, operation))
-                    return state
+            state = self.operation_state(operation)
+            last = state
+            if state.get(FIELD_STATE) in TERMINAL_STATES:
+                return self.operation_state(operation, retain=True)
             time.sleep(POLL_SECONDS)
         raise creation.platform_failure(
             DETAIL_OPERATION_TIMEOUT.format(operation=operation, seconds=int(seconds), last=last)
@@ -555,9 +569,15 @@ class _Steps:
         self.starter = starter
 
     def await_claim(self) -> None:
-        """Step 2: a real session is created and claims; a failed starter ends the wait at once."""
+        """Step 2: a real session is created and claims; a failed or unreadable starter ends the wait at once."""
         deadline = self.started_at + START_CAP_SECONDS
         while time.monotonic() < deadline:
+            state = self.claim.operation_state(self.starter)
+            if state.get(FIELD_STATE) in TERMINAL_STATES - {STATE_COMPLETED}:
+                error = str(state.get(FIELD_ERROR))
+                if NO_DRIVER_PHRASE in error:
+                    raise creation.binding_failure(DETAIL_DRIVER_UNPUBLISHED.format(error=error))
+                raise creation.platform_failure(DETAIL_OPERATION_FAILED.format(operation=self.starter, error=error))
             shown = self.observer.show(ITEM, retain=False)
             holder = creation.dig(shown, "state.active_runner")[1] if shown is not None else None
             if isinstance(holder, str) and holder:
@@ -565,15 +585,6 @@ class _Steps:
                 self.claim_seen = time.monotonic()
                 self.journey.session_id = holder
                 return
-            state = (
-                foundation.json_object(self.observer.run((TELEC, OPERATIONS, GET, self.starter), retain=False).output)
-                or {}
-            )
-            if state.get(FIELD_STATE) == STATE_FAILED:
-                error = str(state.get(FIELD_ERROR))
-                if NO_DRIVER_PHRASE in error:
-                    raise creation.binding_failure(DETAIL_DRIVER_UNPUBLISHED.format(error=error))
-                raise creation.platform_failure(DETAIL_OPERATION_FAILED.format(operation=self.starter, error=error))
             time.sleep(POLL_SECONDS)
         raise creation.platform_failure(DETAIL_START_TIMEOUT.format(item=ITEM, seconds=int(START_CAP_SECONDS)))
 
@@ -637,9 +648,19 @@ class _Steps:
     def check_instruction(self, instruction: str) -> None:
         """Step 4, content: the item, phase, session, every ending act with its phase, and the child procedure."""
         acts, child = declared_acts(self.clone / DOCS_ROOT / f"{DRIVER_ID}{LIVE_SUFFIX}")
-        for needle in (ITEM, PHASE, self.session, child, *(name for pair in acts for name in pair)):
+        for needle in (ITEM, PHASE, self.session, child):
             if needle not in instruction:
                 raise creation.platform_failure(DETAIL_INSTRUCTION.format(needle=needle, text=instruction[-600:]))
+        rows = {
+            (match.group("act"), match.group("phase"))
+            for line in instruction.splitlines()
+            if (match := ACT_ROW.match(line.strip())) is not None and match.group("item") == ITEM
+        }
+        for act, phase in acts:
+            if (act, phase) not in rows:
+                raise creation.platform_failure(
+                    DETAIL_ACT_ROW.format(item=ITEM, act=act, phase=phase, rows=sorted(rows))
+                )
 
     def observe_claim(self) -> None:
         """Step 5: the item shows the holder, the phase, and exactly one claim note naming the session."""
@@ -671,18 +692,26 @@ class _Steps:
                 raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=needle, entry=body))
 
     def starter_result(self) -> None:
-        """Step 6: the starter's own result names the session, evaluated only inside the attach window."""
-        if self.claim_seen - self.started_at > STARTER_WINDOW_SECONDS:
-            self._not_evaluated("the claim was observed after the attach window")
-            return
-        state = _terminal_within(self.claim, self.starter, STARTER_SETTLE_SECONDS)
-        if state is None:
-            self._not_evaluated("the starter was not terminal")
-            return
-        if state.get(FIELD_STATE) != STATE_COMPLETED:
+        """Step 6: the starter's own result names the session, evaluated only inside the attach window.
+
+        The starter\'s status is always read: a failed or unreadable operation fails the case whenever it is read; only a
+        valid, still-pending operation (or the optional content clause past its window) is left uncredited.
+        """
+        deadline = time.monotonic() + STARTER_SETTLE_SECONDS
+        state = self.claim.operation_state(self.starter, retain=True)
+        while state.get(FIELD_STATE) not in TERMINAL_STATES and time.monotonic() < deadline:
+            time.sleep(POLL_SECONDS)
+            state = self.claim.operation_state(self.starter)
+        if state.get(FIELD_STATE) in TERMINAL_STATES - {STATE_COMPLETED}:
             raise creation.platform_failure(
                 DETAIL_OPERATION_FAILED.format(operation=self.starter, error=state.get(FIELD_ERROR))
             )
+        if self.claim_seen - self.started_at > STARTER_WINDOW_SECONDS:
+            self._not_evaluated("the claim was observed after the attach window")
+            return
+        if state.get(FIELD_STATE) != STATE_COMPLETED:
+            self._not_evaluated("the starter was not terminal")
+            return
         result = state.get(FIELD_RESULT)
         if not isinstance(result, str):
             raise creation.platform_failure(DETAIL_RESULT_TYPE.format(operation=self.starter, result=result))
@@ -734,17 +763,6 @@ class _Steps:
         else:
             raise creation.platform_failure(DETAIL_RELEASE.format(seconds=int(RELEASE_SECONDS), holder=holder))
         creation.require_value(ITEM, _shown_with_content(self.observer), "state.lifecycle_phase", PHASE)
-
-
-def _terminal_within(claim: _Claim, operation: str, seconds: float) -> Json | None:
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        state = foundation.json_object(claim.observer.run((TELEC, OPERATIONS, GET, operation), retain=False).output)
-        if state is not None and state.get(FIELD_STATE) in TERMINAL_STATES:
-            claim.observer.run((TELEC, OPERATIONS, GET, operation))
-            return state
-        time.sleep(POLL_SECONDS)
-    return None
 
 
 def _cleanup(
