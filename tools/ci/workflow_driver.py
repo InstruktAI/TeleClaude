@@ -66,6 +66,9 @@ QUIESCENCE_GAP_SECONDS: Final = 2.0
 
 DETAIL_SESSIONS: Final = "sessions beyond the baseline are {found!r}, not exactly {expected!r}"
 DETAIL_RECORD_FIELD: Final = "the driver's record has {field} {found!r}, not {expected!r}"
+DETAIL_MAPPING: Final = (
+    "driver {session}: the record names native session {recorded!r}, but its pool directory launched {launched!r}"
+)
 DETAIL_RECORD_START: Final = "the driver's record does not show a completed startup: {record!r}"
 DETAIL_FIRST_INPUT: Final = "the fixture's first input does not name {identity}: {text!r}"
 DETAIL_CLAIM_FRAME: Final = "the fixture's claim frame is not the planned successful call: {frame!r}"
@@ -224,6 +227,9 @@ class DriverCase:
         for name in (foundation.FRAME_SESSION_START, foundation.FRAME_PROMPT_SUBMIT):
             journey.require_hook(name, journey.await_frame(name, frames_deadline))
         record = journey.record()
+        recorded = record.get(foundation.FIELD_NATIVE) if record is not None else None
+        if isinstance(recorded, str) and recorded and recorded != native:
+            raise creation.binding_failure(DETAIL_MAPPING.format(session=session, recorded=recorded, launched=native))
         if record is None or not journey.started(record, native):
             raise creation.platform_failure(DETAIL_RECORD_START.format(record=record))
         role = declared_role(self.clone / DOCS_ROOT / f"{DRIVER_ID}{LIVE_SUFFIX}")

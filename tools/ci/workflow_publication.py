@@ -674,12 +674,16 @@ def negative_control(
     deadline = time.monotonic() + ACTIVATION_WAIT_SECONDS
     last = ""
     while True:
-        outcome, operation = start_call(starts, observer, (TELEC, TODO, PREPARE, item), "negative-control")
+        key = begin_attempt(starts, "negative-control")
+        outcome = observer.run((TELEC, TODO, PREPARE, item))
+        operation = receipt_operation(outcome.output)
+        settle_attempt(starts, key, operation)
         if outcome.exit_status == 0 and operation is not None:
             state = await_terminal(observer, operation, NEGATIVE_OPERATION_SECONDS)
             error = state.get(FIELD_ERROR)
             failed = state.get(FIELD_STATE) == STATE_FAILED and isinstance(error, str)
-            if failed:
+            # Only an established pre-launch refusal discharges the attempt; any other failure may have reserved.
+            if failed and (NO_DRIVER_PHRASE in str(error) or NOT_ACTIVATED_PHRASE in str(error)):
                 starts[operation] = START_REFUSED
             if failed and NO_DRIVER_PHRASE in str(error):
                 break
@@ -687,6 +691,7 @@ def negative_control(
                 raise creation.binding_failure(DETAIL_NEGATIVE_STATE.format(state=state.get(FIELD_STATE), error=error))
             last = str(error)
         elif NOT_ACTIVATED_PHRASE in outcome.output:
+            release_attempt(starts, key)  # refused by the CLI before anything was requested
             last = outcome.output[-200:]
         else:
             raise creation.binding_failure(
