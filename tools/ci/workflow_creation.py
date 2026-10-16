@@ -147,6 +147,7 @@ B12_REFUSAL_KICKBACK: Final = "the original kickback refusal did not name the ho
 B12_REFUSAL_RECEIPT: Final = "the synchronous refusal unexpectedly returned an operation receipt"
 B12_REFUSAL_NO_TERMINAL: Final = "the public request timed out or did not return a terminal outcome"
 B12_REFUSAL_ZERO_EXIT: Final = "the public refusal command returned success"
+B12_REFUSAL_DIAGNOSTIC: Final = "the public request carried an unresolved command diagnostic: {detail}"
 B12_MARKER_MISSING_ATTEMPT: Final = "the attempt file is missing while its retention marker exists"
 B12_FRAMING_COMPLETE: Final = "complete newline-terminated JSONL"
 B12_FRAMING_PARTIAL: Final = "partial trailing record"
@@ -1467,6 +1468,8 @@ def run_retired_act_matrix(
                 if outcome.exit_status is not None
                 else B12_REFUSAL_NO_TERMINAL
             )
+            if outcome.diagnostics:
+                refusal_failure = B12_REFUSAL_DIAGNOSTIC.format(detail=outcome.diagnostics)
             outcome_kind = (
                 B12_OUTCOME_COMPLETED
                 if outcome.exit_status is not None
