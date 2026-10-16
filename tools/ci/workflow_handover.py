@@ -154,11 +154,15 @@ class Handover:
         item = pending.item
         for path, expected in ((PHASE_PATH, pending.phase), (STANDING_PHASE_PATH, pending.phase)):
             found, value = creation.dig(shown, path)
-            if not found or value != expected:
+            if not found or not isinstance(value, str):
+                raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what=f"string {path}", found=value))
+            if value != expected:
                 raise creation.platform_failure(
                     DETAIL_INVARIANT.format(item=item, what=path, found=value, expected=expected)
                 )
-        _, input_text = creation.dig(shown, INPUT_PATH)
+        found, input_text = creation.dig(shown, INPUT_PATH)
+        if not found or not isinstance(input_text, str):
+            raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what="input body", found=input_text))
         if input_text != pending.input_text:
             raise creation.platform_failure(
                 DETAIL_INVARIANT.format(item=item, what=INPUT_PATH, found=input_text, expected=pending.input_text)
@@ -168,6 +172,16 @@ class Handover:
             raise creation.platform_failure(DETAIL_SESSION_LOG.format(item=item, before=pending.headers, after=headers))
         if self.worktree is not None:
             listing = self.worktree()
+            lines = listing.splitlines() if isinstance(listing, str) else []
+            if (
+                not isinstance(listing, str)
+                or not lines
+                or not lines[0].startswith("worktree /")
+                or f"branch refs/heads/{item}" not in lines[1:]
+            ):
+                raise creation.binding_failure(
+                    DETAIL_WITNESS.format(item=item, what="B4 worktree bound to its branch", found=listing)
+                )
             if listing != pending.worktree:
                 raise creation.platform_failure(
                     DETAIL_WORKTREE.format(path=pending.worktree, branch=item, listing=listing)
