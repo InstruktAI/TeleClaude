@@ -20,11 +20,13 @@ from tools.ci.enclosure_contract import (
     StaticPackage,
     object_value,
     parse_object,
+    positive_integer,
     require_hex,
     text,
 )
 from tools.ci.enclosure_guest import Purpose, close_evidence_descriptors
 from tools.ci.enclosure_journal import ActionJournal, Binding, Controller
+from tools.ci.enclosure_journal import Key as JournalKey
 
 STATE_ROOT: Final = Path("/var/lib/teleclaude-runtime-acceptance")
 MANIFEST_NAME: Final = "manifest.json"
@@ -35,6 +37,8 @@ NONCE_BYTES: Final = 32
 ROOT_MODE: Final = 0o700
 FILE_MODE: Final = 0o600
 PRIVATE_UMASK: Final = 0o077
+MANIFEST_LIMIT: Final = 1024 * 1024
+PARENT_DESCRIPTOR: Final = "/proc/{pid}/fd/{descriptor}"
 ERROR_OWNER: Final = "outside ownership requires the original privileged controller and protected new run directory"
 ERROR_WORKFLOW: Final = "the immutable hosted workflow/run attempt identity or provider image assertion is unavailable"
 ERROR_MANIFEST: Final = "the initial protected run manifest could not be durably read back"
@@ -65,6 +69,7 @@ class Key(StrEnum):
     PARENT_UNIT = "parent_unit"
     GUEST_UNIT = "guest_unit"
     CREATED_NS = "created_ns"
+    DIRECTORY_FD = "directory_fd"
 
 
 @dataclass(frozen=True)
@@ -160,13 +165,14 @@ class RunOwner:
             Key.ROOTFS: text(host, Key.ROOTFS).format_map(parameters),
             Key.CREATED_NS: time.monotonic_ns(),
         }
-        data = _encode(record)
         # This synchronous ownership step has no concurrent producer or await across the temporary umask.
         previous_umask = os.umask(PRIVATE_UMASK)
         journal: ActionJournal | None = None
         try:
             _require_state_root()
             journal = ActionJournal.create(STATE_ROOT, binding, deadline, package)
+            record[Key.DIRECTORY_FD] = journal.directory_fd
+            data = _encode(record)
             _write_manifest(journal.directory_fd, data)
             controller.require_alive()
             if time.monotonic_ns() >= deadline.end_ns:
@@ -179,6 +185,152 @@ class RunOwner:
             raise
         finally:
             os.umask(previous_umask)
+
+
+@dataclass(frozen=True)
+class HelperOwner:
+    """One direct helper child's inherited run ownership; this is not source/action admission."""
+
+    journal: ActionJournal
+    manifest_bytes: bytes
+    inherited_directory_fd: int
+
+    def close(self) -> None:
+        """Close only this child process's descriptors; the supervisor retains its original handle."""
+        close_evidence_descriptors(self.journal.journal_fd, self.journal.directory_fd, self.inherited_directory_fd)
+
+    def require_original_parent(self) -> None:
+        """Keep the direct native parent and original run handle bound before a helper effect."""
+        controller = self.journal.binding.controller
+        controller.require_alive()
+        if os.geteuid() != 0 or controller.uid != 0 or os.getppid() != controller.pid:
+            raise ValueError(ERROR_OWNER)
+        parent_handle = Path(
+            PARENT_DESCRIPTOR.format(pid=controller.pid, descriptor=self.inherited_directory_fd)
+        ).stat()
+        native = os.fstat(self.journal.directory_fd)
+        if (parent_handle.st_dev, parent_handle.st_ino) != (native.st_dev, native.st_ino):
+            raise ValueError(ERROR_OWNER)
+
+    @classmethod
+    def load(
+        cls, manifest: Path, expected_digest: str, inherited_directory_fd: int, package: StaticPackage
+    ) -> HelperOwner:
+        """Bind the protected header to the direct original supervisor and inherited directory capability."""
+        require_hex(expected_digest, 64)
+        if (
+            os.geteuid() != 0
+            or manifest.name != MANIFEST_NAME
+            or manifest.parent.parent != STATE_ROOT
+            or type(inherited_directory_fd) is not int
+            or inherited_directory_fd <= 2
+        ):
+            raise ValueError(ERROR_OWNER)
+        # Capture the actual inherited capability before any bootstrap open can reuse an absent descriptor number.
+        _require_private_directory(inherited_directory_fd)
+        original_native = os.fstat(inherited_directory_fd)
+        token = manifest.parent.name
+        require_hex(token, 32)
+        root_fd = os.open(STATE_ROOT, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        bootstrap_fd = -1
+        descriptor = -1
+        try:
+            _require_private_directory(root_fd)
+            bootstrap_fd = os.open(token, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=root_fd)
+            _require_private_directory(bootstrap_fd)
+            descriptor = os.open(MANIFEST_NAME, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=bootstrap_fd)
+            before = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_uid != 0
+                or stat.S_IMODE(before.st_mode) != FILE_MODE
+                or before.st_nlink != 1
+                or not 0 < before.st_size <= MANIFEST_LIMIT
+            ):
+                raise ValueError(ERROR_MANIFEST)
+            data = os.pread(descriptor, MANIFEST_LIMIT + 1, 0)
+            after = os.fstat(descriptor)
+            if (
+                len(data) != before.st_size
+                or hashlib.sha256(data).hexdigest() != expected_digest
+                or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+                != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+            ):
+                raise ValueError(ERROR_MANIFEST)
+            record = parse_object(data)
+            binding, deadline = _binding(record)
+            if binding.run_token != token or binding.controller.pid != os.getppid() or binding.controller.uid != 0:
+                raise ValueError(ERROR_OWNER)
+            binding.controller.require_alive()
+            inherited = positive_integer(record, Key.DIRECTORY_FD)
+            if inherited != inherited_directory_fd:
+                raise ValueError(ERROR_OWNER)
+            _require_private_directory(inherited)
+            inherited_native = os.fstat(inherited)
+            bootstrap_native = os.fstat(bootstrap_fd)
+            if (inherited_native.st_dev, inherited_native.st_ino) != (
+                bootstrap_native.st_dev,
+                bootstrap_native.st_ino,
+            ) or (inherited_native.st_dev, inherited_native.st_ino) != (original_native.st_dev, original_native.st_ino):
+                raise ValueError(ERROR_OWNER)
+            linked = os.stat(MANIFEST_NAME, dir_fd=inherited, follow_symlinks=False)
+            if (linked.st_dev, linked.st_ino) != (before.st_dev, before.st_ino):
+                raise ValueError(ERROR_MANIFEST)
+            _require_addresses(record, package, token)
+        finally:
+            close_evidence_descriptors(descriptor, bootstrap_fd, root_fd)
+        journal = ActionJournal.attach_inherited(inherited, binding, deadline, package)
+        try:
+            context = cls(journal, data, inherited)
+            context.require_original_parent()
+            return context
+        except BaseException:
+            close_evidence_descriptors(journal.journal_fd, journal.directory_fd)
+            raise
+
+
+def _binding(record: JsonObject) -> tuple[Binding, Deadline]:
+    row = object_value(record[Key.BINDING])
+    controller = Controller(
+        positive_integer(row, JournalKey.CONTROLLER_PID),
+        positive_integer(row, JournalKey.CONTROLLER_START),
+        0,
+        text(row, JournalKey.BOOT_ID),
+    )
+    deadline = Deadline(
+        positive_integer(row, JournalKey.STARTED_NS),
+        positive_integer(row, JournalKey.END_NS),
+        positive_integer(row, JournalKey.RESERVE_NS),
+    )
+    binding = Binding(
+        text(row, JournalKey.RUN_TOKEN),
+        text(row, JournalKey.CANDIDATE_COMMIT),
+        text(row, JournalKey.CANDIDATE_TREE),
+        text(row, JournalKey.REALIZATION_DIGEST),
+        controller,
+    )
+    if _encode(binding.record(deadline)) != _encode(row):
+        raise ValueError(ERROR_MANIFEST)
+    return binding, deadline
+
+
+def _require_addresses(record: JsonObject, package: StaticPackage, token: str) -> None:
+    Purpose(text(record, Key.PURPOSE))
+    host = object_value(parse_object(package.recipe_bytes)[Key.HOST])
+    parameters: dict[str, str] = {Parameter.RUN_TOKEN: token}
+    for actual, declaration in (
+        (Key.PARENT_UNIT, Key.PARENT_NAME),
+        (Key.GUEST_UNIT, Key.INSTANCE_NAME),
+        (Key.ROOTFS, Key.ROOTFS),
+    ):
+        if text(record, actual) != text(host, declaration).format_map(parameters):
+            raise ValueError(ERROR_MANIFEST)
+
+
+def _require_private_directory(descriptor: int) -> None:
+    native = os.fstat(descriptor)
+    if not stat.S_ISDIR(native.st_mode) or native.st_uid != 0 or stat.S_IMODE(native.st_mode) != ROOT_MODE:
+        raise ValueError(ERROR_OWNER)
 
 
 def _encode(record: JsonObject) -> bytes:

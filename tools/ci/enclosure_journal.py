@@ -275,11 +275,15 @@ class ActionJournal:
             os.close(parent_fd)
 
     @classmethod
-    def attach(cls, directory: Path, binding: Binding, deadline: Deadline, package: StaticPackage) -> ActionJournal:
-        """Attach a helper to protected evidence without adopting a different controller or deadline."""
-        directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    def attach_inherited(
+        cls, original_directory_fd: int, binding: Binding, deadline: Deadline, package: StaticPackage
+    ) -> ActionJournal:
+        """Retain the inherited original directory but acquire an independent journal open-file description."""
+        binding.controller.require_alive()
+        directory_fd = os.dup(original_directory_fd)
         journal_fd = -1
         try:
+            # Inheriting/duping the journal itself would share flock ownership across concurrent helper children.
             journal_fd = os.open(
                 JOURNAL_NAME, os.O_RDWR | os.O_APPEND | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory_fd
             )
