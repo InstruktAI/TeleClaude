@@ -53,6 +53,7 @@ from tools.ci import workflow_waiting as waiting
 from tools.ci.workflow_foundation import FoundationHost
 
 TELEC: Final = "bin/telec"
+NATIVE_TELEC_COMMAND: Final = "telec"
 GIT: Final = "git"
 CONFIG: Final = "config"
 PROJECT: Final = "project"
@@ -592,7 +593,7 @@ class _Prepared:
             0,
             ARGV_X_START,
             [
-                TELEC,
+                NATIVE_TELEC_COMMAND,
                 "sessions",
                 "start",
                 "--path",
@@ -635,7 +636,7 @@ class _Prepared:
         attempt = self._b4_begin(EFFECT_C2_INPUT, start_ledger.RECORD_EFFECT)
         before = self.snapshot()
         before_log = self._public_log_entries(before)
-        self._late(3, ARGV_C2_INPUT, [TELEC, TODO, "artifacts", "write", ITEM, INPUT, B9_BODY_C])
+        self._late(3, ARGV_C2_INPUT, [NATIVE_TELEC_COMMAND, TODO, "artifacts", "write", ITEM, INPUT, B9_BODY_C])
         self._gate(3, GATE_C2_INPUT)
         journey = self.journeys["child"]
         status, output = self._frame_output(journey, "cmd_inputc")
@@ -710,7 +711,7 @@ class _Prepared:
             ARGV_X_INPUT,
             GATE_X_INPUT,
             "cmd_inputforeign",
-            [TELEC, TODO, "artifacts", "write", ITEM, INPUT, B9_X_INPUT],
+            [NATIVE_TELEC_COMMAND, TODO, "artifacts", "write", ITEM, INPUT, B9_X_INPUT],
             ("409", f"{ITEM} is held by session {author}", "holder or a session of its claiming group"),
         )
         self._b9_refusal(
@@ -719,7 +720,7 @@ class _Prepared:
             ARGV_C2_PREPARED,
             GATE_C2_PREPARED,
             "cmd_preparedwrong",
-            [TELEC, TODO, "act", ITEM, "prepared", "--revision", r1, B9_PREPARED_TEXT],
+            [NATIVE_TELEC_COMMAND, TODO, "act", ITEM, "prepared", "--revision", r1, B9_PREPARED_TEXT],
             ("Error: 409 — prepared requires the holding driver",),
         )
         self._b9_refusal(
@@ -728,7 +729,7 @@ class _Prepared:
             ARGV_C2_WAITING,
             GATE_C2_WAITING,
             "cmd_waitingwrong",
-            [TELEC, TODO, "act", ITEM, "waiting", "--person", self.owner_slug, B9_WAITING_TEXT],
+            [NATIVE_TELEC_COMMAND, TODO, "act", ITEM, "waiting", "--person", self.owner_slug, B9_WAITING_TEXT],
             ("Error: 409 — waiting requires the holding driver",),
         )
 
