@@ -324,7 +324,7 @@ class _Claim:
     def publish(self, checkout: Path) -> None:
         """Run the supported installation publication entry point for one committed checkout."""
         self._run(
-            (UV, "--project", str(self.source_root), "--no-sync", "python", "-m", INSTALL_MODULE),
+            (UV, "run", "--project", str(self.source_root), "--no-sync", "python", "-m", INSTALL_MODULE),
             checkout,
             PUBLISH_TIMEOUT_SECONDS,
             what="install_publication",
