@@ -176,7 +176,11 @@ class Handover:
     @staticmethod
     def _expected_hold(pending: Pending, shown: Json) -> str | None:
         """None when the hold is exactly the expected close hold; otherwise a word for what it is."""
-        _, hold = creation.dig(shown, STATE_HOLD)
+        found, hold = creation.dig(shown, STATE_HOLD)
+        if not found or not isinstance(hold, bool):
+            raise creation.binding_failure(
+                DETAIL_WITNESS.format(item=pending.item, what="boolean hold state", found=hold)
+            )
         _, audit = creation.dig(shown, STATE_AUDIT)
         if hold is not True:
             return "absent"
@@ -201,6 +205,7 @@ class Handover:
 
     def after(self, items_ended: list[str]) -> None:
         """Run A4-1 to A4-6 for the items whose holders were just ended; classify all before releasing any."""
+        self.unrelated = f"A4 hold classification incomplete for items: {', '.join(items_ended)}"
         creation.require_manual_runner(self.observer)
         views: dict[str, Json] = {}
         classes: dict[str, str | None] = {}
@@ -209,12 +214,10 @@ class Handover:
             self._closed(pending)
             shown = driver.fresh_snapshot(self.observer, item)
             found, runner = creation.dig(shown, "state.active_runner")
-            _, standing = creation.dig(shown, "standing")
-            if (
-                not found
-                or runner not in (None, creation.EMPTY)
-                or (isinstance(standing, Mapping) and "held_by" in standing)
-            ):
+            standing_found, standing = creation.dig(shown, "standing")
+            if not standing_found or not isinstance(standing, Mapping):
+                raise creation.binding_failure(DETAIL_WITNESS.format(item=item, what="standing object", found=standing))
+            if not found or runner not in (None, creation.EMPTY) or "held_by" in standing:
                 raise creation.binding_failure(DETAIL_STILL_HELD.format(item=item, found=runner))
             self._invariant(pending, shown)
             views[item] = shown
