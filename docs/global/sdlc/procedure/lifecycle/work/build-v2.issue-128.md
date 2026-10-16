@@ -41,6 +41,10 @@ report the exact local commits to the work driver. Its contribution contract
 governs assembly and publication of the reviewed subject. The driver receives
 the local completion notices before public branch publication and retains
 review authority (`sdlc/policy/process-change-authority`).
+
+For an imported proposal, begin with the project's contribution waiting
+assignment under this work driver. Continue its repair findings in this same
+claiming group once its current assessment permits the assigned work.
 <!-- /planned:reviewed-pr-contributions -->
 
 1. **Mechanism note.** Record a note with the mechanism you intend and the

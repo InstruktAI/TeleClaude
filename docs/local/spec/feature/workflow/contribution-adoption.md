@@ -19,11 +19,13 @@ claimed role and report formatting supply no approval.
 ### Adoption identity and intent
 
 One adoption record associates the upstream repository and PR with its pinned
-head and base, retained source, assessment sessions and review history. Before
-ordinary item entry, the contribution intake operation owns that assessment
-assignment and its output, with no local item phase, claim or approval. The
-assignment binds the adoption identity; a local item is associated only through
-the ordinary handoff. Repeated notifications
+head and base, retained source, assessment sessions and review history. An
+existing prepared owning item enters through its ordinary work driver and
+claiming group. A proposal without that prepared owner uses reviewer-only
+pre-item inspection, bound to its adoption identity, with no item phase, claim
+or approval. The upstream owner selects the intended item; code verifies its
+identity and exact prepared body revision rather than inferring intent from
+proposal prose. Repeated notifications
 for the same revision resume that record. A newer PR head is a new review
 subject; an earlier verdict cannot accept it implicitly. The existing qualified
 content-preserving automatic-upstream-merge relation remains applicable to prior
@@ -79,28 +81,31 @@ from report prose (`general/principle/intelligence-boundaries`).
 
 ### Continuation inside the lifecycle
 
-The proposal's intake reviewer starts with the review assignment; its builder
-starts with an explicit waiting assignment. Both use trusted upstream entry
-and bind the adoption identity. Initial
-materialization and later execution preparation are distinct operations; a
-waiting builder runs neither setup nor proposed code before the review permits
-that continuation.
-
-The intake operation retains its report and source handoff before ending its
-assigned sessions. It verifies that their recorded starts and sessions settled
-before completing the ordinary-item handoff. Uncertain settlement retains the
-operation and source. A genuine preparation handoff ends the intake assignment;
-workers are not transferred into a later claiming group
-(`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`).
-
-The handoff creates an ordinary unprepared item or reuses existing approved work
-that owns the proposal. Preparation and work enter through their ordinary
-reservation-bound drivers. The normal work driver is the independent reviewer
-and its child builder belongs to that driver's claiming group. They resume the
-retained implementation and findings, consume the intake report as bound
-evidence and review only the remaining obligations and actual delta. No second
-mandatory intake review is inserted
+For prepared owning work, the ordinary reservation-bound work driver is the
+first reviewer. Its source-materialization effect remains read-only until
+admission. Its normal child starts with trusted upstream context and an
+explicit waiting assignment in that driver's claiming group. The driver
+supplies repair findings to that same waiting builder; repair and review
+continue on the retained proposal. Initial materialization and later executable
+preparation remain distinct, and the builder's waiting assignment executes no
+setup or proposed code before current review permits that continuation
 (`local/projects/teleclaude/spec/feature/workflow/work-review-cycle`).
+
+Without prepared owning work, only the pre-item reviewer starts. The operation
+retains its assessment and source handoff, settles that assignment and verifies
+its recorded starts/sessions before ordinary preparation. Unknown settlement
+retains the operation and source. This inspection starts no waiting builder
+that a preparation handoff would immediately replace. The ordinary preparation
+owner establishes the governing spec; ordinary work then creates its reviewer
+and waiting child in one claiming group. They consume the retained assessment
+as evidence and review the remaining obligations and actual delta, without a
+second mandatory intake pass.
+
+A genuine return to preparation settles the current claiming group under the
+item lifecycle's own rules and retains source and evidence. It is distinct
+from an ordinary repair-feedback round, which keeps its waiting builder;
+workers are never transferred into a later claiming group
+(`local/projects/teleclaude/spec/feature/workflow/item-lifecycle`).
 
 Accepted proposal contracts are associated with the local todo and made
 available through the upstream authoring doc layer before ordinary lifecycle

@@ -1,5 +1,5 @@
 ---
-description: Corroborate an imported proposal from trusted upstream context before executable preparation, then continue its ordinary review assignment.
+description: Assess an unprepared proposal from trusted upstream context and retain its evidence for ordinary preparation.
 visibility: internal
 delivered_by:
   - reviewed-pr-contributions
@@ -30,6 +30,8 @@ governing context.
 ## Preconditions
 
 - The dispatch identifies the adoption record and retained proposal revision.
+- The proposal has no prepared upstream owning item; prepared owning work uses
+  its ordinary work driver as first reviewer.
 - The session starts with upstream-owned instructions and configuration.
 - The contribution inspection surface exposes the proposed source, contracts
   and report identities.
@@ -50,8 +52,8 @@ governing context.
    operation, binding the report digest and proposal revision. A changed
    subject returns for assessment under the contribution-adoption contract.
 5. Return the assessment in this session's output. The intake operation retains
-   source and evidence, settles this assignment and its waiting builder, and
-   completes the ordinary-item handoff. The ordinary preparation/work owner
+   source and evidence, settles this reviewer-only assignment, and completes
+   the ordinary-item handoff. The ordinary preparation/work owner
    consumes the assessment as evidence under the contribution-adoption
    contract. This assignment performs no item phase, claim or readiness act.
 

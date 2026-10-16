@@ -78,6 +78,11 @@ operation for the exact reviewed commit, and then perform the ordinary
 readiness act. The ready-item handoff uses that project's proposal operation.
 The work driver's item authority and native readiness gates remain the
 ordinary lifecycle's (`sdlc/policy/process-change-authority`).
+
+For an imported proposal owned by prepared work, begin with the project's
+read-only admission assessment and its normal child waiting in your claiming
+group. Give ordinary repair findings to that same builder. A real return to
+preparation follows the lifecycle's separate closing contract.
 <!-- /planned:reviewed-pr-contributions -->
 
 1. **Enter.** Call the entry verb for the item. The first call claims the item
