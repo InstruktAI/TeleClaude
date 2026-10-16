@@ -50,6 +50,7 @@ class Interface(StrEnum):
     UNIT = "org.freedesktop.systemd1.Unit"
     SERVICE = "org.freedesktop.systemd1.Service"
     SLICE = "org.freedesktop.systemd1.Slice"
+    JOB = "org.freedesktop.systemd1.Job"
 
 
 class Member(StrEnum):
@@ -93,6 +94,10 @@ class Property(StrEnum):
     INVOCATION_ID = "InvocationID"
     JOB = "Job"
     NAMES = "Names"
+    ID = "Id"
+    UNIT = "Unit"
+    JOB_TYPE = "JobType"
+    STATE = "State"
 
 
 class DisconnectLifecycle(Protocol):
@@ -138,6 +143,20 @@ class NativeEvent:
     member: str
     signature: str
     body: tuple[JsonValue, ...]
+
+
+@dataclass(frozen=True)
+class JobRead:
+    """One accepted native job, observed without treating an absent successor as settlement."""
+
+    identifier: int
+    object_path: str
+    unit_name: str
+    unit_path: str
+    properties: Mapping[str, JsonValue]
+    begin_sequence: int
+    sequence: int
+    observed_ns: int
 
 
 class ManagerObserver:
@@ -306,10 +325,10 @@ class ManagerObserver:
             raise ValueError(BINDING_ERROR)
 
     async def read_unit(
-        self, name: str, specific: Interface, deadline_ns: int, *, original_path: str | None = None
+        self, name: str, specific: Interface | None, deadline_ns: int, *, original_path: str | None = None
     ) -> UnitRead:
         """Read an object and both interfaces; a bound object is never replaced by name."""
-        if name not in self._expected_units or specific not in (Interface.SERVICE, Interface.SLICE):
+        if name not in self._expected_units or specific not in (None, Interface.SERVICE, Interface.SLICE):
             raise ValueError(BINDING_ERROR)
         if self._identity is None or self._faults:
             raise RuntimeError(CONNECTION_ERROR)
@@ -331,17 +350,73 @@ class ManagerObserver:
             Signature.PROPERTIES,
             deadline_ns,
         )
-        detail = await self._call(
+        details: JsonObject = {}
+        if specific is not None:
+            detail = await self._call(
+                Interface.PROPERTIES,
+                path,
+                Member.GET_ALL,
+                Signature.STRING,
+                [specific.value],
+                Signature.PROPERTIES,
+                deadline_ns,
+            )
+            details = _properties(detail)
+        return UnitRead(name, path, _properties(unit), details, begin_sequence, self._sequence, time.monotonic_ns())
+
+    async def read_unit_job(self, unit: UnitRead, deadline_ns: int) -> JobRead | None:
+        """Resolve the exact job from a scoped unit snapshot through GetJob and native Job properties."""
+        if unit.name not in self._expected_units:
+            raise ValueError(BINDING_ERROR)
+        reference = unit.unit.get(Property.JOB)
+        if not isinstance(reference, list) or len(reference) != 2:
+            self.invalidate(Invalidation.MALFORMED_STREAM)
+            raise ValueError(BODY_ERROR)
+        identifier, path = reference
+        if type(identifier) is not int or identifier < 0 or not isinstance(path, str):
+            self.invalidate(Invalidation.MALFORMED_STREAM)
+            raise ValueError(BODY_ERROR)
+        if identifier == 0:
+            if path != PATH_SEPARATOR:
+                self.invalidate(Invalidation.MALFORMED_STREAM)
+                raise ValueError(BODY_ERROR)
+            return None
+        found = await self._call(
+            Interface.MANAGER, MANAGER_PATH, Member.GET_JOB, Signature.UINT, [identifier], Signature.OBJECT, deadline_ns
+        )
+        if _single_text(found) != path:
+            self.invalidate(Invalidation.UNKNOWN_ACTIVATOR)
+            raise ValueError(BINDING_ERROR)
+        reply = await self._call(
             Interface.PROPERTIES,
             path,
             Member.GET_ALL,
             Signature.STRING,
-            [specific.value],
+            [Interface.JOB.value],
             Signature.PROPERTIES,
             deadline_ns,
         )
-        return UnitRead(
-            name, path, _properties(unit), _properties(detail), begin_sequence, self._sequence, time.monotonic_ns()
+        properties = _properties(reply)
+        if (
+            type(properties.get(Property.ID)) is not int
+            or properties[Property.ID] != identifier
+            or properties.get(Property.UNIT) != [unit.name, unit.object_path]
+            or not isinstance(properties.get(Property.JOB_TYPE), str)
+            or not properties[Property.JOB_TYPE]
+            or not isinstance(properties.get(Property.STATE), str)
+            or not properties[Property.STATE]
+        ):
+            self.invalidate(Invalidation.UNKNOWN_ACTIVATOR)
+            raise ValueError(BINDING_ERROR)
+        return JobRead(
+            identifier,
+            path,
+            unit.name,
+            unit.object_path,
+            properties,
+            unit.begin_sequence,
+            self._sequence,
+            time.monotonic_ns(),
         )
 
     async def bind_parent(self, name: str, population: PopulationObserver, deadline_ns: int) -> UnitRead:
