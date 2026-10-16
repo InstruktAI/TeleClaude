@@ -19,6 +19,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.models import JsonDict, JsonValue
+from teleclaude.paths import STATE_DIR
 
 logger = get_logger(__name__)
 
@@ -41,6 +42,8 @@ OWNER_UNREACHABLE: Final = (
 )
 SETTLE_FAILED_LOG: Final = "helper_start_settle_failed"
 KEYS_FIELD: Final = "keys"
+START_KEY_FIELD: Final = "start_key"
+UNRESOLVED_DIRECTORY: Final = STATE_DIR / "helper-start-unresolved"
 
 # The start keys whose creation this computer is performing right now; the creation runs in this process, so a key
 # is in progress exactly while its fence is open and never after the process has ended.
@@ -61,9 +64,19 @@ def release_in_flight(keys: Sequence[str]) -> None:
             _IN_FLIGHT.pop(key, None)
 
 
+def record_unresolved(key: str, target: str) -> None:
+    """Keep a creation whose outcome is not known as in progress across a restart of this process.
+
+    The creation was handed to another computer and no answer came back: whether it ran, is running or will run is
+    not known here, and only an outcome (a session it produced) ends the doubt. Nothing clears the record by itself.
+    """
+    UNRESOLVED_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    (UNRESOLVED_DIRECTORY / key).write_text(target, encoding="utf-8")
+
+
 def in_flight_among(keys: Sequence[str]) -> list[str]:
-    """The keys among ``keys`` whose creation this computer is performing now."""
-    return [key for key in keys if key in _IN_FLIGHT]
+    """The keys among ``keys`` whose creation this computer is performing now, or has not learned the outcome of."""
+    return [key for key in keys if key in _IN_FLIGHT or (UNRESOLVED_DIRECTORY / key).exists()]
 
 
 class PeerStartRequest(StrEnum):
@@ -107,7 +120,7 @@ async def _ask(owner: str, command: PeerStartRequest, request: JsonDict) -> Json
 
 
 async def register_with_owner(
-    owner: str, creator: str, creator_computer: str, ancestor: str, new_computer: str
+    owner: str, creator: str, creator_computer: str, ancestor: str, new_computer: str, start_key: str
 ) -> list[StartEntry]:
     """Record the start on every item the creator\'s group holds on ``owner`` (and beyond it), before the creation.
 
@@ -122,6 +135,7 @@ async def register_with_owner(
         CREATOR_COMPUTER_FIELD: creator_computer,
         ANCESTOR_FIELD: ancestor,
         NEW_COMPUTER_FIELD: new_computer,
+        START_KEY_FIELD: start_key,
     }
     try:
         answer = await _ask(owner, PeerStartRequest.REGISTER, request)

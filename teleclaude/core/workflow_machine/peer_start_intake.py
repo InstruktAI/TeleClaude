@@ -26,6 +26,7 @@ from teleclaude.core.workflow_machine.peer_starts import (
     PARENT_FIELD,
     SESSION_COMPUTER_FIELD,
     SESSION_FIELD,
+    START_KEY_FIELD,
     PeerStartRequest,
     StartEntry,
     in_flight_among,
@@ -57,6 +58,7 @@ async def serve_peer_start(command: str, message: RedisInboundMessage) -> JsonVa
                 _text(request, CREATOR_COMPUTER_FIELD, command),
                 _text(request, ANCESTOR_FIELD, command),
                 _text(request, NEW_COMPUTER_FIELD, command),
+                _text(request, START_KEY_FIELD, command),
             )
         except HelperStartRefused as refusal:
             raise PermissionError(str(refusal)) from refusal
