@@ -21,6 +21,7 @@ from typing import Final
 
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_items as items
+from tools.ci import workflow_publication as publication
 from tools.ci.workflow_creation import Observer, SessionView
 from tools.ci.workflow_foundation import FoundationHost, Outcome
 
@@ -69,6 +70,8 @@ DETAIL_DIGEST: Final = "{slug}: approved_digest {digest!r} is not the task-plan 
 DETAIL_STAMP_GATE: Final = "the legacy task stamp did not reach its own refusal: exit {status}, {output!r}"
 DETAIL_STAMP_V2: Final = "the legacy task stamp was refused by the v2 machine: {output!r}"
 DETAIL_STAMP_EXIT: Final = "the legacy task stamp exited {status}, not non-zero: {output!r}"
+LOG_TERMS: Final = ("Traceback", "ERROR", "exception", "todo creation", "500")
+DETAIL_CREATE_LOGS: Final = "{error} (daemon logs: {logs})"
 DETAIL_PRESENT: Final = "R2 slugs already exist: {found!r}"
 
 
@@ -78,6 +81,16 @@ def _create(observer: Observer, slug: str, content: str, kind: str, *, plan: boo
         argv.append(items.PLAN_FLAG)
     argv.append(items.APPROVED_FLAG)
     return observer.run(argv)
+
+
+def _created(observer: Observer, slug: str, content: str, kind: str, *, plan: bool) -> None:
+    """A creation that must succeed; a failure carries the daemon's log text, which a failed case alone can keep."""
+    outcome = _create(observer, slug, content, kind, plan=plan)
+    try:
+        creation.require_created(outcome, slug)
+    except creation.JourneyFailure as failure:
+        logs = publication.log_evidence(observer.host, LOG_TERMS)
+        raise creation.JourneyFailure(DETAIL_CREATE_LOGS.format(error=failure, logs=logs)) from failure
 
 
 def _shown(observer: Observer, slug: str) -> Mapping[str, object]:
@@ -113,7 +126,7 @@ def _no_standing(slug: str, payload: Mapping[str, object]) -> None:
 def _plan_creation(observer: Observer) -> None:
     """Step 1: a plan seeds a change that stays in preparation."""
     slug = SLUG_PLAN
-    creation.require_created(_create(observer, slug, CONTENT_PLAN, KIND_CHANGE, plan=True), slug)
+    _created(observer, slug, CONTENT_PLAN, KIND_CHANGE, plan=True)
     payload = _shown(observer, slug)
     _common(slug, payload, KIND_CHANGE, PHASE_PREPARATION)
     creation.require_value(slug, payload, f"{STANDING}.{creation.FIELD_STANDING_PHASE}", PHASE_PREPARATION)
@@ -171,7 +184,7 @@ def _plain_twins(observer: Observer) -> None:
         (SLUG_FEATURE_PLAN, KIND_FEATURE, CONTENT_FEATURE),
         (SLUG_BUG_PLAN, KIND_BUG, CONTENT_BUG),
     ):
-        creation.require_created(_create(observer, slug, content, kind, plan=False), slug)
+        _created(observer, slug, content, kind, plan=False)
         creation.require_value(
             slug, _shown(observer, slug), f"{creation.FIELD_STATE}.{creation.FIELD_PHASE}", PHASE_PREPARATION
         )
@@ -180,7 +193,7 @@ def _plain_twins(observer: Observer) -> None:
 def _bare_task(observer: Observer) -> None:
     """Step 4: a bare task enters its own lane, with no standing and no authorization."""
     slug = SLUG_TASK
-    creation.require_created(_create(observer, slug, CONTENT_TASK, KIND_TASK, plan=False), slug)
+    _created(observer, slug, CONTENT_TASK, KIND_TASK, plan=False)
     payload = _shown(observer, slug)
     _common(slug, payload, KIND_TASK, PHASE_TASK_DRAFTING)
     _artifacts(slug, payload, ARTIFACT_INPUT)
@@ -200,7 +213,7 @@ def _task_with_plan(observer: Observer) -> None:
     """Step 5: a task with its plan is pre-authorized by construction, with the manual runner re-read first."""
     creation.require_manual_runner(observer)
     slug = SLUG_TASK_PLAN
-    creation.require_created(_create(observer, slug, CONTENT_TASK_PLAN, KIND_TASK, plan=True), slug)
+    _created(observer, slug, CONTENT_TASK_PLAN, KIND_TASK, plan=True)
     payload = _shown(observer, slug)
     creation.require_value(slug, payload, f"{creation.FIELD_STATE}.{creation.FIELD_KIND}", KIND_TASK)
     creation.require_value(slug, payload, f"{creation.FIELD_STATE}.{creation.FIELD_PHASE}", PHASE_PREPARED)
