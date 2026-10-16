@@ -18,13 +18,12 @@ reservation, identity or authentication state, reads no private store and import
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final
-
-import yaml
 
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
@@ -166,24 +165,44 @@ def docs_body(output: str) -> str | None:
     return "\n".join(lines[dividers[1] + 1 :]).strip()
 
 
+_CHILD_LINE = re.compile(r"^\s+child:\s*(?P<child>\S+)\s*$")
+_ACT_LINE = re.compile(r"^\s+-\s+act:\s*(?P<act>\S+)\s*$")
+_LEADS_LINE = re.compile(r"^\s+leads_to:\s*(?P<phase>\S+)\s*$")
+_ACTS_KEY = re.compile(r"^\s+acts:\s*$")
+
+
 def declared_acts(path: Path) -> tuple[list[tuple[str, str]], str]:
-    """The ending acts with their phases, and the child procedure, the folded driver's `workflow` header declares."""
-    text = path.read_text(encoding="utf-8")
-    parts = text.split("---", 2)
-    header = yaml.safe_load(parts[1]) if len(parts) >= 3 else None
-    workflow = header.get("workflow") if isinstance(header, Mapping) else None
-    acts = workflow.get("acts") if isinstance(workflow, Mapping) else None
-    child = workflow.get("child") if isinstance(workflow, Mapping) else None
-    if not isinstance(acts, list) or not isinstance(child, str):
+    """The ending acts with their phases, and the child procedure, the folded driver's `workflow` header declares.
+
+    The header is the YAML block between the first two `---` lines; only the `workflow:` mapping is read, line by line,
+    because the hosted harness runs on the standard library alone.
+    """
+    parts = path.read_text(encoding="utf-8").split("---", 2)
+    lines = parts[1].splitlines() if len(parts) >= 3 else []
+    start = next((index for index, line in enumerate(lines) if line.rstrip() == "workflow:"), None)
+    if start is None:
         raise creation.binding_failure(DETAIL_COMPANION.format(path=path))
-    pairs = [
-        (str(act["act"]), str(act["leads_to"]))
-        for act in acts
-        if isinstance(act, Mapping) and "act" in act and "leads_to" in act
-    ]
-    if not pairs or len(pairs) != len(acts):
+    block: list[str] = []
+    for line in lines[start + 1 :]:
+        if line.strip() and not line.startswith(" "):
+            break
+        block.append(line)
+    child = next((m.group("child") for m in map(_CHILD_LINE.match, block) if m), None)
+    acts_at = next((index for index, line in enumerate(block) if _ACTS_KEY.match(line)), None)
+    if child is None or acts_at is None:
         raise creation.binding_failure(DETAIL_COMPANION.format(path=path))
-    return pairs, child
+    names: list[str] = []
+    phases: list[str] = []
+    for line in block[acts_at + 1 :]:
+        if (act := _ACT_LINE.match(line)) is not None:
+            names.append(act.group("act"))
+        elif (leads := _LEADS_LINE.match(line)) is not None:
+            phases.append(leads.group("phase"))
+        elif line.strip() and not line.lstrip().startswith("-"):
+            break
+    if not names or len(names) != len(phases):
+        raise creation.binding_failure(DETAIL_COMPANION.format(path=path))
+    return list(zip(names, phases, strict=True)), child
 
 
 class _Claim:
