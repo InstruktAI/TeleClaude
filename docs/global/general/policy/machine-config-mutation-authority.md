@@ -71,6 +71,6 @@ None.
 
 <!-- change:config-client-command-boundary -->
 
-- When the daemon is unavailable, an agent may inspect and edit the configuration files directly to recover it. This is an agent-operated recovery action, not a fallback implemented in UI or CLI clients. It needs no additional recovery service or command.
+- When the daemon is unavailable, an agent acting within its existing authorization may inspect and edit the configuration files directly to recover it. The existing role band, configuration-subject standing, and repository file scope continue to apply to that recovery action. This is an agent-operated recovery action, not a fallback implemented in UI or CLI clients. It needs no additional recovery service or command.
 
 <!-- /planned-change:config-client-command-boundary -->
