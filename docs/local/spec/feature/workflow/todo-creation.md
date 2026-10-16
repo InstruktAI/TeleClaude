@@ -73,6 +73,16 @@ lookup returns no commits; it does not classify the work as having no
 documentation delta. Independent approval is established from the verified
 stamp and producing-session provenance required by `general/policy/commits`.
 
+For first-child grouping, the admission inventory includes the parent's pending
+documents that the grouping operation transfers to the child. The parent's
+associated reviewed revision covers the transferred contract only through
+workflow-owned evidence binding that revision to the exact pending-identity
+rewrite and its resulting paths and content. That evidence persists with the
+successful grouping, including parked children, and remains available when the
+child enters the lifecycle. It supplies association continuity, never a review
+verdict. Content outside that exact transformation requires its own current
+associated independent approval under `sdlc/policy/todo-creation-discipline`.
+
 Refusal precedes todo state, artifact creation and dispatch, and identifies the
 missing, stale or unresolved evidence with its commit reference and the existing
 review path. A transcript assertion, an author's discard, or the creation
