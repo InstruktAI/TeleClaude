@@ -639,15 +639,21 @@ async def _run_session(
         if cmd.launch_intent is not None:
             cmd.launch_intent.accepted_at_origin = True
     try:
-        guard_result = await enforce_driver_start_guard(
-            project_path=request.project,
-            working_slug=plan.working_slug,
-            procedure_id=plan.command,
-            role=plan.role,
-            caller_session_id=plan.initiator_session_id,
-            caller_human_email=terminal_driver_email(identity),
-            thinking_mode=plan.launch_intent.thinking_mode if plan.launch_intent else "",
-            handoff_session_id=fixed_session_id,
+        # A child the holding driver starts for its own item (pinned declarations, resolved from the holder's record) is
+        # a member of that driver's claiming group, not a second driver: the duplicate-driver guard does not apply.
+        guard_result = (
+            DriverStartGuardResult()
+            if pinned is not None
+            else await enforce_driver_start_guard(
+                project_path=request.project,
+                working_slug=plan.working_slug,
+                procedure_id=plan.command,
+                role=plan.role,
+                caller_session_id=plan.initiator_session_id,
+                caller_human_email=terminal_driver_email(identity),
+                thinking_mode=plan.launch_intent.thinking_mode if plan.launch_intent else "",
+                handoff_session_id=fixed_session_id,
+            )
         )
     except RunSessionRefusal as exc:
         emit_run_outcome(
