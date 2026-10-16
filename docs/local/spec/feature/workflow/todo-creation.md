@@ -67,6 +67,12 @@ the referenced revisions, and confirms that the pending documentation entering
 the lifecycle matches the reviewed content. Evidence survives without an
 existing todo and without a current session claim.
 
+Every declared pending document is covered by a matching footer-associated
+commit. A missing association blocks entry even when the associated-commit
+lookup returns no commits; it does not classify the work as having no
+documentation delta. Independent approval is established from the verified
+stamp and producing-session provenance required by `general/policy/commits`.
+
 Refusal precedes todo state, artifact creation and dispatch, and identifies the
 missing, stale or unresolved evidence with its commit reference and the existing
 review path. A transcript assertion, an author's discard, or the creation
@@ -386,6 +392,8 @@ And the surface verifies the decisions were faced, never that the answers are tr
 
 #### UC-WTC28: Todo creation interrogates before creating
 
+<!-- planned-change:todo-doc-review-evidence -->
+
 ```gherkin
 Given an agent invokes `telec todo create <slug> <content>` without the acknowledgment flag
 When the command runs
@@ -394,6 +402,25 @@ And exits 0 without creating a todo — serving the interrogation is the success
 And only that output names how to complete the creation
 And the surface verifies the decisions were faced, never that the answers are true — judging the answers stays with intelligence
 ```
+
+<!-- change:todo-doc-review-evidence -->
+
+```gherkin
+Given an agent is creating a todo through `telec todo create <slug> <content>`
+When the agent invokes the command without the acknowledgment flag
+Then the command presents the pre-creation decisions and creates no todo
+And it names how to acknowledge those decisions
+When the agent acknowledges them and requests lifecycle entry with declared pending documentation
+But any declared pending document lacks a matching commit association, independent approval, or a current reviewed version
+Then creation is refused before any todo state, artifact or dispatch is produced
+And the refusal identifies the missing, unresolved or stale evidence and the commit or review action required
+When the documentation evidence is independently approved and current
+Then that evidence admits the creation through the existing remaining creation checks
+And work genuinely declaring no documentation delta keeps its existing creation route
+And icebox filing keeps its parking route with the evidence check at lifecycle entry
+```
+
+<!-- /planned-change:todo-doc-review-evidence -->
 
 #### UC-WTC8: Direct human filing records the human root alone
 

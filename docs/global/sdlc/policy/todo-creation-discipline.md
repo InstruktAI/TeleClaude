@@ -24,6 +24,9 @@ description: Decide whether a todo should exist, audit that decision at preparat
   `--approved` declaration supplies no review evidence. A missing approval,
   unresolved review or changed documentation is refused before creation, naming
   the missing evidence and the existing commit/review path that supplies it.
+  Every declared pending document must be covered by a matching commit
+  association; a declared document without one is missing evidence and blocks
+  entry, rather than being treated as work with no documentation delta.
   The check protects the contract downstream preparation consumes
   (`general/principle/trust-and-guardrails`).
 - **The evidence check does not judge documentation impact.** Whether work needs

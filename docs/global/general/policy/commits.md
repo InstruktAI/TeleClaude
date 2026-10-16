@@ -148,6 +148,15 @@ All Committizen types are allowed.
   checkpoint obligation. This keeps pre-creation documentation approval
   available as evidence without reconstructing a transcript
   (`general/principle/grounding`).
+- An approval is independent only when its authenticated stamping session is
+  distinct from every producing session recorded by the reviewed commit's
+  sealed `Session:` provenance. An approval from a producing session, or one
+  whose reviewer or producing-session provenance cannot be established, supplies
+  no independent approval evidence. The creation boundary consumes that
+  established provenance with the SHA-bound verdict; it never accepts a caller's
+  assertion of independence. Author discard stamps retain their existing
+  purpose and do not become review approvals
+  (`general/concept/lineage-vs-authorship`).
 
 <!-- /planned-change:todo-doc-review-evidence -->
 
