@@ -53,6 +53,8 @@ logger = get_logger(__name__)
 type JsonObject = dict[str, object]  # guard: loose-dict - a request body is route-defined JSON
 
 _DETAIL_FIELD = "detail"
+_SESSION_ID_FIELD = "session_id"
+_RETAIN_FAILED_LOG = "retaining the session a carried creation started failed"
 _COMPUTER_PARAM = "computer"
 _CONTENT_TYPE_HEADER = "content-type"
 _DIRECT_FIELDS: Final = ("direct", "close_link")
@@ -183,6 +185,27 @@ def _relayed_response(result: object, computer: str) -> Response:
     return response
 
 
+async def _retain_started_session(request: Request, identity: CallerIdentity, target: str, result: object) -> None:
+    """Name the session a carried creation started, for the claiming group of the session that asked for it.
+
+    The item\'s sweep must find a helper on another computer even when nothing else shows it, so the computer that
+    carried the request records the member the moment the answer names it. Contained: a failure here never changes the
+    answer the caller gets, and the periodic observation retains the member later.
+    """
+    if (request.method, request.url.path) not in _SESSION_ROUTES_WITH_BODY_COMPUTER or not identity.session_id:
+        return
+    from teleclaude.core.workflow_machine.effects import record_remote_start  # noqa: PLC0415 - deferred cycle
+
+    try:
+        relayed = RelayedResponse.from_wire(result if isinstance(result, dict) else None)
+        body = _json_object(base64.b64decode(relayed.body_b64))
+        started = body.get(_SESSION_ID_FIELD) if body is not None else None
+        if isinstance(started, str) and started:
+            await record_remote_start(identity.session_id, target, started)
+    except Exception:  # supervision boundary: the answer is the caller\'s; the observation pass retains it later
+        logger.exception(_RETAIN_FAILED_LOG, computer=target)
+
+
 async def _carry(request: Request, target: str, identity: CallerIdentity, raw_body: bytes) -> Response:
     """Carry the request to the computer it names and return that computer's response."""
     if get_relayed_caller() is not None:
@@ -220,6 +243,7 @@ async def _carry(request: Request, target: str, identity: CallerIdentity, raw_bo
     except (RuntimeError, ValueError) as error:
         detail = _TRANSPORT_UNAVAILABLE_DETAIL.format(computer=target, error=error)
         return JSONResponse(status_code=HTTPStatus.SERVICE_UNAVAILABLE, content={_DETAIL_FIELD: detail})
+    await _retain_started_session(request, identity, target, result)
     return _relayed_response(result, target)
 
 

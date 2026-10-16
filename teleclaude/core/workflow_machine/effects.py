@@ -21,7 +21,12 @@ from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
-from teleclaude.core.workflow_machine.caller import GroupMember, group_view_of, remote_snapshots_present
+from teleclaude.core.workflow_machine.caller import (
+    GroupMember,
+    group_view_of,
+    in_claiming_group,
+    remote_snapshots_present,
+)
 from teleclaude.core.workflow_machine.dispatch import OrchestratorSpec, orchestrator_session_id, start_orchestrator
 from teleclaude.core.workflow_machine.helpers import unsettled_helper_starts
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
@@ -428,6 +433,27 @@ async def reconcile_item(
             logger.exception(EFFECT_FAILED_LOG, slug=item.slug, effect=effect.id, project_root=project_root)
             break
         await store.clear_pending_effect(item.todo_id, effect.id)
+
+
+async def record_remote_start(caller_session_id: str, computer: str, session_id: str) -> None:
+    """Retain a session another computer just started for a member of a held item\'s claiming group, at the moment.
+
+    The creating computer knows the request it carried and the answer, so it is the one that can name the new member
+    before any later view of the cluster is needed. The item is found through the caller\'s project; a caller that is
+    in no held item\'s group records nothing.
+    """
+    caller = await db.get_session(caller_session_id)
+    if caller is None or not caller.project_path:
+        return
+    store = await get_workflow_store(str(caller.project_path))
+    for slug, state in await asyncio.to_thread(store.list_active_states_sync):
+        holder = state.get("active_runner")
+        if not isinstance(holder, str) or not holder:
+            continue
+        retained = workflow_record_of(state).remote_members
+        if await in_claiming_group(caller_session_id, holder, retained):
+            member = RemoteMember(session_id=session_id, computer=computer, parent=caller_session_id)
+            await retain_remote_members(store, slug, [member])
 
 
 async def observe_remote_groups(store: WorkflowStore) -> None:
