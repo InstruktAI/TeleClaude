@@ -86,6 +86,15 @@ because the session record belongs to agent runtime (`local/projects/teleclaude/
 
 ### Session-owned conversation convergence
 
+<!-- planned:mirror-archive-live-source-conflict -->
+
+Structural migrations required by the current source-observation model complete
+before bootstrap publishes or caches that schema as ready. A failed structural
+migration preserves the pre-migration store and leaves its revision pending;
+domain operations consume the current shape
+(`sdlc/policy/backward-compatibility-hygiene`).
+<!-- /planned:mirror-archive-live-source-conflict -->
+
 The mirror is keyed by retained TeleClaude session identity. Source associations
 preserve native provenance beneath that identity. Convergence consolidates the
 recorded lineage while retaining archived text whose source is unavailable.
