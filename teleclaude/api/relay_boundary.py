@@ -20,7 +20,8 @@ from __future__ import annotations
 import base64
 import json
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from http import HTTPMethod, HTTPStatus
 from typing import TYPE_CHECKING, Final
@@ -41,8 +42,10 @@ from teleclaude.core.command_dispatch import (
     RemoteDispatchReason,
     is_remote_target,
 )
+from teleclaude.core.db import db
 from teleclaude.core.operation_caller_identity import get_relayed_caller
 from teleclaude.core.relay_carrier import carry_request
+from teleclaude.core.workflow_machine.helpers import HelperFence, HelperStartRefused, helper_start_fence
 from teleclaude.types.commands import CommandType, RelayedResponse
 
 if TYPE_CHECKING:
@@ -54,7 +57,7 @@ type JsonObject = dict[str, object]  # guard: loose-dict - a request body is rou
 
 _DETAIL_FIELD = "detail"
 _SESSION_ID_FIELD = "session_id"
-_RETAIN_FAILED_LOG = "retaining the session a carried creation started failed"
+_RAN_NOTHING_REASONS = frozenset({RemoteDispatchReason.UNKNOWN_COMPUTER, RemoteDispatchReason.RELAY_UNSUPPORTED})
 _COMPUTER_PARAM = "computer"
 _CONTENT_TYPE_HEADER = "content-type"
 _DIRECT_FIELDS: Final = ("direct", "close_link")
@@ -185,25 +188,51 @@ def _relayed_response(result: object, computer: str) -> Response:
     return response
 
 
-async def _retain_started_session(request: Request, identity: CallerIdentity, target: str, result: object) -> None:
-    """Name the session a carried creation started, for the claiming group of the session that asked for it.
+@asynccontextmanager
+async def _creation_fence(request: Request, identity: CallerIdentity, target: str) -> AsyncIterator[HelperFence | None]:
+    """Record a carried session creation as a helper start of the requesting session\'s holder, before it is carried.
 
-    The item\'s sweep must find a helper on another computer even when nothing else shows it, so the computer that
-    carried the request records the member the moment the answer names it. Contained: a failure here never changes the
-    answer the caller gets, and the periodic observation retains the member later.
+    The computer that creates the session has no copy of the owning item, so the check that a closing or earlier
+    group may not start a helper has to be made here, on the computer that holds the item, and the start recorded
+    before anything is created. Only a session creation made by a session of this computer is fenced.
     """
     if (request.method, request.url.path) not in _SESSION_ROUTES_WITH_BODY_COMPUTER or not identity.session_id:
+        yield None
         return
-    from teleclaude.core.workflow_machine.effects import record_remote_start  # noqa: PLC0415 - deferred cycle
+    caller = await db.get_session(identity.session_id)
+    if caller is None or not caller.project_path:
+        yield None
+        return
+    async with helper_start_fence(str(caller.project_path), None, identity.session_id, target) as fence:
+        yield fence
 
+
+def _settle_carried_creation(fence: HelperFence | None, result: object) -> None:
+    """Decide what the answer to a carried creation says about the helper start recorded for it.
+
+    A successful answer names the session; any other answer the remote computer gave means it created nothing, so the
+    start is withdrawn. A crossing that failed with an unknown outcome leaves the start recorded.
+    """
+    if fence is None:
+        return
+    fence.refused()
     try:
         relayed = RelayedResponse.from_wire(result if isinstance(result, dict) else None)
+    except ValueError:
+        fence.may_have_created()
+        return
+    if relayed.status_code >= HTTPStatus.BAD_REQUEST:
+        return
+    try:
         body = _json_object(base64.b64decode(relayed.body_b64))
-        started = body.get(_SESSION_ID_FIELD) if body is not None else None
-        if isinstance(started, str) and started:
-            await record_remote_start(identity.session_id, target, started)
-    except Exception:  # supervision boundary: the answer is the caller\'s; the observation pass retains it later
-        logger.exception(_RETAIN_FAILED_LOG, computer=target)
+    except ValueError:
+        fence.may_have_created()
+        return
+    started = body.get(_SESSION_ID_FIELD) if body is not None else None
+    if isinstance(started, str) and started:
+        fence.named(started)
+    else:
+        fence.may_have_created()
 
 
 async def _carry(request: Request, target: str, identity: CallerIdentity, raw_body: bytes) -> Response:
@@ -221,16 +250,29 @@ async def _carry(request: Request, target: str, identity: CallerIdentity, raw_bo
 
     cleared = _cleared_command(request, identity)
     try:
-        result = await carry_request(
-            destination=target,
-            method=request.method,
-            path=request.url.path,
-            query=[[name, value] for name, value in request.query_params.multi_items()],
-            body=raw_body,
-            content_type=request.headers.get(_CONTENT_TYPE_HEADER),
-            principal=principal,
-            caller_session_id=identity.session_id or None,
-            cleared_command=cleared_command_path(cleared) if cleared else None,
+        async with _creation_fence(request, identity, target) as fence:
+            if fence is not None:
+                fence.may_have_created()
+            try:
+                result = await carry_request(
+                    destination=target,
+                    method=request.method,
+                    path=request.url.path,
+                    query=[[name, value] for name, value in request.query_params.multi_items()],
+                    body=raw_body,
+                    content_type=request.headers.get(_CONTENT_TYPE_HEADER),
+                    principal=principal,
+                    caller_session_id=identity.session_id or None,
+                    cleared_command=cleared_command_path(cleared) if cleared else None,
+                )
+            except RelayFailure as failure:
+                if fence is not None and failure.reason in _RAN_NOTHING_REASONS:
+                    fence.refused()
+                raise
+            _settle_carried_creation(fence, result)
+    except HelperStartRefused as refusal:
+        return declared_refusal_response(
+            status_code=HTTPStatus.CONFLICT, detail=str(refusal), work_feedback=str(refusal)
         )
     except RelayFailure as failure:
         return relay_failure_response(failure)
@@ -243,7 +285,6 @@ async def _carry(request: Request, target: str, identity: CallerIdentity, raw_bo
     except (RuntimeError, ValueError) as error:
         detail = _TRANSPORT_UNAVAILABLE_DETAIL.format(computer=target, error=error)
         return JSONResponse(status_code=HTTPStatus.SERVICE_UNAVAILABLE, content={_DETAIL_FIELD: detail})
-    await _retain_started_session(request, identity, target, result)
     return _relayed_response(result, target)
 
 

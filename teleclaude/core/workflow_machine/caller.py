@@ -16,7 +16,7 @@ from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.db import db
 from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.session_utils import session_in_claiming_group
-from teleclaude.types.workflow_record import RemoteMember
+from teleclaude.types.workflow_record import HelperStart, RemoteMember
 
 NO_PRINCIPAL_EMAIL: Final = ""
 
@@ -62,20 +62,41 @@ async def load_caller(session_id: str) -> CallerFacts | None:
     )
 
 
+async def anchored_members(holder_session_id: str, recorded: Sequence[RemoteMember]) -> frozenset[str]:
+    """The retained remote members that belong to this holder\'s group, and no other holder\'s.
+
+    A retained member belongs to the group only when its parent edge leads back to the holder: the parent is the holder,
+    a session that descends from it on this computer, or a member already anchored. A member retained under an earlier
+    holder is on that holder\'s edge and so is not in a later holder\'s group, though the item still retains it.
+    """
+    anchored: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for member in recorded:
+            if member.session_id in anchored:
+                continue
+            if member.parent in anchored or await session_in_claiming_group(member.parent, holder_session_id):
+                anchored.add(member.session_id)
+                changed = True
+    return frozenset(anchored)
+
+
 async def in_claiming_group(
     caller_session_id: str, holder_session_id: str, recorded: Sequence[RemoteMember] = ()
 ) -> bool:
     """Whether the caller is the holder or a session dispatched, transitively, from it.
 
-    A caller of another computer is a member when the item retains it as one, or when its recorded ancestry reaches
-    the holder through the members the item retains.
+    A caller of another computer is a member when the item retains it as one anchored to this holder, and a session of
+    this computer is a member when its ancestry reaches the holder directly or through an anchored remote member.
     """
     if await session_in_claiming_group(caller_session_id, holder_session_id):
         return True
-    if caller_session_id in {member.session_id for member in recorded}:
+    anchored = await anchored_members(holder_session_id, recorded)
+    if caller_session_id in anchored:
         return True
-    for member in recorded:
-        if await session_in_claiming_group(caller_session_id, member.session_id):
+    for member_id in anchored:
+        if await session_in_claiming_group(caller_session_id, member_id):
             return True
     return False
 
@@ -136,7 +157,9 @@ class GroupView:
     remote: tuple[RemoteMember, ...] = ()
 
 
-async def group_view_of(holder_session_id: str, recorded: Sequence[RemoteMember] = ()) -> GroupView:
+async def group_view_of(
+    holder_session_id: str, recorded: Sequence[RemoteMember] = (), starts: Sequence[HelperStart] = ()
+) -> GroupView:
     """Every session started from the holder, transitively and on any computer, with what is not positively known.
 
     Sessions of this computer come from its store, through ended intermediates. Sessions of the others come from the
@@ -182,6 +205,9 @@ async def group_view_of(holder_session_id: str, recorded: Sequence[RemoteMember]
                 live.append(GroupMember(member.session_id, member.computer))
             elif member.computer not in view.warm:
                 unknown.add(member.computer)
+    for start in starts:
+        if start.computer and not start.session_id and start.computer not in view.warm:
+            unknown.add(start.computer)  # a creation carried there that never named its session: unproven empty
     return GroupView(tuple(live), tuple(sorted(unknown)), tuple(remote))
 
 

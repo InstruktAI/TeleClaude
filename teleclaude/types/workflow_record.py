@@ -326,6 +326,7 @@ class HelperStart(BaseModel):
     session_id: str = ""
     owner_pid: int = 0
     owner_identity: str = ""
+    computer: str = ""
 
 
 class WorkflowRecord(BaseModel):

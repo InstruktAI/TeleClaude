@@ -24,7 +24,6 @@ from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_a
 from teleclaude.core.workflow_machine.caller import (
     GroupMember,
     group_view_of,
-    in_claiming_group,
     remote_snapshots_present,
 )
 from teleclaude.core.workflow_machine.dispatch import OrchestratorSpec, orchestrator_session_id, start_orchestrator
@@ -334,7 +333,11 @@ async def _sweep_helpers(context: EffectContext, effect: PendingEffect) -> None:
         state = await context.store.read_state_by_id(context.item.todo_id)
         record = workflow_record_of(state) if state is not None else None
         in_flight = record is not None and bool(unsettled_helper_starts(record))
-        view = await group_view_of(holder, record.remote_members if record is not None else ())
+        view = await group_view_of(
+            holder,
+            record.remote_members if record is not None else (),
+            record.helper_starts if record is not None else (),
+        )
         await retain_remote_members(context.store, context.item.slug, view.remote)
         if view.unknown:
             logger.info(REMOTE_UNKNOWN_LOG, slug=context.item.slug, computers=",".join(view.unknown))
@@ -435,27 +438,6 @@ async def reconcile_item(
         await store.clear_pending_effect(item.todo_id, effect.id)
 
 
-async def record_remote_start(caller_session_id: str, computer: str, session_id: str) -> None:
-    """Retain a session another computer just started for a member of a held item\'s claiming group, at the moment.
-
-    The creating computer knows the request it carried and the answer, so it is the one that can name the new member
-    before any later view of the cluster is needed. The item is found through the caller\'s project; a caller that is
-    in no held item\'s group records nothing.
-    """
-    caller = await db.get_session(caller_session_id)
-    if caller is None or not caller.project_path:
-        return
-    store = await get_workflow_store(str(caller.project_path))
-    for slug, state in await asyncio.to_thread(store.list_active_states_sync):
-        holder = state.get("active_runner")
-        if not isinstance(holder, str) or not holder:
-            continue
-        retained = workflow_record_of(state).remote_members
-        if await in_claiming_group(caller_session_id, holder, retained):
-            member = RemoteMember(session_id=session_id, computer=computer, parent=caller_session_id)
-            await retain_remote_members(store, slug, [member])
-
-
 async def observe_remote_groups(store: WorkflowStore) -> None:
     """Retain the remote members of every held item\'s claiming group while their sessions are open.
 
@@ -468,7 +450,8 @@ async def observe_remote_groups(store: WorkflowStore) -> None:
         holder = state.get("active_runner")
         if not isinstance(holder, str) or not holder:
             continue
-        view = await group_view_of(holder, workflow_record_of(state).remote_members)
+        record = workflow_record_of(state)
+        view = await group_view_of(holder, record.remote_members, record.helper_starts)
         await retain_remote_members(store, slug, view.remote)
 
 

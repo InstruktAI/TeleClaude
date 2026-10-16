@@ -19,7 +19,7 @@ from teleclaude.core.db import db
 from teleclaude.core.models import Session
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.process_identity import ProcessState, probe_process, start_identity
-from teleclaude.core.workflow_machine.caller import group_sessions_of, in_claiming_group
+from teleclaude.core.workflow_machine.caller import group_view_of, in_claiming_group
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.events.envelope import occurrence_id
@@ -27,7 +27,7 @@ from teleclaude.events.references import EventRef, ReferenceKind
 from teleclaude.types.claim_change import WORKFLOW_STATE_KEY
 from teleclaude.types.procedure_delivery import BINDING_SECTION, BindingField
 from teleclaude.types.todos import TodoState
-from teleclaude.types.workflow_record import Act, HelperStart, WorkflowRecord
+from teleclaude.types.workflow_record import Act, HelperStart, RemoteMember, WorkflowRecord
 
 NOT_HOLDER = "{item}: only the session that holds it starts a helper"
 CLOSING = "{item}: its claim is closing, so no helper is started"
@@ -111,14 +111,16 @@ async def earlier_claim_sessions(
     running, found by their persisted working slug and project; the current holder, the sessions it started and sessions
     already closed are not among them.
     """
-    current = {holder, *await group_sessions_of(holder)} if holder else set()
+    retained = record.remote_members
+    current = {holder, *(m.session_id for m in (await group_view_of(holder, retained)).live)} if holder else set()
     found: list[str] = []
     recorded = [entry.session_id for entry in record.ledger if entry.act is Act.CLAIM]
     for claimer in dict.fromkeys([*recorded, *record.claimers]):
         if not claimer or claimer in current:
             continue
         session = await db.get_session(claimer)
-        members = [*(await group_sessions_of(claimer)), *([claimer] if session and session.closed_at is None else [])]
+        earlier = [m.session_id for m in (await group_view_of(claimer, retained)).live]
+        members = [*earlier, *([claimer] if session and session.closed_at is None else [])]
         found.extend(member for member in members if member not in current and member not in found)
     if item and project_root:
         legacy = await _previous_machine_helpers(item, project_root, current)
@@ -126,8 +128,12 @@ async def earlier_claim_sessions(
     return tuple(found)
 
 
-async def register_helper_start(project_root: str, item: str, caller_session_id: str) -> str:
-    """Record the start on the item, in one conditional write, and return its key."""
+async def register_helper_start(project_root: str, item: str, caller_session_id: str, computer: str = "") -> str:
+    """Record the start on the item, in one conditional write, and return its key.
+
+    A start that will be created on another computer names it, so a start whose reply never came back still tells the
+    sweep which computer to hear from before it concludes.
+    """
     store = await get_workflow_store(project_root)
     item_id = store.resolve_store_address_sync(item)
     keys: list[str] = []
@@ -154,6 +160,7 @@ async def register_helper_start(project_root: str, item: str, caller_session_id:
                 requested_at=_now(),
                 owner_pid=os.getpid(),
                 owner_identity=owner_identity,
+                computer=computer,
             )
         )
         keys.append(key)
@@ -163,8 +170,14 @@ async def register_helper_start(project_root: str, item: str, caller_session_id:
     return keys[0]
 
 
-async def settle_helper_start(project_root: str, item: str, key: str, session_id: str) -> None:
-    """Name the session the start created, or withdraw the start when none was created (empty session id)."""
+async def settle_helper_start(
+    project_root: str, item: str, key: str, session_id: str, remote: RemoteMember | None = None
+) -> None:
+    """Name the session the start created, or withdraw the start when none was created (empty session id).
+
+    A session created on another computer is retained as a remote member in the same write that names it, so the
+    sweep finds it from the item alone.
+    """
     store = await get_workflow_store(project_root)
 
     def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
@@ -178,6 +191,8 @@ async def settle_helper_start(project_root: str, item: str, key: str, session_id
                 start.model_copy(update={"session_id": session_id}) if start.key == key else start
                 for start in record.helper_starts
             ]
+            if remote is not None and all(member.session_id != remote.session_id for member in record.remote_members):
+                record.remote_members = [*record.remote_members, remote]
         else:
             record.helper_starts = [start for start in record.helper_starts if start.key != key]
         return ItemChange(state={**current, WORKFLOW_STATE_KEY: record.to_state()})
@@ -188,17 +203,27 @@ async def settle_helper_start(project_root: str, item: str, key: str, session_id
 class HelperFence:
     """The outcome of a creation inside a helper-start fence: the session it created, once there is one."""
 
-    def __init__(self) -> None:
+    def __init__(self, computer: str = "") -> None:
         self.session_id = ""
+        self.computer = computer
+        self.ambiguous = False
 
     def named(self, session_id: str) -> None:
         """Record the session the creation produced."""
         self.session_id = session_id
 
+    def may_have_created(self) -> None:
+        """Mark the creation as one whose outcome is not known: its start stays recorded and is never withdrawn."""
+        self.ambiguous = True
+
+    def refused(self) -> None:
+        """Mark the creation as definitely not made: the start is withdrawn."""
+        self.ambiguous = False
+
 
 @asynccontextmanager
 async def helper_start_fence(
-    project_root: str, working_slug: str | None, initiator_session_id: str | None
+    project_root: str, working_slug: str | None, initiator_session_id: str | None, computer: str = ""
 ) -> AsyncIterator[HelperFence]:
     """Record a session creation as a helper start of every item whose holder's group the creator belongs to.
 
@@ -209,21 +234,28 @@ async def helper_start_fence(
     before the session exists; a closing claim or a changed holder refuses the creation. A creator in the group of an
     earlier claim is refused. The records name the created session, or are withdrawn when none was created.
     """
-    fence = HelperFence()
+    fence = HelperFence(computer)
     keys: list[tuple[str, str, str]] = []
     try:
         if initiator_session_id:
             for root, item in await _governing_items(project_root, working_slug, initiator_session_id):
-                key = await _register_for_group(root, item, initiator_session_id)
+                key = await _register_for_group(root, item, initiator_session_id, computer)
                 if key:
                     keys.append((root, item, key))
         yield fence
     except BaseException:
-        for root, item, key in keys:
-            await settle_helper_start(root, item, key, "")
+        if not fence.ambiguous:
+            for root, item, key in keys:
+                await settle_helper_start(root, item, key, "")
         raise
+    remote = (
+        RemoteMember(session_id=fence.session_id, computer=computer, parent=initiator_session_id or "")
+        if computer and fence.session_id and initiator_session_id
+        else None
+    )
     for root, item, key in keys:
-        await settle_helper_start(root, item, key, fence.session_id)
+        if fence.session_id or not fence.ambiguous:
+            await settle_helper_start(root, item, key, fence.session_id, remote)
 
 
 async def _governing_items(
@@ -269,7 +301,7 @@ def _session_items(session: Session) -> list[tuple[str, str]]:
     return items
 
 
-async def _register_for_group(project_root: str, item: str, initiator_session_id: str) -> str:
+async def _register_for_group(project_root: str, item: str, initiator_session_id: str, computer: str = "") -> str:
     """Register the start when the creator is in the item's holder's group; refuse it when in an earlier group's."""
     try:
         store = await get_workflow_store(project_root)
@@ -281,7 +313,7 @@ async def _register_for_group(project_root: str, item: str, initiator_session_id
     state = TodoState.model_validate(raw)
     holder = state.active_runner or ""
     if holder and await in_claiming_group(initiator_session_id, holder, state.workflow.remote_members):
-        return await register_helper_start(project_root, item, holder)
+        return await register_helper_start(project_root, item, holder, computer)
     if initiator_session_id in await earlier_claim_sessions(state.workflow, holder, item, project_root):
         raise HelperStartRefused(EARLIER_GROUP.format(item=item, session=initiator_session_id))
     return ""
