@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, NotRequired, TypedDict, cast
 
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
@@ -125,6 +126,18 @@ START_RECORD_SECONDS: Final = 900.0
 OPERATION_POLL_SECONDS: Final = 2.0
 FLOW_COMMAND_SECONDS: Final = 60.0
 RECORD_POLL_SECONDS: Final = 2.0
+BINDING_WITNESS_SCHEMA_VERSION: Final = 1
+BINDING_WITNESS_JSON_LIMIT: Final = 3400
+BINDING_WITNESS_FIELD_LIMIT: Final = 128
+BINDING_LAUNCH_READ_STATES: Final = (
+    "missing",
+    "valid",
+    "unreadable",
+    "invalid_encoding",
+    "malformed_json",
+    "invalid_shape",
+    "invalid_native",
+)
 
 DETAIL_ITEM: Final = "the shared flow item is absent from the prepared disposable project"
 DETAIL_CANDIDATE: Final = "the candidate checkout identity changed during the chained workflow"
@@ -157,6 +170,74 @@ type Json = Mapping[str, object]
 type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
 type MutableJson = dict[str, JsonValue]
 type PlanSets = dict[str, list[controls.Plan]]
+
+
+class BindingLaunchRecord(TypedDict, total=False):
+    """One bounded identity summary from an owned fixture control."""
+
+    slot: int
+    native_session_id: JsonValue
+    pid: JsonValue
+    launched_at: JsonValue
+    key_kind: JsonValue
+    key: JsonValue
+    index: JsonValue
+    read_status: str
+
+
+class BindingReadError(TypedDict, total=False):
+    """A path-free classification of an owned launch record read."""
+
+    slot: int
+    status: str
+    error_type: str
+    value_type: str
+    native_type: str
+
+
+class BindingLaunchScan(TypedDict):
+    """Bounded control-pool classification retained only on a binding failure."""
+
+    pool_size: int
+    read_counts: dict[str, int]
+    classification_complete: bool
+    read_errors: list[BindingReadError]
+    launch_records: list[BindingLaunchRecord]
+    match_count: int
+    matching_launches: list[BindingLaunchRecord]
+    public_exit_counts: NotRequired[dict[str, int]]
+    public_read_attempts: NotRequired[int]
+    launch_records_truncated: NotRequired[bool]
+    matching_records_truncated: NotRequired[bool]
+    read_errors_truncated: NotRequired[bool]
+
+
+class BindingPublicCommand(TypedDict):
+    """Actual bounded result of the public session read used for a binding."""
+
+    argv: list[str]
+    exit_status: int | None
+    duration_ms: int
+    stdout_chars: int
+    stderr_chars: int
+    diagnostics_present: bool
+    json_record_decoded: bool
+
+
+class BindingWitness(TypedDict):
+    """Upload-safe failure evidence for a public session/native launch join."""
+
+    schema_version: int
+    relation: str
+    reason: str
+    session_id: JsonValue
+    expected: MutableJson
+    attempts: int
+    native_history: list[str]
+    public_command: BindingPublicCommand | None
+    public_session: MutableJson | None
+    launch_scan: BindingLaunchScan
+
 
 B5_ACTIONS: Final = (
     {"label": "w2-start", "kind": start_ledger.RECORD_OPERATION},
@@ -542,6 +623,324 @@ class WorkflowFlow:
         record = foundation.json_object(outcome.output) if outcome.exit_status == 0 else None
         return record
 
+    def _public_session_observation(
+        self, session_id: str, timeout_seconds: float
+    ) -> tuple[foundation.Outcome, Json | None]:
+        outcome = self.host.cli((TELEC, SESSIONS, SHOW, session_id, FULL_FLAG), timeout_seconds, retain=False)
+        record = foundation.json_object(outcome.output) if outcome.exit_status == 0 else None
+        return outcome, record
+
+    @staticmethod
+    def _binding_field(value: object) -> JsonValue:
+        if isinstance(value, str):
+            return value[:BINDING_WITNESS_FIELD_LIMIT]
+        if value is None or isinstance(value, (bool, int)):
+            return value
+        if isinstance(value, float):
+            return value if math.isfinite(value) else None
+        return f"<{type(value).__name__}>"
+
+    def _launch_scan(self, native: str | None) -> tuple[list[tuple[FixtureSetup, Json]], BindingLaunchScan]:
+        read_counts = {state: 0 for state in BINDING_LAUNCH_READ_STATES}
+        records: list[BindingLaunchRecord] = []
+        read_errors: list[BindingReadError] = []
+        matches: list[tuple[FixtureSetup, Json]] = []
+        matched_records: list[BindingLaunchRecord] = []
+        for slot, setup in enumerate(self.control_setups):
+            path = setup.control / foundation.LAUNCH_FILE
+            try:
+                raw = path.read_text(encoding=ENCODING)
+            except FileNotFoundError:
+                read_counts["missing"] += 1
+                continue
+            except UnicodeError as error:
+                read_counts["invalid_encoding"] += 1
+                read_errors.append({"slot": slot, "status": "invalid_encoding", "error_type": type(error).__name__})
+                continue
+            except OSError as error:
+                read_counts["unreadable"] += 1
+                read_errors.append({"slot": slot, "status": "unreadable", "error_type": type(error).__name__})
+                continue
+            try:
+                value = json.loads(raw)
+            except ValueError as error:
+                read_counts["malformed_json"] += 1
+                read_errors.append({"slot": slot, "status": "malformed_json", "error_type": type(error).__name__})
+                continue
+            if not isinstance(value, Mapping):
+                read_counts["invalid_shape"] += 1
+                read_errors.append({"slot": slot, "status": "invalid_shape", "value_type": type(value).__name__})
+                continue
+            launch = {str(key): entry for key, entry in value.items()}
+            native_value = launch.get(FIELD_NATIVE)
+            launch_record: BindingLaunchRecord = {
+                "slot": slot,
+                "native_session_id": self._binding_field(native_value),
+                "pid": self._binding_field(launch.get("pid")),
+                "launched_at": self._binding_field(launch.get("launched_at")),
+                "key_kind": self._binding_field(launch.get(FIELD_KEY_KIND)),
+                "key": self._binding_field(launch.get(FIELD_PLAN_KEY)),
+                "index": self._binding_field(launch.get(FIELD_PLAN_INDEX)),
+            }
+            records.append(launch_record)
+            if not isinstance(native_value, str) or not native_value:
+                read_counts["invalid_native"] += 1
+                launch_record["read_status"] = "invalid_native"
+                read_errors.append(
+                    {"slot": slot, "status": "invalid_native", "native_type": type(native_value).__name__}
+                )
+                continue
+            read_counts["valid"] += 1
+            launch_record["read_status"] = "valid"
+            if native is not None and native_value == native:
+                matches.append((setup, launch))
+                matched_records.append(launch_record)
+        scan: BindingLaunchScan = {
+            "pool_size": len(self.control_setups),
+            "read_counts": read_counts,
+            "classification_complete": not read_errors,
+            "read_errors": read_errors,
+            "launch_records": records,
+            "match_count": len(matches),
+            "matching_launches": matched_records,
+        }
+        return matches, scan
+
+    def _empty_launch_scan(self) -> BindingLaunchScan:
+        return {
+            "pool_size": len(self.control_setups),
+            "read_counts": {state: 0 for state in BINDING_LAUNCH_READ_STATES},
+            "classification_complete": False,
+            "read_errors": [],
+            "launch_records": [],
+            "match_count": 0,
+            "matching_launches": [],
+        }
+
+    @staticmethod
+    def _public_session_fields(record: Json | None) -> MutableJson | None:
+        if record is None:
+            return None
+        fields = (FIELD_SESSION, FIELD_NATIVE, FIELD_ROLE, FIELD_JOB, FIELD_LIFECYCLE, FIELD_INITIATOR)
+        return {name: WorkflowFlow._binding_field(record.get(name)) for name in fields}
+
+    @staticmethod
+    def _public_command_outcome(
+        session_id: str, outcome: foundation.Outcome | None, record: Json | None
+    ) -> BindingPublicCommand | None:
+        if outcome is None:
+            return None
+        return {
+            "argv": [TELEC, SESSIONS, SHOW, session_id[:BINDING_WITNESS_FIELD_LIMIT], FULL_FLAG],
+            "exit_status": outcome.exit_status,
+            "duration_ms": round(outcome.duration_seconds * 1000),
+            "stdout_chars": len(outcome.output),
+            "stderr_chars": len(outcome.stderr),
+            "diagnostics_present": bool(outcome.diagnostics),
+            "json_record_decoded": record is not None,
+        }
+
+    def _binding_failure_with_witness(
+        self,
+        relation: str,
+        reason: str,
+        *,
+        session_id: str | None,
+        expected: Mapping[str, JsonValue],
+        public_record: Json | None,
+        public_outcome: foundation.Outcome | None,
+        launch_scan: BindingLaunchScan,
+        attempts: int = 1,
+        native_history: Sequence[str] = (),
+    ) -> creation.JourneyFailure:
+        witness: BindingWitness = {
+            "schema_version": BINDING_WITNESS_SCHEMA_VERSION,
+            "relation": relation,
+            "reason": reason,
+            "session_id": self._binding_field(session_id),
+            "expected": {str(key): self._binding_field(value) for key, value in expected.items()},
+            "attempts": attempts,
+            "native_history": [value[:BINDING_WITNESS_FIELD_LIMIT] for value in native_history],
+            "public_command": self._public_command_outcome(session_id, public_outcome, public_record)
+            if session_id is not None
+            else None,
+            "public_session": self._public_session_fields(public_record),
+            "launch_scan": launch_scan,
+        }
+        serialized = json.dumps(witness, ensure_ascii=True, separators=JSON_SEPARATOR_VALUES)
+        if len(serialized) > BINDING_WITNESS_JSON_LIMIT:
+            scan: BindingLaunchScan = {
+                "pool_size": launch_scan["pool_size"],
+                "read_counts": launch_scan["read_counts"],
+                "classification_complete": launch_scan["classification_complete"],
+                "read_errors": launch_scan["read_errors"],
+                "launch_records": [],
+                "match_count": launch_scan["match_count"],
+                "matching_launches": launch_scan["matching_launches"],
+                "launch_records_truncated": True,
+            }
+            witness["launch_scan"] = scan
+            serialized = json.dumps(witness, ensure_ascii=True, separators=JSON_SEPARATOR_VALUES)
+        if len(serialized) > BINDING_WITNESS_JSON_LIMIT:
+            witness["launch_scan"] = {
+                "pool_size": launch_scan["pool_size"],
+                "read_counts": launch_scan["read_counts"],
+                "classification_complete": launch_scan["classification_complete"],
+                "read_errors": launch_scan["read_errors"][:3],
+                "launch_records": [],
+                "match_count": launch_scan["match_count"],
+                "matching_launches": launch_scan["matching_launches"][:3],
+                "launch_records_truncated": True,
+                "matching_records_truncated": len(launch_scan["matching_launches"]) > 3,
+                "read_errors_truncated": len(launch_scan["read_errors"]) > 3,
+            }
+            serialized = json.dumps(witness, ensure_ascii=True, separators=JSON_SEPARATOR_VALUES)
+        return creation.binding_failure(f"{DETAIL_CONTROL_MAP}; witness={serialized}")
+
+    def await_session_binding(
+        self,
+        session_id: str,
+        expected_role: str,
+        expected_job: str,
+        deadline: float,
+    ) -> tuple[FixtureSetup, Json, Json]:
+        """Wait inside the caller's startup window for a fresh public/native launch join."""
+        attempts = 0
+        exit_counts: dict[str, int] = {}
+        last_outcome: foundation.Outcome | None = None
+        last_record: Json | None = None
+        last_scan = self._empty_launch_scan()
+        native_history: list[str] = []
+        expected = {"role": expected_role, "job": expected_job}
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            outcome, record = self._public_session_observation(session_id, min(FLOW_COMMAND_SECONDS, remaining))
+            attempts += 1
+            status_key = str(outcome.exit_status)
+            exit_counts[status_key] = exit_counts.get(status_key, 0) + 1
+            last_outcome = outcome
+            last_record = record
+            native_value = record.get(FIELD_NATIVE) if record is not None else None
+            native = native_value if isinstance(native_value, str) and native_value else None
+            matches, scan = self._launch_scan(native)
+            scan["public_exit_counts"] = dict(exit_counts)
+            scan["public_read_attempts"] = attempts
+            last_scan = scan
+            if outcome.exit_status == 0 and record is None:
+                raise self._binding_failure_with_witness(
+                    "public-session-record",
+                    "successful public read returned no decodable session object",
+                    session_id=session_id,
+                    expected=expected,
+                    public_record=None,
+                    public_outcome=outcome,
+                    launch_scan=scan,
+                    attempts=attempts,
+                    native_history=native_history,
+                )
+            if record is not None:
+                actual_session = record.get(FIELD_SESSION)
+                if actual_session is not None and actual_session != session_id:
+                    raise self._binding_failure_with_witness(
+                        "public-session-id",
+                        "public record names a different session",
+                        session_id=session_id,
+                        expected=expected,
+                        public_record=record,
+                        public_outcome=outcome,
+                        launch_scan=scan,
+                        attempts=attempts,
+                        native_history=native_history,
+                    )
+                if native_value is not None and not isinstance(native_value, str):
+                    raise self._binding_failure_with_witness(
+                        "public-native-id",
+                        "public native_session_id has an invalid type",
+                        session_id=session_id,
+                        expected=expected,
+                        public_record=record,
+                        public_outcome=outcome,
+                        launch_scan=scan,
+                        attempts=attempts,
+                        native_history=native_history,
+                    )
+                if native is not None:
+                    if native_history and native_history[-1] != native:
+                        raise self._binding_failure_with_witness(
+                            "public-native-id-stability",
+                            "public native_session_id changed during startup",
+                            session_id=session_id,
+                            expected=expected,
+                            public_record=record,
+                            public_outcome=outcome,
+                            launch_scan=scan,
+                            attempts=attempts,
+                            native_history=(*native_history, native),
+                        )
+                    if not native_history:
+                        native_history.append(native)
+                for field_name, expected_value in ((FIELD_ROLE, expected_role), (FIELD_JOB, expected_job)):
+                    found = record.get(field_name)
+                    if found is not None and found != expected_value:
+                        raise self._binding_failure_with_witness(
+                            f"public-{field_name}",
+                            f"public {field_name} differs from the folded procedure",
+                            session_id=session_id,
+                            expected=expected,
+                            public_record=record,
+                            public_outcome=outcome,
+                            launch_scan=scan,
+                            attempts=attempts,
+                            native_history=native_history,
+                        )
+                if not scan.get("classification_complete", False):
+                    raise self._binding_failure_with_witness(
+                        "launch-read-completeness",
+                        "one or more owned launch records could not be classified",
+                        session_id=session_id,
+                        expected=expected,
+                        public_record=record,
+                        public_outcome=outcome,
+                        launch_scan=scan,
+                        attempts=attempts,
+                        native_history=native_history,
+                    )
+                if len(matches) > 1:
+                    raise self._binding_failure_with_witness(
+                        "native-launch-cardinality",
+                        "multiple owned launch records match the public native_session_id",
+                        session_id=session_id,
+                        expected=expected,
+                        public_record=record,
+                        public_outcome=outcome,
+                        launch_scan=scan,
+                        attempts=attempts,
+                        native_history=native_history,
+                    )
+                if (
+                    actual_session == session_id
+                    and native is not None
+                    and record.get(FIELD_ROLE) == expected_role
+                    and record.get(FIELD_JOB) == expected_job
+                    and len(matches) == 1
+                ):
+                    setup, launch = matches[0]
+                    return setup, record, launch
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(RECORD_POLL_SECONDS, remaining))
+        raise self._binding_failure_with_witness(
+            "startup-native-public-join",
+            "exactly one public/native launch join was not observed before the startup deadline",
+            session_id=session_id,
+            expected=expected,
+            public_record=last_record,
+            public_outcome=last_outcome,
+            launch_scan=last_scan,
+            attempts=attempts,
+            native_history=native_history,
+        )
+
     def session_record(self, session_id: str, *, retain: bool = False) -> Json:
         record = self._session_record(session_id, retain=retain)
         if record is None:
@@ -550,17 +949,56 @@ class WorkflowFlow:
 
     def control_for_session(self, session_id: str) -> tuple[FixtureSetup, Json]:
         """Map a public session to exactly one fixture control by native id, never by launch order."""
-        record = self.session_record(session_id)
-        native = record.get(FIELD_NATIVE)
-        if not isinstance(native, str) or not native:
-            raise creation.binding_failure(DETAIL_CONTROL_MAP)
-        matches: list[tuple[FixtureSetup, Json]] = []
-        for setup in self.control_setups:
-            launch = self._read_object(setup.control / foundation.LAUNCH_FILE)
-            if launch is not None and launch.get(FIELD_NATIVE) == native:
-                matches.append((setup, launch))
-        if len(matches) != 1:
-            raise creation.binding_failure(DETAIL_CONTROL_MAP)
+        outcome, record = self._public_session_observation(session_id, FLOW_COMMAND_SECONDS)
+        native_value = record.get(FIELD_NATIVE) if record is not None else None
+        native = native_value if isinstance(native_value, str) and native_value else None
+        matches, scan = self._launch_scan(native)
+        if record is None:
+            raise self._binding_failure_with_witness(
+                "public-session-read",
+                "public session record was unavailable or undecodable",
+                session_id=session_id,
+                expected={},
+                public_record=None,
+                public_outcome=outcome,
+                launch_scan=scan,
+            )
+        actual_session = record.get(FIELD_SESSION)
+        if actual_session != session_id:
+            raise self._binding_failure_with_witness(
+                "public-session-id",
+                "public record names a different session",
+                session_id=session_id,
+                expected={},
+                public_record=record,
+                public_outcome=outcome,
+                launch_scan=scan,
+            )
+        if native is None:
+            raise self._binding_failure_with_witness(
+                "public-native-id",
+                "public native_session_id is missing or invalid",
+                session_id=session_id,
+                expected={},
+                public_record=record,
+                public_outcome=outcome,
+                launch_scan=scan,
+            )
+        if not scan.get("classification_complete", False) or len(matches) != 1:
+            reason = (
+                "one or more owned launch records could not be classified"
+                if not scan.get("classification_complete", False)
+                else "public native_session_id did not match exactly one owned launch record"
+            )
+            raise self._binding_failure_with_witness(
+                "public-native-launch-map",
+                reason,
+                session_id=session_id,
+                expected={},
+                public_record=record,
+                public_outcome=outcome,
+                launch_scan=scan,
+            )
         return matches[0]
 
     def plan_actor(self, procedure: str, index: int, role: str, timeout_seconds: float = START_RECORD_SECONDS) -> str:
@@ -580,7 +1018,16 @@ class WorkflowFlow:
                     continue
                 native = launch.get(FIELD_NATIVE)
                 if not isinstance(native, str) or not native:
-                    raise creation.binding_failure(DETAIL_CONTROL_MAP)
+                    _matches, scan = self._launch_scan(None)
+                    raise self._binding_failure_with_witness(
+                        "plan-selected-launch-native",
+                        "the selected procedure launch has no valid native_session_id",
+                        session_id=None,
+                        expected={"procedure": procedure, "index": index, "role": role},
+                        public_record=None,
+                        public_outcome=None,
+                        launch_scan=scan,
+                    )
                 session = self.session_for_native(native, role)
                 if session is not None:
                     found.append(session)

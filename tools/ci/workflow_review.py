@@ -152,21 +152,21 @@ def _startup(
     expected_role: str,
     procedure: str,
 ) -> tuple[Mapping[str, object], Mapping[str, object], str]:
+    deadline = time.monotonic() + START_SECONDS
     role_path = flow.publication.clone / driver.DOCS_ROOT / f"{procedure}{driver.LIVE_SUFFIX}"
     folded_role = driver.declared_role(role_path)
     if expected_role != folded_role:
         raise creation.binding_failure(
             DETAIL_FOLDED_ROLE.format(session=session, actual=expected_role, folded=folded_role)
         )
-    initial_record = flow.session_record(session)
-    _setup, launch = flow.control_for_session(session)
+    setup, initial_record, launch = flow.await_session_binding(session, folded_role, procedure, deadline)
     if initial_record.get(FIELD_ROLE) != folded_role or initial_record.get(FIELD_JOB) != procedure:
         _fail(f"session {session} role/job mismatch: {initial_record!r}")
     native = initial_record.get(FIELD_NATIVE)
     if not isinstance(native, str) or launch.get(FIELD_NATIVE) != native:
         raise creation.binding_failure(DETAIL_BINDING.format(detail="native session identity mismatch"))
-    journey = flow.journey(session)
-    deadline = time.monotonic() + START_SECONDS
+    journey = foundation.Journey(flow.host, setup, flow.project, flow.owner_email)
+    journey.session_id = session
     for hook in (foundation.FRAME_SESSION_START, foundation.FRAME_PROMPT_SUBMIT):
         journey.require_hook(hook, journey.await_frame(hook, deadline))
     record: Mapping[str, object] | None = None
