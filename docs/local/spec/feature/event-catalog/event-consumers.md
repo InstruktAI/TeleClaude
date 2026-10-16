@@ -10,22 +10,12 @@ visibility: internal
 
 ## What it is
 
-<!-- planned-change:retire-legacy-event-bus -->
-
-A consumer is one reaction to platform events on one computer: activating
-procedures, telling people, waking the lifecycle runner, spawning the
-integrator, correlating failures. Each consumer reads the platform event stream
-with its own progress on that computer, so its failure or lag never holds back
-or hides another consumer.
-<!-- change:retire-legacy-event-bus -->
-
 A consumer is one reaction to events on one computer. Public platform reactions
 and internal runtime reactions use the same independent-consumer delivery
 mechanics, with source streams kept separate under
 `local/projects/teleclaude/design/architecture/event-delivery`.
 Each consumer keeps its own progress through its bound source, so its failure
 or lag never holds back or hides another consumer.
-<!-- /planned-change:retire-legacy-event-bus -->
 
 A consumer declares its interest in terms of event attributes only
 (`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`):
@@ -80,8 +70,6 @@ the project's canonical checkout performs the bound actions on its own checkout
 
 ## Canonical fields
 
-<!-- planned:retire-legacy-event-bus -->
-
 ### Domain notification delivery
 
 Domain notifications between the runtime, integration and adapters use declared
@@ -98,7 +86,6 @@ follows `sdlc/principle/architectural-defaults` and
 Commands and runtime-local coordination retain their owning capabilities; the
 relationship is defined by
 `local/projects/teleclaude/design/architecture/event-delivery`.
-<!-- /planned:retire-legacy-event-bus -->
 
 ### Use cases
 
@@ -257,17 +244,8 @@ And no other computer emits a degradation event for those failures
 - Duplicate protection lasts while the platform retains a consumer's record of
   handled events; a repeat arriving after that is handed again.
 
-<!-- planned-change:retire-legacy-event-bus -->
-
-- Every consumer reads every event on its computer, so the stream is read once
-  per consumer.
-
-<!-- change:retire-legacy-event-bus -->
-
 - Each consumer reads every event in its bound source stream, so that source
   is read once per consumer bound to it.
-
-<!-- /planned-change:retire-legacy-event-bus -->
 
 ## See Also
 

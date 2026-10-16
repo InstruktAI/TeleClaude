@@ -1,8 +1,7 @@
 ---
-description: One domain-event delivery model, with source reconciliation, command ownership and runtime-local coordination kept at their existing owners.
+description: One domain-event delivery model, with source reconciliation, command
+  ownership and runtime-local coordination kept at their existing owners.
 visibility: internal
-delivered_by:
-  - retire-legacy-event-bus
 ---
 
 # Event Delivery — Design

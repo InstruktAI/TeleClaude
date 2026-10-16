@@ -16,19 +16,9 @@ through one of three mutually-exclusive paths:
    native-session-refresh) → routed to in-process mutation handlers. No
    event-bus emit.
 
-<!-- planned-change:retire-legacy-event-bus -->
-
-2. **Agent-error** → wrapped in an error event context and published on
-   the event bus with cluster visibility. This is the ONLY event-bus
-   emit path inside the dispatcher.
-
-<!-- change:retire-legacy-event-bus -->
-
 2. **Agent-error** → handed to the runtime's error-publication capability,
    preserving the error's existing reach and failure contract under
    `local/projects/teleclaude/design/architecture/event-delivery`.
-
-<!-- /planned-change:retire-legacy-event-bus -->
 
 3. **All other agent events** (agent-session-start, user-prompt-submit,
    tool-use, agent-stop) → built into an agent-event context and passed
@@ -132,22 +122,6 @@ And the outbox worker only marks the entry delivered AFTER the coordinator retur
 And NO event-bus emit call is made for this path — outbox serialization depends on the coordinator completing before the entry is marked delivered; a fire-and-forget event-bus emit would not provide that guarantee
 ```
 
-<!-- planned-change:retire-legacy-event-bus -->
-
-#### UC-D6c: Agent-error is the only event-bus emit path
-
-```gherkin
-Given a claimed entry has event type agent-error
-When the dispatcher runs past the state-mutation fork
-Then severity, retryable, code, details, and message are extracted from the payload
-And an error event context is constructed with those fields plus the session id
-And the event bus emits the error event with cluster visibility
-And any cluster subscriber to error receives the event asynchronously
-And the entry is then removed by the worker as processed
-```
-
-<!-- change:retire-legacy-event-bus -->
-
 #### UC-D6c: Agent-error publication precedes outbox settlement
 
 ```gherkin
@@ -157,8 +131,6 @@ Then the dispatcher hands the normalized error to the runtime's error-publicatio
 And the dispatcher waits for publication acceptance before the worker settles the entry
 And publication failure leaves the entry subject to the dispatcher's existing retry contract
 ```
-
-<!-- /planned-change:retire-legacy-event-bus -->
 
 #### UC-D7: Retry with exponential backoff on retryable failure
 
@@ -211,19 +183,9 @@ And the last-summary timestamp is updated
 - Consumes from `hook-event-outbox` (this context, v1 in-context;
   `agent_runtime` in v2).
 
-<!-- planned-change:retire-legacy-event-bus -->
-
-- Emits in-process event-bus events that domain contexts subscribe to:
-  agent-event, agent-activity, session-started, session-updated,
-  session-closed, error.
-
-<!-- change:retire-legacy-event-bus -->
-
 - Hands normalized runtime signals to `agent_runtime`; its completion and
   notification boundaries are defined by
   `local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`.
-
-<!-- /planned-change:retire-legacy-event-bus -->
 
 - Invokes `headless-session-bootstrap-from-hook` when an
   agent-session-start arrives for a session that does not yet exist in

@@ -45,13 +45,6 @@ change does not republish it as locally originated work.
 
 ### Local state
 
-<!-- planned-change:retire-legacy-event-bus -->
-
-Startup warmup reads local authoritative sources. Local domain changes update
-their cache snapshots, notify local consumers, and publish the corresponding
-cluster state.
-<!-- change:retire-legacy-event-bus -->
-
 The cache owner reconciles local sessions from their current authoritative
 source. Startup supplies session identities to the same materialization
 capability that consumes local session-change notifications. Started, updated,
@@ -85,7 +78,6 @@ API connections consume cache notifications and apply viewer projection; local
 cache materialization is independent of the request server's lifetime. The
 cache publishes the corresponding peer state through its existing replication
 contract after local application.
-<!-- /planned-change:retire-legacy-event-bus -->
 
 ### Remote state
 

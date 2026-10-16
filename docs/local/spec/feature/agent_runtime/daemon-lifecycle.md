@@ -30,28 +30,6 @@ And the lock release is idempotent
 
 #### Staged startup ordering
 
-<!-- planned-change:retire-legacy-event-bus -->
-
-```
-Given the service has acquired the single-instance lock and obtained its event loop
-When startup runs (guarded by an idempotent started flag)
-Then it executes in this strict order:
-  1. Outbox schema migration
-  2. Storage initialization (connection plus schema check, target: <1s)
-  3. Operations service initialization and start (target: <1s)
-  4. Local-sessions cache warm — list every local session (including headless) from durable storage, build snapshot rows, seed the service's in-memory session cache; a slow-warm warning is emitted at >=5s with per-stage timings (target: 1–4s)
-  5. Construct the request-surface so the event platform's push callback can wire into it (NOT started yet)
-  6. Adapter client start (target: 3–12s)
-  7. Event platform init — the producer must be ready before any workflow operation can land
-  8. Post-adapter completion tasks — see below
-  9. Start the request surface and wire an exit-handler callback (target: 1–3s)
-  10. Local-projects cache warm — projects-with-todos snapshot into the service's in-memory project cache (target: 2–5s)
-And on completion the started flag is set and total elapsed is logged
-And total elapsed >=30s triggers a slow-startup warning
-```
-
-<!-- change:retire-legacy-event-bus -->
-
 Storage migration and initialization precede operations startup and local source
 materialization. Adapters receive the local session state their startup
 requires. Domain-event publication is ready before producers can emit, and
@@ -75,7 +53,6 @@ their owner contracts. Startup remains idempotent and reports completion and
 slow stages through the lifecycle's configured observations. These readiness
 boundaries follow `sdlc/principle/architectural-defaults` and
 `sdlc/policy/domain-ownership`.
-<!-- /planned-change:retire-legacy-event-bus -->
 
 #### UC-DL6: Post-adapter completion tasks
 
@@ -435,8 +412,6 @@ And the service manager relaunches the service on its installed code
 And the agent never finds the capability silently absent while the daemon reports itself healthy
 ```
 
-<!-- planned:retire-legacy-event-bus -->
-
 ### Runtime-local coordination
 
 Runtime-owned readiness coordination scopes a waiter to its target session and
@@ -463,7 +438,6 @@ their owning runtime capability, independently of domain-notification
 consumption. Command execution retains the command or operation owner's
 acceptance and completion contract, as composed by
 `local/projects/teleclaude/design/architecture/event-delivery`.
-<!-- /planned:retire-legacy-event-bus -->
 
 ### Graceful admission and settlement
 
