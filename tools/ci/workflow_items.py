@@ -51,6 +51,8 @@ STATUS_REMOVED: Final = "removed"
 DETAIL_RECEIPT: Final = "`{command}` printed no operation receipt: exit {status}, {output!r}"
 DETAIL_OPERATION: Final = "operation {operation} ended {state!r} with {error!r}, not completed without an error"
 DETAIL_REMOVED_READ: Final = "`todo list --removed-only --json` did not decode: exit {status}, {output!r}"
+DETAIL_REMOVED_SHAPE: Final = "`todo list --removed-only --json` is neither {{}} nor a removed list: {found!r}"
+DETAIL_REMOVED_NODE: Final = "a removed-list entry carries no string slug: {found!r}"
 DETAIL_SHOW_REMOVED: Final = "`todo show {slug} --include-removed` failed: exit {status}, {output!r}"
 DETAIL_DIFFERENCES: Final = "{what}: the item differs from before at paths outside the allowed set {allowed!r}: {paths}"
 DETAIL_WRITE: Final = "{case}: the item read {when} differs from before; differing paths: {paths}"
@@ -84,8 +86,17 @@ def removed_nodes(observer: Observer) -> list[Json]:
         raise creation.binding_failure(
             DETAIL_REMOVED_READ.format(status=outcome.exit_status, output=outcome.output[-300:])
         )
-    nodes = payload.get(FIELD_REMOVED, [])
-    return [node for node in nodes if isinstance(node, Mapping)] if isinstance(nodes, list) else []
+    if FIELD_REMOVED not in payload:
+        if payload:
+            raise creation.binding_failure(DETAIL_REMOVED_SHAPE.format(found=sorted(payload)))
+        return []
+    nodes = payload[FIELD_REMOVED]
+    if not isinstance(nodes, list):
+        raise creation.binding_failure(DETAIL_REMOVED_SHAPE.format(found=type(nodes).__name__))
+    for node in nodes:
+        if not isinstance(node, Mapping) or not isinstance(node.get(FIELD_SLUG), str) or not node.get(FIELD_SLUG):
+            raise creation.binding_failure(DETAIL_REMOVED_NODE.format(found=node))
+    return [node for node in nodes if isinstance(node, Mapping)]
 
 
 def show_removed(observer: Observer, slug: str) -> Json | None:

@@ -337,8 +337,11 @@ class DriverCase:
                     DETAIL_ACT_ROW.format(item=self.item, act=act, phase=phase, rows=sorted(set(targets)))
                 )
 
-    def observe_claim(self, session: str, holds_nothing: Sequence[str] = ()) -> None:
-        """The item shows the holder, the phase and exactly one claim note, which names the session and no other."""
+    def observe_claim(self, session: str, holds_nothing: Sequence[str] = (), earlier: Sequence[str] = ()) -> None:
+        """The item shows the holder, the phase and one claim note per claim, the last naming the session and no other.
+
+        ``earlier`` names the sessions of the item\'s earlier claims in order; each owns exactly one claim note before.
+        """
         item = self.item
         held = shown_with_content(self.observer, item)
         creation.require_value(item, held, "state.active_runner", session)
@@ -357,16 +360,19 @@ class DriverCase:
         if not isinstance(log, str):
             raise creation.trace_failure(DETAIL_PATH_ABSENT.format(path=f"artifact_content.{FIELD_LOG}"))
         entries = claim_entries(log)
-        if len(entries) != 1:
+        if len(entries) != len(earlier) + 1:
             raise creation.platform_failure(DETAIL_LOG_CLAIMS.format(count=len(entries), log=log[-600:]))
-        header, body = entries[0]
+        for previous, (earlier_header, _) in zip(earlier, entries, strict=False):
+            if previous not in earlier_header:
+                raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=previous, entry=earlier_header))
+        header, body = entries[-1]
         if session not in header:
             raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=session, entry=header))
         for needle in (item, session):
             if needle not in body:
                 raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=needle, entry=body))
         for other in holds_nothing:
-            if other in header or other in body:
+            if any(other in held_header or other in held_body for held_header, held_body in entries):
                 raise creation.platform_failure(DETAIL_LOG_FORBIDDEN.format(session=other, entry=header))
 
     def close(self, session: str) -> None:

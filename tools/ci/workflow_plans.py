@@ -89,7 +89,7 @@ def _created(observer: Observer, slug: str, content: str, kind: str, *, plan: bo
     try:
         creation.require_created(outcome, slug)
     except creation.JourneyFailure as failure:
-        logs = publication.log_evidence(observer.host, LOG_TERMS)
+        logs = publication.exception_evidence(observer.host)
         raise creation.JourneyFailure(DETAIL_CREATE_LOGS.format(error=failure, logs=logs)) from failure
 
 

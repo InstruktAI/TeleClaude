@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -319,11 +320,66 @@ class Publication:
             raise creation.binding_failure(DETAIL_NO_BODY.format(identity=identity, output=outcome.output[-300:]))
         return body
 
-    def begin(self) -> None:
+    def _file_body(self, identity: str) -> str:
+        """The body of a candidate live file: everything after its header block, line ends normalized."""
+        text = (self.source_root / DOCS_ROOT / f"{identity}{LIVE_SUFFIX}").read_text(encoding="utf-8")
+        parts = text.split("---", 2)
+        return _text(parts[2]).strip() if len(parts) == 3 else ""
+
+    def classify_generation(self) -> tuple[str, str]:
+        """The installed generation from public reads alone, and the evidence for it.
+
+        Fixture generation: all four current bodies equal the pending ones. Candidate generation: all four differ from
+        the pending bodies and equal the candidate checkout's live files. Anything else is inconsistent.
+        """
+        pending = {identity: self.body_of(identity, pending=True) for identity in FOLD_IDS}
+        current = {identity: self.body_of(identity, pending=False) for identity in FOLD_IDS}
+        files = {identity: self._file_body(identity) for identity in FOLD_IDS}
+        if all(current[identity] == pending[identity] for identity in FOLD_IDS):
+            return GENERATION_FIXTURE, "all four current bodies equal the pending bodies"
+        if all(
+            current[identity] != pending[identity] and current[identity] == files[identity] for identity in FOLD_IDS
+        ):
+            return (
+                GENERATION_CANDIDATE,
+                "all four current bodies equal the candidate live files and differ from pending",
+            )
+        detail = {
+            identity: {
+                "equals_pending": current[identity] == pending[identity],
+                "equals_candidate_file": current[identity] == files[identity],
+                "current_head": current[identity][:80],
+                "file_head": files[identity][:80],
+            }
+            for identity in FOLD_IDS
+        }
+        return GENERATION_INCONSISTENT, repr(detail)
+
+    def ensure_candidate(self) -> str:
+        """Own the starting generation: reuse nothing, restore the candidate first when the fold is installed.
+
+        A `prepare` is never issued before this has verified the candidate generation by public reads. A fixture
+        generation is restored (the candidate checkout published through the supported entry point) and verified; an
+        inconsistent one stops the case as a binding failure.
+        """
+        state, evidence = self.classify_generation()
+        path = f"generation {state}: {evidence}"
+        if state == GENERATION_FIXTURE:
+            self._publish(self._fresh_copy(self.source_root, "ensure"))
+            state, evidence = self.classify_generation()
+            path += f"; restored the candidate, then generation {state}: {evidence}"
+        self.note("generation-path", path)
+        if state != GENERATION_CANDIDATE:
+            raise creation.binding_failure(DETAIL_GENERATION.format(path=path))
+        return path
+
+    def begin(self, *, own_generation: bool = False) -> None:
         """B-P1: record the candidate, register the synthetic company its project declares, capture its live bodies."""
         self.candidate = self.identity()
         self.note("candidate-identity", self.candidate)
         self.register_company()
+        if own_generation:
+            self.ensure_candidate()
         self.live_bodies = {identity: self.body_of(identity, pending=False) for identity in FOLD_IDS}
 
     def _fold_sha(self) -> str:
@@ -499,6 +555,30 @@ def log_evidence(host: FoundationHost, terms: Sequence[str]) -> str:
             continue
         texts.append(f"[{argv[0]} exit {outcome.exit_status}] {outcome.output.strip()[-LOG_TAIL_BYTES:]}")
     return " || ".join(texts)
+
+
+GENERATION_CANDIDATE: Final = "candidate"
+GENERATION_FIXTURE: Final = "fixture"
+GENERATION_INCONSISTENT: Final = "inconsistent"
+DETAIL_GENERATION: Final = (
+    "the installed publication is not a verified candidate generation, so no prepare was issued: {path}"
+)
+EXCEPTION_LINE: Final = re.compile(r"^[\s|]*(?:[A-Za-z_][\w.]*\.)?[A-Za-z_]\w*(?:Error|Exception|Exit)\b.*$")
+EXCEPTION_LINES: Final = 6
+EXCEPTION_LINE_BYTES: Final = 260
+
+
+def exception_evidence(host: FoundationHost) -> str:
+    """The last exception lines of the daemon\'s recent log: what a traceback ends with, which a bounded tail cuts off."""
+    home = host.environment.get("HOME", "")
+    tool = Path(home) / ".local" / "bin" / "instrukt-ai-logs"
+    executable = str(tool) if tool.exists() else "instrukt-ai-logs"
+    try:
+        outcome = host.process((executable, "teleclaude", "--since", "15m"), Path(home or "."), host.environment, 60)
+    except BaseException as error:  # evidence gathering must not replace the failure it explains
+        return f"[{executable} failed: {type(error).__name__}]"
+    lines = [line.strip() for line in outcome.output.splitlines() if EXCEPTION_LINE.match(line)]
+    return " || ".join(line[-EXCEPTION_LINE_BYTES:] for line in lines[-EXCEPTION_LINES:]) or "[no exception line found]"
 
 
 NO_DRIVER_PHRASE: Final = "no published procedure drives preparation"

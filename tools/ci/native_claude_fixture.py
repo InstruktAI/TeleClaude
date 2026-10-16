@@ -69,6 +69,8 @@ LAUNCHES_FILE: Final = "launches.jsonl"
 PLAN_COMMANDS_FIELD: Final = "commands"
 PLAN_NAME_FIELD: Final = "name"
 PLAN_WAIT_FIELD: Final = "wait_for"
+PLAN_ARGV_FROM_FIELD: Final = "argv_from"
+ARGV_FILE_CHARACTERS: Final = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
 PLAN_HOLD_FIELD: Final = "barrier_hold_seconds"
 PLAN_ARGV_FIELD: Final = "argv"
 PLAN_FRAME_PREFIX: Final = "cmd_"
@@ -109,6 +111,11 @@ CRLF: Final = "\r\n"
 
 type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
 type JsonObject = dict[str, JsonValue]
+
+
+def _is_argv_file_name(name: str) -> bool:
+    """A plain file name in the control directory: no separator, no parent reference."""
+    return bool(name) and not name.startswith(".") and all(character in ARGV_FILE_CHARACTERS for character in name)
 
 
 def _home() -> Path:
@@ -392,7 +399,7 @@ class _Fixture:
         commands = plan.get(PLAN_COMMANDS_FIELD) if plan is not None else None
         if not isinstance(commands, list):
             return
-        deferred: list[tuple[str | None, str, list[str]]] = []
+        deferred: list[tuple[str | None, str, list[str] | str]] = []
         for command in commands:
             if self.control.exists(STOP_FILE):
                 return  # the controller has asked this launch to run nothing more
@@ -400,33 +407,57 @@ class _Fixture:
                 continue
             name = command.get(PLAN_NAME_FIELD)
             argv = command.get(PLAN_ARGV_FIELD)
+            late = command.get(PLAN_ARGV_FROM_FIELD)
             wait = command.get(PLAN_WAIT_FIELD)
-            if not isinstance(name, str) or not name.isalnum() or not isinstance(argv, list) or not argv:
+            if not isinstance(name, str) or not name.isalnum():
                 continue
-            arguments = [part for part in argv if isinstance(part, str)]
-            if len(arguments) != len(argv) or arguments[0] != TELEC_COMMAND:
+            source: list[str] | str
+            if isinstance(late, str) and _is_argv_file_name(late) and argv is None:
+                source = late
+            elif isinstance(argv, list) and argv:
+                source = [part for part in argv if isinstance(part, str)]
+                if len(source) != len(argv) or source[0] != TELEC_COMMAND:
+                    continue
+            else:
                 continue
             gate = wait if isinstance(wait, str) and wait.isidentifier() else None
             if gate is not None or deferred:
-                deferred.append((gate, name, arguments))
+                deferred.append((gate, name, source))
             else:
-                self._execute(name, arguments)
+                self._execute(name, source)
         if deferred:
             self.worker = threading.Thread(target=self._drain, args=(deferred,), daemon=True)
             self.worker.start()
 
-    def _drain(self, queue: list[tuple[str | None, str, list[str]]]) -> None:
+    def _drain(self, queue: list[tuple[str | None, str, list[str] | str]]) -> None:
         """Run the deferred commands one at a time in plan order, each after its gate file exists."""
-        for gate, name, arguments in queue:
+        for gate, name, source in queue:
             while gate is not None and not self.control.exists(gate):
                 if self.control.exists(STOP_FILE) or not self.running:
                     return
                 time.sleep(POLL_SECONDS)
             if self.control.exists(STOP_FILE) or not self.running:
                 return
-            self._execute(name, arguments)
+            self._execute(name, source)
 
-    def _execute(self, name: str, arguments: list[str]) -> None:
+    def _late_argv(self, file_name: str) -> list[str] | None:
+        """The argument list the controller wrote for a late-bound command, read only when its gate has opened."""
+        try:
+            value = json.loads((self.control.directory / file_name).read_text(encoding=ENCODING))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(value, list) or not value or not all(isinstance(part, str) for part in value):
+            return None
+        return value if value[0] == TELEC_COMMAND else None
+
+    def _execute(self, name: str, source: list[str] | str) -> None:
+        arguments = self._late_argv(source) if isinstance(source, str) else source
+        if arguments is None:
+            unreadable: JsonObject = {"exit_status": None, "error": "late argument list unreadable"}
+            self.control.write_frame(
+                f"{PLAN_FRAME_PREFIX}{name}", {"name": name, "argv": [], "telec": None, "run": unreadable}
+            )
+            return
         resolved = shutil.which(TELEC_COMMAND)
         run = _run([resolved or TELEC_COMMAND, *arguments[1:]], timeout_seconds=PLAN_TIMEOUT_SECONDS)
         reported: list[JsonValue] = [*arguments]

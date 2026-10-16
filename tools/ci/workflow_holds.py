@@ -160,7 +160,11 @@ def _hold_and_release(observer: Observer, baseline: SessionView, quiet: Mapping[
         raise creation.platform_failure(items.DETAIL_ABSENT.format(case="R3 hold", when="after the hold"))
     _held_projection(SLUG_HOLD, first, REASON, AUDIT_SOURCE_MANUAL)
     found, session_id = creation.dig(first, f"{STATE_AUDIT}.set_by_session_id")
-    if found and session_id != creation.EMPTY:
+    if not found:
+        raise creation.trace_failure(
+            creation.DETAIL_PATH_ABSENT.format(slug=SLUG_HOLD, path=f"{STATE_AUDIT}.set_by_session_id")
+        )
+    if session_id != creation.EMPTY:
         raise creation.trace_failure(DETAIL_SESSION_ID.format(slug=SLUG_HOLD, found=session_id))
     items.require_only_changes("R3 hold", quiet, first, HOLD_ALLOWED)
     creation.require_sessions_equal(baseline, observer.sessions(retain=False), "after the hold")

@@ -176,6 +176,9 @@ def _restore(observer: Observer, original: Mapping[str, object], baseline: Sessi
     creation.require_value(SLUG, restored, f"{creation.FIELD_STATE}.{creation.FIELD_PHASE}", PHASE_PREPARATION)
     creation.require_value(SLUG, restored, f"{creation.FIELD_ROADMAP}.{creation.FIELD_STATUS}", creation.STATUS_ACTIVE)
     creation.require_value(SLUG, restored, f"{creation.FIELD_STATE}.{creation.FIELD_HOLD}", False)
+    creation.require_value(
+        SLUG, restored, f"{creation.FIELD_STANDING}.{creation.FIELD_STANDING_PHASE}", PHASE_PREPARATION
+    )
     creation.require_unclaimed(SLUG, restored)
     creation.require_standing_clear(SLUG, restored)
     items.require_only_changes("R5 restoration", original, restored, RESTORE_ALLOWED)
