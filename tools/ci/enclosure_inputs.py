@@ -23,7 +23,7 @@ from tools.ci.enclosure_contract import (
     require_hex,
     text,
 )
-from tools.ci.enclosure_data import NativeCommand
+from tools.ci.enclosure_native import NativeCommand
 
 CURL: Final = "/usr/bin/curl"
 CURL_ARGUMENTS: Final = (

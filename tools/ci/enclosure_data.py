@@ -6,7 +6,7 @@ import hashlib
 import os
 import shutil
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
@@ -25,9 +25,7 @@ from tools.ci.enclosure_contract import (
     require_hex,
     text,
 )
-
-# Native adapters receive the original absolute monotonic cutoff, never a fresh duration.
-type NativeCommand = Callable[[tuple[str, ...], int], int | None]
+from tools.ci.enclosure_native import NativeCommand
 
 READ_BINARY: Final = "rb"
 UTF8: Final = "utf-8"

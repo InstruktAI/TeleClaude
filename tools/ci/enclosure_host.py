@@ -23,7 +23,7 @@ from tools.ci.enclosure_contract import (
     text,
 )
 from tools.ci.enclosure_journal import Controller
-from tools.ci.enclosure_setup import INVENTORY_ARGUMENTS, NativeQuery, _query_native
+from tools.ci.enclosure_native import INVENTORY_ARGUMENTS, NativeQuery, query_native
 
 ROOT: Final = Path("/")
 PROC_PYTHON: Final = Path("/proc/self/exe")
@@ -178,7 +178,7 @@ def inspect_host_substrate(
     compatibility = object_value(lock[Key.HOST_COMPATIBILITY])
     cap = positive_integer(object_value(recipe[Field.BUDGET_SECONDS]), Field.NORMAL_COMMAND_MAX)
     kernel = os.uname().release
-    architecture = _query_native(ARCHITECTURE_ARGUMENTS, query, deadline, cap).decode(UTF8).strip()
+    architecture = query_native(ARCHITECTURE_ARGUMENTS, query, deadline, cap).decode(UTF8).strip()
     if (
         os.geteuid() != 0
         or image_version != text(host, Key.ACCEPTED_IMAGE)
@@ -188,7 +188,7 @@ def inspect_host_substrate(
         or architecture != text(host, Key.ARCHITECTURE)
     ):
         raise ValueError(ERROR_HOST)
-    inventory = _query_native(INVENTORY_ARGUMENTS, query, deadline, cap)
+    inventory = query_native(INVENTORY_ARGUMENTS, query, deadline, cap)
     container_installed, matched_packages = _package_presence(lock, inventory)
     python_rows = lock[Key.PYTHON_BINARY]
     activation_rows = lock[Key.ACTIVATION_SOURCES]

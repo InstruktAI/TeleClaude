@@ -11,7 +11,6 @@ import pwd
 import stat
 import subprocess
 import time
-from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -34,7 +33,6 @@ from tools.ci.enclosure_data import (
     GUEST_TOOL_DIRECTORY,
     READ_BINARY,
     TGZ_SUFFIX,
-    NativeCommand,
     _archive,
     _command,
     verify_bootstrap_binaries,
@@ -54,6 +52,7 @@ from tools.ci.enclosure_guest import (
 )
 from tools.ci.enclosure_guest import Key as GuestKey
 from tools.ci.enclosure_journal import Controller
+from tools.ci.enclosure_native import INVENTORY_ARGUMENTS, NativeCommand, NativeQuery, NativeRead, query_native
 
 SETUP_UNIT: Final = "guest-setup.service"
 SETUP_JOURNAL: Final = "guest-setup.jsonl"
@@ -76,11 +75,6 @@ APT_ARGUMENTS: Final = (
     "-o",
     "Dpkg::Use-Pty=0",
     "install",
-)
-INVENTORY_ARGUMENTS: Final = (
-    "/usr/bin/dpkg-query",
-    "--show",
-    "--showformat=${Package}\t${Version}\t${Architecture}\t${Status}\n",
 )
 GROUPADD: Final = "/usr/sbin/groupadd"
 USERADD: Final = "/usr/sbin/useradd"
@@ -173,7 +167,6 @@ ERROR_ACCOUNT: Final = "the created guest account does not match its reviewed id
 ERROR_BUDGET: Final = "guest setup exhausted the original admitted unit/command/vector/outer allowance"
 ERROR_TOOLS: Final = "the fixed guest bootstrap tools or native Corepack cache differ from the reviewed inputs"
 ERROR_BUS: Final = "the native guest system/user bus manager credentials or namespace are unavailable or inconsistent"
-ERROR_NATIVE_READ: Final = "native guest read was incomplete or failed: {executable}, exit {status}"
 SETUP_ENVIRONMENT: Final = {
     "PATH": "/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "LANG": "C.UTF-8",
@@ -233,18 +226,6 @@ class Key(StrEnum):
 
 
 @dataclass(frozen=True)
-class NativeRead:
-    """Bounded stdout from the real native read; incomplete output cannot prove inventory."""
-
-    status: int | None
-    stdout: bytes
-    complete: bool
-
-
-type NativeQuery = Callable[[tuple[str, ...], int], NativeRead]
-
-
-@dataclass(frozen=True)
 class GuestManagerFacts:
     """Native guest-bus ownership and process placement at the stated capture point, not P4 continuity."""
 
@@ -274,18 +255,6 @@ class GuestOSFacts:
     package_service_policy_removed: bool
 
 
-def _query_native(argv: tuple[str, ...], query: NativeQuery, deadline: AdmittedDeadline, cap: int) -> bytes:
-    end = deadline.command_end(cap)
-    if time.monotonic_ns() >= end:
-        raise TimeoutError(ERROR_BUDGET)
-    result = query(argv, end)
-    if time.monotonic_ns() >= end:
-        raise TimeoutError(ERROR_BUDGET)
-    if result.status != 0 or not result.complete or len(result.stdout) > INVENTORY_LIMIT:
-        raise ValueError(ERROR_NATIVE_READ.format(executable=argv[0], status=result.status))
-    return result.stdout
-
-
 def _credential(credentials: JsonObject, key: Key) -> int:
     # Native busctl preserves the variant's wire type and scalar value in its JSON representation.
     value = credentials.get(key)
@@ -306,7 +275,7 @@ def _manager_facts(
     deadline: AdmittedDeadline,
     cap: int,
 ) -> GuestManagerFacts:
-    raw = _query_native(argv, query, deadline, cap)
+    raw = query_native(argv, query, deadline, cap)
     response = parse_object(raw)
     body = response.get(Key.DATA)
     if response.get(Key.TYPE) != CREDENTIALS_SIGNATURE or not isinstance(body, list) or len(body) != 1:
@@ -456,7 +425,7 @@ def configure_guest_os(
             archive = GUEST_ARCHIVE_DIRECTORY / (digest + DEB_SUFFIX)
             archives.append(str(_archive(row, {digest: archive}, deadline)))
     _command((*APT_ARGUMENTS, *archives), run, deadline, cap)
-    inventory_digest = _verify_inventory(context.package, _query_native(INVENTORY_ARGUMENTS, query, deadline, cap))
+    inventory_digest = _verify_inventory(context.package, query_native(INVENTORY_ARGUMENTS, query, deadline, cap))
     _command(NETWORK_START, run, deadline, cap)
     _command(NETWORK_WAIT, run, deadline, cap)
     bootstrap_digests, corepack_metadata_digest = _configure_bootstrap_tools(context, run, deadline, cap)
@@ -503,7 +472,7 @@ def configure_guest_os(
     # Native start waits for the existing or newly admitted user-manager job; it never retries an unknown result.
     _command((SYSTEMCTL, START, USER_UNIT.format(uid=uid)), run, deadline, cap)
     if (
-        _query_native((RUNUSER, RUNUSER_USER, name, END_OPTIONS, *SUDO_ID), query, deadline, cap).strip()
+        query_native((RUNUSER, RUNUSER_USER, name, END_OPTIONS, *SUDO_ID), query, deadline, cap).strip()
         != GUEST_ROOT_UID
     ):
         raise ValueError(ERROR_ACCOUNT)
