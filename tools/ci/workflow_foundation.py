@@ -50,7 +50,7 @@ GIT_DIRECTORY: Final = ".git"
 PROCESS_TIMEOUT_SECONDS: Final = 30
 PATH_ROOT: Final = "/"
 LOGIN_PROFILE_NAMES: Final = (".bash_profile", ".bash_login", ".profile")
-LOGIN_PATH_LINE: Final = 'export PATH="{directory}:$PATH"'
+LOGIN_PATH_LINE: Final = 'case ":$PATH:" in *":{directory}:"*) ;; *) export PATH="{directory}:$PATH" ;; esac'
 LINE_FEED: Final = "\n"
 CLI_TIMEOUT_SECONDS: Final = 60
 START_OBSERVATION_CAP_SECONDS: Final = 900
@@ -254,14 +254,16 @@ def require_owned_resolution(
         raise FixtureBindingFailure(BINDING_FAILURE.format(detail=detail))
 
 
-def put_user_bin_on_login_path(home: Path, setup: FixtureSetup) -> str:
-    """Make the owner\'s login shell find the pinned user-bin directory, as a user\'s own login profile does.
+def put_tools_on_login_path(home: Path, directories: Sequence[Path]) -> str:
+    """Make the owner\'s login shell find the user-bin directory and the tools the CLI needs, as a user\'s profile does.
 
-    Login shells of the disposable home start from the system PATH and add what the user\'s profile adds. A profile
-    that already puts the directory on PATH is left alone; otherwise the line is appended to the file bash reads first
-    for a login shell, in the disposable home only. Returns the file and line written, or an empty string.
+    A login shell of the disposable home starts from the system PATH and adds what the user\'s own profile adds; the
+    platform captures the agent shells\' PATH from that login shell. A hosted image\'s profile adds neither the
+    user-bin directory nor the directory of the `uv` the `telec` launcher runs, so this writes the same guarded line the
+    supported installer suggests for the user-bin directory, once per directory, to the file bash reads first for a
+    login shell, in the disposable home only. A directory a profile already names is left alone. Returns the file and
+    the lines written, or an empty string.
     """
-    directory = str(setup.executable.parent)
     for name in LOGIN_PROFILE_NAMES:
         profile = home / name
         if profile.exists():
@@ -269,13 +271,14 @@ def put_user_bin_on_login_path(home: Path, setup: FixtureSetup) -> str:
     else:
         profile = home / LOGIN_PROFILE_NAMES[-1]
     existing = profile.read_text(encoding="utf-8") if profile.exists() else ""
-    line = LOGIN_PATH_LINE.format(directory=directory)
-    if line in existing:
+    lines = [LOGIN_PATH_LINE.format(directory=str(directory)) for directory in directories]
+    missing = [line for line in lines if line not in existing]
+    if not missing:
         return ""
+    prefix = LINE_FEED if existing and not existing.endswith(LINE_FEED) else ""
     with profile.open("a", encoding="utf-8") as handle:
-        handle.write((existing and not existing.endswith(LINE_FEED) and LINE_FEED) or "")
-        handle.write(line + LINE_FEED)
-    return f"{profile.name}: {line}"
+        handle.write(prefix + LINE_FEED.join(missing) + LINE_FEED)
+    return f"{profile.name}: {' ; '.join(missing)}"
 
 
 def owner_login_environment(base: Mapping[str, str]) -> dict[str, str]:

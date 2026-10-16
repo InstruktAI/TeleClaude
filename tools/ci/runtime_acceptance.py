@@ -1874,7 +1874,11 @@ def _full_workflow_foundation(resources: FullRuntimeResources, evidence: list[Co
     home = resources.environment.get(_COLD_HOME_VARIABLE)
     if not home:
         raise RuntimeError(_FULL_HOME_REQUIRED)
-    written = foundation.put_user_bin_on_login_path(Path(home), setup)
+    uv_executable = shutil.which(_UV_EXECUTABLE, path=resources.environment.get(_PATH_VARIABLE))
+    login_directories = [setup.executable.parent]
+    if uv_executable is not None:
+        login_directories.append(Path(uv_executable).parent)
+    written = foundation.put_tools_on_login_path(Path(home), login_directories)
     if written:
         runner.note((_LOGIN_PROFILE_NOTE,), foundation.Outcome(_PROCESS_SUCCESS, written), _EMPTY)
     foundation.require_owned_resolution(
