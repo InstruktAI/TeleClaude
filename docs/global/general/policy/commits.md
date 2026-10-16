@@ -42,8 +42,6 @@ Human-Involved: <true|false>
   not enforce this by inspecting messages: a message that contains one
   survives untouched, appended to rather than corrected.
 
-<!-- planned:todo-doc-review-evidence -->
-
 **Todo association:**
 
 For documentation prepared for a future todo, choose the fitting slug before
@@ -57,8 +55,6 @@ from the owning project's recorded state at commit creation:
 names carry the same commit-to-todo association. `Planned-Todo` records absence
 at commit time, not current lifecycle state, and remains unchanged after the todo
 is created (`general/principle/grounding`).
-
-<!-- /planned:todo-doc-review-evidence -->
 
 **Valid types:**
 
@@ -125,19 +121,6 @@ All Committizen types are allowed.
   is not reviewing; it records that no review is owed, never that the change
   is correct. Review is technical stewardship, never a human ratification step.
 
-<!-- planned-change:todo-doc-review-evidence -->
-
-- Every commit-review outcome is a stamp on the commits it covers. The reviewer
-  stamps its verdict on exactly the SHAs it reviewed, and the author stamps the
-  candidates it discards. A stamp lands in the review state of the todo whose
-  lifecycle claim the stamping session or the session that started it holds,
-  and lands on no todo when neither holds one. Either way it discharges the
-  checkpoint's post-commit review gate for those commits. The stamp records
-  the session that gave it, so a discard stays distinguishable from a
-  reviewer's verdict.
-
-<!-- change:todo-doc-review-evidence -->
-
 - Every commit-review outcome is a repository-owned record keyed by the commit
   SHA, available independently of whether a todo exists or a session holds its
   claim. The record carries the verified stamping session, verdict, time and
@@ -157,8 +140,6 @@ All Committizen types are allowed.
   assertion of independence. Author discard stamps retain their existing
   purpose and do not become review approvals
   (`general/concept/lineage-vs-authorship`).
-
-<!-- /planned-change:todo-doc-review-evidence -->
 
 - A `REQUEST CHANGES` verdict stays with the authoring session for
   evidence-based rejection or in-scope remediation and re-review. Before

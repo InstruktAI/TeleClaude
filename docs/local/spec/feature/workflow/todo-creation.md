@@ -54,8 +54,6 @@ The Todo aggregate's invariants — unique kebab-case slug, a canonical kind pre
 
 ## Canonical fields
 
-<!-- planned:todo-doc-review-evidence -->
-
 ### Reviewed documentation evidence
 
 Before creation admits work that declares pending documentation into its
@@ -91,8 +89,6 @@ The check keeps the existing classification of no-documentation work and the
 icebox entry rules; it does not classify prose or infer documentation impact.
 Unfreezing performs the same evidence check when parked work enters the
 lifecycle (`general/principle/trust-and-guardrails`).
-
-<!-- /planned:todo-doc-review-evidence -->
 
 ### Todo-created event payload (partial shape)
 
@@ -402,19 +398,6 @@ And the surface verifies the decisions were faced, never that the answers are tr
 
 #### UC-WTC28: Todo creation interrogates before creating
 
-<!-- planned-change:todo-doc-review-evidence -->
-
-```gherkin
-Given an agent invokes `telec todo create <slug> <content>` without the acknowledgment flag
-When the command runs
-Then it prints the pre-creation decisions to stderr: the five-minute rule, doc-only routing, an existing home to amend, and ownership plus process-change authority
-And exits 0 without creating a todo — serving the interrogation is the successful outcome of that invocation
-And only that output names how to complete the creation
-And the surface verifies the decisions were faced, never that the answers are true — judging the answers stays with intelligence
-```
-
-<!-- change:todo-doc-review-evidence -->
-
 ```gherkin
 Given an agent is creating a todo through `telec todo create <slug> <content>`
 When the agent invokes the command without the acknowledgment flag
@@ -429,8 +412,6 @@ Then that new request passes the documentation evidence check and proceeds throu
 And work genuinely declaring no documentation delta keeps its existing creation route
 And icebox filing keeps its parking route with the evidence check at lifecycle entry
 ```
-
-<!-- /planned-change:todo-doc-review-evidence -->
 
 #### UC-WTC8: Direct human filing records the human root alone
 
