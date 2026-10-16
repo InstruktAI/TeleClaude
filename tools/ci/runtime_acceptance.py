@@ -339,6 +339,10 @@ _FULL_PROJECT_RESTORE_ERROR = "The supported config surface could not restore th
 _FULL_UNPROVEN_RETAINED = (
     "Closure of the journey's actors is UNPROVEN, so the disposable home and fixture controls are retained: {reasons}"
 )
+_FULL_STOP_UNPROVEN = "the supported stop did not record that the services are down (outcome: {outcome})"
+_STOP_OUTCOME_NAME = "stop-outcome"
+_STOP_OUTCOME_VARIABLE = "STOP_OUTCOME_FILE"
+_STOPPED_OUTCOME = "stopped"
 _FULL_TEMP_CLEANUP_ERROR = "The disposable runtime temporary resources could not be removed."
 _FULL_TERMINAL_SETUP_ERROR = "The owned PTY could not enter the checked source directory."
 _CLEANUP_FAILURE_SEPARATOR = ", "
@@ -1675,16 +1679,20 @@ def _close_full_profile_resources(
 ) -> None:
     """Stop the supported runtime, restore temporary declarations and remove owned resources."""
     failures: list[str] = []
+    stop_outcome = resources.temporary_root / _STOP_OUTCOME_NAME
     if resources.install_attempted:
         result = _record_external_command(
             resources,
-            _SERVICE_STOP_COMMAND,
+            (*_SERVICE_STOP_COMMAND, f"{_STOP_OUTCOME_VARIABLE}={stop_outcome}"),
             cwd=resources.source_root,
             timeout_seconds=_STOP_COMMAND_TIMEOUT_SECONDS,
             evidence=cleanup_evidence,
         )
         if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
             failures.append(_FULL_SERVICE_STOP_ERROR)
+        recorded = stop_outcome.read_text(encoding=_UTF8).strip() if stop_outcome.is_file() else _EMPTY
+        if recorded != _STOPPED_OUTCOME:
+            resources.retained.append(_FULL_STOP_UNPROVEN.format(outcome=recorded or "none"))
     try:
         _restore_full_profile_changes(resources, cleanup_evidence)
     except Exception:

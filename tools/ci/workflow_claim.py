@@ -473,10 +473,10 @@ class _Steps:
                 return
             time.sleep(POLL_SECONDS)
         starter = self.claim.operation_state(self.starter, retain=True)
-        publication.log_evidence(self.host, LOG_TERMS)
+        logs = publication.log_evidence(self.host, LOG_TERMS)
         raise creation.platform_failure(
             DETAIL_START_TIMEOUT.format(item=ITEM, seconds=int(START_CAP_SECONDS))
-            + f" (the starter reads {dict(starter)!r})"
+            + f" (the starter reads {dict(starter)!r}; logs: {logs})"
         )
 
     def check_startup(self) -> str:

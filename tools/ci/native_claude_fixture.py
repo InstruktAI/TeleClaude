@@ -60,6 +60,8 @@ FRAME_SESSION_START: Final = "session_start"
 FRAME_PROMPT_SUBMIT: Final = "prompt_submit"
 FRAME_SELF_PROBE: Final = "self_probe"
 PLAN_FILE: Final = "plan.json"
+STOP_FILE: Final = "stop"
+LAUNCHES_FILE: Final = "launches.jsonl"
 PLAN_COMMANDS_FIELD: Final = "commands"
 PLAN_NAME_FIELD: Final = "name"
 PLAN_ARGV_FIELD: Final = "argv"
@@ -141,6 +143,13 @@ class _Control:
         os.replace(temporary, self.frames / f"{name}{FRAME_SUFFIX}")
         marker = self.frames / f"{name}{FRAME_COMPLETE_SUFFIX}"
         marker.write_text(LINE_FEED, encoding=ENCODING)
+
+    def append_launch(self, entry: JsonObject) -> None:
+        """Append one launch record; a later launch into the same directory never overwrites an earlier one."""
+        with (self.directory / LAUNCHES_FILE).open("a", encoding=ENCODING) as handle:
+            handle.write(json.dumps(entry) + LINE_FEED)
+            handle.flush()
+            os.fsync(handle.fileno())
 
     def append_input(self, entry: JsonObject) -> None:
         with (self.directory / INPUT_LOG_FILE).open("a", encoding=ENCODING) as handle:
@@ -245,18 +254,17 @@ class _Fixture:
 
     def record_launch(self) -> None:
         resolved = shutil.which(USER_FACING_NAME)
-        self.control.write_json(
-            LAUNCH_FILE,
-            {
-                "executable": os.path.realpath(__file__),
-                "resolved_command": os.path.realpath(resolved) if resolved else None,
-                "native_session_id": self.native_session_id,
-                "transcript_path": str(self.transcript_path),
-                "cwd": self.cwd,
-                "pid": os.getpid(),
-                "launched_at": time.monotonic(),
-            },
-        )
+        record: JsonObject = {
+            "executable": os.path.realpath(__file__),
+            "resolved_command": os.path.realpath(resolved) if resolved else None,
+            "native_session_id": self.native_session_id,
+            "transcript_path": str(self.transcript_path),
+            "cwd": self.cwd,
+            "pid": os.getpid(),
+            "launched_at": time.monotonic(),
+        }
+        self.control.write_json(LAUNCH_FILE, record)
+        self.control.append_launch(record)
 
     def draw(self) -> None:
         columns = shutil.get_terminal_size((DEFAULT_COLUMNS, 40)).columns
@@ -343,6 +351,8 @@ class _Fixture:
         if not isinstance(commands, list):
             return
         for command in commands:
+            if self.control.exists(STOP_FILE):
+                return  # the controller has asked this launch to run nothing more
             if not isinstance(command, dict):
                 continue
             name = command.get(PLAN_NAME_FIELD)
@@ -411,6 +421,8 @@ def _interactive(control: _Control) -> int:
         state = _InputState()
         pending = b""
         while fixture.running:
+            if control.exists(STOP_FILE):
+                break
             fixture.release_if_due()
             if not selector.select(POLL_SECONDS):
                 continue

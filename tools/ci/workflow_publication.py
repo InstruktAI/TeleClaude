@@ -18,6 +18,7 @@ import os
 import shutil
 import time
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -77,7 +78,7 @@ POLL_SECONDS: Final = 2.0
 SETTLE_SECONDS: Final = 120.0
 PROCESS_EXIT_SECONDS: Final = 30.0
 LOG_TAIL_LINES: Final = 200
-LOG_TAIL_BYTES: Final = 3500
+LOG_TAIL_BYTES: Final = 1400
 
 DETAIL_COMMAND: Final = "`{command}` exited {status}: {output!r}"
 DETAIL_FOLD_PATHS: Final = (
@@ -189,20 +190,34 @@ def _process_alive(pid: int) -> bool:
     return True
 
 
-def _fixture_processes_gone(controls: Sequence[Path], problems: list[str]) -> None:
-    """The owned fixture processes of the launches have exited, read from the pid each launch recorded."""
-    for control in controls:
+def _launch_pids(control: Path) -> list[int]:
+    """Every fixture process the directory\'s launches recorded, from the append-only record of each launch."""
+    try:
+        lines = (control / "launches.jsonl").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    pids: list[int] = []
+    for line in lines:
         try:
-            pid = json.loads((control / "launch.json").read_text(encoding="utf-8")).get("pid")
-        except (OSError, ValueError):
-            continue  # this control directory holds no launch: there is no fixture process of it to wait for
-        if not isinstance(pid, int):
+            pid = json.loads(line).get("pid")
+        except ValueError:
             continue
-        deadline = time.monotonic() + PROCESS_EXIT_SECONDS
-        while _process_alive(pid) and time.monotonic() < deadline:
-            time.sleep(POLL_SECONDS)
-        if _process_alive(pid):
-            problems.append(DETAIL_PROCESS_ALIVE.format(pid=pid, control=control))
+        if isinstance(pid, int):
+            pids.append(pid)
+    return pids
+
+
+def _fixture_processes_gone(controls: Sequence[Path], problems: list[str]) -> None:
+    """The owned fixture processes of every launch have exited, after the controller asked each directory to stop."""
+    for control in controls:
+        with suppress(OSError):
+            (control / "stop").write_text("stop\n", encoding="utf-8")
+        for pid in _launch_pids(control):
+            deadline = time.monotonic() + PROCESS_EXIT_SECONDS
+            while _process_alive(pid) and time.monotonic() < deadline:
+                time.sleep(POLL_SECONDS)
+            if _process_alive(pid):
+                problems.append(DETAIL_PROCESS_ALIVE.format(pid=pid, control=control))
 
 
 def settle_sessions(
@@ -447,26 +462,30 @@ class Publication:
         return [] if after == self.candidate else [DETAIL_IDENTITY_MOVED.format(before=self.candidate, after=after)]
 
 
-def log_evidence(host: FoundationHost, terms: Sequence[str]) -> None:
-    """Retain the daemon\'s recent log lines as evidence of a failed case; never an oracle.
+def log_evidence(host: FoundationHost, terms: Sequence[str]) -> str:
+    """The daemon\'s recent log text for a failed case, bounded, for the failure message itself; never an oracle.
 
-    The matching lines for the terms come from the supported log reader; the newest lines of every log file of the
-    installation are retained as well, for the case that the terms match nothing or the reader finds no directory.
+    Successful commands lose their output at the harness\'s evidence boundaries, so the text is returned to be written
+    into the failure that explains it. The matching lines for the terms come from the supported log reader; the newest
+    lines of the installation\'s log files follow, for the case that the terms match nothing.
     """
     home = host.environment.get("HOME", "")
     tool = Path(home) / ".local" / "bin" / "instrukt-ai-logs"
     executable = str(tool) if tool.exists() else "instrukt-ai-logs"
-    pattern = "|".join(terms)
     commands = (
-        (executable, "teleclaude", "--since", "60m", "--grep", pattern),
+        (executable, "teleclaude", "--since", "60m", "--grep", "|".join(terms)),
         (
             "sh",
             "-c",
             f'tail -n {LOG_TAIL_LINES} "$HOME"/.local/state/instrukt-ai/teleclaude/*.log 2>&1 | tail -c {LOG_TAIL_BYTES}',
         ),
     )
+    texts: list[str] = []
     for argv in commands:
         try:
-            host.process(argv, Path(home or "."), host.environment, 60)
-        except BaseException:  # evidence gathering must not replace the failure it explains
+            outcome = host.process(argv, Path(home or "."), host.environment, 60)
+        except BaseException as error:  # evidence gathering must not replace the failure it explains
+            texts.append(f"[{argv[0]} failed: {type(error).__name__}]")
             continue
+        texts.append(f"[{argv[0]} exit {outcome.exit_status}] {outcome.output.strip()[-LOG_TAIL_BYTES:]}")
+    return " || ".join(texts)
