@@ -418,7 +418,7 @@ def _start_work(
         _fail(f"B5 builder child start text is absent: {child_frame!r}")
     builder = match.group(1)
     flow.require_ledger().record_session(child_attempt, builder)
-    builder_record, builder_launch, _builder_role = _startup(flow, builder, ROLE_BUILDER, PROC_BUILD, worktree)
+    builder_record, builder_launch, _builder_role = _startup(flow, builder, ROLE_BUILDER, PROC_BUILD, flow.project)
     if builder_record.get(FIELD_INITIATOR) != w2:
         _fail(f"builder initiator is {builder_record.get(FIELD_INITIATOR)!r}, not {w2}")
     if builder_record.get(FIELD_PROJECT) != str(worktree.resolve()) or builder_launch.get("cwd") != str(
