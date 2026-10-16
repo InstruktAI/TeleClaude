@@ -27,7 +27,7 @@ import re
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Final, TypedDict
+from typing import Final
 
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
@@ -125,28 +125,6 @@ DETAIL_RECEIPT: Final = "`telec todo prepare` printed no operation receipt: exit
 DETAIL_CONTROLS_KEPT: Final = "closure was not proven, so the control directories {control} are kept for diagnosis"
 
 type Json = Mapping[str, object]
-
-
-class _Command(TypedDict, total=False):
-    name: str
-    argv: list[str]
-    argv_from: str
-    wait_for: str
-
-
-class _Plan(TypedDict):
-    commands: list[_Command]
-
-
-def _command(name: str, argv: list[str], gate: str | None = None) -> _Command:
-    entry = _Command(name=name, argv=argv)
-    if gate is not None:
-        entry["wait_for"] = gate
-    return entry
-
-
-def _late(name: str, file_name: str, gate: str) -> _Command:
-    return _Command(name=name, argv_from=file_name, wait_for=gate)
 
 
 def log_entries(log: str) -> list[tuple[str, str]]:
@@ -299,20 +277,23 @@ class _Waiting:
             "--message", DISPATCH_MESSAGE,
         ]  # fmt: skip
         owner = [
-            _command("dispatchx", dispatch_argv, GATE_DISPATCH),
-            _late("decision", ARGV_DECISION, GATE_DECISION),
+            controls.command("dispatchx", dispatch_argv, GATE_DISPATCH),
+            controls.late("decision", ARGV_DECISION, GATE_DECISION),
         ]
         first_driver = [
-            _command("claim", ["telec", TODO, "prepare", ITEM]),
-            _command("child", ["telec", TODO, "child", ITEM]),
-            _command("waiting", ["telec", TODO, "act", ITEM, "waiting", "--person", self.owner_slug, QUESTION], GATE_WAITING),
+            controls.command("claim", ["telec", TODO, "prepare", ITEM]),
+            controls.command("child", ["telec", TODO, "child", ITEM]),
+            controls.command("waiting", ["telec", TODO, "act", ITEM, "waiting", "--person", self.owner_slug, QUESTION], GATE_WAITING),
         ]  # fmt: skip
         dispatched = [
-            _late("refused", ARGV_REFUSED, GATE_REFUSED),
-            _command("note", ["telec", TODO, "act", ITEM, "note", NOTE_TEXT], GATE_NOTE),
+            controls.late("refused", ARGV_REFUSED, GATE_REFUSED),
+            controls.command("note", ["telec", TODO, "act", ITEM, "note", NOTE_TEXT], GATE_NOTE),
         ]
-        second_driver = [_command("claim", ["telec", TODO, "prepare", ITEM])]
-        plans = [_Plan(commands=commands) for commands in (owner, first_driver, [], dispatched, second_driver, [], [])]
+        second_driver = [controls.command("claim", ["telec", TODO, "prepare", ITEM])]
+        plans = [
+            controls.PlanFile(commands=commands)
+            for commands in (owner, first_driver, [], dispatched, second_driver, [], [])
+        ]
         self.setups = self.controls.pool(plans)
 
     def verify_owner(self) -> None:

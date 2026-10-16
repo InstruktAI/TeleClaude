@@ -33,6 +33,7 @@ from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_holds as holds
 from tools.ci import workflow_plans as plans
+from tools.ci import workflow_prepared as prepared
 from tools.ci import workflow_race as race
 from tools.ci import workflow_removal as removal
 from tools.ci import workflow_waiting as waiting
@@ -173,6 +174,7 @@ _SCENARIO_WORKFLOW_REMOVAL = "UC-WF-R5"
 _SCENARIO_WORKFLOW_CLAIM = "UC-WF-B1"
 _SCENARIO_WORKFLOW_RACE = "UC-WF-B2"
 _SCENARIO_WORKFLOW_WAITING = "UC-WF-B3"
+_SCENARIO_WORKFLOW_PREPARED = "UC-WF-B4"
 _COLD_PROFILE_SCENARIOS = (_SCENARIO_COLD,)
 _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_COLD,
@@ -211,6 +213,7 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_WORKFLOW_CLAIM,
     _SCENARIO_WORKFLOW_RACE,
     _SCENARIO_WORKFLOW_WAITING,
+    _SCENARIO_WORKFLOW_PREPARED,
 )
 _SCENARIO_PREREQUISITES = {
     _SCENARIO_WORKFLOW_FOUNDATION: (
@@ -261,6 +264,13 @@ _SCENARIO_PREREQUISITES = {
         _SCENARIO_CONFIG_PATCH,
         _SCENARIO_PROJECT_REGISTRATION,
         _SCENARIO_WORKFLOW_FOUNDATION,
+    ),
+    _SCENARIO_WORKFLOW_PREPARED: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+        _SCENARIO_WORKFLOW_FOUNDATION,
+        _SCENARIO_WORKFLOW_WAITING,
     ),
 }
 _PROFILE_COLD = "cold"
@@ -2053,6 +2063,22 @@ def _full_workflow_waiting(resources: FullRuntimeResources, evidence: list[Comma
         resources.source_root,
         _OWNER_SEED_EMAIL,
         _OWNER_SEED_SLUG,
+        lambda: _register_procedure_fixture_company(resources, evidence),
+        resources.retained.append,
+    )
+
+
+def _full_workflow_prepared(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B4: prepared names the judged body, a moved body refuses prepared and work, the work driver claims."""
+    setup = resources.fixture_setup
+    if setup is None or resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    prepared.run_prepared(
+        _FoundationRunner(resources, evidence),
+        setup,
+        resources.project_path,
+        resources.source_root,
+        _OWNER_SEED_EMAIL,
         lambda: _register_procedure_fixture_company(resources, evidence),
         resources.retained.append,
     )
@@ -4670,6 +4696,9 @@ def run_profile(
                     ),
                     _SCENARIO_WORKFLOW_WAITING: _bind_full_scenario(
                         _SCENARIO_WORKFLOW_WAITING, resources, _full_workflow_waiting
+                    ),
+                    _SCENARIO_WORKFLOW_PREPARED: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_PREPARED, resources, _full_workflow_prepared
                     ),
                 }
             )

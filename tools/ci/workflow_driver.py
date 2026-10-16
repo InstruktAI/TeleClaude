@@ -150,7 +150,9 @@ def claim_entries(log: str) -> list[tuple[str, str]]:
     lines = log.replace("\r\n", "\n").split("\n")
     entries: list[tuple[str, str]] = []
     for index, line in enumerate(lines):
-        if line.startswith(CLAIM_HEADER_PREFIX) and line.rstrip().endswith(CLAIM_HEADER_SUFFIX):
+        if line.startswith(CLAIM_HEADER_PREFIX) and (
+            line.rstrip().endswith(CLAIM_HEADER_SUFFIX) or f"{CLAIM_HEADER_SUFFIX} (" in line
+        ):
             body = lines[index + 2] if index + 2 < len(lines) and not lines[index + 1].strip() else ""
             entries.append((line, body))
     return entries
@@ -197,7 +199,12 @@ class DriverCase:
         launch_setup: foundation.FixtureSetup,
         clone: Path,
         baseline: creation.SessionView,
+        driver_id: str = DRIVER_ID,
+        verb: str = PREPARE,
+        phase: str = PHASE,
     ) -> None:
+        self.driver_id = driver_id
+        self.phase = phase
         self.host = host
         self.observer = observer
         self.journey = journey
@@ -205,7 +212,7 @@ class DriverCase:
         self.launch_setup = launch_setup
         self.clone = clone
         self.baseline = baseline
-        self.claim_argv = ("telec", TODO, PREPARE, item)
+        self.claim_argv = ("telec", TODO, verb, item)
         self.titles: dict[str, str] = {}
 
     def check_startup(self, session: str, expected_new: frozenset[str]) -> str:
@@ -232,8 +239,8 @@ class DriverCase:
             raise creation.binding_failure(DETAIL_MAPPING.format(session=session, recorded=recorded, launched=native))
         if record is None or not journey.started(record, native):
             raise creation.platform_failure(DETAIL_RECORD_START.format(record=record))
-        role = declared_role(self.clone / DOCS_ROOT / f"{DRIVER_ID}{LIVE_SUFFIX}")
-        for field, expected in ((FIELD_ROLE, role), (FIELD_JOB, DRIVER_ID)):
+        role = declared_role(self.clone / DOCS_ROOT / f"{self.driver_id}{LIVE_SUFFIX}")
+        for field, expected in ((FIELD_ROLE, role), (FIELD_JOB, self.driver_id)):
             if record.get(field) != expected:
                 raise creation.platform_failure(
                     DETAIL_RECORD_FIELD.format(field=field, found=record.get(field), expected=expected)
@@ -241,8 +248,8 @@ class DriverCase:
         self.titles[session] = self.require_title(record, role)
         inputs = journey.inputs()
         first = inputs[0].get("text") if inputs else None
-        if not isinstance(first, str) or DRIVER_ID not in first:
-            raise creation.platform_failure(DETAIL_FIRST_INPUT.format(identity=DRIVER_ID, text=first))
+        if not isinstance(first, str) or self.driver_id not in first:
+            raise creation.platform_failure(DETAIL_FIRST_INPUT.format(identity=self.driver_id, text=first))
         return native
 
     def require_title(self, record: Json, role: str) -> str:
@@ -296,8 +303,8 @@ class DriverCase:
 
     def check_instruction(self, session: str, instruction: str) -> None:
         """The item, phase, session, child procedure and each declared ending act with its phase (amendment A1)."""
-        acts, child = declared_acts(self.clone / DOCS_ROOT / f"{DRIVER_ID}{LIVE_SUFFIX}")
-        for needle in (self.item, PHASE, session, child):
+        acts, child = declared_acts(self.clone / DOCS_ROOT / f"{self.driver_id}{LIVE_SUFFIX}")
+        for needle in (self.item, self.phase, session, child):
             if needle not in instruction:
                 raise creation.platform_failure(DETAIL_INSTRUCTION.format(needle=needle, text=instruction[-600:]))
         rows = [match for match in map(ACT_ROW.match, instruction.split("\n")) if match is not None]
@@ -312,7 +319,13 @@ class DriverCase:
                     DETAIL_ACT_ROW.format(item=self.item, act=act, phase=phase, rows=sorted(set(targets)))
                 )
 
-    def observe_claim(self, session: str, holds_nothing: Sequence[str] = (), earlier: Sequence[str] = ()) -> None:
+    def observe_claim(
+        self,
+        session: str,
+        holds_nothing: Sequence[str] = (),
+        earlier: Sequence[str] = (),
+        known_entries: int = 0,
+    ) -> None:
         """The item shows the holder, the phase and one claim note per claim, the last naming the session and no other.
 
         ``earlier`` names the sessions of the item\'s earlier claims in order; each owns exactly one claim note before.
@@ -328,14 +341,14 @@ class DriverCase:
             raise creation.platform_failure(
                 DETAIL_HOLD.format(path="standing.held_since", found=since, expected="non-empty")
             )
-        creation.require_value(item, held, "state.lifecycle_phase", PHASE)
-        creation.require_value(item, held, f"{FIELD_STANDING}.phase", PHASE)
+        creation.require_value(item, held, "state.lifecycle_phase", self.phase)
+        creation.require_value(item, held, f"{FIELD_STANDING}.phase", self.phase)
         creation.require_value(item, held, "state.hold", False)
         _, log = creation.dig(held, f"artifact_content.{FIELD_LOG}")
         if not isinstance(log, str):
             raise creation.trace_failure(DETAIL_PATH_ABSENT.format(path=f"artifact_content.{FIELD_LOG}"))
         entries = claim_entries(log)
-        if len(entries) != len(earlier) + 1:
+        if len(entries) != known_entries + len(earlier) + 1:
             raise creation.platform_failure(DETAIL_LOG_CLAIMS.format(count=len(entries), log=log[-600:]))
         for previous, (earlier_header, _) in zip(earlier, entries, strict=False):
             if previous not in earlier_header:
@@ -365,4 +378,6 @@ class DriverCase:
             time.sleep(POLL_SECONDS)
         else:
             raise creation.platform_failure(DETAIL_RELEASE.format(seconds=int(RELEASE_SECONDS), holder=holder))
-        creation.require_value(self.item, shown_with_content(self.observer, self.item), "state.lifecycle_phase", PHASE)
+        creation.require_value(
+            self.item, shown_with_content(self.observer, self.item), "state.lifecycle_phase", self.phase
+        )

@@ -13,7 +13,7 @@ import json
 import shutil
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Final
+from typing import Final, TypedDict
 
 from tools.ci import workflow_foundation as foundation
 
@@ -24,6 +24,33 @@ CLAIM_MARKER: Final = "claimed"
 ENCODING: Final = "utf-8"
 
 type Plan = Mapping[str, object]
+
+
+class Command(TypedDict, total=False):
+    """One reviewed public command of a launch\'s plan: static argv, or an argument list written late by the controller."""
+
+    name: str
+    argv: list[str]
+    argv_from: str
+    wait_for: str
+
+
+class PlanFile(TypedDict, total=False):
+    """A launch\'s plan file: its commands in order, and an optional hold of its SessionStart barrier."""
+
+    commands: list[Command]
+    barrier_hold_seconds: int
+
+
+def command(name: str, argv: list[str], gate: str | None = None) -> Command:
+    entry = Command(name=name, argv=argv)
+    if gate is not None:
+        entry["wait_for"] = gate
+    return entry
+
+
+def late(name: str, file_name: str, gate: str) -> Command:
+    return Command(name=name, argv_from=file_name, wait_for=gate)
 
 
 class Controls:
