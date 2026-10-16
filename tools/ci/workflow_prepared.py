@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import time
 from collections.abc import Callable, Mapping
@@ -43,6 +44,20 @@ from tools.ci.workflow_foundation import FoundationHost
 
 TELEC: Final = "bin/telec"
 GIT: Final = "git"
+CONFIG: Final = "config"
+PROJECT: Final = "project"
+GET: Final = "get"
+FORMAT_OPTION: Final = "--format"
+JSON_FORMAT: Final = "json"
+REVISION_OPTION: Final = "--revision"
+YAML_OPTION: Final = "--yaml"
+PROJECT_SECTION: Final = "project"
+REVISION_FIELD: Final = "revision"
+CAPABILITY_DOCS: Final = "docs"
+CAPABILITY_CODE: Final = "code"
+CAPABILITY_AGENTS: Final = "agents"
+CAPABILITY_NOTE: Final = "docs-capability"
+HOOK_NAMES: Final = ("pre-commit", "post-commit", "post-merge")
 TODO: Final = "todo"
 ITEM: Final = waiting.ITEM
 CONTROL_NAME: Final = "native-fixture-control-b4"
@@ -80,6 +95,15 @@ OPERATION_SECONDS: Final = 60.0
 POLL_SECONDS: Final = 2.0
 FRAME_SECONDS: Final = 60.0
 
+DETAIL_PROJECT_READ: Final = (
+    "`telec config project get` did not return a project view and revision: exit {status}, {output!r}"
+)
+DETAIL_PROJECT_PATCH: Final = "the public project patch enabling docs failed: exit {status}, {output!r}"
+DETAIL_CAPABILITY: Final = "{where} does not carry docs enabled with code and agents disabled: {found!r}"
+DETAIL_HOOK: Final = (
+    "the owned project has a git hook or hook path ({what}); the fixture never removes hooks or relaxes a floor"
+)
+DETAIL_BRANCH_NOTE: Final = "the work claim note does not state {note!r}: {entry!r}"
 DETAIL_GIT: Final = "git {step} failed: {args!r} exit {status}: {output!r}"
 DETAIL_ORIGIN: Final = "git read-back {what}: {found!r}, not {expected!r}"
 DETAIL_PRECONDITION: Final = "{item}: {path} is {found!r}, not {expected!r} at the start of B4"
@@ -109,6 +133,29 @@ type Json = Mapping[str, object]
 def digest(text: str) -> str:
     """The SHA-256 hex of the text encoded as UTF-8: the definition the platform compares."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def capability_enabled(view: Mapping[str, object], name: str) -> bool:
+    """Whether a public project view declares the named capability enabled."""
+    block = view.get(name)
+    return isinstance(block, Mapping) and block.get("enabled") is True
+
+
+def text_capability_enabled(text: str, name: str) -> bool:
+    """Whether a committed declaration enables the capability, in block or flow form, by plain text."""
+    lines = text.replace("\r\n", "\n").split("\n")
+    for index, line in enumerate(lines):
+        if not line.startswith(f"{name}:"):
+            continue
+        rest = line.partition(":")[2].strip()
+        if rest.startswith("{"):
+            return re.search(r"enabled:\s*true\b", rest) is not None
+        for following in lines[index + 1 :]:
+            if following.strip() and not following.startswith((" ", "\t")):
+                break
+            if re.match(r"^\s+enabled:\s*true\b", following):
+                return True
+    return False
 
 
 class _Prepared:
@@ -227,12 +274,76 @@ class _Prepared:
             )
 
     # -- setup -----------------------------------------------------------------------------------------------------
+    def declare_docs_capability(self, project_slug: str) -> None:
+        """G0 (amendment B4G): the owned project declares docs, with code and agents disabled, before any base commit.
+
+        The revision-checked public patch writes the declaration only; the base commit (or one extra owner commit when a
+        base already exists) carries it to `origin/main`, so the slug worktree opens with it.
+        """
+        got = self.observer.run((TELEC, CONFIG, PROJECT, GET, project_slug, FORMAT_OPTION, JSON_FORMAT))
+        payload = foundation.json_object(got.output)
+        view = payload.get(PROJECT_SECTION) if payload is not None else None
+        revision = payload.get(REVISION_FIELD) if payload is not None else None
+        if got.exit_status != 0 or not isinstance(view, Mapping) or not isinstance(revision, str) or not revision:
+            raise creation.binding_failure(DETAIL_PROJECT_READ.format(status=got.exit_status, output=got.output[-300:]))
+        if capability_enabled(view, CAPABILITY_DOCS):
+            self.host.note((CAPABILITY_NOTE, "docs already enabled"), foundation.Outcome(0, ""), "")
+        else:
+            patch = self.observer.run(
+                (
+                    TELEC,
+                    CONFIG,
+                    PROJECT,
+                    "patch",
+                    project_slug,
+                    REVISION_OPTION,
+                    revision,
+                    YAML_OPTION,
+                    json.dumps({CAPABILITY_DOCS: {"enabled": True}}),
+                )
+            )
+            if patch.exit_status != 0:
+                raise creation.binding_failure(
+                    DETAIL_PROJECT_PATCH.format(status=patch.exit_status, output=patch.output[-300:])
+                )
+        again = foundation.json_object(
+            self.observer.run((TELEC, CONFIG, PROJECT, GET, project_slug, FORMAT_OPTION, JSON_FORMAT)).output
+        )
+        after = again.get(PROJECT_SECTION) if again is not None else None
+        if (
+            not isinstance(after, Mapping)
+            or not capability_enabled(after, CAPABILITY_DOCS)
+            or any(capability_enabled(after, name) for name in (CAPABILITY_CODE, CAPABILITY_AGENTS))
+        ):
+            raise creation.binding_failure(DETAIL_CAPABILITY.format(where="the public project view", found=after))
+
+    def require_declared(self, where: str, text: str) -> None:
+        """A committed declaration carries docs enabled and neither code nor agents."""
+        if not text_capability_enabled(text, CAPABILITY_DOCS) or any(
+            text_capability_enabled(text, name) for name in (CAPABILITY_CODE, CAPABILITY_AGENTS)
+        ):
+            raise creation.binding_failure(DETAIL_CAPABILITY.format(where=where, found=text[-400:]))
+
+    def hook_preflight(self) -> None:
+        """No hook path and no executable hook: a present hook is a binding failure, never a reason to relax a floor."""
+        if self._git_ok("config", "--get", "core.hooksPath"):
+            raise creation.binding_failure(DETAIL_HOOK.format(what="core.hooksPath is set"))
+        hooks = Path(self._git("hooks directory", "rev-parse", "--git-path", "hooks"))
+        directory = hooks if hooks.is_absolute() else self.project / hooks
+        for name in HOOK_NAMES:
+            candidate = directory / name
+            if candidate.exists() and os.access(candidate, os.X_OK):
+                raise creation.binding_failure(DETAIL_HOOK.format(what=str(candidate)))
+
     def git_fixture(self) -> None:
         """G1 to G5: a committer identity, a main branch with a base commit, an owned bare origin, read back."""
         self._git("G1 name", "config", "user.name", GIT_NAME)
         self._git("G1 email", "config", "user.email", GIT_EMAIL)
         has_commit = self._git_ok("rev-parse", "--verify", "HEAD")
         if has_commit:
+            if not self._git_ok("diff", "--quiet", "HEAD", "--", BASE_FILE):
+                self._git("G0 add", "add", "--", BASE_FILE)
+                self._git("G0 commit", "commit", "-m", "chore(fixture): declare docs capability")
             self._git("G2", "branch", "-M", MAIN)
         else:
             self._git("G2", "symbolic-ref", "HEAD", f"refs/heads/{MAIN}")
@@ -240,12 +351,21 @@ class _Prepared:
             self._git("G3 commit", "commit", "-m", "fixture base")
         origin = self.temporary_root / ORIGIN_NAME
         if not origin.exists():
-            self.host.process(
+            created = self.host.process(
                 (GIT, "init", "--bare", "-q", str(origin)),
                 self.temporary_root,
                 self.host.environment,
                 GIT_TIMEOUT_SECONDS,
             )
+            if created.exit_status != 0:
+                raise creation.binding_failure(
+                    DETAIL_GIT.format(
+                        step="G4 init",
+                        args=["init", "--bare"],
+                        status=created.exit_status,
+                        output=created.output[-300:],
+                    )
+                )
         if self._git_ok("remote", "get-url", ORIGIN):
             self._git("G4 remote", "remote", "set-url", ORIGIN, str(origin))
         else:
@@ -260,6 +380,8 @@ class _Prepared:
             )
         if Path(url).resolve() != origin.resolve():
             raise creation.binding_failure(DETAIL_ORIGIN.format(what="origin url", found=url, expected=str(origin)))
+        self.require_declared("origin/main", self._git("origin declaration", "show", f"{ORIGIN}/{MAIN}:{BASE_FILE}"))
+        self.hook_preflight()
 
     def setup_pool(self) -> None:
         prepare = ["telec", TODO, "prepare", ITEM]
@@ -301,22 +423,35 @@ class _Prepared:
         """A body write by the owner changes `show` only in the paths of section 4a, with the clock moving forward."""
         items.require_only_changes("owner body write", before, after, OWNER_WRITE_PATHS)
         found, updated_by = creation.dig(after, UPDATED_BY)
-        if found and updated_by not in (None, creation.EMPTY):
-            sessions = set(self.known_sessions)
-            if updated_by in sessions:
+        if not found:
+            raise creation.trace_failure(creation.DETAIL_PATH_ABSENT.format(slug=ITEM, path=UPDATED_BY))
+        if updated_by != creation.EMPTY:
+            if updated_by in set(self.known_sessions):
                 raise creation.platform_failure(DETAIL_UPDATED_SESSION.format(found=updated_by))
             raise creation.trace_failure(DETAIL_UPDATED_BY.format(found=updated_by))
-        _, earlier = creation.dig(before, UPDATED_AT)
-        _, later = creation.dig(after, UPDATED_AT)
-        if isinstance(earlier, str) and isinstance(later, str):
-            try:
-                moved_back = datetime.fromisoformat(later) < datetime.fromisoformat(earlier)
-            except ValueError as error:
+        stamps: list[datetime] = []
+        for label, payload in (("before", before), ("after", after)):
+            found, value = creation.dig(payload, UPDATED_AT)
+            if not found or not isinstance(value, str):
                 raise creation.trace_failure(
-                    f"roadmap.updated_at is not an ISO instant: {earlier!r}, {later!r}"
-                ) from error
-            if moved_back:
-                raise creation.platform_failure(DETAIL_CLOCK.format(before=earlier, after=later))
+                    creation.DETAIL_PATH_ABSENT.format(slug=f"{ITEM} {label}", path=UPDATED_AT)
+                )
+            try:
+                stamps.append(datetime.fromisoformat(value))
+            except ValueError as error:
+                raise creation.trace_failure(f"roadmap.updated_at is not an ISO instant: {value!r}") from error
+        if stamps[1] < stamps[0]:
+            raise creation.platform_failure(DETAIL_CLOCK.format(before=stamps[0], after=stamps[1]))
+
+    def require_live(self, session: str, when: str) -> None:
+        """The live author is active and unclosed: a body write or a refused act ends nothing."""
+        record = self._record(session)
+        if record.get(waiting.FIELD_CLOSED_AT) is not None or record.get(waiting.FIELD_LIFECYCLE) != foundation.ACTIVE:
+            raise creation.platform_failure(
+                DETAIL_LIVE.format(
+                    actor="author", session=session, problem=f"is not active and unclosed {when}", record=record
+                )
+            )
 
     def owner_write(self, body: str) -> Json:
         outcome = self.observer.run((TELEC, TODO, "artifacts", "write", ITEM, INPUT, body))
@@ -433,11 +568,7 @@ class _Prepared:
             raise creation.binding_failure(DETAIL_DIGEST_SAME.format(digest=r0))
         self.require_owner_write(before, after)
         creation.require_value(ITEM, after, "state.active_runner", author)
-        record = self._record(child)
-        if record.get(waiting.FIELD_CLOSED_AT) is not None:
-            raise creation.platform_failure(
-                DETAIL_LIVE.format(actor="author", session=child, problem="was closed by a body write", record=record)
-            )
+        self.require_live(child, "after the body write")
         return r0, r1
 
     def step3_old_refused(self, author: str, child: str, r0: str, r1: str) -> None:
@@ -466,10 +597,7 @@ class _Prepared:
                 DETAIL_LOG_HEADERS.format(when="after the refused prepared", before=headers, after=self._headers())
             )
         creation.require_value(ITEM, self._shown(), "state.active_runner", author)
-        if self._record(child).get(waiting.FIELD_CLOSED_AT) is not None:
-            raise creation.platform_failure(
-                DETAIL_LIVE.format(actor="author", session=child, problem="was ended by a refused act", record="closed")
-            )
+        self.require_live(child, "after the refused prepared")
         creation.require_sessions_equal(sessions, self.observer.sessions(retain=False), "after the refused prepared")
 
     def step4_prepared(self, author: str, child: str, r1: str) -> None:
@@ -512,11 +640,11 @@ class _Prepared:
         journey.session_id = author
         journey.end_session()
 
-    def step6_moved_refuses_work(self, r1: str) -> str:
+    def step6_moved_refuses_work(self, r0: str, r1: str) -> str:
         before = self._shown()
         after = self.owner_write(BODY_B)
         r2 = digest(self._input())
-        if r2 in (r1,):
+        if r2 in (r0, r1):
             raise creation.binding_failure(DETAIL_DIGEST_SAME.format(digest=r2))
         self.require_owner_write(before, after)
         creation.require_value(ITEM, after, "state.lifecycle_phase", PREPARED_PHASE)
@@ -571,6 +699,13 @@ class _Prepared:
                 raise creation.platform_failure(DETAIL_INSTRUCTION.format(needle=needle, text=instruction[-600:]))
         case.observe_claim(worker, known_entries=self.known_claims + 1)
         self.starts[operation] = publication.START_CLAIMED
+        _, log = creation.dig(self._shown(), "artifact_content.log")
+        claims = driver.claim_entries(str(log))
+        branch_note = f"on branch {ITEM}"
+        if not claims or branch_note not in claims[-1][1]:
+            raise creation.platform_failure(
+                DETAIL_BRANCH_NOTE.format(note=branch_note, entry=claims[-1] if claims else None)
+            )
         roles = [
             session
             for session in (author, child, worker)
@@ -590,18 +725,21 @@ class _Prepared:
         deadline = time.monotonic() + WORKTREE_SECONDS
         expected = str(self.project / "trees" / ITEM)
         listing = ""
+        block: list[str] = []
         while time.monotonic() < deadline:
             listing = self._git("worktree list", "worktree", "list", "--porcelain")
-            if f"worktree {expected}" in listing.replace("\r\n", "\n").split("\n"):
+            blocks = [chunk.split("\n") for chunk in listing.replace("\r\n", "\n").split("\n\n")]
+            block = next((lines for lines in blocks if lines and lines[0] == f"worktree {expected}"), [])
+            if block:
                 break
             time.sleep(POLL_SECONDS)
         else:
             raise creation.platform_failure(
                 DETAIL_WORKTREE.format(what="worktree list", found=listing[-300:], expected=expected)
             )
-        if f"branch refs/heads/{ITEM}" not in listing:
+        if f"branch refs/heads/{ITEM}" not in block:
             raise creation.platform_failure(
-                DETAIL_WORKTREE.format(what="worktree branch", found=listing[-300:], expected=f"refs/heads/{ITEM}")
+                DETAIL_WORKTREE.format(what="the worktree's branch", found=block, expected=f"refs/heads/{ITEM}")
             )
         count = self._git("opening commit count", "rev-list", "--count", f"{ORIGIN}/{MAIN}..{ITEM}")
         if count != "1":
@@ -614,6 +752,9 @@ class _Prepared:
             raise creation.platform_failure(
                 DETAIL_WORKTREE.format(what="parent of the opening commit", found=parent, expected=tip)
             )
+        self.require_declared(
+            "the worktree's HEAD", self._git("worktree declaration", "-C", expected, "show", f"HEAD:{BASE_FILE}")
+        )
         message = self._git("opening commit message", "log", "-1", "--format=%B", ITEM)
         if not message.startswith(OPENING_SUBJECT) or f"Session: {worker}" not in message:
             raise creation.platform_failure(
@@ -634,6 +775,7 @@ def run_prepared(
     project: Path,
     source_root: Path,
     owner_email: str,
+    project_slug: str,
     register_company: Callable[[], None],
     retain: Callable[[str], None],
 ) -> None:
@@ -646,6 +788,7 @@ def run_prepared(
         prepared.publication.begin(own_generation=True)
         creation.enter_project(observer, project)
         prepared.baseline = observer.sessions()
+        prepared.declare_docs_capability(project_slug)
         prepared.git_fixture()
         prepared.setup_pool()
         prepared.preconditions()
@@ -661,7 +804,7 @@ def run_prepared(
         prepared.step3_old_refused(author, child, r0, r1)
         prepared.step4_prepared(author, child, r1)
         prepared.step5_end_author(author_case, author)
-        prepared.step6_moved_refuses_work(r1)
+        prepared.step6_moved_refuses_work(r0, r1)
         prepared.step7_restore(r1)
         worker_case, worker = prepared.step8_work(author, child)
         prepared.step9_close(worker_case, worker)

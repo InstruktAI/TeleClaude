@@ -2073,12 +2073,15 @@ def _full_workflow_prepared(resources: FullRuntimeResources, evidence: list[Comm
     setup = resources.fixture_setup
     if setup is None or resources.project_path is None:
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    if resources.project_slug is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
     prepared.run_prepared(
         _FoundationRunner(resources, evidence),
         setup,
         resources.project_path,
         resources.source_root,
         _OWNER_SEED_EMAIL,
+        resources.project_slug,
         lambda: _register_procedure_fixture_company(resources, evidence),
         resources.retained.append,
     )
