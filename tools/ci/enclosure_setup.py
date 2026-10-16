@@ -139,7 +139,6 @@ INSTALLED: Final = "install ok installed"
 TAB: Final = "\t"
 UTF8: Final = "utf-8"
 GUEST_SCHEME: Final = "guest:"
-NANOSECONDS: Final = 1_000_000_000
 INVENTORY_LIMIT: Final = 1024 * 1024
 REQUIRED_SOURCES: Final = frozenset(
     {
@@ -208,7 +207,7 @@ class NativeRead:
     complete: bool
 
 
-type NativeQuery = Callable[[tuple[str, ...], float], NativeRead]
+type NativeQuery = Callable[[tuple[str, ...], int], NativeRead]
 
 
 @dataclass(frozen=True)
@@ -242,10 +241,9 @@ class GuestOSFacts:
 
 def _query_native(argv: tuple[str, ...], query: NativeQuery, deadline: AdmittedDeadline, cap: int) -> bytes:
     end = deadline.command_end(cap)
-    remaining = (end - time.monotonic_ns()) / NANOSECONDS
-    if remaining <= 0:
+    if time.monotonic_ns() >= end:
         raise TimeoutError(ERROR_BUDGET)
-    result = query(argv, remaining)
+    result = query(argv, end)
     if time.monotonic_ns() >= end:
         raise TimeoutError(ERROR_BUDGET)
     if result.status != 0 or not result.complete or len(result.stdout) > INVENTORY_LIMIT:

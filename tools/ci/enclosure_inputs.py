@@ -155,7 +155,7 @@ def acquire_fixed_inputs(
                 END_OPTIONS,
                 item.url,
             ),
-            remaining,
+            end,
         )
         if time.monotonic_ns() >= end:
             raise TimeoutError(ERROR_DEADLINE)

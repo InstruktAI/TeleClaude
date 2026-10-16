@@ -26,7 +26,8 @@ from tools.ci.enclosure_contract import (
     text,
 )
 
-type NativeCommand = Callable[[tuple[str, ...], float], int | None]
+# Native adapters receive the original absolute monotonic cutoff, never a fresh duration.
+type NativeCommand = Callable[[tuple[str, ...], int], int | None]
 
 READ_BINARY: Final = "rb"
 UTF8: Final = "utf-8"
@@ -73,7 +74,6 @@ UV_ARCHIVE: Final = "uv.tar.gz"
 NODE_ARCHIVE: Final = "node.tar.xz"
 TGZ_SUFFIX: Final = ".tgz"
 DEB_SUFFIX: Final = ".deb"
-NANOSECONDS: Final = 1_000_000_000
 ERROR_DATA: Final = "a declared guest archive is missing or disagrees with its byte lock: {digest}"
 ERROR_ROOT: Final = "guest file-data materialization requires its new declared rootfs and privileged owner"
 ERROR_COMMAND: Final = "native file-data extraction did not complete: {executable}, exit {status}"
@@ -134,10 +134,9 @@ def _archive(row: JsonObject, inputs: Mapping[str, Path], deadline: AdmittedDead
 
 def _command(argv: tuple[str, ...], run: NativeCommand, deadline: AdmittedDeadline, cap: int) -> None:
     end = deadline.command_end(cap)
-    remaining = min(float(cap), (end - time.monotonic_ns()) / NANOSECONDS)
-    if remaining <= 0:
+    if time.monotonic_ns() >= end:
         raise TimeoutError(ERROR_DEADLINE)
-    status = run(argv, remaining)
+    status = run(argv, end)
     if time.monotonic_ns() >= end:
         raise TimeoutError(ERROR_DEADLINE)
     if status != 0:
