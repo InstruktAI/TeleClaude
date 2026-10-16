@@ -1,8 +1,8 @@
 """Journeys R1 and R4 of the workflow acceptance: plain creation, the acknowledgement gate and a retired act's refusal.
 
 The journeys' assertions are the independently reviewed ones recorded in the shared handoff workspace
-(`journeys/r1-r4-assertion-draft.md`, approved at exact SHA-256
-769c4ad04582354b07963d320706cb6c3f6630bf4650d2af108f28ac1de612bd; authority
+(`journeys/r1-r4-assertion-draft.md`, approved at exact SHA-256 (amended once, for the configuration readback path computer.workflow.runner)
+8134aaaa2575f55c18e5fb41c58b885c517e1a1d56e9aad3cd88072fd69074f3; authority
 `local/projects/teleclaude/spec/feature/workflow/todo-creation` and `.../item-lifecycle`, both in the pending view of
 issue 128). R1 proves that a plain creation of a feature, change and bug item reads `preparation`, unclaimed and unheld
 with its input artifact, that the creation line without the acknowledgement flag creates nothing while the identical
