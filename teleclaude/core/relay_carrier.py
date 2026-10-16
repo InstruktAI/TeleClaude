@@ -60,6 +60,8 @@ async def carry_request(
     principal: str,
     caller_session_id: str | None,
     cleared_command: str | None,
+    deadline_at: float | None = None,
+    start_key: str | None = None,
 ) -> JsonValue | None:
     """Carry the request to ``destination`` and return the data block of its wire response.
 
@@ -70,13 +72,14 @@ async def carry_request(
         computer=destination,
         method=method,
         path=path,
-        deadline_at=time.time() + RELAY_REQUEST_TIMEOUT_S,
+        deadline_at=deadline_at if deadline_at is not None else time.time() + RELAY_REQUEST_TIMEOUT_S,
         query=query,
         body_b64=base64.b64encode(body).decode(),
         content_type=content_type,
         caller_session_id=caller_session_id,
         caller_computer=config.computer.name,
         cleared_command=cleared_command,
+        start_key=start_key,
     )
     logger.info(
         _SENT_EVENT,

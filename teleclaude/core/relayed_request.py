@@ -50,6 +50,7 @@ from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core.db import db
 from teleclaude.core.models import JsonDict
 from teleclaude.core.operation_caller_identity import RelayedCaller, reset_relayed_caller, set_relayed_caller
+from teleclaude.core.workflow_machine.peer_starts import mark_in_flight, release_in_flight
 from teleclaude.types.commands import RelayedResponse, RelayRequestCommand
 
 logger = get_logger(__name__)
@@ -315,6 +316,8 @@ async def handle_relay_request(command: RelayRequestCommand) -> JsonDict:
     response, not a transport error: the caller receives it unchanged.
     """
     computer = config.computer.name
+    creating = [command.start_key] if command.start_key else []
+    mark_in_flight(creating)
     try:
         if time.time() > command.deadline_at:
             raise _RelayRefused(
@@ -353,4 +356,6 @@ async def handle_relay_request(command: RelayRequestCommand) -> JsonDict:
             caller_computer=command.caller_computer,
         )
         response = _refusal_response(refusal.status_code, refusal.detail)
+    finally:
+        release_in_flight(creating)
     return response.to_dict()

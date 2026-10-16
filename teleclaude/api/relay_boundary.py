@@ -272,6 +272,8 @@ async def _carry(request: Request, target: str, identity: CallerIdentity, raw_bo
                     principal=principal,
                     caller_session_id=identity.session_id or None,
                     cleared_command=cleared_command_path(cleared) if cleared else None,
+                    deadline_at=fence.deadline_at if fence is not None and fence.deadline_at else None,
+                    start_key=fence.creation_id if fence is not None else None,
                 )
             except RelayFailure as failure:
                 if fence is not None and failure.reason in _RAN_NOTHING_REASONS:

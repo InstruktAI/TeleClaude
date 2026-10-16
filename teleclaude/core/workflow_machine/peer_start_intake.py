@@ -20,6 +20,7 @@ from teleclaude.core.workflow_machine.peer_starts import (
     ANCESTOR_FIELD,
     CREATOR_COMPUTER_FIELD,
     CREATOR_FIELD,
+    DEADLINE_FIELD,
     ENTRIES_FIELD,
     KEYS_FIELD,
     NEW_COMPUTER_FIELD,
@@ -29,7 +30,8 @@ from teleclaude.core.workflow_machine.peer_starts import (
     START_KEY_FIELD,
     PeerStartRequest,
     StartEntry,
-    in_flight_among,
+    creation_open_here,
+    keys_still_open,
 )
 from teleclaude.types.workflow_record import RemoteMember
 
@@ -43,6 +45,13 @@ def _text(request: JsonDict, field: str, command: str) -> str:
     if not isinstance(value, str) or not value:
         raise PermissionError(MALFORMED.format(request=command, computer=config.computer.name, field=field))
     return value
+
+
+def _number(request: JsonDict, field: str, command: str) -> float:
+    value = request.get(field)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise PermissionError(MALFORMED.format(request=command, computer=config.computer.name, field=field))
+    return float(value)
 
 
 async def serve_peer_start(command: str, message: RedisInboundMessage) -> JsonValue:
@@ -59,6 +68,7 @@ async def serve_peer_start(command: str, message: RedisInboundMessage) -> JsonVa
                 _text(request, ANCESTOR_FIELD, command),
                 _text(request, NEW_COMPUTER_FIELD, command),
                 _text(request, START_KEY_FIELD, command),
+                _number(request, DEADLINE_FIELD, command),
             )
         except HelperStartRefused as refusal:
             raise PermissionError(str(refusal)) from refusal
@@ -67,7 +77,13 @@ async def serve_peer_start(command: str, message: RedisInboundMessage) -> JsonVa
         asked = request.get(KEYS_FIELD)
         if not isinstance(asked, list):
             raise PermissionError(MALFORMED.format(request=command, computer=local, field=KEYS_FIELD))
-        return cast(JsonValue, in_flight_among([key for key in asked if isinstance(key, str)]))
+        return cast(JsonValue, await keys_still_open([key for key in asked if isinstance(key, str)]))
+    if command == PeerStartRequest.CREATION_STATE.value:
+        keys = request.get(KEYS_FIELD)
+        key = keys[0] if isinstance(keys, list) and keys and isinstance(keys[0], str) else ""
+        if not key:
+            raise PermissionError(MALFORMED.format(request=command, computer=local, field=KEYS_FIELD))
+        return creation_open_here(key, _number(request, DEADLINE_FIELD, command))
     session_id = request.get(SESSION_FIELD)
     session_computer = request.get(SESSION_COMPUTER_FIELD)
     parent = request.get(PARENT_FIELD)

@@ -317,7 +317,9 @@ class HelperStart(BaseModel):
     start that no session names after that process has ended can never produce one. A start whose owner cannot be
     named is never proven ended. A start recorded for a creation that another computer performs names that computer in
     ``owner_computer`` and no process: only the computer that performs the creation can say whether it is still
-    in progress, so the start is settled when that computer answers that it is not.
+    in progress, so the start is settled when that computer answers that it is not. A creation carried to another
+    computer states the deadline after which that computer runs no request of the carry (``carry_deadline``); the
+    carry is over only when the computer answers that it is neither handling the carry nor still able to receive it.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -330,6 +332,7 @@ class HelperStart(BaseModel):
     owner_identity: str = ""
     computer: str = ""
     owner_computer: str = ""
+    carry_deadline: float = 0.0
 
 
 class WorkflowRecord(BaseModel):

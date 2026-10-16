@@ -10,6 +10,8 @@ the asking computer says about the creator\'s standing.
 
 from __future__ import annotations
 
+import json
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -42,6 +44,8 @@ OWNER_UNREACHABLE: Final = (
 )
 SETTLE_FAILED_LOG: Final = "helper_start_settle_failed"
 KEYS_FIELD: Final = "keys"
+TARGET_FIELD: Final = "target"
+DEADLINE_FIELD: Final = "deadline_at"
 START_KEY_FIELD: Final = "start_key"
 UNRESOLVED_DIRECTORY: Final = STATE_DIR / "helper-start-unresolved"
 
@@ -64,19 +68,59 @@ def release_in_flight(keys: Sequence[str]) -> None:
             _IN_FLIGHT.pop(key, None)
 
 
-def record_unresolved(key: str, target: str) -> None:
-    """Keep a creation whose outcome is not known as in progress across a restart of this process.
+def record_unresolved(key: str, target: str, deadline_at: float) -> None:
+    """Keep a carried creation as in progress, durably, from before it is handed to the target computer.
 
-    The creation was handed to another computer and no answer came back: whether it ran, is running or will run is
-    not known here, and only an outcome (a session it produced) ends the doubt. Nothing clears the record by itself.
+    Whether the target ran it, is running it or will still receive it is not known here until the target says so; the
+    record survives a restart of this process and is cleared by the creation\'s outcome or by the target\'s answer.
     """
     UNRESOLVED_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    (UNRESOLVED_DIRECTORY / key).write_text(target, encoding="utf-8")
+    (UNRESOLVED_DIRECTORY / key).write_text(
+        json.dumps({TARGET_FIELD: target, DEADLINE_FIELD: deadline_at}), encoding="utf-8"
+    )
 
 
-def in_flight_among(keys: Sequence[str]) -> list[str]:
-    """The keys among ``keys`` whose creation this computer is performing now, or has not learned the outcome of."""
-    return [key for key in keys if key in _IN_FLIGHT or (UNRESOLVED_DIRECTORY / key).exists()]
+def clear_unresolved(key: str) -> None:
+    """Forget a carried creation whose outcome is now known."""
+    (UNRESOLVED_DIRECTORY / key).unlink(missing_ok=True)
+
+
+def _read_unresolved(key: str) -> tuple[str, float] | None:
+    path = UNRESOLVED_DIRECTORY / key
+    if not path.exists():
+        return None
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+        return str(record[TARGET_FIELD]), float(record[DEADLINE_FIELD])
+    except (OSError, ValueError, KeyError, TypeError):
+        return ("", 0.0)  # a record that cannot be read is a creation not known to be over
+
+
+def creation_open_here(key: str, deadline_at: float) -> bool:
+    """Whether this computer is handling the carried creation, or can still receive it before its deadline."""
+    return key in _IN_FLIGHT or time.time() <= deadline_at
+
+
+async def keys_still_open(keys: Sequence[str]) -> list[str]:
+    """The keys among ``keys`` whose creation this computer is performing, or has not learned the outcome of.
+
+    A carried creation of unknown outcome is asked of its target; only the target\'s answer that it neither handles the
+    carry nor can still receive it ends the doubt, and ends it for good.
+    """
+    still_open: list[str] = []
+    for key in keys:
+        if key in _IN_FLIGHT:
+            still_open.append(key)
+            continue
+        unresolved = _read_unresolved(key)
+        if unresolved is None:
+            continue
+        target, deadline_at = unresolved
+        if await creation_closed_at(target, key, deadline_at):
+            clear_unresolved(key)
+        else:
+            still_open.append(key)
+    return still_open
 
 
 class PeerStartRequest(StrEnum):
@@ -85,6 +129,7 @@ class PeerStartRequest(StrEnum):
     REGISTER = "register_helper_start"
     SETTLE = "settle_helper_start"
     IN_FLIGHT = "helper_start_in_flight"
+    CREATION_STATE = "helper_start_creation_state"
 
 
 @dataclass(frozen=True)
@@ -120,7 +165,13 @@ async def _ask(owner: str, command: PeerStartRequest, request: JsonDict) -> Json
 
 
 async def register_with_owner(
-    owner: str, creator: str, creator_computer: str, ancestor: str, new_computer: str, start_key: str
+    owner: str,
+    creator: str,
+    creator_computer: str,
+    ancestor: str,
+    new_computer: str,
+    start_key: str,
+    deadline_at: float,
 ) -> list[StartEntry]:
     """Record the start on every item the creator\'s group holds on ``owner`` (and beyond it), before the creation.
 
@@ -136,6 +187,7 @@ async def register_with_owner(
         ANCESTOR_FIELD: ancestor,
         NEW_COMPUTER_FIELD: new_computer,
         START_KEY_FIELD: start_key,
+        DEADLINE_FIELD: deadline_at,
     }
     try:
         answer = await _ask(owner, PeerStartRequest.REGISTER, request)
@@ -183,3 +235,16 @@ async def keys_in_flight_at(owner: str, keys: Sequence[str]) -> set[str] | None:
     except (RemoteDispatchError, RuntimeError, ValueError, OSError):
         return None
     return {key for key in answer if isinstance(key, str)} if isinstance(answer, list) else None
+
+
+async def creation_closed_at(target: str, key: str, deadline_at: float) -> bool:
+    """True only when ``target`` answers that it neither handles the carried creation ``key`` nor can still receive it."""
+    from teleclaude.core.command_dispatch import RemoteDispatchError  # noqa: PLC0415 - deferred cycle
+
+    if not target:
+        return False
+    try:
+        answer = await _ask(target, PeerStartRequest.CREATION_STATE, {KEYS_FIELD: [key], DEADLINE_FIELD: deadline_at})
+    except (RemoteDispatchError, RuntimeError, ValueError, OSError):
+        return False
+    return answer is False
