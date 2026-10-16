@@ -31,6 +31,7 @@ from typing import cast
 from tools.ci import workflow_claim as claim
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_foundation as foundation
+from tools.ci import workflow_race as race
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
 _UTF8 = "utf-8"
@@ -163,6 +164,7 @@ _SCENARIO_WORKFLOW_FOUNDATION = "UC-WF-F0"
 _SCENARIO_WORKFLOW_CREATION = "UC-WF-R1"
 _SCENARIO_WORKFLOW_RETIRED_ACTS = "UC-WF-R4"
 _SCENARIO_WORKFLOW_CLAIM = "UC-WF-B1"
+_SCENARIO_WORKFLOW_RACE = "UC-WF-B2"
 _COLD_PROFILE_SCENARIOS = (_SCENARIO_COLD,)
 _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_COLD,
@@ -196,6 +198,7 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_WORKFLOW_CREATION,
     _SCENARIO_WORKFLOW_RETIRED_ACTS,
     _SCENARIO_WORKFLOW_CLAIM,
+    _SCENARIO_WORKFLOW_RACE,
 )
 _SCENARIO_PREREQUISITES = {
     _SCENARIO_WORKFLOW_FOUNDATION: (
@@ -215,6 +218,12 @@ _SCENARIO_PREREQUISITES = {
         _SCENARIO_WORKFLOW_CREATION,
     ),
     _SCENARIO_WORKFLOW_CLAIM: (
+        _SCENARIO_RUNTIME_READY,
+        _SCENARIO_CONFIG_PATCH,
+        _SCENARIO_PROJECT_REGISTRATION,
+        _SCENARIO_WORKFLOW_FOUNDATION,
+    ),
+    _SCENARIO_WORKFLOW_RACE: (
         _SCENARIO_RUNTIME_READY,
         _SCENARIO_CONFIG_PATCH,
         _SCENARIO_PROJECT_REGISTRATION,
@@ -1952,6 +1961,22 @@ def _full_workflow_claim(resources: FullRuntimeResources, evidence: list[Command
     if setup is None or resources.project_path is None:
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
     claim.run_claim(
+        _FoundationRunner(resources, evidence),
+        setup,
+        resources.project_path,
+        resources.source_root,
+        _OWNER_SEED_EMAIL,
+        lambda: _register_procedure_fixture_company(resources, evidence),
+        resources.retained.append,
+    )
+
+
+def _full_workflow_race(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Journey B2: a start in progress refuses a distinct requester, and a race leaves one driver."""
+    setup = resources.fixture_setup
+    if setup is None or resources.project_path is None:
+        raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    race.run_race(
         _FoundationRunner(resources, evidence),
         setup,
         resources.project_path,
@@ -4559,6 +4584,9 @@ def run_profile(
                     ),
                     _SCENARIO_WORKFLOW_CLAIM: _bind_full_scenario(
                         _SCENARIO_WORKFLOW_CLAIM, resources, _full_workflow_claim
+                    ),
+                    _SCENARIO_WORKFLOW_RACE: _bind_full_scenario(
+                        _SCENARIO_WORKFLOW_RACE, resources, _full_workflow_race
                     ),
                 }
             )
