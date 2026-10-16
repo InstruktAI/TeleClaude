@@ -11,7 +11,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from teleclaude.caller_identity import HUMAN_PRINCIPAL_PREFIX
+from teleclaude.caller_identity import (
+    HUMAN_PRINCIPAL_PREFIX,
+    SessionIdentityError,
+    resolve_session_principal,
+)
 from teleclaude.config.machine import config
 from teleclaude.constants import LOCAL_COMPUTER, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.db import db
@@ -55,15 +59,50 @@ async def load_caller(session_id: str) -> CallerFacts | None:
     session = await db.get_session(session_id)
     if session is None:
         return _remote_caller(session_id)
-    principal = session.principal or ""
-    email = principal.removeprefix(HUMAN_PRINCIPAL_PREFIX) if principal.startswith(HUMAN_PRINCIPAL_PREFIX) else ""
     return CallerFacts(
         session_id=session_id,
         role=session.role,
         job=session.job,
         initiator_session_id=session.initiator_session_id,
-        principal_email=email or NO_PRINCIPAL_EMAIL,
+        principal_email=_resolved_email(
+            _ResolvableIdentity(
+                session_id=session_id,
+                principal=session.principal,
+                human_email=session.human_email,
+                human_role=session.human_role,
+                role=session.role,
+            )
+        ),
     )
+
+
+@dataclass(frozen=True)
+class _ResolvableIdentity:
+    """The stored identity facts of a session record or a mesh snapshot, in the shape the canonical resolver reads."""
+
+    session_id: str
+    principal: str | None
+    human_email: str | None
+    human_role: str | None
+    role: str | None
+    project_path: str | None = None
+    working_slug: str | None = None
+    job: str | None = None
+    company: str | None = None
+
+
+def _resolved_email(identity: _ResolvableIdentity) -> str:
+    """The person a session runs for, by the same canonical resolution general authorization uses.
+
+    A session a person opened carries the person as ``human_email`` and may carry no stored principal; it resolves to
+    that person all the same. A session with no identity, or one running under a system principal, has no person.
+    """
+    try:
+        principal, _role = resolve_session_principal(identity)
+    except SessionIdentityError:
+        return NO_PRINCIPAL_EMAIL
+    email = principal.removeprefix(HUMAN_PRINCIPAL_PREFIX) if principal.startswith(HUMAN_PRINCIPAL_PREFIX) else ""
+    return email or NO_PRINCIPAL_EMAIL
 
 
 def _remote_caller(session_id: str) -> CallerFacts | None:
@@ -76,14 +115,20 @@ def _remote_caller(session_id: str) -> CallerFacts | None:
     snapshot = cached_remote_session(session_id)
     if snapshot is None:
         return None
-    principal = snapshot.principal or ""
-    email = principal.removeprefix(HUMAN_PRINCIPAL_PREFIX) if principal.startswith(HUMAN_PRINCIPAL_PREFIX) else ""
     return CallerFacts(
         session_id=session_id,
         role=snapshot.role,
         job=snapshot.job,
         initiator_session_id=snapshot.initiator_session_id,
-        principal_email=email or NO_PRINCIPAL_EMAIL,
+        principal_email=_resolved_email(
+            _ResolvableIdentity(
+                session_id=session_id,
+                principal=snapshot.principal,
+                human_email=snapshot.human_email,
+                human_role=snapshot.human_role,
+                role=snapshot.role,
+            )
+        ),
     )
 
 
