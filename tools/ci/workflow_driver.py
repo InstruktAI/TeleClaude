@@ -1,0 +1,310 @@
+"""The evidence one platform-created preparation driver is held to, shared by the native B journeys.
+
+For one driver session of one item (B1 steps 3, 4, 5 and 8 of the approved draft, amended for step 4's act rows by
+`journeys/b1-instruction-act-pairs-amendment-draft.md`): the session is the platform\'s and shows a real startup through
+the installed hooks of the fixture\'s own launch; the driver\'s own fresh public claim call completes and returns the
+instruction naming the item, phase, session, child procedure and each declared ending act with its phase; the item
+shows the claim and exactly one claim note; closing the session releases the claim. Every observation is a public
+command or one of the fixture\'s strict frames; this controller creates no record, identity or authentication state.
+"""
+
+from __future__ import annotations
+
+import re
+import time
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Final
+
+from tools.ci import workflow_creation as creation
+from tools.ci import workflow_foundation as foundation
+from tools.ci import workflow_publication as publication
+from tools.ci.workflow_foundation import FoundationHost
+
+TELEC: Final = "bin/telec"
+TODO: Final = "todo"
+PREPARE: Final = "prepare"
+ROLE: Final = "prepare-orchestrator"
+PHASE: Final = "preparation"
+CLAIM_FRAME: Final = "cmd_claim"
+CLAIM_NAME: Final = "claim"
+DRIVER_ID: Final = publication.DRIVER_ID
+
+FIELD_OPERATION: Final = publication.FIELD_OPERATION
+FIELD_STATE: Final = publication.FIELD_STATE
+FIELD_ERROR: Final = publication.FIELD_ERROR
+FIELD_RESULT: Final = publication.FIELD_RESULT
+FIELD_ROLE: Final = "role"
+FIELD_JOB: Final = "job"
+FIELD_STANDING: Final = "standing"
+FIELD_HELD_BY: Final = "held_by"
+FIELD_HELD_SINCE: Final = "held_since"
+FIELD_LOG: Final = "log"
+STATE_COMPLETED: Final = publication.STATE_COMPLETED
+STATE_FAILED: Final = publication.STATE_FAILED
+TERMINAL_STATES: Final = publication.TERMINAL_STATES
+
+DOCS_ROOT: Final = publication.DOCS_ROOT
+LIVE_SUFFIX: Final = publication.LIVE_SUFFIX
+CLAIM_HEADER_PREFIX: Final = "### "
+CLAIM_HEADER_SUFFIX: Final = " · claim"
+ACT_ROW: Final = re.compile(
+    r"^- `telec todo act (?P<item>\S+) (?P<act>[a-z]+)(?P<arguments>[^`]*)` -> (?P<target>\S+)\s*$"
+)
+_CHILD_LINE = re.compile(r"^\s+child:\s*(?P<child>\S+)\s*$")
+_ACT_LINE = re.compile(r"^\s+-\s+act:\s*(?P<act>\S+)\s*$")
+_LEADS_LINE = re.compile(r"^\s+leads_to:\s*(?P<phase>\S+)\s*$")
+_ACTS_KEY = re.compile(r"^\s+acts:\s*$")
+
+START_CAP_SECONDS: Final = 900.0
+CLAIM_OPERATION_SECONDS: Final = 120.0
+RELEASE_SECONDS: Final = 120.0
+POLL_SECONDS: Final = 2.0
+QUIESCENCE_GAP_SECONDS: Final = 2.0
+
+DETAIL_SESSIONS: Final = "sessions beyond the baseline are {found!r}, not exactly {expected!r}"
+DETAIL_RECORD_FIELD: Final = "the driver's record has {field} {found!r}, not {expected!r}"
+DETAIL_RECORD_START: Final = "the driver's record does not show a completed startup: {record!r}"
+DETAIL_FIRST_INPUT: Final = "the fixture's first input does not name {identity}: {text!r}"
+DETAIL_CLAIM_FRAME: Final = "the fixture's claim frame is not the planned successful call: {frame!r}"
+DETAIL_CLAIM_RECEIPT: Final = (
+    "the driver's claim printed no distinct operation receipt: {stdout!r} (not one of {others})"
+)
+DETAIL_OPERATION_FAILED: Final = "operation {operation} failed: {error!r}"
+DETAIL_RESULT_TYPE: Final = "operation {operation} result is not a string: {result!r}"
+DETAIL_INSTRUCTION: Final = "the claim instruction does not contain {needle!r}: {text!r}"
+DETAIL_ACT_ROW_ABSENT: Final = (
+    "the instruction has no parseable row `telec todo act {item} {act}` -> {phase} "
+    "(the shape changed, or the act is absent)"
+)
+DETAIL_ACT_ROW: Final = "the instruction associates `telec todo act {item} {act}` with {rows!r}, not {phase}"
+DETAIL_HOLD: Final = "after the claim {path} is {found!r}, not {expected!r}"
+DETAIL_PATH_ABSENT: Final = "the shown payload has no {path} (a source-traced path)"
+DETAIL_LOG_CLAIMS: Final = "the log holds {count} claim entries, not exactly one: {log!r}"
+DETAIL_LOG_ENTRY: Final = "the claim entry does not name {needle!r}: {entry!r}"
+DETAIL_LOG_FORBIDDEN: Final = "a claim entry of the log names {session!r}, which holds nothing: {entry!r}"
+DETAIL_RELEASE: Final = "the claim was not released within {seconds} seconds: {holder!r}"
+DETAIL_COMPANION: Final = "the companion {path} has no readable workflow header"
+DETAIL_NOT_QUIESCENT: Final = "the item is being written by something else; differing paths: {paths}"
+
+type Json = Mapping[str, object]
+
+
+def declared_acts(path: Path) -> tuple[list[tuple[str, str]], str]:
+    """The ending acts with their phases, and the child procedure, the folded driver\'s `workflow` header declares.
+
+    The header is the YAML block between the first two `---` lines; only the `workflow:` mapping is read, line by line,
+    because the hosted harness runs on the standard library alone.
+    """
+    parts = path.read_text(encoding="utf-8").split("---", 2)
+    lines = parts[1].splitlines() if len(parts) >= 3 else []
+    start = next((index for index, line in enumerate(lines) if line.rstrip() == "workflow:"), None)
+    if start is None:
+        raise creation.binding_failure(DETAIL_COMPANION.format(path=path))
+    block: list[str] = []
+    for line in lines[start + 1 :]:
+        if line.strip() and not line.startswith(" "):
+            break
+        block.append(line)
+    child = next((m.group("child") for m in map(_CHILD_LINE.match, block) if m), None)
+    acts_at = next((index for index, line in enumerate(block) if _ACTS_KEY.match(line)), None)
+    if child is None or acts_at is None:
+        raise creation.binding_failure(DETAIL_COMPANION.format(path=path))
+    names: list[str] = []
+    phases: list[str] = []
+    for line in block[acts_at + 1 :]:
+        if (act := _ACT_LINE.match(line)) is not None:
+            names.append(act.group("act"))
+        elif (leads := _LEADS_LINE.match(line)) is not None:
+            phases.append(leads.group("phase"))
+        elif line.strip() and not line.lstrip().startswith("-"):
+            break
+    if not names or len(names) != len(phases):
+        raise creation.binding_failure(DETAIL_COMPANION.format(path=path))
+    return list(zip(names, phases, strict=True)), child
+
+
+def claim_entries(log: str) -> list[tuple[str, str]]:
+    """The claim entries of a log as (header line, the body line after one blank line)."""
+    lines = log.replace("\r\n", "\n").split("\n")
+    entries: list[tuple[str, str]] = []
+    for index, line in enumerate(lines):
+        if line.startswith(CLAIM_HEADER_PREFIX) and line.rstrip().endswith(CLAIM_HEADER_SUFFIX):
+            body = lines[index + 2] if index + 2 < len(lines) and not lines[index + 1].strip() else ""
+            entries.append((line, body))
+    return entries
+
+
+def shown_with_content(observer: creation.Observer, item: str) -> Json:
+    """The shown payload of the item with its artifact content; an absent item is a platform failure."""
+    shown = observer.show(item)
+    if shown is None:
+        raise creation.platform_failure(f"{item} is absent")
+    return shown
+
+
+def fresh_snapshot(observer: creation.Observer, item: str) -> Json:
+    """Two reads of the item at least two seconds apart, deeply equal: nothing else is writing it."""
+    first = shown_with_content(observer, item)
+    time.sleep(QUIESCENCE_GAP_SECONDS)
+    second = shown_with_content(observer, item)
+    changed = creation.differences(first, second)
+    if changed:
+        raise creation.binding_failure(DETAIL_NOT_QUIESCENT.format(paths=changed))
+    return second
+
+
+def receipt_operation(output: str) -> str | None:
+    """The operation id a receipt-backed verb printed, or None."""
+    receipt = foundation.json_object(output)
+    operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
+    return operation if isinstance(operation, str) and operation else None
+
+
+class DriverCase:
+    """The evidence of one driver session of one item."""
+
+    def __init__(
+        self,
+        *,
+        host: FoundationHost,
+        observer: creation.Observer,
+        journey: foundation.Journey,
+        item: str,
+        launch_setup: foundation.FixtureSetup,
+        clone: Path,
+        baseline: creation.SessionView,
+    ) -> None:
+        self.host = host
+        self.observer = observer
+        self.journey = journey
+        self.item = item
+        self.launch_setup = launch_setup
+        self.clone = clone
+        self.baseline = baseline
+        self.claim_argv = ("telec", TODO, PREPARE, item)
+
+    def check_startup(self, session: str, expected_new: frozenset[str]) -> str:
+        """The sessions beyond the baseline are exactly those expected; the driver\'s startup is real; returns its native id."""
+        created = self.observer.sessions().ids - self.baseline.ids
+        if created != expected_new:
+            raise creation.platform_failure(
+                DETAIL_SESSIONS.format(found=sorted(created), expected=sorted(expected_new))
+            )
+        journey = self.journey
+        journey.session_id = session
+        launch = journey.await_json(self.launch_setup.control / foundation.LAUNCH_FILE, foundation.POLL_SECONDS * 30)
+        owned = str(self.launch_setup.executable.resolve())
+        found = (Path(str(launch.get("executable"))).resolve(), Path(str(launch.get("resolved_command"))).resolve())
+        if found != (Path(owned), Path(owned)):
+            raise creation.binding_failure(foundation.DETAIL_EXECUTABLE.format(found=launch, owned=owned))
+        native = str(launch.get("native_session_id"))
+        frames_deadline = time.monotonic() + START_CAP_SECONDS
+        for name in (foundation.FRAME_SESSION_START, foundation.FRAME_PROMPT_SUBMIT):
+            journey.require_hook(name, journey.await_frame(name, frames_deadline))
+        record = journey.record()
+        if record is None or not journey.started(record, native):
+            raise creation.platform_failure(DETAIL_RECORD_START.format(record=record))
+        for field, expected in ((FIELD_ROLE, ROLE), (FIELD_JOB, DRIVER_ID)):
+            if record.get(field) != expected:
+                raise creation.platform_failure(
+                    DETAIL_RECORD_FIELD.format(field=field, found=record.get(field), expected=expected)
+                )
+        inputs = journey.inputs()
+        first = inputs[0].get("text") if inputs else None
+        if not isinstance(first, str) or DRIVER_ID not in first:
+            raise creation.platform_failure(DETAIL_FIRST_INPUT.format(identity=DRIVER_ID, text=first))
+        return native
+
+    def claim_call(self, distinct_from: Sequence[str]) -> str:
+        """The driver\'s own claim, run in its pane, completes and returns the instruction text."""
+        frame = self.journey.await_frame(CLAIM_FRAME, time.monotonic() + CLAIM_OPERATION_SECONDS)
+        run = frame.get("run")
+        argv = frame.get("argv")
+        stdout = run.get("stdout") if isinstance(run, dict) else None
+        operation = receipt_operation(stdout) if isinstance(stdout, str) else None
+        if (
+            not isinstance(run, dict)
+            or run.get("exit_status") != 0
+            or run.get("timed_out") is True
+            or not isinstance(argv, list)
+            or tuple(argv) != self.claim_argv
+        ):
+            raise creation.platform_failure(DETAIL_CLAIM_FRAME.format(frame=frame))
+        if operation is None or operation in distinct_from:
+            raise creation.platform_failure(DETAIL_CLAIM_RECEIPT.format(stdout=stdout, others=list(distinct_from)))
+        claimed = publication.await_terminal(self.observer, operation, CLAIM_OPERATION_SECONDS)
+        if claimed.get(FIELD_STATE) != STATE_COMPLETED:
+            raise creation.platform_failure(
+                DETAIL_OPERATION_FAILED.format(operation=operation, error=claimed.get(FIELD_ERROR))
+            )
+        instruction = claimed.get(FIELD_RESULT)
+        if not isinstance(instruction, str):
+            raise creation.platform_failure(DETAIL_RESULT_TYPE.format(operation=operation, result=instruction))
+        return instruction
+
+    def check_instruction(self, session: str, instruction: str) -> None:
+        """The item, phase, session, child procedure and each declared ending act with its phase (amendment A1)."""
+        acts, child = declared_acts(self.clone / DOCS_ROOT / f"{DRIVER_ID}{LIVE_SUFFIX}")
+        for needle in (self.item, PHASE, session, child):
+            if needle not in instruction:
+                raise creation.platform_failure(DETAIL_INSTRUCTION.format(needle=needle, text=instruction[-600:]))
+        rows = [match for match in map(ACT_ROW.match, instruction.split("\n")) if match is not None]
+        for act, phase in acts:
+            targets = [
+                row.group("target") for row in rows if row.group("item") == self.item and row.group("act") == act
+            ]
+            if not targets:
+                raise creation.trace_failure(DETAIL_ACT_ROW_ABSENT.format(item=self.item, act=act, phase=phase))
+            if any(target != phase for target in targets):
+                raise creation.platform_failure(
+                    DETAIL_ACT_ROW.format(item=self.item, act=act, phase=phase, rows=sorted(set(targets)))
+                )
+
+    def observe_claim(self, session: str, holds_nothing: Sequence[str] = ()) -> None:
+        """The item shows the holder, the phase and exactly one claim note, which names the session and no other."""
+        item = self.item
+        held = shown_with_content(self.observer, item)
+        creation.require_value(item, held, "state.active_runner", session)
+        creation.require_value(item, held, f"{FIELD_STANDING}.{FIELD_HELD_BY}", session)
+        found, since = creation.dig(held, f"{FIELD_STANDING}.{FIELD_HELD_SINCE}")
+        if not found:
+            raise creation.trace_failure(DETAIL_PATH_ABSENT.format(path=f"{FIELD_STANDING}.{FIELD_HELD_SINCE}"))
+        if not isinstance(since, str) or not since:
+            raise creation.platform_failure(
+                DETAIL_HOLD.format(path="standing.held_since", found=since, expected="non-empty")
+            )
+        creation.require_value(item, held, "state.lifecycle_phase", PHASE)
+        creation.require_value(item, held, f"{FIELD_STANDING}.phase", PHASE)
+        creation.require_value(item, held, "state.hold", False)
+        _, log = creation.dig(held, f"artifact_content.{FIELD_LOG}")
+        if not isinstance(log, str):
+            raise creation.trace_failure(DETAIL_PATH_ABSENT.format(path=f"artifact_content.{FIELD_LOG}"))
+        entries = claim_entries(log)
+        if len(entries) != 1:
+            raise creation.platform_failure(DETAIL_LOG_CLAIMS.format(count=len(entries), log=log[-600:]))
+        header, body = entries[0]
+        if session not in header:
+            raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=session, entry=header))
+        for needle in (item, session):
+            if needle not in body:
+                raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=needle, entry=body))
+        for other in holds_nothing:
+            if other in header or other in body:
+                raise creation.platform_failure(DETAIL_LOG_FORBIDDEN.format(session=other, entry=header))
+
+    def close(self, session: str) -> None:
+        """Ending the session releases the claim and leaves the phase unchanged."""
+        self.journey.session_id = session
+        self.journey.end_session()
+        deadline = time.monotonic() + RELEASE_SECONDS
+        holder: object = session
+        while time.monotonic() < deadline:
+            released = self.observer.show(self.item, retain=False)
+            holder = creation.dig(released, "state.active_runner")[1] if released is not None else holder
+            if holder in (None, ""):
+                break
+            time.sleep(POLL_SECONDS)
+        else:
+            raise creation.platform_failure(DETAIL_RELEASE.format(seconds=int(RELEASE_SECONDS), holder=holder))
+        creation.require_value(self.item, shown_with_content(self.observer, self.item), "state.lifecycle_phase", PHASE)

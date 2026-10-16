@@ -27,6 +27,7 @@ import signal
 import subprocess
 import sys
 import termios
+import threading
 import time
 import tty
 import uuid
@@ -39,6 +40,9 @@ CONFIG_RELATIVE_PATH: Final = Path(".local") / "share" / "claude-fixture" / "con
 SETTINGS_RELATIVE_PATH: Final = Path(".claude") / "settings.json"
 PROJECTS_RELATIVE_PATH: Final = Path(".claude") / "projects"
 CONFIG_CONTROL_DIRECTORY: Final = "control_directory"
+CONFIG_CONTROL_POOL: Final = "control_directories"
+CLAIM_MARKER: Final = "claimed"
+UNCLAIMED_REPORT: Final = "pool-exhausted.json"
 CONFIG_VERSION: Final = "version"
 VERSION_FLAG: Final = "--version"
 UPDATE_COMMAND: Final = "update"
@@ -64,6 +68,8 @@ STOP_FILE: Final = "stop"
 LAUNCHES_FILE: Final = "launches.jsonl"
 PLAN_COMMANDS_FIELD: Final = "commands"
 PLAN_NAME_FIELD: Final = "name"
+PLAN_WAIT_FIELD: Final = "wait_for"
+PLAN_HOLD_FIELD: Final = "barrier_hold_seconds"
 PLAN_ARGV_FIELD: Final = "argv"
 PLAN_FRAME_PREFIX: Final = "cmd_"
 PLAN_TIMEOUT_SECONDS: Final = 60
@@ -108,9 +114,35 @@ def _home() -> Path:
     return Path(os.path.expanduser("~"))
 
 
-def _load_config() -> Mapping[str, str]:
+def _load_config() -> Mapping[str, JsonValue]:
     raw = json.loads((_home() / CONFIG_RELATIVE_PATH).read_text(encoding=ENCODING))
-    return {str(key): str(value) for key, value in raw.items()}
+    return {str(key): value for key, value in raw.items()}
+
+
+def _claim_control(config: Mapping[str, JsonValue]) -> _Control | None:
+    """The launch\'s control directory: the first of the pool this launch claims atomically, else the single one.
+
+    A pool lets several platform-launched fixtures run at once without any rewrite of the configuration between
+    launches. ``os.mkdir`` of a ``claimed`` marker succeeds for exactly one launch per directory. A launch that finds
+    the whole pool claimed reports it beside the pool and exits non-zero.
+    """
+    pool = config.get(CONFIG_CONTROL_POOL)
+    if isinstance(pool, list):
+        directories = [Path(str(entry)) for entry in pool]
+        for directory in directories:
+            try:
+                os.mkdir(directory / CLAIM_MARKER)
+            except FileExistsError:
+                continue
+            return _Control(directory)
+        if directories:
+            report = directories[0].parent / UNCLAIMED_REPORT
+            report.write_text(
+                json.dumps({"pool": [str(entry) for entry in directories], "pid": os.getpid()}) + LINE_FEED,
+                encoding=ENCODING,
+            )
+        return None
+    return _Control(Path(str(config[CONFIG_CONTROL_DIRECTORY])))
 
 
 def _bounded(text: str) -> str:
@@ -236,6 +268,11 @@ class _Fixture:
         self.first_prompt_handled = False
         self.running = True
         self.row = len(BANNER_LINES) + 2
+        plan = control.read_json(PLAN_FILE)
+        hold = plan.get(PLAN_HOLD_FIELD) if plan is not None else None
+        self.hold_seconds = float(hold) if isinstance(hold, int | float) and not isinstance(hold, bool) else None
+        self.gated: list[tuple[str, str, list[str]]] = []
+        self.threads: list[threading.Thread] = []
 
     def _transcript_path(self) -> Path:
         project_directory = self.cwd.replace(os.sep, "-")
@@ -279,7 +316,9 @@ class _Fixture:
         """The barrier's hard deadline: the earlier of case-start+45 s and composer-marker+15 s."""
         if self.composer_at is None:
             return None
-        deadline = self.composer_at + BARRIER_AFTER_COMPOSER_SECONDS
+        deadline = self.composer_at + (
+            self.hold_seconds if self.hold_seconds is not None else BARRIER_AFTER_COMPOSER_SECONDS
+        )
         case_start = self.control.read_number(CASE_START_FILE)
         if case_start is not None:
             deadline = min(deadline, case_start + BARRIER_AFTER_CASE_START_SECONDS)
@@ -344,7 +383,9 @@ class _Fixture:
         """Run the controller\'s reviewed public commands, each as a fresh process of this pane, and report each.
 
         The plan names only the public ``telec`` executable with its arguments. It carries no identity, token, header
-        or environment: the pane\'s own environment is the caller\'s identity, as for any command a driver runs.
+        or environment: the pane\'s own environment is the caller\'s identity, as for any command a driver runs. A
+        command that names a file to wait for is held until the controller creates that file in this directory, and
+        then runs beside the terminal loop; the others run now, in order.
         """
         plan = self.control.read_json(PLAN_FILE)
         commands = plan.get(PLAN_COMMANDS_FIELD) if plan is not None else None
@@ -357,17 +398,36 @@ class _Fixture:
                 continue
             name = command.get(PLAN_NAME_FIELD)
             argv = command.get(PLAN_ARGV_FIELD)
+            wait = command.get(PLAN_WAIT_FIELD)
             if not isinstance(name, str) or not name.isalnum() or not isinstance(argv, list) or not argv:
                 continue
             arguments = [part for part in argv if isinstance(part, str)]
             if len(arguments) != len(argv) or arguments[0] != TELEC_COMMAND:
                 continue
-            resolved = shutil.which(TELEC_COMMAND)
-            run = _run([resolved or TELEC_COMMAND, *arguments[1:]], timeout_seconds=PLAN_TIMEOUT_SECONDS)
-            reported: list[JsonValue] = [*arguments]
-            self.control.write_frame(
-                f"{PLAN_FRAME_PREFIX}{name}", {"name": name, "argv": reported, "telec": resolved, "run": run}
-            )
+            if isinstance(wait, str) and wait.isidentifier():
+                self.gated.append((wait, name, arguments))
+            else:
+                self._execute(name, arguments)
+
+    def _execute(self, name: str, arguments: list[str]) -> None:
+        resolved = shutil.which(TELEC_COMMAND)
+        run = _run([resolved or TELEC_COMMAND, *arguments[1:]], timeout_seconds=PLAN_TIMEOUT_SECONDS)
+        reported: list[JsonValue] = [*arguments]
+        self.control.write_frame(
+            f"{PLAN_FRAME_PREFIX}{name}", {"name": name, "argv": reported, "telec": resolved, "run": run}
+        )
+
+    def release_gated(self) -> None:
+        """Start each held command whose file now exists, beside the terminal loop, never twice."""
+        if self.control.exists(STOP_FILE):
+            self.gated.clear()
+            return
+        due = [entry for entry in self.gated if self.control.exists(entry[0])]
+        for entry in due:
+            self.gated.remove(entry)
+            thread = threading.Thread(target=self._execute, args=(entry[1], entry[2]), daemon=True)
+            thread.start()
+            self.threads.append(thread)
 
     def feed(self, data: str, state: _InputState) -> None:
         """Consume terminal input: pasted or typed text builds the draft, Enter submits it."""
@@ -424,6 +484,7 @@ def _interactive(control: _Control) -> int:
             if control.exists(STOP_FILE):
                 break
             fixture.release_if_due()
+            fixture.release_gated()
             if not selector.select(POLL_SECONDS):
                 continue
             chunk = os.read(descriptor, READ_SIZE)
@@ -452,7 +513,8 @@ def main(arguments: Sequence[str]) -> int:
         return 0
     if first == UPDATE_COMMAND:
         return 0
-    return _interactive(_Control(Path(config[CONFIG_CONTROL_DIRECTORY])))
+    control = _claim_control(config)
+    return _interactive(control) if control is not None else 1
 
 
 if __name__ == "__main__":

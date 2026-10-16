@@ -499,3 +499,63 @@ def log_evidence(host: FoundationHost, terms: Sequence[str]) -> str:
             continue
         texts.append(f"[{argv[0]} exit {outcome.exit_status}] {outcome.output.strip()[-LOG_TAIL_BYTES:]}")
     return " || ".join(texts)
+
+
+NO_DRIVER_PHRASE: Final = "no published procedure drives preparation"
+NOT_ACTIVATED_PHRASE: Final = "is not activated yet"
+ACTIVATION_WAIT_SECONDS: Final = 180.0
+ACTIVATION_POLL_SECONDS: Final = 20.0
+NEGATIVE_OPERATION_SECONDS: Final = 60.0
+PREPARE: Final = "prepare"
+TODO: Final = "todo"
+DETAIL_ACTIVATION: Final = (
+    "the store was not activated and the drivers still unpublished within {seconds} seconds: {last!r}"
+)
+DETAIL_NEGATIVE_STATE: Final = (
+    "the pre-publication prepare ended {state!r} with {error!r}, not the driver-lookup refusal"
+)
+DETAIL_NEGATIVE_WRITE: Final = "the pre-publication prepare changed the item or the sessions: {detail}"
+DETAIL_RECEIPT: Final = "`telec todo prepare` printed no operation receipt: exit {status}, {output!r}"
+
+
+def negative_control(
+    observer: creation.Observer,
+    item: str,
+    baseline: creation.SessionView,
+    before: Mapping[str, object],
+) -> None:
+    """B-P5: the unpublished installation is refused at the driver lookup, writing nothing; the store is activated.
+
+    The call is repeated (at most once per 20 seconds, for 180 seconds) while the store is not yet activated, and ends
+    at the first refusal for the missing driver. Any other terminal state fails the preflight, and neither the item nor
+    the sessions may differ from before the control afterwards.
+    """
+    deadline = time.monotonic() + ACTIVATION_WAIT_SECONDS
+    last = ""
+    while True:
+        outcome = observer.run((TELEC, TODO, PREPARE, item))
+        receipt = foundation.json_object(outcome.output)
+        operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
+        if outcome.exit_status == 0 and isinstance(operation, str) and operation:
+            state = await_terminal(observer, operation, NEGATIVE_OPERATION_SECONDS)
+            error = state.get(FIELD_ERROR)
+            failed = state.get(FIELD_STATE) == STATE_FAILED and isinstance(error, str)
+            if failed and NO_DRIVER_PHRASE in str(error):
+                break
+            if not (failed and NOT_ACTIVATED_PHRASE in str(error)):
+                raise creation.binding_failure(DETAIL_NEGATIVE_STATE.format(state=state.get(FIELD_STATE), error=error))
+            last = str(error)
+        elif NOT_ACTIVATED_PHRASE in outcome.output:
+            last = outcome.output[-200:]
+        else:
+            raise creation.binding_failure(
+                DETAIL_RECEIPT.format(status=outcome.exit_status, output=outcome.output[-300:])
+            )
+        if time.monotonic() >= deadline:
+            raise creation.binding_failure(DETAIL_ACTIVATION.format(seconds=int(ACTIVATION_WAIT_SECONDS), last=last))
+        time.sleep(ACTIVATION_POLL_SECONDS)
+    after = observer.show(item)
+    changed = creation.differences(before, after if after is not None else {})
+    sessions = observer.sessions()
+    if changed or sessions.ids != baseline.ids:
+        raise creation.binding_failure(DETAIL_NEGATIVE_WRITE.format(detail=changed or sorted(sessions.ids)))

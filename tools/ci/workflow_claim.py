@@ -15,210 +15,65 @@ It proves no racing start, no start-in-progress refusal, no model following of p
 delivery and no starter-result coverage when step 6 is not evaluated. The driver runs as the inert external executable of
 journey F0 with a reviewed command plan of public `telec` argv only; this controller creates no session record, role,
 reservation, identity or authentication state, reads no private store and imports no application module.
+
+The evidence of the driver session itself lives in `workflow_driver`, the publication in `workflow_publication` and the
+control directories in `workflow_controls`, shared with the later journeys of the same family.
 """
 
 from __future__ import annotations
 
-import json
-import re
-import shutil
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Final
 
+from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
+from tools.ci import workflow_driver as driver
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_publication as publication
 from tools.ci.workflow_foundation import FoundationHost, Outcome
 
 TELEC: Final = "bin/telec"
-GIT: Final = "git"
-UV: Final = "uv"
-DOCS: Final = "docs"
-GET: Final = "get"
-TARGET_OPTION: Final = "--target"
-PENDING_TARGET: Final = "issue-128"
-OPERATIONS: Final = "operations"
 TODO: Final = "todo"
 PREPARE: Final = "prepare"
-SESSIONS: Final = "sessions"
-SHOW: Final = "show"
-FULL_FLAG: Final = "--full"
-CODE: Final = "code"
-LINT: Final = "lint"
-ALL_FLAG: Final = "--all"
-INSTALL_MODULE: Final = "teleclaude.entrypoints.install_publication"
-CLONE_NAME: Final = "b1-publication-fixture"
-CONTROL_NAME: Final = "native-fixture-control-b1"
-GIT_AUTHOR: Final = "Runtime Acceptance Fixture"
-GIT_EMAIL: Final = "runtime-acceptance@example.invalid"
-ENVIRONMENT_DIRECTORY: Final = Path(".venv")
-DOCS_ROOT: Final = Path("docs") / "global"
-COMPANION_SUFFIX: Final = ".issue-128.md"
-LIVE_SUFFIX: Final = ".md"
-
 ITEM: Final = "b1-item"
 CONTENT: Final = "b1 driver content"
-DRIVER_ID: Final = "sdlc/procedure/lifecycle/prepare/overview-v2"
-FOLD_IDS: Final = (
-    DRIVER_ID,
-    "sdlc/procedure/lifecycle/prepare/intake-v2",
-    "sdlc/procedure/lifecycle/work/overview-v2",
-    "sdlc/procedure/lifecycle/work/build-v2",
-)
-ROLE: Final = "prepare-orchestrator"
-PHASE: Final = "preparation"
-CLAIM_NAME: Final = "claim"
-CLAIM_FRAME: Final = "cmd_claim"
-CLAIM_ARGV: Final = ("telec", TODO, PREPARE, ITEM)
-PLAN_FILE: Final = "plan.json"
+CONTROL_NAME: Final = "native-fixture-control-b1"
 LOG_TERMS: Final = ("preparation_requested", "subscri", "activat", "procedure", "driver", "launch", "workflow")
-NO_DRIVER_PHRASE: Final = "no published procedure drives preparation"
-NOT_ACTIVATED_PHRASE: Final = "is not activated yet"
-CLAIM_HEADER_SUFFIX: Final = " · claim"
-CLAIM_HEADER_PREFIX: Final = "### "
 
-FIELD_OPERATION: Final = "operation_id"
-FIELD_STATE: Final = "state"
-FIELD_ERROR: Final = "error"
-FIELD_RESULT: Final = "result"
-FIELD_ROLE: Final = "role"
-FIELD_JOB: Final = "job"
-FIELD_STANDING: Final = "standing"
-FIELD_HELD_BY: Final = "held_by"
-FIELD_HELD_SINCE: Final = "held_since"
-FIELD_LOG: Final = "log"
-STATE_COMPLETED: Final = "completed"
-STATE_FAILED: Final = "failed"
-TERMINAL_STATES: Final = frozenset({"completed", "failed", "stale", "cancelled"})
-KNOWN_STATES: Final = TERMINAL_STATES | frozenset({"queued", "running"})
-ACT_ROW: Final = re.compile(
-    r"^- `telec todo act (?P<item>\S+) (?P<act>[a-z]+)(?P<arguments>[^`]*)` -> (?P<target>\S+)\s*$"
-)
+FIELD_STATE: Final = publication.FIELD_STATE
+FIELD_ERROR: Final = publication.FIELD_ERROR
+FIELD_RESULT: Final = publication.FIELD_RESULT
+STATE_COMPLETED: Final = publication.STATE_COMPLETED
+STATE_FAILED: Final = publication.STATE_FAILED
+TERMINAL_STATES: Final = publication.TERMINAL_STATES
 
-CLI_TIMEOUT_SECONDS: Final = 60
-CLONE_TIMEOUT_SECONDS: Final = 60
-LINT_TIMEOUT_SECONDS: Final = 180
-PUBLISH_TIMEOUT_SECONDS: Final = 120
-ACTIVATION_WAIT_SECONDS: Final = 180.0
-ACTIVATION_POLL_SECONDS: Final = 20.0
 START_CAP_SECONDS: Final = 900.0
 POLL_SECONDS: Final = 2.0
-CLAIM_OPERATION_SECONDS: Final = 120.0
 STARTER_WINDOW_SECONDS: Final = 100.0
 STARTER_SETTLE_SECONDS: Final = 20.0
 COMPETITOR_SECONDS: Final = 60.0
-RELEASE_SECONDS: Final = 120.0
-QUIESCENCE_GAP_SECONDS: Final = 2.0
 SETTLE_SECONDS: Final = 5.0
 
-DETAIL_COMMAND: Final = "`{command}` exited {status}: {output!r}"
-DETAIL_IDENTITY_MOVED: Final = "the candidate checkout changed during the journey: {before!r} became {after!r}"
-DETAIL_FOLD_PATHS: Final = (
-    "the fold changed {found!r}, not exactly the four live files modified and four companions deleted"
-)
-DETAIL_FOLD_DIRTY: Final = "the fixture clone is not clean after the fold commit: {status!r}"
-DETAIL_NO_BODY: Final = "`telec docs get {identity}` printed no snippet body: {output!r}"
-DETAIL_BODY_MISMATCH: Final = "the published body of {identity} differs from the {expected}"
-DETAIL_ACTIVATION: Final = (
-    "the store was not activated and the drivers still unpublished within {seconds} seconds: {last!r}"
-)
-DETAIL_NEGATIVE_STATE: Final = (
-    "the pre-publication prepare ended {state!r} with {error!r}, not the driver-lookup refusal"
-)
-DETAIL_NEGATIVE_WRITE: Final = "the pre-publication prepare changed the item or the sessions: {detail}"
 DETAIL_RECEIPT: Final = "`telec todo prepare` printed no operation receipt: exit {status}, {output!r}"
 DETAIL_OPERATION_FAILED: Final = "operation {operation} failed: {error!r}"
 DETAIL_DRIVER_UNPUBLISHED: Final = (
     "the driver lookup refused after publication (the publication did not take effect): {error!r}"
 )
 DETAIL_START_TIMEOUT: Final = "no session claimed {item} within {seconds} seconds"
-DETAIL_SESSIONS: Final = "sessions after the start minus the baseline are {found!r}, not exactly the claiming session"
-DETAIL_RECORD_FIELD: Final = "the claiming session's record has {field} {found!r}, not {expected!r}"
-DETAIL_RECORD_START: Final = "the claiming session's record does not show a completed startup: {record!r}"
-DETAIL_FIRST_INPUT: Final = "the fixture's first input does not name {identity}: {text!r}"
-DETAIL_CLAIM_FRAME: Final = "the fixture's claim frame is not the planned successful call: {frame!r}"
-DETAIL_CLAIM_RECEIPT: Final = "the driver's claim printed no distinct operation receipt: {stdout!r} (starter {starter})"
-DETAIL_OPERATION_TIMEOUT: Final = "operation {operation} did not complete within {seconds} seconds: {last!r}"
 DETAIL_RESULT_TYPE: Final = "operation {operation} result is not a string: {result!r}"
-DETAIL_INSTRUCTION: Final = "the claim instruction does not contain {needle!r}: {text!r}"
-DETAIL_HOLD: Final = "after the claim {path} is {found!r}, not {expected!r}"
-DETAIL_PATH_ABSENT: Final = "the shown payload has no {path} (a source-traced path)"
-DETAIL_LOG_CLAIMS: Final = "the log holds {count} claim entries, not exactly one: {log!r}"
-DETAIL_LOG_ENTRY: Final = "the claim entry does not name {needle!r}: {entry!r}"
 DETAIL_STARTER: Final = "the starter's operation result does not contain the session: {result!r}"
 DETAIL_COMPETITOR_STATE: Final = "the competing prepare ended {state!r} ({error!r}), not a refusal naming the holder"
 DETAIL_COMPETITOR_TEXT: Final = "the refusal does not name {needle!r}: {error!r}"
 DETAIL_WRITE: Final = "the item shown {when} differs from before the competing prepare; differing paths: {paths}"
-DETAIL_RELEASE: Final = "the claim was not released within {seconds} seconds: {holder!r}"
-DETAIL_PHASE_AFTER: Final = "after the close the item reads {found!r}, not {expected!r}"
-DETAIL_OPERATION_READ: Final = (
-    "the public read of operation {operation} is unreadable or names an unknown state: {output!r}"
-)
-DETAIL_ACT_ROW_ABSENT: Final = "the instruction has no parseable row `telec todo act {item} {act}` -> {phase} (the shape changed, or the act is absent)"
-DETAIL_ACT_ROW: Final = "the instruction associates `telec todo act {item} {act}` with {rows!r}, not {phase}"
 DETAIL_CONTROLS_KEPT: Final = (
     "closure was not proven, so the control directory {control} and the sidecar are kept for diagnosis"
 )
-DETAIL_COMPANION: Final = "the companion {path} has no readable workflow header"
 NOT_EVALUATED_STARTER: Final = "step 6 not evaluated: {reason}"
 NOT_EVALUATED_LABEL: Final = "step-6-not-evaluated"
 
 type Json = Mapping[str, object]
-
-
-def _text(output: str) -> str:
-    return output.replace("\r\n", "\n")
-
-
-def docs_body(output: str) -> str | None:
-    """The snippet body of a `telec docs get` response: everything after its metadata block, line ends normalized."""
-    lines = _text(output).split("\n")
-    dividers = [index for index, line in enumerate(lines) if line.strip() == "---"]
-    if len(dividers) < 2:
-        return None
-    return "\n".join(lines[dividers[1] + 1 :]).strip()
-
-
-_CHILD_LINE = re.compile(r"^\s+child:\s*(?P<child>\S+)\s*$")
-_ACT_LINE = re.compile(r"^\s+-\s+act:\s*(?P<act>\S+)\s*$")
-_LEADS_LINE = re.compile(r"^\s+leads_to:\s*(?P<phase>\S+)\s*$")
-_ACTS_KEY = re.compile(r"^\s+acts:\s*$")
-
-
-def declared_acts(path: Path) -> tuple[list[tuple[str, str]], str]:
-    """The ending acts with their phases, and the child procedure, the folded driver's `workflow` header declares.
-
-    The header is the YAML block between the first two `---` lines; only the `workflow:` mapping is read, line by line,
-    because the hosted harness runs on the standard library alone.
-    """
-    parts = path.read_text(encoding="utf-8").split("---", 2)
-    lines = parts[1].splitlines() if len(parts) >= 3 else []
-    start = next((index for index, line in enumerate(lines) if line.rstrip() == "workflow:"), None)
-    if start is None:
-        raise creation.binding_failure(DETAIL_COMPANION.format(path=path))
-    block: list[str] = []
-    for line in lines[start + 1 :]:
-        if line.strip() and not line.startswith(" "):
-            break
-        block.append(line)
-    child = next((m.group("child") for m in map(_CHILD_LINE.match, block) if m), None)
-    acts_at = next((index for index, line in enumerate(block) if _ACTS_KEY.match(line)), None)
-    if child is None or acts_at is None:
-        raise creation.binding_failure(DETAIL_COMPANION.format(path=path))
-    names: list[str] = []
-    phases: list[str] = []
-    for line in block[acts_at + 1 :]:
-        if (act := _ACT_LINE.match(line)) is not None:
-            names.append(act.group("act"))
-        elif (leads := _LEADS_LINE.match(line)) is not None:
-            phases.append(leads.group("phase"))
-        elif line.strip() and not line.lstrip().startswith("-"):
-            break
-    if not names or len(names) != len(phases):
-        raise creation.binding_failure(DETAIL_COMPANION.format(path=path))
-    return list(zip(names, phases, strict=True)), child
 
 
 class _Claim:
@@ -240,123 +95,20 @@ class _Claim:
         self.publication = publication.Publication(
             host, self.observer, setup.control.parent, source_root, register_company
         )
+        self.controls = controls.Controls(setup, CONTROL_NAME)
         self.baseline: creation.SessionView | None = None
         self.starts: dict[str, str] = {}
-        self.setup = setup
-        self.project = project.resolve()
         self.source_root = source_root
+        self.project = project.resolve()
         self.owner_email = owner_email
-        self.control = setup.control.parent / CONTROL_NAME
-        self.original_configuration = setup.configuration.read_text(encoding="utf-8")
         self.journey: foundation.Journey | None = None
-
-    def _prepared_item(self) -> Json:
-        shown = self.observer.show(ITEM)
-        if shown is None:
-            raise creation.platform_failure(f"{ITEM} is absent")
-        return shown
-
-    def negative_control(self, baseline: creation.SessionView, before: Json) -> None:
-        """B-P5: the unpublished installation is refused at the driver lookup, writing nothing; the store is activated."""
-        deadline = time.monotonic() + ACTIVATION_WAIT_SECONDS
-        last = ""
-        while True:
-            outcome = self.observer.run((TELEC, TODO, PREPARE, ITEM))
-            receipt = foundation.json_object(outcome.output)
-            operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
-            if outcome.exit_status == 0 and isinstance(operation, str) and operation:
-                state = self._await_terminal(operation, 60.0)
-                error = state.get(FIELD_ERROR)
-                if state.get(FIELD_STATE) == STATE_FAILED and isinstance(error, str) and NO_DRIVER_PHRASE in error:
-                    break
-                if not (
-                    state.get(FIELD_STATE) == STATE_FAILED and isinstance(error, str) and NOT_ACTIVATED_PHRASE in error
-                ):
-                    raise creation.binding_failure(
-                        DETAIL_NEGATIVE_STATE.format(state=state.get(FIELD_STATE), error=error)
-                    )
-                last = str(error)
-            elif NOT_ACTIVATED_PHRASE in outcome.output:
-                last = outcome.output[-200:]
-            else:
-                raise creation.binding_failure(
-                    DETAIL_RECEIPT.format(status=outcome.exit_status, output=outcome.output[-300:])
-                )
-            if time.monotonic() >= deadline:
-                raise creation.binding_failure(
-                    DETAIL_ACTIVATION.format(seconds=int(ACTIVATION_WAIT_SECONDS), last=last)
-                )
-            time.sleep(ACTIVATION_POLL_SECONDS)
-        after = self._prepared_item()
-        changed = creation.differences(before, after)
-        sessions = self.observer.sessions()
-        if changed or sessions.ids != baseline.ids:
-            raise creation.binding_failure(DETAIL_NEGATIVE_WRITE.format(detail=changed or sorted(sessions.ids)))
-
-    def operation_state(self, operation: str, *, retain: bool = False) -> Json:
-        return publication.operation_state(self.observer, operation, retain=retain)
-
-    def _await_terminal(self, operation: str, seconds: float) -> Json:
-        return publication.await_terminal(self.observer, operation, seconds)
-
-    # -- per-launch control ----------------------------------------------------------------------------------------
-    def install_control(self) -> foundation.FixtureSetup:
-        """B-S2: a fresh control directory for this launch, with the reviewed command plan, and the sidecar pointed at it."""
-        shutil.rmtree(self.control, ignore_errors=True)
-        self.control.mkdir(parents=True)
-        plan = {"commands": [{"name": CLAIM_NAME, "argv": list(CLAIM_ARGV)}]}
-        (self.control / PLAN_FILE).write_text(json.dumps(plan), encoding="utf-8")
-        configuration = json.loads(self.original_configuration)
-        configuration[foundation.CONFIG_CONTROL_DIRECTORY] = str(self.control)
-        self.setup.configuration.write_text(json.dumps(configuration), encoding="utf-8")
-        return foundation.FixtureSetup(self.setup.executable, self.setup.configuration, self.control)
-
-    def restore_control(self) -> list[str]:
-        failures: list[str] = []
-        try:
-            self.setup.configuration.write_text(self.original_configuration, encoding="utf-8")
-        except OSError as error:
-            failures.append(f"sidecar configuration: {type(error).__name__}")
-        shutil.rmtree(self.control, ignore_errors=True)
-        return failures
 
 
 def _require_item_unclaimed(shown: Json) -> None:
-    creation.require_value(ITEM, shown, "state.lifecycle_phase", PHASE)
+    creation.require_value(ITEM, shown, "state.lifecycle_phase", driver.PHASE)
     creation.require_value(ITEM, shown, "state.hold", False)
     creation.require_unclaimed(ITEM, shown)
     creation.require_standing_clear(ITEM, shown)
-
-
-def _fresh_snapshot(observer: creation.Observer) -> Json:
-    first = observer.show(ITEM)
-    if first is None:
-        raise creation.binding_failure(f"{ITEM} is absent before the competing call")
-    time.sleep(QUIESCENCE_GAP_SECONDS)
-    second = observer.show(ITEM)
-    if second is None or creation.differences(first, second):
-        raise creation.binding_failure(
-            DETAIL_WRITE.format(when="between two reads", paths=creation.differences(first, second or {}))
-        )
-    return second
-
-
-def _shown_with_content(observer: creation.Observer) -> Json:
-    shown = observer.show(ITEM)
-    if shown is None:
-        raise creation.platform_failure(f"{ITEM} is absent")
-    return shown
-
-
-def _claim_entries(log: str) -> list[tuple[str, str]]:
-    """The claim entries of a log as (header line, the body line after one blank line)."""
-    lines = _text(log).split("\n")
-    entries: list[tuple[str, str]] = []
-    for index, line in enumerate(lines):
-        if line.startswith(CLAIM_HEADER_PREFIX) and line.rstrip().endswith(CLAIM_HEADER_SUFFIX):
-            body = lines[index + 2] if index + 2 < len(lines) and not lines[index + 1].strip() else ""
-            entries.append((line, body))
-    return entries
 
 
 def run_claim(
@@ -370,7 +122,7 @@ def run_claim(
 ) -> None:
     """Journey B1; raises JourneyFailure leading with its class.
 
-    ``register_company`` registers, through the public command, the synthetic company the candidate checkout\'s project
+    ``register_company`` registers, through the public command, the synthetic company the candidate checkout's project
     declaration names: a documentation read run from that checkout needs it, exactly as the closure journey does.
     """
     claim = _Claim(host, setup, project, source_root, owner_email, register_company, retain)
@@ -382,19 +134,21 @@ def run_claim(
         creation.enter_project(observer, project)
         baseline = observer.sessions()
         claim.baseline = baseline
-        launch_setup = claim.install_control()
+        launch_setup = claim.controls.single(
+            {"commands": [{"name": driver.CLAIM_NAME, "argv": ["telec", TODO, PREPARE, ITEM]}]}
+        )
         journey = foundation.Journey(host, launch_setup, project, owner_email)
         claim.journey = journey
         creation.require_created(creation.create_item(observer, ITEM, CONTENT, "feature", approved=True), ITEM)
-        before = _shown_with_content(observer)
+        before = driver.shown_with_content(observer, ITEM)
         _require_item_unclaimed(before)
         clone = claim.publication.prepare()
         creation.enter_project(observer, project)
-        claim.negative_control(baseline, before)
+        publication.negative_control(observer, ITEM, baseline, before)
         claim.publication.publish()
         claim.publication.verify_parity()
         creation.enter_project(observer, project)
-        quiet = _fresh_snapshot(observer)
+        quiet = driver.fresh_snapshot(observer, ITEM)
         if creation.differences(before, quiet):
             raise creation.binding_failure(
                 DETAIL_WRITE.format(when="after publication", paths=creation.differences(before, quiet))
@@ -422,9 +176,15 @@ class _Steps:
         self.observer = claim.observer
         self.host = claim.host
         self.journey = journey
-        self.baseline = baseline
-        self.launch_setup = launch_setup
-        self.clone = clone
+        self.evidence = driver.DriverCase(
+            host=claim.host,
+            observer=claim.observer,
+            journey=journey,
+            item=ITEM,
+            launch_setup=launch_setup,
+            clone=clone,
+            baseline=baseline,
+        )
         self.started_at = 0.0
         self.starter = ""
         self.session = ""
@@ -433,22 +193,20 @@ class _Steps:
     def run(self) -> None:
         self.start()
         self.await_claim()
-        native = self.check_startup()
-        del native
-        instruction = self.driver_claim()
-        self.check_instruction(instruction)
-        self.observe_claim()
+        self.evidence.check_startup(self.session, frozenset({self.session}))
+        instruction = self.evidence.claim_call([self.starter])
+        self.evidence.check_instruction(self.session, instruction)
+        self.evidence.observe_claim(self.session)
         self.starter_result()
         self.competitor()
-        self.close()
+        self.evidence.close(self.session)
 
     def start(self) -> None:
         """Step 1: the public start returns a receipt."""
         self.started_at = time.monotonic()
         start = self.observer.run((TELEC, TODO, PREPARE, ITEM))
-        receipt = foundation.json_object(start.output)
-        starter = receipt.get(FIELD_OPERATION) if receipt is not None else None
-        if start.exit_status != 0 or not isinstance(starter, str) or not starter:
+        starter = driver.receipt_operation(start.output)
+        if start.exit_status != 0 or starter is None:
             raise creation.platform_failure(DETAIL_RECEIPT.format(status=start.exit_status, output=start.output[-300:]))
         self.starter = starter
         self.claim.starts[starter] = publication.START_OPEN
@@ -457,10 +215,10 @@ class _Steps:
         """Step 2: a real session is created and claims; a failed or unreadable starter ends the wait at once."""
         deadline = self.started_at + START_CAP_SECONDS
         while time.monotonic() < deadline:
-            state = self.claim.operation_state(self.starter)
+            state = publication.operation_state(self.observer, self.starter)
             if state.get(FIELD_STATE) in TERMINAL_STATES - {STATE_COMPLETED}:
                 error = str(state.get(FIELD_ERROR))
-                if NO_DRIVER_PHRASE in error:
+                if publication.NO_DRIVER_PHRASE in error:
                     raise creation.binding_failure(DETAIL_DRIVER_UNPUBLISHED.format(error=error))
                 raise creation.platform_failure(DETAIL_OPERATION_FAILED.format(operation=self.starter, error=error))
             shown = self.observer.show(ITEM, retain=False)
@@ -472,126 +230,24 @@ class _Steps:
                 self.journey.session_id = holder
                 return
             time.sleep(POLL_SECONDS)
-        starter = self.claim.operation_state(self.starter, retain=True)
+        starter = publication.operation_state(self.observer, self.starter, retain=True)
         logs = publication.log_evidence(self.host, LOG_TERMS)
         raise creation.platform_failure(
             DETAIL_START_TIMEOUT.format(item=ITEM, seconds=int(START_CAP_SECONDS))
             + f" (the starter reads {dict(starter)!r}; logs: {logs})"
         )
 
-    def check_startup(self) -> str:
-        """Step 3: the session is the platform's, with a real startup through the installed hooks."""
-        created = self.observer.sessions().ids - self.baseline.ids
-        if created != frozenset({self.session}):
-            raise creation.platform_failure(DETAIL_SESSIONS.format(found=sorted(created)))
-        journey = self.journey
-        launch = journey.await_json(self.launch_setup.control / foundation.LAUNCH_FILE, foundation.POLL_SECONDS * 30)
-        owned = str(self.launch_setup.executable.resolve())
-        found = (Path(str(launch.get("executable"))).resolve(), Path(str(launch.get("resolved_command"))).resolve())
-        if found != (Path(owned), Path(owned)):
-            raise creation.binding_failure(foundation.DETAIL_EXECUTABLE.format(found=launch, owned=owned))
-        native = str(launch.get("native_session_id"))
-        frames_deadline = time.monotonic() + START_CAP_SECONDS
-        for name in (foundation.FRAME_SESSION_START, foundation.FRAME_PROMPT_SUBMIT):
-            journey.require_hook(name, journey.await_frame(name, frames_deadline))
-        record = journey.record()
-        if record is None or not journey.started(record, native):
-            raise creation.platform_failure(DETAIL_RECORD_START.format(record=record))
-        for field, expected in ((FIELD_ROLE, ROLE), (FIELD_JOB, DRIVER_ID)):
-            if record.get(field) != expected:
-                raise creation.platform_failure(
-                    DETAIL_RECORD_FIELD.format(field=field, found=record.get(field), expected=expected)
-                )
-        inputs = journey.inputs()
-        first = inputs[0].get("text") if inputs else None
-        if not isinstance(first, str) or DRIVER_ID not in first:
-            raise creation.platform_failure(DETAIL_FIRST_INPUT.format(identity=DRIVER_ID, text=first))
-        return native
-
-    def driver_claim(self) -> str:
-        """Step 4: the driver's own claim, run in its pane, completes and returns the instruction text."""
-        frame = self.journey.await_frame(CLAIM_FRAME, time.monotonic() + CLAIM_OPERATION_SECONDS)
-        run = frame.get("run")
-        argv = frame.get("argv")
-        stdout = run.get("stdout") if isinstance(run, dict) else None
-        receipt = foundation.json_object(stdout) if isinstance(stdout, str) else None
-        operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
-        if (
-            not isinstance(run, dict)
-            or run.get("exit_status") != 0
-            or run.get("timed_out") is True
-            or not isinstance(argv, list)
-            or tuple(argv) != CLAIM_ARGV
-        ):
-            raise creation.platform_failure(DETAIL_CLAIM_FRAME.format(frame=frame))
-        if not isinstance(operation, str) or not operation or operation == self.starter:
-            raise creation.platform_failure(DETAIL_CLAIM_RECEIPT.format(stdout=stdout, starter=self.starter))
-        claimed = self.claim._await_terminal(operation, CLAIM_OPERATION_SECONDS)
-        if claimed.get(FIELD_STATE) != STATE_COMPLETED:
-            raise creation.platform_failure(
-                DETAIL_OPERATION_FAILED.format(operation=operation, error=claimed.get(FIELD_ERROR))
-            )
-        instruction = claimed.get(FIELD_RESULT)
-        if not isinstance(instruction, str):
-            raise creation.platform_failure(DETAIL_RESULT_TYPE.format(operation=operation, result=instruction))
-        return instruction
-
-    def check_instruction(self, instruction: str) -> None:
-        """Step 4, content: the item, phase, session, every ending act with its phase, and the child procedure."""
-        acts, child = declared_acts(self.clone / DOCS_ROOT / f"{DRIVER_ID}{LIVE_SUFFIX}")
-        for needle in (ITEM, PHASE, self.session, child):
-            if needle not in instruction:
-                raise creation.platform_failure(DETAIL_INSTRUCTION.format(needle=needle, text=instruction[-600:]))
-        rows = [match for match in map(ACT_ROW.match, instruction.split("\n")) if match is not None]
-        for act, phase in acts:
-            targets = [row.group("target") for row in rows if row.group("item") == ITEM and row.group("act") == act]
-            if not targets:
-                raise creation.trace_failure(DETAIL_ACT_ROW_ABSENT.format(item=ITEM, act=act, phase=phase))
-            if any(target != phase for target in targets):
-                raise creation.platform_failure(
-                    DETAIL_ACT_ROW.format(item=ITEM, act=act, phase=phase, rows=sorted(set(targets)))
-                )
-
-    def observe_claim(self) -> None:
-        """Step 5: the item shows the holder, the phase, and exactly one claim note naming the session."""
-        held = _shown_with_content(self.observer)
-        session = self.session
-        creation.require_value(ITEM, held, "state.active_runner", session)
-        creation.require_value(ITEM, held, f"{FIELD_STANDING}.{FIELD_HELD_BY}", session)
-        found, since = creation.dig(held, f"{FIELD_STANDING}.{FIELD_HELD_SINCE}")
-        if not found:
-            raise creation.trace_failure(DETAIL_PATH_ABSENT.format(path=f"{FIELD_STANDING}.{FIELD_HELD_SINCE}"))
-        if not isinstance(since, str) or not since:
-            raise creation.platform_failure(
-                DETAIL_HOLD.format(path="standing.held_since", found=since, expected="non-empty")
-            )
-        creation.require_value(ITEM, held, "state.lifecycle_phase", PHASE)
-        creation.require_value(ITEM, held, f"{FIELD_STANDING}.phase", PHASE)
-        creation.require_value(ITEM, held, "state.hold", False)
-        _, log = creation.dig(held, f"artifact_content.{FIELD_LOG}")
-        if not isinstance(log, str):
-            raise creation.trace_failure(DETAIL_PATH_ABSENT.format(path=f"artifact_content.{FIELD_LOG}"))
-        entries = _claim_entries(log)
-        if len(entries) != 1:
-            raise creation.platform_failure(DETAIL_LOG_CLAIMS.format(count=len(entries), log=log[-600:]))
-        header, body = entries[0]
-        if session not in header:
-            raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=session, entry=header))
-        for needle in (ITEM, session):
-            if needle not in body:
-                raise creation.platform_failure(DETAIL_LOG_ENTRY.format(needle=needle, entry=body))
-
     def starter_result(self) -> None:
         """Step 6: the starter's own result names the session, evaluated only inside the attach window.
 
-        The starter\'s status is always read: a failed or unreadable operation fails the case whenever it is read; only a
+        The starter's status is always read: a failed or unreadable operation fails the case whenever it is read; only a
         valid, still-pending operation (or the optional content clause past its window) is left uncredited.
         """
         deadline = time.monotonic() + STARTER_SETTLE_SECONDS
-        state = self.claim.operation_state(self.starter, retain=True)
+        state = publication.operation_state(self.observer, self.starter, retain=True)
         while state.get(FIELD_STATE) not in TERMINAL_STATES and time.monotonic() < deadline:
             time.sleep(POLL_SECONDS)
-            state = self.claim.operation_state(self.starter)
+            state = publication.operation_state(self.observer, self.starter)
         if state.get(FIELD_STATE) in TERMINAL_STATES - {STATE_COMPLETED}:
             raise creation.platform_failure(
                 DETAIL_OPERATION_FAILED.format(operation=self.starter, error=state.get(FIELD_ERROR))
@@ -610,22 +266,21 @@ class _Steps:
 
     def _not_evaluated(self, reason: str) -> None:
         text = NOT_EVALUATED_STARTER.format(reason=reason)
-        self.host.note((NOT_EVALUATED_LABEL,), Outcome(None, text), "")
+        self.host.note((NOT_EVALUATED_LABEL, text), Outcome(None, text), "")
 
     def competitor(self) -> None:
         """Step 7: a second entry call is refused naming the holder, and nothing is written."""
         observer = self.observer
-        snapshot = _fresh_snapshot(observer)
+        snapshot = driver.fresh_snapshot(observer, ITEM)
         held_sessions = observer.sessions()
         competitor = observer.run((TELEC, TODO, PREPARE, ITEM))
-        receipt = foundation.json_object(competitor.output)
-        operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
-        if competitor.exit_status != 0 or not isinstance(operation, str) or not operation:
+        operation = driver.receipt_operation(competitor.output)
+        if competitor.exit_status != 0 or operation is None:
             raise creation.platform_failure(
                 DETAIL_RECEIPT.format(status=competitor.exit_status, output=competitor.output[-300:])
             )
         self.claim.starts[operation] = publication.START_OPEN
-        refused = self.claim._await_terminal(operation, COMPETITOR_SECONDS)
+        refused = publication.await_terminal(observer, operation, COMPETITOR_SECONDS)
         error = refused.get(FIELD_ERROR)
         if refused.get(FIELD_STATE) != STATE_FAILED or not isinstance(error, str):
             raise creation.platform_failure(DETAIL_COMPETITOR_STATE.format(state=refused.get(FIELD_STATE), error=error))
@@ -636,37 +291,23 @@ class _Steps:
         for when, pause in (("immediately", 0.0), ("five seconds later", SETTLE_SECONDS)):
             if pause:
                 time.sleep(pause)
-            changed = creation.differences(snapshot, _shown_with_content(observer))
+            changed = creation.differences(snapshot, driver.shown_with_content(observer, ITEM))
             if changed:
                 raise creation.platform_failure(DETAIL_WRITE.format(when=when, paths=changed))
             creation.require_sessions_equal(held_sessions, observer.sessions(retain=False), when)
 
-    def close(self) -> None:
-        """Step 8: ending the session releases the claim and leaves the phase unchanged."""
-        self.journey.end_session()
-        deadline = time.monotonic() + RELEASE_SECONDS
-        holder: object = self.session
-        while time.monotonic() < deadline:
-            released = self.observer.show(ITEM, retain=False)
-            holder = creation.dig(released, "state.active_runner")[1] if released is not None else holder
-            if holder in (None, ""):
-                break
-            time.sleep(POLL_SECONDS)
-        else:
-            raise creation.platform_failure(DETAIL_RELEASE.format(seconds=int(RELEASE_SECONDS), holder=holder))
-        creation.require_value(ITEM, _shown_with_content(self.observer), "state.lifecycle_phase", PHASE)
-
 
 def _cleanup(claim: _Claim, failure: BaseException | None) -> None:
     """Settle the sessions the journey owns, restore the candidate publication and the sidecar, report every failure."""
-    settlement = publication.settle_sessions(claim.observer, claim.baseline, claim.starts, [claim.control])
+    settlement = publication.settle_sessions(claim.observer, claim.baseline, claim.starts, claim.controls.directories)
     problems = list(settlement.problems)
     problems.extend(claim.publication.restore())
     if settlement.proven:
-        problems.extend(claim.restore_control())
+        problems.extend(claim.controls.restore())
     else:
-        problems.append(DETAIL_CONTROLS_KEPT.format(control=claim.control))
-        claim.retain(DETAIL_CONTROLS_KEPT.format(control=claim.control))
+        kept = DETAIL_CONTROLS_KEPT.format(control=claim.controls.root)
+        problems.append(kept)
+        claim.retain(kept)
     try:
         creation.leave_project(claim.observer, claim.source_root)
     except BaseException as error:
