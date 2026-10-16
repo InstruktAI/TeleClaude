@@ -180,10 +180,11 @@
       "unzip",
       "xz-utils",
       "iproute2",
-      "iputils-ping"
+      "iputils-ping",
+      "logrotate"
     ],
     "base_packages": 91,
-    "new_or_replaced": 336,
+    "new_or_replaced": 338,
     "final_packages": [
       {
         "name": "adduser",
@@ -3229,6 +3230,20 @@
         "bytes": 132898
       },
       {
+        "name": "libpopt0",
+        "version": "1.19+dfsg-1build1",
+        "architecture": "amd64",
+        "depends": "libc6 (>= 2.38)",
+        "pre_depends": "",
+        "provides": "",
+        "origin": "signed-snapshot-index",
+        "pocket": "noble",
+        "component": "main",
+        "archive_url": "https://snapshot.ubuntu.com/ubuntu/20261016T000000Z/pool/main/p/popt/libpopt0_1.19+dfsg-1build1_amd64.deb",
+        "sha256": "b3e7ea5192e57c847b77c527d51f5b8d4bce47988d2ba326a5c3193f6d173ded",
+        "bytes": 28562
+      },
+      {
         "name": "libportaudio2",
         "version": "19.6.0-1.2build3",
         "architecture": "amd64",
@@ -4983,6 +4998,20 @@
         "origin": "signed-rootfs-inventory"
       },
       {
+        "name": "logrotate",
+        "version": "3.21.0-2build1",
+        "architecture": "amd64",
+        "depends": "cron | anacron | cron-daemon | systemd-sysv, libacl1 (>= 2.2.23), libc6 (>= 2.38), libpopt0 (>= 1.14), libselinux1 (>= 3.1~)",
+        "pre_depends": "",
+        "provides": "",
+        "origin": "signed-snapshot-index",
+        "pocket": "noble",
+        "component": "main",
+        "archive_url": "https://snapshot.ubuntu.com/ubuntu/20261016T000000Z/pool/main/l/logrotate/logrotate_3.21.0-2build1_amd64.deb",
+        "sha256": "e609ad80a9cec135b404a84f99d9d87bc304800eb212702444a985527edba70c",
+        "bytes": 52212
+      },
+      {
         "name": "logsave",
         "version": "1.47.0-2.4~exp1ubuntu4.1",
         "architecture": "amd64",
@@ -5657,7 +5686,7 @@
     ],
     "resolver_image": "ubuntu@sha256:f610ab94648195aa356059f5b41d6085c9d4d903c072430cdd1af7bdb646106b",
     "resolver_purpose": "offline apt --simulate only, no installation/boot/product",
-    "resolver_output_sha256": "52e7029949a4e36c64347c4f21aaec0fc5dfe1dbd74647d5a4fac8e8bee02bee"
+    "resolver_output_sha256": "ce63670e3d84bbaa6ab2bc9227a07e2e482e295f95c92f7f8e3de4d260de578f"
   },
   "host_closure": {
     "final_packages": [
@@ -11453,6 +11482,42 @@
       "bytes": 75,
       "execution_boundary": "inside_guest_only",
       "source": "signed-base-archive"
+    },
+    {
+      "package": "libpopt0",
+      "version": "1.19+dfsg-1build1",
+      "file": "triggers",
+      "sha256": "0f1eda96d7595190cc2d40a06fafff8def651d19ceb635292ae6104de50de218",
+      "bytes": 75,
+      "execution_boundary": "inside_guest_only",
+      "source_archive_sha256": "b3e7ea5192e57c847b77c527d51f5b8d4bce47988d2ba326a5c3193f6d173ded"
+    },
+    {
+      "package": "logrotate",
+      "version": "3.21.0-2build1",
+      "file": "postinst",
+      "sha256": "a1cda52eef1311e19b135aee293966bbbac6741cb628ac2c1e0da68c11a9cc3e",
+      "bytes": 1361,
+      "execution_boundary": "inside_guest_only",
+      "source_archive_sha256": "e609ad80a9cec135b404a84f99d9d87bc304800eb212702444a985527edba70c"
+    },
+    {
+      "package": "logrotate",
+      "version": "3.21.0-2build1",
+      "file": "postrm",
+      "sha256": "a2f5513a44551a7dd2f7928c6616fc1d5ba9065302bb8667d6316f9408dd9f14",
+      "bytes": 531,
+      "execution_boundary": "inside_guest_only",
+      "source_archive_sha256": "e609ad80a9cec135b404a84f99d9d87bc304800eb212702444a985527edba70c"
+    },
+    {
+      "package": "logrotate",
+      "version": "3.21.0-2build1",
+      "file": "prerm",
+      "sha256": "8e72f203d5798ade2ebe4033820eb78ed6dfa9b015af2957450c91ada3b69530",
+      "bytes": 279,
+      "execution_boundary": "inside_guest_only",
+      "source_archive_sha256": "e609ad80a9cec135b404a84f99d9d87bc304800eb212702444a985527edba70c"
     }
   ],
   "host_maintainer_scripts": [
@@ -20014,6 +20079,36 @@
       "kind": "symlink",
       "archive_sha256": "3e14c5a9e404b2fbf6d3ae32b247a90f2e5885837fcf17de29d699b5a7aa4c19",
       "target": "../systemd-coredump.socket"
+    },
+    {
+      "scope": "guest",
+      "package": "logrotate",
+      "path": "etc/cron.daily/logrotate",
+      "kind": "file",
+      "archive_sha256": "e609ad80a9cec135b404a84f99d9d87bc304800eb212702444a985527edba70c",
+      "sha256": "12b36ff7068d3932f428e6eba07cbc9b9b2f7f7d37756d86ce13ddfcc6cd875f",
+      "bytes": 377,
+      "content": "#!/bin/sh\n\n# skip in favour of systemd timer\nif [ -d /run/systemd/system ]; then\n    exit 0\nfi\n\n# this cronjob persists removals (but not purges)\nif [ ! -x /usr/sbin/logrotate ]; then\n    exit 0\nfi\n\n/usr/sbin/logrotate /etc/logrotate.conf\nEXITVALUE=$?\nif [ $EXITVALUE != 0 ]; then\n    /usr/bin/logger -t logrotate \"ALERT exited abnormally with [$EXITVALUE]\"\nfi\nexit $EXITVALUE\n"
+    },
+    {
+      "scope": "guest",
+      "package": "logrotate",
+      "path": "usr/lib/systemd/system/logrotate.service",
+      "kind": "file",
+      "archive_sha256": "e609ad80a9cec135b404a84f99d9d87bc304800eb212702444a985527edba70c",
+      "sha256": "cc5c35e740bce405c1177903f675e8beb471c2fba394732eaf8100e4e9a5e0fb",
+      "bytes": 870,
+      "content": "[Unit]\nDescription=Rotate log files\nDocumentation=man:logrotate(8) man:logrotate.conf(5)\nRequiresMountsFor=/var/log\nConditionACPower=true\n\n[Service]\nType=oneshot\nExecStart=/usr/sbin/logrotate /etc/logrotate.conf\n\n# performance options\nNice=19\nIOSchedulingClass=best-effort\nIOSchedulingPriority=7\n\n# hardening options\n#  details: https://www.freedesktop.org/software/systemd/man/systemd.exec.html\n#  no ProtectHome for userdir logs\n#  no PrivateNetwork for mail deliviery\n#  no NoNewPrivileges for third party rotate scripts\n#  no RestrictSUIDSGID for creating setgid directories\nLockPersonality=true\nMemoryDenyWriteExecute=true\nPrivateDevices=true\nPrivateTmp=true\nProtectClock=true\nProtectControlGroups=true\nProtectHostname=true\nProtectKernelLogs=true\nProtectKernelModules=true\nProtectKernelTunables=true\nProtectSystem=full\nRestrictNamespaces=true\nRestrictRealtime=true\n"
+    },
+    {
+      "scope": "guest",
+      "package": "logrotate",
+      "path": "usr/lib/systemd/system/logrotate.timer",
+      "kind": "file",
+      "archive_sha256": "e609ad80a9cec135b404a84f99d9d87bc304800eb212702444a985527edba70c",
+      "sha256": "42f723dc5d90247a5fda11a3358d1a67eccceed856192b2264aa222d6aa240f4",
+      "bytes": 191,
+      "content": "[Unit]\nDescription=Daily rotation of log files\nDocumentation=man:logrotate(8) man:logrotate.conf(5)\n\n[Timer]\nOnCalendar=daily\nAccuracySec=1h\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n"
     }
   ],
   "tool_archives": [
@@ -20376,16 +20471,68 @@
     "uv": "GitHub release digest and verified Sigstore attestation.",
     "gog_sqlite": "Actual archive digests equal the frozen installer constants.",
     "npm_observer": "Actual bytes equal integrity/digest metadata from official npm/PyPI; this does not claim an Ubuntu/OpenPGP or Sigstore signature.",
-    "application_dependencies": "Existing immutable source lock files retain their transitive integrity declarations; these are not re-authored here."
+    "application_dependencies": "Existing source locks authenticate only their own project/pinned environments. They do not fix the independent shared logging tool selected by the native unconstrained installer.",
+    "rolling_product_inputs": "No pre-resolved logger version or archive is a constraint here. The actual native installer/uv resolution and package-owned setup retain their contract; the per-run observer records the installed dependency/interpreter/activation bytes and provenance at stated capture points. Native archive provenance is claimed only where actually available."
   },
   "recipe_file": "enclosure-recipes.json",
-  "recipe_sha256": "69e445ecb7087423fc717ded92539d3a0de698cf0225d26f99bf143d780568b3",
+  "recipe_sha256": "6ea0ae4d1841f3de946b77d9e3f6a74e55965f2d30942e198547aa797fa46b7d",
   "qualification_file": "qualification.json",
   "qualification_sha256": "45ee1a7d7da7a7df7135ea2a324dcb7f33076ce81f73ca498a8e73cde102ebb1",
   "stage_separation": {
-    "static": "This file plus exact recipe/qualification bytes are independently reviewed before implementation. No future helper code hash is required at this stage.",
+    "static": "This file plus concrete recipe/qualification bytes completely declares fixed substrate/source inputs and every admitted rolling operation/observation recipe before implementation. Actual rolling install results are not preimplementation artifacts or placeholders certified complete.",
     "source": "A distinct source-realization record after implementation binds actual candidate commit/tree and controller/helper/generated bytes to this reviewed package.",
     "qualification": "Actual host generations, namespaces, package presence, effective activation and original-object semantics require separately authorized finite qualification.",
-    "application": "Neither static nor setup result proves any application journey, cleanup pass or delivery gate."
+    "application": "Supported product installation retains its rolling tool semantics. Actual per-invocation dependency/activation observations, public journeys and P1-P4/result proof remain execution evidence; neither static nor setup results supply them."
+  },
+  "input_classes": {
+    "fixed_enclosure_substrate": {
+      "identity_time": "complete before implementation",
+      "bindings": [
+        "signed_indexes",
+        "guest_base",
+        "guest_closure",
+        "host_closure",
+        "host_compatibility",
+        "guest_maintainer_scripts",
+        "host_maintainer_scripts",
+        "activation_sources",
+        "tool_archives",
+        "node",
+        "npm_tools",
+        "observer_library",
+        "python_binary",
+        "tool_binaries"
+      ],
+      "scope": "Managed enclosure/bootstrap and explicitly source-pinned tools only; this does not classify a product-owned unconstrained install as a frozen artifact."
+    },
+    "source_locked_project_environment": {
+      "identity_time": "source dependency basis before implementation, actual candidate agreement at source review",
+      "bindings": ["source_dependency_locks"],
+      "scope": "Only the environments those existing source locks own. A project dependency named logger does not constrain uv tool independent resolution."
+    },
+    "product_owned_rolling_installation": {
+      "identity_time": "source-owned selection/setup and concrete observation recipe before implementation; actual selected dependency/interpreter/activation identities during supported installation",
+      "declared_inputs": [
+        {
+          "id": "shared_logging_runtime",
+          "selection_owner": {
+            "source": "bin/install.sh",
+            "function": "_log_runtime_ensure_current",
+            "package_declaration": "LOG_RUNTIME_PACKAGE"
+          },
+          "setup_owner": {
+            "source": "bin/install.sh",
+            "function": "install_log_runtime",
+            "delegation": "selected distribution runtime-setup console entry"
+          },
+          "recipe": "enclosure-recipes.json guest.product_rolling_tools and rolling_input_observation",
+          "static_version_constraint": null,
+          "actual_artifact_baseline": "none; project uv.lock and a preparation-time registry sample are not this installation result"
+        }
+      ],
+      "closure_requirement": "Every declared rolling operation has complete source/ownership/observation bindings before implementation. Actual required per-invocation dependency and activation evidence remains a runtime acceptance gate, inside the unchanged whole-guest physical denominator. Missing actual facts are not filled from static source locks or current registry samples.",
+      "unclassified_input": "Any additional actual rolling installer path lacks admission under this declaration until independently disposed; no blanket latest-tool exception.",
+      "fixed_substrate_drift": "A rolling installation cannot silently replace the qualified bootstrap/source binding or create an outside owner; resulting drift/unknown is separately unproven."
+    }
   }
 }

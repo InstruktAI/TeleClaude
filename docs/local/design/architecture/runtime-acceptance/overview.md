@@ -32,15 +32,44 @@ both records, its separately reviewed `qualification.json` and separate run
 authorization. Results add observed host/package/namespace/activation and
 observation facts; static review supplies none of those runtime identities.
 
+### Installation input classes
+
+`static-lock.json` classifies the complete input contract: fixed enclosure/OS
+substrate, source-locked project environments, and product-owned rolling tool
+installation. The classes have different identity times; an unconstrained
+independent tool environment is never described as constrained by the project
+lock. Installation retains its own supported selection and setup path
+(`local/projects/teleclaude/spec/feature/reconciliation/fresh-machine-bootstrap`).
+
+The static gate binds complete substrate/source locks and the concrete rolling
+observation recipe before implementation. The rolling tool's actual resolved
+distributions, interpreter and emitted activation assets are run observations,
+not missing future hashes certified at preparation. The recipe owns their
+required metadata, installed-byte identities, containment and evidence limits;
+unavailable or incomplete facts remain unknown and block acceptance. No
+collector pins, skips, preinstalls in place of the rolling operation, changes
+its index/constraints or mutates its managed environment. The shared tool's
+setup and dependency semantics remain its owner's
+(`general/principle/verification-independence`).
+
+Every product installer process, rolling tool, build helper, user scheduler and
+rotator executes inside the already established guest boundary. Physical P4
+covers that complete subtree independently of package versions or a finite
+static unit list. Actual activation observations finish before P3. A changed
+fixed substrate or an uncontained creator invalidates the corresponding proof;
+unknown receipts, effects and lifecycle facts keep their separate blocking
+force. Setup qualification executes none of these product operations and
+supplies no rolling-installation evidence.
+
 ### Static lock completeness
 
-| Binding group           | Required evidence                                                                                                                                                                                                                                                                                                                              |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Host compatibility      | Architecture and explicit accepted runner-image/kernel/systemd/package tuples; executable/interpreter identities; actual runner account is discovered and recorded rather than inferred from the guest UID.                                                                                                                                    |
-| Signed package inputs   | Fixed snapshot/pocket/component/architecture; signed Release/InRelease bytes, digest, trusted key fingerprint and verification result; each selected index path/size/digest; complete host and guest package dependency closure with versions, alternatives, archive addresses/sizes/digests and maintainer-script/activation effects.         |
-| Guest base and tools    | Exact archive and independently authenticated checksum/signature/key chain; base package inventory; locked Python distribution/patch/build, uv binary and all installer/native dependencies. Floating archives, package upgrades and host PID-1 replacement are excluded.                                                                      |
-| Effective manager graph | Distro-installed vendor template bytes, all dependency units/drop-ins/settings and activation sources; complete host instance and parent recipe, guest payload/poweroff units, accounts/sudo/user-manager/network setup and actual effective-property predicates. An upstream template is not a distro-file digest.                            |
-| Harness and evidence    | Declared controller/helper entry and closed action protocol, authenticated interpreter/library inputs, dependency-basis source locks, argv/environment/cwd recipe, role discriminator, report/export map and finite qualification declaration. Actual implementation commit/tree and code digests belong to the subsequent realization record. |
+| Binding group           | Required evidence                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host compatibility      | Architecture and explicit accepted runner-image/kernel/systemd/package tuples; executable/interpreter identities; actual runner account is discovered and recorded rather than inferred from the guest UID.                                                                                                                                               |
+| Signed package inputs   | Fixed snapshot/pocket/component/architecture; signed Release/InRelease bytes, digest, trusted key fingerprint and verification result; each selected index path/size/digest; complete declared host and guest bootstrap package dependency closure with versions, alternatives, archive addresses/sizes/digests and maintainer-script/activation effects. |
+| Guest base and tools    | Exact archive and independently authenticated checksum/signature/key chain; base package inventory; locked Python distribution/patch/build, uv binary and all installer/native dependencies. Floating archives, package upgrades and host PID-1 replacement are excluded.                                                                                 |
+| Effective manager graph | Distro-installed vendor template bytes, all dependency units/drop-ins/settings and activation sources; complete host instance and parent recipe, guest payload/poweroff units, accounts/sudo/user-manager/network setup and actual effective-property predicates. An upstream template is not a distro-file digest.                                       |
+| Harness and evidence    | Declared controller/helper entry and closed action protocol, authenticated interpreter/library inputs, dependency-basis source locks, argv/environment/cwd recipe, role discriminator, report/export map and finite qualification declaration. Actual implementation commit/tree and code digests belong to the subsequent realization record.            |
 
 Signatures authenticate their named vendor inputs, not the author's JSON or
 future host behavior. Integrity-only and attested inputs retain their explicit
@@ -94,10 +123,11 @@ Guest PID 1 and every system/user manager remain inside the delegated subtree.
 Require a positively verified non-identity user namespace and its actual UID/GID
 maps, supported cgroup namespace/delegation and report/source ownership. A
 namespace fallback or unsupported observation primitive fails before payload.
-The guest account is ordinary `runner`, UID/GID 1001, with its own home, user
-bus/logind setup and guest-only noninteractive sudo. Its OS privilege grants no
-host access or application caller standing. Actual mappings never assume the
-host runner also has UID 1001.
+The ordinary guest account is defined by `guest.account` in
+`enclosure-recipes.json`, with its own home, user bus/logind setup and
+namespace-confined noninteractive sudo. Its OS privilege grants no host access
+or application caller standing. Actual mappings never equate the configured
+guest identity with the host account.
 
 The payload unit is not boot-enabled. It runs the same full-profile public entry
 as the ordinary guest account from the checked candidate, with explicit payload
@@ -124,7 +154,8 @@ overflow/disconnect detection. Reconnection or same-name reopen does not restore
 lost continuity. The finite qualification below proves these actual semantics;
 stat equality and a source citation do not.
 
-The report map distinguishes CI's checked revision/tree from the immutable
+The report map includes the rolling-input observations defined by the recipe and
+distinguishes CI's checked revision/tree from the immutable
 release candidate's commit/tree, and each workflow's primary prefix. Witness
 and recovery siblings are explicit additive paths. Existing candidate files,
 B13 and other separately authorized sidecars retain their exact mappings and

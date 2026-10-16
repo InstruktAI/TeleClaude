@@ -193,6 +193,15 @@ operation receipts and application events retain their public owners. Physical
 observations supply containment evidence, never substitute application state
 or authentication decisions (`sdlc/policy/ai-agent-security`).
 
+The enclosure's input declaration distinguishes its fixed bootstrap substrate,
+source-locked project environments and product-owned rolling installation.
+Actual rolling tool/interpreter/dependency identities and activation effects are
+bound to that run before finalization, under the enclosure's observation recipe.
+A project lock supplies no identity for an independently resolved tool. Missing
+observations stay unknown; the supported installer's selection/setup semantics
+remain unchanged. Setup qualification supplies no product-install evidence
+(`general/principle/verification-independence`).
+
 The inner report is an immutable provisional result. A typed deferred physical
 closure condition is distinct from a failed assertion, unknown operation,
 missing public fact, failed daemon stop, corrupt evidence or missing scenario.

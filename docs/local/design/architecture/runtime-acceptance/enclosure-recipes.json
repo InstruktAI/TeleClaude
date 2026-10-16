@@ -114,11 +114,38 @@
       "interface": "policy-rc.d service action; every attempted package service action returns exit101 and starts nothing",
       "implementation_bytes": "belong to the postimplementation source-realization record",
       "lifetime": "installed before guest package unpack/configure; removed before supported product installer; guest script only, never executed on host"
+    },
+    "product_rolling_tools": {
+      "selection_owner": {
+        "dependency_basis": "static-lock.json source_dependency_locks",
+        "source": "bin/install.sh",
+        "operation": "_log_runtime_ensure_current",
+        "package_declaration": "LOG_RUNTIME_PACKAGE",
+        "setup_operation": "install_log_runtime delegates to the selected distribution console entry"
+      },
+      "selection_semantics": "Execute the unchanged supported full installer, including its native unconstrained uv tool install --upgrade request and the selected tool setup. The project uv.lock is not the independent tool environment lock.",
+      "collector_restrictions": [
+        "no version/range pin, extra constraint, substituted index or forced offline resolution",
+        "no preinstallation/skip in place of the rolling operation",
+        "no manual mutation of the uv-managed tool environment or generated rotation assets",
+        "no collector invocation of the setup entrypoint a second time",
+        "no metadata/prose used as workflow/authentication decisions"
+      ],
+      "scope": "Only the source-owned shared logger tool path is declared here; an additional unclassified rolling installation remains a preparation/input finding, not an implicit permission.",
+      "linux_prerequisite": "The operating-system rotator required by the package-owned Linux user-scheduler interface is in the fixed guest bootstrap closure. Its presence is not a Python tool version constraint."
     }
   },
   "helper_protocol": {
     "entry": "tools/ci/runtime_acceptance.py --enclosure-role privileged --enclosure-manifest <owned-manifest> --enclosure-action <closed-action>",
-    "roles": ["supervisor", "payload", "guest-setup", "guest-poweroff", "privileged", "qualification"],
+    "roles": [
+      "supervisor",
+      "payload",
+      "guest-setup",
+      "guest-poweroff",
+      "privileged",
+      "qualification",
+      "rolling-input-observer"
+    ],
     "mutating_actions": [
       {
         "action": "provision",
@@ -236,7 +263,8 @@
     "immutable_inputs": [
       "inner report bytes/hash",
       "effect ledger and all independent retention keys",
-      "public P1/P2 facts and same-generation P3 outcome"
+      "public P1/P2 facts and same-generation P3 outcome",
+      "per-invocation rolling-tool dependency/activation observations with their actual provenance limits"
     ],
     "outer_fields": [
       "source_commit",
@@ -249,7 +277,8 @@
       "functional_outcome",
       "cleanup_outcome",
       "resource_release_outcome",
-      "local_export_readback"
+      "local_export_readback",
+      "rolling_input_observation_refs"
     ],
     "upload_claim": "Final local report records export readiness, never the success of its own later upload. Remote upload eligibility/result is separately observed workflow evidence; missing or failed mandatory export prevents the overall acceptance/delivery claim.",
     "exports": {
@@ -313,5 +342,56 @@
     "guest.network": "guest:/etc/systemd/network/80-acceptance-host0.network",
     "guest.sudoers": "guest:/etc/sudoers.d/acceptance-runner",
     "diagnostic@.service": "/run/systemd/system/tc-ra-qual-{run_token}@.service; setup qualification only"
+  },
+  "rolling_input_observation": {
+    "entry": "tools/ci/runtime_acceptance.py --enclosure-role rolling-input-observer --enclosure-manifest <owned-manifest> --observation-key <source-reviewed-installer-invocation>",
+    "purpose": "Real per-run dependency and activation evidence for product-owned rolling installation; not a resolver, pin, substitute installer or separate application test.",
+    "source_coverage": "The exact-SHA source review identifies every full-installer invocation reachable in the selected profile, including nested maintenance, and its matching observation/effect record. An uncovered actual invocation, unknown result or unstable metadata remains unproven. A final snapshot never proves an unobserved history.",
+    "order": [
+      "Record source/run/invocation-bound intent before the supported installer",
+      "Capture bounded native tool-root, metadata and system/user-manager activation baseline",
+      "Allow the unchanged supported installer to perform native resolution and setup",
+      "After its actual outcome, capture actual independent tool environment, dependency and activation observations without rerunning installation or setup",
+      "Before P3, freeze available invocation records and final observations while native manager reads are available",
+      "Preserve every original installer error and separately unknown/missing observation before any P4 aggregation"
+    ],
+    "native_metadata_authority": [
+      "public uv tool root discovery and native uv-receipt.toml request/entrypoint metadata, under its actual schema",
+      "standard installed distribution METADATA, WHEEL, entry_points.txt, RECORD and pyvenv.cfg; no import of the package",
+      "actual installed file/symlink/interpreter bytes under the owned guest, with anchored scope and completeness/I/O disposition",
+      "actual original archive/cache provenance only when present; installed-tree hashes are not original transport-archive hashes"
+    ],
+    "interpreter_observation": {
+      "prospective_source": "tools/ci/acceptance_interpreter_metadata.py",
+      "invocation": "actual tool interpreter -I -S <source-reviewed harness metadata module>",
+      "authority": "fresh isolated stdlib-only interpreter reports its own identity; no application package or site hook imported",
+      "implementation_bytes": "postimplementation realization record"
+    },
+    "activation_authority": [
+      "native guest system and user manager unit/file/job/timer properties before/after the actual installer and before P3",
+      "actual emitted unit/configuration files and symlink targets, file digests, ownership and effective ExecStart/source references",
+      "observed process placement and manager namespace mapping; no static-name-only inference that these are the only possible creators"
+    ],
+    "required_record_fields": [
+      "source_commit",
+      "source_tree",
+      "run_identity",
+      "static_lock_sha256",
+      "realization_sha256",
+      "installer_invocation_key",
+      "source-owned requested package/selection policy",
+      "actual installer outcome or unknown",
+      "actual selected distribution names/versions/Requires-Python/Requires-Dist and full installed dependency manifest",
+      "actual tool interpreter identity and installed-tree byte identities",
+      "uv receipt and console-entrypoint identity/digests",
+      "acquisition provenance with its observed kind or explicitly unavailable raw archive facts",
+      "activation baseline/after/final capture points and actual unit/configuration/process-placement facts",
+      "observation completeness, instability and missing/unexecuted facts",
+      "original functional/installer failure and independent retention causes"
+    ],
+    "evidence_limits": "An observed installed-tree manifest identifies installed bytes at its stated capture point. It does not claim original compressed archive bytes, every past code epoch, a trigger handled, a consumed operation or a public session close. Missing required current dependency/activation facts or an uncovered actual installer invocation blocks acceptance; unavailable non-required transport bytes are explicitly unclaimed, not invented.",
+    "containment": "Every rolling installer, build helper, selected interpreter/tool, emitted user scheduler and rotator remains inside the established guest subtree; unknown physical outside creators invalidate P4. Fixed substrate drift invalidates its qualified binding. No package-specific exception replaces the complete physical denominator.",
+    "budgets": "Each observer action consumes the existing normal-command and original outer remaining budget; no extra retry, global deadline reset or scenario allowance. Setup qualification executes no product rolling install.",
+    "export": "Store only bounded sanitized structured metadata and digests in the existing inner report/witness/recovery paths. No tool environment, home, credentials or raw arbitrary config archive is uploaded; truncation of required identity/effect evidence is unproven."
   }
 }
