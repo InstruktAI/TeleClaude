@@ -5,9 +5,10 @@ from __future__ import annotations
 import time
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from tools.ci import workflow_creation as creation
+from tools.ci import workflow_events
 from tools.ci import workflow_flow as flow_module
 from tools.ci import workflow_ledger as start_ledger
 from tools.ci import workflow_publication as publication
@@ -260,6 +261,9 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
         manifest = flow.verify_manifest()
         if manifest.get("last_completed_case") != flow_module.SFC_CHAIN_B7:
             raise creation.binding_failure(DETAIL_HANDOVER)
+        if flow.event_window is None or flow.event_case_seal is None:
+            raise creation.binding_failure(DETAIL_HANDOVER)
+        workflow_events.verify_case(flow.event_window, "B7", flow.event_case_seal)
         flow.begin_case(flow_module.SFC_CHAIN_B6, flow_module.B6_ACTIONS)
         item_before = flow.item()
         standing = item_before.get(FIELD_STANDING)
@@ -327,6 +331,33 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
                 )
             )
         delivered, main_head = _verify_delivered_readback(flow, base)
+        pages, coverages, event_error = workflow_events.read_pages(flow.observer, flow.event_window)
+        final_item = flow.item()
+        flow.event_case_seal = workflow_events.append_case(
+            flow.event_window,
+            "B6",
+            {
+                "delivered_commit": main_head,
+                "final_item": final_item,
+                "pages": cast(flow_module.JsonValue, pages),
+                "coverage": cast(flow_module.JsonValue, coverages),
+                "read_error": event_error,
+            },
+            previous_case="B7",
+            expected_previous_seal=flow.event_case_seal,
+            status="captured",
+        )
+        try:
+            if event_error is not None:
+                raise creation.platform_failure(workflow_events.DETAIL_EVIDENCE.format(detail=event_error))
+            witness_records = workflow_events.read_records(flow.event_window)
+            workflow_events.assert_positive_facts(flow.event_window, witness_records, pages, coverages, final_item)
+        except BaseException as error:
+            workflow_events.set_case_status(flow.event_window, "B6", "unproven")
+            flow.retain(f"B10 event proof is unproven; retained at {flow.event_window.carrier_root}: {error}")
+            flow.write_retained_marker({"event_proof": "unproven", "event_error": str(error)})
+            raise
+        workflow_events.set_case_status(flow.event_window, "B6", "complete")
         _verify_retired_v1_and_cleanup(flow, delivered, main_head)
         _end(flow, actor)
         flow.sessions[actor] = ROLE_INTEGRATOR

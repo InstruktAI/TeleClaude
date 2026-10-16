@@ -153,6 +153,14 @@ class StartLedger:
     def begin(self, case: str, label: str, kind: str, parent: str | None = None) -> str:
         """Append and fsync one open attempt before its call or gate is crossed."""
         self._require_declared(case, label, kind, parent)
+        parent_id = None
+        if parent is not None:
+            parents = [
+                attempt for attempt in self.attempts.values() if attempt.case == case and attempt.label == parent
+            ]
+            if len(parents) != 1:
+                raise ValueError(DETAIL_PARENT.format(case=case, label=parent))
+            parent_id = parents[0].identifier
         line_number = len(self.lines) + LINE_SEQUENCE_START
         identifier = ID_SEPARATOR.join((self.flow_id, case, label, str(line_number)))
         if identifier in self.attempts:
@@ -164,10 +172,10 @@ class StartLedger:
             RECORD_KIND_FIELD: kind,
             RECORD_STATE_FIELD: RECORD_OPEN,
         }
-        if parent is not None:
-            row[RECORD_PARENT_FIELD] = parent
+        if parent_id is not None:
+            row[RECORD_PARENT_FIELD] = parent_id
         self._append(row)
-        self.attempts[identifier] = Attempt(identifier, case, label, kind, RECORD_OPEN, parent)
+        self.attempts[identifier] = Attempt(identifier, case, label, kind, RECORD_OPEN, parent_id)
         return identifier
 
     def begin_child_before_parent(
@@ -239,6 +247,24 @@ class StartLedger:
             attempt.operation_id,
             session_id,
             attempt.evidence,
+        )
+
+    def record_effect(self, identifier: str, evidence: str) -> None:
+        """Bind an observed owned effect to its still-open ledger attempt without settling it."""
+        attempt = self._open(identifier)
+        if attempt.kind != RECORD_EFFECT or not evidence or attempt.evidence is not None:
+            raise ValueError(DETAIL_INVALID.format(detail="effect evidence does not match an open effect"))
+        self._append({RECORD_ID_FIELD: identifier, RECORD_EVIDENCE_FIELD: evidence})
+        self.attempts[identifier] = Attempt(
+            attempt.identifier,
+            attempt.case,
+            attempt.label,
+            attempt.kind,
+            attempt.state,
+            attempt.parent,
+            attempt.operation_id,
+            attempt.session_id,
+            evidence,
         )
 
     def unknown(self, identifier: str) -> None:
@@ -322,7 +348,11 @@ class StartLedger:
         if row.get(RECORD_KIND_FIELD) == RECORD_UNKNOWN:
             self._read_unknown(row, identifier)
             return
-        if RECORD_OPERATION_FIELD in row or RECORD_SESSION_FIELD in row:
+        if (
+            RECORD_OPERATION_FIELD in row
+            or RECORD_SESSION_FIELD in row
+            or (RECORD_EVIDENCE_FIELD in row and row.get(RECORD_STATE_FIELD) != RECORD_DISCHARGED)
+        ):
             self._read_answer(row, identifier)
             return
         if row.get(RECORD_STATE_FIELD) == RECORD_DISCHARGED:
@@ -407,6 +437,27 @@ class StartLedger:
 
     def _read_answer(self, row: JsonObject, identifier: str) -> None:
         attempt = self._open(identifier)
+        if frozenset(row) == frozenset({RECORD_ID_FIELD, RECORD_EVIDENCE_FIELD}):
+            evidence = row.get(RECORD_EVIDENCE_FIELD)
+            if (
+                attempt.kind != RECORD_EFFECT
+                or not isinstance(evidence, str)
+                or not evidence
+                or attempt.evidence is not None
+            ):
+                raise ValueError(DETAIL_INVALID.format(detail="effect evidence record is malformed"))
+            self.attempts[identifier] = Attempt(
+                attempt.identifier,
+                attempt.case,
+                attempt.label,
+                attempt.kind,
+                attempt.state,
+                attempt.parent,
+                attempt.operation_id,
+                attempt.session_id,
+                evidence,
+            )
+            return
         if frozenset(row) == frozenset({RECORD_ID_FIELD, RECORD_OPERATION_FIELD}):
             operation_id = row.get(RECORD_OPERATION_FIELD)
             if (

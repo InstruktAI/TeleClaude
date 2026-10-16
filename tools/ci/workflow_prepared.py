@@ -43,6 +43,7 @@ from typing import Final, cast
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
+from tools.ci import workflow_events as events
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_handover as handover
 from tools.ci import workflow_items as items
@@ -784,7 +785,7 @@ class _Prepared:
                 if strict:
                     raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail=f"{label} has no public session id"))
                 continue
-            if attempt.state != start_ledger.RECORD_DISCHARGED:
+            if attempt.state != start_ledger.RECORD_OPEN:
                 if strict:
                     raise creation.binding_failure(DETAIL_B9_ATTEMPT.format(detail=f"{label} has no proven end"))
                 continue
@@ -839,10 +840,19 @@ class _Prepared:
         except BaseException as error:
             item_snapshot = {"unavailable": str(error)}
             parsed_log = None
+        candidate_identity: object = self.publication.candidate or {
+            "unavailable": "candidate identity was not captured"
+        }
         try:
-            candidate_identity: object = self.publication.identity()
+            source_identity: object = self.publication.identity()
         except BaseException as error:
-            candidate_identity = {"unavailable": str(error)}
+            source_identity = {"unavailable": str(error)}
+        try:
+            fixture_publication_sha: object = self._git(
+                "retained fixture publication revision", "-C", str(self.publication.clone), "rev-parse", "HEAD"
+            )
+        except BaseException as error:
+            fixture_publication_sha = {"unavailable": str(error)}
         attempts_path = self.controls.root / B4_ATTEMPT_LEDGER
         plan_and_argv = [
             str(path.resolve())
@@ -862,8 +872,9 @@ class _Prepared:
             "last_complete_public_show": item_snapshot,
             "parsed_public_log": parsed_log,
             "candidate_identity": candidate_identity,
+            "source_identity": source_identity,
             "candidate_publication": self.publication.candidate,
-            "fixture_publication_sha": candidate_identity,
+            "fixture_publication_sha": fixture_publication_sha,
             "runtime_home": str(self.temporary_root.resolve()),
             "project": str(self.project),
             "pool_root": str(self.controls.root.resolve()),
@@ -1278,6 +1289,7 @@ def run_prepared(
     owner_slug: str,
     report_path: Path,
     project_slug: str,
+    event_binding: events.EventWindowBinding,
     register_company: Callable[[], None],
     retain: Callable[[str], None],
 ) -> None:
@@ -1285,8 +1297,11 @@ def run_prepared(
     prepared = _Prepared(
         host, setup, project, source_root, owner_email, owner_slug, report_path, register_company, retain
     )
+    events.verify_case(event_binding, events.FIRST_CASE)
+    retain(f"B10 event evidence retained at {event_binding.carrier_root}")
     observer = prepared.observer
     failure: BaseException | None = None
+    event_seal: start_ledger.JsonObject | None = None
     try:
         creation.require_manual_runner(observer)
         prepared.publication.begin(own_generation=True)
@@ -1312,15 +1327,44 @@ def run_prepared(
         prepared.close_b9_outsiders()
         prepared.step4_prepared(author, child, r1)
         prepared.step5_end_author(author_case, author)
-        prepared.step6_moved_refuses_work(r0, r1)
+        r2 = prepared.step6_moved_refuses_work(r0, r1)
         prepared.step7_restore(r1)
         worker_case, worker = prepared.step8_work(author, child)
         prepared.step9_close(worker_case, worker)
+        event_seal = events.append_case(
+            event_binding,
+            "B4",
+            {
+                "selected_variant": "B9",
+                "outsider_sessions": dict(prepared.outsider_sessions),
+                "sessions": list(prepared.known_sessions) + [worker],
+                "author": author,
+                "child": child,
+                "worker": worker,
+                "R0": r0,
+                "R1": r1,
+                "R2": r2,
+                "BODY_C": B9_BODY_C,
+                "BODY_A": BODY_A,
+                "BODY_B": BODY_B,
+                "prepared_log_actor": author,
+                "work_log_actor": worker,
+            },
+            previous_case=events.FIRST_CASE,
+        )
     except BaseException as error:
         failure = error
         raise
     finally:
-        _cleanup(prepared, failure)
+        try:
+            _cleanup(prepared, failure)
+        finally:
+            try:
+                events.verify_case(event_binding, "B4", event_seal if failure is None else None)
+            except BaseException:
+                prepared.retain(DETAIL_B9_RETAINED.format(path=event_binding.carrier_root))
+                if failure is None:
+                    raise
 
 
 def _cleanup(prepared: _Prepared, failure: BaseException | None) -> None:

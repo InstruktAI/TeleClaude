@@ -36,6 +36,7 @@ from typing import Final
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
+from tools.ci import workflow_events as events
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_handover as handover
 from tools.ci import workflow_publication as publication
@@ -91,7 +92,6 @@ FRAME_SECONDS: Final = 60.0
 POLL_SECONDS: Final = 2.0
 LAUNCH_SECONDS: Final = 30.0
 OPERATION_SECONDS: Final = 60.0
-HEADER_PREFIX: Final = "### "
 
 FIELD_PRINCIPAL: Final = "principal"
 FIELD_INITIATOR: Final = "initiator_session_id"
@@ -134,14 +134,8 @@ type Json = Mapping[str, object]
 
 
 def log_entries(log: str) -> list[tuple[str, str]]:
-    """The section headers of a log as (header line, the first non-blank text line after it)."""
-    lines = log.replace("\r\n", "\n").split("\n")
-    entries: list[tuple[str, str]] = []
-    for index, line in enumerate(lines):
-        if line.startswith(HEADER_PREFIX):
-            text = next((later.strip() for later in lines[index + 1 :] if later.strip()), "")
-            entries.append((line, text))
-    return entries
+    """The exact renderer sections as (header line, body), retaining empty and adjacent entries."""
+    return [(entry.header, entry.body) for entry in events.parse_log_entries(log)]
 
 
 class _Waiting:
@@ -624,6 +618,8 @@ def run_waiting(
     source_root: Path,
     owner_email: str,
     owner_slug: str,
+    project_slug: str,
+    project_name: str,
     register_company: Callable[[], None],
     retain: Callable[[str], None],
 ) -> None:
@@ -631,6 +627,7 @@ def run_waiting(
     waiting = _Waiting(host, setup, project, source_root, owner_email, owner_slug, register_company, retain)
     observer = waiting.observer
     failure: BaseException | None = None
+    event_binding: events.EventWindowBinding | None = None
     try:
         creation.require_manual_runner(observer)
         waiting.publication.begin(own_generation=True)
@@ -643,6 +640,10 @@ def run_waiting(
         creation.require_value(ITEM, before, "state.lifecycle_phase", PHASE_PREPARATION)
         creation.require_unclaimed(ITEM, before)
         creation.require_standing_clear(ITEM, before)
+        event_binding = events.begin_b3_window(
+            observer, setup.control.parent, project, project_slug, project_name, before
+        )
+        retain(f"B10 event evidence retained at {event_binding.carrier_root}")
         waiting.clone = waiting.publication.prepare()
         creation.enter_project(observer, project)
         publication.negative_control(observer, ITEM, waiting.baseline, before, waiting.starts)
@@ -659,8 +660,29 @@ def run_waiting(
         waiting.step8_decide(owner)
         second_case, second = waiting.step9_second_driver(owner, first, child, dispatched)
         waiting.step10_close(second_case, second, owner, dispatched)
+        events.append_case(
+            event_binding,
+            events.FIRST_CASE,
+            {
+                "person": waiting.person,
+                "owner": owner,
+                "first_driver": first,
+                "child": child,
+                "dispatched": dispatched,
+                "second_driver": second,
+                "wait_key": waiting.key,
+                "question": QUESTION,
+                "answer": ANSWER,
+                "waited_phase": PHASE_PREPARATION,
+            },
+            previous_case=None,
+        )
     except BaseException as error:
         failure = error
+        retain(
+            f"B10 event interval remains unproven at "
+            f"{event_binding.carrier_root if event_binding else setup.control.parent}"
+        )
         raise
     finally:
         _cleanup(waiting, failure)

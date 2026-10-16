@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 from collections.abc import Mapping, Sequence
@@ -10,6 +11,7 @@ from typing import Final, NoReturn, cast
 
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
+from tools.ci import workflow_events
 from tools.ci import workflow_flow as flow_module
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_ledger as start_ledger
@@ -55,6 +57,9 @@ LANE_TWO: Final = (
 )
 FINDING_TEXT: Final = "Important: the feature file lacks a trailing note"
 REPLY_TEXT: Final = "fixed in the next commit"
+ACT_REVIEWED: Final = "reviewed"
+ACT_FINDING: Final = "finding"
+ACT_REPLY: Final = "reply"
 POLL_SECONDS: Final = 2.0
 START_SECONDS: Final = 900.0
 OPERATION_SECONDS: Final = 300.0
@@ -68,6 +73,30 @@ DETAIL_LEDGER: Final = "B5 ledger declaration failed: {detail}"
 DETAIL_PRECONDITION: Final = "B5 began outside the approved unclaimed work state: {item!r}"
 DETAIL_WRITE_SCOPE: Final = "builder launch cwd and public project_path do not name the owned worktree"
 DETAIL_INTEGRATOR: Final = "no started integrator has a public session record and mapped native control"
+B11_SENTINEL_BYTES: Final = b"b11 dirty sentinel\n"
+B11_SENTINEL_LINE: Final = "b11 dirty sentinel"
+B11_BASE_FEATURE_BYTES: Final = b"b5 file one\nb5 file two\n"
+B11_STATUS_MODIFIED: Final = " M feature.txt"
+B11_NUMSTAT: Final = "1\t0\tfeature.txt"
+B11_DIRTY_REFUSAL: Final = "stamp: the worktree has uncommitted changes"
+B11_LOCAL_COMMIT_MESSAGE: Final = flow_module.B11_LOCAL_HEAD_MESSAGE
+B11_STAMP_UNCLEAN: Final = "stampunclean"
+B11_STAMP_WORKTREE: Final = "stampworktree"
+B11_SENTINEL_LABEL: Final = "dirty-sentinel"
+B11_LOCAL_HEAD_LABEL: Final = "temporary-local-head"
+B11_TRIGGER_UNCLEAN: Final = "stamp-unclean"
+B11_TRIGGER_WORKTREE: Final = "stamp-worktree-head"
+B11_UNCLEAN_ARGV: Final = "stampunclean.argv"
+B11_WORKTREE_ARGV: Final = "stampworktree.argv"
+B11_CLI_NAME: Final = "telec"
+B11_STAMP_VERB: Final = "stamp"
+B11_FEATURE_PATH: Final = "feature.txt"
+B11_PAYLOAD_PATH: Final = "path"
+B11_PAYLOAD_MODE: Final = "mode"
+B11_PAYLOAD_BYTES: Final = "bytes"
+B11_PAYLOAD_SHA: Final = "sha256"
+B11_FRAME_WRITES: Final = "writes"
+B11_EXPECTED_APPEND_COUNT: Final = 19
 
 
 def _fail(detail: str) -> NoReturn:
@@ -129,11 +158,34 @@ def _startup(
 
 
 def _operation_command(
-    flow: flow_module.WorkflowFlow, session: str, frame_name: str
+    flow: flow_module.WorkflowFlow, session: str, frame_name: str, attempt_id: str | None = None
 ) -> tuple[Mapping[str, object], Mapping[str, object]]:
-    frame = _frame_success(flow, session, frame_name)
-    _, terminal = _operation(flow, frame, frame_name)
+    try:
+        frame = _frame_success(flow, session, frame_name)
+    except BaseException:
+        if attempt_id is not None:
+            flow.require_ledger().unknown(attempt_id)
+        raise
+    if attempt_id is None:
+        _, terminal = _operation(flow, frame, frame_name)
+        return frame, terminal
+    run = frame.get("run")
+    stdout = run.get("stdout") if isinstance(run, Mapping) else None
+    receipt = foundation.json_object(stdout) if isinstance(stdout, str) else None
+    operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
+    if not isinstance(operation, str) or not operation:
+        flow.require_ledger().unknown(attempt_id)
+        raise creation.binding_failure(DETAIL_BINDING.format(detail=f"{frame_name} receipt is missing"))
+    flow.require_ledger().record_operation(attempt_id, operation)
+    terminal = publication.await_terminal(flow.observer, operation, OPERATION_SECONDS)
     return frame, terminal
+
+
+def _git_bytes(flow: flow_module.WorkflowFlow, *arguments: str, cwd: Path) -> bytes:
+    result = flow.host.process(("git", *arguments), cwd, flow.host.environment, FRAME_SECONDS)
+    if result.exit_status != 0:
+        raise creation.binding_failure(DETAIL_BINDING.format(detail=f"git {' '.join(arguments)} failed"))
+    return result.output.encode("utf-8")
 
 
 def _direct_act(
@@ -165,13 +217,29 @@ def _expect_log_append(
     bound: str | None,
     text: str,
 ) -> None:
-    after = _public_log(flow.item())
-    header = after[-1][0] if after else ""
-    expected = f" · {role} · {session} · {act}"
-    if bound:
-        expected += f" ({bound})"
-    if len(after) != len(before) + 1 or after[:-1] != before or expected not in header or after[-1][1].strip() != text:
-        _fail(f"{act} log delta does not match its actor, binding and text: {after[len(before) :]!r}")
+    shown = flow.item()
+    artifact = shown.get("artifact_content")
+    raw_log = artifact.get(FIELD_LOG) if isinstance(artifact, Mapping) else None
+    if not isinstance(raw_log, str):
+        raise creation.binding_failure(DETAIL_BINDING.format(detail="public B5 log is unavailable"))
+    entries = workflow_events.parse_log_entries(raw_log)
+    after = [(entry.header, entry.body) for entry in entries]
+    if len(after) != len(before) + 1 or after[:-1] != before:
+        _fail(f"{act} log section did not append exactly once: {after[len(before) :]!r}")
+    entry = entries[-1]
+    expected_bound = bound
+    if act in (ACT_FINDING, ACT_REPLY):
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+        expected_bound = f"{bound}:{digest}" if bound else digest
+    if (
+        not entry.timestamp
+        or entry.role != role
+        or entry.session != session
+        or entry.act != act
+        or entry.bound != expected_bound
+        or entry.body != text
+    ):
+        _fail(f"{act} public log actor, binding, or exact body differed: {entry!r}")
 
 
 def _direct_effect(flow: flow_module.WorkflowFlow, label: str) -> str:
@@ -325,6 +393,7 @@ def _start_work(
         verb=WORK,
         phase=flow_module.WORK_PHASE,
     )
+    case.require_title_stable(w2)
     instruction = case.claim_call((operation,))
     case.check_instruction(w2, instruction)
     case.observe_claim(w2, known_entries=known_claims)
@@ -395,8 +464,8 @@ def _build_and_review(
     reviewed_log = _public_log(flow.item())
     flow.late_argv(w2, "reviewed.argv", (TELEC, TODO, ACT, flow_module.ITEM, "reviewed", "--sha", commit_one))
     flow.gate(w2, "go_rev")
-    _direct_act(flow, w2, "reviewed", f"Performed reviewed on {flow_module.ITEM}")
-    _expect_log_append(flow, reviewed_log, ROLE_WORK, w2, "reviewed", commit_one, "")
+    _direct_act(flow, w2, "reviewed", f"Performed {ACT_REVIEWED} on {flow_module.ITEM}")
+    _expect_log_append(flow, reviewed_log, ROLE_WORK, w2, ACT_REVIEWED, commit_one, "")
     flow.require_ledger().discharge(reviewed_attempt, "W2 performed reviewed on the published C1 head")
     finding_attempt = _direct_effect(flow, "finding")
     finding_log = _public_log(flow.item())
@@ -404,8 +473,8 @@ def _build_and_review(
         w2, "finding.argv", (TELEC, TODO, ACT, flow_module.ITEM, "finding", "--sha", commit_one, FINDING_TEXT)
     )
     flow.gate(w2, "go_find")
-    _, finding_text = _direct_act(flow, w2, "finding", f"Performed finding on {flow_module.ITEM}")
-    _expect_log_append(flow, finding_log, ROLE_WORK, w2, "finding", commit_one, FINDING_TEXT)
+    _, finding_text = _direct_act(flow, w2, "finding", f"Performed {ACT_FINDING} on {flow_module.ITEM}")
+    _expect_log_append(flow, finding_log, ROLE_WORK, w2, ACT_FINDING, commit_one, FINDING_TEXT)
     flow.require_ledger().discharge(finding_attempt, "W2 performed finding on the published C1 head")
     key_match = re.search(r"finding key:\s*(\S+)", finding_text)
     if key_match is None:
@@ -426,8 +495,8 @@ def _build_and_review(
         builder, "reply.argv", (TELEC, TODO, ACT, flow_module.ITEM, "reply", "--finding", finding_key, REPLY_TEXT)
     )
     flow.gate(builder, "go_reply")
-    _direct_act(flow, builder, "reply", f"Performed reply on {flow_module.ITEM}")
-    _expect_log_append(flow, reply_log, ROLE_BUILDER, builder, "reply", finding_key, REPLY_TEXT)
+    _direct_act(flow, builder, "reply", f"Performed {ACT_REPLY} on {flow_module.ITEM}")
+    _expect_log_append(flow, reply_log, ROLE_BUILDER, builder, ACT_REPLY, finding_key, REPLY_TEXT)
     flow.require_ledger().discharge(reply_attempt, "the builder replied to W2's published finding key")
     flow.gate(builder, "go_c2")
     _frame_success(flow, builder, "write2", writes=True)
@@ -454,7 +523,7 @@ def _build_and_review(
     return commit_one, commit_two, finding_key
 
 
-def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, commit_one: str, commit_two: str) -> None:
+def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, commit_one: str, commit_two: str) -> str:
     worktree = flow.project / flow_module.WORKTREE_DIRECTORY / flow_module.ITEM
     snapshot = flow.item()
     snapshot_log = _public_log(snapshot)
@@ -466,9 +535,11 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, comm
     flow.late_argv(
         w2, "stamp_nonhead.argv", (TELEC, TODO, ACT, flow_module.ITEM, "stamp", "--sha", commit_one, LANE_ONE)
     )
-    flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-nonhead", start_ledger.RECORD_TRIGGER)
+    nonhead_attempt = flow.require_ledger().begin(
+        flow_module.SFC_CHAIN_B5, "stamp-nonhead", start_ledger.RECORD_TRIGGER
+    )
     flow.gate(w2, "go_nh")
-    _, rejected = _operation_command(flow, w2, "stamp_nonhead")
+    _, rejected = _operation_command(flow, w2, "stamp_nonhead", nonhead_attempt)
     error = rejected.get(FIELD_ERROR)
     if (
         rejected.get(FIELD_STATE) != STATE_FAILED
@@ -490,9 +561,9 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, comm
     if current_refs != refs:
         _fail(f"a refused non-head stamp moved the branch refs: {current_refs!r}")
     flow.late_argv(w2, "stamp_empty.argv", (TELEC, TODO, ACT, flow_module.ITEM, "stamp", "--sha", commit_two))
-    flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-empty", start_ledger.RECORD_TRIGGER)
+    empty_attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-empty", start_ledger.RECORD_TRIGGER)
     flow.gate(w2, "go_empty")
-    _, empty = _operation_command(flow, w2, "stamp_empty")
+    _, empty = _operation_command(flow, w2, "stamp_empty", empty_attempt)
     if empty.get(FIELD_STATE) != STATE_FAILED or "lane report" not in str(empty.get(FIELD_ERROR, "")):
         _fail(f"empty stamp did not refuse the missing lane report: {empty!r}")
     if (
@@ -506,11 +577,12 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, comm
         != refs
     ):
         _fail("empty stamp changed the item or branch refs")
+    _exercise_b11_stamp_refusals(flow, w2, builder, commit_two, worktree)
     success_log = _public_log(flow.item())
     flow.late_argv(w2, "stamp_ok.argv", (TELEC, TODO, ACT, flow_module.ITEM, "stamp", "--sha", commit_two, LANE_ONE))
-    flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-ok", start_ledger.RECORD_TRIGGER)
+    success_attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-ok", start_ledger.RECORD_TRIGGER)
     flow.gate(w2, "go_ok")
-    _, stamped = _operation_command(flow, w2, "stamp_ok")
+    _, stamped = _operation_command(flow, w2, "stamp_ok", success_attempt)
     if stamped.get(FIELD_STATE) != STATE_COMPLETED or not str(stamped.get(FIELD_RESULT, "")).startswith(
         f"Stamped {flow_module.ITEM} at {commit_two}"
     ):
@@ -531,6 +603,291 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, comm
     builder_record = flow.session_record(builder)
     if builder_record.get("closed_at") is None or builder_record.get("lifecycle_status") != "closed":
         _fail(f"successful stamp did not close the builder child: {builder_record!r}")
+    ready_since = standing.get("ready_since")
+    if not isinstance(ready_since, str) or not ready_since:
+        raise creation.binding_failure("B10 requires the public C2 ready_since witness before the C3 head move")
+    return ready_since
+
+
+def _b11_ref_state(flow: flow_module.WorkflowFlow, worktree: Path) -> tuple[str, str, str, str]:
+    remote = _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}")
+    head = _git(flow, "rev-parse", "HEAD", cwd=worktree)
+    branch = _git(flow, "show-ref", "--verify", f"refs/heads/{flow_module.ITEM}", cwd=worktree)
+    count = _git(
+        flow,
+        "rev-list",
+        "--count",
+        f"origin/{flow_module.MAIN}..{flow_module.ITEM}",
+        cwd=worktree,
+    )
+    return remote, head, branch, count
+
+
+def _b11_assert_clean_c2(
+    flow: flow_module.WorkflowFlow, worktree: Path, commit: str, refs: tuple[str, str, str, str]
+) -> None:
+    expected_remote = f"{commit}\trefs/heads/{flow_module.ITEM}"
+    expected_branch = f"{commit} refs/heads/{flow_module.ITEM}"
+    feature = worktree / B11_FEATURE_PATH
+    if (
+        refs[0] != expected_remote
+        or refs[1] != commit
+        or refs[2] != expected_branch
+        or not refs[3].isdigit()
+        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
+        or _git(flow, "diff", "--cached", "--name-only", cwd=worktree)
+        or feature.read_bytes() != B11_BASE_FEATURE_BYTES
+        or _git_bytes(flow, "show", f"{commit}:{B11_FEATURE_PATH}", cwd=worktree) != B11_BASE_FEATURE_BYTES
+    ):
+        raise creation.binding_failure(DETAIL_BINDING.format(detail="B11 requires the clean published C2 tree"))
+
+
+def _b11_assert_owned_append(flow: flow_module.WorkflowFlow, worktree: Path) -> None:
+    status = _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
+    additions = _git(flow, "diff", "--numstat", "--", B11_FEATURE_PATH, cwd=worktree)
+    diff = _git(flow, "diff", "--no-ext-diff", "--unified=0", "--", B11_FEATURE_PATH, cwd=worktree)
+    changed_lines = [
+        line for line in diff.splitlines() if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
+    ]
+    if (
+        status != B11_STATUS_MODIFIED
+        or _git(flow, "diff", "--cached", "--name-only", cwd=worktree)
+        or additions != B11_NUMSTAT
+        or changed_lines != [f"+{B11_SENTINEL_LINE}"]
+        or (worktree / B11_FEATURE_PATH).read_bytes() != B11_BASE_FEATURE_BYTES + B11_SENTINEL_BYTES
+    ):
+        raise creation.binding_failure(
+            DETAIL_BINDING.format(detail="B11 worktree differs from its owned sentinel append")
+        )
+
+
+def _b11_item_unchanged(
+    flow: flow_module.WorkflowFlow,
+    snapshot: Mapping[str, object],
+    parsed_log: list[tuple[str, str]],
+    where: str,
+) -> None:
+    current = flow.item()
+    if current != snapshot or _public_log(current) != parsed_log:
+        _fail(f"B11 {where} changed the strict public item or parsed log")
+
+
+def _b11_refused_stamp(
+    flow: flow_module.WorkflowFlow,
+    w2: str,
+    attempt_label: str,
+    argv_file: str,
+    frame_name: str,
+    gate: str,
+    requested_sha: str,
+    expected_error: str,
+    snapshot: Mapping[str, object],
+    parsed_log: list[tuple[str, str]],
+    unchanged_refs: tuple[str, str, str, str],
+) -> None:
+    attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, attempt_label, start_ledger.RECORD_TRIGGER)
+    flow.late_argv(
+        w2,
+        argv_file,
+        (TELEC, TODO, ACT, flow_module.ITEM, B11_STAMP_VERB, "--sha", requested_sha, LANE_ONE),
+    )
+    flow.gate(w2, gate)
+    _, terminal = _operation_command(flow, w2, frame_name, attempt)
+    error = terminal.get(FIELD_ERROR)
+    if terminal.get(FIELD_STATE) != STATE_FAILED or not isinstance(error, str) or expected_error not in error:
+        _fail(f"B11 {frame_name} did not return the exact approved refusal: {terminal!r}")
+    _b11_item_unchanged(flow, snapshot, parsed_log, frame_name)
+    if _b11_ref_state(flow, flow.project / flow_module.WORKTREE_DIRECTORY / flow_module.ITEM) != unchanged_refs:
+        _fail(f"B11 {frame_name} changed the guarded Git refs")
+
+
+def _b11_restore_dirty_sentinel(
+    flow: flow_module.WorkflowFlow,
+    worktree: Path,
+    effect: str,
+    snapshot: Mapping[str, object],
+    parsed_log: list[tuple[str, str]],
+    refs: tuple[str, str, str, str],
+    staged_paths: str,
+) -> None:
+    _b11_assert_owned_append(flow, worktree)
+    if (
+        _b11_ref_state(flow, worktree) != refs
+        or _git(flow, "diff", "--cached", "--name-only", cwd=worktree) != staged_paths
+    ):
+        raise creation.binding_failure(DETAIL_BINDING.format(detail="B11 staged index changed before sentinel restore"))
+    restored = flow.host.process(
+        ("git", "restore", "--worktree", "--", B11_FEATURE_PATH),
+        worktree,
+        flow.host.environment,
+        FRAME_SECONDS,
+    )
+    if restored.exit_status != 0:
+        raise creation.binding_failure(DETAIL_BINDING.format(detail=restored.output[-300:]))
+    if (
+        _b11_ref_state(flow, worktree) != refs
+        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
+        or _git(flow, "diff", "--cached", "--name-only", cwd=worktree) != staged_paths
+        or (worktree / B11_FEATURE_PATH).read_bytes() != B11_BASE_FEATURE_BYTES
+        or _git_bytes(flow, "show", f"{refs[1]}:{B11_FEATURE_PATH}", cwd=worktree) != B11_BASE_FEATURE_BYTES
+    ):
+        raise creation.binding_failure(DETAIL_BINDING.format(detail="B11 sentinel restore did not return to exact C2"))
+    _b11_item_unchanged(flow, snapshot, parsed_log, "sentinel restore")
+    flow.require_ledger().discharge(
+        effect, "owned 19-byte append restored; C2 refs, index, bytes and public item re-read"
+    )
+
+
+def _b11_unclean_probe(flow: flow_module.WorkflowFlow, w2: str, builder: str, commit: str, worktree: Path) -> None:
+    snapshot = flow.item()
+    parsed_log = _public_log(snapshot)
+    refs = _b11_ref_state(flow, worktree)
+    _b11_assert_clean_c2(flow, worktree, commit, refs)
+    staged_paths = _git(flow, "diff", "--cached", "--name-only", cwd=worktree)
+    effect = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, B11_SENTINEL_LABEL, start_ledger.RECORD_EFFECT)
+    flow.gate(builder, "go_dirtywrite")
+    frame = _frame_success(flow, builder, "dirtywrite", writes=True)
+    writes = frame.get(B11_FRAME_WRITES)
+    row = writes[0] if isinstance(writes, list) and len(writes) == 1 else None
+    if (
+        frame.get("cwd") != str(worktree.resolve())
+        or not isinstance(row, Mapping)
+        or row.get(B11_PAYLOAD_PATH) != B11_FEATURE_PATH
+        or row.get(B11_PAYLOAD_MODE) != "append"
+        or row.get(B11_PAYLOAD_BYTES) != B11_EXPECTED_APPEND_COUNT
+        or row.get(B11_PAYLOAD_SHA) != flow_module.B11_SENTINEL_SHA256
+    ):
+        raise creation.binding_failure(DETAIL_FRAME.format(name="dirtywrite", frame=frame))
+    _b11_assert_owned_append(flow, worktree)
+    if _b11_ref_state(flow, worktree) != refs:
+        raise creation.binding_failure(DETAIL_BINDING.format(detail="B11 dirty write changed an item ref"))
+    flow.require_ledger().record_effect(
+        effect,
+        f"feature.txt append bytes={B11_EXPECTED_APPEND_COUNT} sha256={flow_module.B11_SENTINEL_SHA256}",
+    )
+    failure: BaseException | None = None
+    try:
+        _b11_refused_stamp(
+            flow,
+            w2,
+            B11_TRIGGER_UNCLEAN,
+            B11_UNCLEAN_ARGV,
+            B11_STAMP_UNCLEAN,
+            "go_unclean",
+            commit,
+            B11_DIRTY_REFUSAL,
+            snapshot,
+            parsed_log,
+            refs,
+        )
+    except BaseException as error:
+        failure = error
+    try:
+        _b11_restore_dirty_sentinel(flow, worktree, effect, snapshot, parsed_log, refs, staged_paths)
+    except BaseException:
+        flow.retain(flow_module.RETAINED_MARKER.format(path=flow.root))
+        if failure is None:
+            raise
+    if failure is not None:
+        raise failure
+
+
+def _b11_restore_local_head(
+    flow: flow_module.WorkflowFlow,
+    worktree: Path,
+    effect: str,
+    c2: str,
+    temporary: str,
+    snapshot: Mapping[str, object],
+    parsed_log: list[tuple[str, str]],
+    original_refs: tuple[str, str, str, str],
+) -> None:
+    current_refs = _b11_ref_state(flow, worktree)
+    parent = _git(flow, "rev-parse", f"{temporary}^", cwd=worktree)
+    if (
+        current_refs[0] != original_refs[0]
+        or current_refs[1] != temporary
+        or current_refs[2] != f"{temporary} refs/heads/{flow_module.ITEM}"
+        or parent != c2
+        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
+    ):
+        raise creation.binding_failure(
+            DETAIL_BINDING.format(detail="B11 temporary commit is no longer the sole owned change")
+        )
+    reset = flow.host.process(("git", "reset", "--hard", c2), worktree, flow.host.environment, FRAME_SECONDS)
+    if reset.exit_status != 0:
+        raise creation.binding_failure(DETAIL_BINDING.format(detail=reset.output[-300:]))
+    if (
+        _b11_ref_state(flow, worktree) != original_refs
+        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
+        or (worktree / B11_FEATURE_PATH).read_bytes() != B11_BASE_FEATURE_BYTES
+    ):
+        raise creation.binding_failure(
+            DETAIL_BINDING.format(detail="B11 temporary commit restore did not return to C2")
+        )
+    _b11_item_unchanged(flow, snapshot, parsed_log, "temporary-head restore")
+    flow.require_ledger().discharge(effect, f"owned local-only commit {temporary} reset to C2 and refs/item re-read")
+
+
+def _b11_worktree_head_probe(flow: flow_module.WorkflowFlow, w2: str, c2: str, worktree: Path) -> None:
+    snapshot = flow.item()
+    parsed_log = _public_log(snapshot)
+    original_refs = _b11_ref_state(flow, worktree)
+    _b11_assert_clean_c2(flow, worktree, c2, original_refs)
+    effect = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, B11_LOCAL_HEAD_LABEL, start_ledger.RECORD_EFFECT)
+    commit_result = flow.host.process(
+        ("git", "commit", "--allow-empty", "-m", B11_LOCAL_COMMIT_MESSAGE),
+        worktree,
+        flow.host.environment,
+        FRAME_SECONDS,
+    )
+    if commit_result.exit_status != 0:
+        raise creation.binding_failure(DETAIL_BINDING.format(detail=commit_result.output[-300:]))
+    temporary = _git(flow, "rev-parse", "HEAD", cwd=worktree)
+    current_refs = _b11_ref_state(flow, worktree)
+    if (
+        temporary == c2
+        or current_refs[0] != original_refs[0]
+        or current_refs[1] != temporary
+        or current_refs[2] != f"{temporary} refs/heads/{flow_module.ITEM}"
+        or _git(flow, "rev-parse", f"{temporary}^", cwd=worktree) != c2
+        or _git(flow, "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree)
+    ):
+        raise creation.binding_failure(DETAIL_BINDING.format(detail="B11 local-only commit is not isolated from C2"))
+    flow.require_ledger().record_effect(effect, f"temporary local-only head {temporary} with parent C2 {c2}")
+    failure: BaseException | None = None
+    try:
+        expected_error = f"stamp: the worktree branch head {temporary} differs from {c2}"
+        _b11_refused_stamp(
+            flow,
+            w2,
+            B11_TRIGGER_WORKTREE,
+            B11_WORKTREE_ARGV,
+            B11_STAMP_WORKTREE,
+            "go_worktree",
+            c2,
+            expected_error,
+            snapshot,
+            parsed_log,
+            current_refs,
+        )
+    except BaseException as error:
+        failure = error
+    try:
+        _b11_restore_local_head(flow, worktree, effect, c2, temporary, snapshot, parsed_log, original_refs)
+    except BaseException:
+        flow.retain(flow_module.RETAINED_MARKER.format(path=flow.root))
+        if failure is None:
+            raise
+    if failure is not None:
+        raise failure
+
+
+def _exercise_b11_stamp_refusals(
+    flow: flow_module.WorkflowFlow, w2: str, builder: str, c2: str, worktree: Path
+) -> None:
+    _b11_unclean_probe(flow, w2, builder, c2, worktree)
+    _b11_worktree_head_probe(flow, w2, c2, worktree)
 
 
 def _observe_integrators(
@@ -605,7 +962,7 @@ def _move_head(flow: flow_module.WorkflowFlow, worktree: Path) -> str:
     _fail("the stale ready item did not read as work after the branch head moved")
 
 
-def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> str:
+def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> tuple[str, str]:
     baseline = flow.observer.sessions()
     attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "w3-start", start_ledger.RECORD_OPERATION)
     outcome = flow.observer.run((TELEC, TODO, WORK, flow_module.ITEM))
@@ -634,6 +991,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
         verb=WORK,
         phase=flow_module.WORK_PHASE,
     )
+    case.require_title_stable(w3)
     instruction = case.claim_call((operation,))
     case.check_instruction(w3, instruction)
     case.observe_claim(w3, known_entries=known_claims + 1)
@@ -650,8 +1008,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
     ):
         _fail(f"W3 claim did not clear the stale ready stamp: {claimed!r}")
     flow.require_ledger().discharge(attempt, "public work start completed and W3 claim was observed")
-    flow.require_ledger().discharge(attempt, "work claim completed and held by the mapped W3 session")
-    flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-ok2", start_ledger.RECORD_TRIGGER)
+    success_attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-ok2", start_ledger.RECORD_TRIGGER)
     stamp_before_log = _public_log(flow.item())
     flow.late_argv(
         w3,
@@ -659,7 +1016,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
         (TELEC, TODO, ACT, flow_module.ITEM, "stamp", "--sha", commit, LANE_TWO),
     )
     flow.gate(w3, "go_ok2")
-    _, stamped = _operation_command(flow, w3, "stamp_ok2")
+    _, stamped = _operation_command(flow, w3, "stamp_ok2", success_attempt)
     if stamped.get(FIELD_STATE) != STATE_COMPLETED or not str(stamped.get(FIELD_RESULT, "")).startswith(
         f"Stamped {flow_module.ITEM} at {commit}"
     ):
@@ -676,9 +1033,12 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
         or ready_state.get(FIELD_ACTIVE) not in (None, "")
     ):
         _fail(f"re-stamp did not restore unadmitted ready at {commit}: {ready!r}")
+    ready_since = ready_standing.get("ready_since")
+    if not isinstance(ready_since, str) or not ready_since:
+        raise creation.binding_failure("B10 requires the public C3 ready_since witness before B7 handover")
     _end(flow, w3)
     flow.sessions[w3] = ROLE_WORK
-    return w3
+    return w3, ready_since
 
 
 def run_b5(flow: flow_module.WorkflowFlow) -> None:
@@ -698,12 +1058,12 @@ def run_b5(flow: flow_module.WorkflowFlow) -> None:
         ):
             raise creation.binding_failure(DETAIL_PRECONDITION.format(item=item))
         baseline, worktree, w2, builder, operation, parent_id, known_claims = _start_work(flow)
-        commit_one, commit_two, _ = _build_and_review(flow, worktree, w2, builder, operation)
-        _exercise_stamps(flow, w2, builder, commit_one, commit_two)
+        commit_one, commit_two, finding_key = _build_and_review(flow, worktree, w2, builder, operation)
+        ready_since_c2 = _exercise_stamps(flow, w2, builder, commit_one, commit_two)
         integrators = _observe_integrators(flow, baseline, w2, builder)
         _end(flow, w2)
         commit_three = _move_head(flow, worktree)
-        w3 = _restamp(flow, commit_three, known_claims)
+        w3, ready_since_c3 = _restamp(flow, commit_three, known_claims)
         _end(flow, builder)
         flow.require_ledger().discharge(parent_id, "public start completed and claim session observed")
         child_id = next(key for key, value in flow.require_ledger().attempts.items() if value.label == "w2-child")
@@ -711,6 +1071,29 @@ def run_b5(flow: flow_module.WorkflowFlow) -> None:
         flow.sessions[w2] = ROLE_WORK
         flow.sessions[builder] = ROLE_BUILDER
         flow.sessions.update({session: ROLE_INTEGRATOR for session in integrators})
+        if flow.event_window is None:
+            raise creation.binding_failure(DETAIL_BINDING.format(detail="B10 event window was not imported"))
+        event_seal = workflow_events.append_case(
+            flow.event_window,
+            "B5",
+            {
+                "w2": w2,
+                "builder": builder,
+                "w3": w3,
+                "integrators": integrators,
+                "C1": commit_one,
+                "C2": commit_two,
+                "C3": commit_three,
+                "finding_key": finding_key,
+                "ready_since_C2": ready_since_c2,
+                "ready_since_C3": ready_since_c3,
+                "lane_one": LANE_ONE,
+                "lane_two": LANE_TWO,
+            },
+            previous_case="B4",
+            expected_previous_seal=flow.event_previous_seal,
+        )
+        flow.event_case_seal = event_seal
         flow.handover(
             flow_module.SFC_CHAIN_B5,
             flow_module.SFC_CHAIN_B7 if flow_module.SFC_CHAIN_B7 in flow.chain else flow_module.SFC_CHAIN_B5,

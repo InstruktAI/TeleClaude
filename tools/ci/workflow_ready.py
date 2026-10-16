@@ -10,6 +10,7 @@ from typing import Final
 
 from tools.ci import workflow_creation as creation
 from tools.ci import workflow_driver as driver
+from tools.ci import workflow_events
 from tools.ci import workflow_flow as flow_module
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_items as items
@@ -80,11 +81,11 @@ def _start_roleless(flow: flow_module.WorkflowFlow, baseline: creation.SessionVi
     if not session:
         flow.require_ledger().unknown(attempt)
         raise creation.binding_failure(DETAIL_ROLELESS.format(session="unknown", record="start returned no public id"))
+    flow.require_ledger().record_session(attempt, session)
     # Correlate only after the successful public start; slot and identity remain platform-owned.
-    mapped = flow.map_message_actor(message, 1)
+    mapped = flow.map_message_actor(message, 1, timeout_seconds=START_SECONDS)
     if mapped != session:
         raise creation.binding_failure(DETAIL_ROLELESS.format(session=session, record={"message_key_session": mapped}))
-    flow.require_ledger().record_session(attempt, session)
     record = flow.session_record(session)
     _setup, launch = flow.control_for_session(session)
     native = record.get("native_session_id")
@@ -141,11 +142,13 @@ def _owner_refusal(
         or any(needle not in error for needle in needles)
     ):
         _fail(f"{label} refusal did not name {needles!r}: {result!r}")
-    if flow.item() != before or flow.observer.sessions().ids != sessions.ids or baseline.ids - sessions.ids:
+    if flow.item() != before or not baseline.ids.issubset(sessions.ids):
         _fail(DETAIL_SNAPSHOT.format(where=label))
+    _allow_integrator_delta(flow, baseline, label)
     time.sleep(5.0)
-    if flow.item() != before or flow.observer.sessions().ids != sessions.ids or baseline.ids - sessions.ids:
+    if flow.item() != before:
         _fail(DETAIL_SNAPSHOT.format(where=f"{label} stability window"))
+    _allow_integrator_delta(flow, baseline, f"{label} stability window")
     flow.require_ledger().discharge(attempt, "public refusal completed and item/session snapshots remained equal")
 
 
@@ -214,8 +217,33 @@ def _assert_no_write(
         if pause:
             time.sleep(pause)
         current = flow.item()
-        if current != snapshot or _public_log(current) != log_entries or flow.observer.sessions().ids != sessions.ids:
+        if current != snapshot or _public_log(current) != log_entries:
             _fail(f"B7 {where} wrote to the item {label}")
+        sessions = _allow_integrator_delta(flow, sessions, f"{where} {label}")
+
+
+def _allow_integrator_delta(
+    flow: flow_module.WorkflowFlow, baseline: creation.SessionView, where: str
+) -> creation.SessionView:
+    current = flow.observer.sessions()
+    if baseline.ids - current.ids:
+        _fail(DETAIL_SNAPSHOT.format(where=f"{where}: a prior session disappeared"))
+    for session in sorted(current.ids - baseline.ids):
+        deadline = time.monotonic() + START_SECONDS
+        record: Mapping[str, object] = {}
+        while time.monotonic() < deadline:
+            record = flow.session_record(session, retain=False)
+            role = record.get(FIELD_ROLE)
+            if role == ROLE_INTEGRATOR:
+                break
+            if role not in (None, ""):
+                _fail(DETAIL_SNAPSHOT.format(where=f"{where}: unexpected new session {session}"))
+            time.sleep(POLL_SECONDS)
+        if record.get(FIELD_ROLE) != ROLE_INTEGRATOR or record.get(FIELD_INITIATOR) not in (None, ""):
+            _fail(DETAIL_SNAPSHOT.format(where=f"{where}: new session {session} did not classify as an integrator"))
+        flow.record_session(session, ROLE_INTEGRATOR)
+        flow.integrators.add(session)
+    return current
 
 
 def _owner_preflight(
@@ -469,6 +497,9 @@ def _refresh_reason_and_release_key(
 def run_b7(flow: flow_module.WorkflowFlow) -> None:
     """Exercise held-ready refusal, two roleless reasons, stale key and fresh-key release."""
     try:
+        if flow.event_window is None or flow.event_case_seal is None:
+            raise creation.binding_failure(DETAIL_MANIFEST)
+        workflow_events.verify_case(flow.event_window, "B5", flow.event_case_seal)
         baseline, s_pre, k_pre, pre_log = _owner_preflight(flow)
         first, second, _w4_baseline = _roleless_pair(flow, baseline)
         w4, first_note, first_key, result, reasonone_credit, initial = _claim_held_ready(
@@ -535,9 +566,9 @@ def run_b7(flow: flow_module.WorkflowFlow) -> None:
         final_item = flow.item()
         while time.monotonic() < deadline:
             final_item = flow.item()
-            running_found, running = creation.dig(final_item, "running_sessions_of_earlier_claims")
-            door_found, door = creation.dig(final_item, "door")
-            if (not running_found or not running) and (not door_found or not door):
+            running_found, running = creation.dig(final_item, "standing.running_sessions_of_earlier_claims")
+            door_found, door = creation.dig(final_item, "standing.door")
+            if running_found and isinstance(running, list) and not running and (not door_found or not door):
                 break
             time.sleep(POLL_SECONDS)
         else:
@@ -550,6 +581,25 @@ def run_b7(flow: flow_module.WorkflowFlow) -> None:
             ("artifact_content.log", "artifact_state.log", "standing.reasons", "roadmap.updated_at", "events"),
         )
         _actor_delta(flow, baseline, actors, "B7 final actor set")
+        flow.event_case_seal = workflow_events.append_case(
+            flow.event_window,
+            "B7",
+            {
+                "first": first,
+                "second": second,
+                "w4": w4,
+                "reason_one_note": first_note,
+                "reason_two_note": second_note,
+                "reason_one": REASON_ONE,
+                "reason_two": REASON_TWO,
+                "release_key": fresh_key,
+                "initial_ready": initial,
+                "released": released,
+                "final_state": final_item,
+            },
+            previous_case="B5",
+            expected_previous_seal=flow.event_case_seal,
+        )
         if flow_module.SFC_CHAIN_B6 in flow.chain:
             flow.handover(
                 flow_module.SFC_CHAIN_B7,

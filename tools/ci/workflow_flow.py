@@ -17,6 +17,7 @@ from typing import Final, cast
 
 from tools.ci import workflow_controls as controls
 from tools.ci import workflow_creation as creation
+from tools.ci import workflow_events as events
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_ledger as start_ledger
 from tools.ci import workflow_publication as publication
@@ -44,12 +45,12 @@ PREPARATION_PHASE: Final = "preparation"
 STATE_ACTIVE_RUNNER: Final = "state.active_runner"
 STATE_PHASE: Final = "state.lifecycle_phase"
 STATE_PHASE_FIELD: Final = "lifecycle_phase"
-STATE_HOLD: Final = "state.hold"
+STATE_HOLD: Final = "hold"
 STANDING: Final = "standing"
 STANDING_PHASE: Final = "standing.phase"
 STANDING_READY_COMMIT: Final = "standing.ready_at_commit"
 STANDING_READY_SINCE: Final = "standing.ready_since"
-STANDING_ADMITTED: Final = "standing.admitted"
+STANDING_ADMITTED: Final = "admitted"
 ARTIFACT_LOG: Final = "artifact_content.log"
 ARTIFACT_INPUT: Final = "artifact_content.input"
 FIELD_ROLE: Final = "role"
@@ -76,8 +77,11 @@ ROLE_INTEGRATOR: Final = "integrator"
 PROC_WORK: Final = "sdlc/procedure/lifecycle/work/overview-v2"
 PROC_BUILD: Final = "sdlc/procedure/lifecycle/work/build-v2"
 PROC_INTEGRATE: Final = "sdlc/procedure/lifecycle/integrate"
-B5_COMMIT_1: Final = "feat(b5): add feature\nfile"
+B5_COMMIT_1: Final = "feat(b5): add feature file"
 B5_COMMIT_2: Final = "feat(b5): extend feature file"
+B11_SENTINEL_TEXT: Final = "b11 dirty sentinel\n"
+B11_SENTINEL_SHA256: Final = "9da495e86c2785fb74ddd5e8fe6d2afa5ae0ee387a0e04d6810168b092c8dc81"
+B11_LOCAL_HEAD_MESSAGE: Final = "chore(b5): temporary local head for stamp refusal"
 B6_COMMIT: Final = "feat(b3-item): integrate the b5 feature"
 ENCODING: Final = "utf-8"
 JSON_INDENT: Final = 2
@@ -168,6 +172,10 @@ B5_ACTIONS: Final = (
     {"label": "stamp-performer", "kind": start_ledger.RECORD_TRIGGER},
     {"label": "stamp-nonhead", "kind": start_ledger.RECORD_TRIGGER},
     {"label": "stamp-empty", "kind": start_ledger.RECORD_TRIGGER},
+    {"label": "dirty-sentinel", "kind": start_ledger.RECORD_EFFECT},
+    {"label": "stamp-unclean", "kind": start_ledger.RECORD_TRIGGER},
+    {"label": "temporary-local-head", "kind": start_ledger.RECORD_EFFECT},
+    {"label": "stamp-worktree-head", "kind": start_ledger.RECORD_TRIGGER},
     {"label": "stamp-ok", "kind": start_ledger.RECORD_TRIGGER},
     {"label": "w3-start", "kind": start_ledger.RECORD_OPERATION},
     {"label": "stamp-ok2", "kind": start_ledger.RECORD_TRIGGER},
@@ -230,6 +238,8 @@ def flow_plan_sets(chain: Sequence[str]) -> PlanSets:
                 _late_plan("replywrong", "replywrong.argv", "go_replywrong"),
                 _late_plan("stamp_nonhead", "stamp_nonhead.argv", "go_nh"),
                 _late_plan("stamp_empty", "stamp_empty.argv", "go_empty"),
+                _late_plan("stampunclean", "stampunclean.argv", "go_unclean"),
+                _late_plan("stampworktree", "stampworktree.argv", "go_worktree"),
                 _late_plan("stamp_ok", "stamp_ok.argv", "go_ok"),
             ]
         ),
@@ -271,6 +281,11 @@ def flow_plan_sets(chain: Sequence[str]) -> PlanSets:
                     "commit2",
                     (TELEC, "code", "commit", "--approved", B5_COMMIT_2, "--only", "feature.txt"),
                     "go_c2",
+                ),
+                controls.Command(
+                    name="dirtywrite",
+                    writes=[{"path": "feature.txt", "mode": "append", "text": B11_SENTINEL_TEXT}],
+                    wait_for="go_dirtywrite",
                 ),
             ]
         )
@@ -356,6 +371,9 @@ class WorkflowFlow:
     chain: tuple[str, ...]
     register_company: Callable[[], None]
     retain: Callable[[str], None]
+    event_window: events.EventWindowBinding | None = None
+    event_previous_seal: start_ledger.JsonObject | None = None
+    event_case_seal: start_ledger.JsonObject | None = None
     root: Path = field(init=False)
     observer: Observer = field(init=False)
     controls: controls.Controls = field(init=False)
@@ -391,12 +409,17 @@ class WorkflowFlow:
             self.register_company,
         )
         self.plan_sets = flow_plan_sets(self.chain)
+        if self.event_window is not None:
+            self.retain(f"B10 event evidence retained at {self.event_window.carrier_root}")
         self.write_retained_marker()
 
     def setup_flow(self) -> None:
         """Prepare candidate publication, one fixed chain pool, registry and ledger before any start."""
         if not self.chain or self.chain[0] != SFC_CHAIN_B5:
             raise creation.binding_failure(DETAIL_DOOR.format(case=SFC_CHAIN_B5))
+        if self.event_window is None:
+            raise creation.binding_failure(DETAIL_MANIFEST)
+        events.verify_case(self.event_window, "B4", self.event_previous_seal)
         creation.require_manual_runner(self.observer)
         creation.enter_project(self.observer, self.project)
         self.baseline = self.observer.sessions()
@@ -408,11 +431,13 @@ class WorkflowFlow:
         )
         self.publication.publish()
         self.publication.verify_parity()
+        creation.enter_project(self.observer, self.project)
         count = MINIMUM_B7_CONTROLS if SFC_CHAIN_B7 in self.chain else MINIMUM_B5_CONTROLS
         self.control_setups = self.controls.shared_pool(self.plan_sets, count)
         self.verify_registry()
         self.ledger = start_ledger.StartLedger.create(self.root / LEDGER_NAME)
         self.ledger.declare_case(SFC_CHAIN_B5, B5_ACTIONS)
+        self.write_manifest({})
         self.write_retained_marker()
 
     @property
@@ -488,10 +513,10 @@ class WorkflowFlow:
         return {str(key): item for key, item in value.items()}
 
     def verify_handover(self, manifest: Json) -> None:
-        expected = {
+        expected: dict[str, JsonValue] = {
             FLOW_ID_FIELD: self.require_ledger().flow_id,
             CHAIN_FIELD: list(self.chain),
-            APPROVALS_FIELD: approval_map(self.chain),
+            APPROVALS_FIELD: cast(JsonValue, approval_map(self.chain)),
             "ledger_path": str(self.ledger_path),
             "registry_path": str(self.controls.registry_path),
             "claims_path": str(self.controls.claims_path),
@@ -500,6 +525,10 @@ class WorkflowFlow:
             "candidate_identity": self.candidate_identity,
             "item": ITEM,
         }
+        if self.event_window is not None:
+            expected["event_window"] = self.event_window.json_value()
+        if self.event_case_seal is not None:
+            expected["event_case_seal"] = self.event_case_seal
         if any(manifest.get(key) != value for key, value in expected.items()):
             raise creation.binding_failure(DETAIL_MANIFEST)
 
@@ -563,28 +592,34 @@ class WorkflowFlow:
             time.sleep(OPERATION_POLL_SECONDS)
         raise creation.binding_failure(DETAIL_PLAN_ACTOR.format(procedure=procedure, index=index, role=role))
 
-    def message_actor(self, first_line: str, index: int, role: str | None = None) -> str:
+    def message_actor(self, first_line: str, index: int, role: str | None = None, timeout_seconds: float = 0.0) -> str:
         key = message_key(first_line)
-        matches: list[str] = []
-        for setup in self.control_setups:
-            launch = self._read_object(setup.control / foundation.LAUNCH_FILE)
-            if (
-                launch is None
-                or launch.get(FIELD_KEY_KIND) != "message"
-                or launch.get(FIELD_PLAN_KEY) != key
-                or launch.get(FIELD_PLAN_INDEX) != index
-            ):
-                continue
-            native = launch.get(FIELD_NATIVE)
-            if not isinstance(native, str) or not native:
-                raise creation.binding_failure(DETAIL_CONTROL_MAP)
-            session = self.session_for_native(native, role)
-            if session is not None:
-                matches.append(session)
-        unique = sorted(set(matches))
-        if len(unique) != 1:
-            raise creation.binding_failure(DETAIL_PLAN_ACTOR.format(procedure=first_line, index=index, role=role))
-        return unique[0]
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            matches: list[str] = []
+            for setup in self.control_setups:
+                launch = self._read_object(setup.control / foundation.LAUNCH_FILE)
+                if (
+                    launch is None
+                    or launch.get(FIELD_KEY_KIND) != "message"
+                    or launch.get(FIELD_PLAN_KEY) != key
+                    or launch.get(FIELD_PLAN_INDEX) != index
+                ):
+                    continue
+                native = launch.get(FIELD_NATIVE)
+                if not isinstance(native, str) or not native:
+                    raise creation.binding_failure(DETAIL_CONTROL_MAP)
+                session = self.session_for_native(native, role)
+                if session is not None:
+                    matches.append(session)
+            unique = sorted(set(matches))
+            if len(unique) > 1:
+                raise creation.binding_failure(DETAIL_PLAN_ACTOR.format(procedure=first_line, index=index, role=role))
+            if unique:
+                return unique[0]
+            if time.monotonic() >= deadline:
+                raise creation.binding_failure(DETAIL_PLAN_ACTOR.format(procedure=first_line, index=index, role=role))
+            time.sleep(OPERATION_POLL_SECONDS)
 
     def session_for_native(self, native: str, role: str | None = None) -> str | None:
         for session_id in self.observer.sessions(retain=False).ids:
@@ -702,6 +737,8 @@ class WorkflowFlow:
                     "origin": str(self.temporary_root / ORIGIN_NAME),
                     "candidate_identity": self.candidate_identity or None,
                     "fixture_publication_sha": self.fixture_publication_sha or None,
+                    "event_window": self.event_window.json_value() if self.event_window is not None else None,
+                    "event_case_seal": self.event_case_seal,
                     "proofs": {
                         "P1_session_lifecycle": "unproven until finalizer observations",
                         "P2_start_consumption": "unresolved ledger entries remain open",
@@ -828,7 +865,8 @@ class WorkflowFlow:
             "open_attempt_ids": cast(JsonValue, open_ids),
             "start_ledger_error": self.finalizer_ledger_error,
             "P1_session_lifecycle": "proven"
-            if all(isinstance(row, Mapping) and row.get("closed") is True for row in session_rows.values())
+            if classification_complete
+            and all(isinstance(row, Mapping) and row.get("closed") is True for row in session_rows.values())
             else "unproven",
             "P2_start_consumption": "unproven; explicit starts and async launch backlog lack public settlement evidence",
             "P4_fixture_processes_and_panes": "unproven by the approved contract",
@@ -907,6 +945,7 @@ class WorkflowFlow:
 
     def _finalizer_hold_ready(self, issues: list[str]) -> None:
         try:
+            creation.enter_project(self.observer, self.project)
             item = self.item()
             standing = item.get(STANDING)
             if item.get("stage") == "delivered" or not isinstance(standing, Mapping):
@@ -1012,6 +1051,10 @@ class WorkflowFlow:
                 "candidate_identity": self.candidate_identity,
                 "item": ITEM,
             }
+            if self.event_window is not None:
+                current["event_window"] = self.event_window.json_value()
+            if self.event_case_seal is not None:
+                current["event_case_seal"] = self.event_case_seal
         current.update(updates)
         self._atomic_json(self.manifest_path, current)
 
@@ -1020,10 +1063,10 @@ class WorkflowFlow:
         manifest = self._read_object(self.manifest_path)
         if manifest is None:
             raise creation.binding_failure(DETAIL_MANIFEST)
-        expected = {
+        expected: dict[str, JsonValue] = {
             FLOW_ID_FIELD: self.require_ledger().flow_id,
             CHAIN_FIELD: list(self.chain),
-            APPROVALS_FIELD: approval_map(self.chain),
+            APPROVALS_FIELD: cast(JsonValue, approval_map(self.chain)),
             "ledger_path": str(self.ledger_path),
             "registry_path": str(self.controls.registry_path) if self.controls.registry_path else None,
             "claims_path": str(self.controls.claims_path) if self.controls.claims_path else None,
@@ -1032,6 +1075,10 @@ class WorkflowFlow:
             "candidate_identity": self.candidate_identity,
             "item": ITEM,
         }
+        if self.event_window is not None:
+            expected["event_window"] = self.event_window.json_value()
+        if self.event_case_seal is not None:
+            expected["event_case_seal"] = self.event_case_seal
         if any(manifest.get(key) != value for key, value in expected.items()):
             raise creation.binding_failure(DETAIL_MANIFEST)
         loaded = start_ledger.StartLedger.load(self.ledger_path)
@@ -1064,6 +1111,10 @@ class WorkflowFlow:
             "ledger_line_count": len(starts.lines),
             "ledger_open_ids": [attempt.identifier for attempt in starts.open_attempts],
         }
+        if self.event_window is not None:
+            update["event_window"] = self.event_window.json_value()
+        if self.event_case_seal is not None:
+            update["event_case_seal"] = self.event_case_seal
         update.update(extra)
         self.write_manifest(update)
         self.write_retained_marker({"last_handover_case": case, "next_case": next_case})
@@ -1082,9 +1133,11 @@ class WorkflowFlow:
         self.write_retained_marker({"active_case": case})
         return current
 
-    def map_message_actor(self, first_line: str, index: int, role: str | None = None) -> str:
+    def map_message_actor(
+        self, first_line: str, index: int, role: str | None = None, timeout_seconds: float = 0.0
+    ) -> str:
         """An alias named for the B7 roleless-message case; still grounded in the recorded atomic claim."""
-        return self.message_actor(first_line, index, role)
+        return self.message_actor(first_line, index, role, timeout_seconds)
 
     def all_current_project_sessions(self) -> tuple[str, ...]:
         """Read each retained session record and select sessions belonging to the disposable project."""

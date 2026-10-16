@@ -30,6 +30,7 @@ from typing import cast
 
 from tools.ci import workflow_claim as claim
 from tools.ci import workflow_creation as creation
+from tools.ci import workflow_events as events
 from tools.ci import workflow_flow as full_flow
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_holds as holds
@@ -44,7 +45,7 @@ from tools.ci import workflow_waiting as waiting
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
 _UTF8 = "utf-8"
-_REPORT_SCHEMA_VERSION = 1
+_REPORT_SCHEMA_VERSION = 2
 _DEFAULT_ROOT = "."
 _REPORT_TEMP_SUFFIX = ".tmp"
 _LINE_BREAK = "\n"
@@ -750,6 +751,7 @@ class AcceptanceReport:
     cleanup: CleanupResult
     duration_seconds: float
     selection: tuple[str, ...] = ()
+    workflow_event_evidence: JSONObject = field(default_factory=dict)
 
     @property
     def passed(self) -> bool:
@@ -2095,7 +2097,12 @@ def _full_workflow_race(resources: FullRuntimeResources, evidence: list[CommandE
 def _full_workflow_waiting(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
     """Journey B3: a driver waits on the owner, a dispatched session cannot decide, the owner's own session can."""
     setup = resources.fixture_setup
-    if setup is None or resources.project_path is None:
+    if (
+        setup is None
+        or resources.project_path is None
+        or resources.project_slug is None
+        or resources.project_name is None
+    ):
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
     waiting.run_waiting(
         _FoundationRunner(resources, evidence),
@@ -2104,6 +2111,8 @@ def _full_workflow_waiting(resources: FullRuntimeResources, evidence: list[Comma
         resources.source_root,
         _OWNER_SEED_EMAIL,
         _OWNER_SEED_SLUG,
+        resources.project_slug,
+        resources.project_name,
         lambda: _register_procedure_fixture_company(resources, evidence),
         resources.retained.append,
     )
@@ -2116,6 +2125,8 @@ def _full_workflow_prepared(resources: FullRuntimeResources, evidence: list[Comm
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
     if resources.project_slug is None:
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    event_binding = events.load_binding(setup.control.parent)
+    resources.retained.append(f"B10 event evidence retained at {event_binding.carrier_root}")
     prepared.run_prepared(
         _FoundationRunner(resources, evidence),
         setup,
@@ -2125,6 +2136,7 @@ def _full_workflow_prepared(resources: FullRuntimeResources, evidence: list[Comm
         _OWNER_SEED_SLUG,
         resources.report_path or resources.temporary_root / "runtime-acceptance-report.json",
         resources.project_slug,
+        event_binding,
         lambda: _register_procedure_fixture_company(resources, evidence),
         resources.retained.append,
     )
@@ -2135,6 +2147,10 @@ def _full_workflow_review(resources: FullRuntimeResources, evidence: list[Comman
     setup = resources.fixture_setup
     if setup is None or resources.project_path is None or resources.project_slug is None:
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
+    event_binding = events.load_binding(setup.control.parent)
+    events.verify_case(event_binding, "B4")
+    event_previous_seal = events.seal_for(event_binding, "B4")
+    resources.retained.append(f"B10 event evidence retained at {event_binding.carrier_root}")
     if resources.workflow_flow is None:
         resources.workflow_flow = full_flow.WorkflowFlow(
             host=_FoundationRunner(resources, evidence),
@@ -2146,6 +2162,9 @@ def _full_workflow_review(resources: FullRuntimeResources, evidence: list[Comman
             chain=resources.workflow_chain,
             register_company=lambda: _register_procedure_fixture_company(resources, evidence),
             retain=resources.retained.append,
+            event_window=event_binding,
+            event_previous_seal=event_previous_seal,
+            event_case_seal=event_previous_seal,
         )
     flow = resources.workflow_flow
     try:
@@ -4811,7 +4830,7 @@ def run_profile(
                 _close_full_profile_resources(resources, evidence)
 
             cleanup_action = cleanup_full
-        return execute_profile(
+        report = execute_profile(
             profile,
             source_revision=source_revision,
             source_tree=source_tree,
@@ -4820,6 +4839,9 @@ def run_profile(
             cleanup_action=cleanup_action,
             selection=selection,
         )
+        if resources is not None:
+            return replace(report, workflow_event_evidence=events.profile_report(temporary_root))
+        return report
     except BaseException:
         if temporary_root.exists() and (resources is None or not resources.retained):
             shutil.rmtree(temporary_root)
@@ -4851,6 +4873,7 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             "cleanup",
             "duration_seconds",
             "selection",
+            "workflow_event_evidence",
         }
         if (
             not isinstance(report, dict)
@@ -4865,6 +4888,7 @@ def validate_full_report_bytes(report_bytes: bytes, *, source_revision: str, sou
             or type(report["duration_seconds"]) not in (int, float)
             or not math.isfinite(report["duration_seconds"])
             or report["duration_seconds"] < 0
+            or not isinstance(report["workflow_event_evidence"], dict)
         ):
             raise ValueError
         scenarios = report["scenarios"]
