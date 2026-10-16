@@ -55,7 +55,9 @@ from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.shutdown_drain import ShutdownRefusal, get_shutdown_drain
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.core.workflow_store.selection import inspect_workflow_store_presence
 from teleclaude.core.workflow_store.store import get_workflow_store
+from teleclaude.core.workflow_store.types import StorePresenceKind
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.docs_reconcile import SnippetWriteResult, reconcile_snippets_for_purged_slugs
 from teleclaude.events import get_event_db
@@ -623,8 +625,8 @@ class MaintenanceService:
         """Finalize soft-removed todos past the retention window across every project DB.
 
         Discovers project todo stores through the project registry. Each
-        project's ``.teleclaude/todos.db`` is the canonical workflow store; the
-        daemon's operational DB knows nothing about these todos. For each
+        project's selected workflow store owns its todos; the daemon's
+        operational DB knows nothing about them. For each
         expired removed row, reconcile snippet lifecycle frontmatter before
         hard-delete and commit the documentation change with verification.
         """
@@ -632,11 +634,12 @@ class MaintenanceService:
         for project_root in load_roots():
             if not project_root.exists():
                 continue
-            if not (project_root / ".teleclaude" / "todos.db").exists():
-                continue
             if not is_project_checkout(project_root):
                 continue
             try:
+                presence = inspect_workflow_store_presence(project_root)
+                if presence.kind is StorePresenceKind.ABSENT:
+                    continue
                 todos_db = await get_workflow_store(str(project_root))
                 todo_status_map = build_todo_status_map(project_root)
                 rows = await todos_db.list_expired_removed(cutoff_iso)
