@@ -137,7 +137,10 @@ def declared_acts(path: Path) -> tuple[list[tuple[str, str]], str]:
 
 def declared_role(path: Path) -> str:
     """The `role:` the folded driver's header declares, read line by line from its first `---` block."""
-    parts = path.read_text(encoding="utf-8").split("---", 2)
+    try:
+        parts = path.read_text(encoding="utf-8").split("---", 2)
+    except (OSError, UnicodeError) as error:
+        raise creation.trace_failure(DETAIL_ROLE_UNREADABLE.format(path=path)) from error
     lines = parts[1].splitlines() if len(parts) >= 3 else []
     role = next((m.group("role") for m in map(_ROLE_LINE.match, lines) if m), None)
     if role is None:

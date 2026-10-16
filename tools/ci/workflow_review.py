@@ -65,6 +65,7 @@ START_SECONDS: Final = 900.0
 OPERATION_SECONDS: Final = 300.0
 FRAME_SECONDS: Final = 60.0
 DETAIL_BINDING: Final = "B5 evidence did not bind to the shared flow: {detail}"
+DETAIL_FOLDED_ROLE: Final = "session {session} role {actual!r} does not match folded role {folded!r}"
 DETAIL_PLATFORM: Final = "B5 platform assertion failed: {detail}"
 DETAIL_FRAME: Final = "fixture command {name} did not succeed: {frame!r}"
 DETAIL_STATE: Final = "operation {operation} ended in {state!r}: {detail!r}"
@@ -137,10 +138,16 @@ def _git(flow: flow_module.WorkflowFlow, *arguments: str, cwd: Path | None = Non
 
 def _startup(
     flow: flow_module.WorkflowFlow, session: str, expected_role: str, procedure: str
-) -> tuple[Mapping[str, object], Mapping[str, object]]:
+) -> tuple[Mapping[str, object], Mapping[str, object], str]:
+    role_path = flow.publication.clone / driver.DOCS_ROOT / f"{procedure}{driver.LIVE_SUFFIX}"
+    folded_role = driver.declared_role(role_path)
+    if expected_role != folded_role:
+        raise creation.binding_failure(
+            DETAIL_FOLDED_ROLE.format(session=session, actual=expected_role, folded=folded_role)
+        )
     record = flow.session_record(session)
     _setup, launch = flow.control_for_session(session)
-    if record.get(FIELD_ROLE) != expected_role or record.get(FIELD_JOB) != procedure:
+    if record.get(FIELD_ROLE) != folded_role or record.get(FIELD_JOB) != procedure:
         _fail(f"session {session} role/job mismatch: {record!r}")
     native = record.get(FIELD_NATIVE)
     if not isinstance(native, str) or launch.get(FIELD_NATIVE) != native:
@@ -155,7 +162,7 @@ def _startup(
     first = first_inputs[0].get("text") if first_inputs else None
     if not isinstance(first, str) or not first.startswith(f"TELECLAUDE COMMAND: {procedure}"):
         _fail(f"session {session} first prompt does not name {procedure}: {first!r}")
-    return record, launch
+    return record, launch, folded_role
 
 
 def _operation_command(
@@ -366,7 +373,7 @@ def _start_work(
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))
         )
     w2 = flow.plan_actor(PROC_WORK, 1, ROLE_WORK)
-    w2_record, _w2_launch = _startup(flow, w2, ROLE_WORK, PROC_WORK)
+    w2_record, _w2_launch, w2_role = _startup(flow, w2, ROLE_WORK, PROC_WORK)
     child_frame = _frame_success(flow, w2, "child")
     child_run = child_frame.get("run")
     child_stdout = child_run.get("stdout") if isinstance(child_run, Mapping) else None
@@ -375,7 +382,7 @@ def _start_work(
         _fail(f"B5 builder child start text is absent: {child_frame!r}")
     builder = match.group(1)
     flow.require_ledger().record_session(child_attempt, builder)
-    builder_record, builder_launch = _startup(flow, builder, ROLE_BUILDER, PROC_BUILD)
+    builder_record, builder_launch, _builder_role = _startup(flow, builder, ROLE_BUILDER, PROC_BUILD)
     if builder_record.get(FIELD_INITIATOR) != w2:
         _fail(f"builder initiator is {builder_record.get(FIELD_INITIATOR)!r}, not {w2}")
     if builder_record.get(FIELD_PROJECT) != str(worktree.resolve()) or builder_launch.get("cwd") != str(
@@ -394,7 +401,7 @@ def _start_work(
         verb=WORK,
         phase=flow_module.WORK_PHASE,
     )
-    case.titles[w2] = case.require_title(w2_record, ROLE_WORK)
+    case.titles[w2] = case.require_title(w2_record, w2_role)
     instruction = case.claim_call((operation,))
     case.check_instruction(w2, instruction)
     case.observe_claim(w2, known_entries=known_claims)
@@ -973,7 +980,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
             DETAIL_STATE.format(operation=operation, state=terminal.get(FIELD_STATE), detail=terminal.get(FIELD_ERROR))
         )
     w3 = flow.plan_actor(PROC_WORK, 2, ROLE_WORK)
-    w3_record, _w3_launch = _startup(flow, w3, ROLE_WORK, PROC_WORK)
+    w3_record, _w3_launch, w3_role = _startup(flow, w3, ROLE_WORK, PROC_WORK)
     case = driver.DriverCase(
         host=flow.host,
         observer=flow.observer,
@@ -986,7 +993,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
         verb=WORK,
         phase=flow_module.WORK_PHASE,
     )
-    case.titles[w3] = case.require_title(w3_record, ROLE_WORK)
+    case.titles[w3] = case.require_title(w3_record, w3_role)
     instruction = case.claim_call((operation,))
     case.check_instruction(w3, instruction)
     case.observe_claim(w3, known_entries=known_claims + 1)
