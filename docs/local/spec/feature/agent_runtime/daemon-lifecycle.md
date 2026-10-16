@@ -58,6 +58,9 @@ requires. Domain-event publication is ready before producers can emit, and
 each required consumer's progress is established before the source activity it
 must observe. Registering or scheduling a reader alone does not establish that
 handover.
+The producer and reader positions for both event source streams are prepared
+independently of adapter startup. Handler execution remains gated on its own
+dependencies, including request-surface binding where required.
 
 The request surface is constructed before its event callbacks are wired, and
 its listener is bound before consumers that call it execute. Source seeding and
@@ -442,6 +445,12 @@ Managed launch identity originates before child execution and returns with the
 normalized hook from that child. The runtime validates this correlation before
 applying managed-start evidence; the current record alone does not establish
 which launch produced an arriving hook.
+Installing a new ordinary run and clearing its observed-start evidence are one
+source mutation. A matching start writes that evidence conditionally against
+the same run, and resumed catch-up reads that run's evidence. A hook without
+launch context never acquires the current run's identity from the database;
+an already-running process without that correlation retains its existing
+timeout and inspection outcomes rather than establishing a new run's readiness.
 An already persisted matching start can satisfy a resumed wait; another
 session's start or a distinct compaction launch cannot satisfy it. Success,
 timeout, cancellation and shutdown settle and release the registration under

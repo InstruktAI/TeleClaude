@@ -15,8 +15,8 @@ producing and consuming contexts under `sdlc/policy/domain-ownership`.
 
 ## Inputs/Outputs
 
-Producers publish declared facts through the platform event producer. The
-consumer runtime delivers them to interested reactions under
+Producers publish declared facts through the event publication capability for
+their source stream. The consumer runtime delivers them to interested reactions under
 `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`.
 The event envelope states the producer's facts under
 `local/projects/teleclaude/spec/feature/event-catalog/event-envelope`.
@@ -29,8 +29,8 @@ coordination capability under
 
 ## Invariants
 
-- **One reaction path:** domain-event publication appends to the platform
-  stream and reaction execution follows
+- **One reaction path:** domain-event publication appends to its source stream
+  and reaction execution follows
   `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`.
 - **One owner per effect:** command execution, runtime coordination and event
   reactions retain their distinct completion boundaries. An awaited owner
@@ -61,7 +61,7 @@ coordination capability under
 
 The source owner commits its change and publishes the declared fact through
 its emission contract. Each interested reaction consumes through the existing
-platform consumer runtime. Its source selection, retry and duplicate handling
+independent-consumer runtime. Its source selection, retry and duplicate handling
 follow the event-consumer contract; its effects follow the consuming owner.
 Session state, adapter reactions, operation outcomes, activity, voice state,
 project changes and error reporting use this same relationship when they are
@@ -69,13 +69,35 @@ domain notifications.
 
 Existing declarations represent the same fact wherever it is produced;
 compatibility carriers do not create a second lifecycle occurrence. Current
-consumers execute through the platform path throughout wire coexistence.
+consumers execute through their bound consumer path throughout wire coexistence.
+
+### Source-stream exposure
+
+Public platform facts retain the platform stream and its existing consumers.
+Internal runtime notifications retain the stream owned by
+`INTERNAL_EVENT_STREAM`, with typed decoding and independent ordered consumers
+on the same delivery runtime. This stream boundary preserves the existing
+notification, procedure-activation, maintenance and correlation inputs under
+`local/projects/teleclaude/spec/feature/event-catalog/event-envelope`.
+
+The two sources share delivery mechanics, not audiences. Internal notifications
+do not enter public automation through translation. Native facts retain their
+truthful source, subject and origin; earlier records retain the limits of the
+facts they carried. Source-stream trimming and the existing dead-letter contract
+remain authoritative; the transport creates no additional payload archive.
+
+Readiness and no-composer evidence remain runtime-owned operations. Explicit
+voice focus completes through its command-owned voice continuation. Local
+project-cache changes use the existing cache-change capability. These operations
+retain their local payload reach and completion boundaries under
+`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`.
 
 ### Earlier internal wire interoperability
 
 The compatibility surface is the earlier `InternalEventEnvelope` representation
-on the stream owned by `INTERNAL_EVENT_STREAM`. Its ingress and any egress
-needed by earlier peers belong to a transport adapter; the general emitter's
+on the stream owned by `INTERNAL_EVENT_STREAM`. Current consumers decode earlier
+entries directly through the transport codec. A source append carries canonical
+attributes beside any earlier representation required by peers; the general emitter's
 local dispatch and subscriber registry are not compatibility surfaces.
 
 The feature-ID registry owns the domain-event-delivery capability named
@@ -94,10 +116,12 @@ do not open it. This applies the retirement contract in
 `local/projects/teleclaude/spec/feature/reconciliation/fleet-cross-version-interop`.
 
 The adapter carries the same occurrence identity across representations and
-does not turn a translated copy into newly originated work. A current consumer
+does not append a translated copy to the platform stream. A current consumer
 has one effective reaction path for that occurrence. Wire compatibility does
 not preserve the earlier general-purpose event execution machinery, and the
 separate peer cache replication protocol retains its existing contract.
+Withdrawal retires the earlier representation, while the internal source stream
+retains its exposure boundary.
 
 ### Runtime and command coordination
 
