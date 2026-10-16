@@ -13,6 +13,29 @@ description: Decide whether a todo should exist, audit that decision at preparat
 
 ### Decide before creating
 
+<!-- planned:todo-doc-review-evidence -->
+
+- **Documentation evidence precedes lifecycle entry.** Pending contracts are
+  authored, committed under their intended todo slug, and independently reviewed
+  with all required changes resolved before that todo enters its lifecycle.
+  Both `Planned-Todo` and `Todo` commit footers identify the association under
+  `general/policy/commits`. The creation boundary checks the associated pending
+  documentation against committed, independently approved revisions; an author's
+  `--approved` declaration supplies no review evidence. A missing approval,
+  unresolved review or changed documentation is refused before creation, naming
+  the missing evidence and the existing commit/review path that supplies it.
+  The check protects the contract downstream preparation consumes
+  (`general/principle/trust-and-guardrails`).
+- **The evidence check does not judge documentation impact.** Whether work needs
+  new documentation remains the existing agent-owned classification. The check
+  validates declared pending contracts and their review records, without grading
+  prose or inferring missing documentation. Legitimate work with no
+  documentation delta keeps its existing route. Iceboxed forming work keeps its
+  existing parking route; its documentation evidence is required when it enters
+  the lifecycle, under the same validity rule as unfreezing.
+
+<!-- /planned:todo-doc-review-evidence -->
+
 - **A todo enters the lifecycle valid; the icebox parks ideas at any stage.** A
   todo is valid when its intended outcome and every known contract that Prepare
   will consume have converged, and no pending authoring, review, or commit is

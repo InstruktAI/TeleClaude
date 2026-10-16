@@ -54,6 +54,30 @@ The Todo aggregate's invariants — unique kebab-case slug, a canonical kind pre
 
 ## Canonical fields
 
+<!-- planned:todo-doc-review-evidence -->
+
+### Reviewed documentation evidence
+
+Before creation admits work that declares pending documentation into its
+lifecycle, the owning boundary verifies the documentation evidence required by
+`sdlc/policy/todo-creation-discipline`. It resolves the intended slug's associated
+documentation commits from both inferred footer names under
+`general/policy/commits`, checks repository-owned independent review verdicts for
+the referenced revisions, and confirms that the pending documentation entering
+the lifecycle matches the reviewed content. Evidence survives without an
+existing todo and without a current session claim.
+
+Refusal precedes todo state, artifact creation and dispatch, and identifies the
+missing, stale or unresolved evidence with its commit reference and the existing
+review path. A transcript assertion, an author's discard, or the creation
+command's `--approved` acknowledgment supplies no independent review approval.
+The check keeps the existing classification of no-documentation work and the
+icebox entry rules; it does not classify prose or infer documentation impact.
+Unfreezing performs the same evidence check when parked work enters the
+lifecycle (`general/principle/trust-and-guardrails`).
+
+<!-- /planned:todo-doc-review-evidence -->
+
 ### Todo-created event payload (partial shape)
 
 The workflow service emits the event with this payload:
