@@ -13,6 +13,8 @@ The controller imports no application module and reads no private index: every o
 
 from __future__ import annotations
 
+import json
+import os
 import shutil
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -73,8 +75,7 @@ LINT_TIMEOUT_SECONDS: Final = 180
 PUBLISH_TIMEOUT_SECONDS: Final = 120
 POLL_SECONDS: Final = 2.0
 SETTLE_SECONDS: Final = 120.0
-SETTLE_WINDOW_SECONDS: Final = 240.0
-SETTLE_QUIET_SECONDS: Final = 20.0
+PROCESS_EXIT_SECONDS: Final = 30.0
 
 DETAIL_COMMAND: Final = "`{command}` exited {status}: {output!r}"
 DETAIL_FOLD_PATHS: Final = (
@@ -90,7 +91,9 @@ DETAIL_OPERATION_TIMEOUT: Final = (
     "operation {operation} did not reach a terminal state within {seconds} seconds: {last!r}"
 )
 DETAIL_IDENTITY_MOVED: Final = "the candidate checkout changed during the journey: {before!r} became {after!r}"
-DETAIL_UNSETTLED: Final = "closure was not proven: operations still open {pending!r}, sessions still owned {owned!r}"
+DETAIL_UNSETTLED_SESSIONS: Final = "sessions beyond the baseline are still open after their end: {owned!r}"
+DETAIL_PROCESS_ALIVE: Final = "the fixture process {pid} of {control} is still alive after its session ended"
+DETAIL_UNRESOLVED_START: Final = "accepted starts {operations!r} were never observed consumed by a claim or refused, so they may still create a driver"
 DETAIL_SESSION_OPEN: Final = "session {session} could not be closed: {detail}"
 
 
@@ -150,67 +153,88 @@ class Settlement:
     proven: bool
 
 
-def _close_owned(observer: creation.Observer, owned: Sequence[str], problems: list[str]) -> bool:
-    """End each owned session that is not closed and prove it closed; True when none was left open."""
-    clean = True
+START_OPEN: Final = "open"
+START_CLAIMED: Final = "claimed"
+START_REFUSED: Final = "refused"
+
+
+def _close_owned(observer: creation.Observer, owned: Sequence[str], problems: list[str]) -> None:
+    """End each owned open session through the public command and prove its retained record closed."""
     for session_id in owned:
         try:
-            if _session_closed(_session_record(observer, session_id)):
-                continue
             ended = observer.run((TELEC, SESSIONS, END, session_id))
             receipt = foundation.json_object(ended.output)
             operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
             if ended.exit_status != 0 or not isinstance(operation, str) or not operation:
                 problems.append(DETAIL_SESSION_OPEN.format(session=session_id, detail=ended.output[-200:]))
-                clean = False
                 continue
             outcome = await_terminal(observer, operation, SETTLE_SECONDS)
             if outcome.get(FIELD_STATE) != STATE_COMPLETED or not _session_closed(
                 _session_record(observer, session_id)
             ):
                 problems.append(DETAIL_SESSION_OPEN.format(session=session_id, detail=str(outcome.get(FIELD_ERROR))))
-                clean = False
         except BaseException as error:
             problems.append(DETAIL_SESSION_OPEN.format(session=session_id, detail=str(error)))
-            clean = False
-    return clean
+
+
+def _process_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _fixture_processes_gone(controls: Sequence[Path], problems: list[str]) -> None:
+    """The owned fixture processes of the launches have exited, read from the pid each launch recorded."""
+    for control in controls:
+        try:
+            pid = json.loads((control / "launch.json").read_text(encoding="utf-8")).get("pid")
+        except (OSError, ValueError):
+            continue  # this control directory holds no launch: there is no fixture process of it to wait for
+        if not isinstance(pid, int):
+            continue
+        deadline = time.monotonic() + PROCESS_EXIT_SECONDS
+        while _process_alive(pid) and time.monotonic() < deadline:
+            time.sleep(POLL_SECONDS)
+        if _process_alive(pid):
+            problems.append(DETAIL_PROCESS_ALIVE.format(pid=pid, control=control))
 
 
 def settle_sessions(
-    observer: creation.Observer, baseline: creation.SessionView | None, accepted: Sequence[str] = ()
+    observer: creation.Observer,
+    baseline: creation.SessionView | None,
+    starts: Mapping[str, str],
+    controls: Sequence[Path] = (),
 ) -> Settlement:
-    """End every session beyond the baseline and prove closure, including those an accepted start has yet to create.
+    """End what the journey owns and prove closure from the evidence that can prove it, never from waiting.
 
-    The journey owns every session that exists beyond its baseline, claimed or not, and every start the platform
-    accepted from it: an accepted start may create its driver after any single listing. Settlement therefore waits for
-    each accepted operation to reach a terminal state and then for a quiet period in which no new owned session appears,
-    ending whatever appears. When closure cannot be proven within the bound, ``proven`` is False and the caller keeps the
-    resources needed to settle or diagnose what may still run.
+    Public lifecycle evidence: every session beyond the baseline that is not closed is ended and its retained record
+    shown closed. Process evidence: the fixture process each owned launch recorded has exited. Causal evidence: a start
+    the platform accepted is settled only by what consumed it: an observed claim by the session it started, or a refusal
+    that created nothing. A start with neither may still create its driver (a minute-tick scan or a ready trigger can
+    spawn after any final listing), so it keeps the settlement unproven however long nothing appears, and the caller
+    keeps the resources needed to settle or diagnose it.
     """
     if baseline is None:
         return Settlement([], True)
     problems: list[str] = []
-    deadline = time.monotonic() + SETTLE_WINDOW_SECONDS
-    quiet_since: float | None = None
-    proven = True
-    while True:
-        try:
-            owned = sorted(observer.sessions(retain=False).ids - baseline.ids)
-            pending = [op for op in accepted if operation_state(observer, op).get(FIELD_STATE) not in TERMINAL_STATES]
-        except BaseException as error:  # settlement reports the read failure beside the journey's own
-            return Settlement([*problems, f"reading the actors to settle failed: {error}"], False)
-        if owned and not _close_owned(observer, owned, problems):
-            proven = False
-        if not owned and not pending:
-            quiet_since = quiet_since if quiet_since is not None else time.monotonic()
-            if time.monotonic() - quiet_since >= SETTLE_QUIET_SECONDS:
-                return Settlement(problems, proven)
-        else:
-            quiet_since = None
-        if time.monotonic() >= deadline:
-            problems.append(DETAIL_UNSETTLED.format(pending=pending, owned=owned))
-            return Settlement(problems, False)
-        time.sleep(POLL_SECONDS)
+    try:
+        view = observer.sessions(retain=False)
+        _close_owned(observer, sorted(view.ids - baseline.ids - view.closed), problems)
+        after = observer.sessions(retain=False)
+        still_open = sorted(after.ids - baseline.ids - after.closed)
+    except BaseException as error:  # settlement reports the read failure beside the journey's own
+        return Settlement([f"reading the actors to settle failed: {error}"], False)
+    if still_open:
+        problems.append(DETAIL_UNSETTLED_SESSIONS.format(owned=still_open))
+    _fixture_processes_gone(controls, problems)
+    unresolved = sorted(operation for operation, state in starts.items() if state == START_OPEN)
+    if unresolved:
+        problems.append(DETAIL_UNRESOLVED_START.format(operations=unresolved))
+    return Settlement(problems, not problems)
 
 
 class Publication:

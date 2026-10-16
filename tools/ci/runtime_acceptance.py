@@ -22,7 +22,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from types import FrameType
@@ -336,6 +336,9 @@ _EXPECTED_READINESS_ERROR = "The supported lifecycle did not report a ready daem
 _FULL_INSTALL_ERROR = "The supported installer failed in the disposable runtime."
 _FULL_SERVICE_STOP_ERROR = "The supported lifecycle could not stop the disposable runtime."
 _FULL_PROJECT_RESTORE_ERROR = "The supported config surface could not restore the project job declarations."
+_FULL_UNPROVEN_RETAINED = (
+    "Closure of the journey's actors is UNPROVEN, so the disposable home and fixture controls are retained: {reasons}"
+)
 _FULL_TEMP_CLEANUP_ERROR = "The disposable runtime temporary resources could not be removed."
 _FULL_TERMINAL_SETUP_ERROR = "The owned PTY could not enter the checked source directory."
 _CLEANUP_FAILURE_SEPARATOR = ", "
@@ -860,6 +863,7 @@ class FullRuntimeResources:
     unrelated_computer_role: str | None = None
     release_world: object | None = None
     fixture_setup: foundation.FixtureSetup | None = None
+    retained: list[str] = field(default_factory=list)
 
     def open_admin_terminal(self) -> PersistentTerminal:
         """Create the one administrator PTY retained for fresh CLI processes."""
@@ -1710,12 +1714,15 @@ def _close_full_profile_resources(
             _close_release_world(resources.release_world, cleanup_evidence)
         except Exception:
             failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
-    if resources.fixture_setup is not None and foundation.remove_fixture(resources.fixture_setup):
-        failures.append(_FULL_FIXTURE_CLEANUP_ERROR)
-    try:
-        shutil.rmtree(resources.temporary_root)
-    except OSError:
-        failures.append(_FULL_TEMP_CLEANUP_ERROR)
+    if resources.retained:
+        failures.append(_FULL_UNPROVEN_RETAINED.format(reasons=_CLEANUP_FAILURE_SEPARATOR.join(resources.retained)))
+    else:
+        if resources.fixture_setup is not None and foundation.remove_fixture(resources.fixture_setup):
+            failures.append(_FULL_FIXTURE_CLEANUP_ERROR)
+        try:
+            shutil.rmtree(resources.temporary_root)
+        except OSError:
+            failures.append(_FULL_TEMP_CLEANUP_ERROR)
     if failures:
         raise RuntimeError(_FULL_CLEANUP_FAILURE.format(failures=_CLEANUP_FAILURE_SEPARATOR.join(failures)))
 
@@ -1943,6 +1950,7 @@ def _full_workflow_claim(resources: FullRuntimeResources, evidence: list[Command
         resources.source_root,
         _OWNER_SEED_EMAIL,
         lambda: _register_procedure_fixture_company(resources, evidence),
+        resources.retained.append,
     )
 
 

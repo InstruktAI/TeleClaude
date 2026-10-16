@@ -120,6 +120,7 @@ FIELD_STATUS: Final = "status"
 FIELD_CHILDREN: Final = "children"
 FIELD_SESSION_ID: Final = "session_id"
 FIELD_WORKING_SLUG: Final = "working_slug"
+FIELD_CLOSED_AT: Final = "closed_at"
 FIELD_ROADMAP: Final = "roadmap"
 FIELD_STATE: Final = "state"
 FIELD_KIND: Final = "kind"
@@ -284,6 +285,7 @@ class SessionView:
 
     ids: frozenset[str]
     working: Mapping[str, str]
+    closed: frozenset[str] = frozenset()
 
 
 class Observer:
@@ -326,6 +328,7 @@ class Observer:
         if outcome.exit_status != 0 or records is None:
             raise binding_failure(DETAIL_UNDECODABLE_LIST.format(what="sessions list", output=outcome.output[-300:]))
         ids: set[str] = set()
+        closed: set[str] = set()
         working: dict[str, str] = {}
         for record in records:
             if not isinstance(record, Mapping):
@@ -334,10 +337,12 @@ class Observer:
             if not isinstance(session_id, str) or not session_id:
                 raise binding_failure(DETAIL_SESSION_RECORD.format(record=record))
             ids.add(session_id)
+            if record.get(FIELD_CLOSED_AT) is not None:
+                closed.add(session_id)
             slug = record.get(FIELD_WORKING_SLUG)
             if isinstance(slug, str) and slug:
                 working[session_id] = slug
-        return SessionView(frozenset(ids), working)
+        return SessionView(frozenset(ids), working, frozenset(closed))
 
 
 def require_manual_runner(observer: Observer) -> None:

@@ -2,7 +2,9 @@
 
 The journey's assertions are the independently reviewed ones recorded in the shared handoff workspace
 (`journeys/b1-claim-assertion-draft.md`, approved at exact SHA-256
-8139046b04adbf9219f29b472e8bb49e513da9cd7946ee60ddfaf0bb964df1e6; authority the pending
+8139046b04adbf9219f29b472e8bb49e513da9cd7946ee60ddfaf0bb964df1e6, amended for step 4's act rows by
+`journeys/b1-instruction-act-pairs-amendment-draft.md` at exact SHA-256
+d7270641fcb963b66f58c79201ac936d293358665b967f493a7e625a3eac0728; authority the pending
 `local/projects/teleclaude/spec/feature/workflow/item-lifecycle` and `.../procedure-entry` contracts of issue 128).
 It proves, on a disposable installation whose published drivers are the four folded procedures, that the public
 `telec todo prepare` starts one platform-created driver session, that the driver's own fresh public `telec todo prepare`
@@ -91,7 +93,9 @@ STATE_COMPLETED: Final = "completed"
 STATE_FAILED: Final = "failed"
 TERMINAL_STATES: Final = frozenset({"completed", "failed", "stale", "cancelled"})
 KNOWN_STATES: Final = TERMINAL_STATES | frozenset({"queued", "running"})
-ACT_ROW: Final = re.compile(r"^-\s+`telec todo act (?P<item>\S+) (?P<act>\S+)[^`]*`\s+->\s+(?P<phase>\S+)\s*$")
+ACT_ROW: Final = re.compile(
+    r"^- `telec todo act (?P<item>\S+) (?P<act>[a-z]+)(?P<arguments>[^`]*)` -> (?P<target>\S+)\s*$"
+)
 
 CLI_TIMEOUT_SECONDS: Final = 60
 CLONE_TIMEOUT_SECONDS: Final = 60
@@ -152,7 +156,8 @@ DETAIL_PHASE_AFTER: Final = "after the close the item reads {found!r}, not {expe
 DETAIL_OPERATION_READ: Final = (
     "the public read of operation {operation} is unreadable or names an unknown state: {output!r}"
 )
-DETAIL_ACT_ROW: Final = "the instruction has no row `telec todo act {item} {act}` -> {phase}: {rows!r}"
+DETAIL_ACT_ROW_ABSENT: Final = "the instruction has no parseable row `telec todo act {item} {act}` -> {phase} (the shape changed, or the act is absent)"
+DETAIL_ACT_ROW: Final = "the instruction associates `telec todo act {item} {act}` with {rows!r}, not {phase}"
 DETAIL_CONTROLS_KEPT: Final = (
     "closure was not proven, so the control directory {control} and the sidecar are kept for diagnosis"
 )
@@ -227,14 +232,16 @@ class _Claim:
         source_root: Path,
         owner_email: str,
         register_company: Callable[[], None],
+        retain: Callable[[str], None],
     ) -> None:
         self.host = host
+        self.retain = retain
         self.observer = creation.Observer(host)
         self.publication = publication.Publication(
             host, self.observer, setup.control.parent, source_root, register_company
         )
         self.baseline: creation.SessionView | None = None
-        self.accepted: list[str] = []
+        self.starts: dict[str, str] = {}
         self.setup = setup
         self.project = project.resolve()
         self.source_root = source_root
@@ -359,13 +366,14 @@ def run_claim(
     source_root: Path,
     owner_email: str,
     register_company: Callable[[], None],
+    retain: Callable[[str], None],
 ) -> None:
     """Journey B1; raises JourneyFailure leading with its class.
 
     ``register_company`` registers, through the public command, the synthetic company the candidate checkout\'s project
     declaration names: a documentation read run from that checkout needs it, exactly as the closure journey does.
     """
-    claim = _Claim(host, setup, project, source_root, owner_email, register_company)
+    claim = _Claim(host, setup, project, source_root, owner_email, register_company, retain)
     observer = claim.observer
     failure: BaseException | None = None
     try:
@@ -443,7 +451,7 @@ class _Steps:
         if start.exit_status != 0 or not isinstance(starter, str) or not starter:
             raise creation.platform_failure(DETAIL_RECEIPT.format(status=start.exit_status, output=start.output[-300:]))
         self.starter = starter
-        self.claim.accepted.append(starter)
+        self.claim.starts[starter] = publication.START_OPEN
 
     def await_claim(self) -> None:
         """Step 2: a real session is created and claims; a failed or unreadable starter ends the wait at once."""
@@ -459,6 +467,7 @@ class _Steps:
             holder = creation.dig(shown, "state.active_runner")[1] if shown is not None else None
             if isinstance(holder, str) and holder:
                 self.session = holder
+                self.claim.starts[self.starter] = publication.START_CLAIMED
                 self.claim_seen = time.monotonic()
                 self.journey.session_id = holder
                 return
@@ -530,15 +539,14 @@ class _Steps:
         for needle in (ITEM, PHASE, self.session, child):
             if needle not in instruction:
                 raise creation.platform_failure(DETAIL_INSTRUCTION.format(needle=needle, text=instruction[-600:]))
-        rows = {
-            (match.group("act"), match.group("phase"))
-            for line in instruction.splitlines()
-            if (match := ACT_ROW.match(line.strip())) is not None and match.group("item") == ITEM
-        }
+        rows = [match for match in map(ACT_ROW.match, instruction.split("\n")) if match is not None]
         for act, phase in acts:
-            if (act, phase) not in rows:
+            targets = [row.group("target") for row in rows if row.group("item") == ITEM and row.group("act") == act]
+            if not targets:
+                raise creation.trace_failure(DETAIL_ACT_ROW_ABSENT.format(item=ITEM, act=act, phase=phase))
+            if any(target != phase for target in targets):
                 raise creation.platform_failure(
-                    DETAIL_ACT_ROW.format(item=ITEM, act=act, phase=phase, rows=sorted(rows))
+                    DETAIL_ACT_ROW.format(item=ITEM, act=act, phase=phase, rows=sorted(set(targets)))
                 )
 
     def observe_claim(self) -> None:
@@ -613,7 +621,7 @@ class _Steps:
             raise creation.platform_failure(
                 DETAIL_RECEIPT.format(status=competitor.exit_status, output=competitor.output[-300:])
             )
-        self.claim.accepted.append(operation)
+        self.claim.starts[operation] = publication.START_OPEN
         refused = self.claim._await_terminal(operation, COMPETITOR_SECONDS)
         error = refused.get(FIELD_ERROR)
         if refused.get(FIELD_STATE) != STATE_FAILED or not isinstance(error, str):
@@ -621,6 +629,7 @@ class _Steps:
         for needle in (ITEM, self.session):
             if needle not in error:
                 raise creation.platform_failure(DETAIL_COMPETITOR_TEXT.format(needle=needle, error=error))
+        self.claim.starts[operation] = publication.START_REFUSED
         for when, pause in (("immediately", 0.0), ("five seconds later", SETTLE_SECONDS)):
             if pause:
                 time.sleep(pause)
@@ -647,13 +656,14 @@ class _Steps:
 
 def _cleanup(claim: _Claim, failure: BaseException | None) -> None:
     """Settle the sessions the journey owns, restore the candidate publication and the sidecar, report every failure."""
-    settlement = publication.settle_sessions(claim.observer, claim.baseline, claim.accepted)
+    settlement = publication.settle_sessions(claim.observer, claim.baseline, claim.starts, [claim.control])
     problems = list(settlement.problems)
     problems.extend(claim.publication.restore())
     if settlement.proven:
         problems.extend(claim.restore_control())
     else:
         problems.append(DETAIL_CONTROLS_KEPT.format(control=claim.control))
+        claim.retain(DETAIL_CONTROLS_KEPT.format(control=claim.control))
     try:
         creation.leave_project(claim.observer, claim.source_root)
     except BaseException as error:
