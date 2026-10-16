@@ -1937,7 +1937,12 @@ def _full_workflow_claim(resources: FullRuntimeResources, evidence: list[Command
     if setup is None or resources.project_path is None:
         raise ValueError(_FULL_FOUNDATION_PREREQUISITES)
     claim.run_claim(
-        _FoundationRunner(resources, evidence), setup, resources.project_path, resources.source_root, _OWNER_SEED_EMAIL
+        _FoundationRunner(resources, evidence),
+        setup,
+        resources.project_path,
+        resources.source_root,
+        _OWNER_SEED_EMAIL,
+        lambda: _register_procedure_fixture_company(resources, evidence),
     )
 
 
@@ -2424,6 +2429,12 @@ def _create_procedure_fixture_checkout(
     evidence: list[CommandEvidence],
 ) -> Path:
     """Make a disposable source checkout whose committed docs use the regular publisher."""
+    _register_procedure_fixture_company(resources, evidence)
+    return _clone_procedure_fixture_checkout(resources, fixture_name, evidence)
+
+
+def _register_procedure_fixture_company(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Register the synthetic owner company the source checkout\'s project declaration names, through the public command."""
     company = _mapping_value(_procedure_fixture(resources).get(_PROCEDURE_FIXTURE_COMPANY_FIELD))
     if company is None:
         raise ValueError(_PROCEDURE_FIXTURE_COMPANY_INVALID)
@@ -2438,6 +2449,14 @@ def _create_procedure_fixture_checkout(
         evidence,
     )
     _require_terminal_success(status, output, evidence)
+
+
+def _clone_procedure_fixture_checkout(
+    resources: FullRuntimeResources,
+    fixture_name: str,
+    evidence: list[CommandEvidence],
+) -> Path:
+    """Clone the source checkout into a disposable one with its dependency environment and a git author."""
     checkout = resources.temporary_root / fixture_name
     clone_argv = (
         _GIT_EXECUTABLE,

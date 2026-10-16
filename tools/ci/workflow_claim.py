@@ -21,7 +21,7 @@ import json
 import re
 import shutil
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Final
 
@@ -450,9 +450,18 @@ def _claim_entries(log: str) -> list[tuple[str, str]]:
 
 
 def run_claim(
-    host: FoundationHost, setup: foundation.FixtureSetup, project: Path, source_root: Path, owner_email: str
+    host: FoundationHost,
+    setup: foundation.FixtureSetup,
+    project: Path,
+    source_root: Path,
+    owner_email: str,
+    register_company: Callable[[], None],
 ) -> None:
-    """Journey B1; raises JourneyFailure leading with its class."""
+    """Journey B1; raises JourneyFailure leading with its class.
+
+    ``register_company`` registers, through the public command, the synthetic company the candidate checkout\'s project
+    declaration names: a documentation read run from that checkout needs it, exactly as the closure journey does.
+    """
     claim = _Claim(host, setup, project, source_root, owner_email)
     observer = claim.observer
     candidate = claim._identity()
@@ -462,6 +471,7 @@ def run_claim(
     live_ids: dict[str, str] = {}
     try:
         creation.require_manual_runner(observer)
+        register_company()
         creation.enter_project(observer, project)
         baseline = observer.sessions()
         launch_setup = claim.install_control()
