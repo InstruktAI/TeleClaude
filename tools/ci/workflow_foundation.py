@@ -38,7 +38,10 @@ FIXTURE_MODE: Final = 0o755
 SHELL_EXECUTABLE: Final = "/bin/sh"
 LOGIN_SHELL_EXECUTABLE: Final = "/bin/bash"
 COMMAND_V_SCRIPT: Final = "command -v claude"
-LOGIN_SHELL_OPTION: Final = "-lc"
+LOGIN_CONTEXT_SCRIPT: Final = (
+    'printf "PATH=%s\\n" "$PATH"; ls -a "$HOME" | tr "\\n" " "; printf "\\n"; ls -a "$HOME/.local/bin" | tr "\\n" " "'
+)
+LOGIN_SHELL_OPTION: Final = "-lic"
 SHELL_COMMAND_OPTION: Final = "-c"
 LOGIN_BASE_PATH: Final = "/usr/local/bin:/usr/bin:/bin"
 GIT_EXECUTABLE: Final = "git"
@@ -112,6 +115,7 @@ BINDING_FAILURE: Final = "fixture binding failure: {detail}"
 PLATFORM_FAILURE: Final = "platform assertion failure: {detail}"
 DETAIL_PATH_MISMATCH: Final = "{where} resolves `claude` to {found!r}, not the owned fixture {owned!r}"
 DETAIL_NO_CLAUDE: Final = "{where} resolves no `claude` executable"
+DETAIL_CONTEXT: Final = " (login context: {context})"
 DETAIL_WINDOW: Final = "control window exceeded: {detail}"
 DETAIL_NO_FRAME: Final = "the fixture reported no {frame} frame within {seconds} seconds"
 DETAIL_FRAME_INVALID: Final = "the {frame} frame is malformed or truncated"
@@ -232,7 +236,14 @@ def require_owned_resolution(
     outcome = host.process(argv, cwd, environment, PROCESS_TIMEOUT_SECONDS)
     found = outcome.output.strip().splitlines()[-1] if outcome.output.strip() else ""
     if outcome.exit_status != 0 or not found:
-        raise FixtureBindingFailure(BINDING_FAILURE.format(detail=DETAIL_NO_CLAUDE.format(where=where)))
+        context = host.process(
+            (LOGIN_SHELL_EXECUTABLE, LOGIN_SHELL_OPTION, LOGIN_CONTEXT_SCRIPT),
+            cwd,
+            environment,
+            PROCESS_TIMEOUT_SECONDS,
+        )
+        detail = DETAIL_NO_CLAUDE.format(where=where) + DETAIL_CONTEXT.format(context=context.output.strip()[-600:])
+        raise FixtureBindingFailure(BINDING_FAILURE.format(detail=detail))
     if Path(found).resolve() != setup.executable.resolve():
         detail = DETAIL_PATH_MISMATCH.format(where=where, found=found, owned=str(setup.executable))
         raise FixtureBindingFailure(BINDING_FAILURE.format(detail=detail))
