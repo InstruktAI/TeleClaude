@@ -111,7 +111,7 @@ async def _may_report(store: WorkflowStore, request: IntentRequest, state: TodoS
     caller = await load_caller(request.caller_session_id)
     if caller is None:
         return False
-    return await in_claiming_group(caller.session_id, holder) and (
+    return await in_claiming_group(caller.session_id, holder, state.workflow.remote_members) and (
         caller.session_id == holder or caller.role == RoleName.BUILDER
     )
 

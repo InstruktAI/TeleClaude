@@ -280,7 +280,7 @@ async def _register_for_group(project_root: str, item: str, initiator_session_id
         return ""
     state = TodoState.model_validate(raw)
     holder = state.active_runner or ""
-    if holder and await in_claiming_group(initiator_session_id, holder):
+    if holder and await in_claiming_group(initiator_session_id, holder, state.workflow.remote_members):
         return await register_helper_start(project_root, item, holder)
     if initiator_session_id in await earlier_claim_sessions(state.workflow, holder, item, project_root):
         raise HelperStartRefused(EARLIER_GROUP.format(item=item, session=initiator_session_id))

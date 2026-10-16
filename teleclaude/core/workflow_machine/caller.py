@@ -6,6 +6,7 @@ act command takes nothing about the caller from what the caller typed.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -15,6 +16,7 @@ from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.db import db
 from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.session_utils import session_in_claiming_group
+from teleclaude.types.workflow_record import RemoteMember
 
 NO_PRINCIPAL_EMAIL: Final = ""
 
@@ -60,9 +62,22 @@ async def load_caller(session_id: str) -> CallerFacts | None:
     )
 
 
-async def in_claiming_group(caller_session_id: str, holder_session_id: str) -> bool:
-    """Whether the caller is the holder or a session dispatched, transitively, from it."""
-    return await session_in_claiming_group(caller_session_id, holder_session_id)
+async def in_claiming_group(
+    caller_session_id: str, holder_session_id: str, recorded: Sequence[RemoteMember] = ()
+) -> bool:
+    """Whether the caller is the holder or a session dispatched, transitively, from it.
+
+    A caller of another computer is a member when the item retains it as one, or when its recorded ancestry reaches
+    the holder through the members the item retains.
+    """
+    if await session_in_claiming_group(caller_session_id, holder_session_id):
+        return True
+    if caller_session_id in {member.session_id for member in recorded}:
+        return True
+    for member in recorded:
+        if await session_in_claiming_group(caller_session_id, member.session_id):
+            return True
+    return False
 
 
 async def child_sessions_of(holder_session_id: str) -> tuple[str, ...]:
@@ -79,37 +94,65 @@ class GroupMember:
     computer: str = ""
 
 
-def _remote_snapshots() -> list[SessionSnapshot]:
-    """The other computers\' sessions this computer knows from the cluster cache, with the initiator each recorded.
+@dataclass(frozen=True)
+class RemoteView:
+    """What this computer knows of the other computers\' sessions: their open ones, and which computers it has heard from."""
 
-    Empty while there is no cache (no daemon wiring), so a caller outside the daemon sees this computer\'s sessions only.
-    """
+    snapshots: tuple[SessionSnapshot, ...] = ()
+    warm: frozenset[str] = frozenset()
+
+
+def _remote_view() -> RemoteView:
+    """The cluster cache\'s view of the other computers\' sessions; empty while there is no cache (outside the daemon)."""
     from teleclaude.core.command_registry import get_command_service  # noqa: PLC0415 - deferred cycle
 
     try:
         cache = get_command_service().client.cache
     except RuntimeError:
-        return []
+        return RemoteView()
     if cache is None:
-        return []
-    return [
-        session
-        for session in cache.get_sessions()
-        if session.computer not in (None, "", LOCAL_COMPUTER, config.computer.name)
-    ]
+        return RemoteView()
+    others = (LOCAL_COMPUTER, config.computer.name)
+    snapshots = tuple(s for s in cache.get_sessions() if s.computer not in (None, "", *others))
+    return RemoteView(snapshots, cache.computers_heard_from())
 
 
-async def group_members_of(holder_session_id: str) -> tuple[GroupMember, ...]:
-    """Every live session started from the holder, transitively and on any computer; the holder is not among them.
+def remote_snapshots_present() -> bool:
+    """Whether the cluster cache holds any open session of another computer."""
+    return bool(_remote_view().snapshots)
 
-    The persisted initiator links are followed through sessions that have already ended, so a live session started by
-    an ended helper is still found. Sessions of this computer come from its store; sessions of the others come from the
-    cluster cache, which carries each one\'s initiator and whether it has closed, and a session started by a remote
-    one is found the same way.
+
+@dataclass(frozen=True)
+class GroupView:
+    """The holder\'s claiming group as far as it is positively known.
+
+    ``unknown`` names the computers a retained remote member runs on and whose sessions this computer has not heard
+    since it started: the group there cannot be told from empty, so a sweep that needs the group settled cannot
+    conclude. ``remote`` is every remote member seen now, live or not, to be retained.
     """
-    remote = _remote_snapshots()
+
+    live: tuple[GroupMember, ...] = ()
+    unknown: tuple[str, ...] = ()
+    remote: tuple[RemoteMember, ...] = ()
+
+
+async def group_view_of(holder_session_id: str, recorded: Sequence[RemoteMember] = ()) -> GroupView:
+    """Every session started from the holder, transitively and on any computer, with what is not positively known.
+
+    Sessions of this computer come from its store, through ended intermediates. Sessions of the others come from the
+    cluster cache, which holds only the open ones, so the remote members already retained on the item are followed as
+    well: a live session started by a remote member that has since ended is still found, and a retained member is live
+    until the cache shows it closed, or shows its computer heard from without it.
+    """
+    view = _remote_view()
+    by_parent: dict[str, list[RemoteMember]] = {}
+    for member in recorded:
+        by_parent.setdefault(member.parent, []).append(member)
+    open_remote = {snapshot.session_id: snapshot for snapshot in view.snapshots if snapshot.closed_at is None}
     seen: set[str] = {holder_session_id}
     live: list[GroupMember] = []
+    remote: list[RemoteMember] = []
+    unknown: set[str] = set()
     frontier = [holder_session_id]
     while frontier:
         parent = frontier.pop()
@@ -121,14 +164,30 @@ async def group_members_of(holder_session_id: str) -> tuple[GroupMember, ...]:
             frontier.append(session.session_id)
             if session.closed_at is None:
                 live.append(GroupMember(session.session_id))
-        for snapshot in remote:
+        for snapshot in view.snapshots:
             if snapshot.initiator_session_id != parent or snapshot.session_id in seen:
                 continue
             seen.add(snapshot.session_id)
             frontier.append(snapshot.session_id)
+            remote.append(RemoteMember(session_id=snapshot.session_id, computer=str(snapshot.computer), parent=parent))
             if snapshot.closed_at is None:
                 live.append(GroupMember(snapshot.session_id, str(snapshot.computer)))
-    return tuple(live)
+        for member in by_parent.get(parent, []):
+            if member.session_id in seen:
+                continue
+            seen.add(member.session_id)
+            frontier.append(member.session_id)
+            remote.append(member)
+            if member.session_id in open_remote:
+                live.append(GroupMember(member.session_id, member.computer))
+            elif member.computer not in view.warm:
+                unknown.add(member.computer)
+    return GroupView(tuple(live), tuple(sorted(unknown)), tuple(remote))
+
+
+async def group_members_of(holder_session_id: str) -> tuple[GroupMember, ...]:
+    """Every live session started from the holder, transitively and on any computer; the holder is not among them."""
+    return (await group_view_of(holder_session_id)).live
 
 
 async def group_sessions_of(holder_session_id: str) -> tuple[str, ...]:

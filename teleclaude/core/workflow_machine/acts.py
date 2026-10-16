@@ -487,7 +487,7 @@ async def _resolve_facts(store: WorkflowStore, request: ActRequest, state: TodoS
     if caller is None:
         raise _refuse(Refusal.UNKNOWN_CALLER, act=request.act.value)
     holder = state.active_runner or None
-    in_group = holder is not None and await in_claiming_group(caller.session_id, holder)
+    in_group = holder is not None and await in_claiming_group(caller.session_id, holder, state.workflow.remote_members)
     waiting = state.workflow.waiting
     if request.act is Act.DECISION:
         person_slug = waiting.person if waiting is not None else NO_SESSION

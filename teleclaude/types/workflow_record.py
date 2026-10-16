@@ -248,6 +248,20 @@ class OfferedFinding(BaseModel):
     finding_key: str
 
 
+class RemoteMember(BaseModel):
+    """A session of another computer that belongs to the holder\'s claiming group, retained with who started it.
+
+    The other computers\' sessions are known here from a cache of their open sessions, so a member that ended would
+    take its lineage with it. The record keeps the member and its parent, so a live session it started is still found.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    session_id: str
+    computer: str
+    parent: str
+
+
 class AdmittedCandidate(BaseModel):
     """The commit the integrator admitted for an item: committed on the item before the integrator's own checkpoint."""
 
@@ -336,6 +350,7 @@ class WorkflowRecord(BaseModel):
     episode: CreativeEpisode | None = None
     closing: bool = False
     helper_starts: list[HelperStart] = Field(default_factory=list)
+    remote_members: list[RemoteMember] = Field(default_factory=list)
     claimers: list[str] = Field(default_factory=list)
     dispatched: dict[str, str] = Field(default_factory=dict)
     dispatch_recipients: list[str] = Field(default_factory=list)

@@ -11,7 +11,7 @@ never raises a second notice.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Final
 
 from instrukt_ai_logging import get_logger
@@ -21,7 +21,7 @@ from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
-from teleclaude.core.workflow_machine.caller import GroupMember, group_members_of
+from teleclaude.core.workflow_machine.caller import GroupMember, group_view_of, remote_snapshots_present
 from teleclaude.core.workflow_machine.dispatch import OrchestratorSpec, orchestrator_session_id, start_orchestrator
 from teleclaude.core.workflow_machine.helpers import unsettled_helper_starts
 from teleclaude.core.workflow_store.store import WorkflowStore, get_workflow_store
@@ -54,7 +54,7 @@ from teleclaude.types.claim_change import (
 )
 from teleclaude.types.commands import CloseSessionCommand
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.workflow_record import EffectKind, EmittedEvent, PendingEffect, WaitedPhase
+from teleclaude.types.workflow_record import EffectKind, EmittedEvent, PendingEffect, RemoteMember, WaitedPhase
 
 logger = get_logger(__name__)
 
@@ -92,6 +92,8 @@ ITEM_FAILED_LOG: Final = "workflow effect reconciliation failed for an item"
 PROJECT_FAILED_LOG: Final = "workflow effect reconciliation failed for a project"
 NO_HANDLER_LOG: Final = "workflow effect has no handler"
 NOT_FINISHED_LOG: Final = "workflow effect not finished yet; it stays pending and later effects of the item wait"
+REMOTE_OBSERVE_FAILED_LOG: Final = "observing the remote members of held items failed"
+REMOTE_UNKNOWN_LOG: Final = "claim release waits: no answer yet from the computers of retained remote members"
 REMOTE_CLOSE_FAILED_LOG: Final = "closing a session of another computer failed; the sweep finds it again"
 CLOSE_WAIT_SECONDS: Final = 10.0
 CLOSE_POLL_SECONDS: Final = 0.25
@@ -293,20 +295,48 @@ async def _end_session(context: EffectContext, effect: PendingEffect) -> None:
         raise EffectNotFinished(effect.id)
 
 
-async def _sweep_helpers(context: EffectContext, effect: PendingEffect) -> None:
-    """End every live session started from the holder, transitively, and wait for each recorded start to settle.
+async def retain_remote_members(store: WorkflowStore, slug: str, members: Sequence[RemoteMember]) -> None:
+    """Add the remote members seen now to the item\'s retained group, so their lineage outlives their sessions."""
+    if not members:
+        return
 
-    The listing is repeated until it finds nothing and no recorded start is in flight; the holder is never among the
-    sessions ended. An effect that cannot finish stays pending, and the release of the claim behind it waits.
+    def mutate(current: dict[str, StateValue] | None, _digests: Mapping[str, str]) -> ItemChange | None:
+        if current is None:
+            return None
+        record = workflow_record_of(current)
+        known = {member.session_id for member in record.remote_members}
+        added = [member for member in members if member.session_id not in known]
+        if not added:
+            return None
+        updated = record.model_copy(deep=True)
+        updated.remote_members = [*record.remote_members, *added]
+        return ItemChange(state={**current, WORKFLOW_STATE_KEY: updated.to_state()})
+
+    await store.commit_item_change(slug, expect_digests={}, mutate=mutate, updated_by=None)
+
+
+async def _sweep_helpers(context: EffectContext, effect: PendingEffect) -> None:
+    """End every live session started from the holder, transitively and on any computer, and wait for each start.
+
+    The group is read with the remote members the item retains, so a live session started by a remote member that has
+    ended is still found; the members seen are retained before they are closed. The sweep concludes only when the group
+    is positively settled: a retained remote member whose computer this computer has not heard from since it started is
+    unknown, not empty, and the effect stays pending until that computer has answered. The listing is repeated until it
+    finds nothing and no recorded start is in flight; the holder is never among the sessions ended.
     """
     holder = effect.params[SESSION_PARAM]
     for _ in range(SWEEP_ROUNDS):
         state = await context.store.read_state_by_id(context.item.todo_id)
-        in_flight = state is not None and bool(unsettled_helper_starts(workflow_record_of(state)))
-        live = await group_members_of(holder)
-        if not live and not in_flight:
+        record = workflow_record_of(state) if state is not None else None
+        in_flight = record is not None and bool(unsettled_helper_starts(record))
+        view = await group_view_of(holder, record.remote_members if record is not None else ())
+        await retain_remote_members(context.store, context.item.slug, view.remote)
+        if view.unknown:
+            logger.info(REMOTE_UNKNOWN_LOG, slug=context.item.slug, computers=",".join(view.unknown))
+            raise EffectNotFinished(effect.id)
+        if not view.live and not in_flight:
             return
-        for member in live:
+        for member in view.live:
             await _close_member(member)
         await asyncio.sleep(CLOSE_POLL_SECONDS)
     raise EffectNotFinished(effect.id)
@@ -400,11 +430,31 @@ async def reconcile_item(
         await store.clear_pending_effect(item.todo_id, effect.id)
 
 
+async def observe_remote_groups(store: WorkflowStore) -> None:
+    """Retain the remote members of every held item\'s claiming group while their sessions are open.
+
+    The evidence has to exist before the sweep needs it: a restart empties the cache of the other computers\' sessions,
+    and a member that ended takes its lineage with it. Skipped while no other computer has a session in the cache.
+    """
+    if not remote_snapshots_present():
+        return
+    for slug, state in await asyncio.to_thread(store.list_active_states_sync):
+        holder = state.get("active_runner")
+        if not isinstance(holder, str) or not holder:
+            continue
+        view = await group_view_of(holder, workflow_record_of(state).remote_members)
+        await retain_remote_members(store, slug, view.remote)
+
+
 async def reconcile_project(project_root: str) -> None:
     """Complete the pending effects of every item row in a project, whatever its status."""
     store = await get_workflow_store(project_root)
     for item in await store.list_items_with_pending_effects():
         await reconcile_item_supervised(store, project_root, item)
+    try:
+        await observe_remote_groups(store)
+    except Exception:  # supervision boundary: observing is evidence-gathering and must not stop the reconciliation
+        logger.exception(REMOTE_OBSERVE_FAILED_LOG, project_root=project_root)
 
 
 async def reconcile_item_supervised(store: WorkflowStore, project_root: str, item: PendingEffectItem) -> None:
