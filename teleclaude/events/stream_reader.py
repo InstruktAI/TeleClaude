@@ -4,11 +4,18 @@ from __future__ import annotations
 
 from typing import Any, Final
 
+from redis.exceptions import RedisError
+
 from teleclaude.events.wire import StreamEntry
 
 STREAM_ID_SEPARATOR: Final = "-"
 FIRST: Final = "-"
+LAST: Final = "+"
 SINGLE: Final = 1
+
+
+class StreamUnavailable(Exception):
+    """The retained stream could not be read: the backend failed, so nothing about its content is established."""
 
 
 def _after(position: str) -> str:
@@ -29,14 +36,23 @@ class RedisStreamReader:
         self._stream = stream
 
     async def oldest(self) -> str | None:
-        found = await self._redis.xrange(self._stream, min=FIRST, max="+", count=SINGLE)
+        try:
+            found = await self._redis.xrange(self._stream, min=FIRST, max=LAST, count=SINGLE)
+        except (RedisError, OSError, RuntimeError, ValueError) as error:
+            raise StreamUnavailable(str(error) or type(error).__name__) from error
         return _text(found[0][0]) if found else None
 
     async def newest(self) -> str | None:
-        found = await self._redis.xrevrange(self._stream, max="+", min=FIRST, count=SINGLE)
+        try:
+            found = await self._redis.xrevrange(self._stream, max=LAST, min=FIRST, count=SINGLE)
+        except (RedisError, OSError, RuntimeError, ValueError) as error:
+            raise StreamUnavailable(str(error) or type(error).__name__) from error
         return _text(found[0][0]) if found else None
 
     async def entries(self, after: str | None, through: str, count: int) -> list[tuple[str, StreamEntry]]:
         start = _after(after) if after is not None else FIRST
-        found = await self._redis.xrange(self._stream, min=start, max=through, count=count)
+        try:
+            found = await self._redis.xrange(self._stream, min=start, max=through, count=count)
+        except (RedisError, OSError, RuntimeError, ValueError) as error:
+            raise StreamUnavailable(str(error) or type(error).__name__) from error
         return [(_text(entry_id), fields) for entry_id, fields in found]
