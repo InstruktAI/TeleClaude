@@ -38,6 +38,11 @@ _TERMINAL_NOT_STARTED = "The persistent terminal has not been started."
 _TERMINAL_EXITED = "The persistent terminal exited before returning a command result."
 _TERMINAL_TIMED_OUT = "The persistent terminal command exceeded its deadline."
 _TERMINAL_OUTPUT_LIMIT = "The persistent terminal output exceeded its configured limit."
+_TERMINAL_READ_ERROR = "read_error"
+_TERMINAL_READ_ERROR_MESSAGE = "The persistent terminal output could not be read: {error}"
+_TERMINAL_EOF = "eof"
+_TERMINAL_EOF_MESSAGE = "The persistent terminal output ended before its command marker."
+_TERMINAL_CAUSE_DETAIL_FORMAT = "{cause}: {detail}"
 _TERMINAL_LOCAL_FLAGS_INDEX = 3
 
 
@@ -48,6 +53,8 @@ class TerminalFailureCause(StrEnum):
     EXITED = _TERMINAL_EXITED
     TIMEOUT = _TERMINAL_TIMED_OUT
     OUTPUT_LIMIT = _TERMINAL_OUTPUT_LIMIT
+    READ_ERROR = _TERMINAL_READ_ERROR
+    EOF = _TERMINAL_EOF
 
 
 @dataclass(frozen=True)
@@ -65,6 +72,13 @@ class TerminalFailure(RuntimeError):
         super().__init__(message)
         self.output = output
         self.cause = cause
+
+    @property
+    def diagnostic(self) -> str:
+        """Carry the stable cause and its original detail across the command evidence boundary."""
+        if self.cause in (TerminalFailureCause.READ_ERROR, TerminalFailureCause.EOF):
+            return _TERMINAL_CAUSE_DETAIL_FORMAT.format(cause=self.cause.value, detail=self)
+        return self.cause.value if self.cause is not None else str(self)
 
 
 class PersistentTerminal:
@@ -172,9 +186,17 @@ class PersistentTerminal:
                         output=self._captured_output(start),
                         cause=TerminalFailureCause.EXITED,
                     ) from exc
-                break
+                raise TerminalFailure(
+                    _TERMINAL_READ_ERROR_MESSAGE.format(error=f"{type(exc).__name__}: {exc}"),
+                    output=self._captured_output(start),
+                    cause=TerminalFailureCause.READ_ERROR,
+                ) from exc
             if not chunk:
-                break
+                raise TerminalFailure(
+                    _TERMINAL_EOF_MESSAGE,
+                    output=self._captured_output(start),
+                    cause=TerminalFailureCause.EOF,
+                )
             self._buffer.extend(chunk)
             if len(self._buffer) - start > self._output_limit_bytes + _MAX_MARKER_OVERHEAD:
                 raise TerminalFailure(

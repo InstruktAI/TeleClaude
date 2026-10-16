@@ -100,6 +100,13 @@ class B13Framing(StrEnum):
     PARTIAL = "partial_trailing_record"
 
 
+class B13OperationState(StrEnum):
+    """Closed sentinels for a receipt state that is absent or unreadable."""
+
+    NOT_APPLICABLE = "not_applicable"
+    UNKNOWN = "unknown"
+
+
 B13_STATUS_NOT_SELECTED: Final = B13Status.NOT_SELECTED
 B13_STATUS_NOT_RUN: Final = B13Status.NOT_RUN
 B13_STATUS_PARTIAL: Final = B13Status.PARTIAL
@@ -192,7 +199,19 @@ B13_DIAGNOSTICS_FIELD: Final = "diagnostics"
 B13_EXIT_FIELD: Final = "exit_status"
 B13_OPERATION_FIELD: Final = "operation_id"
 B13_OPERATION_STATUS_FIELD: Final = "operation_status"
-B13_OPERATION_NOT_APPLICABLE: Final = "not_applicable"
+B13_OPERATION_NOT_APPLICABLE: Final = B13OperationState.NOT_APPLICABLE
+B13_OPERATION_UNKNOWN: Final = B13OperationState.UNKNOWN
+B13_LEDGER_ORIGINAL_SHA_FIELD: Final = "original_sha256"
+B13_LEDGER_ORIGINAL_BYTES_FIELD: Final = "original_byte_count"
+B13_LEDGER_PATH_FIELD: Final = "path"
+B13_LEDGER_READ_ERROR_FIELD: Final = "read_error"
+B13_LEDGER_TEXT_FIELD: Final = "sanitized_text"
+B13_LEDGER_TEXT_TRUNCATED_FIELD: Final = "sanitized_text_truncated"
+B13_LEDGER_FRAMING_FIELD: Final = "framing"
+B13_LEDGER_RECORD_COUNT_FIELD: Final = "record_count"
+B13_LEDGER_PARSE_ERROR_FIELD: Final = "parse_error"
+B13_ERROR_DETAIL_FORMAT: Final = "{error_class}: {detail}"
+B13_BYTE_NEWLINE: Final = b"\n"
 B13_EVIDENCE_FIELD: Final = "evidence"
 B13_PRIMARY_FAILURE_FIELD: Final = "primary_failure"
 B13_EVIDENCE_FAILURE_FIELD: Final = "evidence_failure"
@@ -373,6 +392,85 @@ def _b13_append(path: Path, record: Mapping[str, object]) -> None:
         os.close(descriptor)
 
 
+def capture_b13_attempt_ledger(
+    evidence: WaitingKickbackEvidence, marker_path: Path, sanitize: Callable[[str], str]
+) -> None:
+    """Record the latest readable ledger bytes in report memory without refreshing a failed seal."""
+    attempts_path = marker_path.parent / B13_ATTEMPTS_FILE
+    try:
+        attempts_raw = attempts_path.read_bytes()
+    except OSError as error:
+        evidence.attempt_ledger = {
+            B13_LEDGER_PATH_FIELD: sanitize(str(attempts_path)),
+            B13_LEDGER_READ_ERROR_FIELD: sanitize(
+                B13_ERROR_DETAIL_FORMAT.format(error_class=type(error).__name__, detail=error)
+            ),
+        }
+        return
+    attempts_text = sanitize(attempts_raw.decode(B13_UTF8, errors="replace"))
+    attempts_records = 0
+    parse_error = ""
+    for line in attempts_raw.splitlines():
+        if line:
+            try:
+                json.loads(line)
+                attempts_records += 1
+            except (UnicodeDecodeError, ValueError) as error:
+                parse_error = B13_ERROR_DETAIL_FORMAT.format(error_class=type(error).__name__, detail=error)
+                break
+    evidence.attempt_ledger = {
+        B13_LEDGER_ORIGINAL_SHA_FIELD: hashlib.sha256(attempts_raw).hexdigest(),
+        B13_LEDGER_ORIGINAL_BYTES_FIELD: len(attempts_raw),
+        B13_LEDGER_TEXT_FIELD: attempts_text[:B13_DIAGNOSTIC_LIMIT],
+        B13_LEDGER_TEXT_TRUNCATED_FIELD: len(attempts_text) > B13_DIAGNOSTIC_LIMIT,
+        B13_LEDGER_FRAMING_FIELD: (
+            B13_FRAMING_COMPLETE if not attempts_raw or attempts_raw.endswith(B13_BYTE_NEWLINE) else B13_FRAMING_PARTIAL
+        ),
+        B13_LEDGER_RECORD_COUNT_FIELD: attempts_records,
+        B13_LEDGER_PATH_FIELD: sanitize(str(attempts_path.resolve())),
+        B13_LEDGER_READ_ERROR_FIELD: "",
+        B13_LEDGER_PARSE_ERROR_FIELD: sanitize(parse_error),
+    }
+
+
+def append_b13_attempt(
+    evidence: WaitingKickbackEvidence,
+    marker_path: Path,
+    carrier_path: Path,
+    record: Mapping[str, object],
+    sanitize: Callable[[str], str],
+    *,
+    final_elapsed_start: float | None = None,
+) -> None:
+    """Append one exact ledger frame only after the prior seal and ledger bytes validate."""
+    attempts_path = marker_path.parent / B13_ATTEMPTS_FILE
+    previous = attempts_path.read_bytes()
+    prior = evidence.attempt_ledger
+    if prior:
+        if (
+            hashlib.sha256(previous).hexdigest() != prior.get(B13_LEDGER_ORIGINAL_SHA_FIELD)
+            or len(previous) != prior.get(B13_LEDGER_ORIGINAL_BYTES_FIELD)
+            or not verify_b13_seal(evidence, marker_path, carrier_path)
+        ):
+            raise ValueError(B13_ERROR_SEAL)
+    elif marker_path.exists() or carrier_path.read_bytes() or previous:
+        raise ValueError(B13_ERROR_SEAL)
+    frame = _b13_json_bytes(record)
+    _b13_append(attempts_path, record)
+    updated = attempts_path.read_bytes()
+    if updated != previous + frame:
+        raise ValueError(B13_ERROR_SEAL)
+    freeze_b13_evidence(evidence, marker_path, carrier_path, sanitize, authorized_append=frame)
+    if final_elapsed_start is not None:
+        evidence.duration_seconds = time.monotonic() - final_elapsed_start
+        if evidence.duration_seconds > B13_SCENARIO_SECONDS:
+            evidence.status = B13_STATUS_UNPROVEN
+            evidence.primary_failure = B13_ERROR_DEADLINE
+        if not verify_b13_seal(evidence, marker_path, carrier_path):
+            raise ValueError(B13_ERROR_SEAL)
+        freeze_b13_evidence(evidence, marker_path, carrier_path, sanitize, authorized_refresh=frame)
+
+
 def _b13_marker_record(evidence: WaitingKickbackEvidence) -> creation.EvidenceObject:
     """Persist the B13 ownership key and current evidence-carrier seal in the retained marker."""
     return cast(
@@ -407,17 +505,47 @@ def freeze_b13_evidence(
     marker_path: Path,
     carrier_path: Path,
     sanitize: Callable[[str], str],
+    *,
+    authorized_append: bytes | None = None,
+    authorized_refresh: bytes | None = None,
 ) -> None:
-    """Write and read back a durable carrier and its marker before a cleanup/removal branch."""
+    """Refresh a durable seal only when its previous bytes and one authorized append are verified."""
     if evidence.carrier.get("owned") is not True:
         raise ValueError(B13_ERROR_ALREADY_EXISTS)
     attempts_path = marker_path.parent / B13_ATTEMPTS_FILE
+    attempts_raw = attempts_path.read_bytes()
+    prior = evidence.attempt_ledger
+    if authorized_refresh is not None:
+        if (
+            not prior
+            or not attempts_raw.endswith(authorized_refresh)
+            or hashlib.sha256(attempts_raw).hexdigest() != prior.get(B13_LEDGER_ORIGINAL_SHA_FIELD)
+            or len(attempts_raw) != prior.get(B13_LEDGER_ORIGINAL_BYTES_FIELD)
+            or not verify_b13_seal(evidence, marker_path, carrier_path)
+        ):
+            raise ValueError(B13_ERROR_SEAL)
+    elif prior:
+        prior_size = prior.get(B13_LEDGER_ORIGINAL_BYTES_FIELD)
+        prior_hash = prior.get(B13_LEDGER_ORIGINAL_SHA_FIELD)
+        if (
+            type(prior_size) is not int
+            or not isinstance(prior_hash, str)
+            or len(attempts_raw) != prior_size + (len(authorized_append) if authorized_append is not None else 0)
+            or hashlib.sha256(attempts_raw[:prior_size]).hexdigest() != prior_hash
+            or (authorized_append is not None and attempts_raw[prior_size:] != authorized_append)
+            or (authorized_append is None and hashlib.sha256(attempts_raw).hexdigest() != prior_hash)
+            or not verify_b13_seal(evidence, marker_path, carrier_path, check_attempts=False)
+        ):
+            raise ValueError(B13_ERROR_SEAL)
+    elif (
+        authorized_append is None
+        or attempts_raw != authorized_append
+        or marker_path.exists()
+        or carrier_path.read_bytes()
+    ):
+        raise ValueError(B13_ERROR_SEAL)
     ledger_read_error = ""
-    try:
-        attempts_raw = attempts_path.read_bytes()
-    except OSError as error:
-        attempts_raw = b""
-        ledger_read_error = f"{type(error).__name__}: {error}"
+
     attempts_text = sanitize(attempts_raw.decode(B13_UTF8, errors="replace"))
     attempts_lines = attempts_raw.splitlines()
     attempts_records = 0
@@ -432,15 +560,15 @@ def freeze_b13_evidence(
                 break
     attempts_framing = B13_FRAMING_COMPLETE if not attempts_raw or attempts_raw.endswith(b"\n") else B13_FRAMING_PARTIAL
     evidence.attempt_ledger = {
-        "original_sha256": hashlib.sha256(attempts_raw).hexdigest(),
-        "original_byte_count": len(attempts_raw),
-        "sanitized_text": attempts_text[:B13_DIAGNOSTIC_LIMIT],
-        "sanitized_text_truncated": len(attempts_text) > B13_DIAGNOSTIC_LIMIT,
-        "framing": attempts_framing,
-        "record_count": attempts_records,
-        "path": sanitize(str(attempts_path.resolve())),
-        "read_error": sanitize(ledger_read_error),
-        "parse_error": sanitize(ledger_parse_error),
+        B13_LEDGER_ORIGINAL_SHA_FIELD: hashlib.sha256(attempts_raw).hexdigest(),
+        B13_LEDGER_ORIGINAL_BYTES_FIELD: len(attempts_raw),
+        B13_LEDGER_TEXT_FIELD: attempts_text[:B13_DIAGNOSTIC_LIMIT],
+        B13_LEDGER_TEXT_TRUNCATED_FIELD: len(attempts_text) > B13_DIAGNOSTIC_LIMIT,
+        B13_LEDGER_FRAMING_FIELD: attempts_framing,
+        B13_LEDGER_RECORD_COUNT_FIELD: attempts_records,
+        B13_LEDGER_PATH_FIELD: sanitize(str(attempts_path.resolve())),
+        B13_LEDGER_READ_ERROR_FIELD: sanitize(ledger_read_error),
+        B13_LEDGER_PARSE_ERROR_FIELD: sanitize(ledger_parse_error),
     }
     if evidence.status == B13_STATUS_COMPLETE and (
         attempts_framing != B13_FRAMING_COMPLETE
@@ -480,6 +608,42 @@ def freeze_b13_evidence(
     evidence.carrier[B13_MARKER_BYTES_FIELD] = len(marker_read)
 
 
+def verify_b13_seal(
+    evidence: WaitingKickbackEvidence,
+    marker_path: Path,
+    carrier_path: Path,
+    *,
+    check_attempts: bool = True,
+) -> bool:
+    """Verify the retained marker and carrier against their recorded seal without rewriting either."""
+    try:
+        marker = marker_path.read_bytes()
+        carrier = carrier_path.read_bytes()
+        record = json.loads(marker)
+        attempts_path = marker_path.parent / B13_ATTEMPTS_FILE
+        attempts = attempts_path.read_bytes()
+        ledger = evidence.attempt_ledger
+        return (
+            isinstance(record, dict)
+            and hashlib.sha256(carrier).hexdigest() == evidence.carrier.get(B13_CARRIER_SHA_FIELD)
+            and len(carrier) == evidence.carrier.get(B13_CARRIER_BYTES_FIELD)
+            and hashlib.sha256(marker).hexdigest() == evidence.carrier.get(B13_MARKER_SHA_FIELD)
+            and len(marker) == evidence.carrier.get(B13_MARKER_BYTES_FIELD)
+            and record.get(B13_CARRIER_SHA_FIELD) == evidence.carrier.get(B13_CARRIER_SHA_FIELD)
+            and record.get(B13_ATTEMPTS_SHA_FIELD) == ledger.get(B13_LEDGER_ORIGINAL_SHA_FIELD)
+            and record.get(B13_ATTEMPTS_BYTES_FIELD) == ledger.get(B13_LEDGER_ORIGINAL_BYTES_FIELD)
+            and (
+                not check_attempts
+                or (
+                    hashlib.sha256(attempts).hexdigest() == ledger.get(B13_LEDGER_ORIGINAL_SHA_FIELD)
+                    and len(attempts) == ledger.get(B13_LEDGER_ORIGINAL_BYTES_FIELD)
+                )
+            )
+        )
+    except (OSError, ValueError, TypeError):
+        return False
+
+
 def verify_b13_delivery(
     evidence: WaitingKickbackEvidence,
     marker_path: Path,
@@ -494,6 +658,7 @@ def verify_b13_delivery(
         expected_payload = _b13_json_bytes(_b13_safe(_b13_payload(evidence), sanitize))
         return (
             evidence.status == B13_STATUS_COMPLETE
+            and verify_b13_seal(evidence, marker_path, carrier_path)
             and carrier == expected_payload
             and hashlib.sha256(carrier).hexdigest() == evidence.carrier.get(B13_CARRIER_SHA_FIELD)
             and len(carrier) == evidence.carrier.get(B13_CARRIER_BYTES_FIELD)
@@ -845,6 +1010,31 @@ class _Waiting:
         self.snapshot = self._shown()
         self.b13_waiting_completed = True
 
+    def _b13_paths(self) -> tuple[Path, Path, Path]:
+        """Establish the retention guard before refusing any missing, conflicting or unsafe carrier path."""
+        marker_root = self.controls.root.parent / B13_DIRECTORY
+        marker_path = marker_root / B13_MARKER_FILE
+        self.b13_marker = marker_path
+        self.retain_key(B13_RETENTION_KEY, B13_RETENTION_REASON)
+        report_path = self.report_path
+        if report_path is None:
+            self.b13_evidence.status = B13_STATUS_UNPROVEN
+            self.b13_evidence.primary_failure = B13_ERROR_CARRIER
+            raise creation.binding_failure(B13_ERROR_PREFIX + B13_ERROR_CARRIER)
+        carrier_path = report_path.with_name(report_path.name + B13_CARRIER_SUFFIX)
+        self.b13_carrier = carrier_path
+        inside_profile = carrier_path.resolve().is_relative_to(self.publication.temporary_root.resolve())
+        if inside_profile or carrier_path.exists():
+            failure = B13_ERROR_CARRIER if inside_profile else B13_ERROR_ALREADY_EXISTS
+            self.b13_evidence.status = B13_STATUS_UNPROVEN
+            self.b13_evidence.primary_failure = failure
+            raise creation.binding_failure(B13_ERROR_PREFIX + failure)
+        if marker_root.exists():
+            self.b13_evidence.status = B13_STATUS_UNPROVEN
+            self.b13_evidence.primary_failure = B13_ERROR_ALREADY_EXISTS
+            raise creation.binding_failure(B13_ERROR_PREFIX + B13_ERROR_ALREADY_EXISTS)
+        return marker_root, marker_path, carrier_path
+
     def step4b_retired_kickback(
         self,
         owner: str,
@@ -863,32 +1053,11 @@ class _Waiting:
         evidence.status = B13_STATUS_PARTIAL
         evidence.source_revision = source_revision
         evidence.source_tree = source_tree
+        marker_root, marker_path, carrier_path = self._b13_paths()
         report_path = self.report_path
-        marker_root = self.controls.root.parent / B13_DIRECTORY
-        marker_path = marker_root / B13_MARKER_FILE
-        if report_path is None:
-            evidence.status = B13_STATUS_UNPROVEN
-            evidence.primary_failure = B13_ERROR_CARRIER
-            raise creation.binding_failure(B13_ERROR_PREFIX + B13_ERROR_CARRIER)
-        carrier_path = report_path.with_name(report_path.name + B13_CARRIER_SUFFIX)
-        if carrier_path.resolve().is_relative_to(self.publication.temporary_root.resolve()) or carrier_path.exists():
-            evidence.status = B13_STATUS_UNPROVEN
-            evidence.primary_failure = (
-                B13_ERROR_CARRIER
-                if carrier_path.resolve().is_relative_to(self.publication.temporary_root.resolve())
-                else B13_ERROR_ALREADY_EXISTS
-            )
-            raise creation.binding_failure(B13_ERROR_PREFIX + evidence.primary_failure)
-        if marker_root.exists():
-            evidence.status = B13_STATUS_UNPROVEN
-            evidence.primary_failure = B13_ERROR_ALREADY_EXISTS
-            raise creation.binding_failure(B13_ERROR_PREFIX + B13_ERROR_ALREADY_EXISTS)
-        self.b13_marker = marker_path
-        self.b13_carrier = carrier_path
-        self.retain_key(B13_RETENTION_KEY, B13_RETENTION_REASON)
+        assert report_path is not None
         try:
             marker_root.mkdir(parents=True, exist_ok=False)
-            _b13_write_exclusive(marker_path, _b13_json_bytes(_b13_safe(_b13_marker_record(evidence), self.sanitize)))
             carrier_path.parent.mkdir(parents=True, exist_ok=True)
             _b13_write_exclusive(carrier_path, b"")
             _b13_fsync_directory(marker_root)
@@ -921,40 +1090,46 @@ class _Waiting:
             before_item = observer.show(ITEM)
             clean_before_item = _b13_safe(dict(before_item), self.sanitize) if before_item is not None else None
             evidence.before["item"] = clean_before_item
-            _b13_append(
-                marker_root / B13_ATTEMPTS_FILE,
+            append_b13_attempt(
+                evidence,
+                marker_path,
+                carrier_path,
                 {
                     B13_EVENT: B13_PUBLIC_READ,
                     "when": B13_OBSERVATION_BEFORE,
                     B13_ARGV_FIELD: list(B13_READ_ARGV[0]),
                     "item": clean_before_item,
                 },
+                self.sanitize,
             )
-            freeze_b13_evidence(evidence, marker_path, carrier_path, self.sanitize)
             before_sessions = observer.sessions()
             evidence.before["session_ids"] = cast(list[creation.EvidenceValue], sorted(before_sessions.ids))
-            _b13_append(
-                marker_root / B13_ATTEMPTS_FILE,
+            append_b13_attempt(
+                evidence,
+                marker_path,
+                carrier_path,
                 {
                     B13_EVENT: B13_PUBLIC_READ,
                     "when": B13_OBSERVATION_BEFORE,
                     B13_ARGV_FIELD: list(B13_READ_ARGV[1]),
                     "session_ids": sorted(before_sessions.ids),
                 },
+                self.sanitize,
             )
-            freeze_b13_evidence(evidence, marker_path, carrier_path, self.sanitize)
             before_slugs = observer.slugs()
             evidence.before["slugs"] = cast(list[creation.EvidenceValue], sorted(before_slugs))
-            _b13_append(
-                marker_root / B13_ATTEMPTS_FILE,
+            append_b13_attempt(
+                evidence,
+                marker_path,
+                carrier_path,
                 {
                     B13_EVENT: B13_PUBLIC_READ,
                     "when": B13_OBSERVATION_BEFORE,
                     B13_ARGV_FIELD: list(B13_READ_ARGV[2]),
                     "slugs": sorted(before_slugs),
                 },
+                self.sanitize,
             )
-            freeze_b13_evidence(evidence, marker_path, carrier_path, self.sanitize)
             if before_item is None or creation.differences(self.snapshot, before_item):
                 raise ValueError(B13_ERROR_WAITING)
             creation.require_value(ITEM, before_item, "state.lifecycle_phase", PHASE_WAITING)
@@ -970,15 +1145,18 @@ class _Waiting:
                 raise ValueError(B13_ERROR_WAITING)
             if any(value == publication.START_OPEN for value in self.starts.values()):
                 raise ValueError(B13_ERROR_START_OPEN)
-            _b13_append(
-                marker_root / B13_ATTEMPTS_FILE,
+            append_b13_attempt(
+                evidence,
+                marker_path,
+                carrier_path,
                 {B13_EVENT: B13_ATTEMPT_OPEN, B13_ARGV_FIELD: list(B13_CALL_ARGV), B13_PRECALL: evidence.before},
+                self.sanitize,
             )
-            freeze_b13_evidence(evidence, marker_path, carrier_path, self.sanitize)
             outcome = observer.run(B13_CALL_ARGV)
             receipt = creation.decode_object(outcome.output)
-            operation = publication.receipt_operation(outcome.output)
-            receipt_status = receipt.get(B13_STATUS_FIELD) if receipt is not None else None
+            operation_value = receipt.get(publication.FIELD_OPERATION) if receipt is not None else None
+            operation = operation_value if isinstance(operation_value, str) and operation_value else None
+            receipt_state = receipt.get(FIELD_STATE) if receipt is not None else None
             evidence.response = {
                 B13_ARGV_FIELD: list(B13_CALL_ARGV),
                 B13_EXIT_FIELD: outcome.exit_status,
@@ -988,8 +1166,10 @@ class _Waiting:
                 B13_DURATION_FIELD: outcome.duration_seconds,
                 B13_OPERATION_FIELD: operation,
                 B13_OPERATION_STATUS_FIELD: (
-                    receipt_status
-                    if isinstance(receipt_status, str) and receipt_status
+                    receipt_state
+                    if operation is not None and isinstance(receipt_state, str) and receipt_state
+                    else B13_OPERATION_UNKNOWN
+                    if operation is not None
                     else B13_OPERATION_NOT_APPLICABLE
                 ),
                 "stdout_sanitized": True,
@@ -998,8 +1178,9 @@ class _Waiting:
                 "output_truncated": outcome.diagnostics == creation.B12_OUTPUT_LIMIT_DIAGNOSTIC,
                 "stderr_truncated": False,
             }
-            _b13_append(marker_root / B13_ATTEMPTS_FILE, {B13_EVENT: B13_ATTEMPT_RESULT, **evidence.response})
-            freeze_b13_evidence(evidence, marker_path, carrier_path, self.sanitize)
+            append_b13_attempt(
+                evidence, marker_path, carrier_path, {B13_EVENT: B13_ATTEMPT_RESULT, **evidence.response}, self.sanitize
+            )
             normalized = creation.normalized(outcome.output)
             expected_door = B13_DOOR_SENTENCE.format(owner=self.person)
             if (
@@ -1022,60 +1203,84 @@ class _Waiting:
                 item = observer.show(ITEM)
                 clean_item = _b13_safe(dict(item), self.sanitize) if item is not None else None
                 observation["item"] = clean_item
-                _b13_append(
-                    marker_root / B13_ATTEMPTS_FILE,
+                append_b13_attempt(
+                    evidence,
+                    marker_path,
+                    carrier_path,
                     {
                         B13_EVENT: B13_PUBLIC_READ,
                         "when": label,
                         B13_ARGV_FIELD: list(B13_READ_ARGV[0]),
                         "item": clean_item,
                     },
+                    self.sanitize,
                 )
-                freeze_b13_evidence(evidence, marker_path, carrier_path, self.sanitize)
                 sessions = observer.sessions()
                 observation["session_ids"] = cast(list[creation.EvidenceValue], sorted(sessions.ids))
-                _b13_append(
-                    marker_root / B13_ATTEMPTS_FILE,
+                append_b13_attempt(
+                    evidence,
+                    marker_path,
+                    carrier_path,
                     {
                         B13_EVENT: B13_PUBLIC_READ,
                         "when": label,
                         B13_ARGV_FIELD: list(B13_READ_ARGV[1]),
                         "session_ids": sorted(sessions.ids),
                     },
+                    self.sanitize,
                 )
-                freeze_b13_evidence(evidence, marker_path, carrier_path, self.sanitize)
                 slugs = observer.slugs()
                 observation["slugs"] = cast(list[creation.EvidenceValue], sorted(slugs))
-                _b13_append(
-                    marker_root / B13_ATTEMPTS_FILE,
+                changed = creation.differences(evidence.before["item"], clean_item) if item is not None else ["absent"]
+                readback_matches = (
+                    item is not None and not changed and sessions.ids == before_sessions.ids and slugs == before_slugs
+                )
+                final_readback = label == B13_OBSERVATION_SETTLED and len(evidence.readbacks) == 2
+                if final_readback:
+                    evidence.duration_seconds = time.monotonic() - started
+                    evidence.status = (
+                        B13_STATUS_COMPLETE
+                        if readback_matches and evidence.duration_seconds <= B13_SCENARIO_SECONDS
+                        else B13_STATUS_UNPROVEN
+                    )
+                    if not readback_matches:
+                        evidence.primary_failure = B13_ERROR_CHANGED.format(differences=changed)
+                    elif evidence.duration_seconds > B13_SCENARIO_SECONDS:
+                        evidence.primary_failure = B13_ERROR_DEADLINE
+                append_b13_attempt(
+                    evidence,
+                    marker_path,
+                    carrier_path,
                     {
                         B13_EVENT: B13_PUBLIC_READ,
                         "when": label,
                         B13_ARGV_FIELD: list(B13_READ_ARGV[2]),
                         "slugs": sorted(slugs),
                     },
+                    self.sanitize,
+                    final_elapsed_start=started if final_readback else None,
                 )
-                freeze_b13_evidence(evidence, marker_path, carrier_path, self.sanitize)
-                changed = creation.differences(evidence.before["item"], clean_item) if item is not None else ["absent"]
-                if item is None or changed or sessions.ids != before_sessions.ids or slugs != before_slugs:
+                if not readback_matches:
                     raise ValueError(B13_ERROR_CHANGED.format(differences=changed))
             if len(evidence.readbacks) != 2:
                 raise ValueError(B13_ERROR_READBACK_COUNT)
-            evidence.status = B13_STATUS_COMPLETE
-            evidence.duration_seconds = time.monotonic() - started
-            freeze_b13_evidence(evidence, marker_path, carrier_path, self.sanitize)
+            if evidence.status != B13_STATUS_COMPLETE:
+                raise ValueError(evidence.primary_failure or B13_ERROR_DEADLINE)
             if not verify_b13_delivery(evidence, marker_path, carrier_path, self.sanitize):
                 raise ValueError(B13_ERROR_SEAL)
+            if time.monotonic() - started > B13_SCENARIO_SECONDS:
+                evidence.status = B13_STATUS_UNPROVEN
+                evidence.primary_failure = B13_ERROR_DEADLINE
+                raise ValueError(B13_ERROR_DEADLINE)
             self.release_key(B13_RETENTION_KEY)
         except BaseException as error:
             evidence.status = B13_STATUS_UNPROVEN
             evidence.primary_failure = self.sanitize(f"{type(error).__name__}: {error}")
             evidence.duration_seconds = time.monotonic() - started
             if evidence.carrier.get("owned") is True and marker_path.exists() and carrier_path.exists():
-                try:
-                    freeze_b13_evidence(evidence, marker_path, carrier_path, self.sanitize)
-                except BaseException as seal_error:
-                    evidence.evidence_failure = self.sanitize(f"{type(seal_error).__name__}: {seal_error}")
+                if not verify_b13_seal(evidence, marker_path, carrier_path):
+                    evidence.evidence_failure = B13_ERROR_SEAL
+                    capture_b13_attempt_ledger(evidence, marker_path, self.sanitize)
             raise creation.binding_failure(B13_ERROR_PREFIX + evidence.primary_failure) from error
 
     def step5_entry_refused(self, owner: str, first: str, child: str) -> None:
@@ -1342,8 +1547,7 @@ def _cleanup(waiting: _Waiting, failure: BaseException | None) -> None:
     b13_safe = waiting.b13_marker is None
     if waiting.b13_marker is not None and waiting.b13_carrier is not None:
         try:
-            if waiting.b13_evidence.carrier.get("owned") is True:
-                freeze_b13_evidence(waiting.b13_evidence, waiting.b13_marker, waiting.b13_carrier, waiting.sanitize)
+            if waiting.b13_evidence.carrier.get("owned") is True and waiting.b13_evidence.status == B13_STATUS_COMPLETE:
                 b13_safe = verify_b13_delivery(
                     waiting.b13_evidence, waiting.b13_marker, waiting.b13_carrier, waiting.sanitize
                 )
@@ -1351,6 +1555,10 @@ def _cleanup(waiting: _Waiting, failure: BaseException | None) -> None:
             waiting.b13_evidence.status = B13_STATUS_UNPROVEN
             waiting.b13_evidence.evidence_failure = waiting.sanitize(f"{type(error).__name__}: {error}")
             b13_safe = False
+        if not b13_safe:
+            if not waiting.b13_evidence.evidence_failure:
+                waiting.b13_evidence.evidence_failure = B13_ERROR_SEAL
+            capture_b13_attempt_ledger(waiting.b13_evidence, waiting.b13_marker, waiting.sanitize)
         if not b13_safe:
             waiting.retain_key(B13_RETENTION_KEY, B13_RETENTION_REASON)
     settlement = publication.settle_sessions(

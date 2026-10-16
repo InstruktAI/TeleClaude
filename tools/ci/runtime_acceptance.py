@@ -321,6 +321,8 @@ _SOURCE_REVISION_OPTION = "--source-revision"
 _SOURCE_TREE_OPTION = "--source-tree"
 _CLI_DESCRIPTION = "Run the bounded real-process CLI acceptance profile."
 _REPORT_WRITE_ERROR = "Could not write runtime acceptance report: {error}"
+_B13_REPORT_SEAL_FAILURE = "B13 report delivery seal failed; candidate controls and profile state were retained."
+_B13_REPORT_WRITE_FAILURE = "B13 report write failed: {error}"
 _SCENARIO_NOT_RUN = "No scenario action was registered."
 _FIXTURE_INSTALLER_WHERE = "the installer environment"
 _FIXTURE_LOGIN_WHERE = "the owner login shell"
@@ -346,6 +348,9 @@ _PROCESS_FAILURE = 1
 _PROCESS_LAUNCH_EXIT_CODE = 127
 _REPORT_NAME_TEMPLATE = "runtime-acceptance-{identifier}.json"
 _REPORT_RETIRED_ACT_DELIVERY_PATH = "retired_act_delivery_path"
+_B13_REPORT_EVIDENCE_FIELD = "workflow_waiting_retired_kickback_evidence"
+_B13_REPORT_DELIVERY_PATH_FIELD = "workflow_waiting_retired_kickback_delivery_path"
+_B13_REPORT_MARKER_DIRECTORY_FIELD = "workflow_waiting_retired_kickback_marker_directory"
 _VENV_CONFIG_FILENAME = "pyvenv.cfg"
 _PYTHON_DIRECTORY = "bin"
 _PATH_SEPARATOR = os.pathsep
@@ -1355,7 +1360,7 @@ def _record_terminal_command(
                 exit_status=None,
                 duration_seconds=time.monotonic() - started,
                 stdout=resources.sanitize(exc.output)[:_DIAGNOSTIC_LIMIT],
-                diagnostics=exc.cause.value if exc.cause is not None else str(exc),
+                diagnostics=exc.diagnostic,
             )
         )
         return None, exc.output
@@ -2032,20 +2037,23 @@ def _freeze_retired_act_evidence(resources: FullRuntimeResources) -> None:
 
 
 def _freeze_b13_profile_evidence(resources: FullRuntimeResources) -> None:
-    """Freeze B13's external report carrier before any full-profile removal branch."""
+    """Validate B13's existing external report seal before any full-profile removal branch."""
     marker = resources.b13_marker_path
     carrier = resources.b13_carrier_path
     if marker is None or carrier is None or resources.b13_evidence.carrier.get("owned") is not True:
         return
     try:
-        waiting.freeze_b13_evidence(resources.b13_evidence, marker, carrier, resources.sanitize)
-        if resources.b13_evidence.status == waiting.B13_STATUS_COMPLETE and not waiting.verify_b13_delivery(
-            resources.b13_evidence, marker, carrier, resources.sanitize
-        ):
+        valid = (
+            waiting.verify_b13_delivery(resources.b13_evidence, marker, carrier, resources.sanitize)
+            if resources.b13_evidence.status == waiting.B13_STATUS_COMPLETE
+            else waiting.verify_b13_seal(resources.b13_evidence, marker, carrier)
+        )
+        if not valid:
             raise ValueError(waiting.B13_ERROR_SEAL)
     except Exception as error:
         resources.b13_evidence.status = waiting.B13_STATUS_UNPROVEN
         resources.b13_evidence.evidence_failure = resources.sanitize(f"{type(error).__name__}: {error}")
+        waiting.capture_b13_attempt_ledger(resources.b13_evidence, marker, resources.sanitize)
         resources.retain_key(waiting.B13_RETENTION_KEY, waiting.B13_RETENTION_REASON)
 
 
@@ -5306,37 +5314,105 @@ def _retire_delivered_b12_carrier(path: Path) -> None:
         return
 
 
-def write_report(report: AcceptanceReport, report_path: Path) -> None:
-    """Persist a report atomically enough that readers never accept a partial JSON file."""
-    temporary_path = report_path.with_suffix(f"{report_path.suffix}{_REPORT_TEMP_SUFFIX}")
-    payload = asdict(report)
-    delivery_path = payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
-    b13_delivery_path = payload.pop("workflow_waiting_retired_kickback_delivery_path", None)
-    b13_marker_directory = payload.pop("workflow_waiting_retired_kickback_marker_directory", None)
+def _write_report_payload(report_path: Path, temporary_path: Path, payload: Mapping[str, object]) -> None:
+    """Replace the report only after a complete serialized payload is available."""
     try:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         temporary_path.write_text(json.dumps(payload, indent=2) + _LINE_BREAK, encoding=_UTF8)
         temporary_path.replace(report_path)
-    except OSError as exc:
+    except (OSError, TypeError, ValueError) as exc:
         raise RuntimeError(_REPORT_WRITE_ERROR.format(error=exc)) from exc
-    report_bytes = report_path.read_bytes()
-    report_value = json.loads(report_bytes)
-    b13_value = report_value.get("workflow_waiting_retired_kickback_evidence")
-    if b13_value != asdict(report.workflow_waiting_retired_kickback_evidence):
-        raise RuntimeError(waiting.B13_ERROR_SEAL)
+
+
+def _b13_report_unproven(report: AcceptanceReport, detail: str = _B13_REPORT_SEAL_FAILURE) -> AcceptanceReport:
+    """Downgrade a report whose complete B13 delivery seal did not survive read-back."""
+    evidence = report.workflow_waiting_retired_kickback_evidence
+    evidence.status = waiting.B13_STATUS_UNPROVEN
+    evidence.evidence_failure = detail
+    return replace(
+        report,
+        cleanup=CleanupResult(
+            status=ScenarioStatus.FAILED,
+            detail=detail,
+            commands=report.cleanup.commands,
+        ),
+    )
+
+
+def write_report(report: AcceptanceReport, report_path: Path) -> AcceptanceReport:
+    """Persist a report atomically enough that readers never accept a partial JSON file."""
+    b13 = report.workflow_waiting_retired_kickback_evidence
+    b13_delivery_path = report.workflow_waiting_retired_kickback_delivery_path
+    b13_marker_directory = report.workflow_waiting_retired_kickback_marker_directory
+    if b13.status == waiting.B13_STATUS_COMPLETE and (
+        not isinstance(b13_delivery_path, Path)
+        or not isinstance(b13_marker_directory, Path)
+        or not (b13_marker_directory / waiting.B13_MARKER_FILE).is_file()
+        or not waiting.verify_b13_delivery(
+            b13,
+            b13_marker_directory / waiting.B13_MARKER_FILE,
+            b13_delivery_path,
+            lambda value: value,
+        )
+    ):
+        report = _b13_report_unproven(report)
+    temporary_path = report_path.with_suffix(f"{report_path.suffix}{_REPORT_TEMP_SUFFIX}")
+    payload = asdict(report)
+    delivery_path = payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
+    payload.pop(_B13_REPORT_DELIVERY_PATH_FIELD, None)
+    payload.pop(_B13_REPORT_MARKER_DIRECTORY_FIELD, None)
+    try:
+        _write_report_payload(report_path, temporary_path, payload)
+    except RuntimeError as error:
+        if report.workflow_waiting_retired_kickback_evidence.status != waiting.B13_STATUS_COMPLETE:
+            raise
+        safe_error = str(error).replace(str(report_path.parent), _SYNTHETIC_RUNTIME_PLACEHOLDER)
+        report = _b13_report_unproven(report, _B13_REPORT_WRITE_FAILURE.format(error=safe_error))
+        failure_payload = asdict(report)
+        failure_payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
+        failure_payload.pop(_B13_REPORT_DELIVERY_PATH_FIELD, None)
+        failure_payload.pop(_B13_REPORT_MARKER_DIRECTORY_FIELD, None)
+        _write_report_payload(report_path, temporary_path, failure_payload)
+        return report
+    try:
+        report_bytes = report_path.read_bytes()
+        report_value = json.loads(report_bytes)
+        if not isinstance(report_value, Mapping):
+            raise ValueError(waiting.B13_ERROR_SEAL)
+        b13_value = report_value.get(_B13_REPORT_EVIDENCE_FIELD)
+        if b13_value != asdict(report.workflow_waiting_retired_kickback_evidence):
+            raise ValueError(waiting.B13_ERROR_SEAL)
+    except (OSError, ValueError, TypeError) as error:
+        if report.workflow_waiting_retired_kickback_evidence.status != waiting.B13_STATUS_COMPLETE:
+            raise RuntimeError(waiting.B13_ERROR_SEAL) from error
+        report = _b13_report_unproven(report)
+        failure_payload = asdict(report)
+        failure_payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
+        failure_payload.pop(_B13_REPORT_DELIVERY_PATH_FIELD, None)
+        failure_payload.pop(_B13_REPORT_MARKER_DIRECTORY_FIELD, None)
+        _write_report_payload(report_path, temporary_path, failure_payload)
+        return report
+    if report.workflow_waiting_retired_kickback_evidence.status == waiting.B13_STATUS_COMPLETE and (
+        not isinstance(b13_delivery_path, Path)
+        or not isinstance(b13_marker_directory, Path)
+        or not (b13_marker_directory / waiting.B13_MARKER_FILE).is_file()
+        or not waiting.verify_b13_delivery(
+            report.workflow_waiting_retired_kickback_evidence,
+            b13_marker_directory / waiting.B13_MARKER_FILE,
+            b13_delivery_path,
+            lambda value: value,
+        )
+    ):
+        report = _b13_report_unproven(report)
+        failure_payload = asdict(report)
+        failure_payload.pop(_REPORT_RETIRED_ACT_DELIVERY_PATH, None)
+        failure_payload.pop(_B13_REPORT_DELIVERY_PATH_FIELD, None)
+        failure_payload.pop(_B13_REPORT_MARKER_DIRECTORY_FIELD, None)
+        _write_report_payload(report_path, temporary_path, failure_payload)
+        return report
     if report.workflow_waiting_retired_kickback_evidence.status == waiting.B13_STATUS_COMPLETE:
-        if (
-            not isinstance(b13_delivery_path, Path)
-            or not isinstance(b13_marker_directory, Path)
-            or not (b13_marker_directory / waiting.B13_MARKER_FILE).is_file()
-            or not waiting.verify_b13_delivery(
-                report.workflow_waiting_retired_kickback_evidence,
-                b13_marker_directory / waiting.B13_MARKER_FILE,
-                b13_delivery_path,
-                lambda value: value,
-            )
-        ):
-            raise RuntimeError(waiting.B13_ERROR_SEAL)
+        assert isinstance(b13_marker_directory, Path)
+        assert isinstance(b13_delivery_path, Path)
         shutil.rmtree(b13_marker_directory)
         b13_delivery_path.unlink()
         descriptor = os.open(b13_delivery_path.parent, os.O_RDONLY)
@@ -5346,6 +5422,7 @@ def write_report(report: AcceptanceReport, report_path: Path) -> None:
             os.close(descriptor)
     if isinstance(delivery_path, Path):
         _retire_delivered_b12_carrier(delivery_path)
+    return report
 
 
 def _validate_b13_report(report: Mapping[str, object], source_revision: str, source_tree: str) -> None:
@@ -5792,7 +5869,7 @@ def main(arguments: list[str] | None = None) -> int:
             selection=selection,
             report_path=parsed.report,
         )
-        write_report(report, parsed.report)
+        report = write_report(report, parsed.report)
         if report.selection:
             if report.selection_passed:
                 print(_PARTIAL_PASSED, file=sys.stderr)
