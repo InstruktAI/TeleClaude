@@ -15,7 +15,7 @@ from teleclaude.config.machine import config
 from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.db import db
 from teleclaude.core.models import SessionSnapshot
-from teleclaude.core.session_utils import session_in_claiming_group
+from teleclaude.core.session_utils import cached_remote_session, session_in_claiming_group
 from teleclaude.types.workflow_record import HelperStart, RemoteMember
 
 NO_PRINCIPAL_EMAIL: Final = ""
@@ -50,7 +50,7 @@ async def load_caller(session_id: str) -> CallerFacts | None:
     """Read a session's identity facts from its record; None when the session is unknown."""
     session = await db.get_session(session_id)
     if session is None:
-        return None
+        return _remote_caller(session_id)
     principal = session.principal or ""
     email = principal.removeprefix(HUMAN_PRINCIPAL_PREFIX) if principal.startswith(HUMAN_PRINCIPAL_PREFIX) else ""
     return CallerFacts(
@@ -58,6 +58,27 @@ async def load_caller(session_id: str) -> CallerFacts | None:
         role=session.role,
         job=session.job,
         initiator_session_id=session.initiator_session_id,
+        principal_email=email or NO_PRINCIPAL_EMAIL,
+    )
+
+
+def _remote_caller(session_id: str) -> CallerFacts | None:
+    """The facts of a caller that runs on another computer, from the snapshot the mesh delivered for its session.
+
+    The relayed request carries the caller\'s session id; this computer holds no record of that session, so its role,
+    job, principal and initiator are read from the cluster cache, the supported source of another computer\'s session
+    facts. A session the cache does not know stays unknown.
+    """
+    snapshot = cached_remote_session(session_id)
+    if snapshot is None:
+        return None
+    principal = snapshot.principal or ""
+    email = principal.removeprefix(HUMAN_PRINCIPAL_PREFIX) if principal.startswith(HUMAN_PRINCIPAL_PREFIX) else ""
+    return CallerFacts(
+        session_id=session_id,
+        role=snapshot.role,
+        job=snapshot.job,
+        initiator_session_id=snapshot.initiator_session_id,
         principal_email=email or NO_PRINCIPAL_EMAIL,
     )
 

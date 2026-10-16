@@ -17,7 +17,7 @@ from teleclaude.api.auth import CallerIdentity
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.lanes import PREPARE_AUTHOR_ROLES
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
-from teleclaude.core.session_utils import session_in_claiming_group
+from teleclaude.core.session_utils import cached_remote_session, session_in_claiming_group
 from teleclaude.core.workflow_machine.phase_reading import in_task_lane
 from teleclaude.core.workflow_store.types import ItemChange
 from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX, Lineage
@@ -193,9 +193,14 @@ async def session_ancestry(session_id: str) -> frozenset[str]:
     current = session_id
     for _ in range(SESSION_ANCESTRY_CAP):
         session = await runtime_db.get_session(current)
-        if session is None or not session.initiator_session_id or session.initiator_session_id in chain:
+        if session is not None:
+            initiator = session.initiator_session_id
+        else:
+            snapshot = cached_remote_session(current)
+            initiator = snapshot.initiator_session_id if snapshot is not None else None
+        if not initiator or initiator in chain:
             break
-        current = session.initiator_session_id
+        current = initiator
         chain.add(current)
     return frozenset(chain)
 

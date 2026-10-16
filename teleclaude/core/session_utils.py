@@ -401,12 +401,12 @@ def session_display_title(session: object, *, fallback: str = "Untitled") -> str
 _CLAIM_GROUP_WALK_DEPTH_CAP = 64
 
 
-def _cached_initiator(session_id: str) -> str | None:
-    """The initiator of a session this computer does not hold, from the cluster cache of the others\' sessions.
+def cached_remote_session(session_id: str) -> "SessionSnapshot | None":
+    """The snapshot of a session this computer does not hold, from the cluster cache of the others\' sessions.
 
-    A session of another computer is not in this computer\'s store; its snapshot in the cache records who started it,
-    so a claiming group that spans computers is followed the same way as one on this computer. None when the session
-    is unknown to the cache or there is no cache.
+    A session of another computer is not in this computer\'s store; the snapshot the mesh delivered records its role,
+    job, principal and who started it, which is what a claiming group that spans computers is judged by. None when the
+    session is unknown to the cache or there is no cache.
     """
     from teleclaude.core.command_registry import get_command_service  # noqa: PLC0415 - deferred cycle
 
@@ -418,8 +418,14 @@ def _cached_initiator(session_id: str) -> str | None:
         return None
     for snapshot in cache.get_sessions():
         if snapshot.session_id == session_id:
-            return snapshot.initiator_session_id
+            return snapshot
     return None
+
+
+def _cached_initiator(session_id: str) -> str | None:
+    """The initiator of a session this computer does not hold, from the cluster cache."""
+    snapshot = cached_remote_session(session_id)
+    return snapshot.initiator_session_id if snapshot is not None else None
 
 
 async def session_descends_from(descendant_session_id: str, ancestor_session_id: str) -> bool:
