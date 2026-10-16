@@ -153,8 +153,6 @@ not change a kind or instance by implication.
 
 ## Canonical fields
 
-<!-- planned:config-client-command-boundary -->
-
 ### Shared configuration editor
 
 Configuration editing has one daemon-owned contract, consumed by terminal and
@@ -212,7 +210,6 @@ editing: explicitly changing a stored reference is a document mutation, while
 editing its effective value changes the referenced value. Both execute through
 the same daemon-owned configuration commands. This contract supplies the shared
 capability to web clients; it does not define a web-console screen.
-<!-- /planned:config-client-command-boundary -->
 
 ### Read paths
 

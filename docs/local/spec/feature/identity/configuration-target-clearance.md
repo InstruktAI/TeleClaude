@@ -43,21 +43,11 @@ A caller whose principal is a system principal carries no person
 (`local/projects/teleclaude/spec/identity-and-auth` §8). It holds no standing that belongs to a
 person or to a platform administrator, whatever its system role permits.
 
-<!-- planned-change:config-client-command-boundary -->
-
-Computer configuration is the daemon's own startup input and stays repairable
-while it is invalid
-(`local/projects/teleclaude/spec/feature/config/machine-config-cli-surface` UC-CFG-CLI-7).
-Deciding its clearance needs no running daemon, and resolving the caller does
-not depend on the machine configuration being valid.
-<!-- change:config-client-command-boundary -->
-
 Caller resolution and the configuration-target decision do not require a valid
 machine configuration. Configuration command execution follows
 `local/projects/teleclaude/spec/feature/config/machine-config-cli-surface`;
 unavailable-daemon recovery follows
 `general/policy/machine-config-mutation-authority`.
-<!-- /planned-change:config-client-command-boundary -->
 
 The clearance decision receives the same subject and affected-field set that the
 config owner mutates. A refusal names the target and the standing needed to
@@ -150,21 +140,6 @@ And the refusal names the standing the target requires
 ```
 
 #### UC-CTC8: Computer configuration stays repairable while it is invalid
-
-<!-- planned-change:config-client-command-boundary -->
-
-```gherkin
-Given the committed machine configuration is invalid
-And no daemon is listening
-When an agent acting for a platform administrator patches the computer configuration to correct it
-Then the caller's clearance is decided without the daemon
-And the config owner validates and persists the corrected candidate
-When an agent whose principal lacks platform administrator standing submits the same patch
-Then the operation is refused and the machine configuration is unchanged
-```
-
-<!-- change:config-client-command-boundary -->
-<!-- /planned-change:config-client-command-boundary -->
 
 ### Cross-context references
 

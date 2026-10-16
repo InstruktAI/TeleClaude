@@ -37,15 +37,7 @@ Change TeleClaude machine configuration through the supported agent surface whil
 - If validation rejects the candidate, correct the requested values and invoke the owning CLI operation again; do not edit the backing file.
 - If no CLI operation can express the required mutation, record or route the missing capability as a tooling gap and leave configuration unchanged.
 
-<!-- planned-change:config-client-command-boundary -->
-
-- If the repair surface itself cannot start against invalid configuration, treat that as a platform defect. Direct file editing is not a recovery path.
-
-<!-- change:config-client-command-boundary -->
-
 - When the daemon is unavailable, recover it by inspecting and editing the configuration files directly under the exception in `general/policy/machine-config-mutation-authority`. Once available, use its ordinary configuration commands again. This agent-operated recovery is separate from client execution.
-
-<!-- /planned-change:config-client-command-boundary -->
 
 ## Discipline
 

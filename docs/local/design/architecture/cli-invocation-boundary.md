@@ -120,8 +120,6 @@ design owns only the path that connects them.
 
 ## Primary flows
 
-<!-- planned:config-client-command-boundary -->
-
 ### Configuration command execution
 
 Ordinary `telec config` operations submit typed requests to the addressed
@@ -139,7 +137,6 @@ follows `general/policy/machine-config-mutation-authority`; the CLI carries no
 offline execution fallback. Internal installation callers still use the
 configuration owner's operations during setup before daemon startup
 (`sdlc/principle/module-depth`).
-<!-- /planned:config-client-command-boundary -->
 
 ### Todo command selection
 
