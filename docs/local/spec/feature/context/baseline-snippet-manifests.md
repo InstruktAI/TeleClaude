@@ -18,9 +18,10 @@ of snippets via a `baseline.md` manifest. The manifest contains nothing but
 `@`-refs to Source files — no prose, no frontmatter, no H1. The Selection
 policy's `--baseline-only` mode reduces the visible Index to exactly the
 snippets reachable from these manifests, giving callers a known minimum
-context floor for any task. Sync auto-infers `type` and `scope` for snippets
-under a `baseline/` folder so authors do not have to hand-write the
-boilerplate frontmatter.
+context floor for any task. The global index also projects files under
+`docs/global/baseline/<type>/` as catalog entries: their IDs use
+`baseline/<type>/<path>`, their type comes from the directory, and their scope
+is global. These files do not need taxonomy snippet frontmatter.
 
 ## Canonical fields
 
@@ -36,9 +37,10 @@ boilerplate frontmatter.
   whose snippet declares Required reads will not auto-include those reads in
   the baseline-only set, so callers under `--baseline-only` get less context
   than they may expect.
-- `type` and `scope` are derived for all snippets from the path: `scope` from
+- Taxonomy snippets derive `type` and `scope` from the path: `scope` from
   the home and half (a publisher's `docs/global/**`→global, a project's
   `docs/local/**`→project, either half of a person's or company's home→that
-  tier) and `type` from the taxonomy folder. Validation separately enforces that
-  the H1 suffix matches the path-derived type. A path that does not resolve to a
+  tier) and `type` from the taxonomy folder; baseline catalog entries are a
+  separate projection. Validation separately enforces that the H1 suffix
+  matches the path-derived type. A taxonomy path that does not resolve to a
   derivable classification fails the index build with an error naming the file.
