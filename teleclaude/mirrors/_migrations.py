@@ -18,6 +18,10 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.agents import AgentName
 from teleclaude.core.roles import is_worker_role
 from teleclaude.mirrors._session_convergence import converge_session_owned_conversations
+from teleclaude.mirrors._source_observation_migration import (
+    create_session_id_guards,
+    migrate_source_observation_ownership,
+)
 from teleclaude.paths import MAIN_DB_PATH, MIRRORS_BACKUP_DIR
 from teleclaude.utils.transcript_discovery import (
     SessionId,
@@ -55,7 +59,7 @@ _MISSING_COLUMN_ERROR = "no such column"
 # process that opens the store, including read-only CLI calls, so an ungated scan would
 # both re-read the table on every invocation and take a write lock a reader never needed.
 _DATA_REVISION = 6
-LATEST_DATA_REVISION = 10
+LATEST_DATA_REVISION = 11
 
 _READ_DATA_REVISION_SQL = "PRAGMA user_version"
 _WRITE_DATA_REVISION_SQL = "PRAGMA user_version = {}"
@@ -181,44 +185,17 @@ _SESSION_ID_COLUMN = "session_id"
 _DROP_MIRRORS_SQL = "DROP TABLE mirrors"
 _RENAME_MIRRORS_SQL = "ALTER TABLE mirrors_session_id_v2 RENAME TO mirrors"
 
-_CREATE_UNREPROJECTABLE_SOURCES_SQL = """\
+_CREATE_PRE_V11_UNREPROJECTABLE_SOURCES_SQL = """\
 CREATE TABLE IF NOT EXISTS mirror_unreprojectable_sources (
     source_identity TEXT PRIMARY KEY,
     marked_at TEXT NOT NULL
 )
 """
-
-_CREATE_SESSION_ID_GUARDS_SQL = """\
-CREATE TRIGGER IF NOT EXISTS mirrors_session_id_guard_insert
-BEFORE INSERT ON mirrors
-WHEN NEW.session_id IS NOT NULL
- AND NOT (
-    length(NEW.session_id) = 36
-    AND NEW.session_id = lower(NEW.session_id)
-    AND substr(NEW.session_id, 9, 1) = '-'
-    AND substr(NEW.session_id, 14, 1) = '-'
-    AND substr(NEW.session_id, 19, 1) = '-'
-    AND substr(NEW.session_id, 24, 1) = '-'
-    AND replace(NEW.session_id, '-', '') NOT GLOB '*[^0-9a-f]*'
- )
-BEGIN
-    SELECT RAISE(ABORT, 'mirrors.session_id must be a canonical lowercase UUID');
-END;
-CREATE TRIGGER IF NOT EXISTS mirrors_session_id_guard_update
-BEFORE UPDATE OF session_id ON mirrors
-WHEN NEW.session_id IS NOT NULL
- AND NOT (
-    length(NEW.session_id) = 36
-    AND NEW.session_id = lower(NEW.session_id)
-    AND substr(NEW.session_id, 9, 1) = '-'
-    AND substr(NEW.session_id, 14, 1) = '-'
-    AND substr(NEW.session_id, 19, 1) = '-'
-    AND substr(NEW.session_id, 24, 1) = '-'
-    AND replace(NEW.session_id, '-', '') NOT GLOB '*[^0-9a-f]*'
- )
-BEGIN
-    SELECT RAISE(ABORT, 'mirrors.session_id must be a canonical lowercase UUID');
-END;
+_CREATE_PRE_V11_SHRINK_REFUSALS_SQL = """\
+CREATE TABLE IF NOT EXISTS mirror_shrink_refusals (
+    source_identity TEXT PRIMARY KEY,
+    shrink_refused_at TEXT NOT NULL
+)
 """
 
 
@@ -237,8 +214,11 @@ def migrate_add_mirror_columns(
                 raise
     for index_stmt in _INDEX_STATEMENTS:
         conn.execute(index_stmt)
-    conn.execute(_CREATE_UNREPROJECTABLE_SOURCES_SQL)
+    if int(conn.execute(_READ_DATA_REVISION_SQL).fetchone()[0]) < LATEST_DATA_REVISION:
+        conn.execute(_CREATE_PRE_V11_UNREPROJECTABLE_SOURCES_SQL)
+        conn.execute(_CREATE_PRE_V11_SHRINK_REFUSALS_SQL)
     _converge_derived_data(conn, store_path, backfill_session_attributions)
+    migrate_source_observation_ownership(conn, store_path, _snapshot_mirrors_store)
 
 
 def _converge_derived_data(
@@ -287,7 +267,7 @@ def _migrate_revision_6(
     reconcile_mirror_records(conn)
     reconcile_transcript_session_ids(conn)
     reconcile_mirror_projects(conn)
-    conn.executescript(_CREATE_SESSION_ID_GUARDS_SQL)
+    create_session_id_guards(conn, "session_id")
 
 
 _SNAPSHOT_PREFIX = "mirrors-"
@@ -330,7 +310,6 @@ _DROP_OLD_SESSION_ID_GUARDS_SQL = """\
 DROP TRIGGER IF EXISTS mirrors_session_id_guard_insert;
 DROP TRIGGER IF EXISTS mirrors_session_id_guard_update
 """
-_CREATE_NATIVE_SESSION_ID_GUARDS_SQL = _CREATE_SESSION_ID_GUARDS_SQL.replace("session_id", "native_session_id")
 
 
 def _migrate_revision_7(
@@ -401,7 +380,7 @@ def create_current_attribution_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_CREATE_MIRROR_SESSIONS_SQL)
     conn.executescript(_CREATE_SESSION_ATTRIBUTION_INDEXES_SQL)
     conn.executescript(_DROP_OLD_SESSION_ID_GUARDS_SQL)
-    conn.executescript(_CREATE_NATIVE_SESSION_ID_GUARDS_SQL)
+    create_session_id_guards(conn, "native_session_id")
 
 
 def _snapshot_mirrors_store(conn: sqlite3.Connection, store_path: str) -> Path:

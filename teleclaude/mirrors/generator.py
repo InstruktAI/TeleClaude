@@ -211,7 +211,7 @@ def _read_source(
                 current_derivation_version=DERIVATION_VERSION,
                 outcome=SourceReadOutcome.SHRINK_REFUSED,
             )
-            record_mirror_shrink_refusal(plan.identity, shrink_refused_at=datetime.now(UTC).isoformat(), db=db)
+            record_mirror_shrink_refusal(stored.id, shrink_refused_at=datetime.now(UTC).isoformat(), db=db)
             return _kept(plan, missing=False, file_size=size, file_mtime_ns=mtime_ns), SourceReadOutcome.SHRINK_REFUSED
         outcome = SourceReadOutcome.SHRINK_ACCEPTED
     update = SourceUpdate(

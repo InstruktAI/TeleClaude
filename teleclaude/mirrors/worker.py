@@ -23,12 +23,17 @@ from ..utils.transcript_discovery import (
     in_session_root,
 )
 from ..utils.transcript_discovery import discover_transcripts as _discover_transcripts
-from ._reconciliation_state import MirrorTranscriptState, get_mirror_state_by_transcript, get_stale_mirrors
+from ._reconciliation_state import (
+    MirrorSessionSourceKey,
+    MirrorTranscriptState,
+    get_mirror_state_by_session_source,
+    get_stale_mirrors,
+)
 from .archive import ArchiveAdopter, adopt_retained_history, adopt_unclaimed_transcript
 from .closure import CoverageReporter, coverage_is_news
 from .derivation import DERIVATION_VERSION
 from .generator import MirrorCoverage, MirrorWriteTrigger, SourceReadOutcome, refresh_session_mirror_sync
-from .session_context import get_session_context
+from .session_context import SessionMirrorContext, get_session_context
 from .store import (
     MirrorTombstoneRecord,
     delete_conversation_mirror,
@@ -100,9 +105,11 @@ class MirrorWorker:
     def _is_unchanged_source(
         self,
         candidate: TranscriptCandidate,
-        state: dict[str, MirrorTranscriptState],
+        session_id: str,
+        source_identity: str,
+        state: dict[MirrorSessionSourceKey, MirrorTranscriptState],
     ) -> bool:
-        existing = state.get(str(candidate.path))
+        existing = state.get(MirrorSessionSourceKey(session_id, source_identity))
         if existing is None or existing.derivation_version < DERIVATION_VERSION:
             return False
         return (existing.file_size, existing.file_mtime_ns) == self._candidate_file_state(candidate)
@@ -171,13 +178,31 @@ class MirrorWorker:
         if self._archive_adopter is not None and not self._history_adopted:
             adopt_retained_history(self._archive_adopter, self.db_path)
             self._history_adopted = True
-        state = get_mirror_state_by_transcript(self.db_path)
+        state = get_mirror_state_by_session_source(self.db_path)
+        contexts_by_path: dict[str, SessionMirrorContext | None] = {}
+        context_errors: dict[str, Exception] = {}
+
+        def selected_context(candidate: TranscriptCandidate) -> SessionMirrorContext | None:
+            path = str(candidate.path)
+            if path in context_errors:
+                raise context_errors[path]
+            if path not in contexts_by_path:
+                try:
+                    contexts_by_path[path] = get_session_context(transcript_path=path)
+                except Exception as exc:
+                    context_errors[path] = exc
+                    raise
+            return contexts_by_path[path]
 
         def known_unchanged(candidate: TranscriptCandidate) -> bool:
             try:
-                return self._is_unchanged_source(candidate, state)
-            except OSError:
-                # An unreadable file is handled by the per-candidate error lane.
+                context = selected_context(candidate)
+                if context is None:
+                    return False
+                source_identity = build_source_identity(candidate.path, candidate.agent)
+                return self._is_unchanged_source(candidate, context.session_id, source_identity, state)
+            except Exception:
+                # Context and file errors are handled by admission and the per-candidate error lane.
                 return False
 
         transcripts = _discover_transcripts(known_unchanged=known_unchanged)
@@ -197,16 +222,23 @@ class MirrorWorker:
         for candidate in transcripts:
             transcript_path = str(candidate.path)
             try:
-                if self._is_unchanged_source(candidate, state):
-                    result.skipped_unchanged += 1
-                    continue
                 source_identity = build_source_identity(candidate.path, candidate.agent)
                 if self._should_skip_tombstoned_transcript(source_identity, candidate, tombstones.get(source_identity)):
                     result.skipped_unchanged += 1
                     continue
                 tombstones.pop(source_identity, None)
-                session_id = self._owning_session(candidate, transcript_path)
+                context = selected_context(candidate)
+                if context is not None and self._is_unchanged_source(
+                    candidate, context.session_id, source_identity, state
+                ):
+                    result.skipped_unchanged += 1
+                    continue
+                session_id = self._owning_session(candidate, transcript_path, context)
                 if session_id is None:
+                    result.skipped_unchanged += 1
+                    continue
+                if context is None and self._is_unchanged_source(candidate, session_id, source_identity, state):
+                    # Archival adoption can identify an unclaimed source only after admission, never in discovery.
                     result.skipped_unchanged += 1
                     continue
                 by_session.setdefault(session_id, []).append((candidate, source_identity))
@@ -237,9 +269,13 @@ class MirrorWorker:
         )
         return result
 
-    def _owning_session(self, candidate: TranscriptCandidate, transcript_path: str) -> str | None:
+    def _owning_session(
+        self,
+        candidate: TranscriptCandidate,
+        transcript_path: str,
+        context: SessionMirrorContext | None,
+    ) -> str | None:
         """The TeleClaude session whose lineage holds the transcript; history no session claims is archived first."""
-        context = get_session_context(transcript_path=transcript_path)
         if context is not None:
             return context.session_id
         if self._archive_adopter is None:
@@ -332,7 +368,7 @@ class MirrorWorker:
                 continue
             try:
                 mark_mirror_unreprojectable(
-                    orphan.source_identity,
+                    orphan.source_id,
                     marked_at=datetime.now(UTC).isoformat(),
                     db=self.db_path,
                 )
@@ -340,7 +376,8 @@ class MirrorWorker:
             except Exception as exc:
                 result.failed += 1
                 logger.error(
-                    "Mirror orphan re-derivation failed for %s (%s): %s",
+                    "Mirror orphan re-derivation failed for source row %d (%s, %s): %s",
+                    orphan.source_id,
                     orphan.source_identity,
                     orphan.agent,
                     exc,

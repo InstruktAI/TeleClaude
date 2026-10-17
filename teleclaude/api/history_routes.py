@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from http import HTTPStatus
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from instrukt_ai_logging import get_logger
@@ -20,6 +21,7 @@ from teleclaude.history.service import (
     parse_history_agents,
     resolve_history_reach,
 )
+from teleclaude.mirrors.errors import MirrorIdentityAmbiguityError
 from teleclaude.utils.transcript_discovery import SessionId
 
 _HISTORY_DETAIL_NOT_FOUND = "No transcript found for session '{session_id}'"
@@ -90,15 +92,18 @@ async def show_history(
     if reach is None:
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
     transcript_mismatches: list[tuple[str, str]] = []
-    payload: HistoryDetailPayload | None = await asyncio.to_thread(
-        build_history_detail_payload,
-        parsed_session_id,
-        reach=reach,
-        agents=agents,
-        include_thinking=thinking,
-        raw=raw,
-        on_format_mismatch=lambda agent_name, path, _error: transcript_mismatches.append((agent_name, path.name)),
-    )
+    try:
+        payload: HistoryDetailPayload | None = await asyncio.to_thread(
+            build_history_detail_payload,
+            parsed_session_id,
+            reach=reach,
+            agents=agents,
+            include_thinking=thinking,
+            raw=raw,
+            on_format_mismatch=lambda agent_name, path, _error: transcript_mismatches.append((agent_name, path.name)),
+        )
+    except MirrorIdentityAmbiguityError as exc:
+        raise HTTPException(status_code=HTTPStatus.CONFLICT, detail=str(exc)) from exc
     for agent_name, filename in transcript_mismatches:
         try:
             await publish_runtime_error(

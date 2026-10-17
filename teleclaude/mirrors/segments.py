@@ -12,6 +12,7 @@ from teleclaude.identity_reach import Reach
 
 from ._types import JsonValue
 from .conversations import render_source
+from .errors import MirrorIdentityAmbiguityError
 from .store import (
     _SHRINK_REFUSED_AT_FIELD,
     _SQL_AND_SEPARATOR,
@@ -37,12 +38,12 @@ _GET_SEGMENT_SQL_TEMPLATE = f"""
         mirror_sources.derivation_version AS derivation_version, mirrors.covered_at AS covered_at,
         mirrors.coverage_ready AS coverage_ready, mirror_sources.transcript_path AS source_transcript_path,
         (SELECT mirror_shrink_refusals.{_SHRINK_REFUSED_AT_FIELD} FROM mirror_shrink_refusals
-            WHERE mirror_shrink_refusals.source_identity = mirror_sources.source_identity)
+            WHERE mirror_shrink_refusals.source = mirror_sources.id)
             AS {_SHRINK_REFUSED_AT_FIELD}
     FROM mirror_sources
     JOIN mirrors ON mirrors.id = mirror_sources.mirror
     LEFT JOIN mirror_sessions ON mirror_sessions.id = mirrors.session
-    WHERE {{where_clause}} ORDER BY mirror_sources.updated_at DESC LIMIT 1
+    WHERE {{where_clause}}
 """
 _SOURCE_ID_COLUMN = "id"
 _ARCHIVAL_TEXT_COLUMN = "archival_text"
@@ -70,9 +71,12 @@ def get_source_segment(
     sql = _GET_SEGMENT_SQL_TEMPLATE.format(where_clause=_SQL_AND_SEPARATOR.join(clauses))
     try:
         with _get_ro_engine(db).connect() as conn:
-            row = conn.execute(text(sql), params).mappings().first()
-            if row is None:
+            rows = conn.execute(text(sql), params).mappings().all()
+            if not rows:
                 return None
+            if len(rows) > 1:
+                raise MirrorIdentityAmbiguityError()
+            row = rows[0]
             segment_text = render_source(conn, row[_SOURCE_ID_COLUMN], row[_ARCHIVAL_TEXT_COLUMN])
     except SqlAlchemyOperationalError as exc:
         if _is_missing_table_error(exc):

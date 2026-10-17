@@ -17,13 +17,13 @@ from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.core.db._sync import get_session_field_sync
 from teleclaude.history.search_payload import HistorySearchPayload, HistorySearchRow
 from teleclaude.identity_reach import Reach, resolve_reach
-from teleclaude.mirrors.conversations import get_conversation_state
+from teleclaude.mirrors.conversations import AmbiguousSourceObservationError, get_conversation_state
+from teleclaude.mirrors.errors import MirrorIdentityAmbiguityError
 from teleclaude.mirrors.segments import get_source_segment
 from teleclaude.mirrors.store import (
     MirrorCoverageState,
     MirrorRecord,
     MirrorSearchResult,
-    get_mirror,
     get_session_mirror,
     search_mirrors,
 )
@@ -46,6 +46,7 @@ __all__ = [
 HISTORY_SEARCH_ACCEPTED = "history.search.accepted"
 HISTORY_SEARCH_COMPLETED = "history.search.completed"
 _NATIVE_SESSION_ID_FIELD = "native_session_id"
+_SESSION_ID_FIELD = "session_id"
 _LIFECYCLE_STATUS_FIELD = "lifecycle_status"
 _RUNNING_SESSION_STATES = frozenset({"active", "headless", "initializing"})
 _UNKNOWN_VALUE = "unknown"
@@ -183,10 +184,13 @@ def _lineage_sources(mirror: MirrorRecord | None) -> list[HistorySourceRow]:
     """The native sources of the conversation a record belongs to, in lineage order."""
     if mirror is None:
         return []
-    state = get_conversation_state(
-        session_id=mirror.session_id,
-        source_identities=[mirror.source_identity] if mirror.source_identity else [],
-    )
+    try:
+        state = get_conversation_state(
+            session_id=mirror.session_id,
+            source_identities=[mirror.source_identity] if mirror.source_identity else [],
+        )
+    except AmbiguousSourceObservationError as exc:
+        raise MirrorIdentityAmbiguityError() from exc
     if state is None:
         return []
     return [
@@ -236,17 +240,6 @@ def _resolve_local_mirror(
     *,
     reach: Reach,
 ) -> MirrorResolution:
-    segment = get_source_segment(session_id, reach=reach)
-    if segment is not None:
-        return MirrorResolution(
-            mirror=segment,
-            requested_id=session_id,
-            requested_namespace=IdNamespace.NATIVE,
-            tc_id=segment.session_id,
-            native_id=session_id,
-            source=DetailSource.MIRROR,
-        )
-
     attributed_mirror = get_session_mirror(session_id, reach=reach)
     if attributed_mirror is not None:
         return MirrorResolution(
@@ -258,15 +251,26 @@ def _resolve_local_mirror(
             source=DetailSource.MIRROR,
         )
 
-    resolved_native_id = get_session_field_sync(str(MAIN_DB_PATH), session_id, _NATIVE_SESSION_ID_FIELD)
-    if isinstance(resolved_native_id, str) and resolved_native_id:
-        translated_mirror = get_mirror(native_session_id=resolved_native_id, reach=reach)
+    retained_session_id = get_session_field_sync(str(MAIN_DB_PATH), session_id, _SESSION_ID_FIELD)
+    if isinstance(retained_session_id, str) and retained_session_id:
+        native_id = get_session_field_sync(str(MAIN_DB_PATH), session_id, _NATIVE_SESSION_ID_FIELD)
         return MirrorResolution(
-            mirror=translated_mirror,
+            mirror=None,
             requested_id=session_id,
             requested_namespace=IdNamespace.TELECLAUDE,
             tc_id=session_id,
-            native_id=resolved_native_id,
+            native_id=native_id if isinstance(native_id, str) and native_id else None,
+            source=DetailSource.MIRROR,
+        )
+
+    segment = get_source_segment(session_id, reach=reach)
+    if segment is not None:
+        return MirrorResolution(
+            mirror=segment,
+            requested_id=session_id,
+            requested_namespace=IdNamespace.NATIVE,
+            tc_id=segment.session_id,
+            native_id=session_id,
             source=DetailSource.MIRROR,
         )
 
@@ -290,8 +294,8 @@ def build_history_detail_payload(
     on_format_mismatch: Callable[[str, Path, object], None] | None = None,
 ) -> HistoryDetailPayload | None:
     """Resolve one history detail within the caller's mirror access scope."""
-    transcript_fallback_allowed = reach.everything
     resolution = _resolve_local_mirror(session_id, reach=reach)
+    transcript_fallback_allowed = reach.everything and resolution.requested_namespace is IdNamespace.NATIVE
     mirror = resolution.mirror
     if mirror and not raw:
         return _detail_json_payload(resolution, body=mirror.conversation_text.rstrip(), raw=False)

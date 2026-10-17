@@ -12,9 +12,11 @@ import math
 import os
 import platform
 import re
+import shlex
 import shutil
 import signal
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -143,6 +145,7 @@ _SCENARIO_INVALID_CONFIG = "UC-RA11"
 _SCENARIO_PROCEDURE_CLOSURE = "UC-RA12"
 _SCENARIO_DELIVERY_VALIDATION = "UC-RA13"
 _SCENARIO_ARCHIVED_HISTORY = "UC-RA14"
+_SCENARIO_ARCHIVE_LIVE_SOURCE = "UC-MIE-8"
 _SCENARIO_CURATION_REFUSAL = "UC-RA15"
 _SCENARIO_RELEASE_SELECTED = "UC-RC1"
 _SCENARIO_RELEASE_PULL_REFUSED = "UC-RC2"
@@ -172,6 +175,7 @@ _FULL_PROFILE_SCENARIOS = (
     _SCENARIO_PROCEDURE_CLOSURE,
     _SCENARIO_DELIVERY_VALIDATION,
     _SCENARIO_ARCHIVED_HISTORY,
+    _SCENARIO_ARCHIVE_LIVE_SOURCE,
     _SCENARIO_CURATION_REFUSAL,
     _SCENARIO_RELEASE_SELECTED,
     _SCENARIO_RELEASE_PULL_REFUSED,
@@ -254,6 +258,10 @@ _CURATION_REFUSALS_SNAPSHOT = Path("snapshots") / "curation-refusals.txt"
 _EMPTY_MEMORY_LIST_SNAPSHOT = Path("snapshots") / "empty-memory-list.txt"
 _PTY_LINE_ENDING = "\r\n"
 _ARCHIVED_CONVERSATION_SNAPSHOT = Path("snapshots") / "archived-conversation.txt"
+_LIVE_CONVERSATION_SNAPSHOT = Path("snapshots") / "mirror-live-source.txt"
+_ARCHIVE_CURRENT_SOURCE_SNAPSHOT = Path("snapshots") / "mirror-archive-current-source.txt"
+_NATIVE_AMBIGUITY_SNAPSHOT = Path("snapshots") / "mirror-native-ambiguity.txt"
+_MIRROR_FIXTURE_HISTORY_SNAPSHOT = Path("snapshots") / "mirror-fixture-history.json"
 _INVALID_PATCH_REFUSAL_SNAPSHOT = Path("snapshots") / "invalid-computer-patch-refusal.txt"
 _REFUSAL_REQUEST_PREFIX = " (request "
 _REFUSAL_REQUEST_END = ")"
@@ -310,6 +318,12 @@ _PROMPT_VARIABLE = "PS1"
 _CONTINUATION_PROMPT_VARIABLE = "PS2"
 _FULL_COMMAND_TIMEOUT_SECONDS = 60
 _INSTALL_COMMAND_TIMEOUT_SECONDS = 3600
+_INSTALLER_OUTPUT_LIMIT_BYTES = 262144
+_INSTALLER_LOG_TAIL_LIMIT = _DIAGNOSTIC_LIMIT // 4
+_INSTALLER_STDOUT_TAIL_LIMIT = _DIAGNOSTIC_LIMIT // 4
+_INSTALLER_STDERR_TAIL_LIMIT = _DIAGNOSTIC_LIMIT // 4
+_INSTALLER_STDOUT_TAIL_LABEL = "Installer stdout (end): "
+_INSTALLER_STDERR_TAIL_LABEL = "Installer stderr (end): "
 _START_COMMAND_TIMEOUT_SECONDS = 300
 _RESTART_COMMAND_TIMEOUT_SECONDS = 300
 _STOP_COMMAND_TIMEOUT_SECONDS = 120
@@ -505,7 +519,49 @@ _ARCHIVE_POLL_INTERVAL_SECONDS = 2
 _MINIMUM_ARCHIVED_MESSAGES = 1
 _ARCHIVE_USER_TURN = "Please remember the {term} marker in this conversation."
 _ARCHIVE_ASSISTANT_TURN = "The {term} marker is noted."
+_LIVE_USER_TURN = "The {term} marker is still present in this live conversation."
+_LIVE_ASSISTANT_TURN = "The {term} marker remains present after the archive."
+_MIRROR_HOOK_INPUT = Path("fixtures") / "mirror-live-source-hook.json"
+_MIRROR_SOURCE_FIXTURE = Path("fixtures") / "mirror-source-ownership.sql"
+_MIRROR_FIXTURE_DATABASE = "mirrors.db"
+_MIRROR_FIXTURE_SESSION_ID = "00000000-0000-4000-8000-000000000014"
+_MIRROR_FIXTURE_NATIVE_ID = "runtime-acceptance-native-14"
+_MIRROR_FIXTURE_SHRINK_REFUSED_AT = "2026-01-01T10:04:00.000Z"
+_MIRROR_FIXTURE_ERROR = "The pre-change mirror fixture did not preserve its public historical result."
+_LIVE_HOOK_ERROR = "The authenticated Claude start hook did not complete successfully."
+_LIVE_SESSION_ERROR = "The public session list did not expose the newly registered headless session."
+_LIVE_HISTORY_ERROR = "The refreshed conversation was not retrievable under its live TeleClaude identity."
+_ARCHIVE_HISTORY_CHANGED_ERROR = "Refreshing the live conversation changed archived history or attribution."
+_NATIVE_AMBIGUITY_ERROR = "Native history did not report ambiguity for the two retained conversations."
+_MIRROR_REFRESH_WINDOW_SECONDS = 120
+_MIRROR_REFRESH_POLL_INTERVAL_SECONDS = 2
+_SESSION_NATIVE_ID_FIELD = "native_session_id"
+_SESSION_ID_FIELD = "session_id"
+_HISTORY_ROWS_FIELD = "rows"
+_HISTORY_NATIVE_ID_FIELD = "native_id"
+_HISTORY_REQUESTED_NAMESPACE_FIELD = "requested_namespace"
+_HISTORY_NAMESPACE_TC_ID = "tc_id"
+_ARCHIVE_PRESERVED_HISTORY_FIELDS = (
+    _TELECLAUDE_ID_FIELD,
+    _HISTORY_REQUESTED_NAMESPACE_FIELD,
+    _HISTORY_NATIVE_ID_FIELD,
+    "computer",
+    "project",
+    "title",
+    _MESSAGE_COUNT_FIELD,
+    "coverage_state",
+    "shrink_refused_at",
+    "complete",
+    "sources",
+    _CONVERSATION_TEXT_FIELD,
+)
+_SESSION_LIST_COMMAND = ("bin/telec", "sessions", "list", "--all")
 _ARCHIVE_TRANSCRIPT_TIMESTAMPS = ("2026-01-01T10:00:00.000Z", "2026-01-01T10:00:05.000Z")
+_ARCHIVE_REFRESH_TURN_TIMESTAMPS = ("2026-01-01T10:00:10.000Z", "2026-01-01T10:00:15.000Z")
+_ARCHIVE_CURRENT_MESSAGE_COUNT = len(_ARCHIVE_TRANSCRIPT_TIMESTAMPS) + len(_ARCHIVE_REFRESH_TURN_TIMESTAMPS)
+_LIVE_CONVERSATION_EXPECTED_MESSAGE_COUNT = _ARCHIVE_CURRENT_MESSAGE_COUNT + 2
+_ARCHIVE_REFRESH_USER_TURN = "The archive includes its final stored exchange before the live session starts."
+_ARCHIVE_REFRESH_ASSISTANT_TURN = "This exchange belongs to the archive before the live session starts."
 _CURATION_REFUSED_EXTRACTION = "00000000-0000-4000-8000-000000000000"
 _CURATION_REFUSED_IDENTITY = f"person:{_OWNER_SEED_SLUG}"
 _CURATION_REFUSED_TEXT = "runtime acceptance attempted memory"
@@ -1813,6 +1869,8 @@ def _disable_external_adapters(resources: FullRuntimeResources, evidence: list[C
         if section is None:
             continue
         enabled = section.get(_MACHINE_ADAPTER_ENABLED_FIELD)
+        if enabled is False:
+            continue
         if enabled is True:
             original_flags[section_name] = True
         changes[section_name] = {_MACHINE_ADAPTER_ENABLED_FIELD: False}
@@ -1836,6 +1894,7 @@ def _restore_full_profile_changes(resources: FullRuntimeResources, evidence: lis
         return
     if resources.adapter_flags_changed or resources.original_timezone is not None:
         try:
+            _run_readiness_check(resources, evidence)
             computer, revision, _ = _read_computer_config(resources, terminal, evidence)
             restore: JSONObject = {}
             if (
@@ -1850,6 +1909,9 @@ def _restore_full_profile_changes(resources: FullRuntimeResources, evidence: lis
                 if section.get(_MACHINE_ADAPTER_ENABLED_FIELD) is not enabled:
                     restore[section_name] = {_MACHINE_ADAPTER_ENABLED_FIELD: enabled}
             if restore:
+                previous_instance = _read_daemon_instance(_HEALTH_SOCKET_PATH, _HEALTH_OBSERVATION_TIMEOUT_SECONDS)
+                if previous_instance is None:
+                    raise RuntimeError(_EXPECTED_READINESS_ERROR)
                 _patch_configuration(
                     resources,
                     terminal,
@@ -1858,6 +1920,7 @@ def _restore_full_profile_changes(resources: FullRuntimeResources, evidence: lis
                     restore,
                     evidence,
                 )
+                _await_config_restart(resources, evidence, previous_instance)
             resources.adapter_flags_changed = False
             resources.original_timezone = None
         except Exception as exc:
@@ -1870,16 +1933,6 @@ def _close_full_profile_resources(
 ) -> None:
     """Stop the supported runtime, restore temporary declarations and remove owned resources."""
     failures: list[str] = []
-    if resources.install_attempted:
-        result = _record_external_command(
-            resources,
-            _SERVICE_STOP_COMMAND,
-            cwd=resources.source_root,
-            timeout_seconds=_STOP_COMMAND_TIMEOUT_SECONDS,
-            evidence=cleanup_evidence,
-        )
-        if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
-            failures.append(_FULL_SERVICE_STOP_ERROR)
     try:
         _restore_full_profile_changes(resources, cleanup_evidence)
     except Exception:
@@ -1897,6 +1950,16 @@ def _close_full_profile_resources(
             _require_terminal_success(logout_status, logout_output, cleanup_evidence)
         except Exception:
             failures.append(_FULL_TERMINAL_CLEANUP_ERROR)
+    if resources.install_attempted:
+        result = _record_external_command(
+            resources,
+            _SERVICE_STOP_COMMAND,
+            cwd=resources.source_root,
+            timeout_seconds=_STOP_COMMAND_TIMEOUT_SECONDS,
+            evidence=cleanup_evidence,
+        )
+        if result.exit_status != _PROCESS_SUCCESS or result.diagnostics:
+            failures.append(_FULL_SERVICE_STOP_ERROR)
     for terminal in (resources.member_terminal, resources.admin_terminal):
         if terminal is None:
             continue
@@ -2016,6 +2079,7 @@ def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[Comm
         cwd=resources.source_root,
         environment=installer_environment,
         timeout_seconds=_INSTALL_COMMAND_TIMEOUT_SECONDS,
+        output_limit_bytes=_INSTALLER_OUTPUT_LIMIT_BYTES,
     )
     diagnostics = _EMPTY
     if install_result.exit_status != _PROCESS_SUCCESS or install_result.diagnostics:
@@ -2052,7 +2116,14 @@ def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[Comm
             installer_log_diagnostic = _INSTALLER_LOG_UNAVAILABLE.format(error_class=type(error).__name__)[
                 : _DIAGNOSTIC_LIMIT - len(diagnostic_prefix)
             ]
-        diagnostics = f"{diagnostic_prefix}{installer_log_diagnostic}"[:_DIAGNOSTIC_LIMIT]
+        log_tail = installer_log_diagnostic[-_INSTALLER_LOG_TAIL_LIMIT:]
+        stdout_tail = resources.sanitize(install_result.stdout[-_INSTALLER_STDOUT_TAIL_LIMIT:])
+        stderr_tail = resources.sanitize(install_result.stderr[-_INSTALLER_STDERR_TAIL_LIMIT:])
+        diagnostics = (
+            f"{diagnostic_prefix}{log_tail}{_DIAGNOSTIC_SEPARATOR}"
+            f"{_INSTALLER_STDOUT_TAIL_LABEL}{stdout_tail}{_DIAGNOSTIC_SEPARATOR}"
+            f"{_INSTALLER_STDERR_TAIL_LABEL}{stderr_tail}"
+        )[-_DIAGNOSTIC_LIMIT:]
     evidence.append(
         CommandEvidence(
             argv=tuple(resources.sanitize(value) for value in _INSTALLER_COMMAND),
@@ -2077,7 +2148,6 @@ def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[Comm
         evidence,
     )
     _require_terminal_success(login_status, login_output, evidence)
-    _disable_external_adapters(resources, evidence)
     resources.start_attempted = True
     start_result = _record_external_command(
         resources,
@@ -2088,6 +2158,7 @@ def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[Comm
     )
     _require_process_success(start_result)
     _run_readiness_check(resources, evidence)
+    _disable_external_adapters(resources, evidence)
     computer_status, computer_output = _record_terminal_command(
         resources,
         terminal,
@@ -2157,6 +2228,7 @@ def _full_configuration_change(resources: FullRuntimeResources, evidence: list[C
         **adapter_patch,
     }
     _patch_configuration(resources, terminal, _CONFIG_COMPUTER_PATCH_PREFIX, revision, patch, evidence)
+    _await_config_restart(resources, evidence, previous_instance)
     verified_terminal = resources.open_admin_terminal()
     verified, new_revision, _ = _read_computer_config(resources, verified_terminal, evidence)
     verified = _computer_identity(verified)
@@ -2166,7 +2238,6 @@ def _full_configuration_change(resources: FullRuntimeResources, evidence: list[C
         raise ValueError(_FULL_STATE_CHANGED)
     if new_revision == revision:
         raise ValueError(_EXPECTED_REVISION_CHANGE_ERROR)
-    _await_config_restart(resources, evidence, previous_instance)
     _full_configuration_editor_journey(resources, verified_terminal, evidence)
 
 
@@ -2210,7 +2281,7 @@ def _initial_configuration_editor(
         raise ValueError(_FULL_CONFIG_SHAPE_INVALID)
     if type(volume.get(_CONFIG_EDITOR_FIELD_VALUE)) is not float:
         raise ValueError(_FULL_CONFIG_SHAPE_INVALID)
-    if volume.get(_CONFIG_EDITOR_FIELD_STATE) != _CONFIG_EDITOR_DEFAULT:
+    if volume.get(_CONFIG_EDITOR_FIELD_STATE) != _CONFIG_EDITOR_CONFIGURED:
         raise ValueError(_FULL_CONFIG_SHAPE_INVALID)
     cli_config, cli_revision, _ = _read_computer_config(resources, terminal, evidence)
     cli_chiptunes = _mapping_value(cli_config.get(_CONFIG_CHIPTUNES_SECTION))
@@ -2264,6 +2335,9 @@ def _set_masked_reference(
     initial: Mapping[str, object],
 ) -> Mapping[str, object]:
     initial_revision, initial_editor_revision = _editor_revision_values(initial)
+    previous_instance = _read_daemon_instance(_HEALTH_SOCKET_PATH, _HEALTH_OBSERVATION_TIMEOUT_SECONDS)
+    if previous_instance is None:
+        raise RuntimeError(_EXPECTED_READINESS_ERROR)
     backup_set = _configuration_api_payload(
         _field_edit_envelope(
             resources,
@@ -2276,6 +2350,7 @@ def _set_masked_reference(
             evidence,
         )
     )
+    _await_config_restart(resources, evidence, previous_instance)
     backup_revision, backup_editor_revision = _editor_revision_values(backup_set)
     if backup_revision != initial_revision or backup_editor_revision == initial_editor_revision:
         raise ValueError(_FULL_STATE_CHANGED)
@@ -2430,11 +2505,15 @@ def _clear_masked_reference(
     owner: WhoAmIFields,
     editor: Mapping[str, object],
 ) -> Mapping[str, object]:
+    previous_instance = _read_daemon_instance(_HEALTH_SOCKET_PATH, _HEALTH_OBSERVATION_TIMEOUT_SECONDS)
+    if previous_instance is None:
+        raise RuntimeError(_EXPECTED_READINESS_ERROR)
     backup_clear = _configuration_api_payload(
         _field_edit_envelope(
             resources, terminal, owner, editor, _CONFIG_EDITOR_IDENTITY_MASKED, _CONFIG_EDIT_CLEAR, None, evidence
         )
     )
+    _await_config_restart(resources, evidence, previous_instance)
     if (
         _editor_field(backup_clear, _CONFIG_EDITOR_IDENTITY_MASKED).get(_CONFIG_EDITOR_FIELD_STATE)
         != _CONFIG_EDITOR_UNRESOLVED
@@ -2475,9 +2554,6 @@ def _exercise_numeric_editor_value(
     _, before_revision, _ = _read_computer_config(resources, terminal, evidence)
     if before_revision != _editor_revision_values(editor)[0]:
         raise ValueError(_FULL_STATE_CHANGED)
-    previous_instance = _read_daemon_instance(_HEALTH_SOCKET_PATH, _HEALTH_OBSERVATION_TIMEOUT_SECONDS)
-    if previous_instance is None:
-        raise RuntimeError(_EXPECTED_READINESS_ERROR)
     volume_set = _configuration_api_payload(
         _field_edit_envelope(
             resources,
@@ -2490,7 +2566,6 @@ def _exercise_numeric_editor_value(
             evidence,
         )
     )
-    _await_config_restart(resources, evidence, previous_instance)
     fresh_cli, fresh_revision, _ = _read_computer_config(resources, terminal, evidence)
     fresh_chiptunes = _mapping_value(fresh_cli.get(_CONFIG_CHIPTUNES_SECTION))
     api_volume = _editor_field(volume_set, _CONFIG_EDITOR_IDENTITY_VOLUME).get(_CONFIG_EDITOR_FIELD_VALUE)
@@ -3380,15 +3455,22 @@ def _await_archived_conversation(resources: FullRuntimeResources, evidence: list
     raise ValueError(_ARCHIVE_ADOPTION_ERROR)
 
 
-def _archived_conversation_matches(conversation_text: str) -> bool:
+def _archived_conversation_matches(
+    conversation_text: str,
+    expected_snapshot: Path = _ARCHIVED_CONVERSATION_SNAPSHOT,
+) -> bool:
     """Compare the retrieved conversation body with the snapshot of what the archived transcript renders to."""
-    expected = (Path(__file__).parent / _ARCHIVED_CONVERSATION_SNAPSHOT).read_text(encoding=_UTF8)
+    expected = (Path(__file__).parent / expected_snapshot).read_text(encoding=_UTF8)
     return conversation_text.strip() + _LINE_BREAK == expected
 
 
 def _require_archived_history(
-    resources: FullRuntimeResources, evidence: list[CommandEvidence], requested_id: str, conversation_id: str
-) -> None:
+    resources: FullRuntimeResources,
+    evidence: list[CommandEvidence],
+    requested_id: str,
+    conversation_id: str,
+    expected_snapshot: Path = _ARCHIVED_CONVERSATION_SNAPSHOT,
+) -> Mapping[str, object]:
     """History retrieval by one identity returns the archived conversation under the TeleClaude identity."""
     terminal = resources.open_admin_terminal()
     status, output = _record_terminal_command(
@@ -3402,9 +3484,10 @@ def _require_archived_history(
         or detail.get(_TELECLAUDE_ID_FIELD) != conversation_id
         or not isinstance(message_count, int)
         or message_count < _MINIMUM_ARCHIVED_MESSAGES
-        or not _archived_conversation_matches(str(detail.get(_CONVERSATION_TEXT_FIELD, _EMPTY)))
+        or not _archived_conversation_matches(str(detail.get(_CONVERSATION_TEXT_FIELD, _EMPTY)), expected_snapshot)
     ):
         raise ValueError(_ARCHIVE_RETRIEVAL_ERROR)
+    return detail
 
 
 def _full_archived_history(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -3416,6 +3499,394 @@ def _full_archived_history(resources: FullRuntimeResources, evidence: list[Comma
     transcript.unlink()
     _restart_runtime(resources, evidence)
     _require_archived_history(resources, evidence, conversation_id, conversation_id)
+
+
+def _live_source_transcript(resources: FullRuntimeResources) -> Path:
+    """Recreate the original synthetic native source before the later headless session starts."""
+    return _write_archive_transcript(resources)
+
+
+def _append_live_source_turns(resources: FullRuntimeResources, transcript: Path) -> None:
+    """Append later exchanges after the real SessionStart has registered the live conversation."""
+    working_directory = str(resources.project_path or resources.source_root)
+    entries: list[JSONObject] = [
+        {
+            "type": "user",
+            "timestamp": "2026-01-01T10:01:00.000Z",
+            "cwd": working_directory,
+            "sessionId": _ARCHIVE_NATIVE_ID,
+            "message": {"role": "user", "content": _LIVE_USER_TURN.format(term=_ARCHIVE_SEARCH_TERM)},
+        },
+        {
+            "type": "assistant",
+            "timestamp": "2026-01-01T10:01:05.000Z",
+            "cwd": working_directory,
+            "sessionId": _ARCHIVE_NATIVE_ID,
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": _LIVE_ASSISTANT_TURN.format(term=_ARCHIVE_SEARCH_TERM)}],
+            },
+        },
+    ]
+    with transcript.open("a", encoding=_UTF8) as stream:
+        stream.write(_LINE_BREAK.join(json.dumps(entry) for entry in entries) + _LINE_BREAK)
+
+
+def _append_archive_refresh_turns(resources: FullRuntimeResources, transcript: Path) -> None:
+    """Append a synthetic exchange whose public appearance proves the archive re-read its restored source."""
+    working_directory = str(resources.project_path or resources.source_root)
+    user_timestamp, assistant_timestamp = _ARCHIVE_REFRESH_TURN_TIMESTAMPS
+    entries: list[JSONObject] = [
+        {
+            "type": "user",
+            "timestamp": user_timestamp,
+            "cwd": working_directory,
+            "sessionId": _ARCHIVE_NATIVE_ID,
+            "message": {"role": "user", "content": _ARCHIVE_REFRESH_USER_TURN},
+        },
+        {
+            "type": "assistant",
+            "timestamp": assistant_timestamp,
+            "cwd": working_directory,
+            "sessionId": _ARCHIVE_NATIVE_ID,
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": _ARCHIVE_REFRESH_ASSISTANT_TURN}],
+            },
+        },
+    ]
+    with transcript.open("a", encoding=_UTF8) as stream:
+        stream.write(_LINE_BREAK.join(json.dumps(entry) for entry in entries) + _LINE_BREAK)
+
+
+def _run_headless_session_start(
+    resources: FullRuntimeResources, evidence: list[CommandEvidence], transcript: Path
+) -> None:
+    """Send a provider-shaped SessionStart through the checked receiver in an authenticated PTY."""
+    input_path = resources.temporary_root / _MIRROR_HOOK_INPUT
+    input_path.parent.mkdir(parents=True, exist_ok=True)
+    input_path.write_text(
+        json.dumps(
+            {
+                "session_id": _ARCHIVE_NATIVE_ID,
+                "transcript_path": str(transcript),
+                "cwd": str(resources.project_path or resources.source_root),
+                "source": "exec",
+            }
+        ),
+        encoding=_UTF8,
+    )
+    receiver = resources.source_root / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver_command = shlex.join((str(receiver), "--agent", _SYNTHETIC_AGENT, "SessionStart"))
+    command = f"{receiver_command} < {shlex.quote(str(input_path))}"
+    terminal = resources.open_admin_terminal()
+    started = time.monotonic()
+    try:
+        result = terminal.run((_BASH_EXECUTABLE, "-lc", command))
+    except TerminalFailure as exc:
+        evidence.append(
+            CommandEvidence(
+                argv=("<receiver SessionStart>",),
+                exit_status=None,
+                duration_seconds=time.monotonic() - started,
+                stdout=resources.sanitize(exc.output)[:_DIAGNOSTIC_LIMIT],
+                diagnostics=_PROCESS_TIMEOUT_DETAIL,
+            )
+        )
+        raise ValueError(_LIVE_HOOK_ERROR) from exc
+    evidence.append(
+        CommandEvidence(
+            argv=("<receiver SessionStart>",),
+            exit_status=result.returncode,
+            duration_seconds=time.monotonic() - started,
+            stdout=resources.sanitize(_terminal_diagnostic_output(result.output))[:_DIAGNOSTIC_LIMIT],
+        )
+    )
+    if result.returncode != _PROCESS_SUCCESS:
+        raise ValueError(_LIVE_HOOK_ERROR)
+
+
+def _await_live_session(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> str:
+    """Resolve the newly registered session from the public sessions list."""
+    terminal = resources.open_admin_terminal()
+    deadline = time.monotonic() + _MIRROR_REFRESH_WINDOW_SECONDS
+    while time.monotonic() < deadline:
+        status, output = _record_terminal_command(resources, terminal, _SESSION_LIST_COMMAND, evidence)
+        payload = _structured_value(output) if status == _PROCESS_SUCCESS else None
+        if isinstance(payload, list):
+            for row_value in payload:
+                row = _mapping_value(row_value)
+                if row is None or row.get(_SESSION_NATIVE_ID_FIELD) != _ARCHIVE_NATIVE_ID:
+                    continue
+                session_id = row.get(_SESSION_ID_FIELD)
+                if isinstance(session_id, str) and session_id:
+                    return session_id
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(_MIRROR_REFRESH_POLL_INTERVAL_SECONDS, remaining))
+    raise ValueError(_LIVE_SESSION_ERROR)
+
+
+def _history_rows_for_source(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> list[object]:
+    """Read matching public history-search rows from a fresh CLI process."""
+    terminal = resources.open_admin_terminal()
+    status, output = _record_terminal_command(
+        resources, terminal, (*_HISTORY_SEARCH_PREFIX, _ARCHIVE_SEARCH_TERM, _JSON_OPTION), evidence
+    )
+    payload = _structured_value(output) if status == _PROCESS_SUCCESS else None
+    return list(payload) if isinstance(payload, list) else []
+
+
+def _require_history_detail(
+    resources: FullRuntimeResources,
+    evidence: list[CommandEvidence],
+    requested_id: str,
+    expected_tc_id: str,
+    expected_snapshot: Path,
+) -> Mapping[str, object]:
+    """Require one exact public TeleClaude detail result and return its structured payload."""
+    terminal = resources.open_admin_terminal()
+    status, output = _record_terminal_command(
+        resources, terminal, (*_HISTORY_SHOW_PREFIX, requested_id, _JSON_OPTION), evidence
+    )
+    detail = _mapping_value(_structured_value(output))
+    expected_text = (Path(__file__).parent / expected_snapshot).read_text(encoding=_UTF8)
+    observed_text = detail.get(_CONVERSATION_TEXT_FIELD) if detail is not None else None
+    normalized_text = observed_text.strip() + _LINE_BREAK if isinstance(observed_text, str) else None
+    if (
+        status != _PROCESS_SUCCESS
+        or detail is None
+        or detail.get(_TELECLAUDE_ID_FIELD) != expected_tc_id
+        or normalized_text != expected_text
+    ):
+        raise ValueError(_LIVE_HISTORY_ERROR)
+    return detail
+
+
+def _await_live_history(
+    resources: FullRuntimeResources,
+    evidence: list[CommandEvidence],
+    live_id: str,
+    expected_snapshot: Path = _LIVE_CONVERSATION_SNAPSHOT,
+) -> Mapping[str, object]:
+    """Wait for public history to show the appended live exchanges under their session identity."""
+    deadline = time.monotonic() + _MIRROR_REFRESH_WINDOW_SECONDS
+    while time.monotonic() < deadline:
+        try:
+            return _require_history_detail(resources, evidence, live_id, live_id, expected_snapshot)
+        except ValueError:
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(_MIRROR_REFRESH_POLL_INTERVAL_SECONDS, remaining))
+    raise ValueError(_LIVE_HISTORY_ERROR)
+
+
+def _require_current_archive_history(
+    resources: FullRuntimeResources, evidence: list[CommandEvidence], archive_id: str
+) -> Mapping[str, object]:
+    """Require public archive detail to show its source currently present and projected."""
+    detail = _require_archived_history(resources, evidence, archive_id, archive_id, _ARCHIVE_CURRENT_SOURCE_SNAPSHOT)
+    sources = detail.get("sources")
+    source = _mapping_value(sources[0]) if isinstance(sources, list) and len(sources) == 1 else None
+    if (
+        detail.get(_MESSAGE_COUNT_FIELD) != _ARCHIVE_CURRENT_MESSAGE_COUNT
+        or source is None
+        or source.get("missing") is not False
+    ):
+        raise ValueError(_ARCHIVE_RETRIEVAL_ERROR)
+    return detail
+
+
+def _await_current_archive_history(
+    resources: FullRuntimeResources, evidence: list[CommandEvidence], archive_id: str
+) -> Mapping[str, object]:
+    """Wait until public archive detail reports the restored native source as current."""
+    deadline = time.monotonic() + _MIRROR_REFRESH_WINDOW_SECONDS
+    while time.monotonic() < deadline:
+        try:
+            return _require_current_archive_history(resources, evidence, archive_id)
+        except ValueError:
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(_MIRROR_REFRESH_POLL_INTERVAL_SECONDS, remaining))
+    raise ValueError(_ARCHIVE_RETRIEVAL_ERROR)
+
+
+def _require_archive_history_unchanged(
+    resources: FullRuntimeResources,
+    evidence: list[CommandEvidence],
+    archive_id: str,
+    expected: Mapping[str, object],
+) -> Mapping[str, object]:
+    """Prove through public detail that live refreshes leave the current archive projection intact."""
+    current = _require_current_archive_history(resources, evidence, archive_id)
+    if any(expected.get(field) != current.get(field) for field in _ARCHIVE_PRESERVED_HISTORY_FIELDS):
+        raise ValueError(_ARCHIVE_HISTORY_CHANGED_ERROR)
+    return current
+
+
+def _stage_mirror_fixture(resources: FullRuntimeResources) -> None:
+    """Create the pre-change mirror store before the disposable application first opens it."""
+    mirror_home = Path(resources.environment[_COLD_HOME_VARIABLE]) / ".teleclaude"
+    database_path = mirror_home / _MIRROR_FIXTURE_DATABASE
+    if database_path.exists():
+        raise RuntimeError(_MIRROR_FIXTURE_ERROR)
+    fixture_path = Path(__file__).parent / _MIRROR_SOURCE_FIXTURE
+    mirror_home.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        connection = sqlite3.connect(database_path)
+        try:
+            connection.executescript(fixture_path.read_text(encoding=_UTF8))
+        finally:
+            connection.close()
+    except (OSError, sqlite3.Error) as exc:
+        raise RuntimeError(_MIRROR_FIXTURE_ERROR) from exc
+
+
+def _require_mirror_fixture_history(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """Check migrated fixture history through the public detail command, including retained diagnostics."""
+    terminal = resources.open_admin_terminal()
+    status, output = _record_terminal_command(
+        resources,
+        terminal,
+        (*_HISTORY_SHOW_PREFIX, _MIRROR_FIXTURE_SESSION_ID, _JSON_OPTION),
+        evidence,
+    )
+    detail = _mapping_value(_structured_value(output))
+    snapshot = _mapping_value(
+        json.loads((Path(__file__).parent / _MIRROR_FIXTURE_HISTORY_SNAPSHOT).read_text(encoding=_UTF8))
+    )
+    sources = detail.get("sources") if detail is not None else None
+    source = _mapping_value(sources[0]) if isinstance(sources, list) and len(sources) == 1 else None
+    if (
+        status != _PROCESS_SUCCESS
+        or detail is None
+        or snapshot is None
+        or detail.get(_TELECLAUDE_ID_FIELD) != _MIRROR_FIXTURE_SESSION_ID
+        or detail.get(_HISTORY_REQUESTED_NAMESPACE_FIELD) != _HISTORY_NAMESPACE_TC_ID
+        or detail.get(_HISTORY_NATIVE_ID_FIELD) != _MIRROR_FIXTURE_NATIVE_ID
+        or detail.get(_CONVERSATION_TEXT_FIELD) != snapshot.get(_CONVERSATION_TEXT_FIELD)
+        or detail.get(_MESSAGE_COUNT_FIELD) != 1
+        or detail.get("computer") != "runtime-acceptance"
+        or detail.get("title") != snapshot.get("title")
+        or detail.get("shrink_refused_at") != _MIRROR_FIXTURE_SHRINK_REFUSED_AT
+        or source is None
+        or source.get("native_id") != _MIRROR_FIXTURE_NATIVE_ID
+        or source.get("missing") is not False
+        or detail.get("complete") is not True
+    ):
+        raise ValueError(_MIRROR_FIXTURE_ERROR)
+
+
+def _full_archive_live_source(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
+    """UC-MIE-8: a later headless session gets its own refreshed conversation mirror."""
+    _require_mirror_fixture_history(resources, evidence)
+    _restart_runtime(resources, evidence)
+    _require_mirror_fixture_history(resources, evidence)
+    archive_rows = _archived_conversation_rows(resources, evidence)
+    if len(archive_rows) != 1:
+        raise ValueError(_ARCHIVE_ADOPTION_ERROR)
+    archive_row = _mapping_value(archive_rows[0])
+    archive_id = archive_row.get(_TELECLAUDE_ID_FIELD) if archive_row is not None else None
+    if not isinstance(archive_id, str) or not archive_id:
+        raise ValueError(_ARCHIVE_ADOPTION_ERROR)
+    transcript = _live_source_transcript(resources)
+    _append_archive_refresh_turns(resources, transcript)
+    _restart_runtime(resources, evidence)
+    archive_before = _await_current_archive_history(resources, evidence, archive_id)
+    _run_headless_session_start(resources, evidence, transcript)
+    live_id = _await_live_session(resources, evidence)
+    if live_id == archive_id:
+        raise ValueError(_LIVE_SESSION_ERROR)
+    live_rows_before_refresh = _history_rows_for_source(resources, evidence)
+    live_ids_before_refresh = {
+        mapping.get(_TELECLAUDE_ID_FIELD)
+        for row in live_rows_before_refresh
+        if (mapping := _mapping_value(row)) is not None
+    }
+    if len(live_rows_before_refresh) != 1 or live_ids_before_refresh != {archive_id}:
+        raise ValueError(_LIVE_HISTORY_ERROR)
+
+    _restart_runtime(resources, evidence)
+    live_initial = _await_live_history(resources, evidence, live_id, _ARCHIVE_CURRENT_SOURCE_SNAPSHOT)
+    initial_sources = live_initial.get("sources")
+    initial_source = (
+        _mapping_value(initial_sources[0]) if isinstance(initial_sources, list) and len(initial_sources) == 1 else None
+    )
+    if (
+        live_initial.get(_MESSAGE_COUNT_FIELD) != _ARCHIVE_CURRENT_MESSAGE_COUNT
+        or live_initial.get(_HISTORY_NATIVE_ID_FIELD) != _ARCHIVE_NATIVE_ID
+        or initial_source is None
+        or initial_source.get("missing") is not False
+    ):
+        raise ValueError(_LIVE_HISTORY_ERROR)
+    _require_archive_history_unchanged(resources, evidence, archive_id, archive_before)
+
+    _append_live_source_turns(resources, transcript)
+    _run_headless_session_start(resources, evidence, transcript)
+    _restart_runtime(resources, evidence)
+    live_detail = _await_live_history(resources, evidence, live_id)
+    live_sources = live_detail.get("sources")
+    live_source = _mapping_value(live_sources[0]) if isinstance(live_sources, list) and len(live_sources) == 1 else None
+    if (
+        live_detail.get(_MESSAGE_COUNT_FIELD) != _LIVE_CONVERSATION_EXPECTED_MESSAGE_COUNT
+        or live_detail.get(_HISTORY_NATIVE_ID_FIELD) != _ARCHIVE_NATIVE_ID
+        or live_detail.get("complete") is not True
+        or live_source is None
+        or live_source.get("native_id") != _ARCHIVE_NATIVE_ID
+        or live_source.get("missing") is not False
+    ):
+        raise ValueError(_LIVE_HISTORY_ERROR)
+    rows = _history_rows_for_source(resources, evidence)
+    source_rows = [
+        row
+        for row in rows
+        if (mapping := _mapping_value(row)) is not None and mapping.get(_HISTORY_NATIVE_ID_FIELD) == _ARCHIVE_NATIVE_ID
+    ]
+    identities = {
+        mapping.get(_TELECLAUDE_ID_FIELD) for row in source_rows if (mapping := _mapping_value(row)) is not None
+    }
+    if len(source_rows) != 2 or identities != {archive_id, live_id}:
+        raise ValueError(_LIVE_HISTORY_ERROR)
+    _require_archive_history_unchanged(resources, evidence, archive_id, archive_before)
+
+    _run_headless_session_start(resources, evidence, transcript)
+    _restart_runtime(resources, evidence)
+    live_after_repeat = _await_live_history(resources, evidence, live_id)
+    if any(
+        live_detail.get(field) != live_after_repeat.get(field)
+        for field in (
+            _MESSAGE_COUNT_FIELD,
+            _HISTORY_NATIVE_ID_FIELD,
+            "complete",
+            "sources",
+            _CONVERSATION_TEXT_FIELD,
+        )
+    ):
+        raise ValueError(_LIVE_HISTORY_ERROR)
+    rows_after_repeat = _history_rows_for_source(resources, evidence)
+    source_rows_after_repeat = [
+        row
+        for row in rows_after_repeat
+        if (mapping := _mapping_value(row)) is not None and mapping.get(_HISTORY_NATIVE_ID_FIELD) == _ARCHIVE_NATIVE_ID
+    ]
+    identities_after_repeat = {
+        mapping.get(_TELECLAUDE_ID_FIELD)
+        for row in source_rows_after_repeat
+        if (mapping := _mapping_value(row)) is not None
+    }
+    if len(source_rows_after_repeat) != 2 or identities_after_repeat != {archive_id, live_id}:
+        raise ValueError(_LIVE_HISTORY_ERROR)
+    _require_archive_history_unchanged(resources, evidence, archive_id, archive_before)
+
+    terminal = resources.open_admin_terminal()
+    status, output = _record_terminal_command(
+        resources, terminal, (*_HISTORY_SHOW_PREFIX, _ARCHIVE_NATIVE_ID, _JSON_OPTION), evidence
+    )
+    expected_ambiguity = (Path(__file__).parent / _NATIVE_AMBIGUITY_SNAPSHOT).read_text(encoding=_UTF8)
+    observed_ambiguity = _LINE_BREAK.join(output.splitlines()).strip() + _LINE_BREAK
+    if status in (_PROCESS_SUCCESS, None) or observed_ambiguity != expected_ambiguity:
+        raise ValueError(_NATIVE_AMBIGUITY_ERROR)
 
 
 def _full_curation_refusal(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
@@ -4579,7 +5050,29 @@ def _release_retained_declaration(resources: FullRuntimeResources, evidence: lis
         raise ValueError(_RELEASE_FIXTURE_INVALID)
     tag = _release_commit(world, evidence, prior=False, schema_version=world.schema_version - 1)
     _release_update(world, evidence, install, tag)
+    (install.home / _RELEASE_DECLARATION).write_text(
+        _RELEASE_GLOBAL_TEXT.format(email=_RELEASE_PERSON_EMAIL, schema_version=world.schema_version),
+        encoding=_UTF8,
+    )
     (install.home / _RELEASE_PROJECTS_REGISTRY).write_text(f"projects:\n  - {install.checkout}\n", encoding=_UTF8)
+    owner_terminal = resources.open_admin_terminal()
+    owner_init_status, owner_init_output = _record_terminal_command(
+        resources,
+        owner_terminal,
+        (
+            *_CONFIG_PERSON_INIT_PREFIX,
+            "Release Owner",
+            _EMAIL_OPTION,
+            _RELEASE_PERSON_EMAIL,
+            _SLUG_OPTION,
+            "release-owner",
+            _ROLE_OPTION,
+            _ADMIN_ROLE,
+        ),
+        evidence,
+    )
+    _require_terminal_success(owner_init_status, owner_init_output, evidence)
+    _release_telec(world, evidence, install, "config", "project", "adopt")
     declaration = install.checkout / _RELEASE_DECLARATION
     stored = declaration.read_bytes()
     reached = _head(world, evidence, install)
@@ -4623,7 +5116,6 @@ def _release_retained_declaration(resources: FullRuntimeResources, evidence: lis
         for invalid in (invalid_older, invalid_older.replace(older_schema, current_schema, 1)):
             declaration.write_text(invalid, encoding=_UTF8)
             (install.home / _RELEASE_CONFIG_FILE).write_text(machine_before, encoding=_UTF8)
-            _release_telec(world, evidence, install, *_release_public_load(), expect_success=False)
             _release_module(
                 world,
                 evidence,
@@ -4960,6 +5452,7 @@ def run_profile(
                 source_revision=source_revision,
                 source_tree=source_tree,
             )
+            _stage_mirror_fixture(resources)
             actions.update(
                 {
                     _SCENARIO_RUNTIME_READY: _bind_full_scenario(
@@ -4996,6 +5489,9 @@ def run_profile(
                     ),
                     _SCENARIO_ARCHIVED_HISTORY: _bind_full_scenario(
                         _SCENARIO_ARCHIVED_HISTORY, resources, _full_archived_history
+                    ),
+                    _SCENARIO_ARCHIVE_LIVE_SOURCE: _bind_full_scenario(
+                        _SCENARIO_ARCHIVE_LIVE_SOURCE, resources, _full_archive_live_source
                     ),
                     _SCENARIO_CURATION_REFUSAL: _bind_full_scenario(
                         _SCENARIO_CURATION_REFUSAL, resources, _full_curation_refusal

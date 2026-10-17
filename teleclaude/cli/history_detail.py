@@ -15,6 +15,7 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.command_dispatch import is_remote_target
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.history.service import HistoryDetailPayload, build_history_detail_payload, resolve_history_reach
+from teleclaude.mirrors.errors import MirrorIdentityAmbiguityError
 from teleclaude.mirrors.store import MirrorCoverageState
 
 __all__ = ["show_transcript"]
@@ -141,13 +142,17 @@ def show_transcript(
     if reach is None:
         print(f"Error: {no_identity_refusal(identity)}", file=sys.stderr)
         raise SystemExit(1)
-    detail = build_history_detail_payload(
-        session_id,
-        reach=reach,
-        agents=agents,
-        include_thinking=include_thinking,
-        raw=raw,
-    )
+    try:
+        detail = build_history_detail_payload(
+            session_id,
+            reach=reach,
+            agents=agents,
+            include_thinking=include_thinking,
+            raw=raw,
+        )
+    except MirrorIdentityAmbiguityError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
     if detail is None:
         print(_TRANSCRIPT_NOT_FOUND.format(session_id=session_id))
         raise SystemExit(1)
@@ -199,6 +204,8 @@ def _show_peer_history_detail(
         exc.exit_if_not_accepted()
         if exc.status_code == HTTPStatus.NOT_FOUND:
             print(_TRANSCRIPT_NOT_FOUND.format(session_id=session_id))
+        elif exc.status_code == HTTPStatus.CONFLICT:
+            print(exc.detail, file=sys.stderr)
         else:
             print(
                 _REMOTE_DETAIL_FAILURE_TEMPLATE.format(

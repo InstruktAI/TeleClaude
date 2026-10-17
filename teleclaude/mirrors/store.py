@@ -29,6 +29,7 @@ from teleclaude.mirrors._migrations import (
 )
 from teleclaude.mirrors._session_convergence import create_session_owned_schema
 from teleclaude.mirrors._types import JsonValue
+from teleclaude.mirrors.errors import MirrorIdentityAmbiguityError
 
 # Search shows only the sessions worth auditing; dispatched workers are the noise.
 _WORKER_EXCLUSION_CLAUSE = "mirrors.is_worker = 0"
@@ -60,7 +61,7 @@ _SELECTOR_SNIPPET_SELECT = "'' AS snippet"
 # A conversation is unreprojectable only when none of its sources can be re-derived: every source is marked.
 _UNREPROJECTABLE_MATCH_CLAUSE = (
     "EXISTS (SELECT 1 FROM mirror_sources WHERE mirror_sources.mirror = mirrors.id "
-    "AND mirror_sources.source_identity NOT IN (SELECT source_identity FROM mirror_unreprojectable_sources))"
+    "AND mirror_sources.id NOT IN (SELECT source FROM mirror_unreprojectable_sources))"
 )
 _UNREPROJECTABLE_SOURCE_CLAUSE = f"NOT {_UNREPROJECTABLE_MATCH_CLAUSE}"
 _MIRROR_SHRINK_REFUSALS_TABLE = "mirror_shrink_refusals"
@@ -134,16 +135,16 @@ _GET_MIRROR_SQL_TEMPLATE = f"""
         mirrors.derivation_version, mirrors.covered_at, mirrors.coverage_ready,
         (SELECT MAX(mirror_shrink_refusals.{_SHRINK_REFUSED_AT_FIELD})
             FROM {_MIRROR_SHRINK_REFUSALS_TABLE} AS mirror_shrink_refusals
-            JOIN mirror_sources ON mirror_sources.source_identity = mirror_shrink_refusals.source_identity
+            JOIN mirror_sources ON mirror_sources.id = mirror_shrink_refusals.source
             WHERE mirror_sources.mirror = mirrors.id) AS {_SHRINK_REFUSED_AT_FIELD}
     FROM mirrors
     LEFT JOIN mirror_sessions ON mirror_sessions.id = mirrors.session
-    WHERE {{where_clause}} ORDER BY mirrors.updated_at DESC LIMIT 1
+    WHERE {{where_clause}}
 """
 _RECORD_MIRROR_SHRINK_REFUSAL_SQL = f"""
-    INSERT INTO {_MIRROR_SHRINK_REFUSALS_TABLE} (source_identity, {_SHRINK_REFUSED_AT_FIELD})
-    VALUES (:source_identity, :{_SHRINK_REFUSED_AT_FIELD})
-    ON CONFLICT(source_identity) DO UPDATE SET {_SHRINK_REFUSED_AT_FIELD} = excluded.{_SHRINK_REFUSED_AT_FIELD}
+    INSERT INTO {_MIRROR_SHRINK_REFUSALS_TABLE} (source, {_SHRINK_REFUSED_AT_FIELD})
+    VALUES (:source, :{_SHRINK_REFUSED_AT_FIELD})
+    ON CONFLICT(source) DO UPDATE SET {_SHRINK_REFUSED_AT_FIELD} = excluded.{_SHRINK_REFUSED_AT_FIELD}
 """
 
 _schema_initialized: set[str] = set()
@@ -253,7 +254,7 @@ def _ensure_schema(conn: sqlite3.Connection, path: str) -> None:
 _MIRRORS_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS mirrors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    native_session_id TEXT, source_identity TEXT UNIQUE, computer TEXT NOT NULL, agent TEXT NOT NULL,
+    native_session_id TEXT, source_identity TEXT, computer TEXT NOT NULL, agent TEXT NOT NULL,
     project_path TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', timestamp_start TEXT, timestamp_end TEXT,
     conversation_text TEXT NOT NULL DEFAULT '', message_count INTEGER NOT NULL DEFAULT 0, metadata TEXT DEFAULT '{}',
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL, summary TEXT, human_email TEXT,
@@ -267,8 +268,6 @@ CREATE INDEX IF NOT EXISTS idx_mirrors_source_identity ON mirrors(source_identit
 CREATE TABLE IF NOT EXISTS mirror_tombstones (source_identity TEXT PRIMARY KEY, agent TEXT NOT NULL DEFAULT '',
     transcript_path TEXT NOT NULL DEFAULT '', file_size INTEGER NOT NULL DEFAULT 0, file_mtime TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT '');
-CREATE TABLE IF NOT EXISTS mirror_unreprojectable_sources (source_identity TEXT PRIMARY KEY, marked_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS mirror_shrink_refusals (source_identity TEXT PRIMARY KEY, shrink_refused_at TEXT NOT NULL);
 CREATE VIRTUAL TABLE IF NOT EXISTS mirrors_fts USING fts5(title, conversation_text, content='mirrors', content_rowid='id');
 CREATE TRIGGER IF NOT EXISTS mirrors_ai AFTER INSERT ON mirrors BEGIN
     INSERT INTO mirrors_fts(rowid, title, conversation_text) VALUES (new.id, new.title, new.conversation_text);
@@ -295,6 +294,8 @@ ORDER BY mirrors.covered_at IS NOT NULL, mirrors.covered_at
 LIMIT :limit
 """
 _DELETE_CONVERSATION_SQL = (
+    "DELETE FROM mirror_unreprojectable_sources WHERE source IN (SELECT id FROM mirror_sources WHERE mirror = :mirror)",
+    "DELETE FROM mirror_shrink_refusals WHERE source IN (SELECT id FROM mirror_sources WHERE mirror = :mirror)",
     "DELETE FROM mirror_messages WHERE source IN (SELECT id FROM mirror_sources WHERE mirror = :mirror)",
     "DELETE FROM mirror_sources WHERE mirror = :mirror",
     "DELETE FROM mirrors WHERE id = :mirror",
@@ -648,16 +649,18 @@ def get_mirror(
 
     try:
         with _get_ro_engine(db).connect() as conn:
-            row = conn.execute(text(sql), params).mappings().first()
+            rows = conn.execute(text(sql), params).mappings().all()
     except SqlAlchemyOperationalError as exc:
         if _is_missing_table_error(exc):
             return None
         raise
 
-    if row is None:
+    if not rows:
         return None
+    if len(rows) > 1:
+        raise MirrorIdentityAmbiguityError()
 
-    return _mirror_record_from_row(row)
+    return _mirror_record_from_row(rows[0])
 
 
 def get_session_mirror(
@@ -722,7 +725,7 @@ def record_session_close(
 
 
 def record_mirror_shrink_refusal(
-    source_identity: str,
+    source_id: int,
     *,
     shrink_refused_at: str,
     db: str | Path | None = None,
@@ -731,7 +734,7 @@ def record_mirror_shrink_refusal(
     with _get_rw_engine(db).begin() as conn:
         conn.execute(
             text(_RECORD_MIRROR_SHRINK_REFUSAL_SQL),
-            {"source_identity": source_identity, _SHRINK_REFUSED_AT_FIELD: shrink_refused_at},
+            {"source": source_id, _SHRINK_REFUSED_AT_FIELD: shrink_refused_at},
         )
 
 
@@ -776,13 +779,14 @@ def _apply_access_filter(
 class OrphanMirror:
     """A stale stored mirror whose source transcript may no longer be available."""
 
+    source_id: int
     source_identity: str
     agent: str
     transcript_path: str | None
 
 
 def mark_mirror_unreprojectable(
-    source_identity: str,
+    source_id: int,
     *,
     marked_at: str,
     db: str | Path | None = None,
@@ -791,11 +795,11 @@ def mark_mirror_unreprojectable(
     with _get_rw_engine(db).begin() as conn:
         conn.execute(
             text(
-                "INSERT INTO mirror_unreprojectable_sources (source_identity, marked_at) "
-                "VALUES (:source_identity, :marked_at) "
-                "ON CONFLICT(source_identity) DO NOTHING"
+                "INSERT INTO mirror_unreprojectable_sources (source, marked_at) "
+                "VALUES (:source, :marked_at) "
+                "ON CONFLICT(source) DO NOTHING"
             ),
-            {"marked_at": marked_at, "source_identity": source_identity},
+            {"marked_at": marked_at, "source": source_id},
         )
 
 

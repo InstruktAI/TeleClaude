@@ -18,29 +18,46 @@ from .store import (
 )
 
 _SELECT_SOURCE_FILE_STATE_SQL = """\
-SELECT transcript_path, file_size, file_mtime_ns, derivation_version
+SELECT mirror_sessions.session_id AS session_id, mirror_sources.source_identity AS source_identity,
+    mirror_sources.transcript_path AS transcript_path, mirror_sources.file_size AS file_size,
+    mirror_sources.file_mtime_ns AS file_mtime_ns, mirror_sources.derivation_version AS derivation_version
 FROM mirror_sources
-WHERE transcript_path IS NOT NULL AND transcript_path <> ''
+JOIN mirrors ON mirrors.id = mirror_sources.mirror
+JOIN mirror_sessions ON mirror_sessions.id = mirrors.session
+WHERE mirror_sources.transcript_path IS NOT NULL AND mirror_sources.transcript_path <> ''
 """
 _SELECT_STALE_SOURCES_SQL = """\
-SELECT source_identity, agent, transcript_path
+SELECT id AS source_id, source_identity, agent, transcript_path
 FROM mirror_sources
 WHERE derivation_version < :derivation_version
-  AND source_identity NOT IN (SELECT source_identity FROM mirror_unreprojectable_sources)
+  AND id NOT IN (SELECT source FROM mirror_unreprojectable_sources)
 """
 
 
 @dataclass(frozen=True)
 class MirrorTranscriptState:
-    """Per-transcript source state consulted during reconciliation skip checks."""
+    """Session-owned source observation consulted during reconciliation skip checks."""
 
+    session_id: str
+    source_identity: str
+    transcript_path: str
     file_size: int | None
     file_mtime_ns: str | None
     derivation_version: int
 
 
-def get_mirror_state_by_transcript(db: str | Path | None = None) -> dict[str, MirrorTranscriptState]:
-    """Return transcript-path keyed source state for reconciliation."""
+@dataclass(frozen=True)
+class MirrorSessionSourceKey:
+    """A transcript source observation owned by exactly one TeleClaude session."""
+
+    session_id: str
+    source_identity: str
+
+
+def get_mirror_state_by_session_source(
+    db: str | Path | None = None,
+) -> dict[MirrorSessionSourceKey, MirrorTranscriptState]:
+    """Return source state keyed by its owning TeleClaude session and source identity."""
     try:
         with _get_ro_engine(db).connect() as conn:
             rows = conn.execute(text(_SELECT_SOURCE_FILE_STATE_SQL)).mappings().all()
@@ -50,7 +67,10 @@ def get_mirror_state_by_transcript(db: str | Path | None = None) -> dict[str, Mi
         raise
 
     return {
-        str(row["transcript_path"]): MirrorTranscriptState(
+        MirrorSessionSourceKey(str(row["session_id"]), str(row["source_identity"])): MirrorTranscriptState(
+            session_id=str(row["session_id"]),
+            source_identity=str(row["source_identity"]),
+            transcript_path=str(row["transcript_path"]),
             file_size=_optional_int(row["file_size"]),
             file_mtime_ns=_optional_str(row["file_mtime_ns"]),
             derivation_version=_int_value(row["derivation_version"]),
@@ -75,6 +95,7 @@ def get_stale_mirrors(derivation_version: int, *, db: str | Path | None = None) 
 
     return [
         OrphanMirror(
+            source_id=_int_value(row["source_id"]),
             source_identity=str(row["source_identity"]),
             agent=str(row["agent"] or ""),
             transcript_path=_optional_str(row["transcript_path"]),
