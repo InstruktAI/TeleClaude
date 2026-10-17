@@ -64,32 +64,18 @@ nothing; the person's other interests keep working.
 
 #### UC-NI1: A pattern selects events within its own category
 
-```gherkin
-Scenario Outline: Patterns are read relative to their category
-  Given a person whose "<category>" interests are switched on with the pattern "<pattern>"
-  When an event of type "<type>" occurs
-  Then the event <outcome> the person's interests
-
-  Examples:
-    | category   | pattern     | type                         | outcome           |
-    | teleclaude | job.*       | teleclaude.job.run.failed    | matches           |
-    | teleclaude | job.*       | teleclaude.system.burst.detected | does not match    |
-    | teleclaude | *           | teleclaude.system.burst.detected | matches           |
-    | erp        | invoice.*   | erp.invoice.paid             | matches           |
-    | erp        | invoice.*   | erp.invoices.paid            | does not match    |
-    | erp        | invoice.*   | teleclaude.job.run.failed    | does not match    |
-```
-
-#### UC-NI2: A switched-off category selects nothing and keeps its patterns
+#### UC-NI2: A person can pause a notification category and resume it later
 
 ```gherkin
-Given a person whose "teleclaude" interests hold the pattern "job.*"
-And the person has switched the "teleclaude" category off
-When an event of a type under "teleclaude.job" occurs
-Then the event does not match the person's interests
-And the person's configuration still holds the pattern "job.*"
-When the person switches the "teleclaude" category on again
-Then the next event of a type under "teleclaude.job" matches the person's interests
+Scenario: Pause and resume a notification category
+  Given a person has chosen the pattern "job.*" for the "teleclaude" category
+  When the person pauses that category
+  And an event under "teleclaude.job" occurs
+  Then the event does not match the person's interests
+  And the person's configuration still holds the pattern "job.*"
+  When the person resumes that category
+  And another event under "teleclaude.job" occurs
+  Then that event matches the person's interests
 ```
 
 #### UC-NI6: A new person starts with their role's interests
@@ -107,13 +93,6 @@ Scenario Outline: The starting interests follow the role
 ```
 
 #### UC-NI4: The platform never changes a person's interests
-
-```gherkin
-Given a person who has chosen their notification interests
-When the platform is upgraded, or the person's role changes
-Then the person's interests are exactly as they were
-And only the person, or an agent acting on the person's request, changes them
-```
 
 #### UC-NI5: Validation reports an unusable interest and leaves it as written
 
