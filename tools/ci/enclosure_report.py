@@ -68,8 +68,11 @@ from tools.ci.workflow_prepared import (
     B4_ATTEMPT_LEDGER,
     B4_B9_ACTIONS,
     B4_CASE,
+    B9_S_P_MESSAGE,
+    B9_X_MESSAGE,
     SESSION_S_P,
     SESSION_X,
+    caller_startup_body,
     text_capability_enabled,
 )
 from tools.ci.workflow_prepared import CONTROL_NAME as PREPARED_CONTROLS
@@ -93,6 +96,7 @@ from tools.ci.workflow_review import (
     REPLY_TEXT,
     WRONG_PERFORMER_TEXT,
 )
+from tools.ci.workflow_waiting import CHILD_PROCEDURE, CHILD_ROLE, DISPATCH_MESSAGE, STARTED_CHILD
 from tools.ci.workflow_waiting import CONTROL_NAME as WAITING_CONTROLS
 
 ERROR_REPORT: Final = "the new provisional report binding or original ledger evidence is inconsistent"
@@ -363,6 +367,8 @@ def _event_early_links(
                 "first": ([], [text(data, "owner")]),
                 "second": ([text(data, "first_driver")], [text(data, "owner"), text(data, "dispatched")]),
             }
+            actor_ids = {"owner": data["owner"], "child": data["child"], "dispatched": data["dispatched"]}
+            actor_parents = {"owner": None, "child": data["first_driver"], "dispatched": data["owner"]}
         else:
             actors = _strings(data["sessions"])
             outsiders = object_value(data["outsider_sessions"])
@@ -383,6 +389,15 @@ def _event_early_links(
                 "worker": set(actors),
             }
             claim_contexts = {"author": ([], []), "worker": ([], [])}
+            actor_ids = {"S_P": outsiders["S_P"], "X": outsiders["X"], "child": data["child"]}
+            actor_parents = {"S_P": None, "X": outsiders["S_P"], "child": data["author"]}
+        other_actors = object_value(inputs["other_actor_inputs"])
+        if set(other_actors) != set(actor_ids) or any(
+            object_value(other_actors[name])["session_id"] != actor
+            or object_value(other_actors[name])["parent_actor"] != actor_parents[name]
+            for name, actor in actor_ids.items()
+        ):
+            raise ValueError(ERROR_REPORT)
         driver_inputs = object_value(inputs["driver_inputs"])
         if set(driver_inputs) != set(driver_actors) or any(
             object_value(driver_inputs[name])["session_id"] != actor
@@ -665,12 +680,7 @@ def _early_driver_startup(
     inputs = startup["inputs"]
     if not isinstance(hooks, list) or len(hooks) != 2 or not isinstance(inputs, list) or not inputs:
         raise ValueError(ERROR_REPORT)
-    frames: JsonObject = {}
-    for value, name in zip(hooks, ("session_start", "prompt_submit"), strict=True):
-        packet = object_value(value)
-        if set(packet) != {"name", "frame"} or packet["name"] != name:
-            raise ValueError(ERROR_REPORT)
-        frames[name] = packet["frame"]
+    frames = _actor_hooks(hooks)
     first = text(object_value(inputs[0]), "text")
     if procedure not in first:
         raise ValueError(ERROR_REPORT)
@@ -877,6 +887,232 @@ def _early_start_inputs(row: JsonObject, case: str, drivers: JsonObject, starts:
     return result
 
 
+def _actor_public_startup(record: JsonObject, actor: str, native: str, project: str) -> None:
+    if (
+        record.get("session_id") != actor
+        or record.get("native_session_id") != native
+        or record.get("project_path") != project
+        or record.get("active_agent") != "claude"
+        or record.get("lifecycle_status") != "active"
+        or record.get("runtime_start_observed") is not True
+        or record.get("closed_at") is not None
+    ):
+        raise ValueError(ERROR_REPORT)
+
+
+def _actor_hooks(values: JsonValue) -> JsonObject:
+    if not isinstance(values, list) or len(values) != 2:
+        raise ValueError(ERROR_REPORT)
+    result: JsonObject = {}
+    for value, name in zip(values, ("session_start", "prompt_submit"), strict=True):
+        row = object_value(value)
+        if set(row) != {"name", "frame"} or row["name"] != name:
+            raise ValueError(ERROR_REPORT)
+        result[name] = row["frame"]
+    return result
+
+
+def _actor_owner_inputs(packet: JsonObject, project: str, baseline: set[str]) -> JsonObject:
+    values = packet["positive_start"]
+    if not isinstance(values, list) or len(values) != 4:
+        raise ValueError(ERROR_REPORT)
+    rows = [object_value(value) for value in values]
+    if (
+        [row.get("kind") for row in rows] != ["launch", "session_start", "prompt_submit", "inputs"]
+        or set(rows[0]) != {"kind", "value", "owned_executable"}
+        or any(set(row) != {"kind", "value"} for row in rows[1:3])
+        or set(rows[3]) != {"kind", "values"}
+    ):
+        raise ValueError(ERROR_REPORT)
+    launch = object_value(rows[0]["value"])
+    native = text(launch, "native_session_id")
+    owned = text(rows[0], "owned_executable")
+    if launch.get("executable") != owned or launch.get("resolved_command") != owned:
+        raise ValueError(ERROR_REPORT)
+    hooks: JsonObject = {"session_start": rows[1]["value"], "prompt_submit": rows[2]["value"]}
+    _message_hooks({"hooks": hooks, "inputs": rows[3]["values"]}, native, text(packet, "message"))
+    actor = text(packet, "session_id")
+    record = object_value(packet["fact_record"])
+    _actor_public_startup(record, actor, native, project)
+    if record.get("principal") != text(packet, "expected_principal") or any(
+        record.get(key) not in (None, "") for key in ("initiator_session_id", "role", "job")
+    ):
+        raise ValueError(ERROR_REPORT)
+    lists = packet["lists"]
+    if not isinstance(lists, list) or len(lists) != 1 or set(_early_session_list(lists[0])) - baseline != {actor}:
+        raise ValueError(ERROR_REPORT)
+    return launch
+
+
+def _actor_start_answer(packet: JsonObject, name: str, actor: str, project: str, message: str | None) -> None:
+    if name == "child":
+        run = _pane_run(packet["start_frame"], ["telec", "todo", "child", ITEM])
+        output, stderr = run.get("stdout"), run.get("stderr")
+        if not isinstance(output, str) or not isinstance(stderr, str):
+            raise ValueError(ERROR_REPORT)
+        match = STARTED_CHILD.search(output + stderr)
+        if match is None or match.group("session") != actor or match.group("procedure") != CHILD_PROCEDURE:
+            raise ValueError(ERROR_REPORT)
+        return
+    if message is None:
+        raise ValueError(ERROR_REPORT)
+    argv = [
+        "telec",
+        "sessions",
+        "start",
+        "--path",
+        project,
+        "--agent",
+        "claude",
+        "--mode",
+        "fast",
+        "--message",
+        message,
+    ]
+    if name in ("owner", "S_P"):
+        result = _public_session_command(packet["start_command"], [creation.TELEC, *argv[1:]])
+    else:
+        run = _pane_run(packet["start_frame"], argv)
+        stdout, stderr = run.get("stdout"), run.get("stderr")
+        if not isinstance(stdout, str) or not isinstance(stderr, str):
+            raise ValueError(ERROR_REPORT)
+        result = foundation.json_object(stdout + stderr)
+        if result is None:
+            raise ValueError(ERROR_REPORT)
+    if (
+        result.get("session_id") != actor
+        or (name != "X" and result.get("status") != "success")
+        or (name in ("owner", "S_P") and result.get("agent") != "claude")
+        or (name in ("owner", "S_P") and not result.get(foundation.FIELD_TMUX))
+    ):
+        raise ValueError(ERROR_REPORT)
+
+
+def _other_actor_inputs(
+    row: JsonObject, case: str, baseline: set[str], observed: set[str], launches: list[JsonValue], drivers: JsonObject
+) -> JsonObject:
+    expected = {"owner": 0, "child": 2, "dispatched": 3} if case == "B3" else {"S_P": 0, "X": 1, "child": 3}
+    values = row["actors"]
+    if not isinstance(values, list) or len(values) != len(expected):
+        raise ValueError(ERROR_REPORT)
+    result: JsonObject = {}
+    raw_packets: dict[str, JsonObject] = {}
+    native_ids = {text(object_value(value), "native_session_id") for value in drivers.values()}
+    for value in values:
+        packet = object_value(value)
+        name, actor = text(packet, "name"), text(packet, "session_id")
+        if (
+            set(packet)
+            != {
+                "name",
+                "slot",
+                "started_ns",
+                "finished_ns",
+                "session_id",
+                "message",
+                "parent_actor",
+                "expected_principal",
+                "launch",
+                "hooks",
+                "inputs",
+                "startup_record",
+                "fact_record",
+                "parent_record",
+                "start_command",
+                "start_frame",
+                "positive_start",
+                "lists",
+            }
+            or name not in expected
+            or name in result
+            or type(packet["slot"]) is not int
+            or packet["slot"] != expected[name]
+            or actor not in observed
+            or not positive_integer(row, "started_ns")
+            <= positive_integer(packet, "started_ns")
+            <= positive_integer(packet, "finished_ns")
+            <= positive_integer(row, "finished_ns")
+        ):
+            raise ValueError(ERROR_REPORT)
+        project = text(row, "project_path")
+        launch = _actor_owner_inputs(packet, project, baseline) if name == "owner" else object_value(packet["launch"])
+        native, pid = text(launch, "native_session_id"), positive_integer(launch, "pid")
+        fact = object_value(packet["fact_record"])
+        if native in native_ids or fact.get("session_id") != actor or fact.get("native_session_id") != native:
+            raise ValueError(ERROR_REPORT)
+        native_ids.add(native)
+        recorded = object_value(launches[expected[name]]).get("launches")
+        if not isinstance(recorded, list) or not any(
+            object_value(value).get("native_session_id") == native and object_value(value).get("pid") == pid
+            for value in recorded
+        ):
+            raise ValueError(ERROR_REPORT)
+        startup = object_value(packet["startup_record"]) if name != "owner" else fact
+        if name != "owner":
+            _actor_public_startup(startup, actor, native, project)
+        message: str | None = None
+        if name in ("S_P", "X"):
+            message = B9_S_P_MESSAGE if name == "S_P" else B9_X_MESSAGE
+            inputs = packet["inputs"]
+            if packet["message"] != message or not isinstance(inputs, list) or not inputs:
+                raise ValueError(ERROR_REPORT)
+            first = text(object_value(inputs[0]), "text")
+            if (
+                (first != message if name == "S_P" else not caller_startup_body(first, message))
+                or startup.get("role") is not None
+                or startup.get("job") is not None
+            ):
+                raise ValueError(ERROR_REPORT)
+            _message_hooks({"hooks": _actor_hooks(packet["hooks"]), "inputs": inputs}, native, first)
+        elif name == "owner":
+            message = text(packet, "message")
+        elif name == "dispatched":
+            message = DISPATCH_MESSAGE
+            if packet["message"] != message:
+                raise ValueError(ERROR_REPORT)
+        _actor_start_answer(packet, name, actor, project, message)
+        if name == "child":
+            parent = text(object_value(drivers["first" if case == "B3" else "author"]), "session_id")
+            if (
+                packet["parent_actor"] != parent
+                or fact.get("initiator_session_id") != parent
+                or fact.get("role") != CHILD_ROLE
+            ):
+                raise ValueError(ERROR_REPORT)
+        elif name == "S_P" and fact.get("initiator_session_id") not in (None, ""):
+            raise ValueError(ERROR_REPORT)
+        result[name] = {
+            "state": "specific_actor_startup_inputs_matched",
+            "session_id": actor,
+            "native_session_id": native,
+            "parent_actor": packet["parent_actor"],
+            "role_projection": fact.get("role"),
+            "job_projection": fact.get("job"),
+            "causal_settlement": "unproven",
+        }
+        raw_packets[name] = packet
+    if case == "B3":
+        dispatched, owner = raw_packets["dispatched"], raw_packets["owner"]
+        parent_record = object_value(dispatched["parent_record"])
+        fact = object_value(dispatched["fact_record"])
+        owner_id = text(owner, "session_id")
+        if (
+            dispatched["parent_actor"] != owner_id
+            or parent_record.get("session_id") != owner_id
+            or parent_record.get("native_session_id") != object_value(result["owner"])["native_session_id"]
+            or fact.get("initiator_session_id") != owner_id
+            or fact.get("principal") != parent_record.get("principal")
+            or parent_record.get("principal") != object_value(owner["fact_record"]).get("principal")
+        ):
+            raise ValueError(ERROR_REPORT)
+    else:
+        x = raw_packets["X"]
+        parent_id = text(raw_packets["S_P"], "session_id")
+        if x["parent_actor"] != parent_id or object_value(x["fact_record"]).get("initiator_session_id") != parent_id:
+            raise ValueError(ERROR_REPORT)
+    return result
+
+
 def validate_early_inputs(report: JsonObject) -> JsonObject:
     """Reparse original B3/B4 accounting inputs; listings/legacy labels/PIDs establish no physical closure or P2."""
     provisional = object_value(report["payload_provisional"])
@@ -968,6 +1204,7 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
             "recorded_start_states": starts,
             "launch_inputs": launches,
             "driver_inputs": drivers,
+            "other_actor_inputs": _other_actor_inputs(row, case, baseline_ids, observed, launches, drivers),
             "originating_start_inputs": _early_start_inputs(row, case, drivers, starts),
             "attempt_ledger_inputs": _b4_ledger_inputs(row, root, case),
             "semantic_settlement": "unproven",

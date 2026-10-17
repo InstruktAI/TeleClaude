@@ -221,6 +221,21 @@ def text_capability_enabled(text: str, name: str) -> bool:
     return False
 
 
+def caller_startup_body(startup_input: str, expected_body: str) -> bool:
+    """Apply the original complete caller-envelope/body predicate to the captured first input."""
+    opening_match = B9_CALLER_IDENTITY_OPENING_RE.match(startup_input)
+    if opening_match is None:
+        return False
+    opening = opening_match.group(0)
+    opening_framing = opening + B9_RENDERER_SEPARATOR
+    closing_framing = B9_RENDERER_SEPARATOR + B9_CALLER_CLOSING_TEMPLATE.format(header=opening[1:-1])
+    if not startup_input.startswith(opening_framing) or not startup_input.endswith(closing_framing):
+        return False
+    body_start = len(opening_framing)
+    body_end = len(startup_input) - len(closing_framing)
+    return startup_input[body_start:body_end] == expected_body
+
+
 class _Prepared:
     """One run of journey B4."""
 
@@ -395,17 +410,7 @@ class _Prepared:
     @staticmethod
     def _caller_startup_body(startup_input: str, expected_body: str) -> bool:
         """Recognize the complete registered caller envelope and compare its exact body."""
-        opening_match = B9_CALLER_IDENTITY_OPENING_RE.match(startup_input)
-        if opening_match is None:
-            return False
-        opening = opening_match.group(0)
-        opening_framing = opening + B9_RENDERER_SEPARATOR
-        closing_framing = B9_RENDERER_SEPARATOR + B9_CALLER_CLOSING_TEMPLATE.format(header=opening[1:-1])
-        if not startup_input.startswith(opening_framing) or not startup_input.endswith(closing_framing):
-            return False
-        body_start = len(opening_framing)
-        body_end = len(startup_input) - len(closing_framing)
-        return startup_input[body_start:body_end] == expected_body
+        return caller_startup_body(startup_input, expected_body)
 
     def _public_log_entries(self, payload: Json) -> list[tuple[str, str]]:
         found, log = creation.dig(payload, "artifact_content.log")
