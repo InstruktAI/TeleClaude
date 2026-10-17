@@ -1038,15 +1038,22 @@ def _activation_instances(
         if kind != activation["kind"] or type(activation["await"]) is not bool:
             raise ValueError(ERROR_INPUT)
         candidates = []
-        prior_requests.append(
-            {
-                **activation,
-                "native_awaiter_mode": "container_processing_instance" if activation["await"] else "null",
-                "candidate_interests": candidates,
-            }
-        )
+        request: JsonObject = {
+            **activation,
+            "native_awaiter_mode": "container_processing_instance" if activation["await"] else "null",
+            "candidate_interests": candidates,
+        }
+        prior_requests.append(request)
         # The callback always runs once per actual directive invocation; this is no observed invocation count.
         match_interests(trigger, kind, candidates)
+        for candidate_value in candidates:
+            _before_cutoff(deadline)
+            candidate = object_value(candidate_value)
+            if type(candidate["await"]) is not bool:
+                raise ValueError(ERROR_INPUT)
+            # Either the directive or this recipient can suppress the awaiter before trig_record_activation.
+            # This is the callback argument, not an observed edge: eligibility/dedup/lifecycle remain separate.
+            candidate["native_awaiter_mode"] = request["native_awaiter_mode"] if candidate["await"] else "null"
     _prior_interest_deletions(deletion, files, file_interests, deadline, prior_deletions)
 
 
