@@ -133,14 +133,6 @@ And once a migration run has stored it, the file carries that tier declaration
 
 #### UC-CFG-WSD10: A declared file missing its schema reference gains it when stored
 
-```
-Given a same-named configuration file the tier registries name
-And that file carries a valid tier declaration and no schema reference
-When a migration run or an agent's configuration operation stores that file
-Then the file carries its schema reference
-And its existing tier declaration is left as it stands
-```
-
 #### UC-CFG-WSD11: A file that cannot be written still loads
 
 #### UC-CFG-WSD12: An unavailable registered root is migrated when it returns
@@ -157,25 +149,7 @@ And its absence left every other root migrated by the earlier run
 
 #### UC-CFG-WSD14: A declaration removed after migration is not restored
 
-```
-Given a configuration file stored past the declaring migration
-And its tier declaration has been removed
-And the tier registries name its location
-When that file is loaded
-Then loading fails with an error naming the file and the missing declaration
-And no tier declaration is restored
-And the file is never loaded as any tier
-```
-
 #### UC-CFG-WSD15: Removing the schema reference too does not restore a declaration
-
-```
-Given a configuration file stored past the declaring migration
-And it carries neither a tier declaration nor a schema reference
-When that file is loaded
-Then loading fails with an error naming the file and the missing declaration
-And no tier declaration is restored
-```
 
 #### UC-CFG-WSD16: A root registered later is declared by its registration
 
@@ -187,14 +161,6 @@ Then its configuration file is stored declaring the project tier
 ```
 
 #### UC-CFG-WSD17: Moving a repository does not restore a declaration
-
-```
-Given a configuration file stored past the declaring migration whose tier declaration has been removed
-And its repository is cloned to another machine
-When that file is loaded there
-Then loading fails with an error naming the file and the missing declaration
-And no tier declaration is restored on that machine
-```
 
 #### UC-CFG-WSD18: Loading an undeclared file writes nothing
 
