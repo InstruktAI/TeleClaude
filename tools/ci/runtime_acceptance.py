@@ -1102,6 +1102,7 @@ class FullRuntimeResources:
             "actors": [],
             "ends": [],
             "closed_reads": [],
+            "effects": [],
         }
         self.early_workflow[case] = record
         return record

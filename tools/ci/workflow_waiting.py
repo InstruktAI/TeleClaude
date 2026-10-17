@@ -833,10 +833,14 @@ class _Waiting:
         except OSError as error:
             raise creation.binding_failure(DETAIL_LATE_ARGV.format(name=name, error=type(error).__name__)) from error
 
-    def _record(self, session: str) -> Json:
+    def _record(self, session: str, effect: creation.EvidenceObject | None = None) -> Json:
         started_ns = time.monotonic_ns()
         outcome = self.observer.run((TELEC, SESSIONS, foundation.SHOW, session, foundation.FULL_FLAG), retain=False)
         finished_ns = time.monotonic_ns()
+        if effect is not None:
+            cast(list[creation.EvidenceValue], effect["session_reads"]).append(
+                creation.command_evidence((TELEC, SESSIONS, foundation.SHOW, session, foundation.FULL_FLAG), outcome)
+            )
         record = foundation.json_object(outcome.output) if outcome.exit_status == 0 else None
         if record is None:
             raise creation.binding_failure(f"session {session} is unreadable: {outcome.output[-300:]!r}")
@@ -857,9 +861,13 @@ class _Waiting:
             )
         return record
 
-    def _frame(self, journey: foundation.Journey, name: str) -> Json:
+    def _frame(self, journey: foundation.Journey, name: str, effect: creation.EvidenceObject | None = None) -> Json:
         """A completed frame of one actor, with its public call and its output."""
         frame = journey.await_frame(name, time.monotonic() + FRAME_SECONDS)
+        if effect is not None:
+            cast(list[creation.EvidenceValue], effect["frames"]).append(
+                {"name": name, "frame": cast(creation.EvidenceValue, dict(frame))}
+            )
         run = frame.get("run")
         if not isinstance(run, dict):
             raise creation.platform_failure(DETAIL_FRAME.format(name=name, frame=frame))
@@ -927,15 +935,36 @@ class _Waiting:
             DETAIL_NOT_STARTED.format(actor=actor, session=session, seconds=int(START_CAP_SECONDS), record=record)
         )
 
-    def _shown(self) -> Json:
-        return driver.shown_with_content(self.observer, ITEM)
+    def _effect(self, name: str, actor: str | None) -> creation.EvidenceObject | None:
+        """Keep the original observations of one B3 effect, without another public call."""
+        if self.accounting is None:
+            return None
+        packet: creation.EvidenceObject = {
+            "name": name,
+            "actor": actor,
+            "person": self.person,
+            "wait_key": self.key,
+            "started_ns": time.monotonic_ns(),
+            "finished_ns": None,
+            "frames": [],
+            "shown": [],
+            "session_reads": [],
+        }
+        cast(list[creation.EvidenceValue], self.accounting["effects"]).append(packet)
+        return packet
 
-    def _log(self) -> str:
-        _, log = creation.dig(self._shown(), "artifact_content.log")
+    def _shown(self, effect: creation.EvidenceObject | None = None) -> Json:
+        shown = driver.shown_with_content(self.observer, ITEM)
+        if effect is not None:
+            cast(list[creation.EvidenceValue], effect["shown"]).append(cast(creation.EvidenceValue, dict(shown)))
+        return shown
+
+    def _log(self, effect: creation.EvidenceObject | None = None) -> str:
+        _, log = creation.dig(self._shown(effect), "artifact_content.log")
         return str(log) if isinstance(log, str) else ""
 
-    def _require_unchanged(self, when: str) -> None:
-        changed = creation.differences(self.snapshot, self._shown())
+    def _require_unchanged(self, when: str, effect: creation.EvidenceObject | None = None) -> None:
+        changed = creation.differences(self.snapshot, self._shown(effect))
         if changed:
             raise creation.platform_failure(DETAIL_CHANGED.format(when=when, paths=changed))
 
@@ -1112,16 +1141,20 @@ class _Waiting:
         )
 
     def step3_before_waiting(self, first: str, child: str) -> None:
-        record = self._record(child)
+        effect = self._effect("before-waiting", first)
+        record = self._record(child, effect)
         if record.get(FIELD_CLOSED_AT) is not None or record.get(foundation.FIELD_LIFECYCLE) != foundation.ACTIVE:
             raise creation.platform_failure(
                 DETAIL_LIVE.format(actor="child", session=child, when="before waiting", record=record)
             )
-        creation.require_value(ITEM, self._shown(), "state.active_runner", first)
+        creation.require_value(ITEM, self._shown(effect), "state.active_runner", first)
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
 
     def step4_wait(self, first: str, child: str) -> None:
+        effect = self._effect("waiting", first)
         self._gate(1, GATE_WAITING)
-        frame = self._frame(self.journeys["first"], FRAME_WAITING)
+        frame = self._frame(self.journeys["first"], FRAME_WAITING, effect)
         status, text = self._output(frame)
         performed = PERFORMED.format(act="waiting", item=ITEM)
         completed = WAIT_COMPLETE.search(text.replace("\r\n", "\n"))
@@ -1133,7 +1166,9 @@ class _Waiting:
         if key is None:
             raise creation.binding_failure(DETAIL_WAIT.format(stdout=text[-300:], needle="wait key: <key>"))
         self.key = key.group("key")
-        shown = self._shown()
+        if effect is not None:
+            effect["wait_key"] = self.key
+        shown = self._shown(effect)
         for path, expected in (
             ("state.lifecycle_phase", PHASE_WAITING),
             ("standing.phase", PHASE_WAITING),
@@ -1141,18 +1176,18 @@ class _Waiting:
         ):
             creation.require_value(ITEM, shown, path, expected)
         creation.require_unclaimed(ITEM, shown)
-        record = self._record(child)
+        record = self._record(child, effect)
         if record.get(FIELD_CLOSED_AT) is None or record.get(FIELD_LIFECYCLE) != foundation.CLOSED:
             raise creation.platform_failure(
                 DETAIL_CLOSED.format(actor="child", session=child, when="after waiting", record=record)
             )
-        if self._record(first).get(FIELD_CLOSED_AT) is not None:
+        if self._record(first, effect).get(FIELD_CLOSED_AT) is not None:
             raise creation.binding_failure(
                 DETAIL_LIVE.format(actor="first driver", session=first, when="after waiting", record="closed")
             )
         self.b13_child_closed = True
         self.b13_first_live = True
-        entries = [entry for entry in log_entries(self._log()) if f" · waiting ({self.person})" in entry[0]]
+        entries = [entry for entry in log_entries(self._log(effect)) if f" · waiting ({self.person})" in entry[0]]
         if len(entries) != 1 or first not in entries[0][0] or entries[0][1] != QUESTION:
             raise creation.platform_failure(
                 DETAIL_LOG_COUNT.format(
@@ -1163,8 +1198,10 @@ class _Waiting:
                     headers=entries,
                 )
             )
-        self.snapshot = self._shown()
+        self.snapshot = self._shown(effect)
         self.b13_waiting_completed = True
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
 
     def _b13_paths(self) -> tuple[Path, Path, Path]:
         """Establish the retention guard before refusing any missing, conflicting or unsafe carrier path."""
@@ -1442,14 +1479,29 @@ class _Waiting:
             raise creation.binding_failure(B13_ERROR_PREFIX + evidence.primary_failure) from error
 
     def step5_entry_refused(self, owner: str, first: str, child: str) -> None:
+        effect = self._effect("entry-refused", None)
+        if effect is not None:
+            effect["baseline"] = cast(creation.EvidenceValue, dict(self.snapshot))
+            effect["start_calls"] = []
+            effect["operation_reads"] = []
+            effect["lists"] = []
         outcome, operation = driver.start_call(
-            self.starts, self.observer, (TELEC, TODO, "prepare", ITEM), "refused-start"
+            self.starts,
+            self.observer,
+            (TELEC, TODO, "prepare", ITEM),
+            "refused-start",
+            evidence=cast(list[creation.EvidenceValue], effect["start_calls"]) if effect else None,
         )
         if outcome.exit_status != 0 or operation is None:
             raise creation.platform_failure(
                 DETAIL_RECEIPT.format(status=outcome.exit_status, output=outcome.output[-300:])
             )
-        state = publication.await_terminal(self.observer, operation, OPERATION_SECONDS)
+        state = publication.await_terminal(
+            self.observer,
+            operation,
+            OPERATION_SECONDS,
+            evidence=cast(list[creation.EvidenceValue], effect["operation_reads"]) if effect else None,
+        )
         error = state.get(FIELD_ERROR)
         needles = (ITEM, PHASE_WAITING, self.person)
         if (
@@ -1461,12 +1513,17 @@ class _Waiting:
                 DETAIL_ENTRY_REFUSED.format(state=state.get(FIELD_STATE), error=error, needles=list(needles))
             )
         self.starts[operation] = publication.START_REFUSED
-        created = self.observer.sessions().ids - self._known()
+        created = (
+            self.observer.sessions(evidence=cast(list[creation.EvidenceValue], effect["lists"]) if effect else None).ids
+            - self._known()
+        )
         if created != frozenset({owner, first, child}):
             raise creation.platform_failure(
                 DETAIL_SESSIONS.format(when="step 5", found=sorted(created), expected=[owner, first, child])
             )
-        self._require_unchanged("after the refused entry")
+        self._require_unchanged("after the refused entry", effect)
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
 
     def step6_dispatched(self, owner: str, first: str, child: str) -> str:
         dispatch_attempt = driver.begin_attempt(self.starts, "session-dispatched")
@@ -1507,12 +1564,15 @@ class _Waiting:
             raise creation.binding_failure(
                 DETAIL_FACTS.format(actor="dispatched session", session=dispatched, found=facts, expected=expected)
             )
+        effect = self._effect("dispatched-decision-and-note", dispatched)
+        if effect is not None:
+            effect["baseline"] = cast(creation.EvidenceValue, dict(self.snapshot))
         self._late_argv(
             3, ARGV_REFUSED, ["telec", TODO, "act", ITEM, "decision", "--wait", self.key, ANSWER_DISPATCHED]
         )
         refused_attempt = driver.begin_attempt(self.starts, "decision-dispatched")
         self._gate(3, GATE_REFUSED)
-        refusal = self._frame(journey, FRAME_REFUSED)
+        refusal = self._frame(journey, FRAME_REFUSED, effect)
         status, text = self._output(refusal)
         problems = []
         if status in (0, None):
@@ -1525,20 +1585,20 @@ class _Waiting:
             raise creation.platform_failure(
                 DETAIL_REFUSAL.format(problem="; ".join(problems), status=status, output=text[-300:])
             )
-        self._require_unchanged("after the refused decision")
-        if any(" · decision (" in header for header, _ in log_entries(self._log())):
+        self._require_unchanged("after the refused decision", effect)
+        if any(" · decision (" in header for header, _ in log_entries(self._log(effect))):
             raise creation.platform_failure(
                 DETAIL_LOG.format(
-                    when="after the refused decision", needle="no decision header", log=self._log()[-600:]
+                    when="after the refused decision", needle="no decision header", log=self._log(effect)[-600:]
                 )
             )
         driver.release_attempt(self.starts, refused_attempt)  # refused, nothing cleared, no driver reserved
         self._gate(3, GATE_NOTE)
-        noted = self._frame(journey, FRAME_NOTE)
+        noted = self._frame(journey, FRAME_NOTE, effect)
         status, text = self._output(noted)
         if status != 0 or PERFORMED.format(act="note", item=ITEM) not in text:
             raise creation.platform_failure(DETAIL_FRAME.format(name=FRAME_NOTE, frame=noted))
-        entries = log_entries(self._log())
+        entries = log_entries(self._log(effect))
         notes = [entry for entry in entries if NOTE_HEADER.search(entry[0].rstrip())]
         if len(notes) != 1 or dispatched not in notes[0][0] or notes[0][1] != NOTE_TEXT:
             raise creation.platform_failure(
@@ -1550,7 +1610,9 @@ class _Waiting:
                     headers=notes or entries[-6:],
                 )
             )
-        creation.require_value(ITEM, self._shown(), "state.lifecycle_phase", PHASE_WAITING)
+        creation.require_value(ITEM, self._shown(effect), "state.lifecycle_phase", PHASE_WAITING)
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
         return dispatched
 
     def step7_end_first(self, case: driver.DriverCase, first: str) -> None:
@@ -1560,14 +1622,15 @@ class _Waiting:
         journey.end_session()
 
     def step8_decide(self, owner: str) -> None:
+        effect = self._effect("owner-decision", owner)
         self._late_argv(0, ARGV_DECISION, ["telec", TODO, "act", ITEM, "decision", "--wait", self.key, ANSWER])
         self.decision_attempt = driver.begin_attempt(self.starts, "decision-owner")
         self._gate(0, GATE_DECISION)
-        frame = self._frame(self.journeys["owner"], FRAME_DECISION)
+        frame = self._frame(self.journeys["owner"], FRAME_DECISION, effect)
         status, text = self._output(frame)
         if status != 0 or PERFORMED.format(act="decision", item=ITEM) not in text:
             raise creation.platform_failure(DETAIL_FRAME.format(name=FRAME_DECISION, frame=frame))
-        decisions = [entry for entry in log_entries(self._log()) if f" · decision ({self.person})" in entry[0]]
+        decisions = [entry for entry in log_entries(self._log(effect)) if f" · decision ({self.person})" in entry[0]]
         if len(decisions) != 1 or owner not in decisions[0][0] or decisions[0][1] != ANSWER:
             raise creation.platform_failure(
                 DETAIL_LOG_COUNT.format(
@@ -1578,7 +1641,7 @@ class _Waiting:
                     headers=decisions,
                 )
             )
-        shown = self._shown()
+        shown = self._shown(effect)
         creation.require_value(ITEM, shown, "state.lifecycle_phase", PHASE_PREPARATION)
         found, standing = creation.dig(shown, "standing")
         if found and isinstance(standing, Mapping) and "waiting_on" in standing:
@@ -1587,6 +1650,8 @@ class _Waiting:
                     when="after the decision", path="standing.waiting_on", found="present", expected="absent"
                 )
             )
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
 
     def step9_second_driver(self, owner: str, first: str, child: str, dispatched: str) -> tuple[driver.DriverCase, str]:
         second = self._discover(self._known(owner, first, child, dispatched))
@@ -1597,10 +1662,13 @@ class _Waiting:
         case.check_instruction(second, instruction)
         case.observe_claim(second, holds_nothing=[owner, dispatched], earlier=[first])
         driver.release_attempt(self.starts, self.decision_attempt)  # consumed by the second driver\'s claim
+        effect = self._effect("second-claim-context", second)
         for session in (owner, child, dispatched):
-            role = self._record(session).get(FIELD_ROLE)
+            role = self._record(session, effect).get(FIELD_ROLE)
             if role == DRIVER_ROLE:
                 raise creation.platform_failure(DETAIL_NOT_DRIVER.format(session=session, role=role))
+        if effect is not None:
+            effect["finished_ns"] = time.monotonic_ns()
         return case, second
 
     def step10_close(self, case: driver.DriverCase, second: str, owner: str, dispatched: str) -> None:

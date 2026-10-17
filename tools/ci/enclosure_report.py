@@ -1303,6 +1303,7 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
                 "actors",
                 "ends",
                 "closed_reads",
+                "effects",
             }
             or type(row["schema_version"]) is not int
             or row["schema_version"] != 1
@@ -1311,6 +1312,7 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
             or not isinstance(row["actors"], list)
             or not isinstance(row["ends"], list)
             or not isinstance(row["closed_reads"], list)
+            or not isinstance(row["effects"], list)
             or any(row[key] is not None for key in ("journey_error", "cleanup_error", "seal_error"))
             or not created
             <= positive_integer(row, "started_ns")
