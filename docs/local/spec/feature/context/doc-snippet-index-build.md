@@ -33,6 +33,11 @@ domain, enforced at deploy time by split-domain detection (see the agent
 runtime deployment spec); the index build itself derives and writes metadata and
 does not police cross-project ownership.
 
+Each new snippet's `delivered_by` value is copied from its frontmatter. A live
+snippet's `superseded_by` value is derived from its companion files and in-body
+`planned` and `planned-change` markers; `--target` uses both values to list new
+and reworked snippets.
+
 ## Canonical fields
 
 ### Use cases
