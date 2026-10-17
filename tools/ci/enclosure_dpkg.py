@@ -1532,6 +1532,12 @@ def collect_install_inputs(
         result["package_work"] = work
         result["host_package_inputs"] = interpret_work_host_packages(package, work, deadline)
         result["info_upgrade_inputs"] = inspect_info_upgrade_inputs(info_format, work, deadline)
+        write_scope = inspect_info_write_compatibility(result, deadline)
+        result["info_write_compatibility"] = write_scope
+        if write_scope["writing_compatibility"] == "incompatible":
+            result["state"] = "blocked"
+            result["reason"] = write_scope["reason"]
+            return result
         prior = inspect_container_prior_control(package, work, deadline)
         result["container_prior_control"] = prior
         if prior["state"] == "blocked":
@@ -2088,3 +2094,64 @@ def inspect_info_upgrade_inputs(info_format: JsonObject, work: JsonObject, deadl
         raise DpkgInputError({"info_format": info_format, "info_upgrade_inputs": result}) from error
     finally:
         result["finished_ns"] = time.monotonic_ns()
+
+
+def inspect_info_write_compatibility(initial: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Stop on one actual immutable-source alias witness; absence of that witness supplies no migration approval."""
+    result: JsonObject = {"writing_compatibility": "unproven", "error": None}
+    try:
+        _before_cutoff(deadline)
+        upgrade = object_value(initial["info_upgrade_inputs"])
+        if upgrade["error"] is not None:
+            raise ValueError(ERROR_INPUT)
+        if upgrade["state"] == "captured_format_does_not_request_upgrade":
+            result["writing_compatibility"] = "not_requested_by_captured_format"
+            _before_cutoff(deadline)
+            return result
+        if upgrade["state"] != "native_upgrade_inputs_captured_not_admitted":
+            raise ValueError(ERROR_INPUT)
+        operands = upgrade["operands"]
+        if not isinstance(operands, list):
+            raise ValueError(ERROR_INPUT)
+        physical = text(upgrade, "format_new_physical_path")
+        matches = [object_value(value) for value in operands if object_value(value)["path"] == physical]
+        if len(matches) != 1:
+            raise ValueError(ERROR_INPUT)
+        target = matches[0]
+        result["format_new_physical_path"] = physical
+        if target["present"] is not True:
+            _before_cutoff(deadline)
+            return result
+        identity = object_value(target["before"])
+        sources = object_value(initial["dbus_control_sources"])
+        if sources["error"] is not None or not isinstance(sources["files"], list):
+            raise ValueError(ERROR_INPUT)
+        actual = _input_files(object_value(initial["inputs"]))
+        for value in sources["files"]:
+            _before_cutoff(deadline)
+            source = object_value(value)
+            if source["matches_declared_source"] is not True:
+                continue
+            path = text(source, "path")
+            captured = actual[path]
+            data = _input_bytes(captured)
+            if data is None:
+                raise ValueError(ERROR_INPUT)
+            source_identity = object_value(captured["before"])
+            if data != b"1\n" and all(identity[key] == value for key, value in source_identity.items()):
+                result.update(
+                    {
+                        "writing_compatibility": "incompatible",
+                        "immutable_source_path": path,
+                        "immutable_source_sha256": captured["sha256"],
+                        "write_target_identity": identity,
+                        "reason": "native format-new truncation would invalidate an actual required D-Bus control source",
+                    }
+                )
+                _before_cutoff(deadline)
+                return result
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"info_write_compatibility": result}) from error
