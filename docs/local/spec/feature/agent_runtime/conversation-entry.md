@@ -143,6 +143,10 @@ object alone establishes no designation. Forum posts and explicitly started
 sessions keep their independently selected conversations
 (`general/policy/human-contract`).
 
+For a designated personal-assistant channel, the core accepts input only when
+the sender's verified identity matches the person the channel serves. A mismatch
+receives the neutral reply and creates or reaches no session.
+
 The adapter supplies the channel identity and designation to the core conversation
 resolver. The core resolves its endpoint and retains the TeleClaude session
 binding, open or closed. Text, audio and file input use that same resolution.
