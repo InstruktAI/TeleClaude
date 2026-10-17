@@ -32,7 +32,7 @@ from tools.ci.enclosure_data import (
     stage_guest_archives,
     stage_guest_declarations,
 )
-from tools.ci.enclosure_dpkg import DpkgInputError, collect_install_inputs
+from tools.ci.enclosure_dpkg import DpkgInputError, collect_container_routes, collect_install_inputs
 from tools.ci.enclosure_guest import close_evidence_descriptors
 from tools.ci.enclosure_guest_evidence import EvidenceLeaf, read_guest_evidence
 from tools.ci.enclosure_guest_manifest import publish_guest_manifest
@@ -96,6 +96,7 @@ HOST_NETWORK_ARGUMENTS: Final = (
 ERROR_HOST_NETWORK: Final = "the reviewed host network manager is not active"
 ERROR_HOST_INSTALL: Final = "the absent-container installation branch is not yet implemented"
 INSTALL_INPUTS_FILE: Final = "host-install-inputs.json"
+INSTALL_ROUTES_FILE: Final = "host-install-routes.json"
 
 
 class Key(StrEnum):
@@ -351,13 +352,15 @@ def _create_parent(context: PrivilegedAction, end_ns: int) -> NativeMutation:
     return NativeMutation(Action.CREATE_PARENT, evidence)
 
 
-def _record_install_inputs(context: PrivilegedAction, inputs: JsonObject, deadline: AdmittedDeadline) -> None:
+def _record_install_inputs(
+    context: PrivilegedAction, inputs: JsonObject, deadline: AdmittedDeadline, name: str
+) -> None:
     if time.monotonic_ns() >= deadline.effective_end():
         raise TimeoutError(ERROR_NATIVE)
     record: JsonObject = {"binding": context.owner.journal.owner_record, "package_inputs": inputs}
     _write_private_file(
         context.owner.journal.directory_fd,
-        INSTALL_INPUTS_FILE,
+        name,
         json.dumps(record, sort_keys=True, separators=(",", ":"), allow_nan=False).encode(UTF8),
     )
     if time.monotonic_ns() >= deadline.effective_end():
@@ -371,13 +374,28 @@ def _absent_container_inputs(
         inputs = collect_install_inputs(context.owner.package, substrate, context.commands.query, deadline, cap)
     except DpkgInputError as error:
         try:
-            _record_install_inputs(context, error.snapshot, deadline)
+            _record_install_inputs(context, error.snapshot, deadline, INSTALL_INPUTS_FILE)
         except (OSError, ValueError, RuntimeError, TypeError) as secondary:
             error.add_note(f"retaining package inputs also failed: {type(secondary).__name__}: {secondary}")
         raise
-    _record_install_inputs(context, inputs, deadline)
+    _record_install_inputs(context, inputs, deadline, INSTALL_INPUTS_FILE)
     if inputs["state"] == "blocked":
         raise DpkgInputError(inputs)
+    owner = context.owner
+    # The proc address names the parent's inherited descriptor, not this child's duplicated journal fd.
+    base = Path(
+        PARENT_DESCRIPTOR.format(pid=owner.journal.binding.controller.pid, descriptor=owner.inherited_directory_fd)
+    )
+    archives = acquire_fixed_inputs(owner.package, base / ARCHIVE_DIRECTORY, context.commands.run, deadline)
+    try:
+        routes = collect_container_routes(owner.package, substrate, inputs, archives, context.commands.query, deadline)
+    except DpkgInputError as error:
+        try:
+            _record_install_inputs(context, error.snapshot, deadline, INSTALL_ROUTES_FILE)
+        except (OSError, ValueError, RuntimeError, TypeError) as secondary:
+            error.add_note(f"retaining package routes also failed: {type(secondary).__name__}: {secondary}")
+        raise
+    _record_install_inputs(context, routes, deadline, INSTALL_ROUTES_FILE)
     # Actual affected-recipient/source/pending admission and package command composition are still owed.
     raise NotImplementedError(ERROR_HOST_INSTALL)
 

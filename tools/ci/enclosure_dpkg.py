@@ -1376,3 +1376,49 @@ def collect_install_inputs(
         raise DpkgInputError(result) from error
     finally:
         result["finished_ns"] = time.monotonic_ns()
+
+
+def collect_container_routes(
+    package: StaticPackage,
+    host: HostSubstrateFacts,
+    initial: JsonObject,
+    archives: Mapping[str, Path],
+    query: NativeQuery,
+    deadline: AdmittedDeadline,
+) -> JsonObject:
+    """Compose actual archive/registration inputs, without granting source, initialization or pending admission."""
+    result: JsonObject = {
+        "started_ns": time.monotonic_ns(),
+        "finished_ns": None,
+        "state": "unproven",
+        "recipient_source_and_pending_admission": "unproven",
+        "error": None,
+    }
+    try:
+        _before_cutoff(deadline)
+        if initial["error"] is not None or initial["state"] != "inputs_collected_not_admitted":
+            raise ValueError(ERROR_INPUT)
+        inputs = object_value(initial["inputs"])
+        deferred = object_value(initial["deferred"])
+        result["original_deferred_native_state"] = deferred["native_state"]
+        basis = container_payload_basis(package, archives, query, deadline)
+        result["archive_basis"] = basis
+        routes = interpret_trigger_routes(inputs, basis, deadline)
+        result["routes"] = routes
+        lookups = read_explicit_interests(inputs, deferred, deadline)
+        result["explicit_lookups"] = lookups
+        explicit = parse_explicit_interests(lookups, deadline)
+        result["explicit_interests"] = explicit
+        result["instances"] = interpret_registered_instances(routes, explicit, deferred, host, deadline)
+        result["state"] = "route_inputs_collected_not_admitted"
+        _before_cutoff(deadline)
+        return result
+    except DpkgInputError as error:
+        result["failed_input"] = error.snapshot
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError(result) from error
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError(result) from error
+    finally:
+        result["finished_ns"] = time.monotonic_ns()
