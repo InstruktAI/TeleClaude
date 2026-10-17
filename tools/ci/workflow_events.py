@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -206,9 +207,15 @@ class EventWindowBinding:
         }
 
 
-def _read_object(path: Path, detail: str) -> Mapping[str, object]:
+type ByteReads = dict[Path, list[bytes]]
+
+
+def _read_object(path: Path, detail: str, captured: ByteReads | None = None) -> Mapping[str, object]:
     try:
-        value = json.loads(path.read_text(encoding=ENCODING))
+        data = path.read_bytes()
+        if captured is not None:
+            captured.setdefault(path, []).append(data)
+        value = json.loads(data.decode(ENCODING))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise creation.binding_failure(DETAIL_CARRIER.format(detail=detail)) from error
     if not isinstance(value, Mapping):
@@ -216,9 +223,12 @@ def _read_object(path: Path, detail: str) -> Mapping[str, object]:
     return value
 
 
-def _file_sha(path: Path) -> str:
+def _file_sha(path: Path, captured: ByteReads | None = None) -> str:
     try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
+        data = path.read_bytes()
+        if captured is not None:
+            captured.setdefault(path, []).append(data)
+        return hashlib.sha256(data).hexdigest()
     except OSError as error:
         raise creation.binding_failure(DETAIL_CARRIER.format(detail=str(path))) from error
 
@@ -427,10 +437,12 @@ def begin_b3_window(
     return binding
 
 
-def load_binding(setup_parent: Path, expected_window_sha: str | None = None) -> EventWindowBinding:
+def load_binding(
+    setup_parent: Path, expected_window_sha: str | None = None, *, captured: ByteReads | None = None
+) -> EventWindowBinding:
     """Read the profile case report and immutable B3 window without accepting a later replacement mark."""
     report_path = setup_parent.resolve() / CASE_REPORT_FILE
-    report = _read_object(report_path, str(report_path))
+    report = _read_object(report_path, str(report_path), captured)
     sha = report.get(FIELD_WINDOW_SHA)
     window_path = setup_parent.resolve() / WINDOW_DIRECTORY / WINDOW_FILE
     witnesses_path = setup_parent.resolve() / WINDOW_DIRECTORY / WITNESSES_FILE
@@ -441,10 +453,10 @@ def load_binding(setup_parent: Path, expected_window_sha: str | None = None) -> 
         or (expected_window_sha is not None and sha != expected_window_sha)
         or report.get(FIELD_WINDOW_PATH) != expected_paths[0]
         or report.get(FIELD_WITNESSES_PATH) != expected_paths[1]
-        or _file_sha(window_path) != sha
+        or _file_sha(window_path, captured) != sha
     ):
         raise creation.binding_failure(DETAIL_WINDOW)
-    window = _read_object(window_path, str(window_path))
+    window = _read_object(window_path, str(window_path), captured)
     project_slug = window.get("project_slug")
     project_home = window.get("project_home")
     project_path = window.get(FIELD_PROJECT_PATH)
@@ -480,9 +492,13 @@ def load_binding(setup_parent: Path, expected_window_sha: str | None = None) -> 
     )
 
 
-def _witness_lines(binding: EventWindowBinding) -> tuple[list[Mapping[str, object]], str]:
+def _witness_lines(
+    binding: EventWindowBinding, captured: ByteReads | None = None
+) -> tuple[list[Mapping[str, object]], str]:
     try:
         raw = binding.witnesses_path.read_bytes()
+        if captured is not None:
+            captured.setdefault(binding.witnesses_path, []).append(raw)
         text = raw.decode(ENCODING)
     except (OSError, UnicodeError) as error:
         raise creation.binding_failure(DETAIL_CARRIER.format(detail=str(binding.witnesses_path))) from error
@@ -500,13 +516,13 @@ def _witness_lines(binding: EventWindowBinding) -> tuple[list[Mapping[str, objec
     return lines, hashlib.sha256(raw).hexdigest()
 
 
-def seal_for(binding: EventWindowBinding, case: str) -> ledger.JsonObject:
-    report = _read_object(binding.report_path, str(binding.report_path))
+def seal_for(binding: EventWindowBinding, case: str, *, captured: ByteReads | None = None) -> ledger.JsonObject:
+    report = _read_object(binding.report_path, str(binding.report_path), captured)
     cases = report.get(FIELD_CASES)
     entry = cases.get(case) if isinstance(cases, Mapping) else None
     if not isinstance(entry, Mapping):
         raise creation.binding_failure(DETAIL_SEAL)
-    lines, sha = _witness_lines(binding)
+    lines, sha = _witness_lines(binding, captured)
     count = entry.get(FIELD_WITNESS_COUNT)
     expected_sha = entry.get(FIELD_WITNESS_SHA)
     if not isinstance(count, int) or count != len(lines) or expected_sha != sha:
@@ -537,39 +553,86 @@ def set_case_status(binding: EventWindowBinding, case: str, status: str) -> None
     _write_report(binding, cast(ledger.JsonObject, report))
 
 
-def profile_report(profile_root: Path) -> ledger.JsonObject:
+def _captured_inputs(
+    profile_root: Path, captured: ByteReads, cases: tuple[str, ...], error: str | None
+) -> ledger.JsonObject:
+    root = profile_root.resolve()
+    paths = {
+        "case_report": root / CASE_REPORT_FILE,
+        "window": root / WINDOW_DIRECTORY / WINDOW_FILE,
+        "witnesses": root / WINDOW_DIRECTORY / WITNESSES_FILE,
+    }
+    result: ledger.JsonObject = {"schema_version": 1, "selected_case_prefix": list(cases), "capture_error": error}
+    for leaf, path in paths.items():
+        result[leaf] = [
+            {
+                "raw_data": base64.b64encode(data).decode("ascii"),
+                "raw_sha256": hashlib.sha256(data).hexdigest(),
+                "raw_byte_count": len(data),
+            }
+            for data in captured.get(path, ())
+        ]
+    return result
+
+
+def profile_report(profile_root: Path, *, selected_cases: tuple[str, ...] | None = None) -> ledger.JsonObject:
+    captured: ByteReads | None = {} if selected_cases is not None else None
+    error: str | None = None
+    result = _profile_report(profile_root, selected_cases, captured)
+    if captured is not None and selected_cases is not None:
+        capture_failure = result.pop("input_capture_error", None)
+        error = str(capture_failure) if capture_failure is not None else None
+        result["input_capture"] = _captured_inputs(profile_root, captured, selected_cases, error)
+    return result
+
+
+def _profile_report(
+    profile_root: Path, selected_cases: tuple[str, ...] | None, captured: ByteReads | None
+) -> ledger.JsonObject:
     path = profile_root.resolve() / CASE_REPORT_FILE
     if not path.is_file():
         return {FIELD_STATUS: "not_started", FIELD_CASES: {}}
     try:
-        report = dict(_read_object(path, str(path)))
+        report = dict(_read_object(path, str(path), captured))
     except creation.JourneyFailure as error:
         return {
             FIELD_STATUS: "unproven",
             FIELD_CASES: {},
             "case_report_path": str(path),
             "error": str(error),
+            **({"input_capture_error": str(error)} if captured is not None else {}),
         }
     cases = report.get(FIELD_CASES)
     complete = isinstance(cases, Mapping) and all(
         isinstance(cases.get(case), Mapping) and cases[case].get(FIELD_STATUS) == "complete" for case in CASE_SEQUENCE
     )
-    if complete:
+    if complete or selected_cases:
         try:
-            binding = load_binding(profile_root)
-            verify_case(binding, "B6")
-        except creation.JourneyFailure:
+            binding = load_binding(profile_root, captured=captured)
+            verify_case(binding, selected_cases[-1] if selected_cases else "B6", captured=captured)
+        except creation.JourneyFailure as error:
             complete = False
+            if captured is not None:
+                report["input_capture_error"] = str(error)
     report[FIELD_STATUS] = "complete" if complete else "unproven"
     report["case_report_path"] = str(path)
     return cast(ledger.JsonObject, report)
 
 
-def verify_case(binding: EventWindowBinding, case: str, expected_seal: Mapping[str, object] | None = None) -> None:
-    report = _read_object(binding.report_path, str(binding.report_path))
-    if report.get(FIELD_WINDOW_SHA) != binding.window_sha256 or _file_sha(binding.window_path) != binding.window_sha256:
+def verify_case(
+    binding: EventWindowBinding,
+    case: str,
+    expected_seal: Mapping[str, object] | None = None,
+    *,
+    captured: ByteReads | None = None,
+) -> None:
+    report = _read_object(binding.report_path, str(binding.report_path), captured)
+    if (
+        report.get(FIELD_WINDOW_SHA) != binding.window_sha256
+        or _file_sha(binding.window_path, captured) != binding.window_sha256
+    ):
         raise creation.binding_failure(DETAIL_WINDOW)
-    seal = seal_for(binding, case)
+    seal = seal_for(binding, case, captured=captured)
     if expected_seal is not None and any(
         seal.get(key) != expected_seal.get(key) for key in (FIELD_WITNESS_COUNT, FIELD_WITNESS_SHA)
     ):
@@ -699,6 +762,18 @@ def assert_positive_facts(
 ) -> None:
     """Assert only the approved visible positive event and public-log facts for the recorded B3-B7 witnesses."""
     window = _read_object(binding.window_path, str(binding.window_path))
+    assert_positive_window(binding, window, records, pages, coverages, final_item)
+
+
+def assert_positive_window(
+    binding: EventWindowBinding,
+    window: Mapping[str, object],
+    records: list[Mapping[str, object]],
+    pages: list[Mapping[str, object]],
+    coverages: list[Mapping[str, object]],
+    final_item: Mapping[str, object],
+) -> None:
+    """Apply the existing public-event/log predicates to an already captured original window, with no file reads."""
     initial_log = window.get(FIELD_INITIAL_LOG)
     content = final_item.get(FIELD_CONTENT)
     final_log = content.get(FIELD_LOG) if isinstance(content, Mapping) else None

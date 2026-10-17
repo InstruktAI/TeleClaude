@@ -59,6 +59,7 @@ from tools.ci.enclosure_inner import (
 )
 from tools.ci.enclosure_journal import Outcome as EnclosureOutcome
 from tools.ci.enclosure_report import (
+    validate_event_inputs,
     validate_flow_session_closure,
     validate_flow_start_inputs,
     validate_provisional_bindings,
@@ -5485,7 +5486,14 @@ def _run_profile(
         )
         if resources is not None:
             try:
-                event_evidence = events.profile_report(temporary_root)
+                event_evidence = events.profile_report(
+                    temporary_root,
+                    selected_cases=tuple(
+                        case for case in events.CASE_SEQUENCE if not selection or f"UC-WF-{case}" in selection
+                    )
+                    if payload_provisional is not None
+                    else None,
+                )
             except Exception as error:
                 event_evidence = {
                     "status": "unproven",
@@ -6311,6 +6319,7 @@ def validate_provisional_payload_inputs(report_bytes: bytes, manifest: bytes, pa
         "inner_cleanup": cleanup,
         "shared_flow_sessions": validate_flow_session_closure(report),
         "shared_flow_starts": validate_flow_start_inputs(report),
+        "public_event_inputs": validate_event_inputs(report),
     }
 
 

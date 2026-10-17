@@ -122,6 +122,174 @@ def _strings(value: JsonValue) -> tuple[str, ...]:
     return tuple(item for item in value if isinstance(item, str))
 
 
+def _event_bytes(value: JsonValue) -> bytes | None:
+    """Recompute every retained read; a later matching read cannot erase an earlier different one."""
+    if not isinstance(value, list):
+        raise ValueError(ERROR_REPORT)
+    original: bytes | None = None
+    for raw in value:
+        record = object_value(raw)
+        if set(record) != {"raw_data", "raw_sha256", "raw_byte_count"}:
+            raise ValueError(ERROR_REPORT)
+        try:
+            data = base64.b64decode(text(record, "raw_data"), validate=True)
+        except (ValueError, binascii.Error) as error:
+            raise ValueError(ERROR_REPORT) from error
+        if (
+            type(record["raw_byte_count"]) is not int
+            or record["raw_byte_count"] != len(data)
+            or record["raw_sha256"] != hashlib.sha256(data).hexdigest()
+            or (original is not None and original != data)
+        ):
+            raise ValueError(ERROR_REPORT)
+        original = data
+    return original
+
+
+def _event_binding(report: JsonObject, window: JsonObject, root: Path, sha: str) -> events.EventWindowBinding:
+    """Construct addresses as data only; outside validation never opens a guest-reported path."""
+    carrier = root / events.WINDOW_DIRECTORY
+    item = object_value(window[events.FIELD_ITEM])
+    mark = object_value(window["raw_mark"])
+    project_home = text(window, "project_home")
+    computer = text(window, events.FIELD_COMPUTER)
+    cursor = text(window, events.FIELD_CURSOR)
+    if (
+        type(window.get(events.FIELD_SCHEMA)) is not int
+        or window[events.FIELD_SCHEMA] != events.WINDOW_SCHEMA
+        or item.get(events.FIELD_SUBJECT) != f"todo:{ITEM}"
+        or item.get(events.FIELD_PROJECT) != project_home
+        or item.get(events.FIELD_COMPUTER) != computer
+        or mark.get(events.FIELD_ITEM) != item
+        or mark.get(events.FIELD_CURSOR) != cursor
+        or report.get(events.FIELD_WINDOW_PATH) != str(carrier / events.WINDOW_FILE)
+        or report.get(events.FIELD_WITNESSES_PATH) != str(carrier / events.WITNESSES_FILE)
+    ):
+        raise ValueError(ERROR_REPORT)
+    return events.EventWindowBinding(
+        root,
+        carrier,
+        carrier / events.WINDOW_FILE,
+        carrier / events.WITNESSES_FILE,
+        root / events.CASE_REPORT_FILE,
+        sha,
+        text(window, "project_slug"),
+        project_home,
+        text(window, events.FIELD_PROJECT_PATH),
+        computer,
+    )
+
+
+def _event_records(raw: bytes, cases: JsonObject, expected: tuple[str, ...], sha: str) -> list[Mapping[str, object]]:
+    lines = raw.splitlines(keepends=True)
+    if len(lines) != len(expected) or set(cases) != set(expected):
+        raise ValueError(ERROR_REPORT)
+    prefix = hashlib.sha256()
+    records: list[Mapping[str, object]] = []
+    for position, (line, case) in enumerate(zip(lines, expected, strict=True), 1):
+        if not line.endswith(b"\n"):
+            raise ValueError(ERROR_REPORT)
+        row = parse_object(line)
+        entry = object_value(cases[case])
+        prefix.update(line)
+        if (
+            set(row) != {events.FIELD_CASE, events.FIELD_WINDOW_SHA, events.FIELD_DATA}
+            or row[events.FIELD_CASE] != case
+            or row[events.FIELD_WINDOW_SHA] != sha
+            or not isinstance(row[events.FIELD_DATA], dict)
+            or set(entry) != {events.FIELD_STATUS, events.FIELD_WITNESS_COUNT, events.FIELD_WITNESS_SHA}
+            or entry[events.FIELD_STATUS] != "complete"
+            or type(entry[events.FIELD_WITNESS_COUNT]) is not int
+            or entry[events.FIELD_WITNESS_COUNT] != position
+            or entry[events.FIELD_WITNESS_SHA] != prefix.hexdigest()
+        ):
+            raise ValueError(ERROR_REPORT)
+        records.append(row)
+    return records
+
+
+def validate_event_inputs(report: JsonObject) -> JsonObject:
+    """Check original prefix bytes and, only with B6 coverage, rerun the existing positive event/log oracle."""
+    selection = frozenset(_strings(report["selection"]))
+    expected = tuple(case for case in events.CASE_SEQUENCE if not selection or f"UC-WF-{case}" in selection)
+    if expected != events.CASE_SEQUENCE[: len(expected)]:
+        raise ValueError(ERROR_REPORT)
+    evidence = object_value(report["workflow_event_evidence"])
+    capture = object_value(evidence["input_capture"])
+    if (
+        set(capture)
+        != {"schema_version", "selected_case_prefix", "capture_error", "case_report", "window", "witnesses"}
+        or type(capture["schema_version"]) is not int
+        or capture["schema_version"] != 1
+        or _strings(capture["selected_case_prefix"]) != expected
+        or capture["capture_error"] is not None
+    ):
+        raise ValueError(ERROR_REPORT)
+    case_bytes = _event_bytes(capture["case_report"])
+    window_bytes = _event_bytes(capture["window"])
+    witness_bytes = _event_bytes(capture["witnesses"])
+    if not expected:
+        if any(value is not None for value in (case_bytes, window_bytes, witness_bytes)) or evidence != {
+            "status": "not_started",
+            "cases": {},
+            "input_capture": capture,
+        }:
+            raise ValueError(ERROR_REPORT)
+        return {"state": "not_selected", "full_event_assertions": "not_covered"}
+    if case_bytes is None or window_bytes is None or witness_bytes is None:
+        raise ValueError(ERROR_REPORT)
+    case_report = parse_object(case_bytes)
+    window = parse_object(window_bytes)
+    sha = hashlib.sha256(window_bytes).hexdigest()
+    if (
+        set(case_report) != {"schema_version", "window_sha256", "window_path", "witnesses_path", "cases"}
+        or type(case_report[events.FIELD_SCHEMA]) is not int
+        or case_report[events.FIELD_SCHEMA] != events.CASE_REPORT_SCHEMA
+        or case_report[events.FIELD_WINDOW_SHA] != sha
+        or evidence
+        != {
+            **case_report,
+            "status": "complete" if expected == events.CASE_SEQUENCE else "unproven",
+            "case_report_path": evidence.get("case_report_path"),
+            "input_capture": capture,
+        }
+    ):
+        raise ValueError(ERROR_REPORT)
+    observations = object_value(object_value(report["payload_provisional"])["observations"])
+    root = Path(text(observations, "owned_profile_root"))
+    binding = _event_binding(case_report, window, root, sha)
+    if evidence["case_report_path"] != str(binding.report_path):
+        raise ValueError(ERROR_REPORT)
+    records = _event_records(witness_bytes, object_value(case_report["cases"]), expected, sha)
+    if expected == events.CASE_SEQUENCE:
+        terminal = object_value(cast(JsonObject, records[-1])[events.FIELD_DATA])
+        pages = terminal["pages"]
+        coverages = terminal["coverage"]
+        if (
+            set(terminal) != {"delivered_commit", "final_item", "pages", "coverage", "read_error"}
+            or terminal["read_error"] is not None
+            or not isinstance(pages, list)
+            or not isinstance(coverages, list)
+        ):
+            raise ValueError(ERROR_REPORT)
+        text(terminal, "delivered_commit")
+        events.assert_positive_window(
+            binding,
+            window,
+            records,
+            [object_value(page) for page in pages],
+            [object_value(coverage) for coverage in coverages],
+            object_value(terminal["final_item"]),
+        )
+    return {
+        "state": "captured_prefix_integrity",
+        "case_prefix": list(expected),
+        "window_sha256": sha,
+        "witness_sha256": hashlib.sha256(witness_bytes).hexdigest(),
+        "full_event_assertions": "proven" if expected == events.CASE_SEQUENCE else "not_covered",
+    }
+
+
 def _ledger(value: JsonValue, cases: tuple[str, ...]) -> LedgerEvidence | None:
     if value is None:
         return None
