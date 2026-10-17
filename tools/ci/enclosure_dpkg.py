@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import os
 import re
 import stat
@@ -11,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Final
 
-from tools.ci.enclosure_contract import AdmittedDeadline, JsonObject, JsonValue
+from tools.ci.enclosure_contract import AdmittedDeadline, JsonObject, JsonValue, object_value, text
 from tools.ci.enclosure_native import read_native_stdout
 
 CONFIGURATION: Final = Path("/etc/dpkg")
@@ -25,6 +26,9 @@ CONFIG_NAME: Final = re.compile(r"[A-Za-z0-9_-]+")
 DIRECTORY_FLAGS: Final = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 READ_FLAGS: Final = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
 ERROR_INPUT: Final = "native dpkg input was unreadable, incomplete, changed, unprotected or late"
+CONFIG_READ_SIZE: Final = 1023  # Native fgets(MAX_CONFIG_LINE=1024) reserves one byte for its NUL.
+OPTION_NAME: Final = re.compile(rb"[A-Za-z0-9-]*")
+NATIVE_SPACE: Final = b" \t\n\r\v\f"
 
 
 class DpkgInputError(RuntimeError):
@@ -181,3 +185,118 @@ def read_install_inputs(deadline: AdmittedDeadline) -> JsonObject:
         raise DpkgInputError(snapshot) from error
     finally:
         snapshot["finished_ns"] = time.monotonic_ns()
+
+
+def _input_files(snapshot: JsonObject) -> dict[str, JsonObject]:
+    if snapshot["error"] is not None or not isinstance(snapshot["files"], list):
+        raise ValueError(ERROR_INPUT)
+    files: dict[str, JsonObject] = {}
+    for value in snapshot["files"]:
+        row = object_value(value)
+        path = text(row, "path")
+        if path in files:
+            raise ValueError(ERROR_INPUT)
+        files[path] = row
+    return files
+
+
+def _input_bytes(row: JsonObject) -> bytes | None:
+    if row["present"] is False:
+        return None
+    if row["present"] is not True or row["complete"] is not True:
+        raise ValueError(ERROR_INPUT)
+    encoded = row["data_base64"]
+    if not isinstance(encoded, str):
+        raise ValueError(ERROR_INPUT)
+    data = base64.b64decode(encoded, validate=True)
+    if hashlib.sha256(data).hexdigest() != text(row, "sha256"):
+        raise ValueError(ERROR_INPUT)
+    return data
+
+
+def _configuration_lines(data: bytes, deadline: AdmittedDeadline, options: list[JsonValue]) -> None:
+    # This is the native config string grammar, not shell tokenization or an executable hook.
+    with io.BytesIO(data) as stream:
+        number = 0
+        while chunk := stream.readline(CONFIG_READ_SIZE):
+            _before_cutoff(deadline)
+            number += 1
+            line = chunk.split(b"\x00", 1)[0].rstrip(NATIVE_SPACE)
+            if not line or line.startswith(b"#"):
+                continue
+            match = OPTION_NAME.match(line)
+            if match is None:
+                raise ValueError(ERROR_INPUT)
+            end = match.end()
+            value: bytes | None = None
+            if end != len(line):
+                # options.c overwrites one separator, then skips one further '=' if present.
+                value = line[end + 1 :]
+                if value.startswith(b"="):
+                    value = value[1:]
+                value = value.lstrip(NATIVE_SPACE)
+                if value[:1] in (b"'", b'"'):
+                    if value[-1:] != value[:1]:
+                        raise ValueError(ERROR_INPUT)
+                    value = value[1:-1]
+            options.append(
+                {
+                    "native_line": number,
+                    "option": line[:end].decode("ascii"),
+                    # Native values need not be Unicode; exact bytes survive for the actual option consumer.
+                    "value_base64": base64.b64encode(value).decode("ascii") if value is not None else None,
+                }
+            )
+
+
+def parse_install_configuration(snapshot: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Parse captured native syntax only; known option arity/effects and fixed transaction admission remain owed."""
+    result: JsonObject = {"configuration_files": [], "native_option_effects": "unproven", "error": None}
+    try:
+        _before_cutoff(deadline)
+        files = _input_files(snapshot)
+        directories = snapshot["configuration_directories"]
+        if not isinstance(directories, list) or len(directories) != 1:
+            raise ValueError(ERROR_INPUT)
+        directory = object_value(directories[0])
+        path = CONFIGURATION / "dpkg.cfg.d"
+        if directory["path"] != str(path):
+            raise ValueError(ERROR_INPUT)
+        names: list[str] = []
+        if directory["present"] is True:
+            values = directory["native_names"]
+            if not isinstance(values, list):
+                raise ValueError(ERROR_INPUT)
+            for value in values:
+                if not isinstance(value, str) or CONFIG_NAME.fullmatch(value) is None:
+                    raise ValueError(ERROR_INPUT)
+                names.append(value)
+            if names != sorted(set(names)):
+                raise ValueError(ERROR_INPUT)
+        elif directory["present"] is not False:
+            raise ValueError(ERROR_INPUT)
+        paths = [*(str(path / name) for name in names), str(CONFIGURATION / "dpkg.cfg")]
+        if list(files) != [*paths, *(str(path) for path in TRIGGER_INPUTS)]:
+            raise ValueError(ERROR_INPUT)
+        parsed: list[JsonValue] = []
+        result["configuration_files"] = parsed
+        for path_name in paths:
+            _before_cutoff(deadline)
+            row = files[path_name]
+            data = _input_bytes(row)
+            options: list[JsonValue] = []
+            parsed.append(
+                {
+                    "path": path_name,
+                    "present": data is not None,
+                    "sha256": row["sha256"] if data is not None else None,
+                    "options": options,
+                }
+            )
+            if data is not None:
+                _configuration_lines(data, deadline, options)
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"inputs": snapshot, "configuration": result}) from error
