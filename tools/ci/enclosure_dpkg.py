@@ -640,6 +640,16 @@ def _diversion_routes(
     return routes, destinations
 
 
+def _interest_fields(specification: bytes) -> JsonObject:
+    package, slash, qualifier = specification.partition(b"/")
+    return {
+        "package_spec_base64": base64.b64encode(package).decode("ascii"),
+        "qualifier_base64": base64.b64encode(qualifier).decode("ascii") if slash else None,
+        # Native unknown suffixes retain AWAIT; no invented qualifier-validity gate.
+        "await": qualifier != b"noawait",
+    }
+
+
 def interpret_trigger_routes(snapshot: JsonObject, basis: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
     """Interpret actual byte routing/registration inputs; package identity/lifecycle/deferred work remain unproven."""
     diversions: list[JsonValue] = []
@@ -690,15 +700,11 @@ def interpret_trigger_routes(snapshot: JsonObject, basis: JsonObject, deadline: 
             path, separator, specification = line.partition(b" ")
             if not separator or not path.startswith(b"/"):
                 raise ValueError(ERROR_INPUT)
-            package, slash, qualifier = specification.partition(b"/")
             native_name = _fsys_name(path)
             interests.append(
                 {
                     "native_name_base64": base64.b64encode(native_name).decode("ascii"),
-                    "package_spec_base64": base64.b64encode(package).decode("ascii"),
-                    "qualifier_base64": base64.b64encode(qualifier).decode("ascii") if slash else None,
-                    # Native unknown suffixes retain AWAIT; no invented qualifier-validity gate.
-                    "await": qualifier != b"noawait",
+                    **_interest_fields(specification),
                     "matches_new_member": native_name in effective_paths,
                 }
             )
@@ -797,13 +803,24 @@ def _registered_instance(
     }, (name, architecture)
 
 
+def _interest_instance(
+    interest: JsonObject, instances: dict[str, dict[str, JsonObject]]
+) -> tuple[JsonObject, tuple[str, str] | None]:
+    encoded = interest["package_spec_base64"]
+    if not isinstance(encoded, str):
+        raise ValueError(ERROR_INPUT)
+    return _registered_instance(base64.b64decode(encoded, validate=True), instances)
+
+
 def interpret_registered_instances(
-    routes: JsonObject, host: HostSubstrateFacts, deadline: AdmittedDeadline
+    routes: JsonObject, explicit: JsonObject, host: HostSubstrateFacts, deadline: AdmittedDeadline
 ) -> JsonObject:
     """Join original native inventory to registrations; executable-recipient/source/deferred admission remains separate."""
     registrations: list[JsonValue] = []
+    explicit_registrations: list[JsonValue] = []
     result: JsonObject = {
         "registrations": registrations,
+        "explicit_registrations": explicit_registrations,
         "inventory_sha256": host.inventory_sha256,
         "deferred_and_pending_work": "unproven",
         "recipient_admission": "unproven",
@@ -819,11 +836,9 @@ def interpret_registered_instances(
             _before_cutoff(deadline)
             interest = object_value(value)
             native_name = base64.b64decode(text(interest, "native_name_base64"), validate=True)
-            encoded = interest["package_spec_base64"]
-            if not isinstance(encoded, str) or type(interest["matches_new_member"]) is not bool:
+            if type(interest["matches_new_member"]) is not bool:
                 raise ValueError(ERROR_INPUT)
-            specification = base64.b64decode(encoded, validate=True)
-            instance, identity = _registered_instance(specification, instances)
+            instance, identity = _interest_instance(interest, instances)
             registrations.append(
                 {
                     **interest,
@@ -836,12 +851,35 @@ def interpret_registered_instances(
                 if key in seen:
                     raise ValueError(ERROR_INPUT)
                 seen.add(key)
+        sources = explicit["files"]
+        if explicit["error"] is not None or not isinstance(sources, list):
+            raise ValueError(ERROR_INPUT)
+        for source_value in sources:
+            _before_cutoff(deadline)
+            source = object_value(source_value)
+            interests = source["interests"]
+            if not isinstance(interests, list):
+                raise ValueError(ERROR_INPUT)
+            resolved: list[JsonValue] = []
+            explicit_registrations.append({"path": source["path"], "present": source["present"], "interests": resolved})
+            for value in interests:
+                _before_cutoff(deadline)
+                interest = object_value(value)
+                instance, identity = _interest_instance(interest, instances)
+                # trk_explicit_activate_awaiter iterates repeated rows; it has no File-style duplicate rejection.
+                resolved.append(
+                    {
+                        **interest,
+                        "instance": instance,
+                        "duplicate_identity": "resolved" if identity is not None else "unproven",
+                    }
+                )
         _before_cutoff(deadline)
         return result
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError(
-            {"routes": routes, "inventory_base64": host.inventory_base64, "instances": result}
+            {"routes": routes, "explicit": explicit, "inventory_base64": host.inventory_base64, "instances": result}
         ) from error
 
 
@@ -937,3 +975,89 @@ def parse_deferred_inputs(snapshot: JsonObject, deadline: AdmittedDeadline) -> J
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError({"inputs": snapshot, "deferred": result}) from error
+
+
+def read_explicit_interests(snapshot: JsonObject, deferred: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Read only interest bodies actually used by explicit deferred records; no initialization census or effect."""
+    files: list[JsonValue] = []
+    requests: list[JsonValue] = []
+    result: JsonObject = {
+        "scope": "deferred_explicit_records_only",
+        "files": files,
+        "requests": requests,
+        "native_state": None,
+        "recipient_admission": "unproven",
+        "error": None,
+    }
+    try:
+        _before_cutoff(deadline)
+        result["native_state"] = deferred["native_state"]
+        existing = _input_files(snapshot)
+        entries = deferred["entries"]
+        if deferred["error"] is not None or not isinstance(entries, list):
+            raise ValueError(ERROR_INPUT)
+        indices: dict[str, int] = {}
+        for value in entries:
+            _before_cutoff(deadline)
+            entry = object_value(value)
+            if entry["kind"] != "explicit":
+                continue
+            trigger = base64.b64decode(text(entry, "trigger_base64"), validate=True)
+            if _deferred_kind(trigger) != "explicit" or not isinstance(entry["awaiters"], list):
+                raise ValueError(ERROR_INPUT)
+            path = Path("/var/lib/dpkg/triggers") / trigger.decode("ascii")
+            address = str(path)
+            request: JsonObject = {
+                "trigger_base64": entry["trigger_base64"],
+                "native_line": entry["native_line"],
+                "path": address,
+            }
+            requests.append(request)
+            if not entry["awaiters"]:
+                # Native start can open the name, but no activate_awaiter callback consumes the body.
+                request["body_lookup"] = "not_consumed_no_awaiter"
+                continue
+            if address not in indices:
+                indices[address] = len(files)
+                if address in existing:
+                    files.append(existing[address])
+                else:
+                    _file(path, deadline, files)
+            request["body_lookup"] = "captured"
+            request["file_index"] = indices[address]
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"inputs": snapshot, "deferred": deferred, "explicit": result}) from error
+
+
+def parse_explicit_interests(lookups: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Interpret captured native explicit interest rows, preserving absence, order and duplicates."""
+    parsed: list[JsonValue] = []
+    result: JsonObject = {
+        "files": parsed,
+        "requests": None,
+        "recipient_admission": "unproven",
+        "error": None,
+    }
+    try:
+        _before_cutoff(deadline)
+        result["requests"] = lookups["requests"]
+        files = lookups["files"]
+        if lookups["error"] is not None or not isinstance(files, list):
+            raise ValueError(ERROR_INPUT)
+        for value in files:
+            _before_cutoff(deadline)
+            source = object_value(value)
+            data = _input_bytes(source)
+            interests: list[JsonValue] = []
+            parsed.append({"path": source["path"], "present": source["present"], "interests": interests})
+            for number, line in enumerate(_metadata_lines(data, deadline), 1):
+                _before_cutoff(deadline)
+                interests.append({"native_line": number, **_interest_fields(line)})
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"lookups": lookups, "interests": result}) from error
