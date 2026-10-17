@@ -21,12 +21,12 @@ triggering hidden network work.
 
 ### Use cases
 
-#### UC-YT1:
+#### UC-YT1: An agent gets useful research within its requested context budget
 
 ```gherkin
-Given an agent requests YouTube research results with a character cap
-And one or more results have no transcript
-When the serialized results exceed that cap
-Then results are omitted from largest serialized payload to smallest until the returned results fit the requested budget
-And transcript retrieval is not performed solely to enforce the budget
+Scenario: Keep research within the requested budget without fetching transcripts
+  Given an agent requests YouTube research within a character budget and transcript retrieval is off
+  When the serialized video results exceed the budget
+  Then the returned results fit within the requested budget
+  And transcript retrieval is not performed solely to meet that budget
 ```
