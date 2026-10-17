@@ -14,9 +14,10 @@ visibility: 'public'
 
 The single lookup capability that maps any inbound human signal onto the operator's configured people. Every channel that surfaces a human — a terminal email login, a Telegram message, a Discord message, a WhatsApp message — funnels through human-identity resolution to answer "who is this, and what role do they hold?" The resolver indexes the configured `people` list (the source-of-truth list in global config) plus per-person config bindings for platform credentials. It builds lookup maps over email, username, Telegram user id, Discord user id, and WhatsApp phone, plus Discord display-name overrides, and refreshes them automatically when the underlying config changes on disk. The resolver returns an `IdentityContext` carrying the canonical `person_name`, `person_email`, `person_role`, and a platform-specific `display_name_override`. For the conversation platforms, which route unknown users into the system (Telegram, Discord, WhatsApp), the resolver returns a partial `IdentityContext` with `person_role` set to `customer` so the platform identity is preserved for downstream notification routing even though no configured person matched. The terminal path returns an empty `IdentityContext` on miss — callers without a configured person are not auto-customer-promoted on that channel.
 
-For configured people whose Discord credential binding carries an avatar URL, the resolved
-identity also carries that stored Discord presentation so downstream surfaces can present the
-human consistently without querying Discord during delivery.
+When a Discord account is bound, its current avatar URL is stored with the person's
+credential binding. For configured people whose Discord credential binding carries an
+avatar URL, the resolved identity also carries that stored presentation so downstream
+surfaces can present the human consistently without querying Discord during delivery.
 
 The resolved `IdentityContext` also carries the person's canonical `slug` as
 `person_slug`. The resolver discovers each person's per-person config binding by
@@ -25,143 +26,24 @@ by a name-derived key, and channels that scaffold or bind a workspace — Discor
 and Telegram onboarding — thread `person_slug` through to those folder-keyed
 operations.
 
+WhatsApp phone matching removes non-digit characters from both the stored and
+incoming numbers before lookup. A registered person with no platform role
+resolves with `person_role` set to `customer`; company roles remain scoped to
+their objects and are resolved separately (`local/projects/teleclaude/design/architecture/scoped-roles`).
+
 ## Canonical fields
 
 ### Use cases
 
-```
-Given the global config lists a person with email maurice@instrukt.ai, role admin, name "Maurice Faber"
-When the resolver is queried by email "MAURICE@instrukt.ai"
-Then it returns IdentityContext(person_name="Maurice Faber", person_email="maurice@instrukt.ai", person_role="admin")
-And lookup is case-insensitive on email
-```
-
-```
-Given a person whose role in global config is "operator" (not a known HUMAN_ROLES value)
-When the resolver is queried by that person's email
-Then the returned IdentityContext.person_role is "customer"
-Because role normalization defaults unknown roles to HUMAN_ROLE_CUSTOMER
-```
-
-```
-Given no person in global config has email unknown@example.com
-When the resolver is queried by that email
-Then it returns an empty IdentityContext (all fields None)
-```
-
-```
-Given the per-person config for Maurice binds Telegram credentials user_id=123456789
-When the resolver is queried for origin "telegram" with payload {"user_id": "123456789", "telegram_user_id": "123456789"}
-Then it returns IdentityContext with person_email="maurice@instrukt.ai", person_role="admin", platform="telegram", platform_user_id="123456789"
-```
-
-```
-Given the per-person config for Maurice binds Discord credentials user_id="555000111222333444" and nick="MoSr"
-When the resolver is queried for origin "discord" with payload {"user_id": "555000111222333444"}
-Then it returns IdentityContext with display_name_override="MoSr", platform="discord", platform_user_id="555000111222333444"
-And the resolved display_name property returns "MoSr" (override wins over person_name)
-```
-
-```
-Given no configured person binds Discord user_id "999000111222333444"
-When the resolver is queried for origin "discord" with payload {"user_id": "999000111222333444"}
-Then it returns IdentityContext(person_role="customer", platform="discord", platform_user_id="999000111222333444")
-And person_name / person_email remain None
-And the platform identity is preserved so downstream notification routing can still reach the Discord user
-```
-
-```
-Given the per-person config for Maurice binds WhatsApp phone_number "+31 6 1234 5678"
-When the resolver is queried for origin "whatsapp" with payload {"phone_number": "+31-6-1234-5678"}
-Then phone normalization strips non-digits to "31612345678"
-And the lookup matches because both stored and queried numbers normalize to the same digits
-And it returns IdentityContext with person_email="maurice@instrukt.ai", platform="whatsapp", platform_user_id="31612345678"
-```
-
-```
-Given no configured person binds WhatsApp phone "31600000000"
-When the resolver is queried for origin "whatsapp" with payload {"phone_number": "+31 6 0000 0000"}
-Then it returns IdentityContext(person_role="customer", platform="whatsapp", platform_user_id="31600000000")
-And the WhatsApp identity is preserved for downstream routing
-```
-
-```
-Given a session's persisted origin_metadata is {"discord": {"user_id": "555000111222333444"}, "telegram": {"user_id": "123456789"}}
-When identity-key derivation runs over the origin metadata
-Then it returns "discord:555000111222333444"
-Because Discord is preferred over Telegram in the precedence order (discord, telegram, whatsapp)
-```
-
-```
-Given origin_metadata is {} (no platform signals)
-When identity-key derivation runs
-Then it returns None
-```
-
-```
-Given the global config has been edited on disk after the resolver was constructed
-When any resolver query runs
-Then the staleness check detects the mtime change on the global config or people directory
-And reloads all lookup maps before answering
-```
-
-```
-Given an IdentityContext with display_name_override="MoSr", person_name=None, person_email=None, platform_user_id=None
-When IdentityContext.display_name is read
-Then it returns "MoSr"
-```
-
-```
-Given an IdentityContext with all naming fields empty (None or whitespace)
-When the identity context's display name is read
-Then an identity error is raised
-Because the context is in an invalid state with no resolvable display name
-```
-
 #### UC-HIR-PERSON-SLUG: Resolved IdentityContext carries the canonical person_slug
-
-```
-Given the global config lists a person with email maurice@instrukt.ai, name "Maurice Faber", slug "maurice-faber"
-And the per-person workspace folder ~/.teleclaude/people/maurice-faber/ holds the per-person config
-When the resolver is queried by email "maurice@instrukt.ai"
-Then it returns IdentityContext with person_slug="maurice-faber" alongside person_name and person_email
-And the per-person config binding is located by the slug-named folder, not by a name-derived key
-```
 
 #### UC-HIR-DISCORD-AVATAR-CAPTURE: Discord invitation binding captures the person's avatar
 
-```gherkin
-Given a configured human redeems a personal invitation through a Discord direct message
-When the identity context binds that Discord account to the person
-Then the person's current Discord avatar URL is stored with the Discord credential binding
-And no later lookup or scheduled refresh is required to establish the presentation
-```
-
 #### UC-HIR-DISCORD-AVATAR-RESOLUTION: Resolved identity exposes the stored Discord presentation
-
-```gherkin
-Given a configured human has a Discord avatar URL stored with their credential binding
-When an agent resolves that human's identity from a supported signal
-Then the resolved identity includes the stored Discord avatar URL for downstream presentation
-```
 
 #### UC-HIR-NO-PLATFORM-ROLE: A registered person without a platform role resolves as customer at platform scope
 
-```gherkin
-Given the global config lists a person who declares no platform role
-When the resolver is queried by that person's email
-Then the returned identity names that person and carries person_role "customer"
-And the person's company roles are not folded into person_role; they are answered as the person's effective role for an object (`local/projects/teleclaude/design/architecture/scoped-roles`)
-```
-
 #### UC-HIR-TELEGRAM-CUSTOMER: An unknown Telegram user resolves as customer
-
-```gherkin
-Given no configured person binds Telegram user_id "777000111"
-When the resolver is queried for origin "telegram" with that user id
-Then the returned identity carries person_role "customer", platform "telegram" and that platform user id
-And it names no person
-```
 
 ### Cross-context references
 
