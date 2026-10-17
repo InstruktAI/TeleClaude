@@ -126,6 +126,8 @@ ACTIVATION_STATES: Final = frozenset({"triggers-awaited", "triggers-pending", "i
 PACKAGE_WANTS: Final = frozenset({"unknown", "install", "hold", "deinstall", "purge"})
 PACKAGE_ERRORS: Final = frozenset({"ok", "reinstreq"})
 DEFERRED_LINE_SIZE: Final = 2048  # Native _POSIX2_LINE_MAX on the reviewed glibc substrate.
+CONTROL_LINE_SIZE: Final = 256  # Native MAXTRIGDIRECTIVE; distinct from File/explicit interest buffers.
+CONTROL_DIRECTIVE: Final = re.compile(rb"([^ \t]+)[ \t]+(.*)")
 VISIBLE_TRIGGER: Final = re.compile(rb"[\x21-\x7e]+")
 DEFERRED_PACKAGE: Final = re.compile(rb"[a-z0-9-][a-z0-9:+.-]*")
 
@@ -1575,7 +1577,12 @@ def inspect_container_prior_control(package: StaticPackage, work: JsonObject, de
         name = f"{CONTAINER_PACKAGE}:{architecture}" if old_multiarch == "same" else CONTAINER_PACKAGE
         _file(Path("/var/lib/dpkg/info") / f"{name}.triggers", deadline, files)
         data = _input_bytes(object_value(files[0]))
-        result["state"] = "old_trigger_control_absent" if data is None else "old_trigger_control_present_uninterpreted"
+        directives: list[JsonValue] = []
+        activations: list[JsonValue] = []
+        result["directives"] = directives
+        result["activation_requests"] = activations
+        _trigger_control(data, deadline, directives, activations)
+        result["state"] = "old_trigger_control_absent" if data is None else "old_trigger_control_parsed"
         # ensure_packagefiles_available deliberately blanks old .list data at PKG_STAT_NOTINSTALLED.
         result["old_file_list_behavior"] = "native_not_installed_blank"
         _before_cutoff(deadline)
@@ -1583,3 +1590,46 @@ def inspect_container_prior_control(package: StaticPackage, work: JsonObject, de
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError({"package_work": work, "container_prior_control": result}) from error
+
+
+def _trigger_control(
+    data: bytes | None, deadline: AdmittedDeadline, directives: list[JsonValue], activations: list[JsonValue]
+) -> None:
+    if data is None:
+        return  # Native optional control absence has no directives; this grants no whole admission.
+    with io.BytesIO(data) as stream:
+        number = 0
+        while (line := _checked_metadata_line(stream, CONTROL_LINE_SIZE, deadline)) is not None:
+            number += 1
+            # Native c_iswhite is space/tab/newline; fgets_checked already removed the newline.
+            line = line.strip(b" \t")
+            if not line or line.startswith(b"#"):
+                continue
+            match = CONTROL_DIRECTIVE.fullmatch(line)
+            if match is None:
+                raise ValueError(ERROR_INPUT)
+            command, trigger = match.groups()
+            if (
+                command
+                not in (
+                    b"interest",
+                    b"interest-await",
+                    b"interest-noawait",
+                    b"activate",
+                    b"activate-await",
+                    b"activate-noawait",
+                )
+                or VISIBLE_TRIGGER.fullmatch(trigger) is None
+            ):
+                raise ValueError(ERROR_INPUT)
+            directive: JsonObject = {
+                "native_line": number,
+                "directive": command.decode("ascii"),
+                "trigger_base64": base64.b64encode(trigger).decode("ascii"),
+                "kind": _deferred_kind(trigger),
+                "await": not command.endswith(b"-noawait"),
+            }
+            directives.append(directive)
+            if command.startswith(b"activate"):
+                # The caller is the old package's processing callback, not an Unincorp record or observed event.
+                activations.append({"origin": "prior_container_control", **directive})
