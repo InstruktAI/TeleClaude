@@ -66,16 +66,16 @@ to claim work and adopt the corresponding role through its own operations.
 
 ### Use cases
 
-#### UC-ICI1: Command startup from the TUI
+#### UC-ICI1: An operator starts a procedure from the TUI with its arguments
 
 ```gherkin
-Scenario Outline: An operator starts a procedure from the new-session modal
-  Given a human operator has selected a project and an available agent in the TUI New Session modal
-  And the requested entry procedure is published and its arguments are valid
-  When the operator submits "<input>" as the initial message
-  Then the new agent session receives the loader carrying the supplied arguments and directing it to the procedure's instructions
-  And the session is identified by the requested procedure and its declared role and work item
-  And the loading behavior is the same for every supported agent
+Scenario Outline: Start a new session from a published procedure
+  Given an operator has selected a project and an available agent in the TUI New Session modal
+  And the operator wants to run a published entry procedure with valid arguments
+  When they submit "<input>"
+  Then the new session carries the procedure, its declared role, and work item
+  And the agent's first instruction directs it to retrieve and follow that procedure
+  And the same procedure and arguments work with every supported agent
 
   Examples:
     | input                                                   |
@@ -85,15 +85,16 @@ Scenario Outline: An operator starts a procedure from the new-session modal
     | /sdlc/procedure/lifecycle/prepare/overview example-item |
 ```
 
-#### UC-ICI2: Command input through Discord
+#### UC-ICI2: An operator invokes a procedure in a Discord conversation
 
 ```gherkin
 Scenario Outline: A human invokes a procedure in the Discord conversation
-  Given a human operator is authorized to invoke the published entry procedure in the Discord conversation
+  Given an operator wants to run a published entry procedure in a Discord conversation
   And the conversation is a "<surface>" with a "<binding>"
   When the operator sends the procedure ID with its arguments, with or without a leading slash
-  Then the agent receives the loader carrying the supplied arguments once and directing it to the procedure's instructions
-  And the procedure runs in the session selected by that conversation's existing routing contract
+  Then the session selected by the conversation receives the procedure's loader once
+  And the loader carries the arguments and directs the agent to retrieve and follow the procedure
+  And a session created by the message receives it as initial input
 
   Examples:
     | surface       | binding                      |
@@ -114,32 +115,18 @@ Then the text follows ordinary conversation delivery without a command loader
 And mentioning a command in prose or quoting a command example does not activate it
 ```
 
-#### UC-ICI4: Surface confinement
+#### UC-ICI4: A person can use ordinary text outside the shorthand surfaces
 
 ```gherkin
-Given a human or agent sends a bare command name as ordinary text outside the TUI New Session modal and Discord human-to-agent text input
-When the platform processes that text
-Then this shorthand capability does not reinterpret it as a command
-And explicit command-dispatch requests retain their existing loading behavior
+Given a person sends text to an agent through terminal, CLI/API, or a non-Discord adapter
+When the input reaches the agent session
+Then this shorthand capability does not reinterpret it as a procedure invocation
+And explicit command-dispatch requests retain their existing behavior
 ```
 
 #### UC-ICI5: Existing authority remains binding
 
-```gherkin
-Given a human sends command input through Discord
-When session creation or an operation performed by the command requires authority the caller does not hold
-Then that operation is refused visibly by its existing authority gate
-And interpreting the text does not grant privileges or bypass workflow ownership
-```
-
-#### UC-ICI6: Invalid arguments are visible
-
-```gherkin
-Given a human enters a published entry procedure on an enabled shorthand surface
-When the supplied arguments violate that command's existing admission rules
-Then the human receives the corresponding refusal
-And the command is not silently delivered as ordinary text
-```
+#### UC-ICI6: An operator receives a visible refusal for an invalid invocation
 
 #### UC-ICI7: Owning-computer command resolution
 
