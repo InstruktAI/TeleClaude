@@ -1,4 +1,4 @@
-"""Finite native dpkg configuration/trigger inputs, without package invocation or admission."""
+"""Fixed native dpkg inputs and finite command sequencing; complete effect admission remains separate."""
 
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ from tools.ci.enclosure_contract import (
     positive_integer,
     text,
 )
-from tools.ci.enclosure_data import DPKG_DEB, _archive
+from tools.ci.enclosure_data import DPKG_DEB, _archive, _command
 from tools.ci.enclosure_host import CONTAINER_PACKAGE, HostSubstrateFacts, _locked_package_statuses, _package_presence
-from tools.ci.enclosure_native import NativeQuery, query_native, read_native_stdout
+from tools.ci.enclosure_native import NativeCommand, NativeQuery, query_native, read_native_stdout
 
 CONFIGURATION: Final = Path("/etc/dpkg")
 TRIGGER_INPUTS: Final = (
@@ -515,6 +515,24 @@ def _container_members(raw: bytes, deadline: AdmittedDeadline) -> list[JsonValue
     return members
 
 
+def _container_declaration(package: StaticPackage) -> JsonObject:
+    rows = object_value(parse_object(package.lock_bytes)["host_closure"])["final_packages"]
+    if not isinstance(rows, list):
+        raise ValueError(ERROR_INPUT)
+    containers = [object_value(value) for value in rows if object_value(value).get("name") == CONTAINER_PACKAGE]
+    if len(containers) != 1:
+        raise ValueError(ERROR_INPUT)
+    return containers[0]
+
+
+def container_install_arguments(
+    package: StaticPackage, inputs: Mapping[str, Path], deadline: AdmittedDeadline
+) -> tuple[str, ...]:
+    """Authenticate only the exact container archive for the fixed native command, without admitting its effects."""
+    archive = _archive(_container_declaration(package), inputs, deadline)
+    return (*INSTALL_PREFIX, str(archive))
+
+
 def container_payload_basis(
     package: StaticPackage, inputs: Mapping[str, Path], query: NativeQuery, deadline: AdmittedDeadline
 ) -> JsonObject:
@@ -522,14 +540,7 @@ def container_payload_basis(
     result: JsonObject = {"started_ns": time.monotonic_ns(), "finished_ns": None, "error": None}
     try:
         _before_cutoff(deadline)
-        lock = parse_object(package.lock_bytes)
-        rows = object_value(lock["host_closure"])["final_packages"]
-        if not isinstance(rows, list):
-            raise ValueError(ERROR_INPUT)
-        containers = [object_value(value) for value in rows if object_value(value).get("name") == CONTAINER_PACKAGE]
-        if len(containers) != 1:
-            raise ValueError(ERROR_INPUT)
-        declaration = containers[0]
+        declaration = _container_declaration(package)
         archive = _archive(declaration, inputs, deadline)
         cap = positive_integer(
             object_value(parse_object(package.recipe_bytes)[Field.BUDGET_SECONDS]), Field.NORMAL_COMMAND_MAX
@@ -2165,6 +2176,24 @@ def _read_current_dbus_inputs(
         result["finished_ns"] = time.monotonic_ns()
 
 
+def _require_install_input_state(initial: JsonObject, routes: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Reject known input failures; collected inputs alone are not complete native effect admission."""
+    if (
+        initial["error"] is not None
+        or initial["state"] != "inputs_collected_not_admitted"
+        or routes["error"] is not None
+        or routes["state"] != "route_inputs_collected_not_admitted"
+    ):
+        raise ValueError("an original input/state failure cannot be resolved by later pending names")
+    before = _dbus_work_row(object_value(initial["package_work"]), deadline)
+    if before["pending_names"] or before["awaited_package_specs"]:
+        raise ValueError("original D-Bus work cannot acquire newly induced provenance")
+    blockers = object_value(routes["affected_candidates"])["blockers"]
+    if not isinstance(blockers, list) or blockers:
+        raise ValueError("original affected-recipient blockers remain unresolved")
+    return before
+
+
 def collect_induced_dbus_inputs(
     package: StaticPackage,
     initial: JsonObject,
@@ -2184,20 +2213,7 @@ def collect_induced_dbus_inputs(
     }
     try:
         _before_cutoff(deadline)
-        if (
-            initial["error"] is not None
-            or initial["state"] != "inputs_collected_not_admitted"
-            or routes["error"] is not None
-            or routes["state"] != "route_inputs_collected_not_admitted"
-        ):
-            raise ValueError("an original input/state failure cannot be resolved by later pending names")
-        before = _dbus_work_row(object_value(initial["package_work"]), deadline)
-        if before["pending_names"] or before["awaited_package_specs"]:
-            raise ValueError("original D-Bus work cannot acquire newly induced provenance")
-        affected = object_value(routes["affected_candidates"])
-        blockers = affected["blockers"]
-        if not isinstance(blockers, list) or blockers:
-            raise ValueError("original affected-recipient blockers remain unresolved")
+        before = _require_install_input_state(initial, routes, deadline)
         work = inspect_package_work(query, deadline, cap)
         result["package_work"] = work
         states = interpret_install_package_states(package, work, deadline)
@@ -2244,6 +2260,49 @@ def collect_induced_dbus_inputs(
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError({"dbus_pending_name_inputs": result}) from error
+    finally:
+        result["finished_ns"] = time.monotonic_ns()
+
+
+def install_container_once(
+    package: StaticPackage,
+    initial: JsonObject,
+    routes: JsonObject,
+    archives: Mapping[str, Path],
+    run: NativeCommand,
+    query: NativeQuery,
+    deadline: AdmittedDeadline,
+    cap: int,
+) -> JsonObject:
+    """Run an already scoped native install once; a failed/unknown/late result permits no continuation."""
+    result: JsonObject = {
+        "started_ns": time.monotonic_ns(),
+        "finished_ns": None,
+        "native_install_returned_zero_on_time": None,
+        "error": None,
+    }
+    try:
+        _require_install_input_state(initial, routes, deadline)
+        cap = min(
+            cap,
+            positive_integer(
+                object_value(parse_object(package.recipe_bytes)[Field.BUDGET_SECONDS]), Field.NORMAL_COMMAND_MAX
+            ),
+        )
+        argv = container_install_arguments(package, archives, deadline)
+        result["argv"] = list[JsonValue](argv)
+        _command(argv, run, deadline, cap)
+        # The existing adapter/journal owns the original receipt; this is no independently supplied approval flag.
+        result["native_install_returned_zero_on_time"] = True
+        result["continuation_inputs"] = collect_induced_dbus_inputs(package, initial, routes, query, deadline, cap)
+        return result
+    except DpkgInputError as error:
+        result["failed_input"] = error.snapshot
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"host_install_attempt": result}) from error
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"host_install_attempt": result}) from error
     finally:
         result["finished_ns"] = time.monotonic_ns()
 
