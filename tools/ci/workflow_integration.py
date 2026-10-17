@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final, cast
@@ -104,7 +105,9 @@ def _refused_work(
     flow: flow_module.WorkflowFlow, baseline_item: Mapping[str, object], sessions: frozenset[str]
 ) -> None:
     attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B6, "refused-work", start_ledger.RECORD_OPERATION)
+    evidence = flow.refusal_input(attempt, baseline_item, sessions, sessions)
     outcome = flow.observer.run((TELEC, TODO, "work", flow_module.ITEM))
+    evidence["command"] = flow.public_command_evidence((TELEC, TODO, "work", flow_module.ITEM), outcome)
     receipt = creation.decode_object(outcome.output) if outcome.exit_status == 0 else None
     operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
     if outcome.exit_status != 0 or not isinstance(operation, str) or not operation:
@@ -125,8 +128,15 @@ def _refused_work(
     candidate = standing_before.get(FIELD_READY_COMMIT) if isinstance(standing_before, Mapping) else None
     if not isinstance(candidate, str) or candidate not in error:
         _fail(f"admission refusal did not name the admitted commit: {error!r}")
-    if flow.item() != baseline_item or flow.observer.sessions().ids != sessions:
+    after = flow.item()
+    evidence["after_items"] = [{"observed_ns": time.monotonic_ns(), "item": cast(flow_module.JsonValue, dict(after))}]
+    if after != baseline_item:
         _fail("the admitted work refusal changed the item or created a session")
+    observed_sessions = flow.observer.sessions().ids
+    evidence["session_observations"] = [{"session_ids": list[flow_module.JsonValue](sorted(observed_sessions))}]
+    if observed_sessions != sessions:
+        _fail("the admitted work refusal changed the item or created a session")
+    evidence["finished_ns"] = time.monotonic_ns()
     flow.require_ledger().discharge(attempt, "public admission refusal completed without a session or item mutation")
 
 

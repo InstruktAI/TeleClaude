@@ -50,6 +50,7 @@ from tools.ci.workflow_ledger import (
     StartLedger,
 )
 from tools.ci.workflow_publication import TERMINAL_STATES
+from tools.ci.workflow_ready import FINDING_DOOR, FINDING_WORK
 
 ERROR_REPORT: Final = "the new provisional report binding or original ledger evidence is inconsistent"
 LEDGER_ADDRESS: Final = Path("starts.jsonl")
@@ -85,6 +86,12 @@ CLAIM_STARTS: Final = {
     ("B5", "w2-start"): ("work", 1),
     ("B5", "w3-start"): ("work", 2),
     ("B7", "reasonone"): ("ready", 3),
+}
+REFUSAL_CALLS: Final = {
+    ("B7", "ready-door"): (["telec", "todo", "prepare", ITEM], (FINDING_DOOR, f"telec todo work {ITEM} --reason")),
+    ("B7", "ready-no-reason"): (["telec", "todo", "work", ITEM], (FINDING_WORK,)),
+    ("B7", "ready-no-session"): (["telec", "todo", "work", ITEM, "--reason", "b7 owner terminal"], (FINDING_WORK,)),
+    ("B6", "refused-work"): (["telec", "todo", "work", ITEM], ("admitted by the integrator", ITEM)),
 }
 
 
@@ -590,6 +597,144 @@ def _claim_inputs(
     return matched
 
 
+def _identity_list(value: JsonValue) -> tuple[str, ...]:
+    values = _strings(value)
+    if values != tuple(sorted(set(values))) or any(not item for item in values):
+        raise ValueError(ERROR_REPORT)
+    return values
+
+
+def _refusal_sessions(row: JsonObject, case: str, owned: tuple[str, ...]) -> None:
+    before = _identity_list(row["before_session_ids"])
+    baseline = _identity_list(row["baseline_session_ids"])
+    observations = row["session_observations"]
+    if not isinstance(observations, list) or len(observations) != (2 if case == "B7" else 1):
+        raise ValueError(ERROR_REPORT)
+    if case == "B6":
+        observation = object_value(observations[0])
+        if (
+            set(observation) != {"session_ids"}
+            or baseline != before
+            or _identity_list(observation["session_ids"]) != before
+        ):
+            raise ValueError(ERROR_REPORT)
+        return
+    if not set(baseline) <= set(before):
+        raise ValueError(ERROR_REPORT)
+    for value in observations:
+        observation = object_value(value)
+        if set(observation) != {"baseline_ids", "current_ids", "new_session_records"}:
+            raise ValueError(ERROR_REPORT)
+        current = _identity_list(observation["current_ids"])
+        additions = object_value(observation["new_session_records"])
+        if (
+            _identity_list(observation["baseline_ids"]) != baseline
+            or not set(baseline) <= set(current)
+            or set(additions) != set(current) - set(baseline)
+        ):
+            raise ValueError(ERROR_REPORT)
+        for session_id, record in additions.items():
+            actual = object_value(record)
+            if (
+                session_id not in owned
+                or actual.get("session_id") != session_id
+                or actual.get("role") != "integrator"
+                or actual.get("initiator_session_id") not in (None, "")
+            ):
+                raise ValueError(ERROR_REPORT)
+
+
+def _refusal_record(
+    row: JsonObject,
+    attempt: Attempt,
+    terminals: list[JsonValue],
+    created: int,
+    public_finished: int,
+    owned: tuple[str, ...],
+) -> JsonObject:
+    if set(row) != {
+        "attempt_id",
+        "started_ns",
+        "finished_ns",
+        "before_item",
+        "before_session_ids",
+        "baseline_session_ids",
+        "command",
+        "after_items",
+        "session_observations",
+    }:
+        raise ValueError(ERROR_REPORT)
+    started = positive_integer(row, "started_ns")
+    finished = positive_integer(row, "finished_ns")
+    if not created <= started <= finished <= public_finished:
+        raise ValueError(ERROR_REPORT)
+    argv, needles = REFUSAL_CALLS[attempt.case, attempt.label]
+    receipt = _public_session_command(row["command"], argv)
+    if receipt.get("operation_id") != attempt.operation_id:
+        raise ValueError(ERROR_REPORT)
+    before = object_value(row["before_item"])
+    required = needles
+    if attempt.case == "B6":
+        required = (*needles, text(object_value(before["standing"]), "ready_at_commit"))
+    elif object_value(before["standing"]).get("phase") != "ready":
+        raise ValueError(ERROR_REPORT)
+    for value in terminals:
+        terminal = object_value(value)
+        error = text(terminal, "error")
+        if terminal.get("state") != "failed" or any(needle not in error for needle in required):
+            raise ValueError(ERROR_REPORT)
+    after_items = row["after_items"]
+    if not isinstance(after_items, list) or len(after_items) != (2 if attempt.case == "B7" else 1):
+        raise ValueError(ERROR_REPORT)
+    positions: list[int] = []
+    for value in after_items:
+        after = object_value(value)
+        observed = positive_integer(after, "observed_ns")
+        if set(after) != {"observed_ns", "item"} or after["item"] != before or not started <= observed <= finished:
+            raise ValueError(ERROR_REPORT)
+        positions.append(observed)
+    # This is the original approved functional refusal window, never a P4 quiet-period proof.
+    if attempt.case == "B7" and positions[1] - positions[0] < 5 * NANOSECONDS:
+        raise ValueError(ERROR_REPORT)
+    _refusal_sessions(row, attempt.case, owned)
+    return {"attempt_id": attempt.identifier, "operation_id": attempt.operation_id, "state": "public_refusal_matched"}
+
+
+def _refusal_inputs(
+    finalizer: JsonObject,
+    ledger: StartLedger,
+    operations: dict[str, list[JsonValue]],
+    created: int,
+    public_finished: int,
+) -> list[JsonValue]:
+    pairs = {pair for pair in REFUSAL_CALLS if pair[0] in ledger.closed_lists}
+    attempts = [attempt for attempt in ledger.attempts.values() if (attempt.case, attempt.label) in pairs]
+    if (
+        {(attempt.case, attempt.label) for attempt in attempts} != pairs
+        or len(attempts) != len(pairs)
+        or any(attempt.kind != RECORD_OPERATION or attempt.state != RECORD_DISCHARGED for attempt in attempts)
+    ):
+        raise ValueError(ERROR_REPORT)
+    expected = {attempt.identifier: attempt for attempt in attempts}
+    values = finalizer["public_refusal_evidence"]
+    if not isinstance(values, list) or len(values) != len(expected):
+        raise ValueError(ERROR_REPORT)
+    seen: set[str] = set()
+    matched: list[JsonValue] = []
+    owned = _strings(finalizer["owned_session_ids"])
+    for value in values:
+        row = object_value(value)
+        identifier = text(row, "attempt_id")
+        if identifier not in expected or identifier in seen:
+            raise ValueError(ERROR_REPORT)
+        attempt = expected[identifier]
+        if attempt.operation_id is None:
+            raise ValueError(ERROR_REPORT)
+        matched.append(_refusal_record(row, attempt, operations[attempt.operation_id], created, public_finished, owned))
+        seen.add(identifier)
+    return matched
+
+
 def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
     """Join declared attempts to actual terminal operation data; receipts alone do not establish semantic settlement."""
     provisional = object_value(report["payload_provisional"])
@@ -642,5 +787,6 @@ def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
         "effects": effects,
         "pending_trigger_ids": list(after.pending_triggers),
         "accepted_start_claims": _claim_inputs(finalizer, after.ledger, operations, created, public_finished),
+        "refusals": _refusal_inputs(finalizer, after.ledger, operations, created, public_finished),
         "semantic_settlement": "unproven",
     }

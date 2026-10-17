@@ -485,6 +485,7 @@ class WorkflowFlow:
     public_session_end_evidence: list[JsonValue] = field(default_factory=list)
     public_operation_evidence: list[JsonValue] = field(default_factory=list)
     public_claim_evidence: list[JsonValue] = field(default_factory=list)
+    public_refusal_evidence: list[JsonValue] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -636,12 +637,12 @@ class WorkflowFlow:
     ) -> Json | None:
         outcome = self.observer.run((TELEC, SESSIONS, SHOW, session_id, FULL_FLAG), retain=retain)
         if evidence is not None:
-            evidence.append(self._session_command_evidence((TELEC, SESSIONS, SHOW, session_id, FULL_FLAG), outcome))
+            evidence.append(self.public_command_evidence((TELEC, SESSIONS, SHOW, session_id, FULL_FLAG), outcome))
         record = foundation.json_object(outcome.output) if outcome.exit_status == 0 else None
         return record
 
     @staticmethod
-    def _session_command_evidence(argv: Sequence[str], outcome: foundation.Outcome) -> MutableJson:
+    def public_command_evidence(argv: Sequence[str], outcome: foundation.Outcome) -> MutableJson:
         return {
             "argv": list(argv),
             "exit_status": outcome.exit_status,
@@ -1230,6 +1231,24 @@ class WorkflowFlow:
         )
         return claim
 
+    def refusal_input(
+        self, attempt_id: str, before: Json, session_ids: frozenset[str], baseline_ids: frozenset[str]
+    ) -> MutableJson:
+        """Retain actual existing refusal observations; missing later fields never mean an unchanged world."""
+        evidence: MutableJson = {
+            "attempt_id": attempt_id,
+            "started_ns": time.monotonic_ns(),
+            "finished_ns": None,
+            "before_item": cast(JsonValue, dict(before)),
+            "before_session_ids": list[JsonValue](sorted(session_ids)),
+            "baseline_session_ids": list[JsonValue](sorted(baseline_ids)),
+            "command": None,
+            "after_items": [],
+            "session_observations": [],
+        }
+        self.public_refusal_evidence.append(evidence)
+        return evidence
+
     def _read_object(self, path: Path) -> Json | None:
         try:
             value = json.loads(path.read_text(encoding=ENCODING))
@@ -1406,6 +1425,7 @@ class WorkflowFlow:
             "public_session_end_evidence": self.public_session_end_evidence,
             "public_operation_evidence": self.public_operation_evidence,
             "public_claim_evidence": self.public_claim_evidence,
+            "public_refusal_evidence": self.public_refusal_evidence,
             "integrators": cast(JsonValue, sorted(integrators)),
             "start_ledger": cast(JsonValue, starts),
             "open_attempt_ids": cast(JsonValue, open_ids),
@@ -1736,7 +1756,7 @@ class WorkflowFlow:
         current = self.session_record(session_id, evidence=reads)
         if current.get(FIELD_CLOSED_AT) is None and current.get(FIELD_LIFECYCLE) != "closed":
             outcome = self.observer.run((TELEC, SESSIONS, "end", session_id))
-            evidence["end_command"] = self._session_command_evidence((TELEC, SESSIONS, "end", session_id), outcome)
+            evidence["end_command"] = self.public_command_evidence((TELEC, SESSIONS, "end", session_id), outcome)
             receipt = foundation.json_object(outcome.output)
             operation_id = receipt.get(FIELD_OPERATION) if receipt is not None else None
             if outcome.exit_status != 0 or not isinstance(operation_id, str) or not operation_id:

@@ -6,7 +6,7 @@ import hashlib
 import re
 import time
 from collections.abc import Mapping
-from typing import Final
+from typing import Final, cast
 
 from tools.ci import acceptance_work as payload_work
 from tools.ci import workflow_creation as creation
@@ -129,7 +129,9 @@ def _owner_refusal(
     attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B7, label, start_ledger.RECORD_OPERATION)
     before = flow.item()
     sessions = flow.observer.sessions()
+    evidence = flow.refusal_input(attempt, before, sessions.ids, baseline.ids)
     output = flow.observer.run(args)
+    evidence["command"] = flow.public_command_evidence(args, output)
     receipt = foundation.json_object(output.output)
     operation = receipt.get(FIELD_OPERATION) if receipt is not None else None
     if output.exit_status != 0 or not isinstance(operation, str) or not operation:
@@ -144,13 +146,23 @@ def _owner_refusal(
         or any(needle not in error for needle in needles)
     ):
         _fail(f"{label} refusal did not name {needles!r}: {result!r}")
-    if flow.item() != before or not baseline.ids.issubset(sessions.ids):
+    after = flow.item()
+    observations: list[flow_module.JsonValue] = [
+        {"observed_ns": time.monotonic_ns(), "item": cast(flow_module.JsonValue, dict(after))}
+    ]
+    evidence["after_items"] = observations
+    if after != before or not baseline.ids.issubset(sessions.ids):
         _fail(DETAIL_SNAPSHOT.format(where=label))
-    _allow_integrator_delta(flow, baseline, label)
+    session_observations: list[flow_module.JsonValue] = []
+    evidence["session_observations"] = session_observations
+    _allow_integrator_delta(flow, baseline, label, evidence=session_observations)
     payload_work.sleep(5.0)
-    if flow.item() != before:
+    after = flow.item()
+    observations.append({"observed_ns": time.monotonic_ns(), "item": cast(flow_module.JsonValue, dict(after))})
+    if after != before:
         _fail(DETAIL_SNAPSHOT.format(where=f"{label} stability window"))
-    _allow_integrator_delta(flow, baseline, f"{label} stability window")
+    _allow_integrator_delta(flow, baseline, f"{label} stability window", evidence=session_observations)
+    evidence["finished_ns"] = time.monotonic_ns()
     flow.require_ledger().discharge(attempt, "public refusal completed and item/session snapshots remained equal")
 
 
@@ -225,9 +237,22 @@ def _assert_no_write(
 
 
 def _allow_integrator_delta(
-    flow: flow_module.WorkflowFlow, baseline: creation.SessionView, where: str
+    flow: flow_module.WorkflowFlow,
+    baseline: creation.SessionView,
+    where: str,
+    *,
+    evidence: list[flow_module.JsonValue] | None = None,
 ) -> creation.SessionView:
     current = flow.observer.sessions()
+    new_records: flow_module.MutableJson = {}
+    if evidence is not None:
+        evidence.append(
+            {
+                "baseline_ids": list[flow_module.JsonValue](sorted(baseline.ids)),
+                "current_ids": list[flow_module.JsonValue](sorted(current.ids)),
+                "new_session_records": new_records,
+            }
+        )
     if baseline.ids - current.ids:
         _fail(DETAIL_SNAPSHOT.format(where=f"{where}: a prior session disappeared"))
     for session in sorted(current.ids - baseline.ids):
@@ -243,6 +268,8 @@ def _allow_integrator_delta(
             payload_work.sleep(POLL_SECONDS)
         if record.get(FIELD_ROLE) != ROLE_INTEGRATOR or record.get(FIELD_INITIATOR) not in (None, ""):
             _fail(DETAIL_SNAPSHOT.format(where=f"{where}: new session {session} did not classify as an integrator"))
+        if evidence is not None:
+            new_records[session] = cast(flow_module.JsonValue, dict(record))
         flow.record_session(session, ROLE_INTEGRATOR)
         flow.integrators.add(session)
     return current
