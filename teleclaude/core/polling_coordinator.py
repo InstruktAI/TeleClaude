@@ -21,6 +21,7 @@ from teleclaude.core.injected_text import (
     classify_transcript_text,
     recognize_delivered_text,
     scan_injected_envelopes,
+    visible_input_preview,
     visible_input_update,
 )
 from teleclaude.core.models import MessageAuthor, MessageMetadata
@@ -285,6 +286,17 @@ def _stored_preview_matches(session: "Session", text: str, *, require_stored: bo
     return stored == _message_preview(text).strip()
 
 
+def _fresh_visible_input_matches(session: "Session", text: str) -> bool:
+    """Return whether this turn matches a visible input accepted after the watermark."""
+    visible = visible_input_preview(text)
+    stored = (session.last_input or "").strip()
+    if not visible or visible != stored:
+        return False
+    accepted_at = _as_utc(session.last_input_written_at)
+    projected_at = _as_utc(session.last_projected_at)
+    return accepted_at is not None and (projected_at is None or accepted_at > projected_at)
+
+
 def _accepted_conversation_view(session: "Session", text: str) -> str:
     """Return native text without a verified delivery mark for its fresh acceptance."""
     origin = (session.last_input_origin or "").strip()
@@ -329,6 +341,12 @@ def has_fresh_origin_for_user(
     if not origin:
         return False
     projected_at = _as_utc(session.last_projected_at)
+    if origin in _CONVERSATION_INPUT_ORIGINS and _fresh_visible_input_matches(session, user_text):
+        # A control delivery can replace the operational fingerprint between
+        # UI acceptance and this hook. The clean span and its own acceptance
+        # time preserve the adapter origin until projection advances the
+        # watermark, so the origin adapter will not receive a duplicate.
+        return True
     if origin == InputOrigin.TERMINAL.value and transcript_at is not None:
         # A later control wake can replace the terminal input fingerprint while
         # leaving the user's transcript turn unprojected. The transcript's own
