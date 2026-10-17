@@ -21,6 +21,7 @@ from tools.ci.enclosure_contract import (
     text,
 )
 from tools.ci.enclosure_exchange import HelperUncertain, run_privileged
+from tools.ci.enclosure_graph import DependencyGraph, inspect_dependency_graph
 from tools.ci.enclosure_journal import ActionResult, Outcome
 from tools.ci.enclosure_manager import (
     ACTIVE,
@@ -65,6 +66,7 @@ class Evidence(StrEnum):
     MANAGER_OWNER = "manager_owner"
     BOOT_ID = "boot_id"
     CONFIGURATION = "configuration"
+    DEPENDENCY_GRAPH = "dependency_graph"
 
 
 def _unit(read: UnitRead) -> JsonObject:
@@ -94,6 +96,7 @@ class BindingPhases:
         self._loop: asyncio.AbstractEventLoop | None = None
         self.uncertain: HelperUncertain | None = None
         self.configuration: InstanceConfiguration | None = None
+        self.graph: DependencyGraph | None = None
 
     async def perform(
         self, action: Action, deadline: AdmittedDeadline, maximum_seconds: int, qualification_vector: str | None
@@ -204,6 +207,12 @@ class BindingPhases:
                 self.guest,
                 AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns),
             )
+            self.graph = await inspect_dependency_graph(
+                self.manager,
+                self.package,
+                self.configuration,
+                AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns),
+            )
         sample = self.population.sample(end_ns)
         if self.manager.faults or sample.faults or sample.populated is None:
             raise ValueError(ERROR_BINDING)
@@ -233,6 +242,7 @@ class BindingPhases:
                 Evidence.PARENT: _unit(current_parent),
                 Evidence.GUEST: _unit(self.guest) if self.guest is not None else None,
                 Evidence.CONFIGURATION: self.configuration.record() if self.configuration is not None else None,
+                Evidence.DEPENDENCY_GRAPH: self.graph.record() if self.graph is not None else None,
                 Evidence.JOBS: settled,
                 Evidence.POPULATION: {
                     Evidence.RAW: sample.raw.decode(UTF8),

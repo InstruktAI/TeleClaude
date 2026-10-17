@@ -40,6 +40,26 @@ JSON_SEPARATORS: Final = (",", ":")
 OWNER_MATCH: Final = "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.systemd1'"
 PROPERTIES_MATCH: Final = "type='signal',sender='org.freedesktop.systemd1',interface='org.freedesktop.DBus.Properties'"
 MANAGER_MATCH: Final = "type='signal',sender='org.freedesktop.systemd1',interface='org.freedesktop.systemd1.Manager'"
+UNIT_REFERENCE_PROPERTIES: Final = (
+    "Requires",
+    "Wants",
+    "Requisite",
+    "BindsTo",
+    "Upholds",
+    "PartOf",
+    "ConsistsOf",
+    "OnSuccess",
+    "OnFailure",
+    "RequiredBy",
+    "WantedBy",
+    "RequisiteOf",
+    "BoundBy",
+    "UpheldBy",
+    "Triggers",
+    "TriggeredBy",
+    "Before",
+    "After",
+)
 
 
 class Interface(StrEnum):
@@ -469,6 +489,22 @@ class ManagerObserver:
             raise ValueError(BINDING_ERROR)
         return JobBoundary(tuple(settled[job.identifier] for job in accepted), self._sequence, time.monotonic_ns())
 
+    async def read_referenced_unit(self, source: UnitRead, name: str, deadline_ns: int) -> UnitRead:
+        """Extend this same observer's scope only along actual native unit relationships, retaining earlier signals."""
+        if source.name not in self._expected_units or source.object_path not in self._watched_paths:
+            raise ValueError(BINDING_ERROR)
+        references: set[str] = set()
+        for key in UNIT_REFERENCE_PROPERTIES:
+            value = source.unit.get(key)
+            if not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value):
+                self.invalidate(Invalidation.MALFORMED_STREAM)
+                raise ValueError(BODY_ERROR)
+            references.update(item for item in value if isinstance(item, str))
+        if name not in references:
+            raise ValueError(BINDING_ERROR)
+        self._expected_units = self._expected_units | frozenset({name})
+        return await self.read_unit(name, None, deadline_ns)
+
     async def read_unit(
         self, name: str, specific: Interface | None, deadline_ns: int, *, original_path: str | None = None
     ) -> UnitRead:
@@ -653,10 +689,15 @@ class ManagerObserver:
         body = _body(message)
         if message.interface == Interface.MANAGER:
             if message.member in (Member.UNIT_NEW, Member.UNIT_REMOVED):
-                if message.signature != Signature.UNIT_EVENT or len(body) != 2:
+                if (
+                    message.signature != Signature.UNIT_EVENT
+                    or len(body) != 2
+                    or not isinstance(body[0], str)
+                    or not body[0]
+                    or not isinstance(body[1], str)
+                    or not body[1].startswith(PATH_SEPARATOR)
+                ):
                     raise ValueError(BODY_ERROR)
-                if body[0] not in self._expected_units:
-                    return
             elif message.member in (Member.JOB_NEW, Member.JOB_REMOVED):
                 expected = Signature.JOB_NEW if message.member == Member.JOB_NEW else Signature.JOB_REMOVED
                 if (
@@ -671,8 +712,6 @@ class ManagerObserver:
                     or (message.member == Member.JOB_REMOVED and (not isinstance(body[3], str) or not body[3]))
                 ):
                     raise ValueError(BODY_ERROR)
-                if body[2] not in self._expected_units:
-                    return
         encoded_size = len(json.dumps(body, separators=JSON_SEPARATORS, allow_nan=False).encode(UTF8))
         self._sequence += 1
         if len(self._events) >= EVENT_LIMIT or self._event_bytes + encoded_size > EVENT_BYTES_LIMIT:
