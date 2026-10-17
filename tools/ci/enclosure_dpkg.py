@@ -1409,8 +1409,11 @@ def collect_container_routes(
         result["explicit_lookups"] = lookups
         explicit = parse_explicit_interests(lookups, deadline)
         result["explicit_interests"] = explicit
-        result["instances"] = interpret_registered_instances(routes, explicit, deferred, host, deadline)
-        result["state"] = "route_inputs_collected_not_admitted"
+        instances = interpret_registered_instances(routes, explicit, deferred, host, deadline)
+        result["instances"] = instances
+        affected = classify_container_candidates(initial, instances, deadline)
+        result["affected_candidates"] = affected
+        result["state"] = "blocked" if affected["blockers"] else "route_inputs_collected_not_admitted"
         _before_cutoff(deadline)
         return result
     except DpkgInputError as error:
@@ -1422,3 +1425,94 @@ def collect_container_routes(
         raise DpkgInputError(result) from error
     finally:
         result["finished_ns"] = time.monotonic_ns()
+
+
+def classify_container_candidates(initial: JsonObject, instances: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Classify captured payload/deferred candidates only; this is not complete native transaction admission."""
+    affected: list[JsonValue] = []
+    blockers: list[JsonValue] = []
+    result: JsonObject = {"affected": affected, "blockers": blockers, "complete_transaction_admission": "unproven"}
+    try:
+        _before_cutoff(deadline)
+        work = object_value(initial["package_work"])
+        rows = work["rows"]
+        registrations = instances["registrations"]
+        requests = instances["deferred_requests"]
+        if (
+            work["error"] is not None
+            or instances["error"] is not None
+            or not isinstance(rows, list)
+            or not isinstance(registrations, list)
+            or not isinstance(requests, list)
+        ):
+            raise ValueError(ERROR_INPUT)
+        dbus = [object_value(value) for value in rows if object_value(value)["package_name"] == "dbus"]
+
+        def classify(candidate: JsonObject, origin: str, name: JsonValue) -> None:
+            _before_cutoff(deadline)
+            instance = object_value(candidate["instance"])
+            eligible = instance["activation_eligible"]
+            item: JsonObject = {
+                "origin": origin,
+                "activated_name_base64": name,
+                "instance": instance,
+                "activation_eligible": eligible,
+                "classification": "unproven",
+            }
+            affected.append(item)
+            reason = None
+            if eligible is False:
+                item["classification"] = "native_inactive_recipient"
+                return
+            if eligible is not True or instance["identity_state"] != "resolved":
+                reason = "affected recipient identity or lifecycle is unproven"
+            elif instance["package_name"] != "dbus":
+                reason = "additional affected recipient is outside the reviewed container and named D-Bus branch"
+            elif origin == "preexisting_deferred":
+                reason = "preexisting deferred D-Bus work cannot be consumed as newly induced work"
+            elif len(dbus) != 1:
+                reason = "current affected D-Bus instance is missing or ambiguous"
+            else:
+                current = dbus[0]
+                identity_fields = (
+                    "package_name",
+                    "version",
+                    "architecture",
+                    "selection_state",
+                    "error_flag",
+                    "lifecycle",
+                )
+                if any(current[key] != instance[key] for key in identity_fields):
+                    reason = "affected D-Bus identity or state differs between captured inputs"
+                elif current["pending_names"] or current["awaited_package_specs"]:
+                    reason = "affected D-Bus has preexisting pending or awaited work"
+                elif current["multi_arch"] != "foreign":
+                    reason = "actual D-Bus metadata does not bind the reviewed unqualified installed control address"
+                elif object_value(initial["dbus_control_sources"])["state"] != "matched":
+                    reason = "affected D-Bus installed executable controls do not match the reviewed source"
+                else:
+                    item["classification"] = "new_member_dbus_candidate_with_matched_capture_inputs"
+                    return
+            item["classification"] = "blocked"
+            item["reason"] = reason
+            blockers.append(item)
+
+        for value in registrations:
+            _before_cutoff(deadline)
+            registration = object_value(value)
+            if registration["matches_new_member"] is True:
+                classify(registration, "new_archive_member", registration["native_name_base64"])
+        for value in requests:
+            _before_cutoff(deadline)
+            request = object_value(value)
+            candidates = request["candidate_interests"]
+            if not isinstance(candidates, list):
+                raise ValueError(ERROR_INPUT)
+            for candidate_value in candidates:
+                candidate = object_value(candidate_value)
+                classify(candidate, "preexisting_deferred", candidate["activated_name_base64"])
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"candidate_classification": result}) from error

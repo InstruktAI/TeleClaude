@@ -396,6 +396,8 @@ def _absent_container_inputs(
             error.add_note(f"retaining package routes also failed: {type(secondary).__name__}: {secondary}")
         raise
     _record_install_inputs(context, routes, deadline, INSTALL_ROUTES_FILE)
+    if routes["state"] == "blocked":
+        raise DpkgInputError(routes)
     # Actual affected-recipient/source/pending admission and package command composition are still owed.
     raise NotImplementedError(ERROR_HOST_INSTALL)
 
