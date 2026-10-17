@@ -70,6 +70,7 @@ REQUIRED_HELPER_SOURCES: Final = frozenset(
         "tools/ci/runtime_acceptance.py",
         "tools/ci/acceptance_work.py",
         "tools/ci/enclosure_inner.py",
+        "tools/ci/enclosure_report.py",
         "tools/ci/enclosure_guest.py",
         "tools/ci/enclosure_contract.py",
         "tools/ci/acceptance_interpreter_metadata.py",

@@ -16,11 +16,11 @@ from tools.ci.enclosure_contract import (
     object_value,
     parse_object,
     positive_integer,
-    text,
 )
 from tools.ci.enclosure_guest import POWER_COMMAND, GuestContext, Record
 from tools.ci.enclosure_guest import Key as GuestKey
 from tools.ci.enclosure_guest_evidence import EvidenceLeaf, GuestFileRead, read_guest_evidence
+from tools.ci.enclosure_report import validate_provisional_bindings
 
 if TYPE_CHECKING:
     from tools.ci.enclosure_guest_binding import GuestBinding
@@ -42,6 +42,7 @@ class PayloadCompletion:
     report: GuestFileRead | None
     shutdown: GuestFileRead | None
     failure: Exception | None
+    report_structure: JsonObject | None = None
 
     def record(self) -> JsonObject:
         return {
@@ -50,6 +51,7 @@ class PayloadCompletion:
             "shutdown_journal_sha256": self.shutdown.sha256 if self.shutdown is not None else None,
             "error_class": type(self.failure).__name__ if self.failure is not None else None,
             "error_errno": self.failure.errno if isinstance(self.failure, OSError) else None,
+            "report_structure": self.report_structure,
         }
 
 
@@ -123,9 +125,9 @@ def capture_payload_completion(
     """Read only existing named artifacts; do not grade functional results or infer completion from absence."""
     report = None
     shutdown = None
+    structure = None
     try:
         binding.require_root_view(deadline)
-        admission = parse_object(manifest)
         # Account UID is fixed by the reviewed recipe, not by report contents.
         recipe = parse_object(package.recipe_bytes)
         uid = positive_integer(object_value(object_value(recipe["guest"])["account"]), "uid")
@@ -142,13 +144,7 @@ def capture_payload_completion(
         )
         report.require_complete()
         value = parse_object(report.data)
-        if (
-            text(value, "source_revision") != text(admission, GuestKey.SOURCE_COMMIT)
-            or text(value, "source_tree") != text(admission, GuestKey.SOURCE_TREE)
-            or value.get("profile") != "full"
-            or value.get("selection") != admission[GuestKey.SELECTED_SCENARIOS]
-        ):
-            raise ValueError(ERROR_COMPLETION)
+        structure = validate_provisional_bindings(value, manifest, package)
         # Functional verdicts and every retention key remain in these original bytes for final validation.
     except (OSError, ValueError, RuntimeError, KeyError) as error:
         failures.append(error)
@@ -170,4 +166,4 @@ def capture_payload_completion(
     failure = (
         None if not failures else failures[0] if len(failures) == 1 else ExceptionGroup(ERROR_COMPLETION, failures)
     )
-    return PayloadCompletion(report, shutdown, failure)
+    return PayloadCompletion(report, shutdown, failure, structure)
