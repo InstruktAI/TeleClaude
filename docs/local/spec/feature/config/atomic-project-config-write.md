@@ -36,6 +36,9 @@ guarantees:
    capability is claimed or declined only by an explicit value
    (`local/projects/teleclaude/spec/feature/config/project-capability-manifest`).
 
+Reloading the written file rebuilds the same effective project overlay,
+including each `code`, `docs`, and `agents` enabled value.
+
 The helper is sync, takes a path and a validated project overlay instance,
 and returns on success. There is no read-modify-write helper at this
 layer; callers that need to edit a value first load the overlay,
