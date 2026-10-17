@@ -124,8 +124,15 @@ class BindingPhases:
             raise self.uncertain
         if self.helper_failure is not None:
             raise self.helper_failure
-        # Source reads and the original helper share one action cutoff, including native startup.
-        end_ns = deadline.command_end(maximum_seconds)
+        # Preserve outer closure time before any read; do not subtract it from the original vector/command ends.
+        end_ns = AdmittedDeadline(
+            deadline.outer_end_ns,
+            deadline.vector_end_ns,
+            min(
+                deadline.effective_end(),
+                self.owner.journal.deadline.end_ns - self.owner.journal.deadline.reserve_ns,
+            ),
+        ).command_end(maximum_seconds)
         action_deadline = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
         await self.manager.check_identity(end_ns)
         metadata = await self.manager.read_manager(end_ns)
