@@ -58,16 +58,24 @@ namespace help when their work is redirected.
 
 ### Use cases
 
-#### UC-CH1: A full-reach agent expands its focused role set
+#### UC-CH1: An agent finds help for commands available to its role
 
 ```gherkin
-Given an agent session with full reach and a focused role set
-When it requests expanded role help
-Then the response contains detailed help for that focused set
-And commands outside that set are absent from that response
+Scenario: A role-bound agent consults help for its focused command set
+  Given an agent session has an assigned role
+  When the agent requests detailed help for its role
+  Then the response describes the commands available to that role
+  And commands outside that role's permitted surface are absent
+
+Scenario: A roleless agent receives a useful refusal
+  Given an agent session has no assigned role
+  When it requests detailed help for a role
+  Then the response explains that no role is assigned
+  And names complete expansion as the available route
+  And warns that complete expansion can produce substantial output
 ```
 
-#### UC-CH2: A full-reach agent discovers work outside its focus
+#### UC-CH2: An agent finds help for work outside its focused role
 
 ```gherkin
 Given a full-reach agent redirected to work outside its focused role set
@@ -78,29 +86,14 @@ And no change of session role is needed to retrieve that help
 
 #### UC-CH3: A restricted agent receives only permitted help
 
-```gherkin
-Given an agent session whose role has restricted reach
-When it requests ordinary help, expanded role help, or expanded-all help
-Then each response is bounded by that role's permitted command surface
-```
-
-#### UC-CH4: A roleless session receives a useful expansion refusal
+#### UC-CH5: An operator explores a command namespace before choosing a command
 
 ```gherkin
-Given an agent session without an assigned role
-When it requests expanded role help
-Then the request fails explaining that it has no assigned role
-And the response names complete expansion and warns about its output size
-```
-
-#### UC-CH5: A namespace expansion includes its entire selected subtree
-
-```gherkin
-Given an agent requesting help for a namespace with commands and nested namespaces
-When it expands the selected help within that namespace
-Then every selected descendant command is described once
-And commands outside that namespace are absent
-And none of the described commands is executed
+Given an operator wants to inspect the commands in a namespace before choosing one
+When they request expanded help for that namespace
+Then each command in the selected namespace and its nested namespaces is described once
+And commands outside the selected namespace are absent
+And no described command is executed
 ```
 
 ## See Also
