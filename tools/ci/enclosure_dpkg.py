@@ -1531,8 +1531,9 @@ def collect_install_inputs(
         work = inspect_package_work(query, deadline, cap)
         result["package_work"] = work
         result["host_package_inputs"] = interpret_work_host_packages(package, work, deadline)
-        result["info_upgrade_inputs"] = inspect_info_upgrade_inputs(info_format, work, deadline)
-        write_scope = inspect_info_write_compatibility(result, deadline)
+        upgrade = inspect_info_upgrade_inputs(result, deadline)
+        result["info_upgrade_inputs"] = upgrade
+        write_scope = object_value(upgrade["info_write_compatibility"])
         result["info_write_compatibility"] = write_scope
         if write_scope["writing_compatibility"] == "incompatible":
             result["state"] = "blocked"
@@ -1988,7 +1989,7 @@ def _info_link_input(path: Path, deadline: AdmittedDeadline, captures: list[Json
         row["finished_ns"] = time.monotonic_ns()
 
 
-def inspect_info_upgrade_inputs(info_format: JsonObject, work: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+def inspect_info_upgrade_inputs(initial: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
     """Capture the actual native global upgrade operands; this does not admit migration or simulate its outcome."""
     entries: list[JsonValue] = []
     operands: list[JsonValue] = []
@@ -2003,22 +2004,20 @@ def inspect_info_upgrade_inputs(info_format: JsonObject, work: JsonObject, deadl
     }
     try:
         _before_cutoff(deadline)
+        info_format = object_value(initial["info_format"])
+        work = object_value(initial["package_work"])
         if info_format["error"] is not None or work["error"] is not None:
             raise ValueError(ERROR_INPUT)
         if info_format["state"] == "native_current_no_upgrade":
             result["state"] = "captured_format_does_not_request_upgrade"
+            result["info_write_compatibility"] = {
+                "writing_compatibility": "not_requested_by_captured_format",
+                "error": None,
+            }
+            _before_cutoff(deadline)
             return result
         if info_format["state"] != "native_upgrade_required":
             raise ValueError(ERROR_INPUT)
-        rows = work["rows"]
-        if not isinstance(rows, list):
-            raise ValueError(ERROR_INPUT)
-        instances: dict[bytes, list[JsonObject]] = {}
-        for value in rows:
-            _before_cutoff(deadline)
-            instance = object_value(value)
-            if instance["lifecycle"] != "not-installed":
-                instances.setdefault(text(instance, "package_name").encode("ascii"), []).append(instance)
         directory = Path("/var/lib/dpkg/info")
         _protected_path(directory, deadline)
         before = directory.stat()
@@ -2035,7 +2034,25 @@ def inspect_info_upgrade_inputs(info_format: JsonObject, work: JsonObject, deadl
             return captured[path]
 
         # Native fopen follows this address, whereas native link/unlink use the named source object itself.
-        capture(physical_format)
+        write_target = capture(physical_format)
+        write_scope = inspect_info_write_compatibility(
+            object_value(initial["inputs"]), object_value(initial["dbus_control_sources"]), write_target, deadline
+        )
+        result["info_write_compatibility"] = write_scope
+        if write_scope["writing_compatibility"] == "incompatible":
+            result["state"] = "blocked_by_immutable_write_target"
+            _before_cutoff(deadline)
+            return result
+
+        rows = work["rows"]
+        if not isinstance(rows, list):
+            raise ValueError(ERROR_INPUT)
+        instances: dict[bytes, list[JsonObject]] = {}
+        for value in rows:
+            _before_cutoff(deadline)
+            instance = object_value(value)
+            if instance["lifecycle"] != "not-installed":
+                instances.setdefault(text(instance, "package_name").encode("ascii"), []).append(instance)
 
         with os.scandir(directory) as stream:
             for entry in stream:
@@ -2089,44 +2106,32 @@ def inspect_info_upgrade_inputs(info_format: JsonObject, work: JsonObject, deadl
         result["state"] = "native_upgrade_inputs_captured_not_admitted"
         _before_cutoff(deadline)
         return result
+    except DpkgInputError as error:
+        result["failed_input"] = error.snapshot
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"info_upgrade_inputs": result}) from error
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
-        raise DpkgInputError({"info_format": info_format, "info_upgrade_inputs": result}) from error
+        raise DpkgInputError({"info_upgrade_inputs": result}) from error
     finally:
         result["finished_ns"] = time.monotonic_ns()
 
 
-def inspect_info_write_compatibility(initial: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+def inspect_info_write_compatibility(
+    inputs: JsonObject, sources: JsonObject, target: JsonObject, deadline: AdmittedDeadline
+) -> JsonObject:
     """Stop on one actual immutable-source alias witness; absence of that witness supplies no migration approval."""
     result: JsonObject = {"writing_compatibility": "unproven", "error": None}
     try:
         _before_cutoff(deadline)
-        upgrade = object_value(initial["info_upgrade_inputs"])
-        if upgrade["error"] is not None:
-            raise ValueError(ERROR_INPUT)
-        if upgrade["state"] == "captured_format_does_not_request_upgrade":
-            result["writing_compatibility"] = "not_requested_by_captured_format"
-            _before_cutoff(deadline)
-            return result
-        if upgrade["state"] != "native_upgrade_inputs_captured_not_admitted":
-            raise ValueError(ERROR_INPUT)
-        operands = upgrade["operands"]
-        if not isinstance(operands, list):
-            raise ValueError(ERROR_INPUT)
-        physical = text(upgrade, "format_new_physical_path")
-        matches = [object_value(value) for value in operands if object_value(value)["path"] == physical]
-        if len(matches) != 1:
-            raise ValueError(ERROR_INPUT)
-        target = matches[0]
-        result["format_new_physical_path"] = physical
+        result["format_new_physical_path"] = text(target, "path")
         if target["present"] is not True:
             _before_cutoff(deadline)
             return result
         identity = object_value(target["before"])
-        sources = object_value(initial["dbus_control_sources"])
         if sources["error"] is not None or not isinstance(sources["files"], list):
             raise ValueError(ERROR_INPUT)
-        actual = _input_files(object_value(initial["inputs"]))
+        actual = _input_files(inputs)
         for value in sources["files"]:
             _before_cutoff(deadline)
             source = object_value(value)
