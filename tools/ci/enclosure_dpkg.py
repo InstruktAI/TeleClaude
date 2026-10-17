@@ -2120,17 +2120,68 @@ def _dbus_pending_candidates(
         )
 
 
-def interpret_induced_dbus_names(
+def _read_current_dbus_inputs(
+    package: StaticPackage, deadline: AdmittedDeadline, *, has_pending_work: bool
+) -> JsonObject:
+    """Retain late deferred input in both cases; writing-command inputs are needed only for actual pending work."""
+    result: JsonObject = {
+        "started_ns": time.monotonic_ns(),
+        "finished_ns": None,
+        "late_deferred_source_and_effect_admission": "unproven",
+        "error": None,
+    }
+    try:
+        if not has_pending_work:
+            files: list[JsonValue] = []
+            inputs: JsonObject = {"files": files, "error": None}
+            result["inputs"] = inputs
+            _file(Path("/var/lib/dpkg/triggers/Unincorp"), deadline, files)
+            result["deferred"] = parse_deferred_inputs(inputs, deadline)
+            _before_cutoff(deadline)
+            return result
+        inputs = read_install_inputs(deadline)
+        result["inputs"] = inputs
+        configuration = parse_install_configuration(inputs, deadline)
+        result["configuration"] = configuration
+        scope = bound_configuration_effects(configuration, deadline)
+        result["configuration_scope"] = scope
+        options = scope["effects"]
+        if scope["state"] != "bounded_for_fixed_commands" or not isinstance(options, list):
+            raise ValueError("current native configuration does not bound the fixed named D-Bus command")
+        if any(object_value(option)["option"] in ("no-act", "dry-run", "simulate") for option in options):
+            raise ValueError("current native simulation cannot settle actual pending D-Bus work")
+        result["deferred"] = parse_deferred_inputs(inputs, deadline)
+        result["dbus_control_sources"] = bind_dbus_control_sources(inputs, package, deadline)
+        _before_cutoff(deadline)
+        return result
+    except DpkgInputError as error:
+        result["failed_input"] = error.snapshot
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"named_dbus_current_inputs": result}) from error
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"named_dbus_current_inputs": result}) from error
+    finally:
+        result["finished_ns"] = time.monotonic_ns()
+
+
+def collect_induced_dbus_inputs(
     package: StaticPackage,
     initial: JsonObject,
     routes: JsonObject,
-    work: JsonObject,
-    sources: JsonObject,
+    query: NativeQuery,
     deadline: AdmittedDeadline,
+    cap: int,
 ) -> JsonObject:
-    """Join actual pending names to preserved potential origins; this grants no receipt, causal or pass admission."""
+    """Collect one post-install view and current pending-work inputs; first-result/causal/pass admission stays separate."""
     candidates: list[JsonValue] = []
-    result: JsonObject = {"candidates": candidates, "named_pass_admission": "unproven", "error": None}
+    result: JsonObject = {
+        "started_ns": time.monotonic_ns(),
+        "finished_ns": None,
+        "candidates": candidates,
+        "named_pass_admission": "unproven",
+        "error": None,
+    }
     try:
         _before_cutoff(deadline)
         if (
@@ -2140,21 +2191,24 @@ def interpret_induced_dbus_names(
             or routes["state"] != "route_inputs_collected_not_admitted"
         ):
             raise ValueError("an original input/state failure cannot be resolved by later pending names")
-        states = interpret_install_package_states(package, work, deadline)
-        result["install_package_states"] = states
         before = _dbus_work_row(object_value(initial["package_work"]), deadline)
-        current = _dbus_work_row(work, deadline)
         if before["pending_names"] or before["awaited_package_specs"]:
             raise ValueError("original D-Bus work cannot acquire newly induced provenance")
         affected = object_value(routes["affected_candidates"])
         blockers = affected["blockers"]
         if not isinstance(blockers, list) or blockers:
             raise ValueError("original affected-recipient blockers remain unresolved")
+        work = inspect_package_work(query, deadline, cap)
+        result["package_work"] = work
+        states = interpret_install_package_states(package, work, deadline)
+        result["install_package_states"] = states
+        current = _dbus_work_row(work, deadline)
         pending = states["dbus_native_pending_names"]
         if not isinstance(pending, list) or pending != current["pending_names"]:
             raise ValueError(ERROR_INPUT)
         result["actual_pending_names"] = pending
         if not pending:
+            result["current_deferred_inputs"] = _read_current_dbus_inputs(package, deadline, has_pending_work=False)
             result["state"] = "no_actual_pending_names_to_bind"
             _before_cutoff(deadline)
             return result
@@ -2167,10 +2221,13 @@ def interpret_induced_dbus_names(
             or current["multi_arch"] != "foreign"
             or before_sources["error"] is not None
             or before_sources["state"] != "matched"
-            or sources["error"] is not None
-            or sources["state"] != "matched"
         ):
             raise ValueError("actual D-Bus identity/control inputs do not bind the reviewed triggered branch")
+        current_inputs = _read_current_dbus_inputs(package, deadline, has_pending_work=True)
+        result["current_command_inputs"] = current_inputs
+        sources = object_value(current_inputs["dbus_control_sources"])
+        if sources["error"] is not None or sources["state"] != "matched":
+            raise ValueError("current D-Bus controls do not match the reviewed triggered branch")
         _dbus_pending_candidates(initial, routes, deadline, candidates)
         names = {text(object_value(value), "pending_name") for value in candidates}
         for name in pending:
@@ -2183,10 +2240,12 @@ def interpret_induced_dbus_names(
     except DpkgInputError as error:
         result["failed_input"] = error.snapshot
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
-        raise DpkgInputError({"package_work": work, "dbus_pending_name_inputs": result}) from error
+        raise DpkgInputError({"dbus_pending_name_inputs": result}) from error
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
-        raise DpkgInputError({"package_work": work, "dbus_pending_name_inputs": result}) from error
+        raise DpkgInputError({"dbus_pending_name_inputs": result}) from error
+    finally:
+        result["finished_ns"] = time.monotonic_ns()
 
 
 def _info_link_input(path: Path, deadline: AdmittedDeadline, captures: list[JsonValue]) -> JsonObject:
