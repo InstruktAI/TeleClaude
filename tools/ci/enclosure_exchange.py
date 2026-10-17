@@ -191,7 +191,11 @@ def run_helper(manifest: Path, action: Action) -> ActionResult:
 
         result = dispatch_action(context, observe)
         # The durable outcome exists before this acknowledgment; losing this line cannot authorize a repeat.
-        _write_frame({Key.RESULT: result.record(action)}, deadline.effective_end())
+        try:
+            _write_frame({Key.RESULT: result.record(action)}, deadline.effective_end())
+        except BrokenPipeError:
+            # Only the final acknowledgment is recoverable from the durable receipt; phase exchange errors propagate.
+            pass
         return result
     finally:
         context.close()
