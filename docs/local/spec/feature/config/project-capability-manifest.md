@@ -236,23 +236,7 @@ And capability state remains in that declaration
 
 #### UC-CFG-CAP-17: An unsubscribed docs capability leaves the snippet pipeline idle
 
-```
-Given a project that does not subscribe the docs capability
-And that carries snippet sources under docs/
-When an agent invokes the sync pipeline for that project
-Then no snippet is validated, indexed, or published for it
-And its subscribed agent artifacts are still deployed
-```
-
 #### UC-CFG-CAP-18: An unsubscribed agents capability leaves artifact distribution idle
-
-```
-Given a project that does not subscribe the agents capability
-And that carries agent artifact sources
-When an agent invokes the sync pipeline for that project
-Then no agent artifact is transpiled or deployed for it
-And its subscribed snippets are still validated, indexed, and published
-```
 
 #### UC-CFG-CAP-19:
 
@@ -276,14 +260,6 @@ Then the clone honors those capability choices
 
 #### UC-CFG-CAP-27: A linked worktree of a registered project resolves as its project
 
-```
-Given a registered project whose configuration was written while an omitted block still meant subscribed
-And that configuration declares no capability blocks
-And a linked worktree of that project whose copy of the configuration is equally old
-When the capabilities are resolved inside that worktree by the runtime or by the installed plumbing
-Then the code, docs, and agents capabilities each resolve to enabled
-```
-
 #### UC-CFG-CAP-28: A declaration the registries do not name claims nothing by omission
 
 #### UC-CFG-CAP-29: The plumbing resolves a registered declaration the migration list has not yet stored
@@ -299,16 +275,6 @@ Then the code selection is preserved and undeclared capabilities are inferred fr
 #### UC-CFG-CAP-31: An installation advance makes the plumbing resolve again
 
 #### UC-CFG-CAP-32: A slug worktree's plumbing answers from the worktree's own declaration
-
-```
-Given a slug worktree whose copy of teleclaude.yml declares capability subscriptions that differ from the owning checkout's
-When an agent session invokes git inside that worktree
-Then the installed plumbing decides from the worktree's own copy
-
-Given a slug worktree that carries no teleclaude.yml
-When an agent session invokes git inside that worktree
-Then the git wrapper execs the real git binary without intercepting the invocation
-```
 
 #### UC-CFG-CAP-33: A capability resolved from the project's environment file resolves alike on both readers
 
