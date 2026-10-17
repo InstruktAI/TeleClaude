@@ -49,9 +49,9 @@ And that continuation is not presented as human input
 #### UC-AH8: Completion and failure report actual progress
 
 ```gherkin
-Given a person requests an agent handoff for an open session
-When the handoff completes or fails
-Then the caller can inspect a truthful result naming the selected successor and the session's last truthful runtime state
+Given a handoff operation has been accepted after selecting its successor
+When the operation completes or fails
+Then the caller can inspect its truthful result naming the selected successor and the session's last truthful runtime state
 ```
 
 #### UC-AH9: Remote handoff negotiates capability before dispatch
