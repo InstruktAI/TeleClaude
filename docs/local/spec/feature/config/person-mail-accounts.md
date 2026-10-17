@@ -38,37 +38,34 @@ silently becoming a mailbox an agent may act in.
 #### UC-CFG-MAIL-1: A person with no declared mail accounts is valid
 
 ```gherkin
-Given a person whose configuration declares no mail accounts
-When that configuration is loaded
-Then the person is accepted
-And the person is resolvable by their identity address
+Given an operator configures a person's identity without declaring a mailbox
+When the person is resolved
+Then they remain resolvable by their identity address
 ```
 
-#### UC-CFG-MAIL-2: A person declares several accounts across both connectors
+#### UC-CFG-MAIL-2: An operator configures a person's mail accounts
 
 ```gherkin
-Given a person whose configuration declares more than one mail account
-And those accounts name different connectors from the platform's vocabulary
-When that configuration is loaded
-Then every declared account is preserved with the connector and address it declared
+Scenario: Declare several supported accounts
+  Given an operator declares several mail accounts across the supported connectors
+  When the person's configuration is loaded
+  Then every account is preserved with its declared connector and address
+
+Scenario: Reject an unsupported connector
+  Given an operator declares a mail account using a connector outside the supported vocabulary
+  When the person's configuration is loaded
+  Then the declaration is rejected with the offending account named
 ```
 
 #### UC-CFG-MAIL-3: An account naming a connector outside the vocabulary is rejected
 
-```gherkin
-Given a person whose configuration declares a mail account naming a connector outside the platform's vocabulary
-When that configuration is loaded
-Then the configuration is rejected
-And the rejection identifies the offending account
-```
-
 #### UC-CFG-MAIL-4: The identity address is not a mail account by itself
 
 ```gherkin
-Given a person whose identity address does not appear among their declared mail accounts
-When that configuration is loaded
-Then the person's declared accounts do not include their identity address
-And the person remains resolvable by that identity address
+Given an operator configures a person's identity address without declaring it as a mail account
+When the person is resolved for identity
+Then the identity address identifies the person
+And it does not grant the assistant a mail account to act as
 ```
 
 ## Known caveats
