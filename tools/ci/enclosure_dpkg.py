@@ -518,7 +518,7 @@ def _container_members(raw: bytes, deadline: AdmittedDeadline) -> list[JsonValue
 def container_payload_basis(
     package: StaticPackage, inputs: Mapping[str, Path], query: NativeQuery, deadline: AdmittedDeadline
 ) -> JsonObject:
-    """Use the authenticated fixed archive and native read-only listing, without extracting or installing it."""
+    """Capture authenticated native member and Multi-Arch facts for the fixed container archive."""
     result: JsonObject = {"started_ns": time.monotonic_ns(), "finished_ns": None, "error": None}
     try:
         _before_cutoff(deadline)
@@ -543,6 +543,15 @@ def container_payload_basis(
         result["contents_sha256"] = hashlib.sha256(raw).hexdigest()
         members = _container_members(raw, deadline)
         result["members"] = members
+        field_argv = (DPKG_DEB, "--field", "--", str(archive), "Multi-Arch")
+        result["multi_arch_argv"] = list[JsonValue](field_argv)
+        # Native --field performs its own temporary control extraction/cleanup; no maintainer script is invoked.
+        field_raw = query_native(field_argv, query, deadline, cap)
+        result["multi_arch_stdout_base64"] = base64.b64encode(field_raw).decode("ascii")
+        multi_arch = field_raw.decode("ascii").removesuffix("\n")
+        if multi_arch not in ("no", "same", "allowed", "foreign"):
+            raise ValueError(ERROR_INPUT)
+        result["multi_arch"] = multi_arch
         result["effective_path_and_trigger_admission"] = "unproven"
         _before_cutoff(deadline)
         return result
@@ -939,14 +948,18 @@ def _activation_instances(
     deadline: AdmittedDeadline,
     captured: JsonObject,
 ) -> None:
+    processing = object_value(prior["processing"])
+    deletion = object_value(prior["interest_deletion"])
     entries = deferred["entries"]
-    activations = prior["activation_requests"]
+    activations = processing["activation_requests"]
     deferred_requests = captured["deferred_requests"]
     prior_requests = captured["prior_control_requests"]
     prior_deletions = captured["prior_interest_deletions"]
     if (
         deferred["error"] is not None
         or prior["error"] is not None
+        or processing["error"] is not None
+        or deletion["error"] is not None
         or not isinstance(entries, list)
         or not isinstance(activations, list)
         or not isinstance(deferred_requests, list)
@@ -1034,7 +1047,7 @@ def _activation_instances(
         )
         # The callback always runs once per actual directive invocation; this is no observed invocation count.
         match_interests(trigger, kind, candidates)
-    _prior_interest_deletions(prior, files, file_interests, deadline, prior_deletions)
+    _prior_interest_deletions(deletion, files, file_interests, deadline, prior_deletions)
 
 
 def _prior_interest_deletions(
@@ -1205,11 +1218,17 @@ def read_explicit_interests(
         result["native_state"] = deferred["native_state"]
         existing = _input_files(snapshot)
         entries = deferred["entries"]
-        directives = prior["directives"]
+        processing = object_value(prior["processing"])
+        deletion = object_value(prior["interest_deletion"])
+        activations = processing["activation_requests"]
+        directives = deletion["directives"]
         if (
             deferred["error"] is not None
             or prior["error"] is not None
+            or processing["error"] is not None
+            or deletion["error"] is not None
             or not isinstance(entries, list)
+            or not isinstance(activations, list)
             or not isinstance(directives, list)
         ):
             raise ValueError(ERROR_INPUT)
@@ -1249,15 +1268,14 @@ def read_explicit_interests(
             if not isinstance(entry["awaiters"], list):
                 raise ValueError(ERROR_INPUT)
             capture(entry, bool(entry["awaiters"]), "preexisting_deferred")
+        for value in activations:
+            # The early processing stage invokes activate callbacks, including noawait/NULL.
+            capture(object_value(value), True, "prior_container_control")
         for value in directives:
             directive = object_value(value)
-            # Both interest deletion and activate_awaiter(NULL) consume explicit bodies.
-            origin = (
-                "prior_container_interest_delete"
-                if text(directive, "directive").startswith("interest")
-                else "prior_container_control"
-            )
-            capture(directive, True, origin)
+            if text(directive, "directive").startswith("interest"):
+                # The later interest-deletion parse validates all directives but has no activate callback.
+                capture(directive, True, "prior_container_interest_delete")
         _before_cutoff(deadline)
         return result
     except (KeyError, OSError, ValueError, RuntimeError) as error:
@@ -1552,7 +1570,8 @@ def collect_container_routes(
         result["archive_basis"] = basis
         routes = interpret_trigger_routes(inputs, basis, deadline)
         result["routes"] = routes
-        prior = object_value(initial["container_prior_control"])
+        prior = container_control_stages(object_value(initial["container_prior_control"]), basis, deadline)
+        result["container_control_stages"] = prior
         lookups = read_explicit_interests(inputs, deferred, prior, deadline)
         result["explicit_lookups"] = lookups
         explicit = parse_explicit_interests(lookups, deadline)
@@ -1713,14 +1732,7 @@ def inspect_container_prior_control(package: StaticPackage, work: JsonObject, de
         result["old_multi_arch"] = old_multiarch
         # archivefiles upgrades the native info format before process_archive reads this old control.
         name = f"{CONTAINER_PACKAGE}:{architecture}" if old_multiarch == "same" else CONTAINER_PACKAGE
-        _file(Path("/var/lib/dpkg/info") / f"{name}.triggers", deadline, files)
-        data = _input_bytes(object_value(files[0]))
-        directives: list[JsonValue] = []
-        activations: list[JsonValue] = []
-        result["directives"] = directives
-        result["activation_requests"] = activations
-        _trigger_control(data, deadline, directives, activations)
-        result["state"] = "old_trigger_control_absent" if data is None else "old_trigger_control_parsed"
+        _capture_container_control(Path("/var/lib/dpkg/info") / f"{name}.triggers", deadline, result)
         # ensure_packagefiles_available deliberately blanks old .list data at PKG_STAT_NOTINSTALLED.
         result["old_file_list_behavior"] = "native_not_installed_blank"
         _before_cutoff(deadline)
@@ -1728,6 +1740,53 @@ def inspect_container_prior_control(package: StaticPackage, work: JsonObject, de
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError({"package_work": work, "container_prior_control": result}) from error
+
+
+def _capture_container_control(path: Path, deadline: AdmittedDeadline, result: JsonObject) -> None:
+    files = result["files"]
+    if not isinstance(files, list):
+        raise ValueError(ERROR_INPUT)
+    _file(path, deadline, files)
+    data = _input_bytes(object_value(files[0]))
+    directives: list[JsonValue] = []
+    activations: list[JsonValue] = []
+    result["directives"] = directives
+    result["activation_requests"] = activations
+    _trigger_control(data, deadline, directives, activations)
+    result["state"] = "old_trigger_control_absent" if data is None else "old_trigger_control_parsed"
+
+
+def container_control_stages(prior: JsonObject, basis: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Capture distinct native pre-update processing and post-Multi-Arch interest-deletion inputs."""
+    result: JsonObject = {"processing": prior, "stage_effect_admission": "unproven", "error": None}
+    try:
+        _before_cutoff(deadline)
+        if prior["error"] is not None or basis["error"] is not None:
+            raise ValueError(ERROR_INPUT)
+        architecture = text(prior, "selected_architecture")
+        multi_arch = text(basis, "multi_arch")
+        if multi_arch not in ("no", "same", "allowed", "foreign"):
+            raise ValueError(ERROR_INPUT)
+        # For a not-installed package, process_archive copies available.multiarch before the later old-interest parse.
+        name = f"{CONTAINER_PACKAGE}:{architecture}" if multi_arch == "same" else CONTAINER_PACKAGE
+        path = Path("/var/lib/dpkg/info") / f"{name}.triggers"
+        files = prior["files"]
+        if not isinstance(files, list) or len(files) != 1:
+            raise ValueError(ERROR_INPUT)
+        same = text(object_value(files[0]), "path") == str(path)
+        result["same_address"] = same
+        result["new_multi_arch"] = multi_arch
+        if same:
+            result["interest_deletion"] = prior  # Reuse capture-point bytes; no later-source continuity is claimed.
+        else:
+            later: JsonObject = {"selected_architecture": architecture, "files": [], "state": "unproven", "error": None}
+            result["interest_deletion"] = later
+            _capture_container_control(path, deadline, later)
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"archive_basis": basis, "container_control_stages": result}) from error
 
 
 def _trigger_control(
