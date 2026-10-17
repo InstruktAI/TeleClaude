@@ -117,6 +117,9 @@ PACKAGE_STATES: Final = frozenset(
 ACTIVATION_STATES: Final = frozenset({"triggers-awaited", "triggers-pending", "installed"})
 PACKAGE_WANTS: Final = frozenset({"unknown", "install", "hold", "deinstall", "purge"})
 PACKAGE_ERRORS: Final = frozenset({"ok", "reinstreq"})
+DEFERRED_LINE_SIZE: Final = 2048  # Native _POSIX2_LINE_MAX on the reviewed glibc substrate.
+VISIBLE_TRIGGER: Final = re.compile(rb"[\x21-\x7e]+")
+DEFERRED_PACKAGE: Final = re.compile(rb"[a-z0-9-][a-z0-9:+.-]*")
 
 
 class DpkgInputError(RuntimeError):
@@ -580,17 +583,24 @@ def bind_dbus_control_sources(snapshot: JsonObject, package: StaticPackage, dead
         raise DpkgInputError({"inputs": snapshot, "sources": result}) from error
 
 
+def _checked_metadata_line(stream: io.BytesIO, buffer_size: int, deadline: AdmittedDeadline) -> bytes | None:
+    _before_cutoff(deadline)
+    chunk = stream.readline(buffer_size - 1)
+    if not chunk:
+        return None
+    # Native fgets_checked, unlike config fgets, requires a terminating newline and a nonempty C string.
+    if not chunk.endswith(b"\n") or b"\x00" in chunk:
+        raise ValueError(ERROR_INPUT)
+    return chunk[:-1]
+
+
 def _metadata_lines(data: bytes | None, deadline: AdmittedDeadline) -> list[bytes]:
     lines: list[bytes] = []
     if data is None:
         return lines
     with io.BytesIO(data) as stream:
-        while chunk := stream.readline(1023):
-            _before_cutoff(deadline)
-            # Native fgets_checked(bufsz=1024), unlike config fgets, requires a terminating newline.
-            if not chunk.endswith(b"\n") or b"\x00" in chunk:
-                raise ValueError(ERROR_INPUT)
-            lines.append(chunk[:-1])
+        while (line := _checked_metadata_line(stream, 1024, deadline)) is not None:
+            lines.append(line)
     return lines
 
 
@@ -833,3 +843,97 @@ def interpret_registered_instances(
         raise DpkgInputError(
             {"routes": routes, "inventory_base64": host.inventory_base64, "instances": result}
         ) from error
+
+
+def _deferred_kind(trigger: bytes) -> str:
+    if trigger.startswith(b"/"):
+        slash = 0
+        while slash >= 0:
+            if slash + 1 == len(trigger) or trigger[slash + 1 : slash + 2] == b"/":
+                return "unknown"
+            slash = trigger.find(b"/", slash + 2)
+        return "file"
+    if PACKAGE_NAME.fullmatch(trigger.decode("ascii")) is not None and b"_" not in trigger:
+        return "explicit"
+    # Native unknown activation callbacks are no-ops; this does not validate or ignore their awaiter identities.
+    return "unknown"
+
+
+def _deferred_entry(line: bytes, number: int, entries: list[JsonValue], deadline: AdmittedDeadline) -> None:
+    start = len(line) - len(line.lstrip(b" \t"))
+    if start == len(line) or line[start : start + 1] == b"#":
+        return
+    match = VISIBLE_TRIGGER.match(line, start)
+    if match is None or match.end() == len(line):
+        raise ValueError(ERROR_INPUT)
+    trigger = match.group()
+    position = match.end() + 1  # Native parser consumes exactly one separator after the visible trigger.
+    awaiters: list[JsonValue] = []
+    entries.append(
+        {
+            "native_line": number,
+            "trigger_base64": base64.b64encode(trigger).decode("ascii"),
+            "kind": _deferred_kind(trigger),
+            "awaiters": awaiters,
+        }
+    )
+    while position < len(line):
+        _before_cutoff(deadline)
+        while position < len(line) and line[position : position + 1] in (b" ", b"\t"):
+            position += 1
+        match = DEFERRED_PACKAGE.match(line, position)
+        if match is None:
+            raise ValueError(ERROR_INPUT)
+        package = match.group()
+        end = match.end()
+        if (end < len(line) and line[end : end + 1] not in (b"#", b" ", b"\t")) or (
+            package.startswith(b"-") and package != b"-"
+        ):
+            raise ValueError(ERROR_INPUT)
+        awaiters.append(
+            {
+                "package_spec_base64": base64.b64encode(package).decode("ascii"),
+                "null_awaiter": package == b"-",
+                "package_identity": "unproven" if package != b"-" else "none",
+            }
+        )
+        position = end + 1
+
+
+def parse_deferred_inputs(snapshot: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Preserve actual deferred grammar and native default states; recipient/pending/source attribution remains owed."""
+    entries: list[JsonValue] = []
+    result: JsonObject = {
+        "entries": entries,
+        "native_state": "unproven",
+        "stopped_at_empty_line": False,
+        "recipient_and_pending_attribution": "unproven",
+        "error": None,
+    }
+    try:
+        _before_cutoff(deadline)
+        files = _input_files(snapshot)
+        row = files["/var/lib/dpkg/triggers/Unincorp"]
+        data = _input_bytes(row)
+        result["present"] = row["present"]
+        if data is None:
+            # Package actions install a transitional hook; absence is not the existing empty-file state.
+            result["native_state"] = "absent_native_initialization"
+        elif not data:
+            result["native_state"] = "empty_no_deferred_work"
+        else:
+            result["native_state"] = "deferred_records"
+            with io.BytesIO(data) as stream:
+                number = 0
+                while (line := _checked_metadata_line(stream, DEFERRED_LINE_SIZE, deadline)) is not None:
+                    # trigdef_parse's >0 loop terminates at a physically empty line, before later input.
+                    if not line:
+                        result["stopped_at_empty_line"] = True
+                        break
+                    number += 1
+                    _deferred_entry(line, number, entries, deadline)
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"inputs": snapshot, "deferred": result}) from error
