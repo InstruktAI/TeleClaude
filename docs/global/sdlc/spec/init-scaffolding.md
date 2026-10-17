@@ -21,16 +21,21 @@ Analysis dimensions map to taxonomy types as guidance. The analysis session
 decides which snippets to produce based on what it finds — this mapping is not
 a fixed checklist.
 
-| Analysis Dimension                             | Taxonomy Type | Snippet ID Pattern                                               |
-| ---------------------------------------------- | ------------- | ---------------------------------------------------------------- |
-| Bounded context contract                       | `spec`        | `local/projects/{project}/spec/domain/{context}`                 |
-| User-visible product capability                | `spec`        | `local/projects/{project}/spec/feature/{context}/{concept-name}` |
-| Architecture patterns, module organization     | `design`      | `local/projects/{project}/design/{slug}`                         |
-| Naming conventions, code style, error handling | `policy`      | `local/projects/{project}/policy/{slug}`                         |
-| Dependency inventory, entry points, config     | `spec`        | `local/projects/{project}/spec/{slug}`                           |
-| Test strategy, coverage model                  | `design`      | `local/projects/{project}/design/{slug}`                         |
-| Build/deploy pipeline                          | `spec`        | `local/projects/{project}/spec/{slug}`                           |
-| Operational procedures                         | `procedure`   | `local/projects/{project}/procedure/{slug}`                      |
+Feature-contract and use-case admission follow
+`sdlc/principle/documentation-first-development` and
+`sdlc/procedure/feature-spec-authoring`; this mapping supplies placement, not a
+separate classification or a requirement to add Gherkin.
+
+| Analysis Dimension                                 | Taxonomy Type | Snippet ID Pattern                                               |
+| -------------------------------------------------- | ------------- | ---------------------------------------------------------------- |
+| Bounded context contract                           | `spec`        | `local/projects/{project}/spec/domain/{context}`                 |
+| Behavioral capability requiring a feature contract | `spec`        | `local/projects/{project}/spec/feature/{context}/{concept-name}` |
+| Architecture patterns, module organization         | `design`      | `local/projects/{project}/design/{slug}`                         |
+| Naming conventions, code style, error handling     | `policy`      | `local/projects/{project}/policy/{slug}`                         |
+| Dependency inventory, entry points, config         | `spec`        | `local/projects/{project}/spec/{slug}`                           |
+| Test strategy, coverage model                      | `design`      | `local/projects/{project}/design/{slug}`                         |
+| Build/deploy pipeline                              | `spec`        | `local/projects/{project}/spec/{slug}`                           |
+| Operational procedures                             | `procedure`   | `local/projects/{project}/procedure/{slug}`                      |
 
 ### Snippet ID Conventions
 
@@ -38,7 +43,7 @@ Generated snippet IDs follow these supported shapes:
 
 - `local/projects/{project}/{taxonomy}/{slug}` for flat project snippets.
 - `local/projects/{project}/spec/domain/{context}` for bounded-context domain specs.
-- `local/projects/{project}/spec/feature/{context}/{concept-name}` for Category A feature specs.
+- `local/projects/{project}/spec/feature/{context}/{concept-name}` for feature specs admitted under the classification above.
 
 Where:
 
