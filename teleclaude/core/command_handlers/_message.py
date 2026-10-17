@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, NotRequired, TypedDict
@@ -43,7 +43,6 @@ from teleclaude.core.injected_text import (
     identity_content_envelope,
     scan_injected_envelopes,
     semantic_envelope,
-    visible_input_update,
     wake_occurrence_key,
 )
 from teleclaude.core.interactive_procedure_input import resolve_interactive_input
@@ -60,7 +59,6 @@ from teleclaude.core.runtime_readiness import RuntimeReadiness, RuntimeReadiness
 from teleclaude.core.session_cleanup import is_legacy_restricted_session
 from teleclaude.core.session_compaction import session_compaction_owner
 from teleclaude.core.session_idle_compaction import live_idle_close
-from teleclaude.core.session_listeners import record_startup_work_accepted
 from teleclaude.core.session_revival import revive_session
 from teleclaude.core.session_runtime_gate import (
     clear_relaunch_awaiting_readiness,
@@ -72,6 +70,7 @@ from teleclaude.paths import REPO_ROOT
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
 from ._delivery_notices import notify_delivery_exhausted as notify_delivery_exhausted
+from ._message_acceptance import record_accepted_input_metadata
 from ._message_delivery import inject_inbound_text
 from ._utils import STARTUP_GATE_POLL_INTERVAL_S, STARTUP_GATE_TIMEOUT_S, StartPollingFunc
 
@@ -282,31 +281,6 @@ def _decode_inbound_command_input(row: InboundQueueRow) -> _InboundCommandInput 
     return {"source_text": source_text, "command": command, "args": args}
 
 
-async def _record_accepted_input_metadata(
-    *,
-    session_id: str,
-    origin: str,
-    message_text: str,
-    origin_metadata: Mapping[str, object] | None,
-    command_input: _InboundCommandInput | None,
-    caller_session_id: str | None,
-) -> None:
-    """Persist the accepted-input fields owned by the core acceptance boundary."""
-    await db.update_session(
-        session_id,
-        last_message_sent=message_text[:200],
-        **visible_input_update(
-            message_text,
-            visible_source_text=(command_input["source_text"] if command_input else None),
-        ),
-        last_message_sent_at=datetime.now(UTC).isoformat(),
-        last_input_origin=origin,
-    )
-    if origin_metadata:
-        await db.update_origin_metadata(session_id, origin, dict(origin_metadata))
-    await record_startup_work_accepted(session_id, caller_session_id)
-
-
 def _accepted_input_fields_match(session: Session, *, origin: str, message_text: str) -> bool:
     """Return whether session state already represents this accepted input."""
     return (
@@ -341,12 +315,12 @@ async def _ensure_inbound_acceptance_metadata(
     message_text = row["content"]
 
     if not _accepted_input_fields_match(session, origin=origin, message_text=message_text):
-        await _record_accepted_input_metadata(
+        await record_accepted_input_metadata(
             session_id=session_id,
             origin=origin,
             message_text=message_text,
             origin_metadata=origin_metadata,
-            command_input=command_input,
+            visible_source_text=(command_input["source_text"] if command_input else None),
             caller_session_id=row.get("caller_session_id"),
         )
         return
@@ -943,12 +917,12 @@ async def accept_inbound_message(
         command_input = {"source_text": cmd.text, "command": inline.procedure_id, "args": inline.arguments}
 
     async def _record_after_insert(_row_id: int) -> None:
-        await _record_accepted_input_metadata(
+        await record_accepted_input_metadata(
             session_id=session_id,
             origin=origin,
             message_text=content,
             origin_metadata=cmd.origin_metadata,
-            command_input=command_input,
+            visible_source_text=(command_input["source_text"] if command_input else None),
             caller_session_id=cmd.caller_session_id,
         )
         await db.record_procedure_event_wake_acceptance(

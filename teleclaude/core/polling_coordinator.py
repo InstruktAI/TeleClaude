@@ -289,8 +289,7 @@ def _stored_preview_matches(session: "Session", text: str, *, require_stored: bo
 def _fresh_visible_input_matches(session: "Session", text: str) -> bool:
     """Return whether this turn matches a visible input accepted after the watermark."""
     visible = visible_input_preview(text)
-    stored = (session.last_input or "").strip()
-    if not visible or visible != stored:
+    if visible is None or visible != session.last_input:
         return False
     accepted_at = _as_utc(session.last_input_written_at)
     projected_at = _as_utc(session.last_projected_at)
