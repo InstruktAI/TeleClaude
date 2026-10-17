@@ -134,24 +134,24 @@ And every row carries the full project path, an agent name, and a UTC timestamp 
 And a matched snippet is rendered on one line, with newlines replaced by spaces
 ```
 
-#### UC-HCS-11: Identity and project filters, inherited from the retired listing verb
+#### UC-HCS-11: An operator finds past conversations for an identity or project
 
-```
-Given a search filtered by an identity
-When the search executes
-Then a mirror is eligible when the identity matches its human_email or its source identity
-And that two-sided match is inherited unchanged from the retired listing filter, so a caller can name a person or a transcript identity
-And the filter composes with the free-text terms rather than replacing them
-And the caller's role band still applies, so the filter cannot widen what the caller may see
+```gherkin
+Scenario Outline: Find conversations within an identity or project
+  Given an operator wants to find stored conversations for <scope>
+  When the operator searches history with <selector> and <terms>
+  Then the results include only <matching mirrors>
+  And the caller's role band still limits which mirrors are returned
+  And the selector composes with any free-text terms
+  And when no terms are supplied, the selector alone returns results in recency order
 
-Given a search filtered by a project
-When the search executes
-Then only mirrors recorded against that project are eligible
-And the project is matched against the resolved repository, not a path fragment
-
-Given a search supplies a filter and no terms
-When the search executes
-Then the filter alone selects the eligible mirrors, ordered by recency
+  Examples:
+    | scope                | selector       | terms       | matching mirrors                                                                     |
+    | a person             | an identity    | "invoice"  | whose human_email or source identity matches                                        |
+    | a transcript identity| an identity    | "invoice"  | whose human_email or source identity matches                                        |
+    | a project            | a project      | "invoice"  | recorded against the resolved repository, not a path fragment                      |
+    | a person             | an identity    | no terms    | whose human_email or source identity matches                                        |
+    | a project            | a project      | no terms    | recorded against the resolved repository, not a path fragment                      |
 ```
 
 #### UC-HCS-9: Excluded worker matches are reported, not silently dropped
