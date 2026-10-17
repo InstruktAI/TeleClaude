@@ -33,15 +33,6 @@ remain with their owning contracts (`general/principle/trust-and-guardrails`).
 
 #### UC-CCRD1: Platform authority without a system role
 
-```gherkin
-Given a caller whose resolved principal is system:daemon
-And its resolved system role is absent
-When it invokes a declared command
-Then command clearance admits the caller without a person-role substitute
-And when a system role is present its existing command restrictions apply
-And a caller with neither the platform principal nor an admitted role is refused
-```
-
 ### Use cases
 
 ```
