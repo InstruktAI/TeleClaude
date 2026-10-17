@@ -1077,8 +1077,8 @@ def _prior_interest_deletions(
                 "drop_same_instance_and_normalize_remaining_qualifiers_or_remove_empty_file"
             )
         else:
-            change["native_metadata_effect"] = "native_unknown_kind_noop"
-            continue
+            change["native_metadata_effect"] = "native_invalid_interest_fatal"
+            raise ValueError("native interest deletion rejects the captured unknown trigger kind")
         for source_value in source:
             _before_cutoff(deadline)
             registration = object_value(source_value)
