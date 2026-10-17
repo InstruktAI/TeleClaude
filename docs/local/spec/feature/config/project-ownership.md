@@ -81,7 +81,7 @@ Then the project remains ownerless and composes no company configuration
 ```gherkin
 Given an operator declares both a company and a person as one project's owner
 When the project configuration is loaded
-Then the conflicting declaration is rejected
+Then the conflicting declaration is rejected with a diagnostic naming both owner fields
 And neither owner is selected
 ```
 
