@@ -35,9 +35,11 @@ A type pattern is one of:
   that starts with that prefix and has at least one more segment;
 - `*`, which matches every type.
 
-A pattern in any other form is refused where it is declared. Every context that
-lets an author select events by type pattern matches with this one matcher, so a
-pattern means the same wherever it is written.
+A pattern in any other form is refused where it is declared, and the refusal
+names the invalid pattern so its author can correct the declaration
+(`general/policy/agent-facing-text`). Every context that lets an author select
+events by type pattern matches with this one matcher, so a pattern means the
+same wherever it is written.
 
 The platform hands a consumer each event it is interested in once. A stream
 entry delivered again, or an occurrence re-emitted with the same id, is not
@@ -91,128 +93,25 @@ relationship is defined by
 
 #### UC-EC1: One consumer's failure does not hold back another
 
-```gherkin
-Given two consumers on a computer are both interested in an event type
-And one of them fails while handling an event of that type
-When the event reaches that computer
-Then the other consumer handles the event once, without waiting for the failing one
-And the failing consumer's retries do not hand the event to the other consumer again
-```
-
 #### UC-EC2: A repeated event is handed to a consumer once
-
-```gherkin
-Scenario Outline: The platform recognizes a repeat by the event's id
-  Given a consumer has handled an event
-  When <repeat>
-  Then the consumer is not handed the event again
-
-  Examples:
-    | repeat                                                          |
-    | the stream delivers the same entry again                        |
-    | the producer emits the same occurrence again with the same id   |
-```
 
 #### UC-EC3: Interrupted handling is handed again
 
-```gherkin
-Given a consumer is handling an event
-When its handling is interrupted before it completes, such as by a daemon restart
-Then the consumer is handed the event again when it next runs
-```
-
 #### UC-EC4: A consumer that acts on its own computer's events ignores the rest
-
-```gherkin
-Given a consumer declares that it acts only on events its own computer emitted
-When an event of a type it handles reaches that computer
-Then it handles the event when the event's source is that computer
-And it passes the event over when the event's source is another computer
-```
 
 #### UC-EC5: Type patterns select at whole-segment boundaries
 
-```gherkin
-Scenario Outline: A pattern matches whole segments only
-  Given a consumer declares interest in the type pattern "<pattern>"
-  When an event of type "<type>" reaches it
-  Then the consumer <outcome>
-
-  Examples:
-    | pattern          | type                          | outcome          |
-    | erp.invoice.paid | erp.invoice.paid              | handles it       |
-    | erp.invoice.*    | erp.invoice.paid              | handles it       |
-    | erp.invoice.*    | erp.invoice.overdue.reminded  | handles it       |
-    | erp.invoice.*    | erp.invoices.paid             | passes it over   |
-    | erp.invoice.*    | erp.invoice                   | passes it over   |
-    | erp.*            | erp.invoice.paid              | handles it       |
-    | *                | teleclaude.session.ended      | handles it       |
-```
-
 #### UC-EC6: A malformed pattern is refused where it is declared
-
-```gherkin
-Scenario Outline: Only exact names, whole-segment prefixes and the bare wildcard are patterns
-  Given an author declares the type pattern "<pattern>"
-  When the declaration is validated
-  Then it is refused with a reason naming the pattern
-
-  Examples:
-    | pattern         |
-    | erp.inv*        |
-    | erp.*.paid      |
-    | *.paid          |
-```
 
 #### UC-EC7: Selection reads only event attributes
 
-```gherkin
-Given a consumer declares interest by type pattern, source, and subject or origin kind
-When an event reaches it
-Then whether it is handed the event depends only on the event's type, source and origin, and subject
-And the event's data is never read before the event is handed to the consumer
-```
-
 #### UC-EC8: An event that keeps failing is parked and announced
-
-```gherkin
-Given a consumer fails to handle an event on every attempt
-When the platform's retry limit is reached
-Then the event is parked as that consumer's dead letter, where an agent can inspect it
-And the platform emits an event naming the consumer and the parked event
-And the consumer goes on to handle the events after it
-```
 
 #### UC-EC9: A consumer that was down catches up
 
-```gherkin
-Given a consumer is not running while events it is interested in are emitted
-When it runs again while the stream still retains those events
-Then it handles each of them once, in stream order
-```
-
 #### UC-EC10: A new consumer starts from the present
 
-```gherkin
-Given events were emitted before a consumer first ran on a computer
-When the consumer first runs there
-Then it handles only events emitted from then on
-```
-
 #### UC-EC11: A workflow reaction is not lost when notification fails
-
-```gherkin
-Scenario Outline: The platform's own reactions do not depend on notification
-  Given an event emitted on a computer calls for <reaction>
-  And telling people about that event fails on that computer
-  When the event is processed there
-  Then <reaction> happens once on that computer
-
-  Examples:
-    | reaction                                      |
-    | the lifecycle runner being woken              |
-    | the integrator being spawned                  |
-```
 
 #### UC-EC12: Each computer correlates its own failures
 
