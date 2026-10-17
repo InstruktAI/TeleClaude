@@ -37,9 +37,11 @@ from tools.ci.workflow_flow import (
     B6_ACTIONS,
     B7_ACTIONS,
     ITEM,
+    MESSAGE_STARTS,
     PROC_WORK,
     ROLE_WORK,
     declared_chain,
+    message_key,
     procedure_key,
 )
 from tools.ci.workflow_ledger import (
@@ -315,7 +317,164 @@ def _public_closed(record: Mapping[str, object], session_id: str) -> bool:
     )
 
 
-def _session_end_proof(proof: JsonObject, created: int, public_finished: int) -> tuple[str, str]:
+def _message_start_ack(report: JsonObject, packet: JsonObject, message: str, session_id: str) -> None:
+    provisional = object_value(report["payload_provisional"])
+    root = text(object_value(provisional["observations"]), "owned_profile_root")
+    project = text(packet, "project_path")
+    if not project.startswith(root.rstrip("/") + "/"):
+        raise ValueError(ERROR_REPORT)
+    argv = [
+        foundation.TELEC,
+        "sessions",
+        "start",
+        "--path",
+        project,
+        "--agent",
+        "claude",
+        "--mode",
+        "fast",
+        "--message",
+        message,
+    ]
+    record = _public_session_command(packet["public_start"], argv)
+    if record.get("status") != "success" or record.get("session_id") != session_id or record.get("agent") != "claude":
+        raise ValueError(ERROR_REPORT)
+    tmux = record.get("tmux_session_name")
+    if not isinstance(tmux, str) or not tmux:
+        raise ValueError(ERROR_REPORT)
+
+
+def _message_hooks(packet: JsonObject, native: str, message: str) -> None:
+    hooks = object_value(packet["hooks"])
+    if set(hooks) != {"session_start", "prompt_submit"}:
+        raise ValueError(ERROR_REPORT)
+    for name, event in (("session_start", "SessionStart"), ("prompt_submit", "UserPromptSubmit")):
+        frame = object_value(hooks[name])
+        runs = frame["runs"]
+        if (
+            frame.get("event") != event
+            or frame.get("native_session_id") != native
+            or frame.get("registered") is not True
+            or not isinstance(runs, list)
+            or not runs
+        ):
+            raise ValueError(ERROR_REPORT)
+        for value in runs:
+            run = object_value(value)
+            if type(run.get("exit_status")) is not int or run["exit_status"] != 0 or run.get("timed_out") is True:
+                raise ValueError(ERROR_REPORT)
+    inputs = packet["inputs"]
+    if not isinstance(inputs, list) or not inputs:
+        raise ValueError(ERROR_REPORT)
+    first = object_value(inputs[0])
+    if first.get("text") != message or first.get("hook_started") is not True:
+        raise ValueError(ERROR_REPORT)
+
+
+def _message_record(
+    report: JsonObject, packet: JsonObject, attempt: Attempt, created: int, public_finished: int
+) -> str:
+    if (
+        set(packet)
+        != {
+            "attempt_id",
+            "started_ns",
+            "observed_ns",
+            "session_id",
+            "mapped_session_id",
+            "project_path",
+            "baseline_ids",
+            "current_ids",
+            "public_record",
+            "public_start",
+            "launch_record",
+            "hooks",
+            "inputs",
+        }
+        or not created
+        <= positive_integer(packet, "started_ns")
+        <= positive_integer(packet, "observed_ns")
+        <= public_finished
+    ):
+        raise ValueError(ERROR_REPORT)
+    session_id = text(packet, "session_id")
+    message = MESSAGE_STARTS[attempt.label]
+    if attempt.session_id != session_id or packet["mapped_session_id"] != session_id:
+        raise ValueError(ERROR_REPORT)
+    baseline = _identity_list(packet["baseline_ids"])
+    current = _identity_list(packet["current_ids"])
+    if session_id not in set(current) - set(baseline):
+        raise ValueError(ERROR_REPORT)
+    record = object_value(packet["public_record"])
+    launch = object_value(packet["launch_record"])
+    native = text(record, "native_session_id")
+    if (
+        record.get("session_id") != session_id
+        or record.get("project_path") != packet["project_path"]
+        or record.get("role") is not None
+        or record.get("job") is not None
+        or record.get("initiator_session_id") is not None
+        or record.get("active_agent") != "claude"
+        or record.get("lifecycle_status") != "active"
+        or record.get("runtime_start_observed") is not True
+        or record.get("closed_at") is not None
+        or launch.get("native_session_id") != native
+        or launch.get("key_kind") != "message"
+        or launch.get("key") != message_key(message)
+        or type(launch.get("index")) is not int
+        or launch["index"] != 1
+        or launch.get("first_line") != message
+    ):
+        raise ValueError(ERROR_REPORT)
+    _message_start_ack(report, packet, message, session_id)
+    _message_hooks(packet, native, message)
+    return native
+
+
+def _message_bindings(
+    report: JsonObject, finalizer: JsonObject, cases: tuple[str, ...], created: int, public_finished: int
+) -> dict[str, str]:
+    values = finalizer["public_message_evidence"]
+    if not isinstance(values, list):
+        raise ValueError(ERROR_REPORT)
+    if "B7" not in cases:
+        if values:
+            raise ValueError(ERROR_REPORT)
+        return {}
+    snapshot = _declared_snapshot(finalizer["start_ledger_after_closure"], cases)
+    if snapshot.ledger is None:
+        raise ValueError(ERROR_REPORT)
+    attempts = [
+        attempt
+        for attempt in snapshot.ledger.attempts.values()
+        if attempt.case == "B7" and attempt.label in MESSAGE_STARTS
+    ]
+    if (
+        len(attempts) != 2
+        or {attempt.label for attempt in attempts} != set(MESSAGE_STARTS)
+        or any(attempt.kind != RECORD_SESSION or attempt.state != RECORD_DISCHARGED for attempt in attempts)
+        or len(values) != 2
+    ):
+        raise ValueError(ERROR_REPORT)
+    expected = {attempt.identifier: attempt for attempt in attempts}
+    seen: set[str] = set()
+    bindings: dict[str, str] = {}
+    for value in values:
+        packet = object_value(value)
+        identifier = text(packet, "attempt_id")
+        session_id = text(packet, "session_id")
+        if identifier not in expected or identifier in seen or session_id in bindings:
+            raise ValueError(ERROR_REPORT)
+        bindings[session_id] = _message_record(report, packet, expected[identifier], created, public_finished)
+        seen.add(identifier)
+    if len(set(bindings.values())) != len(bindings):
+        raise ValueError(ERROR_REPORT)
+    return bindings
+
+
+def _session_end_proof(
+    proof: JsonObject, created: int, public_finished: int, messages: dict[str, str]
+) -> tuple[str, str]:
     if set(proof) != {"session_id", "started_ns", "finished_ns", "reads", "end_command", "operation", "error"}:
         raise ValueError(ERROR_REPORT)
     session_id = text(proof, "session_id")
@@ -334,7 +493,17 @@ def _session_end_proof(proof: JsonObject, created: int, public_finished: int) ->
     if any(record.get("session_id") != session_id for record in records) or not _public_closed(records[-1], session_id):
         raise ValueError(ERROR_REPORT)
     role = records[-1].get("role")
-    if not isinstance(role, str) or not role or role == "unknown":
+    if session_id in messages:
+        if any(
+            record.get("role") is not None
+            or record.get("job") is not None
+            or record.get("initiator_session_id") is not None
+            or record.get("native_session_id") != messages[session_id]
+            for record in records
+        ):
+            raise ValueError(ERROR_REPORT)
+        role = "roleless"
+    elif not isinstance(role, str) or not role or role == "unknown":
         raise ValueError(ERROR_REPORT)
     end = proof["end_command"]
     operation = proof["operation"]
@@ -377,6 +546,7 @@ def validate_flow_session_closure(report: JsonObject) -> JsonObject:
             "sessions",
             "owned_session_ids",
             "public_session_end_evidence",
+            "public_message_evidence",
             "start_ledger_before_closure",
             "start_ledger_after_closure",
         }
@@ -396,9 +566,10 @@ def validate_flow_session_closure(report: JsonObject) -> JsonObject:
         raise ValueError(ERROR_REPORT)
     public_finished = positive_integer(object_value(observations["inner_cleanup"]), "public_cleanup_finished_ns")
     created = positive_integer(binding, "created_ns")
+    messages = _message_bindings(report, finalizer, cases, created, public_finished)
     observed: dict[str, str] = {}
     for value in proofs:
-        session_id, role = _session_end_proof(object_value(value), created, public_finished)
+        session_id, role = _session_end_proof(object_value(value), created, public_finished, messages)
         if session_id not in owned or (session_id in observed and observed[session_id] != role):
             raise ValueError(ERROR_REPORT)
         observed[session_id] = role
@@ -421,6 +592,7 @@ def validate_flow_session_closure(report: JsonObject) -> JsonObject:
         "state": "public_closed",
         "session_ids": list(owned),
         "end_evidence_count": len(proofs),
+        "message_sessions": {session: native for session, native in messages.items()},
     }
 
 

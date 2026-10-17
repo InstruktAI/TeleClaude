@@ -412,6 +412,7 @@ class Journey:
         self.owner_email = owner_email
         self.message = message if message is not None else f"{MESSAGE_PREFIX}{uuid.uuid4().hex[:MESSAGE_SUFFIX_LENGTH]}"
         self.session_id = ""
+        self.start_evidence: tuple[tuple[str, ...], Outcome] | None = None
 
     def _reset_control(self) -> None:
         for name in (CASE_START_FILE, RELEASE_FILE, COMPOSER_FILE, BARRIER_FILE, LAUNCH_FILE, INPUT_LOG_FILE):
@@ -441,26 +442,26 @@ class Journey:
 
     def start_session(self, *, case_start_file: bool = True) -> float:
         """Step 2: a public start; its acknowledgement is not startup. Returns the case-start reading."""
+        self.start_evidence = None
         self._reset_control()
         case_start = time.monotonic()
         if case_start_file:
             (self.setup.control / CASE_START_FILE).write_text(f"{case_start!r}\n", encoding="utf-8")
-        outcome = self.host.cli(
-            (
-                TELEC,
-                SESSIONS,
-                START,
-                PATH_OPTION,
-                str(self.project),
-                AGENT_OPTION,
-                AGENT_NAME,
-                MODE_OPTION,
-                FAST_MODE,
-                MESSAGE_OPTION,
-                self.message,
-            ),
-            CLI_TIMEOUT_SECONDS,
+        argv = (
+            TELEC,
+            SESSIONS,
+            START,
+            PATH_OPTION,
+            str(self.project),
+            AGENT_OPTION,
+            AGENT_NAME,
+            MODE_OPTION,
+            FAST_MODE,
+            MESSAGE_OPTION,
+            self.message,
         )
+        outcome = self.host.cli(argv, CLI_TIMEOUT_SECONDS)
+        self.start_evidence = (argv, outcome)
         result = json_object(outcome.output)
         valid = (
             outcome.exit_status == 0

@@ -59,8 +59,8 @@ CLAUDE: Final = "claude"
 FAST: Final = "fast"
 RUNNING_EARLIER_FIELD: Final = "standing.running_sessions_of_earlier_claims"
 EARLIER_DOOR_FIELD: Final = "standing.door"
-MSG_ONE: Final = "b7 session one"
-MSG_TWO: Final = "b7 session two"
+MSG_ONE: Final = flow_module.MESSAGE_STARTS["session-S_R"]
+MSG_TWO: Final = flow_module.MESSAGE_STARTS["session-S2"]
 REASON_ONE: Final = "b7 reason one"
 REASON_TWO: Final = "b7 reason two"
 FINDING_DOOR: Final = "is ready, which"
@@ -77,22 +77,50 @@ DETAIL_NOTE: Final = "the public reason note is missing, duplicated or misattrib
 
 def _start_roleless(flow: flow_module.WorkflowFlow, baseline: creation.SessionView, message: str, label: str) -> str:
     attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B7, label, start_ledger.RECORD_SESSION)
+    hooks: flow_module.MutableJson = {}
+    evidence: flow_module.MutableJson = {
+        "attempt_id": attempt,
+        "started_ns": time.monotonic_ns(),
+        "observed_ns": None,
+        "session_id": None,
+        "mapped_session_id": None,
+        "project_path": str(flow.project),
+        "baseline_ids": list[flow_module.JsonValue](sorted(baseline.ids)),
+        "current_ids": None,
+        "public_record": None,
+        "public_start": None,
+        "launch_record": None,
+        "hooks": hooks,
+        "inputs": None,
+    }
+    flow.public_message_evidence.append(evidence)
     launcher = foundation.Journey(flow.host, flow.setup, flow.project, flow.owner_email, message=message)
-    launcher.start_session(case_start_file=False)
+    try:
+        launcher.start_session(case_start_file=False)
+    finally:
+        if launcher.start_evidence is not None:
+            argv, outcome = launcher.start_evidence
+            evidence["public_start"] = flow.public_command_evidence(argv, outcome)
     session = launcher.session_id
+    evidence["session_id"] = session
     if not session:
         flow.require_ledger().unknown(attempt)
         raise creation.binding_failure(DETAIL_ROLELESS.format(session="unknown", record="start returned no public id"))
     flow.require_ledger().record_session(attempt, session)
     # Correlate only after the successful public start; slot and identity remain platform-owned.
     mapped = flow.map_message_actor(message, 1, timeout_seconds=START_SECONDS)
+    evidence["mapped_session_id"] = mapped
     if mapped != session:
         raise creation.binding_failure(DETAIL_ROLELESS.format(session=session, record={"message_key_session": mapped}))
     record = flow.session_record(session)
     _setup, launch = flow.control_for_session(session)
+    evidence["public_record"] = cast(flow_module.JsonValue, dict(record))
+    evidence["launch_record"] = cast(flow_module.JsonValue, dict(launch))
     native = record.get("native_session_id")
+    current_ids = flow.observer.sessions().ids
+    evidence["current_ids"] = list[flow_module.JsonValue](sorted(current_ids))
     if (
-        session not in flow.observer.sessions().ids - baseline.ids
+        session not in current_ids - baseline.ids
         or not isinstance(native, str)
         or launch.get("native_session_id") != native
         or launch.get("key_kind") != "message"
@@ -108,13 +136,17 @@ def _start_roleless(flow: flow_module.WorkflowFlow, baseline: creation.SessionVi
     active.session_id = session
     deadline = time.monotonic() + START_SECONDS
     for hook in (foundation.FRAME_SESSION_START, foundation.FRAME_PROMPT_SUBMIT):
-        active.require_hook(hook, active.await_frame(hook, deadline))
+        frame = active.await_frame(hook, deadline)
+        hooks[hook] = cast(flow_module.JsonValue, dict(frame))
+        active.require_hook(hook, frame)
     if not active.started(record, native):
         _fail(DETAIL_ROLELESS.format(session=session, record=record))
     inputs = active.inputs()
+    evidence["inputs"] = cast(flow_module.JsonValue, [dict(entry) for entry in inputs])
     first = inputs[0].get("text") if inputs else None
     if first != message:
         _fail(DETAIL_ROLELESS.format(session=session, record=record))
+    evidence["observed_ns"] = time.monotonic_ns()
     flow.record_session(session, "roleless")
     return session
 

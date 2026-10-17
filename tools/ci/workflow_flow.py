@@ -24,7 +24,8 @@ from tools.ci import workflow_events as events
 from tools.ci import workflow_foundation as foundation
 from tools.ci import workflow_ledger as start_ledger
 from tools.ci import workflow_publication as publication
-from tools.ci.enclosure_inner import LedgerEvidence
+from tools.ci.enclosure_contract import parse_object, positive_integer
+from tools.ci.enclosure_inner import LedgerEvidence, PayloadProvisional
 from tools.ci.workflow_creation import Observer, SessionView
 from tools.ci.workflow_foundation import FixtureSetup, FoundationHost
 
@@ -111,6 +112,7 @@ SFC_UNPROVEN: Final = (
 SFC_CHAIN_B5: Final = "B5"
 SFC_CHAIN_B7: Final = "B7"
 SFC_CHAIN_B6: Final = "B6"
+MESSAGE_STARTS: Final = {"session-S_R": "b7 session one", "session-S2": "b7 session two"}
 B5_SCENARIO: Final = "UC-WF-B5"
 B7_SCENARIO: Final = "UC-WF-B7"
 B6_SCENARIO: Final = "UC-WF-B6"
@@ -395,14 +397,14 @@ def flow_plan_sets(chain: Sequence[str]) -> PlanSets:
                 ]
             )
         )
-        plans[message_key("b7 session one")] = [
+        plans[message_key(MESSAGE_STARTS["session-S_R"])] = [
             controls.PlanFile(
                 commands=[
                     _command_plan("reasonone", (TELEC, "todo", "work", ITEM, "--reason", "b7 reason one"), "go_r1")
                 ]
             )
         ]
-        plans[message_key("b7 session two")] = [
+        plans[message_key(MESSAGE_STARTS["session-S2"])] = [
             controls.PlanFile(
                 commands=[
                     _command_plan("reasontwo", (TELEC, "todo", "work", ITEM, "--reason", "b7 reason two"), "go_r2")
@@ -463,6 +465,7 @@ class WorkflowFlow:
     event_window: events.EventWindowBinding | None = None
     event_previous_seal: start_ledger.JsonObject | None = None
     event_case_seal: start_ledger.JsonObject | None = None
+    payload_provisional: PayloadProvisional | None = None
     root: Path = field(init=False)
     observer: Observer = field(init=False)
     controls: controls.Controls = field(init=False)
@@ -487,6 +490,7 @@ class WorkflowFlow:
     public_claim_evidence: list[JsonValue] = field(default_factory=list)
     public_refusal_evidence: list[JsonValue] = field(default_factory=list)
     public_reason_evidence: list[JsonValue] = field(default_factory=list)
+    public_message_evidence: list[JsonValue] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -1444,6 +1448,7 @@ class WorkflowFlow:
             "public_claim_evidence": self.public_claim_evidence,
             "public_refusal_evidence": self.public_refusal_evidence,
             "public_reason_evidence": self.public_reason_evidence,
+            "public_message_evidence": self.public_message_evidence,
             "integrators": cast(JsonValue, sorted(integrators)),
             "start_ledger": cast(JsonValue, starts),
             "open_attempt_ids": cast(JsonValue, open_ids),
@@ -1516,12 +1521,72 @@ class WorkflowFlow:
             try:
                 record = self.session_record(session_id, retain=False)
                 role = record.get(FIELD_ROLE)
-                roles[session_id] = role if isinstance(role, str) else "unknown"
+                roles[session_id] = (
+                    role
+                    if isinstance(role, str)
+                    else "roleless"
+                    if role is None and self._bound_roleless(session_id, record)
+                    else "unknown"
+                )
                 self.record_session(session_id, roles[session_id])
             except BaseException as error:
                 issues.append(f"session read {session_id}: {error}")
                 roles[session_id] = "unknown"
         return roles
+
+    def _bound_roleless(self, session_id: str, record: Json) -> bool:
+        """Only the admitted run's actual message-key startup may give a null role a known classification."""
+        if self.payload_provisional is None or self.sessions.get(session_id) != "roleless":
+            return False
+        binding = parse_object(self.payload_provisional.binding_bytes)
+        created = positive_integer(binding, "created_ns")
+        end = positive_integer(binding, "payload_end_ns")
+        for value in self.public_message_evidence:
+            if not isinstance(value, Mapping) or value.get("session_id") != session_id:
+                continue
+            attempt = self.require_ledger().attempts.get(str(value.get("attempt_id")))
+            startup = value.get("public_record")
+            launch = value.get("launch_record")
+            first = value.get("started_ns")
+            observed = value.get("observed_ns")
+            if (
+                attempt is None
+                or attempt.case != SFC_CHAIN_B7
+                or attempt.kind != start_ledger.RECORD_SESSION
+                or attempt.session_id != session_id
+                or attempt.label not in MESSAGE_STARTS
+                or not isinstance(startup, Mapping)
+                or not isinstance(launch, Mapping)
+                or type(first) is not int
+                or type(observed) is not int
+                or not created <= first <= observed <= end
+            ):
+                return False
+            message = MESSAGE_STARTS[attempt.label]
+            native = startup.get(FIELD_NATIVE)
+            return (
+                isinstance(native, str)
+                and bool(native)
+                and record.get(FIELD_SESSION) == session_id
+                and startup.get(FIELD_SESSION) == session_id
+                and record.get(FIELD_NATIVE) == native
+                and record.get(FIELD_ROLE) is None
+                and record.get(FIELD_JOB) is None
+                and record.get(FIELD_INITIATOR) is None
+                and startup.get(FIELD_ROLE) is None
+                and startup.get(FIELD_JOB) is None
+                and startup.get(FIELD_INITIATOR) is None
+                and startup.get(FIELD_LIFECYCLE) == STATE_ACTIVE
+                and startup.get("runtime_start_observed") is True
+                and startup.get(FIELD_CLOSED_AT) is None
+                and launch.get(FIELD_NATIVE) == native
+                and launch.get(FIELD_KEY_KIND) == "message"
+                and launch.get(FIELD_PLAN_KEY) == message_key(message)
+                and type(launch.get(FIELD_PLAN_INDEX)) is int
+                and launch.get(FIELD_PLAN_INDEX) == 1
+                and launch.get("first_line") == message
+            )
+        return False
 
     def _finalizer_end_sessions(
         self, sessions: Sequence[str], roles: Mapping[str, str], rows: MutableJson, issues: list[str]

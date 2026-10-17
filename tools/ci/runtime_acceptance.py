@@ -2741,6 +2741,7 @@ def _full_workflow_review(resources: FullRuntimeResources, evidence: list[Comman
             event_window=event_binding,
             event_previous_seal=event_previous_seal,
             event_case_seal=event_previous_seal,
+            payload_provisional=resources.payload_provisional,
         )
     flow = resources.workflow_flow
     try:
