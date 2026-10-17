@@ -1531,6 +1531,7 @@ def collect_install_inputs(
         work = inspect_package_work(query, deadline, cap)
         result["package_work"] = work
         result["host_package_inputs"] = interpret_work_host_packages(package, work, deadline)
+        result["info_upgrade_inputs"] = inspect_info_upgrade_inputs(info_format, work, deadline)
         prior = inspect_container_prior_control(package, work, deadline)
         result["container_prior_control"] = prior
         if prior["state"] == "blocked":
@@ -1951,3 +1952,124 @@ def interpret_work_host_packages(package: StaticPackage, work: JsonObject, deadl
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError({"package_work": work, "host_package_inputs": result}) from error
+
+
+def _info_link_input(path: Path, deadline: AdmittedDeadline, captures: list[JsonValue]) -> None:
+    """Capture native link/unlink operands without reading arbitrary control-file bodies or following link sources."""
+    row: JsonObject = {"path": str(path), "present": None, "started_ns": time.monotonic_ns(), "finished_ns": None}
+    captures.append(row)
+    try:
+        _before_cutoff(deadline)
+        try:
+            before = path.lstat()
+        except FileNotFoundError:
+            row["present"] = False
+            _before_cutoff(deadline)
+            return
+        row["present"] = True
+        row["before"] = _identity(before)
+        if stat.S_ISLNK(before.st_mode):
+            row["link_target_base64"] = base64.b64encode(os.fsencode(os.readlink(path))).decode("ascii")
+        _before_cutoff(deadline)
+        after = _identity(path.lstat())
+        row["after"] = after
+        if row["before"] != after:
+            raise ValueError(ERROR_INPUT)
+        _before_cutoff(deadline)
+    finally:
+        row["finished_ns"] = time.monotonic_ns()
+
+
+def inspect_info_upgrade_inputs(info_format: JsonObject, work: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Capture the actual native global upgrade operands; this does not admit migration or simulate its outcome."""
+    entries: list[JsonValue] = []
+    operands: list[JsonValue] = []
+    result: JsonObject = {
+        "started_ns": time.monotonic_ns(),
+        "finished_ns": None,
+        "entries": entries,
+        "operands": operands,
+        "state": "unproven",
+        "upgrade_effect_admission": "unproven",
+        "error": None,
+    }
+    try:
+        _before_cutoff(deadline)
+        if info_format["error"] is not None or work["error"] is not None:
+            raise ValueError(ERROR_INPUT)
+        if info_format["state"] == "native_current_no_upgrade":
+            result["state"] = "captured_format_does_not_request_upgrade"
+            return result
+        if info_format["state"] != "native_upgrade_required":
+            raise ValueError(ERROR_INPUT)
+        rows = work["rows"]
+        if not isinstance(rows, list):
+            raise ValueError(ERROR_INPUT)
+        instances: dict[bytes, list[JsonObject]] = {}
+        for value in rows:
+            _before_cutoff(deadline)
+            instance = object_value(value)
+            if instance["lifecycle"] != "not-installed":
+                instances.setdefault(text(instance, "package_name").encode("ascii"), []).append(instance)
+        directory = Path("/var/lib/dpkg/info")
+        _protected_path(directory, deadline)
+        before = directory.stat()
+        result["directory_before"] = _identity(before)
+        # atomic_file_open truncates format-new before the native directory walk, and follows an existing symlink.
+        new_format = directory / "format-new"
+        _info_link_input(new_format, deadline, operands)
+        result["format_new_physical_path"] = str(_protected_path(new_format, deadline))
+        captured: set[Path] = {new_format}
+
+        def capture(path: Path) -> None:
+            if path not in captured:
+                captured.add(path)
+                _info_link_input(path, deadline, operands)
+
+        with os.scandir(directory) as stream:
+            for entry in stream:
+                _before_cutoff(deadline)
+                name = os.fsencode(entry.name)
+                item: JsonObject = {"name_base64": base64.b64encode(name).decode("ascii")}
+                entries.append(item)
+                dot = name.rfind(b".")
+                if name.startswith(b".") or dot < 0 or b":" in name[:dot]:
+                    item["native_branch"] = "skipped_name"
+                    continue
+                # pkg_hash_find_set folds ASCII package names. A read-only query's sorted output is not hash order.
+                possible = instances.get(name[:dot].lower(), [])
+                item["populated_instances"] = list[JsonValue](possible)
+                if not possible:
+                    item["native_branch"] = "unassociated_warning_no_link"
+                    continue
+                item["native_branch"] = "single_populated_instance" if len(possible) == 1 else "native_first_unproven"
+                destinations: list[JsonValue] = []
+                item["possible_multiarch_links"] = destinations
+                for instance in possible:
+                    _before_cutoff(deadline)
+                    if instance["multi_arch"] != "same":
+                        continue
+                    source = directory / entry.name
+                    target_name = (
+                        text(instance, "package_name").encode("ascii")
+                        + b":"
+                        + text(instance, "architecture").encode("ascii")
+                        + b"."
+                        + name[dot + 1 :]
+                    )
+                    target = directory / os.fsdecode(target_name)
+                    destinations.append({"source": str(source), "destination": str(target)})
+                    capture(source)
+                    capture(target)
+        after = _identity(directory.stat())
+        result["directory_after"] = after
+        if result["directory_before"] != after:
+            raise ValueError(ERROR_INPUT)
+        result["state"] = "native_upgrade_inputs_captured_not_admitted"
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"info_format": info_format, "info_upgrade_inputs": result}) from error
+    finally:
+        result["finished_ns"] = time.monotonic_ns()
