@@ -17,6 +17,8 @@ configuration path. A direct process-environment access outside that path is a
 blocking finding unless the access is explicitly classified as configuration
 loading or interpolation, bootstrap or an internal process signal, ambient host
 state, or child-process environment construction.
+Each blocking finding identifies its source location and directs configuration
+values through the file-backed typed path.
 
 Existing configuration bypasses remain visible as temporary exceptions while
 their owning migrations are in flight. New unclassified bypasses cannot join
