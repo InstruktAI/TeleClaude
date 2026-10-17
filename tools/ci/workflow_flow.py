@@ -494,6 +494,7 @@ class WorkflowFlow:
     public_child_evidence: list[JsonValue] = field(default_factory=list)
     public_direct_evidence: list[JsonValue] = field(default_factory=list)
     public_restoration_evidence: list[JsonValue] = field(default_factory=list)
+    public_stamp_evidence: list[JsonValue] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -1294,6 +1295,23 @@ class WorkflowFlow:
         self.public_direct_evidence.append(evidence)
         return evidence
 
+    def stamp_input(self, actor: str, before: Json, attempt: str | None = None) -> MutableJson:
+        """Keep the existing stamp's native frame and branch-specific item/Git observations, including partial data."""
+        evidence: MutableJson = {
+            "attempt_id": attempt,
+            "actor": actor,
+            "started_ns": time.monotonic_ns(),
+            "finished_ns": None,
+            "frame": None,
+            "before_item": cast(JsonValue, dict(before)),
+            "after_items": [],
+            "before_git": [],
+            "after_git": [],
+            "closed_child": None,
+        }
+        self.public_stamp_evidence.append(evidence)
+        return evidence
+
     def _read_object(self, path: Path) -> Json | None:
         try:
             value = json.loads(path.read_text(encoding=ENCODING))
@@ -1476,6 +1494,7 @@ class WorkflowFlow:
             "public_child_evidence": self.public_child_evidence,
             "public_direct_evidence": self.public_direct_evidence,
             "public_restoration_evidence": self.public_restoration_evidence,
+            "public_stamp_evidence": self.public_stamp_evidence,
             "integrators": cast(JsonValue, sorted(integrators)),
             "start_ledger": cast(JsonValue, starts),
             "open_attempt_ids": cast(JsonValue, open_ids),
@@ -1773,9 +1792,11 @@ class WorkflowFlow:
         self.ledger = loaded
         return manifest
 
-    def item(self) -> Json:
+    def item(self, *, evidence: list[JsonValue] | None = None) -> Json:
         """The public item view with artifact content, bound to this shared disposable item."""
         shown = self.observer.show(ITEM)
+        if evidence is not None:
+            evidence.append(cast(JsonValue, dict(shown)) if shown is not None else None)
         if shown is None:
             raise creation.binding_failure(DETAIL_ITEM)
         return dict(shown)

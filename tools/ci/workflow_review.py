@@ -138,9 +138,16 @@ def _operation(
 
 
 def _frame_success(
-    flow: flow_module.WorkflowFlow, session: str, name: str, *, writes: bool = False
+    flow: flow_module.WorkflowFlow,
+    session: str,
+    name: str,
+    *,
+    writes: bool = False,
+    evidence: flow_module.MutableJson | None = None,
 ) -> Mapping[str, object]:
     frame = flow.frame(session, f"cmd_{name}", FRAME_SECONDS)
+    if evidence is not None:
+        evidence["frame"] = cast(flow_module.JsonValue, dict(frame))
     if writes:
         if frame.get("ok") is not True:
             _fail(DETAIL_FRAME.format(name=name, frame=frame))
@@ -221,10 +228,15 @@ def _startup(
 
 
 def _operation_command(
-    flow: flow_module.WorkflowFlow, session: str, frame_name: str, attempt_id: str | None = None
+    flow: flow_module.WorkflowFlow,
+    session: str,
+    frame_name: str,
+    attempt_id: str | None = None,
+    *,
+    evidence: flow_module.MutableJson | None = None,
 ) -> tuple[Mapping[str, object], Mapping[str, object]]:
     try:
-        frame = _frame_success(flow, session, frame_name)
+        frame = _frame_success(flow, session, frame_name, evidence=evidence)
     except BaseException:
         if attempt_id is not None:
             flow.require_ledger().unknown(attempt_id)
@@ -354,8 +366,9 @@ def _expect_log_append(
     text: str,
     *,
     evidence: flow_module.MutableJson | None = None,
+    items: list[flow_module.JsonValue] | None = None,
 ) -> None:
-    shown = flow.item()
+    shown = flow.item(evidence=items)
     if evidence is not None:
         evidence["after_item"] = cast(flow_module.JsonValue, dict(shown))
         evidence["observed_ns"] = time.monotonic_ns()
@@ -424,11 +437,14 @@ def _negative_direct_act(
 def _negative_stamp(flow: flow_module.WorkflowFlow, builder: str, commit: str, worktree: Path) -> None:
     attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-performer", start_ledger.RECORD_TRIGGER)
     before = flow.item()
+    evidence = flow.stamp_input(builder, before, attempt)
+    before_git = cast(list[flow_module.JsonValue], evidence["before_git"])
+    after_items = cast(list[flow_module.JsonValue], evidence["after_items"])
     before_log = _public_log(before)
     if (
-        _git(flow, "rev-parse", "HEAD", cwd=worktree) != commit
-        or _git(flow, "status", "--porcelain", cwd=worktree)
-        or _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}")
+        _git(flow, "rev-parse", "HEAD", cwd=worktree, evidence=before_git) != commit
+        or _git(flow, "status", "--porcelain", cwd=worktree, evidence=before_git)
+        or _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}", evidence=before_git)
         != f"{commit}\trefs/heads/{flow_module.ITEM}"
     ):
         raise creation.binding_failure("B9 stamp-performer precondition is not a clean published C1 head")
@@ -439,6 +455,7 @@ def _negative_stamp(flow: flow_module.WorkflowFlow, builder: str, commit: str, w
     )
     flow.gate(builder, "go_stampperformer")
     frame = flow.frame(builder, "cmd_stampperformer")
+    evidence["frame"] = cast(flow_module.JsonValue, dict(frame))
     raw_run = frame.get("run")
     run = raw_run if isinstance(raw_run, Mapping) else {}
     stdout = run.get("stdout")
@@ -456,9 +473,10 @@ def _negative_stamp(flow: flow_module.WorkflowFlow, builder: str, commit: str, w
         or "stamp requires the holding driver" not in error
     ):
         _fail(f"B9 stamp-performer failed with {terminal.get(FIELD_STATE)!r}: {error!r}")
-    after = flow.item()
+    after = flow.item(evidence=after_items)
     if after != before or _public_log(after) != before_log:
         _fail("B9 stamp-performer refusal changed the public item or parsed log")
+    evidence["finished_ns"] = time.monotonic_ns()
     # The receipt-backed trigger stays open by the approved SFC contract.
 
 
@@ -706,10 +724,21 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, comm
     worktree = flow.project / flow_module.WORKTREE_DIRECTORY / flow_module.ITEM
     snapshot = flow.item()
     snapshot_log = _public_log(snapshot)
+    evidence = flow.stamp_input(w2, snapshot)
+    before_git = cast(list[flow_module.JsonValue], evidence["before_git"])
+    after_git = cast(list[flow_module.JsonValue], evidence["after_git"])
+    after_items = cast(list[flow_module.JsonValue], evidence["after_items"])
     refs = (
-        _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}"),
-        _git(flow, "rev-parse", "HEAD", cwd=worktree),
-        _git(flow, "rev-list", "--count", f"origin/{flow_module.MAIN}..{flow_module.ITEM}", cwd=worktree),
+        _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}", evidence=before_git),
+        _git(flow, "rev-parse", "HEAD", cwd=worktree, evidence=before_git),
+        _git(
+            flow,
+            "rev-list",
+            "--count",
+            f"origin/{flow_module.MAIN}..{flow_module.ITEM}",
+            cwd=worktree,
+            evidence=before_git,
+        ),
     )
     flow.late_argv(
         w2, "stamp_nonhead.argv", (TELEC, TODO, ACT, flow_module.ITEM, "stamp", "--sha", commit_one, LANE_ONE)
@@ -717,8 +746,9 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, comm
     nonhead_attempt = flow.require_ledger().begin(
         flow_module.SFC_CHAIN_B5, "stamp-nonhead", start_ledger.RECORD_TRIGGER
     )
+    evidence["attempt_id"] = nonhead_attempt
     flow.gate(w2, "go_nh")
-    _, rejected = _operation_command(flow, w2, "stamp_nonhead", nonhead_attempt)
+    _, rejected = _operation_command(flow, w2, "stamp_nonhead", nonhead_attempt, evidence=evidence)
     error = rejected.get(FIELD_ERROR)
     if (
         rejected.get(FIELD_STATE) != STATE_FAILED
@@ -727,49 +757,72 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, comm
         or commit_two not in error
     ):
         _fail(f"non-head stamp did not refuse both refs: {rejected!r}")
-    if flow.item() != snapshot or _public_log(flow.item()) != snapshot_log:
+    if flow.item(evidence=after_items) != snapshot or _public_log(flow.item(evidence=after_items)) != snapshot_log:
         _fail("a refused non-head stamp changed the item snapshot")
     payload_work.sleep(5.0)
-    if flow.item() != snapshot or _public_log(flow.item()) != snapshot_log:
+    if flow.item(evidence=after_items) != snapshot or _public_log(flow.item(evidence=after_items)) != snapshot_log:
         _fail("a refused non-head stamp changed the item during the stability window")
     current_refs = (
-        _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}"),
-        _git(flow, "rev-parse", "HEAD", cwd=worktree),
-        _git(flow, "rev-list", "--count", f"origin/{flow_module.MAIN}..{flow_module.ITEM}", cwd=worktree),
+        _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}", evidence=after_git),
+        _git(flow, "rev-parse", "HEAD", cwd=worktree, evidence=after_git),
+        _git(
+            flow,
+            "rev-list",
+            "--count",
+            f"origin/{flow_module.MAIN}..{flow_module.ITEM}",
+            cwd=worktree,
+            evidence=after_git,
+        ),
     )
     if current_refs != refs:
         _fail(f"a refused non-head stamp moved the branch refs: {current_refs!r}")
+    evidence["finished_ns"] = time.monotonic_ns()
     flow.late_argv(w2, "stamp_empty.argv", (TELEC, TODO, ACT, flow_module.ITEM, "stamp", "--sha", commit_two))
     empty_attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-empty", start_ledger.RECORD_TRIGGER)
+    evidence = flow.stamp_input(w2, snapshot, empty_attempt)
+    evidence["before_git"] = list(before_git)
+    after_git = cast(list[flow_module.JsonValue], evidence["after_git"])
+    after_items = cast(list[flow_module.JsonValue], evidence["after_items"])
     flow.gate(w2, "go_empty")
-    _, empty = _operation_command(flow, w2, "stamp_empty", empty_attempt)
+    _, empty = _operation_command(flow, w2, "stamp_empty", empty_attempt, evidence=evidence)
     if empty.get(FIELD_STATE) != STATE_FAILED or "lane report" not in str(empty.get(FIELD_ERROR, "")):
         _fail(f"empty stamp did not refuse the missing lane report: {empty!r}")
     if (
-        flow.item() != snapshot
-        or _public_log(flow.item()) != snapshot_log
+        flow.item(evidence=after_items) != snapshot
+        or _public_log(flow.item(evidence=after_items)) != snapshot_log
         or (
-            _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}"),
-            _git(flow, "rev-parse", "HEAD", cwd=worktree),
-            _git(flow, "rev-list", "--count", f"origin/{flow_module.MAIN}..{flow_module.ITEM}", cwd=worktree),
+            _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}", evidence=after_git),
+            _git(flow, "rev-parse", "HEAD", cwd=worktree, evidence=after_git),
+            _git(
+                flow,
+                "rev-list",
+                "--count",
+                f"origin/{flow_module.MAIN}..{flow_module.ITEM}",
+                cwd=worktree,
+                evidence=after_git,
+            ),
         )
         != refs
     ):
         _fail("empty stamp changed the item or branch refs")
+    evidence["finished_ns"] = time.monotonic_ns()
     _exercise_b11_stamp_refusals(flow, w2, builder, commit_two, worktree)
-    success_log = _public_log(flow.item())
+    success_before = flow.item()
+    success_log = _public_log(success_before)
     flow.late_argv(w2, "stamp_ok.argv", (TELEC, TODO, ACT, flow_module.ITEM, "stamp", "--sha", commit_two, LANE_ONE))
     success_attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-ok", start_ledger.RECORD_TRIGGER)
+    evidence = flow.stamp_input(w2, success_before, success_attempt)
+    after_items = cast(list[flow_module.JsonValue], evidence["after_items"])
     flow.gate(w2, "go_ok")
-    _, stamped = _operation_command(flow, w2, "stamp_ok", success_attempt)
+    _, stamped = _operation_command(flow, w2, "stamp_ok", success_attempt, evidence=evidence)
     if stamped.get(FIELD_STATE) != STATE_COMPLETED or not str(stamped.get(FIELD_RESULT, "")).startswith(
         f"Stamped {flow_module.ITEM} at {commit_two}"
     ):
         _fail(f"head stamp did not complete at {commit_two}: {stamped!r}")
-    shown = flow.item()
+    shown = flow.item(evidence=after_items)
     standing = shown.get("standing")
     state = shown.get("state")
-    _expect_log_append(flow, success_log, ROLE_WORK, w2, "stamp", commit_two, LANE_ONE)
+    _expect_log_append(flow, success_log, ROLE_WORK, w2, "stamp", commit_two, LANE_ONE, items=after_items)
     if (
         not isinstance(standing, Mapping)
         or standing.get(FIELD_STANDING_PHASE) != "ready"
@@ -780,11 +833,13 @@ def _exercise_stamps(flow: flow_module.WorkflowFlow, w2: str, builder: str, comm
     ):
         _fail(f"successful stamp did not produce unadmitted ready at {commit_two}: {shown!r}")
     builder_record = flow.session_record(builder)
+    evidence["closed_child"] = cast(flow_module.JsonValue, dict(builder_record))
     if builder_record.get("closed_at") is None or builder_record.get("lifecycle_status") != "closed":
         _fail(f"successful stamp did not close the builder child: {builder_record!r}")
     ready_since = standing.get("ready_since")
     if not isinstance(ready_since, str) or not ready_since:
         raise creation.binding_failure("B10 requires the public C2 ready_since witness before the C3 head move")
+    evidence["finished_ns"] = time.monotonic_ns()
     return ready_since
 
 
@@ -863,8 +918,9 @@ def _b11_item_unchanged(
     parsed_log: list[tuple[str, str]],
     where: str,
     evidence: flow_module.MutableJson | None = None,
+    items: list[flow_module.JsonValue] | None = None,
 ) -> None:
-    current = flow.item()
+    current = flow.item(evidence=items)
     if evidence is not None:
         evidence["after_item"] = cast(flow_module.JsonValue, dict(current))
         evidence["observed_ns"] = time.monotonic_ns()
@@ -886,19 +942,26 @@ def _b11_refused_stamp(
     unchanged_refs: tuple[str, str, str, str],
 ) -> None:
     attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, attempt_label, start_ledger.RECORD_TRIGGER)
+    evidence = flow.stamp_input(w2, snapshot, attempt)
+    after_items = cast(list[flow_module.JsonValue], evidence["after_items"])
+    after_git = cast(list[flow_module.JsonValue], evidence["after_git"])
     flow.late_argv(
         w2,
         argv_file,
         (TELEC, TODO, ACT, flow_module.ITEM, B11_STAMP_VERB, "--sha", requested_sha, LANE_ONE),
     )
     flow.gate(w2, gate)
-    _, terminal = _operation_command(flow, w2, frame_name, attempt)
+    _, terminal = _operation_command(flow, w2, frame_name, attempt, evidence=evidence)
     error = terminal.get(FIELD_ERROR)
     if terminal.get(FIELD_STATE) != STATE_FAILED or not isinstance(error, str) or expected_error not in error:
         _fail(f"B11 {frame_name} did not return the exact approved refusal: {terminal!r}")
-    _b11_item_unchanged(flow, snapshot, parsed_log, frame_name)
-    if _b11_ref_state(flow, flow.project / flow_module.WORKTREE_DIRECTORY / flow_module.ITEM) != unchanged_refs:
+    _b11_item_unchanged(flow, snapshot, parsed_log, frame_name, items=after_items)
+    if (
+        _b11_ref_state(flow, flow.project / flow_module.WORKTREE_DIRECTORY / flow_module.ITEM, after_git)
+        != unchanged_refs
+    ):
         _fail(f"B11 {frame_name} changed the guarded Git refs")
+    evidence["finished_ns"] = time.monotonic_ns()
 
 
 def _b11_restore_dirty_sentinel(
@@ -1258,20 +1321,23 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
         _fail(f"W3 claim did not clear the stale ready stamp: {claimed!r}")
     flow.require_ledger().discharge(attempt, "public work start completed and W3 claim was observed")
     success_attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, "stamp-ok2", start_ledger.RECORD_TRIGGER)
-    stamp_before_log = _public_log(flow.item())
+    stamp_before = flow.item()
+    stamp_before_log = _public_log(stamp_before)
+    evidence = flow.stamp_input(w3, stamp_before, success_attempt)
+    after_items = cast(list[flow_module.JsonValue], evidence["after_items"])
     flow.late_argv(
         w3,
         "stamp_ok2.argv",
         (TELEC, TODO, ACT, flow_module.ITEM, "stamp", "--sha", commit, LANE_TWO),
     )
     flow.gate(w3, "go_ok2")
-    _, stamped = _operation_command(flow, w3, "stamp_ok2", success_attempt)
+    _, stamped = _operation_command(flow, w3, "stamp_ok2", success_attempt, evidence=evidence)
     if stamped.get(FIELD_STATE) != STATE_COMPLETED or not str(stamped.get(FIELD_RESULT, "")).startswith(
         f"Stamped {flow_module.ITEM} at {commit}"
     ):
         _fail(f"re-stamp did not complete at {commit}: {stamped!r}")
-    _expect_log_append(flow, stamp_before_log, ROLE_WORK, w3, "stamp", commit, LANE_TWO)
-    ready = flow.item()
+    _expect_log_append(flow, stamp_before_log, ROLE_WORK, w3, "stamp", commit, LANE_TWO, items=after_items)
+    ready = flow.item(evidence=after_items)
     ready_standing = ready.get("standing")
     ready_state = ready.get("state")
     if (
@@ -1285,6 +1351,7 @@ def _restamp(flow: flow_module.WorkflowFlow, commit: str, known_claims: int) -> 
     ready_since = ready_standing.get("ready_since")
     if not isinstance(ready_since, str) or not ready_since:
         raise creation.binding_failure("B10 requires the public C3 ready_since witness before B7 handover")
+    evidence["finished_ns"] = time.monotonic_ns()
     case.require_title_stable(w3)
     _end(flow, w3)
     flow.sessions[w3] = ROLE_WORK

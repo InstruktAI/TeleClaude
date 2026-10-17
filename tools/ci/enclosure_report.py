@@ -59,6 +59,7 @@ from tools.ci.workflow_publication import TERMINAL_STATES
 from tools.ci.workflow_ready import FINDING_DOOR, FINDING_WORK, REASON_ONE, REASON_TWO
 from tools.ci.workflow_review import (
     B11_BASE_FEATURE_BYTES,
+    B11_DIRTY_REFUSAL,
     B11_FEATURE_PATH,
     B11_LOCAL_COMMIT_MESSAGE,
     B11_LOCAL_HEAD_LABEL,
@@ -69,6 +70,8 @@ from tools.ci.workflow_review import (
     B11_STATUS_MODIFIED_BYTES,
     DIRECT_REFUSAL_ERRORS,
     FINDING_TEXT,
+    LANE_ONE,
+    LANE_TWO,
     REPLY_TEXT,
     WRONG_PERFORMER_TEXT,
 )
@@ -267,7 +270,15 @@ def _event_flow_links(
         or any(object_value(value)["commit"] != b5.get("C2") for value in restorations)
     ):
         raise ValueError(ERROR_REPORT)
-    linked: list[JsonValue] = ["B5 actors, C1 review/finding/reply and restored C2"]
+    stamps = _labeled_inputs(starts, "stamps")
+    if (
+        stamps["stamp-ok"]["commit"] != b5.get("C2")
+        or stamps["stamp-ok"]["ready_since"] != b5.get("ready_since_C2")
+        or stamps["stamp-ok2"]["commit"] != b5.get("C3")
+        or stamps["stamp-ok2"]["ready_since"] != b5.get("ready_since_C3")
+    ):
+        raise ValueError(ERROR_REPORT)
+    linked: list[JsonValue] = ["B5 actors, C1 review/finding/reply, restored C2 and C2/C3 stamps"]
     if "B7" in data:
         b7 = data["B7"]
         reasons = _labeled_inputs(starts, "reason_notes")
@@ -1818,6 +1829,8 @@ def _restoration_record(
     if object_value(row["before_item"]) != object_value(row["after_item"]):
         raise ValueError(ERROR_REPORT)
     count = _restoration_stage(row["before_reads"], project, worktree, commit, commit, None, "clean")
+    changed_head = commit
+    changed_count = count
     if attempt.label == B11_SENTINEL_LABEL:
         if row["actor"] != builder or row["mutation_command"] is not None or row["temporary_head"] is not None:
             raise ValueError(ERROR_REPORT)
@@ -1845,14 +1858,28 @@ def _restoration_record(
         _restoration_stage(row["post_restore_reads"], project, worktree, commit, commit, count, "clean")
     else:
         temporary = text(row, "temporary_head")
+        changed_head = temporary
         if row["actor"] is not None or row["write_frame"] is not None or temporary == commit:
             raise ValueError(ERROR_REPORT)
         _command_output(row["mutation_command"], ["git", "commit", "--allow-empty", "-m", B11_LOCAL_COMMIT_MESSAGE])
         for key in ("changed_reads", "pre_restore_reads"):
-            _restoration_stage(row[key], project, worktree, commit, temporary, None, "local-head")
+            found_count = _restoration_stage(row[key], project, worktree, commit, temporary, None, "local-head")
+            if key == "changed_reads":
+                changed_count = found_count
         _command_output(row["restore_command"], ["git", "reset", "--hard", commit])
         _restoration_stage(row["post_restore_reads"], project, worktree, commit, commit, count, "reset")
-    return {"attempt_id": attempt.identifier, "state": "owned_local_effect_restored", "commit": commit}
+    return {
+        "attempt_id": attempt.identifier,
+        "label": attempt.label,
+        "state": "owned_local_effect_restored",
+        "commit": commit,
+        "refusal_refs": [
+            f"{commit}\trefs/heads/{ITEM}",
+            changed_head,
+            f"{changed_head} refs/heads/{ITEM}",
+            changed_count,
+        ],
+    }
 
 
 def _restoration_inputs(
@@ -1890,6 +1917,242 @@ def _restoration_inputs(
         seen.add(identifier)
     if len(commits) != 1:
         raise ValueError(ERROR_REPORT)
+    return result
+
+
+def _stamp_git(
+    value: JsonValue, project: str, worktree: str, *, performer: bool = False, branch: bool = False
+) -> tuple[str, ...]:
+    reads, files = _restoration_reads(value, project, worktree)
+    queries = [
+        (project, "git", "ls-remote", "origin", f"refs/heads/{ITEM}"),
+        (worktree, "git", "rev-parse", "HEAD"),
+    ]
+    if performer:
+        queries.append((worktree, "git", "status", "--porcelain"))
+    else:
+        if branch:
+            queries.append((worktree, "git", "show-ref", "--verify", f"refs/heads/{ITEM}"))
+        queries.append((worktree, "git", "rev-list", "--count", f"origin/main..{ITEM}"))
+    if files or set(reads) != set(queries) or any(len(reads[key]) != 1 for key in queries):
+        raise ValueError(ERROR_REPORT)
+    return tuple(reads[key][0].strip() for key in queries)
+
+
+def _stamp_success(row: JsonObject, actor: str, commit: str, lane: str, builder: str) -> str:
+    before = object_value(row["before_item"])
+    _claimed_holder(before, actor, "work")
+    values = row["after_items"]
+    if not isinstance(values, list) or len(values) != 2 or row["before_git"] != [] or row["after_git"] != []:
+        raise ValueError(ERROR_REPORT)
+    items = [object_value(value) for value in values]
+    # Preserve the original differing read order: ready then log at C2; log then ready at C3.
+    first = row["closed_child"] is not None
+    ready, logged = items if first else items[::-1]
+    old_log = events.parse_log_entries(text(object_value(before["artifact_content"]), "log"))
+    new_log = events.parse_log_entries(text(object_value(logged["artifact_content"]), "log"))
+    if len(new_log) != len(old_log) + 1 or new_log[:-1] != old_log:
+        raise ValueError(ERROR_REPORT)
+    entry = new_log[-1]
+    if (
+        not entry.timestamp
+        or entry.role != ROLE_WORK
+        or entry.session != actor
+        or entry.act != "stamp"
+        or entry.bound != commit
+        or entry.body != lane
+    ):
+        raise ValueError(ERROR_REPORT)
+    standing = object_value(ready["standing"])
+    state = object_value(ready["state"])
+    if (
+        standing.get("phase") != "ready"
+        or standing.get("ready_at_commit") != commit
+        or state.get("active_runner") not in (None, "")
+    ):
+        raise ValueError(ERROR_REPORT)
+    if first:
+        child = object_value(row["closed_child"])
+        if "admitted" in standing or child.get("session_id") != builder or not _public_closed(child, builder):
+            raise ValueError(ERROR_REPORT)
+    return text(standing, "ready_since")
+
+
+def _stamp_terminal(values: list[JsonValue], commit: str, successful: bool, needles: tuple[str, ...]) -> None:
+    for value in values:
+        terminal = object_value(value)
+        if terminal["state"] != ("completed" if successful else "failed"):
+            raise ValueError(ERROR_REPORT)
+        if successful:
+            if terminal.get("error") not in (None, "") or not text(terminal, "result").startswith(
+                f"Stamped {ITEM} at {commit}"
+            ):
+                raise ValueError(ERROR_REPORT)
+        elif any(needle not in text(terminal, "error") for needle in needles):
+            raise ValueError(ERROR_REPORT)
+
+
+def _stamp_inputs(
+    finalizer: JsonObject,
+    ledger: StartLedger,
+    operations: dict[str, list[JsonValue]],
+    claims: list[JsonValue],
+    children: list[JsonValue],
+    direct: list[JsonValue],
+    restorations: list[JsonValue],
+    created: int,
+    public_finished: int,
+) -> list[JsonValue]:
+    labels = {
+        "stamp-performer",
+        "stamp-nonhead",
+        "stamp-empty",
+        "stamp-unclean",
+        "stamp-worktree-head",
+        "stamp-ok",
+        "stamp-ok2",
+    }
+    values = finalizer["public_stamp_evidence"]
+    if not isinstance(values, list):
+        raise ValueError(ERROR_REPORT)
+    if "B5" not in ledger.closed_lists:
+        if values:
+            raise ValueError(ERROR_REPORT)
+        return []
+    attempts = [attempt for attempt in ledger.attempts.values() if attempt.case == "B5" and attempt.label in labels]
+    if (
+        len(attempts) != len(labels)
+        or {attempt.label for attempt in attempts} != labels
+        or len(values) != len(labels)
+        or len(children) != 1
+    ):
+        raise ValueError(ERROR_REPORT)
+    packets: dict[str, JsonObject] = {}
+    expected = {attempt.identifier: attempt for attempt in attempts}
+    for value in values:
+        row = object_value(value)
+        identifier = text(row, "attempt_id")
+        if (
+            set(row)
+            != {
+                "attempt_id",
+                "actor",
+                "started_ns",
+                "finished_ns",
+                "frame",
+                "before_item",
+                "after_items",
+                "before_git",
+                "after_git",
+                "closed_child",
+            }
+            or identifier not in expected
+            or expected[identifier].label in packets
+            or not created
+            <= positive_integer(row, "started_ns")
+            <= positive_integer(row, "finished_ns")
+            <= public_finished
+        ):
+            raise ValueError(ERROR_REPORT)
+        packets[expected[identifier].label] = row
+    claim_rows = _labeled_inputs({"claims": claims}, "claims")
+    direct_rows = _labeled_inputs({"direct": direct}, "direct")
+    restored = _labeled_inputs({"restored": restorations}, "restored")
+    child = object_value(children[0])
+    builder = text(child, "session_id")
+    project, worktree = text(child, "project_path"), text(child, "worktree")
+    c1 = text(direct_rows["reviewed"], "bound")
+    c2 = text(restored[B11_SENTINEL_LABEL], "commit")
+    c3_argv = _strings(object_value(packets["stamp-ok2"]["frame"])["argv"])
+    if len(c3_argv) != 8:
+        raise ValueError(ERROR_REPORT)
+    c3 = c3_argv[6]
+    if not c3 or c3 == c2 or c2 == c1:
+        raise ValueError(ERROR_REPORT)
+    error_needles = {
+        "stamp-performer": ("stamp requires the holding driver",),
+        "stamp-nonhead": (c1, c2),
+        "stamp-empty": ("lane report",),
+        "stamp-unclean": (B11_DIRTY_REFUSAL,),
+        "stamp-worktree-head": (
+            f"stamp: the worktree branch head {_strings(restored[B11_LOCAL_HEAD_LABEL]['refusal_refs'])[1]} differs from {c2}",
+        ),
+    }
+    result: list[JsonValue] = []
+    for attempt in attempts:
+        label = attempt.label
+        row = packets[label]
+        successful = label in ("stamp-ok", "stamp-ok2")
+        actor = (
+            builder
+            if label == "stamp-performer"
+            else text(claim_rows["w3-start" if label == "stamp-ok2" else "w2-start"], "actor")
+        )
+        commit = c1 if label in ("stamp-performer", "stamp-nonhead") else c3 if label == "stamp-ok2" else c2
+        lane = LANE_TWO if label == "stamp-ok2" else LANE_ONE
+        argv = ["telec", "todo", "act", ITEM, "stamp", "--sha", commit, *([] if label == "stamp-empty" else [lane])]
+        if (
+            attempt.kind != RECORD_TRIGGER
+            or row["actor"] != actor
+            or _pane_operation(row["frame"], argv) != attempt.operation_id
+            or attempt.operation_id is None
+        ):
+            raise ValueError(ERROR_REPORT)
+        _stamp_terminal(operations[attempt.operation_id], commit, successful, error_needles.get(label, ()))
+        ready_since: str | None = None
+        if successful:
+            if (row["closed_child"] is not None) is not (label == "stamp-ok"):
+                raise ValueError(ERROR_REPORT)
+            ready_since = _stamp_success(row, actor, commit, lane, builder)
+        else:
+            before = object_value(row["before_item"])
+            after = row["after_items"]
+            count = {
+                "stamp-performer": 1,
+                "stamp-nonhead": 4,
+                "stamp-empty": 2,
+                "stamp-unclean": 1,
+                "stamp-worktree-head": 1,
+            }[label]
+            if (
+                not isinstance(after, list)
+                or len(after) != count
+                or any(value != before for value in after)
+                or row["closed_child"] is not None
+            ):
+                raise ValueError(ERROR_REPORT)
+            if label == "stamp-performer":
+                if (
+                    _stamp_git(row["before_git"], project, worktree, performer=True)
+                    != (f"{c1}\trefs/heads/{ITEM}", c1, "")
+                    or row["after_git"] != []
+                ):
+                    raise ValueError(ERROR_REPORT)
+            elif label in ("stamp-nonhead", "stamp-empty"):
+                refs = _stamp_git(row["before_git"], project, worktree)
+                if (
+                    refs[:2] != (f"{c2}\trefs/heads/{ITEM}", c2)
+                    or _stamp_git(row["after_git"], project, worktree) != refs
+                ):
+                    raise ValueError(ERROR_REPORT)
+            else:
+                context = restored[B11_SENTINEL_LABEL if label == "stamp-unclean" else B11_LOCAL_HEAD_LABEL]
+                if row["before_git"] != [] or _stamp_git(row["after_git"], project, worktree, branch=True) != _strings(
+                    context["refusal_refs"]
+                ):
+                    raise ValueError(ERROR_REPORT)
+        result.append(
+            {
+                "attempt_id": attempt.identifier,
+                "label": label,
+                "actor": actor,
+                "commit": commit,
+                "operation_id": attempt.operation_id,
+                "native_outcome": "stamped" if successful else "refused",
+                "ready_since": ready_since,
+                "recorded_state": attempt.state,
+            }
+        )
     return result
 
 
@@ -1940,6 +2203,10 @@ def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
     children = _child_inputs(
         finalizer, after.ledger, claims, created, public_finished, text(observations, "owned_profile_root")
     )
+    direct = _direct_inputs(finalizer, after.ledger, claims, children, created, public_finished)
+    restorations = _restoration_inputs(
+        finalizer, after.ledger, children, created, public_finished, text(observations, "owned_profile_root")
+    )
     return {
         "scope": "shared-workflow-flow",
         "state": "recorded_inputs_matched",
@@ -1952,9 +2219,10 @@ def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
         "refusals": _refusal_inputs(finalizer, after.ledger, operations, created, public_finished),
         "reason_notes": _reason_inputs(finalizer, after.ledger, operations, claims, created, public_finished),
         "children": children,
-        "direct_acts": _direct_inputs(finalizer, after.ledger, claims, children, created, public_finished),
-        "local_restoration": _restoration_inputs(
-            finalizer, after.ledger, children, created, public_finished, text(observations, "owned_profile_root")
+        "direct_acts": direct,
+        "local_restoration": restorations,
+        "stamps": _stamp_inputs(
+            finalizer, after.ledger, operations, claims, children, direct, restorations, created, public_finished
         ),
         "semantic_settlement": "unproven",
     }
