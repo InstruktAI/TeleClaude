@@ -986,13 +986,33 @@ class _Waiting:
 
     def verify_owner(self) -> None:
         """The owner terminal reads as the configured administrator: its email by whoami, its standing by the person record."""
+        packet: creation.EvidenceObject | None = None
+        if self.accounting is not None:
+            packet = {
+                "started_ns": time.monotonic_ns(),
+                "finished_ns": None,
+                "expected_email": self.owner_email,
+                "person_slug": self.owner_slug,
+                "commands": [],
+            }
+            self.accounting["owner_auth"] = packet
         who = self.observer.run((TELEC, "auth", "whoami"))
+        if packet is not None:
+            cast(list[creation.EvidenceValue], packet["commands"]).append(
+                creation.command_evidence((TELEC, "auth", "whoami"), who)
+            )
         emails = [
             line.partition(": ")[2].strip()
             for line in who.output.replace("\r\n", "\n").split("\n")
             if line.startswith("Email: ")
         ]
         outcome = self.observer.run((TELEC, CONFIG, PERSON, GET, self.owner_slug, FORMAT_OPTION, JSON_FORMAT))
+        if packet is not None:
+            cast(list[creation.EvidenceValue], packet["commands"]).append(
+                creation.command_evidence(
+                    (TELEC, CONFIG, PERSON, GET, self.owner_slug, FORMAT_OPTION, JSON_FORMAT), outcome
+                )
+            )
         person = foundation.json_object(outcome.output)
         roles = person.get("roles") if person is not None else None
         administrator = isinstance(roles, list) and any(
@@ -1007,6 +1027,8 @@ class _Waiting:
                 )
             )
         self.person = self.owner_slug
+        if packet is not None:
+            packet["finished_ns"] = time.monotonic_ns()
 
     # -- steps -----------------------------------------------------------------------------------------------------
     def step1_owner_session(self) -> str:

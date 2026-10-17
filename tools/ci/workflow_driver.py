@@ -103,13 +103,18 @@ DETAIL_NOT_QUIESCENT: Final = "the item is being written by something else; diff
 type Json = Mapping[str, object]
 
 
-def declared_acts(path: Path) -> tuple[list[tuple[str, str]], str]:
+def declared_acts(
+    path: Path, evidence: list[creation.EvidenceValue] | None = None
+) -> tuple[list[tuple[str, str]], str]:
     """The ending acts with their phases, and the child procedure, the folded driver\'s `workflow` header declares.
 
     The header is the YAML block between the first two `---` lines; only the `workflow:` mapping is read, line by line,
     because the hosted harness runs on the standard library alone.
     """
-    parts = path.read_text(encoding="utf-8").split("---", 2)
+    source = path.read_text(encoding="utf-8")
+    if evidence is not None:
+        evidence.append({"kind": "workflow", "path": str(path), "text": source})
+    parts = source.split("---", 2)
     lines = parts[1].splitlines() if len(parts) >= 3 else []
     start = next((index for index, line in enumerate(lines) if line.rstrip() == "workflow:"), None)
     if start is None:
@@ -137,12 +142,15 @@ def declared_acts(path: Path) -> tuple[list[tuple[str, str]], str]:
     return list(zip(names, phases, strict=True)), child
 
 
-def declared_role(path: Path) -> str:
+def declared_role(path: Path, evidence: list[creation.EvidenceValue] | None = None) -> str:
     """The `role:` the folded driver's header declares, read line by line from its first `---` block."""
     try:
-        parts = path.read_text(encoding="utf-8").split("---", 2)
+        source = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
         raise creation.trace_failure(DETAIL_ROLE_UNREADABLE.format(path=path)) from error
+    if evidence is not None:
+        evidence.append({"kind": "role", "path": str(path), "text": source})
+    parts = source.split("---", 2)
     lines = parts[1].splitlines() if len(parts) >= 3 else []
     role = next((m.group("role") for m in map(_ROLE_LINE.match, lines) if m), None)
     if role is None:
@@ -218,6 +226,7 @@ def driver_inputs(
         },
         "instruction": None,
         "claim_context": None,
+        "declarations": [],
         "claim": {
             "started_ns": None,
             "returned_ns": None,
@@ -420,7 +429,10 @@ class DriverCase:
             raise creation.binding_failure(DETAIL_MAPPING.format(session=session, recorded=recorded, launched=native))
         if record is None or not journey.started(record, native):
             raise creation.platform_failure(DETAIL_RECORD_START.format(record=record))
-        role = declared_role(self.clone / DOCS_ROOT / f"{self.driver_id}{LIVE_SUFFIX}")
+        role = declared_role(
+            self.clone / DOCS_ROOT / f"{self.driver_id}{LIVE_SUFFIX}",
+            cast(list[creation.EvidenceValue], self.case_evidence["declarations"]) if self.case_evidence else None,
+        )
         if evidence is not None:
             evidence["declared_role"] = role
         for field, expected in ((FIELD_ROLE, role), (FIELD_JOB, self.driver_id)):
@@ -499,7 +511,10 @@ class DriverCase:
 
     def check_instruction(self, session: str, instruction: str) -> None:
         """The item, phase, session, child procedure and each declared ending act with its phase (amendment A1)."""
-        acts, child = declared_acts(self.clone / DOCS_ROOT / f"{self.driver_id}{LIVE_SUFFIX}")
+        acts, child = declared_acts(
+            self.clone / DOCS_ROOT / f"{self.driver_id}{LIVE_SUFFIX}",
+            cast(list[creation.EvidenceValue], self.case_evidence["declarations"]) if self.case_evidence else None,
+        )
         if self.case_evidence is not None:
             self.case_evidence["instruction"] = {
                 "session_id": session,

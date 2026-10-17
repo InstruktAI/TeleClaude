@@ -957,9 +957,21 @@ def _early_driver_inputs(
         name = text(packet, "name")
         if (
             set(packet)
-            != {"name", "slot", "procedure", "verb", "phase", "startup", "claim", "instruction", "claim_context"}
+            != {
+                "name",
+                "slot",
+                "procedure",
+                "verb",
+                "phase",
+                "startup",
+                "claim",
+                "instruction",
+                "claim_context",
+                "declarations",
+            }
             or name not in expected
             or name in result
+            or not isinstance(packet["declarations"], list)
         ):
             raise ValueError(ERROR_REPORT)
         slot, procedure, verb, phase, role = expected[name]
@@ -2220,6 +2232,7 @@ def validate_early_inputs(report: JsonObject) -> JsonObject:
                 "ends",
                 "closed_reads",
                 "effects",
+                "owner_auth",
             }
             or type(row["schema_version"]) is not int
             or row["schema_version"] != 1
