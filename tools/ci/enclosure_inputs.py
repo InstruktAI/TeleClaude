@@ -1,4 +1,4 @@
-"""Acquire only the reviewed fixed enclosure archives into one new owned directory."""
+"""Acquire fixed enclosure archives and stage the locked outside observer library."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import hashlib
 import os
 import stat
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -23,7 +24,9 @@ from tools.ci.enclosure_contract import (
     require_hex,
     text,
 )
+from tools.ci.enclosure_data import _archive, _command, _require_time
 from tools.ci.enclosure_native import NativeCommand
+from tools.ci.enclosure_owner import PARENT_DESCRIPTOR, RunOwner, _require_private_directory
 
 CURL: Final = "/usr/bin/curl"
 CURL_ARGUMENTS: Final = (
@@ -50,6 +53,8 @@ ERROR_INPUT: Final = "a fixed input is malformed or conflicts with another decla
 ERROR_OWNER: Final = "fixed acquisition requires a new private directory owned by the privileged helper"
 ERROR_DEADLINE: Final = "fixed acquisition exhausted its original admitted allowance"
 ERROR_ACQUISITION: Final = "fixed input acquisition failed or returned different bytes: {digest}, exit {status}"
+OBSERVER_DIRECTORY: Final = "observer-library"
+ZIP_EXTRACT: Final = ("-I", "-S", "-m", "zipfile", "--extract")
 
 
 class Key(StrEnum):
@@ -66,6 +71,8 @@ class Key(StrEnum):
     OBSERVER_LIBRARY = "observer_library"
     URL = "url"
     TARBALL = "tarball"
+    HOST = "host"
+    PYTHON_INTERPRETER = "python_interpreter"
 
 
 @dataclass(frozen=True)
@@ -179,3 +186,40 @@ def acquire_fixed_inputs(
             raise TimeoutError(ERROR_DEADLINE)
         result[item.sha256] = destination
     return result
+
+
+def stage_observer_library(
+    owner: RunOwner,
+    package: StaticPackage,
+    inputs: Mapping[str, Path],
+    run: NativeCommand,
+    deadline: AdmittedDeadline,
+) -> Path:
+    """Extract the one authenticated wheel as data, without executing or installing its package."""
+    controller = owner.journal.binding.controller
+    if os.geteuid() != 0 or controller.pid != os.getpid() or deadline.outer_end_ns != owner.journal.deadline.end_ns:
+        raise ValueError(ERROR_OWNER)
+    deadline = AdmittedDeadline(
+        deadline.outer_end_ns,
+        deadline.vector_end_ns,
+        min(deadline.effective_end(), deadline.outer_end_ns - owner.journal.deadline.reserve_ns),
+    )
+    _require_time(deadline)
+    controller.require_alive()
+    _require_private_directory(owner.journal.directory_fd)
+    library = object_value(parse_object(package.lock_bytes)[Key.OBSERVER_LIBRARY])
+    archive = _archive(library, inputs, deadline)
+    recipe = parse_object(package.recipe_bytes)
+    interpreter = text(object_value(recipe[Key.HOST]), Key.PYTHON_INTERPRETER)
+    cap = positive_integer(object_value(recipe[Field.BUDGET_SECONDS]), Field.NORMAL_COMMAND_MAX)
+    deadline.command_end(cap)
+    # mkdir is exclusive: a partial prior extraction is retained, never reused.
+    os.mkdir(OBSERVER_DIRECTORY, mode=0o700, dir_fd=owner.journal.directory_fd)
+    os.fsync(owner.journal.directory_fd)
+    directory = Path(PARENT_DESCRIPTOR.format(pid=controller.pid, descriptor=owner.journal.directory_fd))
+    destination = directory / OBSERVER_DIRECTORY
+    # The existing bounded adapter runs only the locked interpreter's stdlib ZIP
+    # command; this does not import wheel code or connect a manager observer.
+    _command((interpreter, *ZIP_EXTRACT, str(archive), str(destination)), run, deadline, cap)
+    controller.require_alive()
+    return destination
