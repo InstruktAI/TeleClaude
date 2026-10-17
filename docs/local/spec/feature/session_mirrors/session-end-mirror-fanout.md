@@ -14,12 +14,14 @@ visibility: 'public'
 
 One lifecycle signal from the agent_runtime bounded context triggers the
 fanout: the agent-stop signal (the agent CLI announced the turn is over and the
-transcript file may have advanced). The locally dispatched agent stop does not
-reach the fanout (UC-SEMF-3). The session_mirrors service exposes one handler
-entry point that wraps the event in a normalized event payload and dispatches it
-to every registered processor. A single default processor is registered at
-service boot; it resolves session context, validates that the transcript belongs
-to a canonical per-agent session root, and invokes mirror generation.
+transcript file may have advanced). Outbox dispatch completes coordinator
+handling first, then invokes the mirror fanout for an agent-stop. The
+session_mirrors service exposes one handler entry point that wraps the event in
+a normalized event payload and dispatches it to every registered processor. A
+single default processor is registered at service boot; it resolves session
+context, validates that the transcript belongs to a canonical per-agent session
+root, and invokes mirror generation. A fanout failure is logged without undoing
+the accepted agent-stop work.
 
 Closing a session requests readiness of its session-owned mirror for the final
 conversation boundary. The existing refresh capability confirms coverage,
@@ -37,7 +39,15 @@ isolation so one failing processor cannot block the others.
 
 ### Use cases
 
-#### UC-SEMF-3: Local agent-stop is dispatched coordinator-only, not to the fanout
+#### UC-SEMF-3: A person can find a conversation after an agent turn ends
+
+```gherkin
+Scenario: Read a conversation after the agent finishes a turn
+  Given a person's established conversation has a transcript under the agent's canonical session root
+  When the agent reports that its turn ended
+  Then the conversation mirror includes the completed turn
+  And the person can retrieve the conversation with that turn
+```
 
 #### UC-SEMF-4: An operator can read the complete conversation after session closure
 
