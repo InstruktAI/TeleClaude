@@ -103,45 +103,13 @@ person's folder carries no human identity and acts as no person.
 
 #### UC-PSA1:
 
-```gherkin
-Given no standing agent continues a procedure for a home on the computer that emitted the event
-When an activation for that procedure and home arrives there
-Then a standing agent is started in that home under the system principal through the procedure-entry contract
-And it carries the role the procedure declares from its creation
-And it receives the loader carrying its home and delivery facts and directing it to its procedure's instructions, including the event-handling instructions the procedure declares
-And its initial event is delivered as hook context under the procedure event-delivery contract
-```
-
 #### UC-PSA2:
 
-```gherkin
-Given a standing agent continues a procedure for a home
-When a further activation for that procedure and home arrives
-Then that activation is queued for the same agent
-And it reaches the agent at an eligible boundary under the procedure's delivery declaration
-And no second agent is started
-```
-
 #### UC-PSA3: Every declared event reaches the one standing agent
-
-```gherkin
-Given a procedure declares several event types as activating it
-And a standing agent continues that procedure for a home
-When an activation arrives for any one of those event types
-Then it reaches that one standing agent
-```
 
 #### UC-PSA4: Editing the event list does not change the continuing agent
 
 #### UC-PSA5: Overlapping subscriptions do not merge responsibilities
-
-```gherkin
-Given two distinct procedures each declare the same event type as activating them
-And both answer the same home
-When an activation for that event type arrives
-Then each procedure's standing agent is activated
-And neither procedure's responsibility is absorbed into the other
-```
 
 #### UC-PSA6: Procedure and home each identify a distinct agent
 
@@ -150,15 +118,6 @@ And neither procedure's responsibility is absorbed into the other
 #### UC-PSA8: The company and system origin survive every continuation
 
 #### UC-PSA9: An activation that cannot be fulfilled is observable as a failure
-
-```gherkin
-Given an activation for a procedure and home arrives
-And it cannot be fulfilled
-When the platform records the outcome
-Then an agent inspecting the activation record observes a failure
-And the record does not present the activation as completed
-And the procedure's responsibility is not transferred to another agent
-```
 
 #### UC-PSA10: A system-origin session already running the procedure for the company counts as standing
 
@@ -170,33 +129,11 @@ And the procedure's responsibility is not transferred to another agent
 
 #### UC-PSA14: A home absent on the emitting computer fails the activation
 
-```gherkin
-Given an activation for a procedure arrives naming a company, person, or project that is not registered on this computer
-When the activation runner looks for that home's folder
-Then no standing agent is started or woken
-And an agent inspecting the activation record observes a failure naming the absent home
-And no other home or computer takes the activation
-```
-
 #### UC-PSA15: A repeated activation reaches the agent once
-
-```gherkin
-Given a standing agent has received an event through an activation for a procedure and home
-When an activation for the same event, procedure, and home arrives again
-Then the agent does not receive the event a second time
-And no second agent is started
-```
 
 #### UC-PSA16: A procedure declaring subject identity starts one agent per subject
 
 #### UC-PSA17: A later event about the same subject reaches that subject's open agent
-
-```gherkin
-Given a procedure declaring subject identity keeps an open agent bound to a subject in a home
-When an activation arrives for a further event about that subject
-Then the activation is delivered to that agent
-And no further agent is started
-```
 
 #### UC-PSA18: A later event about a subject revives that subject's closed agent with its own context
 
@@ -210,58 +147,15 @@ And no further agent is started
 
 #### UC-PSA23: An unattended agent stays out of the places people look at sessions
 
-```gherkin
-Scenario Outline: A person's ordinary view of sessions leaves an unattended agent out
-  Given a procedure declaring itself unattended
-  And an activation has started its agent
-  When a person whose reach admits that agent's session <view>
-  Then the agent's session is not shown
-
-  Examples:
-    | view                                            |
-    | lists sessions without asking for every session |
-    | opens the TUI sessions view                     |
-    | looks for the session's thread in Discord       |
-```
-
 #### UC-PSA24: An unattended agent is shown when asked for
 
 #### UC-PSA25: An open unattended agent answers as an attended one would
 
-```gherkin
-Given a procedure declaring itself unattended keeps a running agent for a home
-When a later activation for that procedure and home arrives
-Then it reaches that same agent, as it would for an attended procedure
-And that agent is still left out of the places people look at sessions
-```
-
 #### UC-PSA27: A closed unattended agent is not brought back
-
-```gherkin
-Given a procedure declaring itself unattended and subject identity started an agent bound to a subject in a home
-And that agent's session has closed
-When an activation arrives for a further event about that subject
-Then the closed session is not revived
-And a new unattended agent bound to that subject is started in that home
-And the activation is delivered to it
-```
 
 #### UC-PSA29: A procedure declaring no role starts no agent
 
-```gherkin
-Given a subscribed procedure whose publication declares no role
-When an activation for it arrives, or an operator starts it by hand
-Then no agent is started
-And the activation record, or the operator, observes a failure naming the missing role
-```
-
 #### UC-PSA26: An agent started by hand is attended
-
-```gherkin
-Given a procedure declaring itself unattended answers company events
-When an operator starts a session for that procedure and a company by hand
-Then that session is shown wherever sessions are shown
-```
 
 ### Cross-context references
 
