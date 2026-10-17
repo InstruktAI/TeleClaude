@@ -2048,6 +2048,147 @@ def interpret_install_package_states(
         raise DpkgInputError({"package_work": work, "install_package_states": result}) from error
 
 
+def _dbus_work_row(work: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    rows = work["rows"]
+    if work["error"] is not None or not isinstance(rows, list):
+        raise ValueError(ERROR_INPUT)
+    found: list[JsonObject] = []
+    for value in rows:
+        _before_cutoff(deadline)
+        row = object_value(value)
+        if row["package_name"] == "dbus" and row["lifecycle"] != "not-installed":
+            found.append(row)
+    if len(found) != 1:
+        raise ValueError("actual D-Bus work identity is missing or ambiguous")
+    return found[0]
+
+
+def _dbus_pending_candidates(
+    initial: JsonObject, routes: JsonObject, deadline: AdmittedDeadline, captured: list[JsonValue]
+) -> None:
+    affected = object_value(routes["affected_candidates"])
+    candidates = affected["affected"]
+    if not isinstance(candidates, list):
+        raise ValueError(ERROR_INPUT)
+    classifications = {
+        "new_archive_member": "new_member_dbus_candidate_with_matched_capture_inputs",
+        "prior_container_control": "old_control_dbus_candidate_with_matched_capture_inputs",
+    }
+    for value in candidates:
+        _before_cutoff(deadline)
+        candidate = object_value(value)
+        if candidate["activation_eligible"] is False:
+            continue
+        origin = text(candidate, "origin")
+        if candidate["activation_eligible"] is not True or candidate["classification"] != classifications[origin]:
+            raise ValueError("candidate has no matched newly induced D-Bus input scope")
+        instance = object_value(candidate["instance"])
+        if instance["package_name"] != "dbus" or instance["identity_state"] != "resolved":
+            raise ValueError(ERROR_INPUT)
+        name = base64.b64decode(text(candidate, "activated_name_base64"), validate=True).decode("ascii")
+        captured.append({**candidate, "pending_name": name})
+    initialization = object_value(initial["initialization"])
+    if initialization["error"] is not None:
+        raise ValueError(ERROR_INPUT)
+    if initialization["initialization"] == "not_requested_by_unincorp":
+        return
+    if initialization["initialization"] != "absent_native_initialization":
+        raise ValueError("native initialization origin remains unproven")
+    actual = _input_files(object_value(initial["inputs"]))
+    source = actual["/var/lib/dpkg/info/dbus.triggers"]
+    data = _input_bytes(source)
+    if data is None:
+        raise ValueError(ERROR_INPUT)
+    directives: list[JsonValue] = []
+    _trigger_control(data, deadline, directives, [])
+    for value in directives:
+        _before_cutoff(deadline)
+        directive = object_value(value)
+        if not text(directive, "directive").startswith("interest"):
+            continue  # Native transitional initialization has no activate callback.
+        if directive["kind"] == "unknown":
+            raise ValueError("native initialization rejects an unknown interest kind")
+        name = base64.b64decode(text(directive, "trigger_base64"), validate=True).decode("ascii")
+        captured.append(
+            {
+                **directive,
+                "origin": "native_initialization",
+                "source_path": source["path"],
+                "source_sha256": source["sha256"],
+                "pending_name": name,
+            }
+        )
+
+
+def interpret_induced_dbus_names(
+    package: StaticPackage,
+    initial: JsonObject,
+    routes: JsonObject,
+    work: JsonObject,
+    sources: JsonObject,
+    deadline: AdmittedDeadline,
+) -> JsonObject:
+    """Join actual pending names to preserved potential origins; this grants no receipt, causal or pass admission."""
+    candidates: list[JsonValue] = []
+    result: JsonObject = {"candidates": candidates, "named_pass_admission": "unproven", "error": None}
+    try:
+        _before_cutoff(deadline)
+        if (
+            initial["error"] is not None
+            or initial["state"] != "inputs_collected_not_admitted"
+            or routes["error"] is not None
+            or routes["state"] != "route_inputs_collected_not_admitted"
+        ):
+            raise ValueError("an original input/state failure cannot be resolved by later pending names")
+        states = interpret_install_package_states(package, work, deadline)
+        result["install_package_states"] = states
+        before = _dbus_work_row(object_value(initial["package_work"]), deadline)
+        current = _dbus_work_row(work, deadline)
+        if before["pending_names"] or before["awaited_package_specs"]:
+            raise ValueError("original D-Bus work cannot acquire newly induced provenance")
+        affected = object_value(routes["affected_candidates"])
+        blockers = affected["blockers"]
+        if not isinstance(blockers, list) or blockers:
+            raise ValueError("original affected-recipient blockers remain unresolved")
+        pending = states["dbus_native_pending_names"]
+        if not isinstance(pending, list) or pending != current["pending_names"]:
+            raise ValueError(ERROR_INPUT)
+        result["actual_pending_names"] = pending
+        if not pending:
+            result["state"] = "no_actual_pending_names_to_bind"
+            _before_cutoff(deadline)
+            return result
+        fields = ("package_name", "version", "architecture", "selection_state", "error_flag")
+        before_sources = object_value(initial["dbus_control_sources"])
+        if (
+            before["lifecycle"] != "installed"
+            or any(before[key] != current[key] for key in fields)
+            or before["multi_arch"] != "foreign"
+            or current["multi_arch"] != "foreign"
+            or before_sources["error"] is not None
+            or before_sources["state"] != "matched"
+            or sources["error"] is not None
+            or sources["state"] != "matched"
+        ):
+            raise ValueError("actual D-Bus identity/control inputs do not bind the reviewed triggered branch")
+        _dbus_pending_candidates(initial, routes, deadline, candidates)
+        names = {text(object_value(value), "pending_name") for value in candidates}
+        for name in pending:
+            _before_cutoff(deadline)
+            if not isinstance(name, str) or name not in names:
+                raise ValueError("actual D-Bus pending name has no bound transaction input candidate")
+        result["state"] = "pending_name_inputs_covered"
+        _before_cutoff(deadline)
+        return result
+    except DpkgInputError as error:
+        result["failed_input"] = error.snapshot
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"package_work": work, "dbus_pending_name_inputs": result}) from error
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"package_work": work, "dbus_pending_name_inputs": result}) from error
+
+
 def _info_link_input(path: Path, deadline: AdmittedDeadline, captures: list[JsonValue]) -> JsonObject:
     """Capture native link/unlink operands without reading arbitrary control-file bodies or following link sources."""
     row: JsonObject = {"path": str(path), "present": None, "started_ns": time.monotonic_ns(), "finished_ns": None}
