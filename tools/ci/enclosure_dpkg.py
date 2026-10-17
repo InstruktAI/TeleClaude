@@ -9,11 +9,24 @@ import os
 import re
 import stat
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
-from tools.ci.enclosure_contract import AdmittedDeadline, JsonObject, JsonValue, object_value, text
-from tools.ci.enclosure_native import read_native_stdout
+from tools.ci.enclosure_contract import (
+    AdmittedDeadline,
+    Field,
+    JsonObject,
+    JsonValue,
+    StaticPackage,
+    object_value,
+    parse_object,
+    positive_integer,
+    text,
+)
+from tools.ci.enclosure_data import DPKG_DEB, _archive
+from tools.ci.enclosure_host import CONTAINER_PACKAGE
+from tools.ci.enclosure_native import NativeQuery, query_native, read_native_stdout
 
 CONFIGURATION: Final = Path("/etc/dpkg")
 TRIGGER_INPUTS: Final = (
@@ -21,6 +34,7 @@ TRIGGER_INPUTS: Final = (
     Path("/var/lib/dpkg/triggers/Unincorp"),
     Path("/var/lib/dpkg/info/dbus.postinst"),
     Path("/var/lib/dpkg/info/dbus.triggers"),
+    Path("/var/lib/dpkg/diversions"),
 )
 CONFIG_NAME: Final = re.compile(r"[A-Za-z0-9_-]+")
 DIRECTORY_FLAGS: Final = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -445,3 +459,105 @@ def bound_configuration_effects(configuration: JsonObject, deadline: AdmittedDea
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError({"configuration": configuration, "effects": result}) from error
+
+
+def _container_members(raw: bytes, deadline: AdmittedDeadline) -> list[JsonValue]:
+    members: list[JsonValue] = []
+    for line in raw.decode("utf-8").splitlines():
+        _before_cutoff(deadline)
+        fields = line.split(None, 5)
+        if len(fields) != 6 or not fields[0] or fields[0][0] not in "-dlh":
+            raise ValueError(ERROR_INPUT)
+        kind = fields[0][0]
+        path = fields[5]
+        if kind in "lh":
+            separator = " -> " if kind == "l" else " link to "
+            path, found, target = path.partition(separator)
+            if not found or not target:
+                raise ValueError(ERROR_INPUT)
+        # This parser serves the one authenticated container archive, not arbitrary tar quoting/device formats.
+        if not path.startswith("./") or "\\" in path or ".." in path.split("/"):
+            raise ValueError(ERROR_INPUT)
+        members.append({"archive_name": path, "kind": kind})
+    if not members:
+        raise ValueError(ERROR_INPUT)
+    return members
+
+
+def container_payload_basis(
+    package: StaticPackage, inputs: Mapping[str, Path], query: NativeQuery, deadline: AdmittedDeadline
+) -> JsonObject:
+    """Use the authenticated fixed archive and native read-only listing, without extracting or installing it."""
+    result: JsonObject = {"started_ns": time.monotonic_ns(), "finished_ns": None, "error": None}
+    try:
+        _before_cutoff(deadline)
+        lock = parse_object(package.lock_bytes)
+        rows = object_value(lock["host_closure"])["final_packages"]
+        if not isinstance(rows, list):
+            raise ValueError(ERROR_INPUT)
+        containers = [object_value(value) for value in rows if object_value(value).get("name") == CONTAINER_PACKAGE]
+        if len(containers) != 1:
+            raise ValueError(ERROR_INPUT)
+        declaration = containers[0]
+        archive = _archive(declaration, inputs, deadline)
+        cap = positive_integer(
+            object_value(parse_object(package.recipe_bytes)[Field.BUDGET_SECONDS]), Field.NORMAL_COMMAND_MAX
+        )
+        argv = (DPKG_DEB, "--contents", "--", str(archive))
+        result["archive_sha256"] = text(declaration, Field.SHA256)
+        result["archive_path"] = str(archive)
+        result["argv"] = list[JsonValue](argv)
+        raw = query_native(argv, query, deadline, cap)
+        result["contents_base64"] = base64.b64encode(raw).decode("ascii")
+        result["contents_sha256"] = hashlib.sha256(raw).hexdigest()
+        members = _container_members(raw, deadline)
+        result["members"] = members
+        result["effective_path_and_trigger_admission"] = "unproven"
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError(result) from error
+    finally:
+        result["finished_ns"] = time.monotonic_ns()
+
+
+def bind_dbus_control_sources(snapshot: JsonObject, package: StaticPackage, deadline: AdmittedDeadline) -> JsonObject:
+    """Match actual captured installed control bytes, without inventing presence, registration or trigger admission."""
+    result: JsonObject = {"scope": "installed_dbus_control_bytes", "files": [], "state": "unproven", "error": None}
+    try:
+        _before_cutoff(deadline)
+        actual = _input_files(snapshot)
+        rows = parse_object(package.lock_bytes)["host_maintainer_scripts"]
+        if not isinstance(rows, list):
+            raise ValueError(ERROR_INPUT)
+        matched: list[JsonValue] = []
+        result["files"] = matched
+        for name in ("postinst", "triggers"):
+            _before_cutoff(deadline)
+            declarations = [
+                object_value(value)
+                for value in rows
+                if object_value(value).get("package") == "dbus" and object_value(value).get("file") == name
+            ]
+            if len(declarations) != 1:
+                raise ValueError(ERROR_INPUT)
+            declared = declarations[0]
+            path = f"/var/lib/dpkg/info/dbus.{name}"
+            data = _input_bytes(actual[path])
+            matches = (
+                data is not None
+                and len(data) == positive_integer(declared, Field.BYTES)
+                and hashlib.sha256(data).hexdigest() == text(declared, Field.SHA256)
+            )
+            matched.append({"path": path, "present": data is not None, "matches_declared_source": matches})
+        result["state"] = (
+            "matched"
+            if all(object_value(value)["matches_declared_source"] is True for value in matched)
+            else "unproven"
+        )
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"inputs": snapshot, "sources": result}) from error
