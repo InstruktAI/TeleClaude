@@ -24,38 +24,6 @@ boilerplate frontmatter.
 
 ## Canonical fields
 
-### Use cases
-
-```
-Given a baseline manifest at docs/local/baseline.md
-When validation runs during sync
-Then only @-ref lines (and comments) are accepted
-And any prose, H1, frontmatter, or non-ref content fails validation
-```
-
-```
-Given --baseline-only is passed to the Selection policy
-When every published domain carries its manifest at docs/global/<domain>/baseline.md and a project manifest exists
-Then every domain manifest and the project manifest are loaded
-And the visible set collapses to snippets reachable via their @-refs
-And --domains then narrows that set to snippets in the requested domains
-```
-
-```
-Given a snippet file under docs/global/baseline/policy/some-rule.md
-When sync builds the index
-Then type is auto-inferred as "policy" from the folder name
-And scope is set to global
-And the rendered index path substitutes ~/.teleclaude/docs/ for docs/global/
-```
-
-```
-Given a baseline manifest entry pointing at a snippet with Required reads
-When --baseline-only is applied
-Then only the manifest-referenced snippet is included
-And its Required reads dependencies are NOT auto-pulled into the baseline set
-```
-
 ### Cross-context references
 
 - None direct. The baseline manifest concept is wholly owned by the context
@@ -68,15 +36,9 @@ And its Required reads dependencies are NOT auto-pulled into the baseline set
   whose snippet declares Required reads will not auto-include those reads in
   the baseline-only set, so callers under `--baseline-only` get less context
   than they may expect.
-- Baseline `type` inference relies on the folder name matching a known type
-  string. Snippets placed in baseline folders with unrecognized names get no
-  inferred type and may be skipped at index build for failing frontmatter
-  checks.
-- The caveat above no longer holds. `type` and `scope` are now derived for ALL
-  snippets from the path (not only baseline-folder snippets): `scope` from the
-  home and half (a publisher's `docs/global/**`→global, a project's
+- `type` and `scope` are derived for all snippets from the path: `scope` from
+  the home and half (a publisher's `docs/global/**`→global, a project's
   `docs/local/**`→project, either half of a person's or company's home→that
-  tier) and `type` from the taxonomy folder. Validation separately enforces that the H1 suffix
-  matches the path-derived type. A path that does not resolve to a derivable
-  classification no longer gets silently skipped — it FAILS the index build
-  loudly with an error naming the offending file.
+  tier) and `type` from the taxonomy folder. Validation separately enforces that
+  the H1 suffix matches the path-derived type. A path that does not resolve to a
+  derivable classification fails the index build with an error naming the file.
