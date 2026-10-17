@@ -3437,17 +3437,12 @@ def _flow_inventory_packet(packet: JsonObject, created: int, public_finished: in
     return commands
 
 
-def _flow_inventory_records(
-    commands: list[JsonValue], owned_paths: set[str]
-) -> tuple[dict[str, Mapping[str, object]], set[str], set[str]]:
-    listed = _early_session_list(commands[0])
-    if len(commands) != len(listed) + 1:
+def _flow_public_records(commands: list[JsonValue], listed: set[str]) -> dict[str, Mapping[str, object]]:
+    if len(commands) != len(listed):
         raise ValueError(ERROR_REPORT)
     records: dict[str, Mapping[str, object]] = {}
-    matched: set[str] = set()
-    unscoped: set[str] = set()
     # The producer iterates a frozenset: native order is retained, never guessed from sorted IDs.
-    for value in commands[1:]:
+    for value in commands:
         argv = object_value(value)["argv"]
         if not isinstance(argv, list) or len(argv) != 5 or not isinstance(argv[3], str):
             raise ValueError(ERROR_REPORT)
@@ -3457,6 +3452,18 @@ def _flow_inventory_records(
         record = _public_session_command(value, [creation.TELEC, "sessions", "show", session, "--full"])
         if record.get("session_id") != session or "project_path" not in record:
             raise ValueError(ERROR_REPORT)
+        records[session] = record
+    return records
+
+
+def _flow_inventory_records(
+    commands: list[JsonValue], owned_paths: set[str]
+) -> tuple[dict[str, Mapping[str, object]], set[str], set[str]]:
+    listed = _early_session_list(commands[0])
+    records = _flow_public_records(commands[1:], set(listed))
+    matched: set[str] = set()
+    unscoped: set[str] = set()
+    for session, record in records.items():
         project = record["project_path"]
         if project is None:
             # The public DTO permits null; it does not establish a foreign creator or an owned one.
@@ -3465,12 +3472,74 @@ def _flow_inventory_records(
             raise ValueError(ERROR_REPORT)
         elif project in owned_paths:
             matched.add(session)
-        records[session] = record
     return records, matched, unscoped
 
 
+def _flow_sweep_inputs(
+    finalizer: JsonObject, inventories: list[JsonValue], snapshots: list[JsonValue], public_finished: int
+) -> list[JsonValue]:
+    sweeps = finalizer["public_sweep_evidence"]
+    ends = finalizer["public_session_end_evidence"]
+    if not isinstance(sweeps, list) or len(sweeps) != len(inventories) - 1 or not isinstance(ends, list):
+        raise ValueError(ERROR_REPORT)
+    results: list[JsonValue] = []
+    previous = positive_integer(object_value(inventories[0]), "finished_ns")
+    for index, value in enumerate(sweeps, 1):
+        sweep = object_value(value)
+        inventory = object_value(inventories[index])
+        snapshot = object_value(snapshots[index])
+        reads = sweep["reads"]
+        if (
+            set(sweep) != {"inventory_index", "started_ns", "finished_ns", "reads", "open_session_ids", "error"}
+            or type(sweep["inventory_index"]) is not int
+            or sweep["inventory_index"] != index
+            or sweep["error"] is not None
+            or not isinstance(reads, list)
+            or not previous
+            <= positive_integer(sweep, "started_ns")
+            <= positive_integer(inventory, "started_ns")
+            <= positive_integer(inventory, "finished_ns")
+            <= positive_integer(sweep, "finished_ns")
+            <= public_finished
+        ):
+            raise ValueError(ERROR_REPORT)
+        records = _flow_public_records(reads, set(_strings(snapshot["new_matched_session_ids"])))
+        open_ids: set[str] = set()
+        for session, record in records.items():
+            if record.get("closed_at") is None and record.get("lifecycle_status") != "closed":
+                open_ids.add(session)
+            elif not _public_closed(record, session):
+                # The legacy selector's disjunction alone is not an independently proved public close.
+                raise ValueError(ERROR_REPORT)
+        if sweep["open_session_ids"] != sorted(open_ids) or (not open_ids) != (index == len(sweeps)):
+            raise ValueError(ERROR_REPORT)
+        # Reuse already validated end packets in this original sweep; an earlier close is no later end proof.
+        ended: set[str] = set()
+        for end_value in ends:
+            end = object_value(end_value)
+            session = text(end, "session_id")
+            if session in open_ids and positive_integer(inventory, "finished_ns") <= positive_integer(
+                end, "started_ns"
+            ) <= positive_integer(end, "finished_ns") <= positive_integer(sweep, "finished_ns"):
+                ended.add(session)
+        if ended != open_ids:
+            raise ValueError(ERROR_REPORT)
+        results.append(
+            {
+                "inventory_index": index,
+                "started_ns": sweep["started_ns"],
+                "finished_ns": sweep["finished_ns"],
+                "second_read_session_ids": list[JsonValue](sorted(records)),
+                "open_session_ids": list[JsonValue](sorted(open_ids)),
+                "ended_session_ids": list[JsonValue](sorted(ended)),
+            }
+        )
+        previous = positive_integer(sweep, "finished_ns")
+    return results
+
+
 def validate_flow_inventory_inputs(report: JsonObject, sessions: JsonObject, starts: JsonObject) -> JsonObject:
-    """Interpret original finite inventory inputs; second-read closure and creator completeness remain separate."""
+    """Join finite inventory and sweep reads to original public ends; creator completeness remains separate."""
     provisional = object_value(report["payload_provisional"])
     binding = object_value(provisional["binding"])
     observations = object_value(provisional["observations"])
@@ -3539,8 +3608,9 @@ def validate_flow_inventory_inputs(report: JsonObject, sessions: JsonObject, sta
         "project_path": project,
         "baseline_session_ids": list[JsonValue](sorted(baseline_ids)),
         "snapshots": snapshots,
+        "sweeps": _flow_sweep_inputs(finalizer, packets, snapshots, public_finished),
         "creator_classification": "unproven",
-        "sweep_second_read_closure": "unproven",
+        "sweep_second_read_closure": "public_closed",
     }
 
 

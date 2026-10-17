@@ -499,6 +499,7 @@ class WorkflowFlow:
     public_integration_evidence: MutableJson | None = None
     public_inventory_baseline: MutableJson | None = None
     public_inventory_evidence: list[JsonValue] = field(default_factory=list)
+    public_sweep_evidence: list[JsonValue] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -1541,6 +1542,7 @@ class WorkflowFlow:
                     "project_path": str(self.project),
                     "baseline_inventory": self.public_inventory_baseline,
                     "public_inventory_evidence": self.public_inventory_evidence,
+                    "public_sweep_evidence": self.public_sweep_evidence,
                 }
             )
         try:
@@ -1737,23 +1739,45 @@ class WorkflowFlow:
 
     def _finalizer_sweep(self, baseline_ids: frozenset[str], rows: MutableJson, issues: list[str]) -> None:
         for _ in range(3):
+            reads: list[JsonValue] | None = [] if self.payload_provisional is not None else None
+            packet: MutableJson | None = None
+            if reads is not None:
+                packet = {
+                    "inventory_index": None,
+                    "started_ns": time.monotonic_ns(),
+                    "finished_ns": None,
+                    "reads": reads,
+                    "open_session_ids": None,
+                    "error": None,
+                }
+                self.public_sweep_evidence.append(packet)
             try:
                 open_sessions = []
-                for session_id in set(
+                current = set(
                     self.all_current_project_sessions(
                         evidence=self.public_inventory_evidence if self.payload_provisional is not None else None
                     )
-                ) - set(baseline_ids):
-                    record = self.session_record(session_id, retain=False)
+                ) - set(baseline_ids)
+                if packet is not None:
+                    packet["inventory_index"] = len(self.public_inventory_evidence) - 1
+                for session_id in current:
+                    record = self.session_record(session_id, retain=False, evidence=reads)
                     if record.get(FIELD_CLOSED_AT) is None and record.get(FIELD_LIFECYCLE) != "closed":
                         open_sessions.append(session_id)
+                if packet is not None:
+                    packet["open_session_ids"] = list[JsonValue](sorted(open_sessions))
                 if not open_sessions:
                     return
                 roles = {session: self.sessions.get(session, "unknown") for session in open_sessions}
                 self._finalizer_end_sessions(open_sessions, roles, rows, issues)
             except BaseException as error:
+                if packet is not None:
+                    packet["error"] = f"{type(error).__name__}: {error}"
                 issues.append(f"session sweep read: {error}")
                 return
+            finally:
+                if packet is not None:
+                    packet["finished_ns"] = time.monotonic_ns()
         issues.append("the public session sweep did not reach an all-closed observation")
 
     def _finalizer_stop_fixtures(self, issues: list[str]) -> None:
