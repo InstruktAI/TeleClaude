@@ -492,6 +492,7 @@ class WorkflowFlow:
     public_reason_evidence: list[JsonValue] = field(default_factory=list)
     public_message_evidence: list[JsonValue] = field(default_factory=list)
     public_child_evidence: list[JsonValue] = field(default_factory=list)
+    public_direct_evidence: list[JsonValue] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Reserve the disposable flow root and make cleanup retention active before setup can launch anything."""
@@ -1271,6 +1272,21 @@ class WorkflowFlow:
         self.public_reason_evidence.append(evidence)
         return evidence
 
+    def direct_input(self, attempt: str, actor: str, before: Json, bound: str | None = None) -> MutableJson:
+        """Retain an existing direct act's actual frame and public before/after context."""
+        evidence: MutableJson = {
+            "attempt_id": attempt,
+            "actor": actor,
+            "bound": bound,
+            "started_ns": time.monotonic_ns(),
+            "observed_ns": None,
+            "before_item": cast(JsonValue, dict(before)),
+            "after_item": None,
+            "frame": None,
+        }
+        self.public_direct_evidence.append(evidence)
+        return evidence
+
     def _read_object(self, path: Path) -> Json | None:
         try:
             value = json.loads(path.read_text(encoding=ENCODING))
@@ -1451,6 +1467,7 @@ class WorkflowFlow:
             "public_reason_evidence": self.public_reason_evidence,
             "public_message_evidence": self.public_message_evidence,
             "public_child_evidence": self.public_child_evidence,
+            "public_direct_evidence": self.public_direct_evidence,
             "integrators": cast(JsonValue, sorted(integrators)),
             "start_ledger": cast(JsonValue, starts),
             "open_attempt_ids": cast(JsonValue, open_ids),

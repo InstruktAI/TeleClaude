@@ -48,6 +48,7 @@ from tools.ci.workflow_flow import (
 )
 from tools.ci.workflow_ledger import (
     RECORD_DISCHARGED,
+    RECORD_EFFECT,
     RECORD_OPERATION,
     RECORD_SESSION,
     RECORD_TRIGGER,
@@ -56,6 +57,7 @@ from tools.ci.workflow_ledger import (
 )
 from tools.ci.workflow_publication import TERMINAL_STATES
 from tools.ci.workflow_ready import FINDING_DOOR, FINDING_WORK, REASON_ONE, REASON_TWO
+from tools.ci.workflow_review import DIRECT_REFUSAL_ERRORS, FINDING_TEXT, REPLY_TEXT, WRONG_PERFORMER_TEXT
 
 ERROR_REPORT: Final = "the new provisional report binding or original ledger evidence is inconsistent"
 LEDGER_ADDRESS: Final = Path("starts.jsonl")
@@ -665,13 +667,13 @@ def _claimed_holder(held: JsonObject, actor: str, phase: str) -> None:
         raise ValueError(ERROR_REPORT)
 
 
-def _pane_run(value: JsonValue, argv: list[str]) -> JsonObject:
+def _pane_run(value: JsonValue, argv: list[str], *, successful: bool = True) -> JsonObject:
     frame = object_value(value)
     run = object_value(frame["run"])
     if (
         frame.get("argv") != argv
         or type(run.get("exit_status")) is not int
-        or run["exit_status"] != 0
+        or (run["exit_status"] == 0) is not successful
         or run.get("timed_out") is True
         or run.get("diagnostics") not in (None, "")
     ):
@@ -1224,6 +1226,164 @@ def _child_inputs(
     return [_child_record(packet, child, parents[0], created, public_finished, root)]
 
 
+def _direct_argv(label: str, commit: str, finding: str) -> list[str]:
+    base = ["telec", "todo", "act", ITEM]
+    return {
+        "reviewed": [*base, "reviewed", "--sha", commit],
+        "finding": [*base, "finding", "--sha", commit, FINDING_TEXT],
+        "reply": [*base, "reply", "--finding", finding, REPLY_TEXT],
+        "reviewed-wrong": [*base, "reviewed", "--sha", commit],
+        "finding-wrong": [*base, "finding", "--sha", commit, WRONG_PERFORMER_TEXT],
+        "reply-wrong": [*base, "reply", "--finding", finding, WRONG_PERFORMER_TEXT],
+        "kickback-wrong": [*base, "kickback", WRONG_PERFORMER_TEXT],
+        "release-wrong": [*base, "release"],
+    }[label]
+
+
+def _direct_log(before: JsonObject, after: JsonObject, label: str, actor: str, bound: str) -> None:
+    old = events.parse_log_entries(text(object_value(before["artifact_content"]), "log"))
+    current = events.parse_log_entries(text(object_value(after["artifact_content"]), "log"))
+    if len(current) != len(old) + 1 or current[:-1] != old:
+        raise ValueError(ERROR_REPORT)
+    body = {"reviewed": "", "finding": FINDING_TEXT, "reply": REPLY_TEXT}[label]
+    expected_bound = (
+        bound if label == "reviewed" else f"{bound}:{hashlib.sha256(body.encode('utf-8')).hexdigest()[:16]}"
+    )
+    entry = current[-1]
+    if (
+        not entry.timestamp
+        or entry.session != actor
+        or entry.role != (ROLE_BUILDER if label == "reply" else ROLE_WORK)
+        or entry.act != label
+        or entry.bound != expected_bound
+        or entry.body != body
+    ):
+        raise ValueError(ERROR_REPORT)
+
+
+def _direct_record(
+    row: JsonObject,
+    attempt: Attempt,
+    worker: str,
+    builder: str,
+    commit: str,
+    finding: str,
+    created: int,
+    public_finished: int,
+) -> JsonObject:
+    if (
+        set(row)
+        != {
+            "attempt_id",
+            "actor",
+            "bound",
+            "started_ns",
+            "observed_ns",
+            "before_item",
+            "after_item",
+            "frame",
+        }
+        or not created <= positive_integer(row, "started_ns") <= positive_integer(row, "observed_ns") <= public_finished
+    ):
+        raise ValueError(ERROR_REPORT)
+    label = attempt.label
+    refused = label in DIRECT_REFUSAL_ERRORS
+    actor = worker if label in ("reviewed", "finding", "reply-wrong") else builder
+    if row["actor"] != actor:
+        raise ValueError(ERROR_REPORT)
+    run = _pane_run(row["frame"], _direct_argv(label, commit, finding), successful=not refused)
+    before = object_value(row["before_item"])
+    after = object_value(row["after_item"])
+    for item in (before, after):
+        state = object_value(item["state"])
+        standing = object_value(item["standing"])
+        if (
+            state.get("active_runner") != worker
+            or state.get("lifecycle_phase") != "work"
+            or standing.get("held_by") != worker
+            or standing.get("phase") != "work"
+        ):
+            raise ValueError(ERROR_REPORT)
+    if refused:
+        stdout = run.get("stdout")
+        stderr = run.get("stderr")
+        if not isinstance(stdout, str) or not isinstance(stderr, str):
+            raise ValueError(ERROR_REPORT)
+        output = stdout + stderr
+        if (
+            row["bound"] is not None
+            or before != after
+            or DIRECT_REFUSAL_ERRORS[label] not in output
+            or "Performed " in output
+        ):
+            raise ValueError(ERROR_REPORT)
+    else:
+        bound = finding if label == "reply" else commit
+        if row["bound"] != bound or f"Performed {label} on {ITEM}" not in text(run, "stdout"):
+            raise ValueError(ERROR_REPORT)
+        _direct_log(before, after, label, actor, bound)
+    return {
+        "attempt_id": attempt.identifier,
+        "actor": actor,
+        "state": "public_direct_refusal_matched" if refused else "public_direct_append_matched",
+    }
+
+
+def _direct_inputs(
+    finalizer: JsonObject,
+    ledger: StartLedger,
+    claims: list[JsonValue],
+    children: list[JsonValue],
+    created: int,
+    public_finished: int,
+) -> list[JsonValue]:
+    labels = {*DIRECT_REFUSAL_ERRORS, "reviewed", "finding", "reply"}
+    attempts = [attempt for attempt in ledger.attempts.values() if attempt.case == "B5" and attempt.label in labels]
+    values = finalizer["public_direct_evidence"]
+    if not isinstance(values, list):
+        raise ValueError(ERROR_REPORT)
+    if "B5" not in ledger.closed_lists:
+        if values:
+            raise ValueError(ERROR_REPORT)
+        return []
+    if (
+        {attempt.label for attempt in attempts} != labels
+        or len(attempts) != len(labels)
+        or len(values) != len(labels)
+        or any(attempt.kind != RECORD_EFFECT or attempt.state != RECORD_DISCHARGED for attempt in attempts)
+    ):
+        raise ValueError(ERROR_REPORT)
+    expected = {attempt.identifier: attempt for attempt in attempts}
+    packets: dict[str, JsonObject] = {}
+    for value in values:
+        row = object_value(value)
+        identifier = text(row, "attempt_id")
+        if identifier not in expected or expected[identifier].label in packets:
+            raise ValueError(ERROR_REPORT)
+        packets[expected[identifier].label] = row
+    commit = text(packets["reviewed"], "bound")
+    if packets["finding"]["bound"] != commit:
+        raise ValueError(ERROR_REPORT)
+    finding_run = _pane_run(packets["finding"]["frame"], _direct_argv("finding", commit, ""))
+    match = re.search(r"finding key:\s*(\S+)", text(finding_run, "stdout"))
+    if match is None or len(children) != 1:
+        raise ValueError(ERROR_REPORT)
+    child = object_value(children[0])
+    parent_claims = [
+        object_value(value) for value in claims if object_value(value)["attempt_id"] == child["parent_attempt_id"]
+    ]
+    if len(parent_claims) != 1:
+        raise ValueError(ERROR_REPORT)
+    worker = text(parent_claims[0], "actor")
+    builder = text(child, "session_id")
+    return [
+        _direct_record(
+            packets[attempt.label], attempt, worker, builder, commit, match.group(1), created, public_finished
+        )
+        for attempt in attempts
+    ]
+
+
 def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
     """Join declared attempts to actual terminal operation data; receipts alone do not establish semantic settlement."""
     provisional = object_value(report["payload_provisional"])
@@ -1268,6 +1428,9 @@ def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
                 }
             )
     claims = _claim_inputs(finalizer, after.ledger, operations, created, public_finished)
+    children = _child_inputs(
+        finalizer, after.ledger, claims, created, public_finished, text(observations, "owned_profile_root")
+    )
     return {
         "scope": "shared-workflow-flow",
         "state": "recorded_inputs_matched",
@@ -1279,8 +1442,7 @@ def validate_flow_start_inputs(report: JsonObject) -> JsonObject:
         "accepted_start_claims": claims,
         "refusals": _refusal_inputs(finalizer, after.ledger, operations, created, public_finished),
         "reason_notes": _reason_inputs(finalizer, after.ledger, operations, claims, created, public_finished),
-        "children": _child_inputs(
-            finalizer, after.ledger, claims, created, public_finished, text(observations, "owned_profile_root")
-        ),
+        "children": children,
+        "direct_acts": _direct_inputs(finalizer, after.ledger, claims, children, created, public_finished),
         "semantic_settlement": "unproven",
     }

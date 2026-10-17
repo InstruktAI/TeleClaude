@@ -98,6 +98,14 @@ B11_SENTINEL_LABEL: Final = "dirty-sentinel"
 B11_LOCAL_HEAD_LABEL: Final = "temporary-local-head"
 B11_TRIGGER_UNCLEAN: Final = "stamp-unclean"
 B11_TRIGGER_WORKTREE: Final = "stamp-worktree-head"
+DIRECT_REFUSAL_ERRORS: Final = {
+    "reviewed-wrong": "Error: 409 — reviewed requires the holding driver",
+    "finding-wrong": "Error: 409 — finding requires the holding driver",
+    "reply-wrong": "Error: 409 — reply requires a builder in the holder's claiming group",
+    "kickback-wrong": "Error: 409 — kickback requires the holding driver",
+    "release-wrong": "Error: 409 — release requires the holder, or the platform on session end",
+}
+WRONG_PERFORMER_TEXT: Final = "B9 wrong performer"
 B11_UNCLEAN_ARGV: Final = "stampunclean.argv"
 B11_WORKTREE_ARGV: Final = "stampworktree.argv"
 B11_CLI_NAME: Final = "telec"
@@ -298,10 +306,17 @@ def _git_bytes(flow: flow_module.WorkflowFlow, *arguments: str, cwd: Path) -> by
 
 
 def _direct_act(
-    flow: flow_module.WorkflowFlow, session: str, frame_name: str, performed: str
+    flow: flow_module.WorkflowFlow,
+    session: str,
+    frame_name: str,
+    performed: str,
+    *,
+    evidence: flow_module.MutableJson | None = None,
 ) -> tuple[Mapping[str, object], str]:
     """Read a synchronous direct act's public CLI text; it has no operation receipt."""
     frame = _frame_success(flow, session, frame_name)
+    if evidence is not None:
+        evidence["frame"] = cast(flow_module.JsonValue, dict(frame))
     run = frame.get("run")
     stdout = run.get("stdout") if isinstance(run, Mapping) else None
     if not isinstance(stdout, str) or performed not in stdout:
@@ -325,8 +340,13 @@ def _expect_log_append(
     act: str,
     bound: str | None,
     text: str,
+    *,
+    evidence: flow_module.MutableJson | None = None,
 ) -> None:
     shown = flow.item()
+    if evidence is not None:
+        evidence["after_item"] = cast(flow_module.JsonValue, dict(shown))
+        evidence["observed_ns"] = time.monotonic_ns()
     artifact = shown.get("artifact_content")
     raw_log = artifact.get(FIELD_LOG) if isinstance(artifact, Mapping) else None
     if not isinstance(raw_log, str):
@@ -365,14 +385,16 @@ def _negative_direct_act(
     frame_name: str,
     argv_file: str,
     argv: Sequence[str],
-    expected: str,
 ) -> None:
+    expected = DIRECT_REFUSAL_ERRORS[label]
     attempt = flow.require_ledger().begin(flow_module.SFC_CHAIN_B5, label, start_ledger.RECORD_EFFECT)
     before = flow.item()
     before_log = _public_log(before)
+    evidence = flow.direct_input(attempt, actor, before)
     flow.late_argv(actor, argv_file, argv)
     flow.gate(actor, f"go_{frame_name}")
     frame = flow.frame(actor, f"cmd_{frame_name}")
+    evidence["frame"] = cast(flow_module.JsonValue, dict(frame))
     raw_run = frame.get("run")
     run = raw_run if isinstance(raw_run, Mapping) else {}
     status = run.get("exit_status")
@@ -380,6 +402,8 @@ def _negative_direct_act(
     if status in (None, 0) or expected not in output or "Performed " in output:
         _fail(f"B9 {label} lacked its required refusal {expected!r}: {frame!r}")
     after = flow.item()
+    evidence["after_item"] = cast(flow_module.JsonValue, dict(after))
+    evidence["observed_ns"] = time.monotonic_ns()
     if after != before or _public_log(after) != before_log:
         _fail(f"B9 {label} changed the complete public item or parsed log")
     flow.require_ledger().discharge(attempt, f"direct refusal {expected!r}; public show and log unchanged")
@@ -566,7 +590,6 @@ def _build_and_review(
         "reviewedwrong",
         "reviewedwrong.argv",
         (TELEC, TODO, ACT, flow_module.ITEM, "reviewed", "--sha", commit_one),
-        "Error: 409 — reviewed requires the holding driver",
     )
     _negative_direct_act(
         flow,
@@ -574,8 +597,7 @@ def _build_and_review(
         "finding-wrong",
         "findingwrong",
         "findingwrong.argv",
-        (TELEC, TODO, ACT, flow_module.ITEM, "finding", "--sha", commit_one, "B9 wrong performer"),
-        "Error: 409 — finding requires the holding driver",
+        (TELEC, TODO, ACT, flow_module.ITEM, "finding", "--sha", commit_one, WRONG_PERFORMER_TEXT),
     )
     _negative_direct_act(
         flow,
@@ -583,8 +605,7 @@ def _build_and_review(
         "kickback-wrong",
         "kickbackwrong",
         "kickbackwrong.argv",
-        (TELEC, TODO, ACT, flow_module.ITEM, "kickback", "B9 wrong performer"),
-        "Error: 409 — kickback requires the holding driver",
+        (TELEC, TODO, ACT, flow_module.ITEM, "kickback", WRONG_PERFORMER_TEXT),
     )
     _negative_direct_act(
         flow,
@@ -593,24 +614,31 @@ def _build_and_review(
         "releasewrong",
         "releasewrong.argv",
         (TELEC, TODO, ACT, flow_module.ITEM, "release"),
-        "Error: 409 — release requires the holder, or the platform on session end",
     )
     _negative_stamp(flow, builder, commit_one, worktree)
     reviewed_attempt = _direct_effect(flow, "reviewed")
-    reviewed_log = _public_log(flow.item())
+    reviewed_before = flow.item()
+    reviewed_log = _public_log(reviewed_before)
+    reviewed_evidence = flow.direct_input(reviewed_attempt, w2, reviewed_before, commit_one)
     flow.late_argv(w2, "reviewed.argv", (TELEC, TODO, ACT, flow_module.ITEM, "reviewed", "--sha", commit_one))
     flow.gate(w2, "go_rev")
-    _direct_act(flow, w2, "reviewed", f"Performed {ACT_REVIEWED} on {flow_module.ITEM}")
-    _expect_log_append(flow, reviewed_log, ROLE_WORK, w2, ACT_REVIEWED, commit_one, "")
+    _direct_act(flow, w2, "reviewed", f"Performed {ACT_REVIEWED} on {flow_module.ITEM}", evidence=reviewed_evidence)
+    _expect_log_append(flow, reviewed_log, ROLE_WORK, w2, ACT_REVIEWED, commit_one, "", evidence=reviewed_evidence)
     flow.require_ledger().discharge(reviewed_attempt, "W2 performed reviewed on the published C1 head")
     finding_attempt = _direct_effect(flow, "finding")
-    finding_log = _public_log(flow.item())
+    finding_before = flow.item()
+    finding_log = _public_log(finding_before)
+    finding_evidence = flow.direct_input(finding_attempt, w2, finding_before, commit_one)
     flow.late_argv(
         w2, "finding.argv", (TELEC, TODO, ACT, flow_module.ITEM, "finding", "--sha", commit_one, FINDING_TEXT)
     )
     flow.gate(w2, "go_find")
-    _, finding_text = _direct_act(flow, w2, "finding", f"Performed {ACT_FINDING} on {flow_module.ITEM}")
-    _expect_log_append(flow, finding_log, ROLE_WORK, w2, ACT_FINDING, commit_one, FINDING_TEXT)
+    _, finding_text = _direct_act(
+        flow, w2, "finding", f"Performed {ACT_FINDING} on {flow_module.ITEM}", evidence=finding_evidence
+    )
+    _expect_log_append(
+        flow, finding_log, ROLE_WORK, w2, ACT_FINDING, commit_one, FINDING_TEXT, evidence=finding_evidence
+    )
     flow.require_ledger().discharge(finding_attempt, "W2 performed finding on the published C1 head")
     key_match = re.search(r"finding key:\s*(\S+)", finding_text)
     if key_match is None:
@@ -622,17 +650,20 @@ def _build_and_review(
         "reply-wrong",
         "replywrong",
         "replywrong.argv",
-        (TELEC, TODO, ACT, flow_module.ITEM, "reply", "--finding", finding_key, "B9 wrong performer"),
-        "Error: 409 — reply requires a builder in the holder's claiming group",
+        (TELEC, TODO, ACT, flow_module.ITEM, "reply", "--finding", finding_key, WRONG_PERFORMER_TEXT),
     )
     reply_attempt = _direct_effect(flow, "reply")
-    reply_log = _public_log(flow.item())
+    reply_before = flow.item()
+    reply_log = _public_log(reply_before)
+    reply_evidence = flow.direct_input(reply_attempt, builder, reply_before, finding_key)
     flow.late_argv(
         builder, "reply.argv", (TELEC, TODO, ACT, flow_module.ITEM, "reply", "--finding", finding_key, REPLY_TEXT)
     )
     flow.gate(builder, "go_reply")
-    _direct_act(flow, builder, "reply", f"Performed {ACT_REPLY} on {flow_module.ITEM}")
-    _expect_log_append(flow, reply_log, ROLE_BUILDER, builder, ACT_REPLY, finding_key, REPLY_TEXT)
+    _direct_act(flow, builder, "reply", f"Performed {ACT_REPLY} on {flow_module.ITEM}", evidence=reply_evidence)
+    _expect_log_append(
+        flow, reply_log, ROLE_BUILDER, builder, ACT_REPLY, finding_key, REPLY_TEXT, evidence=reply_evidence
+    )
     flow.require_ledger().discharge(reply_attempt, "the builder replied to W2's published finding key")
     flow.gate(builder, "go_c2")
     _frame_success(flow, builder, "write2", writes=True)
