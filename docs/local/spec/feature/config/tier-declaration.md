@@ -99,31 +99,9 @@ never loaded as another tier.
 
 #### UC-CFG-WSD4: Worktree shared state resolves to the owning checkout
 
-```
-Given a linked git worktree of an owning project checkout
-When an agent resolves shared project state such as the todo store from within the worktree
-Then the shared state root is the owning checkout, never the worktree itself
-```
-
 #### UC-CFG-WSD5: A project without git fails loud on shared state
 
-```
-Given a root whose configuration declares itself a project configuration
-And no git metadata exists at that root
-When shared project state is resolved for that project
-Then resolution fails with a clear error naming the project root
-```
-
 #### UC-CFG-WSD6: A file the registries name is declared by its migration
-
-```
-Given a same-named configuration file authored before tier declarations existed
-And the tier registries name its location
-When an agent loads that file
-Then it loads as the tier the registries name
-And the stored file is unchanged by the load
-And once a migration run has stored it, the file carries that tier declaration
-```
 
 #### UC-CFG-WSD7: An unregistered file from before declarations loads as a project
 
@@ -137,14 +115,6 @@ And once a migration run has stored it, the file carries that tier declaration
 
 #### UC-CFG-WSD12: An unavailable registered root is migrated when it returns
 
-```
-Given a registered project root that is unavailable while a migration run executes
-When that root becomes available and its configuration file is loaded
-Then the file loads in its current shape
-And a later migration run stores it at the current version
-And its absence left every other root migrated by the earlier run
-```
-
 #### UC-CFG-WSD13: A schema reference is never written ahead of its schema
 
 #### UC-CFG-WSD14: A declaration removed after migration is not restored
@@ -152,13 +122,6 @@ And its absence left every other root migrated by the earlier run
 #### UC-CFG-WSD15: Removing the schema reference too does not restore a declaration
 
 #### UC-CFG-WSD16: A root registered later is declared by its registration
-
-```
-Given a project root whose configuration file was authored without a tier declaration
-And the root is not yet registered
-When an operator or agent registers that project
-Then its configuration file is stored declaring the project tier
-```
 
 #### UC-CFG-WSD17: Moving a repository does not restore a declaration
 
