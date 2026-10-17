@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from teleclaude.core.db import db
 from teleclaude.core.injected_text import visible_input_update
-from teleclaude.core.models import SessionField
+from teleclaude.core.models._session import SessionField
 from teleclaude.core.session_listeners import record_startup_work_accepted
 
 
