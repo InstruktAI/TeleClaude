@@ -1,4 +1,4 @@
-"""Effective pre-mask instance configuration through the original manager connection."""
+"""Distinct pre-mask and post-mask instance facts from the original manager connection."""
 
 from __future__ import annotations
 
@@ -9,8 +9,17 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
-from tools.ci.enclosure_actions import Template
+from tools.ci.enclosure_actions import (
+    NULL_TARGET,
+    SYMLINK_CHANGE,
+    NativeMutation,
+    Signature,
+    Template,
+    _runtime_directory,
+)
+from tools.ci.enclosure_actions import Key as MutationKey
 from tools.ci.enclosure_contract import (
+    Action,
     AdmittedDeadline,
     Field,
     JsonObject,
@@ -21,6 +30,7 @@ from tools.ci.enclosure_contract import (
     parse_object,
     text,
 )
+from tools.ci.enclosure_guest import close_evidence_descriptors
 from tools.ci.enclosure_host import Key as HostKey
 from tools.ci.enclosure_host import Kind, _locked_file
 from tools.ci.enclosure_manager import ACTIVE, Property, UnitRead
@@ -30,6 +40,8 @@ from tools.ci.enclosure_owner import RunOwner
 ROOT: Final = Path("/")
 EMPTY: Final = ""
 LOADED: Final = "loaded"
+MASKED: Final = "masked"
+MASKED_RUNTIME: Final = "masked-runtime"
 NO_RESTART: Final = "no"
 NOTIFY: Final = "notify"
 MIXED: Final = "mixed"
@@ -49,6 +61,9 @@ NSPAWN_OPTIONS: Final = (
 MACHINE_OPTION: Final = "--machine={name}"
 MODULE_UNITS: Final = frozenset({"modprobe@tun.service", "modprobe@loop.service", "modprobe@dm_mod.service"})
 ERROR_CONFIGURATION: Final = "the original instance's effective pre-mask configuration differs from the declared recipe"
+ERROR_MASK: Final = (
+    "the original active instance's post-mask facts differ from its bound invocation or declared tombstone"
+)
 
 
 class Key(StrEnum):
@@ -105,6 +120,10 @@ class Key(StrEnum):
     GUEST_UNIT = "guest_unit"
     GUEST_OBJECT_PATH = "guest_object_path"
     FILES = "files"
+    UNIT_FILE_STATE = "UnitFileState"
+    PRE_MASK = "pre_mask"
+    POST_MASK = "post_mask"
+    MASK = "mask"
 
 
 RELATIONSHIPS: Final = (
@@ -160,6 +179,26 @@ class InstanceConfiguration:
             Key.BEGIN_SEQUENCE: self.begin_sequence,
             Key.SEQUENCE: self.sequence,
             Key.OBSERVED_NS: self.observed_ns,
+        }
+
+
+@dataclass(frozen=True)
+class MaskedInstanceConfiguration:
+    """Positive mask/configuration facts, separate from accepted-activation closure and the admission seal."""
+
+    before: InstanceConfiguration
+    current: InstanceConfiguration
+    mask: JsonObject
+
+    def record(self) -> JsonObject:
+        """Retain both positioned configurations; no old graph or creator evidence is erased by masking."""
+        return {
+            Key.PRE_MASK: self.before.record(),
+            Key.POST_MASK: self.current.record(),
+            Key.MASK: dict(self.mask),
+            Key.LOAD_STATE: self.current.guest.unit.get(Key.LOAD_STATE),
+            Key.UNIT_FILE_STATE: self.current.guest.unit.get(Key.UNIT_FILE_STATE),
+            Key.NEED_RELOAD: self.current.guest.unit.get(Key.NEED_RELOAD),
         }
 
 
@@ -294,3 +333,90 @@ def inspect_instance_configuration(
         max(parent.sequence, guest.sequence),
         time.monotonic_ns(),
     )
+
+
+def inspect_masked_instance_configuration(
+    owner: RunOwner,
+    before: InstanceConfiguration,
+    parent: UnitRead,
+    guest: UnitRead,
+    mutation: NativeMutation,
+    deadline: AdmittedDeadline,
+) -> MaskedInstanceConfiguration:
+    """Consume current original-observer reads and independently read the exact tombstone, without declaring a seal."""
+    if time.monotonic_ns() >= deadline.effective_end():
+        raise TimeoutError(ERROR_MASK)
+    record = parse_object(owner.manifest_bytes)
+    original_id = before.guest.unit.get(Property.INVOCATION_ID)
+    if (
+        mutation.action is not Action.MASK_GUEST
+        or mutation.evidence.get(MutationKey.UNIT_NAME) != guest.name
+        or parent.name != before.parent.name
+        or parent.name != text(record, OwnerKey.PARENT_UNIT)
+        or guest.name != before.guest.name
+        or guest.name != text(record, OwnerKey.GUEST_UNIT)
+        or parent.object_path != before.parent.object_path
+        or guest.object_path != before.guest.object_path
+        or not isinstance(original_id, list)
+        or len(original_id) != 16
+        or any(type(value) is not int or not 0 <= value <= 255 for value in original_id)
+        or not any(original_id)
+        or guest.unit.get(Property.INVOCATION_ID) != original_id
+        or parent.specific.get(Property.CONTROL_GROUP) != text(before.parent.specific, Property.CONTROL_GROUP)
+        or guest.specific.get(Property.CONTROL_GROUP) != text(before.guest.specific, Property.CONTROL_GROUP)
+        or guest.unit.get(Key.ID) != guest.name
+        or _strings(guest, Key.NAMES) != frozenset({guest.name})
+        or guest.unit.get(Key.LOAD_STATE) != MASKED
+        or guest.unit.get(Key.UNIT_FILE_STATE) != MASKED_RUNTIME
+        or guest.unit.get(Property.ACTIVE_STATE) != ACTIVE
+        or guest.unit.get(Key.SOURCE_PATH) != EMPTY
+        or guest.unit.get(Key.TRANSIENT) is not False
+        or type(guest.unit.get(Key.NEED_RELOAD)) is not bool
+        or _strings(guest, Key.DROP_IN_PATHS) != _strings(before.guest, Key.DROP_IN_PATHS)
+        or _strings(guest, Key.ON_SUCCESS)
+        or _strings(guest, Key.ON_FAILURE)
+        or any(_strings(guest, key) for key in NO_ACTIVATORS)
+        or guest.specific.get(Key.SLICE) != parent.name
+        or guest.specific.get(Key.RESTART) != NO_RESTART
+        or guest.specific.get(Key.FORCE_RESTART) != [[], []]
+        or type(guest.specific.get(Key.TIMEOUT_STOP)) is not int
+        or guest.specific[Key.TIMEOUT_STOP] != 240_000_000
+    ):
+        raise ValueError(ERROR_MASK)
+    _common(parent, text(before.parent.unit, Key.FRAGMENT_PATH), ())
+    if parent.unit.get(Key.STOP_WHEN_UNNEEDED) is not False or parent.specific.get(Key.DELEGATE) is not False:
+        raise ValueError(ERROR_MASK)
+    for key in RELATIONSHIPS:
+        _strings(guest, key)
+    for row in before.files:
+        _locked_file(
+            {**row, Field.PATH: str(Path(text(row, Field.PATH)).relative_to(ROOT)), HostKey.KIND: Kind.FILE.value},
+            deadline,
+        )
+    mask = Path(text(before.parent.unit, Key.FRAGMENT_PATH)).parent / guest.name
+    receipt = object_value(mutation.evidence.get(MutationKey.MASK_CHANGES))
+    if receipt.get(MutationKey.TYPE) != Signature.CHANGES or receipt.get(MutationKey.DATA) != [
+        [[SYMLINK_CHANGE, str(mask), NULL_TARGET]]
+    ]:
+        raise ValueError(ERROR_MASK)
+    row: JsonObject = {
+        Field.PATH: str(mask.relative_to(ROOT)),
+        HostKey.KIND: Kind.SYMLINK.value,
+        HostKey.TARGET: NULL_TARGET,
+    }
+    descriptor = _runtime_directory(mask.parent)
+    try:
+        _locked_file(row, deadline)
+    finally:
+        close_evidence_descriptors(descriptor)
+    if time.monotonic_ns() >= deadline.effective_end():
+        raise TimeoutError(ERROR_MASK)
+    current = InstanceConfiguration(
+        parent,
+        guest,
+        before.files,
+        min(parent.begin_sequence, guest.begin_sequence),
+        max(parent.sequence, guest.sequence),
+        time.monotonic_ns(),
+    )
+    return MaskedInstanceConfiguration(before, current, {**row, Field.PATH: str(mask)})
