@@ -29,11 +29,11 @@ framework's own rendering.
 
 ### Use cases
 
-#### UC-TNR1: Notification text containing bracketed metadata renders literally
+#### UC-TNR1: An operator reads notification text as supplied
 
 ```gherkin
 Given a human operator is working in the running TUI
-When eligible notification text contains bracketed metadata
+When the TUI displays eligible notification text, including bracketed metadata
 Then the operator sees that text displayed exactly as it was supplied
 And the TUI stays open for the operator to keep working
 ```
