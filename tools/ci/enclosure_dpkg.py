@@ -29,6 +29,63 @@ ERROR_INPUT: Final = "native dpkg input was unreadable, incomplete, changed, unp
 CONFIG_READ_SIZE: Final = 1023  # Native fgets(MAX_CONFIG_LINE=1024) reserves one byte for its NUL.
 OPTION_NAME: Final = re.compile(rb"[A-Za-z0-9-]*")
 NATIVE_SPACE: Final = b" \t\n\r\v\f"
+FIXED_ARGUMENTS: Final = (
+    "/usr/bin/dpkg",
+    "--root=/",
+    "--instdir=/",
+    "--admindir=/var/lib/dpkg",
+    "--no-triggers",
+    "--no-debsig",
+    "--no-pager",
+    # Restore the two native built-in force defaults after configuration, not arbitrary configured relaxations.
+    "--refuse-all",
+    "--force-security-mac,downgrade",
+    "--path-include=*",
+    "--debug=0",
+    "--abort-after=50",
+    "--log=/var/log/dpkg.log",
+)
+INSTALL_PREFIX: Final = (*FIXED_ARGUMENTS, "--install", "--")
+DBUS_TRIGGER_ARGUMENTS: Final = (*FIXED_ARGUMENTS, "--triggers-only", "--", "dbus")
+VALUE_OPTIONS: Final = frozenset(
+    {
+        "pre-invoke",
+        "post-invoke",
+        "path-exclude",
+        "path-include",
+        "verify-format",
+        "status-logger",
+        "status-fd",
+        "log",
+        "root",
+        "abort-after",
+        "admindir",
+        "instdir",
+        "ignore-depends",
+        "debug",
+    }
+)
+FLAG_OPTIONS: Final = frozenset(
+    {
+        "pending",
+        "recursive",
+        "no-act",
+        "dry-run",
+        "simulate",
+        "no-pager",
+        "no-debsig",
+        "selected-only",
+        "triggers",
+        "no-triggers",
+        "no-also-select",
+        "skip-same-version",
+        "auto-deconfigure",
+        "robot",
+    }
+)
+FORCE_OPTIONS: Final = ("no-force", "refuse", "force")
+SCALAR_OVERRIDES: Final = frozenset({"root", "instdir", "admindir", "log", "abort-after", "debug"})
+OUTPUT_DESCRIPTOR: Final = re.compile(rb"\+?(?:0*[12]|0[xX]0*[12])")
 
 
 class DpkgInputError(RuntimeError):
@@ -300,3 +357,91 @@ def parse_install_configuration(snapshot: JsonObject, deadline: AdmittedDeadline
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError({"inputs": snapshot, "configuration": result}) from error
+
+
+def _option_effect(option: str, value: bytes | None) -> tuple[str, bool]:
+    # options.c permits continued --force-value names only when no separate value was parsed.
+    for name in FORCE_OPTIONS:
+        if value is None and option.startswith(name + "-"):
+            value = option[len(name) + 1 :].encode("ascii")
+            option = name
+            break
+    takes_value = option in VALUE_OPTIONS or option in FORCE_OPTIONS
+    if option not in VALUE_OPTIONS and option not in FLAG_OPTIONS and option not in FORCE_OPTIONS:
+        return "unsupported_native_option_or_conflicting_action", False
+    if takes_value != (value is not None):
+        return "invalid_native_option_arity", False
+    if option in FORCE_OPTIONS:
+        # Invalid force values fail during native config parsing; 'help' instead exits0 before the action.
+        return ("native_early_exit", False) if value == b"help" else ("restored_native_force_defaults", True)
+    if option == "debug" and value is not None and value.startswith(b"h"):
+        return "native_early_exit", False
+    if option in SCALAR_OVERRIDES or option in ("triggers", "no-triggers"):
+        return "fixed_command_override", True
+    if option in ("path-exclude", "path-include"):
+        # Native fnmatch(flags=0) '*' and last-match-wins restore all members of the authenticated archive.
+        return "fixed_final_include_all", True
+    if option in ("pre-invoke", "post-invoke", "status-logger"):
+        # Only the shell's empty input is a known no-op; no arbitrary hook text is interpreted or executed here.
+        return ("empty_native_hook", True) if value == b"" else ("unreviewed_executable_hook", False)
+    if option == "ignore-depends":
+        return ("empty_ignore_list", True) if value == b"" else ("additional_dependency_bypass", False)
+    if option == "status-fd":
+        if value is not None and OUTPUT_DESCRIPTOR.fullmatch(value.lstrip(NATIVE_SPACE)) is not None:
+            return "existing_owned_stdout_or_stderr", True
+        return "unreviewed_status_descriptor", False
+    if option == "auto-deconfigure":
+        return "additional_package_deconfiguration", False
+    if option in ("no-act", "dry-run", "simulate", "selected-only", "no-also-select"):
+        return "native_may_skip_or_simulate_actual_post_state_required", True
+    if option == "pending":
+        # packages.c rejects --pending with our explicit dbus operand before enqueue_pending.
+        return "explicit_operand_prevents_generic_pending_work", True
+    if option == "recursive":
+        return "single_authenticated_regular_archive_operand", True
+    # verify-format does not affect these package actions; the remaining recognized flags do not widen their scope.
+    return "unchanged_fixed_transaction_scope", True
+
+
+def bound_configuration_effects(configuration: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
+    """Bound options for these exact native vectors only; required source/recipient/caller admission is separate."""
+    effects: list[JsonValue] = []
+    result: JsonObject = {
+        "scope": "fixed_container_install_and_named_dbus_trigger",
+        "state": "unproven",
+        "effects": effects,
+        "install_prefix": list[JsonValue](INSTALL_PREFIX),
+        "dbus_trigger_arguments": list[JsonValue](DBUS_TRIGGER_ARGUMENTS),
+        "native_value_validation": "native_result_and_actual_post_state_required",
+        "recipient_and_source_admission": "unproven",
+        "error": None,
+    }
+    try:
+        _before_cutoff(deadline)
+        files = configuration["configuration_files"]
+        if configuration["error"] is not None or not isinstance(files, list):
+            raise ValueError(ERROR_INPUT)
+        bounded = True
+        for file_value in files:
+            file = object_value(file_value)
+            path = text(file, "path")
+            options = file["options"]
+            if not isinstance(options, list):
+                raise ValueError(ERROR_INPUT)
+            for option_value in options:
+                _before_cutoff(deadline)
+                row = object_value(option_value)
+                option = row["option"]
+                encoded = row["value_base64"]
+                if not isinstance(option, str) or (encoded is not None and not isinstance(encoded, str)):
+                    raise ValueError(ERROR_INPUT)
+                value = base64.b64decode(encoded, validate=True) if encoded is not None else None
+                effect, allowed = _option_effect(option, value)
+                effects.append({"path": path, **row, "effect": effect, "bounded": allowed})
+                bounded = bounded and allowed
+        _before_cutoff(deadline)
+        result["state"] = "bounded_for_fixed_commands" if bounded else "blocked"
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"configuration": configuration, "effects": result}) from error
