@@ -14,7 +14,7 @@ The swap changes only runtime ownership, the current native binding, runtime-sta
 
 The predecessor transcript remains part of the session's continuity, and the successor receives one platform-classified continuation that identifies the predecessor and directs it to re-derive current state. This continuation is not human input and does not alter the session's last visible human input. Accepted input stays durable and ordered across the swap; terminal delivery waits until the successor and continuation are ready. Runtime ownership changes are serialized per session, and a failed swap leaves the session inspectable with its last truthful runtime binding.
 
-The durable operation result names the selected successor and reports whether the swap succeeded.
+The initial request receipt names the selected successor; the durable operation record later reports whether the handoff completed or failed.
 
 ## Canonical fields
 
@@ -43,10 +43,16 @@ Then the same TeleClaude session continues with that agent
 #### UC-AH8: Completion and failure report actual progress
 
 ```gherkin
-Given a person requests handoff of an open session and a successor is selected
-When the operation completes or fails
-Then the person can inspect which successor was selected and whether it took over the same session
-And a failed handoff reports the session's last truthful runtime state
+Scenario: The accepted request names its successor and operation
+  Given a person requests handoff of an open session
+  When the request is accepted
+  Then the initial receipt identifies the selected successor and the durable operation to inspect
+
+Scenario: The person can inspect the operation outcome
+  Given a person has a handoff operation
+  When it completes or fails
+  Then the operation record shows whether the handoff completed successfully
+  And on failure, the session record retains its last truthful runtime binding
 ```
 
 #### UC-AH9: Remote handoff negotiates capability before dispatch
