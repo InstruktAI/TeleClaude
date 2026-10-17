@@ -1,5 +1,5 @@
 ---
-description: Bidirectional message routing between two (or more) agent sessions via
+description: Bidirectional message routing between two agent sessions via
   the `--direct` ignition flow. A conversation link is established once, peer turn-complete
   outputs are then cross-shared automatically, and `--close-link` severs the link
   for every member.
