@@ -22,7 +22,7 @@ from tools.ci.enclosure_contract import (
     positive_integer,
     text,
 )
-from tools.ci.enclosure_exchange import HelperUncertain, run_privileged
+from tools.ci.enclosure_exchange import HelperExitFailed, HelperStartup, HelperUncertain, run_privileged
 from tools.ci.enclosure_graph import DependencyGraph, inspect_dependency_graph
 from tools.ci.enclosure_journal import ActionResult, Outcome
 from tools.ci.enclosure_manager import (
@@ -71,6 +71,7 @@ class Evidence(StrEnum):
     DEPENDENCY_GRAPH = "dependency_graph"
     ACTIVATION_SOURCES = "activation_sources"
     JOB_RESULT = "job_result"
+    HELPER = "helper"
 
 
 def _unit(read: UnitRead) -> JsonObject:
@@ -99,9 +100,16 @@ class BindingPhases:
         self._accepted: list[AcceptedJob] = []
         self._loop: asyncio.AbstractEventLoop | None = None
         self.uncertain: HelperUncertain | None = None
+        self.helper_failure: HelperExitFailed | None = None
         self.configuration: InstanceConfiguration | None = None
         self.graph: DependencyGraph | None = None
         self.activation_sources: ActivationSources | None = None
+        self._startups: list[HelperStartup] = []
+
+    @property
+    def startups(self) -> tuple[HelperStartup, ...]:
+        """Expose the original startup collection for same-loop bounded closure/final reporting, without adopting a new task."""
+        return tuple(self._startups)
 
     async def perform(
         self, action: Action, deadline: AdmittedDeadline, maximum_seconds: int, qualification_vector: str | None
@@ -111,15 +119,22 @@ class BindingPhases:
             raise ValueError(ERROR_PHASE.format(action=action))
         if self.uncertain is not None:
             raise self.uncertain
+        if self.helper_failure is not None:
+            raise self.helper_failure
 
-        async def observe(mutation: NativeMutation, end_ns: int) -> ActionResult:
-            return await self.observe(mutation, end_ns, deadline)
+        async def observe(mutation: NativeMutation, end_ns: int, startup: HelperStartup) -> ActionResult:
+            return await self.observe(mutation, end_ns, deadline, startup)
 
         try:
-            return await run_privileged(self.owner, action, deadline, maximum_seconds, qualification_vector, observe)
+            return await run_privileged(
+                self.owner, action, deadline, maximum_seconds, qualification_vector, observe, self._startups
+            )
         except HelperUncertain as error:
             # Preserve the original startup/Process even if an outer caller only renders the raised diagnostic.
             self.uncertain = error
+            raise
+        except HelperExitFailed as error:
+            self.helper_failure = error
             raise
 
     def _population_ready(self) -> None:
@@ -192,10 +207,15 @@ class BindingPhases:
                 return self.manager.reconcile_jobs(units, tuple(self._accepted))
             await self.manager.wait_for_change(sequence, end_ns)
 
-    async def observe(self, mutation: NativeMutation, end_ns: int, deadline: AdmittedDeadline) -> ActionResult:
+    async def observe(
+        self, mutation: NativeMutation, end_ns: int, deadline: AdmittedDeadline, startup: HelperStartup
+    ) -> ActionResult:
         """Establish only implemented original-object phases; no path or observer replacement on failure."""
         if mutation.action not in (Action.CREATE_PARENT, Action.START_GUEST):
             raise ValueError(ERROR_PHASE.format(action=mutation.action))
+        if startup not in self._startups or startup.action is not mutation.action or startup.identity is None:
+            raise ValueError(ERROR_BINDING)
+        startup.identity.require_alive()
         self.owner.journal.binding.controller.require_alive()
         if time.monotonic_ns() >= end_ns or end_ns > self.owner.journal.deadline.end_ns:
             raise TimeoutError(ERROR_BINDING)
@@ -287,6 +307,7 @@ class BindingPhases:
             Outcome.SUCCEEDED,
             {
                 Evidence.NATIVE_RECEIPT: dict(mutation.evidence),
+                Evidence.HELPER: startup.record(),
                 Evidence.PHASE: phase.value,
                 Evidence.IDENTITY: identity,
                 Evidence.PARENT: _unit(current_parent),

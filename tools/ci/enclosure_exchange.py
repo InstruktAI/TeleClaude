@@ -26,7 +26,7 @@ from tools.ci.enclosure_contract import (
     text,
 )
 from tools.ci.enclosure_guest import Role, close_evidence_descriptors
-from tools.ci.enclosure_journal import CLOSURE_ACTIONS, ActionResult, Outcome
+from tools.ci.enclosure_journal import CLOSURE_ACTIONS, ActionResult, Controller, Outcome
 from tools.ci.enclosure_journal import Key as JournalKey
 from tools.ci.enclosure_owner import MANIFEST_NAME, RunOwner
 from tools.ci.enclosure_privileged import OUTSIDE_ENVIRONMENT, PrivilegedAction
@@ -47,6 +47,7 @@ NANOSECONDS: Final = 1_000_000_000
 JSON_SEPARATORS: Final = (",", ":")
 ERROR_EXCHANGE: Final = "the original privileged helper exchange is missing, malformed, late or inconsistent"
 ERROR_UNKNOWN: Final = "privileged helper startup or outcome remains unknown; retain the original startup handle and do not repeat {action}"
+ERROR_EXIT: Final = "privileged helper {action} exited {status} after its durable effect receipt; retain both outcomes"
 
 
 class Key(StrEnum):
@@ -59,6 +60,23 @@ class Key(StrEnum):
     BINDING = "binding"
     MUTATION = "mutation"
     RESULT = "result"
+    ACTION = "action"
+    STARTUP_STATE = "startup_state"
+    ERROR_CLASS = "error_class"
+    PID = "pid"
+    START_TICKS = "start_ticks"
+    UID = "uid"
+    BOOT_ID = "boot_id"
+    EXIT_STATUS = "exit_status"
+
+
+class StartupState(StrEnum):
+    """Observed task state, never physical closure or permission to replace its original process."""
+
+    PENDING = "pending"
+    READY = "ready"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class HelperUncertain(RuntimeError):
@@ -73,6 +91,16 @@ class HelperUncertain(RuntimeError):
     def process(self) -> asyncio.subprocess.Process | None:
         """Expose a native handle only after creation returned it, including a later local descriptor-close error."""
         return self.startup.process
+
+
+class HelperExitFailed(RuntimeError):
+    """A known effect receipt and a separately known unsuccessful helper exit; neither fact erases the other."""
+
+    def __init__(self, startup: HelperStartup, receipt: ActionResult, exit_status: int) -> None:
+        super().__init__(ERROR_EXIT.format(action=startup.action, status=exit_status))
+        self.startup = startup
+        self.receipt = receipt
+        self.exit_status = exit_status
 
 
 def _encode(value: JsonObject) -> bytes:
@@ -183,8 +211,34 @@ class HelperStartup:
     """One retained native startup; caller cancellation never cancels its transport construction."""
 
     def __init__(self, owner: RunOwner, action: Action, request: JsonObject, end_ns: int) -> None:
+        self.action = action
+        self.command_end_ns = end_ns
         self.process: asyncio.subprocess.Process | None = None
+        self.identity: Controller | None = None
         self.task = asyncio.create_task(self._start(owner, action, request, end_ns))
+
+    def record(self) -> JsonObject:
+        """Read the original native handles only; absent startup identity or exit remains explicitly absent."""
+        error: BaseException | None = None
+        if self.task.cancelled():
+            state = StartupState.CANCELLED
+        elif not self.task.done():
+            state = StartupState.PENDING
+        else:
+            error = self.task.exception()
+            state = StartupState.FAILED if error is not None else StartupState.READY
+        identity = self.identity
+        return {
+            Key.ACTION: self.action.value,
+            Cutoff.COMMAND_END_NS: self.command_end_ns,
+            Key.STARTUP_STATE: state.value,
+            Key.ERROR_CLASS: type(error).__name__ if error is not None else None,
+            Key.PID: self.process.pid if self.process is not None else None,
+            Key.START_TICKS: identity.start_ticks if identity is not None else None,
+            Key.UID: identity.uid if identity is not None else None,
+            Key.BOOT_ID: identity.boot_id if identity is not None else None,
+            Key.EXIT_STATUS: self.process.returncode if self.process is not None else None,
+        }
 
     def abandon_input(self) -> None:
         """Close only the eventual input pipe, without cancelling startup or closing the process transport."""
@@ -229,6 +283,9 @@ class HelperStartup:
                 env={**OUTSIDE_ENVIRONMENT, REQUEST_ENVIRONMENT: _encode(request).decode(UTF8)},
                 umask=0o077,
             )
+            self.identity = Controller.capture(self.process.pid)
+            if self.identity.uid != 0 or self.identity.boot_id != owner.journal.binding.controller.boot_id:
+                raise ValueError(ERROR_EXCHANGE)
             return self.process
         finally:
             close_evidence_descriptors(stderr)
@@ -240,7 +297,8 @@ async def run_privileged(
     deadline: AdmittedDeadline,
     maximum_seconds: int,
     qualification_vector: str | None,
-    observe: Callable[[NativeMutation, int], Awaitable[ActionResult]],
+    observe: Callable[[NativeMutation, int, HelperStartup], Awaitable[ActionResult]],
+    startups: list[HelperStartup],
 ) -> ActionResult:
     """Keep original observations running during one child; read its journal only after positive child exit."""
     owner.journal.binding.controller.require_alive()
@@ -260,6 +318,7 @@ async def run_privileged(
         Cutoff.COMMAND_END_NS: deadline.command_end_ns,
     }
     startup = HelperStartup(owner, action, request, end_ns)
+    startups.append(startup)
     try:
         async with asyncio.timeout(_remaining(end_ns)):
             process = await asyncio.shield(startup.task)
@@ -287,7 +346,9 @@ async def run_privileged(
             native = object_value(phase[Key.MUTATION])
             if set(native) != {JournalKey.ACTION, JournalKey.EVIDENCE} or native[JournalKey.ACTION] != action:
                 raise ValueError(ERROR_EXCHANGE)
-            result = await observe(NativeMutation(action, object_value(native[JournalKey.EVIDENCE])), phase_end)
+            result = await observe(
+                NativeMutation(action, object_value(native[JournalKey.EVIDENCE])), phase_end, startup
+            )
             _remaining(phase_end)
             writer.write(_encode({Key.RESULT: result.record(action)}))
             await writer.drain()
@@ -302,12 +363,16 @@ async def run_privileged(
                 final = _result(object_value(terminal[Key.RESULT]), action)
                 if await reader.read(1):
                     raise ValueError(ERROR_EXCHANGE)
-            await process.wait()
+            exit_status = await process.wait()
         # The helper released its flock and exited. This single read also recovers a lost final acknowledgment.
         receipt = owner.journal.receipt(action)
         if receipt is None or (final is not None and receipt != final):
             raise ValueError(ERROR_EXCHANGE)
+        if receipt.status is Outcome.SUCCEEDED and exit_status != 0:
+            raise HelperExitFailed(startup, receipt, exit_status)
         return receipt
+    except HelperExitFailed:
+        raise
     except BaseException as error:
         raise HelperUncertain(startup, action) from error
     finally:
