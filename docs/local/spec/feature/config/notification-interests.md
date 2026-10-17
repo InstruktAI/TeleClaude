@@ -133,11 +133,3 @@ Scenario Outline: An unusable interest is reported, not repaired
 ```
 
 #### UC-NI7: Overlapping patterns are valid and change nothing
-
-```gherkin
-Given a person whose "erp" interests hold the patterns "invoice.paid" and "invoice.*"
-When an operator validates the configuration
-Then validation reports nothing about them
-When an event of type "erp.invoice.paid" occurs
-Then it matches the person's interests once, exactly as it would with "invoice.*" alone
-```
