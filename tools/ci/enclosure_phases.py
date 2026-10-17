@@ -8,12 +8,14 @@ from enum import StrEnum
 from typing import Final
 
 from tools.ci.enclosure_actions import Authority, Key, NativeMutation
+from tools.ci.enclosure_configuration import InstanceConfiguration, inspect_instance_configuration
 from tools.ci.enclosure_contract import (
     Action,
     AdmittedDeadline,
     JsonObject,
     JsonValue,
     Phase,
+    StaticPackage,
     parse_object,
     positive_integer,
     text,
@@ -62,6 +64,7 @@ class Evidence(StrEnum):
     BUS_ID = "bus_id"
     MANAGER_OWNER = "manager_owner"
     BOOT_ID = "boot_id"
+    CONFIGURATION = "configuration"
 
 
 def _unit(read: UnitRead) -> JsonObject:
@@ -78,17 +81,19 @@ def _unit(read: UnitRead) -> JsonObject:
 class BindingPhases:
     """Keep the original bus and cgroup handles in this process while its child holds the action flock."""
 
-    def __init__(self, owner: RunOwner, manager: ManagerObserver) -> None:
+    def __init__(self, owner: RunOwner, manager: ManagerObserver, package: StaticPackage) -> None:
         if manager.identity.boot_id != owner.journal.binding.controller.boot_id:
             raise ValueError(ERROR_BINDING)
         self.owner = owner
         self.manager = manager
+        self.package = package
         self.population: PopulationObserver | None = None
         self.parent: UnitRead | None = None
         self.guest: UnitRead | None = None
         self._accepted: list[AcceptedJob] = []
         self._loop: asyncio.AbstractEventLoop | None = None
         self.uncertain: HelperUncertain | None = None
+        self.configuration: InstanceConfiguration | None = None
 
     async def perform(
         self, action: Action, deadline: AdmittedDeadline, maximum_seconds: int, qualification_vector: str | None
@@ -98,10 +103,12 @@ class BindingPhases:
             raise ValueError(ERROR_PHASE.format(action=action))
         if self.uncertain is not None:
             raise self.uncertain
+
+        async def observe(mutation: NativeMutation, end_ns: int) -> ActionResult:
+            return await self.observe(mutation, end_ns, deadline)
+
         try:
-            return await run_privileged(
-                self.owner, action, deadline, maximum_seconds, qualification_vector, self.observe
-            )
+            return await run_privileged(self.owner, action, deadline, maximum_seconds, qualification_vector, observe)
         except HelperUncertain as error:
             # Preserve the original startup/Process even if an outer caller only renders the raised diagnostic.
             self.uncertain = error
@@ -147,7 +154,7 @@ class BindingPhases:
                 return self.manager.reconcile_jobs(units, tuple(self._accepted))
             await self.manager.wait_for_change(sequence, end_ns)
 
-    async def observe(self, mutation: NativeMutation, end_ns: int) -> ActionResult:
+    async def observe(self, mutation: NativeMutation, end_ns: int, deadline: AdmittedDeadline) -> ActionResult:
         """Establish only implemented original-object phases; no path or observer replacement on failure."""
         if mutation.action not in (Action.CREATE_PARENT, Action.START_GUEST):
             raise ValueError(ERROR_PHASE.format(action=mutation.action))
@@ -189,6 +196,14 @@ class BindingPhases:
         ):
             self.manager.invalidate(Invalidation.PARENT_REPLACED)
             raise ValueError(ERROR_BINDING)
+        if mutation.action is Action.START_GUEST and self.guest is not None:
+            self.configuration = inspect_instance_configuration(
+                self.owner,
+                self.package,
+                current_parent,
+                self.guest,
+                AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns),
+            )
         sample = self.population.sample(end_ns)
         if self.manager.faults or sample.faults or sample.populated is None:
             raise ValueError(ERROR_BINDING)
@@ -217,6 +232,7 @@ class BindingPhases:
                 Evidence.IDENTITY: identity,
                 Evidence.PARENT: _unit(current_parent),
                 Evidence.GUEST: _unit(self.guest) if self.guest is not None else None,
+                Evidence.CONFIGURATION: self.configuration.record() if self.configuration is not None else None,
                 Evidence.JOBS: settled,
                 Evidence.POPULATION: {
                     Evidence.RAW: sample.raw.decode(UTF8),
