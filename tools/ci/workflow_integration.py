@@ -169,45 +169,67 @@ def _refused_work(
     flow.require_ledger().discharge(attempt, "public admission refusal completed without a session or item mutation")
 
 
-def _verify_staged(flow: flow_module.WorkflowFlow, integration: Path, base: str) -> None:
-    head = _git(flow, "rev-parse", "HEAD", cwd=integration)
-    status = _git(flow, "status", "--porcelain", cwd=integration)
+def _verify_staged(
+    flow: flow_module.WorkflowFlow, integration: Path, base: str, reads: list[flow_module.JsonValue]
+) -> None:
+    head = _git(flow, "rev-parse", "HEAD", cwd=integration, evidence=reads)
+    status = _git(flow, "status", "--porcelain", cwd=integration, evidence=reads)
     if head != base or "A  feature.txt" not in status or "A  Makefile" not in status:
         _fail(
             DETAIL_INTEGRATION.format(
                 found={"head": head, "status": status}, expected={"head": base, "staged": "feature.txt, Makefile"}
             )
         )
-    if _git(flow, "ls-remote", flow_module.ORIGIN, "refs/heads/main") != f"{base}\trefs/heads/main":
+    if _git(flow, "ls-remote", flow_module.ORIGIN, "refs/heads/main", evidence=reads) != f"{base}\trefs/heads/main":
         _fail("int1 moved origin/main before the integration commit")
 
 
-def _verify_root_docs_only_capability(flow: flow_module.WorkflowFlow) -> None:
-    root_head = _git(flow, "show", "HEAD:teleclaude.yml")
+def _verify_root_docs_only_capability(flow: flow_module.WorkflowFlow, evidence: flow_module.MutableJson) -> None:
+    root_head = _git(
+        flow, "show", "HEAD:teleclaude.yml", evidence=cast(list[flow_module.JsonValue], evidence["preflight_git"])
+    )
     root_worktree = (flow.project / "teleclaude.yml").read_text(encoding="utf-8")
+    evidence["root_declaration"] = root_worktree
     for label, text in (("root HEAD", root_head), ("root worktree", root_worktree)):
         if not text_capability_enabled(text, "docs") or text_capability_enabled(text, "code"):
             raise creation.binding_failure(f"{label} is not docs-enabled with code disabled")
 
 
-def _verify_integration_declaration(integration: Path) -> None:
+def _verify_integration_declaration(integration: Path, evidence: flow_module.MutableJson) -> None:
     try:
         declaration = (integration / "teleclaude.yml").read_text(encoding="utf-8")
     except OSError as error:
         raise creation.binding_failure("the int1-created integration worktree lacks teleclaude.yml") from error
+    evidence["integration_declaration"] = declaration
     if not text_capability_enabled(declaration, "docs") or text_capability_enabled(declaration, "code"):
         raise creation.binding_failure("the integration worktree is not docs-enabled with code disabled")
 
 
-def _verify_integration_commit(flow: flow_module.WorkflowFlow, integration: Path, base: str, session: str) -> str:
-    head = _git(flow, "rev-parse", "HEAD", cwd=integration)
-    parent = _git(flow, "rev-parse", "HEAD^", cwd=integration)
-    subject = _git(flow, "show", "-s", "--format=%s", "HEAD", cwd=integration)
+def _verify_integration_commit(
+    flow: flow_module.WorkflowFlow, integration: Path, base: str, session: str, reads: list[flow_module.JsonValue]
+) -> str:
+    head = _git(flow, "rev-parse", "HEAD", cwd=integration, evidence=reads)
+    parent = _git(flow, "rev-parse", "HEAD^", cwd=integration, evidence=reads)
+    subject = _git(flow, "show", "-s", "--format=%s", "HEAD", cwd=integration, evidence=reads)
     feature = flow.host.process(
         ("git", "show", f"{head}:{FEATURE_FILE}"), integration, flow.host.environment, FRAME_SECONDS
     )
+    reads.append(
+        {
+            "kind": "command",
+            "cwd": str(integration),
+            "value": flow.public_command_evidence(("git", "show", f"{head}:{FEATURE_FILE}"), feature),
+        }
+    )
     makefile = flow.host.process(
         ("git", "show", f"{head}:{MAKE_FILE}"), integration, flow.host.environment, FRAME_SECONDS
+    )
+    reads.append(
+        {
+            "kind": "command",
+            "cwd": str(integration),
+            "value": flow.public_command_evidence(("git", "show", f"{head}:{MAKE_FILE}"), makefile),
+        }
     )
     if (
         head == base
@@ -229,7 +251,7 @@ def _verify_integration_commit(flow: flow_module.WorkflowFlow, integration: Path
                 },
             )
         )
-    message = _git(flow, "show", "-s", "--format=%B", "HEAD", cwd=integration)
+    message = _git(flow, "show", "-s", "--format=%B", "HEAD", cwd=integration, evidence=reads)
     if f"Session: {session}" not in message:
         _fail(f"integration commit does not carry the acting session trailer: {message!r}")
     return head
@@ -274,9 +296,15 @@ def _verify_delivered_readback(
 
 
 def _verify_retired_v1_and_cleanup(
-    flow: flow_module.WorkflowFlow, delivered: Mapping[str, object], main_head: str
+    flow: flow_module.WorkflowFlow, delivered: Mapping[str, object], main_head: str, evidence: flow_module.MutableJson
 ) -> None:
+    evidence["started_ns"] = time.monotonic_ns()
+    reads = cast(list[flow_module.JsonValue], evidence["git"])
+    items = cast(list[flow_module.JsonValue], evidence["after_items"])
     refused = flow.observer.run((TELEC, TODO, "stamp", flow_module.ITEM, "--prd-approved"))
+    evidence["command"] = flow.public_command_evidence(
+        (TELEC, TODO, "stamp", flow_module.ITEM, "--prd-approved"), refused
+    )
     refused_text = refused.output
     main_abbrev = main_head[:12]
     if (
@@ -289,14 +317,17 @@ def _verify_retired_v1_and_cleanup(
     for label, pause in (("immediately", 0.0), ("five seconds later", 5.0)):
         if pause:
             payload_work.sleep(pause)
-        if flow.item() != delivered:
+        if flow.item(evidence=items) != delivered:
             _fail(f"retired v1 act changed the delivered item {label}")
-    if _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}"):
+    if _git(flow, "ls-remote", flow_module.ORIGIN, f"refs/heads/{flow_module.ITEM}", evidence=reads):
         _fail("delivery left the item branch on the owned origin")
-    if _git(flow, "branch", "--list", flow_module.ITEM):
+    if _git(flow, "branch", "--list", flow_module.ITEM, evidence=reads):
         _fail("delivery left the item branch in the local repository")
-    if (flow.project / flow_module.WORKTREE_DIRECTORY / flow_module.ITEM).exists():
+    exists = (flow.project / flow_module.WORKTREE_DIRECTORY / flow_module.ITEM).exists()
+    evidence["worktree_exists"] = exists
+    if exists:
         _fail("delivery left the item worktree on disk")
+    evidence["finished_ns"] = time.monotonic_ns()
 
 
 def run_b6(flow: flow_module.WorkflowFlow) -> None:
@@ -327,6 +358,21 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
             "main_head": None,
             "listing": None,
             "delivery_git": [],
+            "preflight_git": [],
+            "staged_git": [],
+            "commit_git": [],
+            "unpublished_git": [],
+            "root_declaration": None,
+            "integration_declaration": None,
+            "integration_is_dir": None,
+            "retired_cleanup": {
+                "started_ns": None,
+                "finished_ns": None,
+                "command": None,
+                "after_items": [],
+                "git": [],
+                "worktree_exists": None,
+            },
         }
         flow.public_integration_evidence = evidence
         item_before = flow.item()
@@ -339,14 +385,18 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
             raise creation.binding_failure(DETAIL_HANDOVER)
         evidence["candidate"] = candidate
         integration = flow.project / INTEGRATION_TREE
-        dirty = _git(flow, "status", "--porcelain")
+        preflight = cast(list[flow_module.JsonValue], evidence["preflight_git"])
+        dirty = _git(flow, "status", "--porcelain", evidence=preflight)
         if FEATURE_FILE in dirty or MAKE_FILE in dirty:
             _fail(DETAIL_DIRTY.format(status=dirty))
-        base = _git(flow, "rev-parse", "origin/main")
+        base = _git(flow, "rev-parse", "origin/main", evidence=preflight)
         evidence["base"] = base
-        if _git(flow, "ls-remote", flow_module.ORIGIN, "refs/heads/main") != f"{base}\trefs/heads/main":
+        if (
+            _git(flow, "ls-remote", flow_module.ORIGIN, "refs/heads/main", evidence=preflight)
+            != f"{base}\trefs/heads/main"
+        ):
             _fail("origin/main and the local origin/main read differ before admission")
-        _verify_root_docs_only_capability(flow)
+        _verify_root_docs_only_capability(flow, evidence)
         actor = _acting_integrator(flow, candidates)
         evidence["actor"] = actor
         admission = _operation_result(flow, actor, "int1", "int1", operation_frames)
@@ -374,18 +424,30 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
             or state.get(FIELD_ACTIVE) not in (None, "")
         ):
             _fail(f"int1 did not admit the B7 candidate at {candidate}: {admitted!r}")
-        if not integration.is_dir():
+        evidence["integration_is_dir"] = integration.is_dir()
+        if not evidence["integration_is_dir"]:
             raise creation.binding_failure("int1 completed without its public integration worktree")
-        _verify_integration_declaration(integration)
-        _verify_staged(flow, integration, base)
+        _verify_integration_declaration(integration, evidence)
+        _verify_staged(flow, integration, base, cast(list[flow_module.JsonValue], evidence["staged_git"]))
         sessions = flow.observer.sessions().ids
         _refused_work(flow, admitted, sessions)
         flow.gate(actor, "go_commit")
         commit_frame = _frame_success(flow, actor, "commit_int", evidence=evidence)
         del commit_frame
-        integrated_head = _verify_integration_commit(flow, integration, base, actor)
+        integrated_head = _verify_integration_commit(
+            flow, integration, base, actor, cast(list[flow_module.JsonValue], evidence["commit_git"])
+        )
         evidence["integrated_head"] = integrated_head
-        if _git(flow, "ls-remote", flow_module.ORIGIN, "refs/heads/main") != f"{base}\trefs/heads/main":
+        if (
+            _git(
+                flow,
+                "ls-remote",
+                flow_module.ORIGIN,
+                "refs/heads/main",
+                evidence=cast(list[flow_module.JsonValue], evidence["unpublished_git"]),
+            )
+            != f"{base}\trefs/heads/main"
+        ):
             _fail("integration commit was published before the delivery gate")
         delivery_operation = _operation_result(flow, actor, "int2", "int2", operation_frames)
         if (
@@ -429,7 +491,9 @@ def run_b6(flow: flow_module.WorkflowFlow) -> None:
             flow.write_retained_marker({"event_proof": "unproven", "event_error": str(error)})
             raise
         workflow_events.set_case_status(flow.event_window, "B6", "complete")
-        _verify_retired_v1_and_cleanup(flow, delivered, main_head)
+        _verify_retired_v1_and_cleanup(
+            flow, delivered, main_head, cast(flow_module.MutableJson, evidence["retired_cleanup"])
+        )
         _end(flow, actor)
         flow.sessions[actor] = ROLE_INTEGRATOR
         flow.handover(

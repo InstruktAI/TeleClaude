@@ -50,7 +50,7 @@ from tools.ci.workflow_flow import (
     message_key,
     procedure_key,
 )
-from tools.ci.workflow_integration import EXPECTED_FEATURE, EXPECTED_MAKEFILE
+from tools.ci.workflow_integration import EXPECTED_FEATURE, EXPECTED_MAKEFILE, FEATURE_FILE, INTEGRATION_TREE, MAKE_FILE
 from tools.ci.workflow_ledger import (
     RECORD_DISCHARGED,
     RECORD_EFFECT,
@@ -60,6 +60,7 @@ from tools.ci.workflow_ledger import (
     Attempt,
     StartLedger,
 )
+from tools.ci.workflow_prepared import text_capability_enabled
 from tools.ci.workflow_publication import TERMINAL_STATES
 from tools.ci.workflow_ready import FINDING_DOOR, FINDING_WORK, REASON_ONE, REASON_TWO
 from tools.ci.workflow_review import (
@@ -593,14 +594,14 @@ def validate_provisional_cleanup(report: JsonObject) -> JsonObject:
     }
 
 
-def _command_output(value: JsonValue, argv: list[str]) -> str:
+def _command_output(value: JsonValue, argv: list[str], *, successful: bool = True) -> str:
     command = object_value(value)
     duration = command.get("duration_seconds")
     if (
         set(command) != {"argv", "exit_status", "duration_seconds", "stdout", "stderr", "diagnostics"}
         or command["argv"] != argv
         or type(command["exit_status"]) is not int
-        or command["exit_status"] != 0
+        or (command["exit_status"] == 0) is not successful
         or command["diagnostics"] != ""
         or not isinstance(command["stdout"], str)
         or not isinstance(command["stderr"], str)
@@ -2304,6 +2305,103 @@ def _delivered_inputs(row: JsonObject, project: str) -> JsonObject:
     return {"state": "public_delivery_readback", "base": base, "main_head": main, "item": delivered}
 
 
+def _integration_tree_inputs(row: JsonObject, project: str, actor: str) -> JsonObject:
+    integration = f"{project}/{INTEGRATION_TREE}"
+    base, head = text(row, "base"), text(row, "integrated_head")
+    preflight, files = _restoration_reads(row["preflight_git"], project, integration)
+    status_key = (project, "git", "status", "--porcelain")
+    declaration_key = (project, "git", "show", "HEAD:teleclaude.yml")
+    keys = {
+        status_key,
+        declaration_key,
+        _git_read(preflight, project, ("rev-parse", "origin/main"), base),
+        _git_read(preflight, project, ("ls-remote", "origin", "refs/heads/main"), f"{base}\trefs/heads/main"),
+    }
+    if (
+        files
+        or set(preflight) != keys
+        or any(len(values) != 1 for values in preflight.values())
+        or any(name in preflight[status_key][0] for name in (FEATURE_FILE, MAKE_FILE))
+    ):
+        raise ValueError(ERROR_REPORT)
+    declarations = (
+        preflight[declaration_key][0].strip(),
+        text(row, "root_declaration"),
+        text(row, "integration_declaration"),
+    )
+    if row["integration_is_dir"] is not True or any(
+        not text_capability_enabled(value, "docs") or text_capability_enabled(value, "code") for value in declarations
+    ):
+        raise ValueError(ERROR_REPORT)
+    staged, files = _restoration_reads(row["staged_git"], project, integration)
+    status_key = (integration, "git", "status", "--porcelain")
+    keys = {
+        status_key,
+        _git_read(staged, integration, ("rev-parse", "HEAD"), base),
+        _git_read(staged, project, ("ls-remote", "origin", "refs/heads/main"), f"{base}\trefs/heads/main"),
+    }
+    if (
+        files
+        or set(staged) != keys
+        or any(len(values) != 1 for values in staged.values())
+        or any(f"A  {name}" not in staged[status_key][0] for name in (FEATURE_FILE, MAKE_FILE))
+    ):
+        raise ValueError(ERROR_REPORT)
+    committed, files = _restoration_reads(row["commit_git"], project, integration)
+    message_key = (integration, "git", "show", "-s", "--format=%B", "HEAD")
+    keys = {
+        message_key,
+        _git_read(committed, integration, ("rev-parse", "HEAD"), head),
+        _git_read(committed, integration, ("rev-parse", "HEAD^"), base),
+        _git_read(committed, integration, ("show", "-s", "--format=%s", "HEAD"), B6_COMMIT),
+        _git_read(
+            committed, integration, ("show", f"{head}:{FEATURE_FILE}"), EXPECTED_FEATURE.decode("utf-8"), raw=True
+        ),
+        _git_read(committed, integration, ("show", f"{head}:{MAKE_FILE}"), EXPECTED_MAKEFILE.decode("utf-8"), raw=True),
+    }
+    if (
+        head == base
+        or files
+        or set(committed) != keys
+        or any(len(values) != 1 for values in committed.values())
+        or f"Session: {actor}" not in committed[message_key][0]
+    ):
+        raise ValueError(ERROR_REPORT)
+    unpublished, files = _restoration_reads(row["unpublished_git"], project, integration)
+    key = _git_read(unpublished, project, ("ls-remote", "origin", "refs/heads/main"), f"{base}\trefs/heads/main")
+    if files or set(unpublished) != {key} or len(unpublished[key]) != 1:
+        raise ValueError(ERROR_REPORT)
+    return {"state": "native_tree_and_commit_inputs_matched", "base": base, "integrated_head": head}
+
+
+def _integration_retired_cleanup(row: JsonObject, project: str, public_finished: int) -> JsonObject:
+    cleanup = object_value(row["retired_cleanup"])
+    if (
+        set(cleanup) != {"started_ns", "finished_ns", "command", "after_items", "git", "worktree_exists"}
+        or not positive_integer(row, "finished_ns")
+        <= positive_integer(cleanup, "started_ns")
+        <= positive_integer(cleanup, "finished_ns")
+        <= public_finished
+        or cleanup["worktree_exists"] is not False
+    ):
+        raise ValueError(ERROR_REPORT)
+    output = _command_output(cleanup["command"], ["telec", "todo", "stamp", ITEM, "--prd-approved"], successful=False)
+    main = text(row, "main_head")
+    if any(needle not in output for needle in ("delivered", "telec todo create", main[:12])):
+        raise ValueError(ERROR_REPORT)
+    items = cleanup["after_items"]
+    if not isinstance(items, list) or len(items) != 2 or any(item != row["delivered_item"] for item in items):
+        raise ValueError(ERROR_REPORT)
+    reads, files = _restoration_reads(cleanup["git"], project, project)
+    keys = {
+        _git_read(reads, project, ("ls-remote", "origin", f"refs/heads/{ITEM}"), ""),
+        _git_read(reads, project, ("branch", "--list", ITEM), ""),
+    }
+    if files or set(reads) != keys or any(len(values) != 1 for values in reads.values()):
+        raise ValueError(ERROR_REPORT)
+    return {"state": "retired_door_and_owned_item_cleanup_matched", "finished_ns": cleanup["finished_ns"]}
+
+
 def _integration_inputs(
     finalizer: JsonObject,
     ledger: StartLedger,
@@ -2338,6 +2436,14 @@ def _integration_inputs(
             "main_head",
             "listing",
             "delivery_git",
+            "preflight_git",
+            "staged_git",
+            "commit_git",
+            "unpublished_git",
+            "root_declaration",
+            "integration_declaration",
+            "integration_is_dir",
+            "retired_cleanup",
         }
         or not created <= positive_integer(row, "started_ns") <= positive_integer(row, "finished_ns") <= public_finished
     ):
@@ -2399,14 +2505,14 @@ def _integration_inputs(
         )
         seen.add(identifier)
     _pane_run(row["frame"], ["telec", "code", "commit", "--approved", B6_COMMIT])
-    text(row, "integrated_head")
     return {
         "state": "admission_and_delivery_inputs",
         "actor": actor,
         "candidate": candidate,
         "operations": outcomes,
         "delivery": _delivered_inputs(row, text(child, "project_path")),
-        "integration_tree_proof": "unproven",
+        "integration_tree_inputs": _integration_tree_inputs(row, text(child, "project_path"), actor),
+        "retired_cleanup": _integration_retired_cleanup(row, text(child, "project_path"), public_finished),
     }
 
 
