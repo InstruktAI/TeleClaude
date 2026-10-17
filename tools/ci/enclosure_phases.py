@@ -11,7 +11,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
-from tools.ci.enclosure_actions import JOB_START, Authority, Key, NativeMutation
+from tools.ci.enclosure_actions import JOB_START, ORIGINAL_OBSERVATION, Authority, Key, NativeMutation
 from tools.ci.enclosure_activation import ActivationSources, inspect_activation_sources, inspect_start_sources
 from tools.ci.enclosure_activation import Key as ActivationKey
 from tools.ci.enclosure_configuration import (
@@ -35,7 +35,13 @@ from tools.ci.enclosure_contract import (
     text,
 )
 from tools.ci.enclosure_exchange import HelperExitFailed, HelperStartup, HelperUncertain, run_privileged
-from tools.ci.enclosure_graph import DependencyGraph, inspect_dependency_graph
+from tools.ci.enclosure_graph import (
+    CREATION_EDGES,
+    ROOT_ACTIVATORS,
+    DependencyGraph,
+    _references,
+    inspect_dependency_graph,
+)
 from tools.ci.enclosure_guest import GuestContext
 from tools.ci.enclosure_guest_binding import GuestBinding
 from tools.ci.enclosure_guest_evidence import (
@@ -58,7 +64,7 @@ from tools.ci.enclosure_manager import (
     UnitRead,
 )
 from tools.ci.enclosure_owner import Key as OwnerKey
-from tools.ci.enclosure_owner import RunOwner
+from tools.ci.enclosure_owner import RunOwner, _write_private_file
 from tools.ci.enclosure_payload_completion import (
     PayloadCompletion,
     capture_payload_completion,
@@ -73,6 +79,16 @@ ERROR_PHASE: Final = "the original supervisor cannot yet establish this phase: {
 ERROR_BINDING: Final = "the original supervisor's parent, invocation, job or population evidence disagrees"
 DELEGATE: Final = "Delegate"
 SLICE_SUFFIX: Final = ".slice"
+P4_WITNESS: Final = "p4-witness.json"
+JSON_SEPARATORS: Final = (",", ":")
+
+
+def _encoded(value: JsonObject) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=JSON_SEPARATORS, allow_nan=False).encode(UTF8)
+
+
+def _digest(value: JsonObject) -> str:
+    return hashlib.sha256(_encoded(value)).hexdigest()
 
 
 class Evidence(StrEnum):
@@ -180,6 +196,8 @@ class BindingPhases:
         self.closure_graph: DependencyGraph | None = None
         self.closure_activation_sources: ActivationSources | None = None
         self.closure_sources: JsonObject | None = None
+        self.p4_receipt: ActionResult | None = None
+        self.p4_witness_bytes: bytes | None = None
 
     @property
     def startups(self) -> tuple[HelperStartup, ...]:
@@ -187,7 +205,7 @@ class BindingPhases:
         return tuple(self._startups)
 
     async def run_payload(self, original: AdmittedDeadline) -> PayloadDrive:
-        """Drive the configured guest on this original loop; the result grants no P4 or release authority."""
+        """Drive the configured guest on this original loop; functional acceptance and release remain separate."""
         return await drive_payload(self, original)
 
     async def perform(
@@ -207,9 +225,15 @@ class BindingPhases:
             Action.GUEST_SETUP,
             Action.START_PAYLOAD,
             Action.POWEROFF,
-        ) or ((action in (Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF)) != (self.seal is not None)):
+            Action.OBSERVE,
+        ) or (
+            (action in (Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF, Action.OBSERVE))
+            != (self.seal is not None)
+        ):
             raise ValueError(ERROR_PHASE.format(action=action))
         if action is Action.POWEROFF and (self.payload_started is None or self.automatic_cleanup_read is None):
+            raise ValueError(ERROR_BINDING)
+        if action is Action.OBSERVE and self.closure_sources is None:
             raise ValueError(ERROR_BINDING)
         if self.uncertain is not None:
             raise self.uncertain
@@ -231,7 +255,7 @@ class BindingPhases:
         ).command_end(maximum_seconds)
         action_deadline = AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns)
         await self.manager.check_identity(end_ns)
-        if action in (Action.MASK_GUEST, Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF):
+        if action in (Action.MASK_GUEST, Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF, Action.OBSERVE):
             self._helper_frontier(None)
             self._require_source_closure(masked=action is not Action.MASK_GUEST)
         else:
@@ -265,22 +289,15 @@ class BindingPhases:
             if time.monotonic_ns() >= end_ns:
                 raise TimeoutError(ERROR_BINDING)
             if action is Action.MASK_GUEST and result.status is Outcome.SUCCEEDED:
-                self._helper_frontier(None)
-                if result.evidence.get(Evidence.PHASE) != Phase.ADMISSION_SEALED:
-                    raise ValueError(ERROR_BINDING)
-                # Ack/EOF/exit awaited the original loop after the callback's reconciliation.
-                boundary = self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
-                if time.monotonic_ns() >= end_ns:
-                    raise TimeoutError(ERROR_BINDING)
-                # Only the actual durable receipt plus positive helper exit exposes this seal to the supervisor.
-                self.seal_boundary = boundary
-                self.seal = result
+                self._expose_seal(result, end_ns)
             if action is Action.GUEST_SETUP and result.status is Outcome.SUCCEEDED:
                 self._expose_configured(result, action_deadline)
             if action is Action.START_PAYLOAD and result.status is Outcome.SUCCEEDED:
                 await self._expose_payload(result, action_deadline)
             if action is Action.POWEROFF and result.status is Outcome.SUCCEEDED:
                 await self._expose_shutdown(result, action_deadline)
+            if action is Action.OBSERVE and result.status is Outcome.SUCCEEDED:
+                await self._seal_physical_witness(result, action_deadline)
             return result
         except HelperUncertain as error:
             # Preserve the original startup/Process even if an outer caller only renders the raised diagnostic.
@@ -293,6 +310,18 @@ class BindingPhases:
             # Keep a known receipt separate from failed/late supervision; neither permits another normal action.
             self.completion_failure = error
             raise
+
+    def _expose_seal(self, result: ActionResult, end_ns: int) -> None:
+        """Expose the durable mask receipt after positive helper exit and the original stream's final reconciliation."""
+        self._helper_frontier(None)
+        if result.evidence.get(Evidence.PHASE) != Phase.ADMISSION_SEALED:
+            raise ValueError(ERROR_BINDING)
+        boundary = self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
+        if time.monotonic_ns() >= end_ns:
+            raise TimeoutError(ERROR_BINDING)
+        # No await after this final reconciliation before exposing the seal.
+        self.seal_boundary = boundary
+        self.seal = result
 
     async def _prepare_guest_input(
         self,
@@ -490,7 +519,8 @@ class BindingPhases:
             raise ValueError(ERROR_BINDING)
         if current is not None and (
             current not in self._startups
-            or current.action not in (Action.MASK_GUEST, Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF)
+            or current.action
+            not in (Action.MASK_GUEST, Action.GUEST_SETUP, Action.START_PAYLOAD, Action.POWEROFF, Action.OBSERVE)
         ):
             raise ValueError(ERROR_BINDING)
         facts: list[JsonValue] = []
@@ -707,6 +737,152 @@ class BindingPhases:
             raise TimeoutError(ERROR_BINDING)
         return evidence
 
+    async def _physical_frontier(self, deadline: AdmittedDeadline, current: HelperStartup | None) -> JsonObject:
+        """Require the P4 conjunction on the original observation objects; no report or functional verdict is repaired."""
+        if (
+            deadline.outer_end_ns != self.owner.journal.deadline.end_ns
+            or self.seal is None
+            or self.seal_boundary is None
+            or self.shutdown_requested is None
+            or self.guest_binding is None
+            or self.prepared_payload_manifest is None
+            or self.configuration is None
+            or self.automatic_cleanup_read is None
+            or self.closure_sources is None
+            or self.closure_configuration is None
+            or self.closure_graph is None
+            or self.closure_activation_sources is None
+            or self.population is None
+            or self.closure_sources.get(Evidence.SEQUENCE) is None
+            or self.closure_graph.unclassified
+            or self.closure_activation_sources.unclassified
+            or any(
+                node.current_job is not None
+                for node in self.closure_graph.nodes
+                if node.read.name in self.closure_graph.creators
+            )
+        ):
+            raise ValueError(ERROR_BINDING)
+        self._require_source_closure(masked=True)
+        end = deadline.effective_end()
+        self.owner.journal.binding.controller.require_alive()
+        self._helper_frontier(current)
+        await self.manager.check_identity(end)
+        parent, guest = await self.manager.read_active_boundary(end, allow_terminal=True)
+        if not _normal_service_exit(guest):
+            raise ValueError(ERROR_BINDING)
+        native = NativeMutation(Action.MASK_GUEST, object_value(self.seal.evidence[Evidence.NATIVE_RECEIPT]))
+        current_configuration = inspect_masked_instance_configuration(
+            self.owner, self.configuration, parent, guest, native, deadline, terminal=True
+        )
+        for actual, previous in (
+            (parent, self.closure_configuration.current.parent),
+            (guest, self.closure_configuration.current.guest),
+        ):
+            # A new causal source since the completed closure census is not
+            # classified by that earlier packet. Ordering metadata is not a creator.
+            if _references(actual, CREATION_EDGES + ROOT_ACTIVATORS) - _references(
+                previous, CREATION_EDGES + ROOT_ACTIVATORS
+            ):
+                raise ValueError(ERROR_BINDING)
+        self.guest_binding.require_root_view(deadline)
+        validate_shutdown_journal(self.automatic_cleanup_read, self.prepared_payload_manifest, self.package)
+        mask = current_configuration.mask
+        sample = self.population.sample(end)
+        if sample.faults or sample.populated is not False:
+            raise ValueError(ERROR_BINDING)
+        helpers = self._helper_frontier(current)
+        boundary = self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
+        if time.monotonic_ns() >= end:
+            raise TimeoutError(ERROR_BINDING)
+        return {
+            Evidence.IDENTITY: {
+                Evidence.BUS_ID: self.manager.identity.bus_id,
+                Evidence.MANAGER_OWNER: self.manager.identity.manager_owner,
+                Evidence.BOOT_ID: self.manager.identity.boot_id,
+            },
+            Evidence.PARENT: _unit(parent),
+            Evidence.GUEST: _unit(guest),
+            Evidence.MASK_TOMBSTONE: mask,
+            Evidence.HELPERS: helpers,
+            Evidence.SEQUENCE: boundary.sequence,
+            Evidence.OBSERVED_NS: boundary.observed_ns,
+            Evidence.POPULATION: {
+                Evidence.RAW: sample.raw.decode(UTF8),
+                Evidence.POPULATED: sample.populated,
+                Evidence.READ_STARTED_NS: sample.read_started_ns,
+                Evidence.READ_FINISHED_NS: sample.read_finished_ns,
+                Evidence.SEQUENCE: sample.last_notification_sequence,
+            },
+            "shutdown_journal_sha256": self.automatic_cleanup_read.sha256,
+            "closure_sources_sha256": _digest(self.closure_sources),
+            "admission_seal_sha256": _digest(self.seal.record(Action.MASK_GUEST)),
+            "shutdown_receipt_sha256": _digest(self.shutdown_requested.record(Action.POWEROFF)),
+        }
+
+    async def _observe_physical(
+        self, mutation: NativeMutation, end_ns: int, deadline: AdmittedDeadline, startup: HelperStartup
+    ) -> ActionResult:
+        if dict(mutation.evidence) != {"request_mode": ORIGINAL_OBSERVATION, Key.COMMAND_END_NS: end_ns}:
+            raise ValueError(ERROR_BINDING)
+        observation = await self._physical_frontier(
+            AdmittedDeadline(deadline.outer_end_ns, deadline.vector_end_ns, end_ns), startup
+        )
+        return ActionResult(
+            Outcome.SUCCEEDED,
+            {
+                Evidence.PHASE: Phase.P4_OBSERVED.value,
+                "observation_request": dict(mutation.evidence),
+                "original_observation": observation,
+            },
+        )
+
+    async def _seal_physical_witness(self, result: ActionResult, deadline: AdmittedDeadline) -> None:
+        """Retain the durable action receipt separately; expose P4 only after final original-frontier and witness readback."""
+        if result.evidence.get(Evidence.PHASE) != Phase.P4_OBSERVED or self.closure_sources is None:
+            raise ValueError(ERROR_BINDING)
+        original = object_value(result.evidence["original_observation"])
+        if original.get("closure_sources_sha256") != _digest(self.closure_sources):
+            raise ValueError(ERROR_BINDING)
+        final = await self._physical_frontier(deadline, None)
+        witness: JsonObject = {
+            "schema_version": 1,
+            "stage": "physical-witness",
+            "binding": self.owner.journal.owner_record,
+            "workflow": self.owner.workflow.record(),
+            "manifest_sha256": hashlib.sha256(self.owner.manifest_bytes).hexdigest(),
+            "closure_sources": self.closure_sources,
+            "observation_receipt": result.record(Action.OBSERVE),
+            "final_original_observation": final,
+            "manager_events": [
+                {
+                    Evidence.SEQUENCE: event.sequence,
+                    Evidence.OBSERVED_NS: event.observed_ns,
+                    Evidence.OBJECT_PATH: event.object_path,
+                    "interface": event.interface,
+                    "member": event.member,
+                    "signature": event.signature,
+                    "body": list(event.body),
+                }
+                for event in self.manager.events
+            ],
+        }
+        data = _encoded(witness)
+        _write_private_file(self.owner.journal.directory_fd, P4_WITNESS, data)
+        # Original inotify and manager history are reconciled through exposure;
+        # no await occurs after this frontier. The known receipt survives any failure here.
+        if self.population is None:
+            raise ValueError(ERROR_BINDING)
+        sample = self.population.sample(deadline.effective_end())
+        if sample.faults or sample.populated is not False:
+            raise ValueError(ERROR_BINDING)
+        self._helper_frontier(None)
+        self.manager.reconcile_jobs(self._job_scope(), tuple(self._accepted))
+        if time.monotonic_ns() >= deadline.effective_end():
+            raise TimeoutError(ERROR_BINDING)
+        self.p4_witness_bytes = data
+        self.p4_receipt = result
+
     async def _settle(self, mutation: NativeMutation, name: str, end_ns: int) -> JobBoundary:
         evidence = mutation.evidence
         rows = evidence.get(Key.ACCEPTED_JOBS)
@@ -766,6 +942,7 @@ class BindingPhases:
             Action.GUEST_SETUP,
             Action.START_PAYLOAD,
             Action.POWEROFF,
+            Action.OBSERVE,
         ):
             raise ValueError(ERROR_PHASE.format(action=mutation.action))
         if startup not in self._startups or startup.action is not mutation.action or startup.identity is None:
@@ -781,6 +958,8 @@ class BindingPhases:
             return await self._payload_start(mutation, end_ns, deadline, startup)
         if mutation.action is Action.POWEROFF:
             return await self._shutdown_receipt(mutation, end_ns, deadline, startup)
+        if mutation.action is Action.OBSERVE:
+            return await self._observe_physical(mutation, end_ns, deadline, startup)
         if mutation.action is Action.MASK_GUEST:
             self._helper_frontier(startup)
             evidence = await self.read_masked_sources(

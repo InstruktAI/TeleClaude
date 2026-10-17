@@ -531,6 +531,7 @@ class ManagerObserver:
         started: dict[int, int] = {}
         settled: dict[int, SettledJob] = {}
         for event in self._events:
+            self._require_service_outcome(event)
             if (
                 event.interface != Interface.MANAGER
                 or event.member not in (Member.JOB_NEW, Member.JOB_REMOVED)
@@ -562,6 +563,38 @@ class ManagerObserver:
             # An unfinished acknowledged job remains unresolved; a later explicit boundary may see its signal.
             raise ValueError(BINDING_ERROR)
         return JobBoundary(tuple(settled[job.identifier] for job in accepted), self._sequence, time.monotonic_ns())
+
+    def _require_service_outcome(self, event: NativeEvent) -> None:
+        """An earlier failed exit/restart remains blocking even if native ResetFailed later clears current properties."""
+        if (
+            self._guest is None
+            or event.object_path != self._guest.object_path
+            or event.interface != Interface.PROPERTIES
+        ):
+            return
+        body = event.body
+        if (
+            event.member != Member.PROPERTIES_CHANGED
+            or len(body) != 3
+            or not isinstance(body[1], dict)
+            or not isinstance(body[2], list)
+        ):
+            self.invalidate(Invalidation.MALFORMED_STREAM)
+            raise ValueError(BODY_ERROR)
+        changed, invalidated = body[1], body[2]
+        failed = body[0] == Interface.UNIT and changed.get(Property.ACTIVE_STATE) == "failed"
+        if body[0] == Interface.SERVICE:
+            fields = {"ExecMainCode": (0, 1), "ExecMainStatus": (0,), "NRestarts": (0,)}
+            if any(key in invalidated for key in ("Result", *fields)):
+                self.invalidate(Invalidation.MALFORMED_STREAM)
+                raise ValueError(BODY_ERROR)
+            failed = ("Result" in changed and changed["Result"] != "success") or any(
+                key in changed and (type(changed[key]) is not int or changed[key] not in allowed)
+                for key, allowed in fields.items()
+            )
+        if failed:
+            self.invalidate(Invalidation.SERVICE_OUTCOME)
+            raise ValueError(BINDING_ERROR)
 
     async def read_referenced_unit(self, source: UnitRead, name: str, deadline_ns: int) -> UnitRead:
         """Extend this same observer's scope only along actual native unit relationships, retaining earlier signals."""

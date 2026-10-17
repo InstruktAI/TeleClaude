@@ -70,6 +70,7 @@ class Invalidation(StrEnum):
     PARENT_REPLACED = "parent_replaced"
     INVOCATION_CHANGED = "invocation_changed"
     UNKNOWN_ACTIVATOR = "unknown_activator"
+    SERVICE_OUTCOME = "service_outcome"
 
 
 INVALIDATING_MASKS: Final = {

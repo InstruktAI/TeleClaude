@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
@@ -17,7 +18,7 @@ from tools.ci.enclosure_contract import (
     positive_integer,
     text,
 )
-from tools.ci.enclosure_exchange import HelperCollection, collect_helper_startup
+from tools.ci.enclosure_exchange import HelperCollection, HelperStartup, collect_helper_startup
 from tools.ci.enclosure_guest import Purpose
 from tools.ci.enclosure_journal import ActionResult, Outcome
 from tools.ci.enclosure_owner import Key as OwnerKey
@@ -32,7 +33,7 @@ ERROR_SHUTDOWN: Final = "automatic cleanup supplied no acknowledged receipt for 
 
 @dataclass(frozen=True)
 class PayloadDrive:
-    """Control observations and errors, without a functional, P4, release or export verdict."""
+    """Keep original work/closure failures independent of physical receipts and witness, without final acceptance."""
 
     work_end_ns: int
     closure_end_ns: int
@@ -41,6 +42,8 @@ class PayloadDrive:
     work_observation: JsonObject | None
     closure_observation: JsonObject | None
     closure_sources: JsonObject | None
+    observation_receipt: ActionResult | None
+    witness_sha256: str | None
     primary_error: BaseException | None
     closure_errors: tuple[BaseException, ...]
     helpers: tuple[HelperCollection, ...]
@@ -58,10 +61,32 @@ class PayloadDrive:
             "work_observation": self.work_observation,
             "closure_observation": self.closure_observation,
             "closure_sources": self.closure_sources,
+            "observation_receipt": self.observation_receipt.record(Action.OBSERVE)
+            if self.observation_receipt is not None
+            else None,
+            "witness_sha256": self.witness_sha256,
             "primary_error_class": type(self.primary_error).__name__ if self.primary_error is not None else None,
             "closure_error_classes": [type(error).__name__ for error in self.closure_errors],
             "helpers": [helper.record() for helper in self.helpers],
         }
+
+
+async def _collect_original(
+    phases: BindingPhases, startup: HelperStartup, closure: AdmittedDeadline
+) -> HelperCollection:
+    retained = phases.results.get(startup.action)
+    process = startup.process
+    if (
+        retained is not None
+        and process is not None
+        and process.returncode is not None
+        and startup.task.done()
+        and not startup.task.cancelled()
+        and startup.task.exception() is None
+    ):
+        startup.output_eof = process.stdout is not None and process.stdout.at_eof()
+        return HelperCollection(startup, retained, ())
+    return await collect_helper_startup(startup, phases.owner, closure)
 
 
 async def drive_payload(phases: BindingPhases, original: AdmittedDeadline) -> PayloadDrive:
@@ -90,6 +115,7 @@ async def drive_payload(phases: BindingPhases, original: AdmittedDeadline) -> Pa
     work_observation = None
     closure_observation = None
     closure_sources = None
+    observation = None
     primary = None
     closure_errors: list[BaseException] = []
     helpers: list[HelperCollection] = []
@@ -126,26 +152,19 @@ async def drive_payload(phases: BindingPhases, original: AdmittedDeadline) -> Pa
         closure_errors.append(error)
         shutdown = phases.results.get(Action.POWEROFF, shutdown)
     for startup in phases.startups:
-        retained = phases.results.get(startup.action)
-        process = startup.process
-        if (
-            retained is not None
-            and process is not None
-            and process.returncode is not None
-            and startup.task.done()
-            and not startup.task.cancelled()
-            and startup.task.exception() is None
-        ):
-            startup.output_eof = process.stdout is not None and process.stdout.at_eof()
-            helpers.append(HelperCollection(startup, retained, ()))
-        else:
-            helpers.append(await collect_helper_startup(startup, owner, closure))
+        helpers.append(await _collect_original(phases, startup, closure))
     if shutdown is not None and shutdown.status is Outcome.SUCCEEDED:
+        previous_startups = len(phases.startups)
         try:
             closure_sources = await phases.read_closure_sources(closure)
+            observation = await phases.perform(Action.OBSERVE, closure, normal_cap, None)
         except BaseException as error:
             closure_errors.append(error)
             closure_sources = phases.closure_sources
+            observation = phases.results.get(Action.OBSERVE, observation)
+        finally:
+            for startup in phases.startups[previous_startups:]:
+                helpers.append(await _collect_original(phases, startup, closure))
     return PayloadDrive(
         work_end,
         closure_end,
@@ -154,6 +173,8 @@ async def drive_payload(phases: BindingPhases, original: AdmittedDeadline) -> Pa
         work_observation,
         closure_observation,
         closure_sources,
+        observation,
+        hashlib.sha256(phases.p4_witness_bytes).hexdigest() if phases.p4_witness_bytes is not None else None,
         primary,
         tuple(closure_errors),
         tuple(helpers),

@@ -66,6 +66,7 @@ ERROR_NATIVE: Final = "native manager mutation did not return a complete on-time
 ERROR_RUNTIME: Final = "the declared runtime unit/configuration path is occupied or not protected: {path}"
 ERROR_ACTION: Final = "the fixed native producer is not yet implemented: {action}"
 ERROR_PHASE: Final = "native mutation receipt does not establish the requested supervisor phase"
+ORIGINAL_OBSERVATION: Final = "original-supervisor-observation-request"
 
 
 class Key(StrEnum):
@@ -125,7 +126,7 @@ class Template(StrEnum):
 
 @dataclass(frozen=True)
 class NativeMutation:
-    """An actual native acknowledgment, never original-object binding, settlement or seal proof."""
+    """Fixed producer facts or a tagged observation request; neither supplies its supervisor phase proof."""
 
     action: Action
     evidence: Mapping[str, JsonValue]
@@ -440,6 +441,13 @@ def _poweroff(context: PrivilegedAction, end_ns: int) -> NativeMutation:
     )
 
 
+def _observe_original(context: PrivilegedAction, end_ns: int) -> NativeMutation:
+    # OBSERVE journals the original supervisor's observation. This helper owns
+    # no observer and makes no manager mutation or physical-success assertion.
+    context.owner.require_original_parent()
+    return NativeMutation(Action.OBSERVE, {"request_mode": ORIGINAL_OBSERVATION, Key.COMMAND_END_NS: end_ns})
+
+
 NATIVE_PRODUCERS: Final[Mapping[Action, Callable[[PrivilegedAction, int], NativeMutation]]] = {
     Action.CREATE_PARENT: _create_parent,
     Action.START_GUEST: _start_guest,
@@ -447,6 +455,7 @@ NATIVE_PRODUCERS: Final[Mapping[Action, Callable[[PrivilegedAction, int], Native
     Action.GUEST_SETUP: _guest_setup,
     Action.START_PAYLOAD: _start_payload,
     Action.POWEROFF: _poweroff,
+    Action.OBSERVE: _observe_original,
 }
 
 
@@ -454,7 +463,7 @@ def dispatch_action(
     context: PrivilegedAction,
     observe_phase: Callable[[NativeMutation, int], ActionResult],
 ) -> ActionResult:
-    """Admit a fixed native producer, then require the original supervisor's actual phase result."""
+    """Admit a fixed producer, then require the original supervisor's actual phase result."""
     action = context.admission.action
     if action not in NATIVE_PRODUCERS:
         raise ValueError(ERROR_ACTION.format(action=action))
