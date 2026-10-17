@@ -15,18 +15,21 @@ The agent_runtime bounded context is hosted by a single long-running service pro
 
 ## Canonical fields
 
+### Startup and recovery invariants
+
+A per-computer lock admits one service process. A start attempt that fails
+releases its lock; a competing process exits without opening the runtime.
+Session-cache warm-up seeds durable rows only: it does not probe host panes or
+schedule per-session polling. Hooks, messages, and the polling coordinator
+resume polling, while periodic cleanup owns orphan discovery.
+
+Transient network, connection, timeout, and operating-system failures retry
+startup with bounded backoff; configuration, authentication, and lock failures
+exit immediately. An unexpected request-surface exit is retried only outside
+shutdown; exhausted recovery requests ordinary service shutdown so the service
+manager can relaunch it.
+
 ### Use cases
-
-#### Single-instance lock
-
-```
-Given an agent_runtime service process is starting
-When the lock acquisition runs against the configured lock file
-Then a successful acquisition records the current process identity and registers a release at exit
-And a contended acquisition raises a lock error naming the holder (when readable)
-And the process exits abnormally on lock error
-And the lock release is idempotent
-```
 
 #### Staged startup ordering
 
@@ -70,31 +73,6 @@ And outstanding final-output reconciliation is NOT done here — it is scheduled
 And the request surface starts AFTER these tasks have completed
 ```
 
-#### Cache warm honesty
-
-```
-Given the warm only seeds durable-storage snapshots into the in-memory cache
-When the local-sessions cache warm runs
-Then it does NOT touch the host-pane layer, does NOT match storage rows against live host panes, and does NOT (re)schedule polling for live sessions
-And per-session polling resumption is the responsibility of downstream paths (hook events, send-message, explicit polling-coordinator callers)
-And orphan host-pane / workspace / per-session tmpdir detection is the responsibility of the periodic cleanup loop, NOT the lifecycle startup
-```
-
-#### Post-startup background workers
-
-```
-Given startup has completed
-When the service's start sequence continues
-Then it starts the following background workers, each supervised as UC-DL17 states:
-  - Periodic cleanup (first iteration runs immediately, then every hour)
-  - Poller watch
-  - Hook outbox dispatcher — it starts one worker per session on demand, in parallel across sessions
-  - Mirror worker — transcript mirroring
-  - Workflow bridge and identity bridge — translators that bring v2 envelopes into v1 cache invalidation
-  - Resource monitor, write-ahead-log checkpoint, optional supervisor watch
-And only after these are scheduled does the service log that it is running
-```
-
 #### UC-DL2 — Turn delivery state is reconciled before adapters can emit output
 
 ```
@@ -135,18 +113,13 @@ And exhausting retries exits abnormally
 And every startup attempt acquires the single-instance lock idempotently; failure during start releases the lock before re-raise
 ```
 
-#### Shutdown ordering
+#### An operator can stop the daemon without losing accepted work
 
 ```gherkin
-Given a human operator requests ordinary daemon shutdown or restart
-When the running service begins preparation for shutdown
-Then admission closes to new business work before any completion dependency stops
-And acknowledged work retains its ownership until its effects and durable outcomes settle
-And runtime hooks, readiness signals, storage, terminal ownership and outcome delivery needed by that work remain available
-And long-running work leaves the service only at an existing durable recovery boundary or with an explicit terminal outcome
-And a successful preparation remains closed to new business work until the process exits
-And shutdown then stops background consumers, transports and adapters before closing storage and releasing the single-instance lock
-And independently running agent turns are neither terminated nor awaited as daemon-owned work
+Given a human operator needs to stop or restart the daemon while acknowledged work is active
+When ordinary shutdown begins
+Then new work is refused and acknowledged work settles or reaches a durable recovery boundary before its required dependencies stop
+And independently running agent turns continue without being terminated
 ```
 
 #### UC-DL4: Shutdown without active playback avoids invalid cancellation
