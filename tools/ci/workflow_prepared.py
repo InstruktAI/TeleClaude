@@ -36,7 +36,7 @@ import json
 import os
 import re
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Final, cast
@@ -234,6 +234,29 @@ def caller_startup_body(startup_input: str, expected_body: str) -> bool:
     body_start = len(opening_framing)
     body_end = len(startup_input) - len(closing_framing)
     return startup_input[body_start:body_end] == expected_body
+
+
+def assert_owner_write(before: Json, after: Json, known_sessions: Sequence[str]) -> None:
+    """Apply the original owner body-write change, attribution and clock predicates to captured views."""
+    items.require_only_changes("owner body write", before, after, OWNER_WRITE_PATHS)
+    found, updated_by = creation.dig(after, UPDATED_BY)
+    if not found:
+        raise creation.trace_failure(creation.DETAIL_PATH_ABSENT.format(slug=ITEM, path=UPDATED_BY))
+    if updated_by != creation.EMPTY:
+        if updated_by in set(known_sessions):
+            raise creation.platform_failure(DETAIL_UPDATED_SESSION.format(found=updated_by))
+        raise creation.trace_failure(DETAIL_UPDATED_BY.format(found=updated_by))
+    stamps: list[datetime] = []
+    for label, payload in (("before", before), ("after", after)):
+        found, value = creation.dig(payload, UPDATED_AT)
+        if not found or not isinstance(value, str):
+            raise creation.trace_failure(creation.DETAIL_PATH_ABSENT.format(slug=f"{ITEM} {label}", path=UPDATED_AT))
+        try:
+            stamps.append(datetime.fromisoformat(value))
+        except ValueError as error:
+            raise creation.trace_failure(f"roadmap.updated_at is not an ISO instant: {value!r}") from error
+    if stamps[1] < stamps[0]:
+        raise creation.platform_failure(DETAIL_CLOCK.format(before=stamps[0], after=stamps[1]))
 
 
 class _Prepared:
@@ -1124,27 +1147,7 @@ class _Prepared:
     # -- the owner write set ----------------------------------------------------------------------------------------
     def require_owner_write(self, before: Json, after: Json) -> None:
         """A body write by the owner changes `show` only in the paths of section 4a, with the clock moving forward."""
-        items.require_only_changes("owner body write", before, after, OWNER_WRITE_PATHS)
-        found, updated_by = creation.dig(after, UPDATED_BY)
-        if not found:
-            raise creation.trace_failure(creation.DETAIL_PATH_ABSENT.format(slug=ITEM, path=UPDATED_BY))
-        if updated_by != creation.EMPTY:
-            if updated_by in set(self.known_sessions):
-                raise creation.platform_failure(DETAIL_UPDATED_SESSION.format(found=updated_by))
-            raise creation.trace_failure(DETAIL_UPDATED_BY.format(found=updated_by))
-        stamps: list[datetime] = []
-        for label, payload in (("before", before), ("after", after)):
-            found, value = creation.dig(payload, UPDATED_AT)
-            if not found or not isinstance(value, str):
-                raise creation.trace_failure(
-                    creation.DETAIL_PATH_ABSENT.format(slug=f"{ITEM} {label}", path=UPDATED_AT)
-                )
-            try:
-                stamps.append(datetime.fromisoformat(value))
-            except ValueError as error:
-                raise creation.trace_failure(f"roadmap.updated_at is not an ISO instant: {value!r}") from error
-        if stamps[1] < stamps[0]:
-            raise creation.platform_failure(DETAIL_CLOCK.format(before=stamps[0], after=stamps[1]))
+        assert_owner_write(before, after, self.known_sessions)
 
     def require_live(self, session: str, when: str, effect: creation.EvidenceObject | None = None) -> None:
         """The live author is active and unclosed: a body write or a refused act ends nothing."""
