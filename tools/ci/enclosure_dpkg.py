@@ -26,7 +26,7 @@ from tools.ci.enclosure_contract import (
     text,
 )
 from tools.ci.enclosure_data import DPKG_DEB, _archive
-from tools.ci.enclosure_host import CONTAINER_PACKAGE, HostSubstrateFacts, _package_presence
+from tools.ci.enclosure_host import CONTAINER_PACKAGE, HostSubstrateFacts, _locked_package_statuses, _package_presence
 from tools.ci.enclosure_native import NativeQuery, query_native, read_native_stdout
 
 CONFIGURATION: Final = Path("/etc/dpkg")
@@ -1935,26 +1935,32 @@ def inspect_info_format(deadline: AdmittedDeadline) -> JsonObject:
         result["finished_ns"] = time.monotonic_ns()
 
 
+def _host_work_projection(work: JsonObject, deadline: AdmittedDeadline) -> bytes:
+    """Reuse the native no-pattern status filter without rewriting any actual lifecycle value."""
+    _before_cutoff(deadline)
+    if work["error"] is not None:
+        raise ValueError(ERROR_INPUT)
+    raw = base64.b64decode(text(work, "stdout_base64"), validate=True)
+    if hashlib.sha256(raw).hexdigest() != text(work, "stdout_sha256"):
+        raise ValueError(ERROR_INPUT)
+    projected: list[bytes] = []
+    for line in raw.splitlines():
+        _before_cutoff(deadline)
+        fields = line.split(b"\t")
+        if len(fields) != 7 or len(fields[3].split(b" ")) != 3:
+            raise ValueError(ERROR_INPUT)
+        # Native no-pattern --show skips NOTINSTALLED; wildcard mode retains those slots for control addressing.
+        if fields[3].split(b" ")[2] != b"not-installed":
+            projected.append(b"\t".join(fields[:4]) + b"\n")
+    _before_cutoff(deadline)
+    return b"".join(projected)
+
+
 def interpret_work_host_packages(package: StaticPackage, work: JsonObject, deadline: AdmittedDeadline) -> JsonObject:
     """Apply the original host-package predicate to the existing native view, with its original status filter."""
     result: JsonObject = {"state": "unproven", "container_installed": None, "matched_packages": None, "error": None}
     try:
-        _before_cutoff(deadline)
-        if work["error"] is not None:
-            raise ValueError(ERROR_INPUT)
-        raw = base64.b64decode(text(work, "stdout_base64"), validate=True)
-        if hashlib.sha256(raw).hexdigest() != text(work, "stdout_sha256"):
-            raise ValueError(ERROR_INPUT)
-        projected: list[bytes] = []
-        for line in raw.splitlines():
-            _before_cutoff(deadline)
-            fields = line.split(b"\t")
-            if len(fields) != 7 or len(fields[3].split(b" ")) != 3:
-                raise ValueError(ERROR_INPUT)
-            # Native no-pattern --show skips NOTINSTALLED; wildcard mode retains those slots for control addressing.
-            if fields[3].split(b" ")[2] != b"not-installed":
-                projected.append(b"\t".join(fields[:4]) + b"\n")
-        inventory = b"".join(projected)
+        inventory = _host_work_projection(work, deadline)
         result["native_view_projection_base64"] = base64.b64encode(inventory).decode("ascii")
         result["native_view_projection_sha256"] = hashlib.sha256(inventory).hexdigest()
         installed, matched = _package_presence(parse_object(package.lock_bytes), inventory)
@@ -1966,6 +1972,80 @@ def interpret_work_host_packages(package: StaticPackage, work: JsonObject, deadl
     except (KeyError, OSError, ValueError, RuntimeError) as error:
         result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
         raise DpkgInputError({"package_work": work, "host_package_inputs": result}) from error
+
+
+def interpret_install_package_states(
+    package: StaticPackage, work: JsonObject, deadline: AdmittedDeadline
+) -> JsonObject:
+    """Classify required package states after installation; receipt/source/name/effect admission remains separate."""
+    result: JsonObject = {"state": "unproven", "named_pass_admission": "unproven", "error": None}
+    try:
+        inventory = _host_work_projection(work, deadline)
+        required, statuses = _locked_package_statuses(parse_object(package.lock_bytes), inventory)
+        result["actual_required_statuses"] = dict[str, JsonValue](statuses)
+        allowed = {
+            "dbus": frozenset({"install ok installed", "install ok triggers-pending"}),
+            CONTAINER_PACKAGE: frozenset({"install ok installed", "install ok triggers-awaited"}),
+        }
+        for name, status in statuses.items():
+            _before_cutoff(deadline)
+            if status not in allowed.get(name, frozenset({"install ok installed"})):
+                raise ValueError("required package has no source-reviewed intermediate installation state")
+        rows = work["rows"]
+        if not isinstance(rows, list):
+            raise ValueError(ERROR_INPUT)
+        actual: dict[str, JsonObject] = {}
+        for value in rows:
+            _before_cutoff(deadline)
+            row = object_value(value)
+            name = text(row, "package_name")
+            if name not in required or row["lifecycle"] == "not-installed":
+                continue
+            if name in actual:
+                raise ValueError(ERROR_INPUT)
+            actual[name] = row
+            pending, awaited = row["pending_names"], row["awaited_package_specs"]
+            if not isinstance(pending, list) or not isinstance(awaited, list):
+                raise ValueError(ERROR_INPUT)
+            status = " ".join(text(row, key) for key in ("selection_state", "error_flag", "lifecycle"))
+            if statuses[name] != status:
+                raise ValueError(ERROR_INPUT)
+            if name not in allowed and (pending or awaited):
+                raise ValueError("an unaffected required package retains pending or awaited work")
+        if frozenset(statuses) != required or frozenset(actual) != required:
+            raise ValueError("required installed-package identity inputs are missing after the install")
+        dbus, container = actual["dbus"], actual[CONTAINER_PACKAGE]
+        result["dbus_native_pending_names"] = dbus["pending_names"]
+        result["container_native_awaited_specs"] = container["awaited_package_specs"]
+        if dbus["awaited_package_specs"] or container["pending_names"]:
+            raise ValueError("required D-Bus/container work has an unexplained direction")
+        pending = dbus["pending_names"]
+        awaited = container["awaited_package_specs"]
+        if not isinstance(pending, list) or not isinstance(awaited, list):
+            raise ValueError(ERROR_INPUT)
+        if bool(pending) != (dbus["lifecycle"] == "triggers-pending"):
+            raise ValueError("D-Bus status and actual pending work disagree")
+        if bool(awaited) != (container["lifecycle"] == "triggers-awaited"):
+            raise ValueError("container status and actual awaited work disagree")
+        if awaited:
+            references = container["awaited_instances"]
+            if not pending or not isinstance(references, list) or len(references) != len(awaited):
+                raise ValueError("container awaited work has no complete pending D-Bus reference")
+            fields = ("package_name", "version", "architecture", "selection_state", "error_flag", "lifecycle")
+            for value in references:
+                _before_cutoff(deadline)
+                reference = object_value(value)
+                instance = object_value(reference["instance"])
+                if reference["package_identity"] != "resolved" or any(instance[key] != dbus[key] for key in fields):
+                    raise ValueError("container awaited work does not resolve to the actual pending D-Bus instance")
+        result["native_relation"] = "container_awaits_pending_dbus" if awaited else "no_container_awaited_work"
+        result["dbus_work_case"] = "actual_pending_names_require_binding" if pending else "no_actual_pending_names"
+        result["state"] = "locked_package_state_inputs_classified"
+        _before_cutoff(deadline)
+        return result
+    except (KeyError, OSError, ValueError, RuntimeError) as error:
+        result["error"] = {"error_class": type(error).__name__, "detail": str(error)}
+        raise DpkgInputError({"package_work": work, "install_package_states": result}) from error
 
 
 def _info_link_input(path: Path, deadline: AdmittedDeadline, captures: list[JsonValue]) -> JsonObject:

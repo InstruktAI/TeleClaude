@@ -98,7 +98,8 @@ def _require_time(deadline: AdmittedDeadline) -> None:
         raise TimeoutError(ERROR_DEADLINE)
 
 
-def _package_presence(lock: JsonObject, raw: bytes) -> tuple[bool, int]:
+def _locked_package_statuses(lock: JsonObject, raw: bytes) -> tuple[frozenset[str], dict[str, str]]:
+    """Bind the original required names/versions/architectures, without deciding a lifecycle boundary."""
     rows = object_value(lock[Key.HOST_CLOSURE])[Key.FINAL_PACKAGES]
     if not isinstance(rows, list):
         raise ValueError(ERROR_HOST)
@@ -111,8 +112,7 @@ def _package_presence(lock: JsonObject, raw: bytes) -> tuple[bool, int]:
         expected[name] = (text(row, Key.VERSION), text(row, Key.ARCHITECTURE))
     if CONTAINER_PACKAGE not in expected:
         raise ValueError(ERROR_HOST)
-    installed: set[str] = set()
-    seen: set[str] = set()
+    statuses: dict[str, str] = {}
     for line in raw.decode(UTF8).splitlines():
         fields = line.split(TAB)
         if len(fields) != 4:
@@ -120,15 +120,26 @@ def _package_presence(lock: JsonObject, raw: bytes) -> tuple[bool, int]:
         name, version, architecture, status = fields
         if name not in expected:
             continue
-        if name in seen:
+        if name in statuses:
             raise ValueError(ERROR_HOST)
-        seen.add(name)
+        statuses[name] = status
         if name == CONTAINER_PACKAGE and status == NOT_INSTALLED:
             continue
-        if status != INSTALLED or (version, architecture) != expected[name]:
+        if (version, architecture) != expected[name]:
+            raise ValueError(ERROR_HOST)
+    return frozenset(expected), statuses
+
+
+def _package_presence(lock: JsonObject, raw: bytes) -> tuple[bool, int]:
+    required, statuses = _locked_package_statuses(lock, raw)
+    installed: set[str] = set()
+    for name, status in statuses.items():
+        if name == CONTAINER_PACKAGE and status == NOT_INSTALLED:
+            continue
+        if status != INSTALLED:
             raise ValueError(ERROR_HOST)
         installed.add(name)
-    if set(expected) - installed - {CONTAINER_PACKAGE}:
+    if required - installed - {CONTAINER_PACKAGE}:
         raise ValueError(ERROR_HOST)
     return CONTAINER_PACKAGE in installed, len(installed)
 
