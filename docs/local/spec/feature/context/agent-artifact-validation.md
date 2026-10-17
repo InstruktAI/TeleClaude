@@ -24,6 +24,10 @@ session start is a procedure, validated under the snippet contracts
 never here. Third-party skill bodies and supporting package Markdown retain
 their human-authored structure.
 
+A non-ignored, unrecognized entry directly under `agents/`, including a stray
+untracked file, is refused with a path-specific finding; Git-ignored entries
+there are skipped.
+
 Validation is scoped to the source paths under review: a supporting file inside
 a skill package resolves to that package's entrypoint, and commit-bound
 validation checks staged source and refuses any finding.
