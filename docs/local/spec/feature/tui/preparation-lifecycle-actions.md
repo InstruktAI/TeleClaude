@@ -67,14 +67,21 @@ read back as state, per `sdlc/principle/architecture-boundary-purity`.
 
 ### Use cases
 
-#### UC-PLA-1: Start-work targets the cursor's project
+#### UC-PLA-1: An operator starts work on the selected todo
 
 ```gherkin
-Given a human operator at the TUI sees two projects with todos that share a slug
-And the todo outside the cursor's project is soft-removed
-And the cursor sits on the live todo under its own project header
-When the operator starts work on the cursor's row
-Then the lifecycle operation is submitted against the cursor's project
+Scenario: Work targets the selected todo in its project
+  Given a human operator at the TUI sees two projects with todos that share a slug
+  And the todo outside the cursor's project is soft-removed
+  And the cursor sits on the live todo under its own project header
+  When the operator starts work on the cursor's row
+  Then the lifecycle operation is submitted against the cursor's project
+
+Scenario: A stale row never retargets work to a replacement todo
+  Given the view shows a live todo's row
+  And that todo is removed and a new live todo takes its slug before the view refreshes
+  When the operator starts work from the stale row
+  Then the view addresses the removed todo's durable identity, never the replacement
 ```
 
 #### UC-PLA-3: Opening a trashed todo's artifact shows that removed todo's own content, read-only
@@ -90,23 +97,7 @@ And the viewer is read-only, so nothing done in it changes either todo's artifac
 
 #### UC-PLA-4: A removed or delivered todo's rows offer only what the todo's state allows
 
-```gherkin
-Scenario Outline: A retained todo's rows offer only what its state allows
-  Given a human operator at the TUI has revealed a project's <section> section
-  And a <state> todo is shown there, expanded to its files
-  When the operator puts the cursor on that todo's <row>
-  Then the actions the view offers on that todo are exactly <offered>
-  And pressing the key of any other action on that todo changes no todo
-
-  Examples:
-    | section   | state     | row      | offered                                         |
-    | Trashed   | removed   | own row  | expanding or collapsing it, and reactivating it |
-    | Trashed   | removed   | file row | collapsing it, and viewing that file read-only  |
-    | Delivered | delivered | own row  | expanding or collapsing it                      |
-    | Delivered | delivered | file row | collapsing it, and viewing that file read-only  |
-```
-
-#### UC-PLA-5: Expanding a todo expands only that todo
+#### UC-PLA-5: An operator opens only the selected todo's files
 
 ```gherkin
 Given a project holds a live todo, a delivered todo, and a removed todo that share one slug
@@ -133,13 +124,6 @@ And saving an edit there changes only the live todo's artifact
 
 #### UC-PLA-7: An action from a row whose todo has since been removed is never retargeted
 
-```gherkin
-Given a human operator at the TUI sees a live todo's row in the Preparation view
-And after the view drew it, that todo was removed and a new live todo took its slug
-When the operator starts an action on the todo from that row before the view refreshes
-Then the view addresses the action to the removed todo's durable identity, never to the new todo
-```
-
 #### UC-PLA-8: A todo created where nothing names a project belongs to the project the TUI was started from
 
 ```gherkin
@@ -152,13 +136,7 @@ And no item is created in any other project
 
 #### UC-PLA-9: Start-work on a todo that is not ready is submitted without judging readiness
 
-```gherkin
-Given a human operator at the TUI has the cursor on a live todo that has not reached prepared
-When the operator starts work on it
-Then the view submits the work operation without judging readiness itself
-```
-
-#### UC-PLA-10: Creating a todo from the TUI asks for its kind
+#### UC-PLA-10: An operator creates a todo in the chosen kind
 
 ```gherkin
 Given a human operator at the TUI starts creating a new todo
